@@ -3,6 +3,26 @@
 /// `NSApplication` coordinates process-level lifecycle, delegate callbacks, and
 /// the native Windows event loop. Applications normally use `NSApplication.shared`.
 public final class NSApplication: NSObject {
+    /// Modal response values returned by dialogs.
+    public struct ModalResponse: Equatable, Sendable {
+        /// Raw response value.
+        public let rawValue: Int
+
+        /// Creates a modal response.
+        public init(rawValue: Int) {
+            self.rawValue = rawValue
+        }
+
+        /// The first alert button was chosen.
+        public static let alertFirstButtonReturn = ModalResponse(rawValue: 1_000)
+
+        /// The second alert button was chosen.
+        public static let alertSecondButtonReturn = ModalResponse(rawValue: 1_001)
+
+        /// The third alert button was chosen.
+        public static let alertThirdButtonReturn = ModalResponse(rawValue: 1_002)
+    }
+
     /// Shared application instance.
     public static let shared = NSApplication()
 

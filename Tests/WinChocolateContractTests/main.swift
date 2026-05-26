@@ -140,6 +140,17 @@ func testMainMenuQuitItemTerminatesApplication() {
     expect(backend.didTerminateApplication, "Quit menu item did not terminate the application.")
 }
 
+func testAlertReturnsFirstButtonInMemory() {
+    NSApplication.shared.nativeBackend = InMemoryNativeControlBackend()
+    let alert = NSAlert()
+    alert.messageText = "Hello"
+    alert.addButton(withTitle: "OK")
+
+    let response = alert.runModal()
+
+    expect(response == .alertFirstButtonReturn, "In-memory alert did not return first button.")
+}
+
 testWindowRealizationCreatesNativeHierarchy()
 testViewHierarchyMaintainsSuperviewOwnership()
 testControlClosureActionIsInvoked()
@@ -148,5 +159,6 @@ testRealizedViewStatePropagatesToBackend()
 testWindowTitleAndFramePropagateToBackend()
 testRemovingRealizedSubviewDestroysNativePeer()
 testMainMenuQuitItemTerminatesApplication()
+testAlertReturnsFirstButtonInMemory()
 
 print("WinChocolate contract tests passed.")

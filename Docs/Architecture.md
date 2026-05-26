@@ -4,7 +4,7 @@
 
 WinChocolate is an AppKit-shaped SwiftPM framework for Windows. The goal is to let application code replace `import Cocoa` or `import AppKit` with `import WinChocolate` and keep familiar names such as `NSApplication`, `NSWindow`, `NSView`, `NSButton`, and `NSTextField`, while the implementation wraps native Windows controls behind a backend boundary.
 
-Overall planned-code progress: `█████░░░░░` 50%
+Overall planned-code progress: `█████░░░░░` 55%
 
 ## First Milestone
 
@@ -24,8 +24,8 @@ The first milestone is a runnable AppKit-shaped Windows application slice:
 |---|---:|---:|---|---|
 | 1: SwiftPM Shape And Core Names | Implemented | 100% | package, sources, tests, docs | Initial AppKit-compatible public type names are in place. |
 | 2: Native Backend Boundary | Partial | 78% | HWND creation, message loop, child controls | User32-backed window, custom view container, menu, button, static text, text/frame/visibility/enabled updates, native cleanup, and command dispatch are in place. |
-| 3: AppKit Surface Expansion | Partial | 10% | menus, responders, layout, text, images | Initial `NSMenu` and `NSMenuItem` APIs are present. |
-| 4: Demo Application | Partial | 60% | SwiftPM demo app | Demo source builds as a SwiftPM executable and visibly exercises the first native state APIs. |
+| 3: AppKit Surface Expansion | Partial | 15% | menus, dialogs, responders, layout, text, images | Initial `NSMenu`, `NSMenuItem`, and `NSAlert` APIs are present. |
+| 4: Demo Application | Partial | 65% | SwiftPM demo app | Demo source builds as a SwiftPM executable and visibly exercises native state APIs plus modal alerts. |
 
 ## Checklist
 
@@ -35,6 +35,7 @@ The first milestone is a runnable AppKit-shaped Windows application slice:
 - [x] Add unit tests for public hierarchy behavior.
 - [x] Replace the temporary Win32 backend fallback with first real HWND creation.
 - [x] Add initial menu APIs.
+- [x] Add initial `NSAlert` API backed by native modal dialogs.
 - [x] Add native state updates for title/text, frame, hidden, enabled, and destroyed views.
 - [ ] Add `NSResponder`, image, font, color, layout, and deeper event APIs.
 - [x] Add a Swift demo application skeleton under `Demo`.
@@ -72,6 +73,8 @@ Native code is isolated behind `NativeControlBackend`. Public controls do not ca
 `NSView` maps to a lightweight custom child HWND. The same WinChocolate window procedure handles top-level windows and view containers, while only top-level window destruction terminates the application. This allows nested view hierarchies without losing button `WM_COMMAND` dispatch.
 
 Realized views and controls now propagate common state changes to native peers. `NSWindow.title`, `NSWindow.setFrame(_:display:)`, `NSView.frame`, `NSView.isHidden`, and `NSControl.isEnabled` update the backend after realization. Removing a realized subview recursively destroys its native peer.
+
+`NSAlert` runs through the backend and currently maps to native `MessageBoxW`. This gives real modal behavior for the first milestone. Custom alert button captions are recorded in the public API, but the Win32 backend still uses standard MessageBox button sets until a custom dialog backend is added.
 
 ## Review Notes
 

@@ -27,6 +27,7 @@ let button = NSButton(title: "Click", frame: NSMakeRect(24, 204, 88, 32))
 let enableButton = NSButton(title: "Disable Click", frame: NSMakeRect(128, 204, 128, 32))
 let hideButton = NSButton(title: "Hide Counter", frame: NSMakeRect(272, 204, 128, 32))
 let moveButton = NSButton(title: "Move Click", frame: NSMakeRect(416, 204, 112, 32))
+let alertButton = NSButton(title: "Alert", frame: NSMakeRect(24, 108, 88, 32))
 var clickCount = 0
 var isClickEnabled = true
 var isCounterHidden = false
@@ -61,12 +62,23 @@ moveButton.onAction = { _ in
     statusLabel.stringValue = movedRight ? "Click button moved down" : "Click button moved back"
 }
 
+alertButton.onAction = { _ in
+    let alert = NSAlert()
+    alert.messageText = "WinChocolate is running"
+    alert.informativeText = "This is a native modal NSAlert backed by MessageBoxW."
+    alert.alertStyle = .informational
+    alert.addButton(withTitle: "OK")
+    _ = alert.runModal()
+    statusLabel.stringValue = "Alert dismissed"
+}
+
 contentView.addSubview(counterLabel)
 contentView.addSubview(statusLabel)
 contentView.addSubview(button)
 contentView.addSubview(enableButton)
 contentView.addSubview(hideButton)
 contentView.addSubview(moveButton)
+contentView.addSubview(alertButton)
 window.contentView = contentView
 window.makeKeyAndOrderFront(nil)
 

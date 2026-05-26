@@ -100,6 +100,14 @@ private func winMoveWindow(
     _ repaint: Int32
 ) -> Int32
 
+@_silgen_name("MessageBoxW")
+private func winMessageBoxW(
+    _ hwnd: HWND?,
+    _ text: UnsafePointer<UInt16>?,
+    _ caption: UnsafePointer<UInt16>?,
+    _ type: UINT
+) -> Int32
+
 @_silgen_name("PostQuitMessage")
 private func winPostQuitMessage(_ exitCode: Int32)
 
@@ -129,10 +137,18 @@ private let csHRedraw: UINT = 0x0002
 private let mfString: UINT = 0x0000
 private let mfPopup: UINT = 0x0010
 private let mfSeparator: UINT = 0x0800
+private let mbOK: UINT = 0x00000000
+private let mbOKCancel: UINT = 0x00000001
+private let mbYesNo: UINT = 0x00000004
+private let mbIconInformation: UINT = 0x00000040
+private let mbIconWarning: UINT = 0x00000030
+private let mbIconError: UINT = 0x00000010
 private let swShow: Int32 = 5
 private let swHide: Int32 = 0
 private let wmDestroy: UINT = 0x0002
 private let wmCommand: UINT = 0x0111
+private let idOK: Int32 = 1
+private let idYes: Int32 = 6
 private let wsOverlapped: DWORD = 0x00000000
 private let wsCaption: DWORD = 0x00c00000
 private let wsSysMenu: DWORD = 0x00080000
@@ -344,6 +360,25 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         controlActions[handle.rawValue] = action
     }
 
+    /// Runs a native modal alert.
+    public func runAlert(_ alert: NSAlert) -> NSApplication.ModalResponse {
+        let body = alert.informativeText.isEmpty
+            ? alert.messageText
+            : "\(alert.messageText)\n\n\(alert.informativeText)"
+
+        let result = withWideString(body) { text in
+            withWideString("WinChocolate") { caption in
+                winMessageBoxW(nil, text, caption, messageBoxFlags(for: alert))
+            }
+        }
+
+        if result == idOK || result == idYes {
+            return .alertFirstButtonReturn
+        }
+
+        return .alertSecondButtonReturn
+    }
+
     fileprivate static func dispatchMessage(hwnd: HWND?, message: UINT, wParam: WPARAM, lParam: LPARAM) -> LRESULT? {
         activeBackend?.dispatchMessage(hwnd: hwnd, message: message, wParam: wParam, lParam: lParam)
     }
@@ -531,6 +566,30 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         }
 
         return style | wsVisible
+    }
+
+    private func messageBoxFlags(for alert: NSAlert) -> UINT {
+        let buttonFlags: UINT
+        switch alert.buttonTitles.count {
+        case 0, 1:
+            buttonFlags = mbOK
+        case 2:
+            buttonFlags = mbOKCancel
+        default:
+            buttonFlags = mbYesNo
+        }
+
+        let iconFlags: UINT
+        switch alert.alertStyle {
+        case .informational:
+            iconFlags = mbIconInformation
+        case .warning:
+            iconFlags = mbIconWarning
+        case .critical:
+            iconFlags = mbIconError
+        }
+
+        return buttonFlags | iconFlags
     }
 
     private func nativeHandle(from hwnd: HWND) -> NativeHandle {

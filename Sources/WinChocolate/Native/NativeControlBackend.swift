@@ -48,4 +48,7 @@ public protocol NativeControlBackend: AnyObject {
 
     /// Registers the action to perform when a native control is activated.
     func registerAction(for handle: NativeHandle, action: @escaping () -> Void)
+
+    /// Runs a native modal alert.
+    func runAlert(_ alert: NSAlert) -> NSApplication.ModalResponse
 }

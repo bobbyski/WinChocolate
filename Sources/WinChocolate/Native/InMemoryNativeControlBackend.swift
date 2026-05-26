@@ -140,6 +140,11 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
         actions[handle] = action
     }
 
+    /// Returns the default alert response without displaying UI.
+    public func runAlert(_ alert: NSAlert) -> NSApplication.ModalResponse {
+        .alertFirstButtonReturn
+    }
+
     private func makeHandle(kind: String, text: String, frame: NSRect, parent: NativeHandle?) -> NativeHandle {
         let handle = NativeHandle(rawValue: nextRawHandle)
         nextRawHandle += 1
