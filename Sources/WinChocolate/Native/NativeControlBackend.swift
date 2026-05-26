@@ -1,0 +1,33 @@
+/// Native control creation and lifetime boundary.
+///
+/// `NSWindow`, `NSView`, and controls ask this backend for HWND-backed peers.
+/// Keeping the Win32 layer behind a protocol lets the public AppKit-shaped API
+/// stay testable and gives future backends a narrow substitution point.
+public protocol NativeControlBackend: AnyObject {
+    /// Starts the platform event loop.
+    func runApplication()
+
+    /// Requests application termination.
+    func terminateApplication()
+
+    /// Installs the application's main menu.
+    func installMainMenu(_ menu: NSMenu?)
+
+    /// Creates a native top-level window.
+    func createWindow(title: String, frame: NSRect, styleMask: NSWindow.StyleMask) -> NativeHandle
+
+    /// Shows a previously created native window.
+    func showWindow(_ handle: NativeHandle)
+
+    /// Closes a previously created native window.
+    func closeWindow(_ handle: NativeHandle)
+
+    /// Creates a native view-like child.
+    func createView(frame: NSRect, parent: NativeHandle?) -> NativeHandle
+
+    /// Creates a native push button child.
+    func createButton(title: String, frame: NSRect, parent: NativeHandle?) -> NativeHandle
+
+    /// Creates a native text field child.
+    func createTextField(text: String, frame: NSRect, parent: NativeHandle?) -> NativeHandle
+}
