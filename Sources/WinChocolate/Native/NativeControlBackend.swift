@@ -22,6 +22,9 @@ public protocol NativeControlBackend: AnyObject {
     /// Closes a previously created native window.
     func closeWindow(_ handle: NativeHandle)
 
+    /// Destroys a previously created native child control.
+    func destroyControl(_ handle: NativeHandle)
+
     /// Creates a native view-like child.
     func createView(frame: NSRect, parent: NativeHandle?) -> NativeHandle
 
@@ -36,6 +39,12 @@ public protocol NativeControlBackend: AnyObject {
 
     /// Updates the native frame for a window or control.
     func setFrame(_ frame: NSRect, for handle: NativeHandle)
+
+    /// Updates whether a native control is hidden.
+    func setHidden(_ isHidden: Bool, for handle: NativeHandle)
+
+    /// Updates whether a native control is enabled.
+    func setEnabled(_ isEnabled: Bool, for handle: NativeHandle)
 
     /// Registers the action to perform when a native control is activated.
     func registerAction(for handle: NativeHandle, action: @escaping () -> Void)

@@ -17,6 +17,12 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
 
         /// The parent native handle, when any.
         public var parent: NativeHandle?
+
+        /// Whether the native object is hidden.
+        public var isHidden: Bool
+
+        /// Whether the native object accepts input.
+        public var isEnabled: Bool
     }
 
     private var nextRawHandle: UInt = 1
@@ -65,6 +71,13 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     /// Removes a recorded native object.
     public func closeWindow(_ handle: NativeHandle) {
         records.removeValue(forKey: handle)
+        actions.removeValue(forKey: handle)
+    }
+
+    /// Removes a recorded native child object.
+    public func destroyControl(_ handle: NativeHandle) {
+        records.removeValue(forKey: handle)
+        actions.removeValue(forKey: handle)
     }
 
     /// Records a view creation request.
@@ -102,6 +115,26 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
         records[handle] = record
     }
 
+    /// Updates a recorded hidden state.
+    public func setHidden(_ isHidden: Bool, for handle: NativeHandle) {
+        guard var record = records[handle] else {
+            return
+        }
+
+        record.isHidden = isHidden
+        records[handle] = record
+    }
+
+    /// Updates a recorded enabled state.
+    public func setEnabled(_ isEnabled: Bool, for handle: NativeHandle) {
+        guard var record = records[handle] else {
+            return
+        }
+
+        record.isEnabled = isEnabled
+        records[handle] = record
+    }
+
     /// Records a control action.
     public func registerAction(for handle: NativeHandle, action: @escaping () -> Void) {
         actions[handle] = action
@@ -110,7 +143,14 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     private func makeHandle(kind: String, text: String, frame: NSRect, parent: NativeHandle?) -> NativeHandle {
         let handle = NativeHandle(rawValue: nextRawHandle)
         nextRawHandle += 1
-        records[handle] = Record(kind: kind, text: text, frame: frame, parent: parent)
+        records[handle] = Record(
+            kind: kind,
+            text: text,
+            frame: frame,
+            parent: parent,
+            isHidden: false,
+            isEnabled: true
+        )
         return handle
     }
 }

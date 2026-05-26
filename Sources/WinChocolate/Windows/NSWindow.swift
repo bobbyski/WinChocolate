@@ -37,7 +37,15 @@ open class NSWindow: NSObject {
     open var frame: NSRect
 
     /// The window title.
-    open var title: String = ""
+    open var title: String = "" {
+        didSet {
+            guard let nativeHandle else {
+                return
+            }
+
+            nativeBackend.setText(title, for: nativeHandle)
+        }
+    }
 
     /// The window style mask.
     public let styleMask: StyleMask

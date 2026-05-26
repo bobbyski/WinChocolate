@@ -35,6 +35,17 @@ open class NSView: NSObject {
     /// Indicates whether the view needs display.
     public private(set) var needsDisplay = false
 
+    /// Whether the view is hidden from display.
+    open var isHidden: Bool = false {
+        didSet {
+            guard let nativeHandle else {
+                return
+            }
+
+            realizedBackend?.setHidden(isHidden, for: nativeHandle)
+        }
+    }
+
     /// Creates a view with a frame.
     public init(frame frameRect: NSRect) {
         self.frame = frameRect
@@ -46,6 +57,12 @@ open class NSView: NSObject {
         view.removeFromSuperview()
         view.superview = self
         subviews.append(view)
+
+        guard let realizedBackend, let nativeHandle else {
+            return
+        }
+
+        view.realizeNativePeer(in: realizedBackend, parent: nativeHandle)
     }
 
     /// Removes the view from its parent hierarchy.
@@ -56,6 +73,7 @@ open class NSView: NSObject {
 
         superview.subviews.removeAll { $0 === self }
         self.superview = nil
+        destroyNativePeer()
     }
 
     /// Marks the view as needing display.
@@ -73,6 +91,7 @@ open class NSView: NSObject {
         let handle = createNativePeer(in: backend, parent: parent)
         nativeHandle = handle
         realizedBackend = backend
+        backend.setHidden(isHidden, for: handle)
 
         for subview in subviews {
             subview.realizeNativePeer(in: backend, parent: handle)
@@ -84,5 +103,20 @@ open class NSView: NSObject {
     /// Creates the native peer for this specific view type.
     open func createNativePeer(in backend: NativeControlBackend, parent: NativeHandle?) -> NativeHandle {
         backend.createView(frame: frame, parent: parent)
+    }
+
+    /// Destroys the native peer for this view and its children.
+    open func destroyNativePeer() {
+        for subview in subviews {
+            subview.destroyNativePeer()
+        }
+
+        guard let nativeHandle, let realizedBackend else {
+            return
+        }
+
+        realizedBackend.destroyControl(nativeHandle)
+        self.nativeHandle = nil
+        self.realizedBackend = nil
     }
 }

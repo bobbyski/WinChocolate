@@ -69,6 +69,9 @@ private func winDefWindowProcW(_ hwnd: HWND?, _ message: UINT, _ wParam: WPARAM,
 @_silgen_name("DestroyWindow")
 private func winDestroyWindow(_ hwnd: HWND?) -> Int32
 
+@_silgen_name("EnableWindow")
+private func winEnableWindow(_ hwnd: HWND?, _ enable: Int32) -> Int32
+
 @_silgen_name("DispatchMessageW")
 private func winDispatchMessageW(_ message: UnsafePointer<MSG>) -> LRESULT
 
@@ -127,6 +130,7 @@ private let mfString: UINT = 0x0000
 private let mfPopup: UINT = 0x0010
 private let mfSeparator: UINT = 0x0800
 private let swShow: Int32 = 5
+private let swHide: Int32 = 0
 private let wmDestroy: UINT = 0x0002
 private let wmCommand: UINT = 0x0111
 private let wsOverlapped: DWORD = 0x00000000
@@ -240,6 +244,17 @@ public final class Win32NativeControlBackend: NativeControlBackend {
 
         _ = winDestroyWindow(hwnd)
         windowHandles.remove(handle)
+        controlActions.removeValue(forKey: handle.rawValue)
+    }
+
+    /// Destroys a native child control.
+    public func destroyControl(_ handle: NativeHandle) {
+        guard let hwnd = hwnd(from: handle) else {
+            return
+        }
+
+        _ = winDestroyWindow(hwnd)
+        controlActions.removeValue(forKey: handle.rawValue)
     }
 
     /// Creates a native view child.
@@ -304,6 +319,24 @@ public final class Win32NativeControlBackend: NativeControlBackend {
             Int32(frame.size.height),
             1
         )
+    }
+
+    /// Updates whether a native control is hidden.
+    public func setHidden(_ isHidden: Bool, for handle: NativeHandle) {
+        guard let hwnd = hwnd(from: handle) else {
+            return
+        }
+
+        _ = winShowWindow(hwnd, isHidden ? swHide : swShow)
+    }
+
+    /// Updates whether a native control is enabled.
+    public func setEnabled(_ isEnabled: Bool, for handle: NativeHandle) {
+        guard let hwnd = hwnd(from: handle) else {
+            return
+        }
+
+        _ = winEnableWindow(hwnd, isEnabled ? 1 : 0)
     }
 
     /// Registers the action to perform when a native control is activated.

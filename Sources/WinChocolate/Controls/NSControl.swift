@@ -13,8 +13,23 @@ open class NSControl: NSView {
     /// Swift-native action invoked by `sendAction()`.
     open var onAction: ((NSControl) -> Void)?
 
+    /// Whether the control accepts user interaction.
+    open var isEnabled: Bool = true {
+        didSet {
+            guard let nativeHandle else {
+                return
+            }
+
+            realizedBackend?.setEnabled(isEnabled, for: nativeHandle)
+        }
+    }
+
     /// Sends this control's action.
     open func sendAction() {
+        guard isEnabled else {
+            return
+        }
+
         onAction?(self)
     }
 
@@ -22,6 +37,7 @@ open class NSControl: NSView {
     @discardableResult
     open override func realizeNativePeer(in backend: NativeControlBackend, parent: NativeHandle?) -> NativeHandle {
         let handle = super.realizeNativePeer(in: backend, parent: parent)
+        backend.setEnabled(isEnabled, for: handle)
         backend.registerAction(for: handle) { [weak self] in
             self?.sendAction()
         }

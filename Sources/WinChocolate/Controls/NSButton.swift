@@ -31,4 +31,9 @@ open class NSButton: NSControl {
     open override func createNativePeer(in backend: NativeControlBackend, parent: NativeHandle?) -> NativeHandle {
         backend.createButton(title: title, frame: frame, parent: parent)
     }
+
+    /// Programmatically performs the button action.
+    open func performClick(_ sender: Any?) {
+        sendAction()
+    }
 }

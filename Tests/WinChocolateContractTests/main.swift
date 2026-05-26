@@ -59,6 +59,68 @@ func testControlClosureActionIsInvoked() {
     expect(actionCount == 1, "Action closure was not invoked once.")
 }
 
+func testButtonPerformClickHonorsEnabledState() {
+    let button = NSButton(title: "Run", frame: NSMakeRect(0, 0, 80, 24))
+    var actionCount = 0
+
+    button.onAction = { _ in
+        actionCount += 1
+    }
+
+    button.performClick(nil)
+    button.isEnabled = false
+    button.performClick(nil)
+
+    expect(actionCount == 1, "Disabled button still sent its action.")
+}
+
+func testRealizedViewStatePropagatesToBackend() {
+    let backend = InMemoryNativeControlBackend()
+    let view = NSView(frame: NSMakeRect(0, 0, 100, 100))
+    let handle = view.realizeNativePeer(in: backend, parent: nil)
+
+    view.frame = NSMakeRect(10, 20, 120, 140)
+    view.isHidden = true
+
+    expect(backend.records[handle]?.frame == NSMakeRect(10, 20, 120, 140), "Frame update did not reach backend.")
+    expect(backend.records[handle]?.isHidden == true, "Hidden state did not reach backend.")
+}
+
+func testWindowTitleAndFramePropagateToBackend() {
+    let backend = InMemoryNativeControlBackend()
+    let window = NSWindow(
+        contentRect: NSMakeRect(0, 0, 100, 100),
+        styleMask: [.titled],
+        backing: .buffered,
+        defer: false,
+        nativeBackend: backend
+    )
+    let handle = window.realizeNativePeer()
+
+    window.title = "Updated"
+    window.setFrame(NSMakeRect(10, 20, 300, 200), display: true)
+
+    expect(backend.records[handle]?.text == "Updated", "Window title update did not reach backend.")
+    expect(backend.records[handle]?.frame == NSMakeRect(10, 20, 300, 200), "Window frame update did not reach backend.")
+}
+
+func testRemovingRealizedSubviewDestroysNativePeer() {
+    let backend = InMemoryNativeControlBackend()
+    let parent = NSView(frame: NSMakeRect(0, 0, 100, 100))
+    let child = NSView(frame: NSMakeRect(0, 0, 20, 20))
+    parent.addSubview(child)
+    parent.realizeNativePeer(in: backend, parent: nil)
+
+    guard let childHandle = child.nativeHandle else {
+        fatalError("Child did not realize.")
+    }
+
+    child.removeFromSuperview()
+
+    expect(child.nativeHandle == nil, "Child native handle was not cleared.")
+    expect(backend.records[childHandle] == nil, "Child native record was not destroyed.")
+}
+
 func testMainMenuQuitItemTerminatesApplication() {
     let backend = InMemoryNativeControlBackend()
     let app = NSApplication(nativeBackend: backend)
@@ -81,6 +143,10 @@ func testMainMenuQuitItemTerminatesApplication() {
 testWindowRealizationCreatesNativeHierarchy()
 testViewHierarchyMaintainsSuperviewOwnership()
 testControlClosureActionIsInvoked()
+testButtonPerformClickHonorsEnabledState()
+testRealizedViewStatePropagatesToBackend()
+testWindowTitleAndFramePropagateToBackend()
+testRemovingRealizedSubviewDestroysNativePeer()
 testMainMenuQuitItemTerminatesApplication()
 
 print("WinChocolate contract tests passed.")
