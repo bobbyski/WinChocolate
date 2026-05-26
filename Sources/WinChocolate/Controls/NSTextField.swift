@@ -4,7 +4,15 @@
 /// style support. This initial API preserves AppKit's `stringValue` property.
 open class NSTextField: NSControl {
     /// The text field's current string value.
-    open var stringValue: String
+    open var stringValue: String {
+        didSet {
+            guard let nativeHandle else {
+                return
+            }
+
+            realizedBackend?.setText(stringValue, for: nativeHandle)
+        }
+    }
 
     /// Creates a text field with a frame.
     public override init(frame frameRect: NSRect) {

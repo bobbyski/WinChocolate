@@ -16,7 +16,11 @@ let package = Package(
     ],
     targets: [
         .target(
-            name: "WinChocolate"
+            name: "WinChocolate",
+            linkerSettings: [
+                .linkedLibrary("User32"),
+                .linkedLibrary("Gdi32")
+            ]
         ),
         .executableTarget(
             name: "WinChocolateContractTests",

@@ -17,4 +17,14 @@ open class NSControl: NSView {
     open func sendAction() {
         onAction?(self)
     }
+
+    /// Ensures the control has a native peer and registers its action bridge.
+    @discardableResult
+    open override func realizeNativePeer(in backend: NativeControlBackend, parent: NativeHandle?) -> NativeHandle {
+        let handle = super.realizeNativePeer(in: backend, parent: parent)
+        backend.registerAction(for: handle) { [weak self] in
+            self?.sendAction()
+        }
+        return handle
+    }
 }

@@ -30,4 +30,10 @@ public protocol NativeControlBackend: AnyObject {
 
     /// Creates a native text field child.
     func createTextField(text: String, frame: NSRect, parent: NativeHandle?) -> NativeHandle
+
+    /// Updates the visible text for a native control.
+    func setText(_ text: String, for handle: NativeHandle)
+
+    /// Registers the action to perform when a native control is activated.
+    func registerAction(for handle: NativeHandle, action: @escaping () -> Void)
 }

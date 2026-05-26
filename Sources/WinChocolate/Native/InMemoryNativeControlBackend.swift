@@ -24,6 +24,9 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     /// Recorded native object requests by handle.
     public private(set) var records: [NativeHandle: Record] = [:]
 
+    /// Registered control actions by handle.
+    public private(set) var actions: [NativeHandle: () -> Void] = [:]
+
     /// Whether the application run loop has been requested.
     public private(set) var didRunApplication = false
 
@@ -77,6 +80,21 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     /// Records a text field creation request.
     public func createTextField(text: String, frame: NSRect, parent: NativeHandle?) -> NativeHandle {
         makeHandle(kind: "textField", text: text, frame: frame, parent: parent)
+    }
+
+    /// Updates a recorded control text value.
+    public func setText(_ text: String, for handle: NativeHandle) {
+        guard var record = records[handle] else {
+            return
+        }
+
+        record.text = text
+        records[handle] = record
+    }
+
+    /// Records a control action.
+    public func registerAction(for handle: NativeHandle, action: @escaping () -> Void) {
+        actions[handle] = action
     }
 
     private func makeHandle(kind: String, text: String, frame: NSRect, parent: NativeHandle?) -> NativeHandle {

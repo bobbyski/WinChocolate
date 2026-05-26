@@ -35,4 +35,8 @@ contentView.addSubview(button)
 window.contentView = contentView
 window.makeKeyAndOrderFront(nil)
 
-app.run()
+if CommandLine.arguments.contains("--diagnose") {
+    print("Window native handle: \(window.nativeHandle?.rawValue ?? 0)")
+} else {
+    app.run()
+}

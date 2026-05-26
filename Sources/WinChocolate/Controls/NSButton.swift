@@ -5,7 +5,15 @@
 /// workflow.
 open class NSButton: NSControl {
     /// The button title.
-    open var title: String
+    open var title: String {
+        didSet {
+            guard let nativeHandle else {
+                return
+            }
+
+            realizedBackend?.setText(title, for: nativeHandle)
+        }
+    }
 
     /// Creates a button with a frame.
     public override init(frame frameRect: NSRect) {

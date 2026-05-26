@@ -21,6 +21,9 @@ open class NSView: NSObject {
     /// The backend-created native handle, if realized.
     public private(set) var nativeHandle: NativeHandle?
 
+    /// Backend that created the native peer, if realized.
+    public private(set) weak var realizedBackend: NativeControlBackend?
+
     /// Indicates whether the view needs display.
     public private(set) var needsDisplay = false
 
@@ -61,6 +64,7 @@ open class NSView: NSObject {
 
         let handle = createNativePeer(in: backend, parent: parent)
         nativeHandle = handle
+        realizedBackend = backend
 
         for subview in subviews {
             subview.realizeNativePeer(in: backend, parent: handle)

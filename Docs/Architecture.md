@@ -4,7 +4,7 @@
 
 WinChocolate is an AppKit-shaped SwiftPM framework for Windows. The goal is to let application code replace `import Cocoa` or `import AppKit` with `import WinChocolate` and keep familiar names such as `NSApplication`, `NSWindow`, `NSView`, `NSButton`, and `NSTextField`, while the implementation wraps native Windows controls behind a backend boundary.
 
-Overall planned-code progress: `███░░░░░░░` 30%
+Overall planned-code progress: `████░░░░░░` 40%
 
 ## First Milestone
 
@@ -14,14 +14,14 @@ The first milestone is a runnable AppKit-shaped Windows application slice:
 - [x] A menu bar model exists through `NSApplication.mainMenu`.
 - [x] A Quit submenu item can terminate the application.
 - [x] A demo window contains a classic click counter.
-- [ ] The menu bar and click counter are backed by real HWND/message dispatch.
+- [x] The menu bar and click counter are backed by real HWND/message dispatch.
 
 ## Project Dashboard
 
 | Phase | Status | Progress | Planned Commands | Notes |
 |---|---:|---:|---|---|
 | 1: SwiftPM Shape And Core Names | Implemented | 100% | package, sources, tests, docs | Initial AppKit-compatible public type names are in place. |
-| 2: Native Backend Boundary | Partial | 40% | HWND creation, message loop, child controls | Backend protocol exists; Win32 implementation currently delegates to an in-memory backend until HWND calls are filled in safely. |
+| 2: Native Backend Boundary | Partial | 65% | HWND creation, message loop, child controls | First real User32-backed window, menu, button, static text, and command dispatch path is in place. |
 | 3: AppKit Surface Expansion | Partial | 10% | menus, responders, layout, text, images | Initial `NSMenu` and `NSMenuItem` APIs are present. |
 | 4: Demo Application | Partial | 45% | SwiftPM demo app | Demo source now builds as a SwiftPM executable and models the click counter milestone. |
 
@@ -31,7 +31,7 @@ The first milestone is a runnable AppKit-shaped Windows application slice:
 - [x] Add AppKit-shaped core public names.
 - [x] Add architecture documentation.
 - [x] Add unit tests for public hierarchy behavior.
-- [ ] Replace the temporary Win32 backend fallback with real HWND creation.
+- [x] Replace the temporary Win32 backend fallback with first real HWND creation.
 - [x] Add initial menu APIs.
 - [ ] Add `NSResponder`, image, font, color, layout, and deeper event APIs.
 - [x] Add a Swift demo application skeleton under `Demo`.
