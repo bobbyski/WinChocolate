@@ -15,6 +15,7 @@ The first milestone is a runnable AppKit-shaped Windows application slice:
 - [x] A Quit submenu item can terminate the application.
 - [x] A demo window contains a classic click counter.
 - [x] The menu bar and click counter are backed by real HWND/message dispatch.
+- [x] The demo executable uses the Windows subsystem so launching it does not create a separate console window.
 
 ## Project Dashboard
 
@@ -64,7 +65,9 @@ Objective-C runtime behavior is not available in normal Swift on Windows. Where 
 
 Native code is isolated behind `NativeControlBackend`. Public controls do not call Win32 directly; they ask the backend to create or update peers. This keeps tests deterministic and makes future platform work easier to review.
 
-`InMemoryNativeControlBackend` records native creation requests for tests. `Win32NativeControlBackend` is the intended HWND-backed implementation point and currently exists as a conservative shell so the rest of the API can compile and stabilize before message handling is added.
+`InMemoryNativeControlBackend` records native creation requests for tests. `Win32NativeControlBackend` owns the current native Windows path for windows, menu items, static text, push buttons, text updates, and command dispatch.
+
+Plain `NSView` is currently treated as a transparent container by the Win32 backend. Child controls are parented directly to the containing window so button `WM_COMMAND` messages reach the top-level WinChocolate window procedure. A later milestone should replace this with a custom container HWND for nested view hierarchies.
 
 ## Review Notes
 

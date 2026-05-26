@@ -30,7 +30,13 @@ let package = Package(
         .executableTarget(
             name: "WinChocolateDemo",
             dependencies: ["WinChocolate"],
-            path: "Demo/DemoApplication"
+            path: "Demo/DemoApplication",
+            linkerSettings: [
+                .unsafeFlags(
+                    ["-Xlinker", "/SUBSYSTEM:WINDOWS", "-Xlinker", "/ENTRY:mainCRTStartup"],
+                    .when(platforms: [.windows])
+                )
+            ]
         )
     ]
 )

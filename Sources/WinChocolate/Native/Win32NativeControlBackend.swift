@@ -231,7 +231,7 @@ public final class Win32NativeControlBackend: NativeControlBackend {
 
     /// Creates a native view child.
     public func createView(frame: NSRect, parent: NativeHandle?) -> NativeHandle {
-        createChildWindow(className: "STATIC", text: "", frame: frame, parent: parent, commandIdentifier: nil)
+        parent ?? NativeHandle(rawValue: 0)
     }
 
     /// Creates a native push button child.
