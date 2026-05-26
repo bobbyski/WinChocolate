@@ -104,6 +104,16 @@ func testWindowTitleAndFramePropagateToBackend() {
     expect(backend.records[handle]?.frame == NSMakeRect(10, 20, 300, 200), "Window frame update did not reach backend.")
 }
 
+func testEditableTextFieldUsesEditableNativePeer() {
+    let backend = InMemoryNativeControlBackend()
+    let textField = NSTextField(string: "Seed", frame: NSMakeRect(0, 0, 120, 24))
+    textField.isEditable = true
+
+    let handle = textField.realizeNativePeer(in: backend, parent: nil)
+
+    expect(backend.records[handle]?.kind == "editableTextField", "Editable text field did not request editable native peer.")
+}
+
 func testRemovingRealizedSubviewDestroysNativePeer() {
     let backend = InMemoryNativeControlBackend()
     let parent = NSView(frame: NSMakeRect(0, 0, 100, 100))
@@ -157,6 +167,7 @@ testControlClosureActionIsInvoked()
 testButtonPerformClickHonorsEnabledState()
 testRealizedViewStatePropagatesToBackend()
 testWindowTitleAndFramePropagateToBackend()
+testEditableTextFieldUsesEditableNativePeer()
 testRemovingRealizedSubviewDestroysNativePeer()
 testMainMenuQuitItemTerminatesApplication()
 testAlertReturnsFirstButtonInMemory()

@@ -32,7 +32,7 @@ public protocol NativeControlBackend: AnyObject {
     func createButton(title: String, frame: NSRect, parent: NativeHandle?) -> NativeHandle
 
     /// Creates a native text field child.
-    func createTextField(text: String, frame: NSRect, parent: NativeHandle?) -> NativeHandle
+    func createTextField(text: String, frame: NSRect, parent: NativeHandle?, isEditable: Bool) -> NativeHandle
 
     /// Updates the visible text for a native control.
     func setText(_ text: String, for handle: NativeHandle)
@@ -48,6 +48,9 @@ public protocol NativeControlBackend: AnyObject {
 
     /// Registers the action to perform when a native control is activated.
     func registerAction(for handle: NativeHandle, action: @escaping () -> Void)
+
+    /// Registers the action to perform when native text changes.
+    func registerTextChangeAction(for handle: NativeHandle, action: @escaping (String) -> Void)
 
     /// Runs a native modal alert.
     func runAlert(_ alert: NSAlert) -> NSApplication.ModalResponse

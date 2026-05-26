@@ -33,6 +33,9 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     /// Registered control actions by handle.
     public private(set) var actions: [NativeHandle: () -> Void] = [:]
 
+    /// Registered text change actions by handle.
+    public private(set) var textChangeActions: [NativeHandle: (String) -> Void] = [:]
+
     /// Whether the application run loop has been requested.
     public private(set) var didRunApplication = false
 
@@ -91,8 +94,8 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     }
 
     /// Records a text field creation request.
-    public func createTextField(text: String, frame: NSRect, parent: NativeHandle?) -> NativeHandle {
-        makeHandle(kind: "textField", text: text, frame: frame, parent: parent)
+    public func createTextField(text: String, frame: NSRect, parent: NativeHandle?, isEditable: Bool) -> NativeHandle {
+        makeHandle(kind: isEditable ? "editableTextField" : "textField", text: text, frame: frame, parent: parent)
     }
 
     /// Updates a recorded control text value.
@@ -138,6 +141,11 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     /// Records a control action.
     public func registerAction(for handle: NativeHandle, action: @escaping () -> Void) {
         actions[handle] = action
+    }
+
+    /// Records a text change action.
+    public func registerTextChangeAction(for handle: NativeHandle, action: @escaping (String) -> Void) {
+        textChangeActions[handle] = action
     }
 
     /// Returns the default alert response without displaying UI.

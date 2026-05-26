@@ -23,6 +23,8 @@ window.title = "WinChocolate Click Counter"
 let contentView = NSView(frame: NSMakeRect(0, 0, 560, 360))
 let counterLabel = NSTextField(string: "Clicks: 0", frame: NSMakeRect(24, 286, 260, 24))
 let statusLabel = NSTextField(string: "Ready", frame: NSMakeRect(24, 252, 360, 24))
+let editableLabel = NSTextField(string: "Type here:", frame: NSMakeRect(24, 72, 80, 24))
+let editableTextField = NSTextField(string: "", frame: NSMakeRect(112, 72, 240, 24))
 let button = NSButton(title: "Click", frame: NSMakeRect(24, 204, 88, 32))
 let enableButton = NSButton(title: "Disable Click", frame: NSMakeRect(128, 204, 128, 32))
 let hideButton = NSButton(title: "Hide Counter", frame: NSMakeRect(272, 204, 128, 32))
@@ -32,6 +34,13 @@ var clickCount = 0
 var isClickEnabled = true
 var isCounterHidden = false
 var movedRight = false
+
+editableTextField.isEditable = true
+editableTextField.onTextChanged = { field in
+    statusLabel.stringValue = field.stringValue.isEmpty
+        ? "Edit field cleared"
+        : "Typed: \(field.stringValue)"
+}
 
 button.onAction = { _ in
     clickCount += 1
@@ -74,6 +83,8 @@ alertButton.onAction = { _ in
 
 contentView.addSubview(counterLabel)
 contentView.addSubview(statusLabel)
+contentView.addSubview(editableLabel)
+contentView.addSubview(editableTextField)
 contentView.addSubview(button)
 contentView.addSubview(enableButton)
 contentView.addSubview(hideButton)

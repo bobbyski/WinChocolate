@@ -87,6 +87,12 @@ private func winGetModuleHandleW(_ moduleName: UnsafePointer<UInt16>?) -> HINSTA
 @_silgen_name("GetLastError")
 private func winGetLastError() -> DWORD
 
+@_silgen_name("GetWindowTextLengthW")
+private func winGetWindowTextLengthW(_ hwnd: HWND?) -> Int32
+
+@_silgen_name("GetWindowTextW")
+private func winGetWindowTextW(_ hwnd: HWND?, _ text: UnsafeMutablePointer<UInt16>?, _ maximumCount: Int32) -> Int32
+
 @_silgen_name("LoadCursorW")
 private func winLoadCursorW(_ instance: HINSTANCE?, _ cursorName: UnsafePointer<UInt16>?) -> HCURSOR?
 
@@ -147,6 +153,7 @@ private let swShow: Int32 = 5
 private let swHide: Int32 = 0
 private let wmDestroy: UINT = 0x0002
 private let wmCommand: UINT = 0x0111
+private let enChange: UInt = 0x0300
 private let idOK: Int32 = 1
 private let idYes: Int32 = 6
 private let wsOverlapped: DWORD = 0x00000000
@@ -158,6 +165,8 @@ private let wsMaximizeBox: DWORD = 0x00010000
 private let wsVisible: DWORD = 0x10000000
 private let wsChild: DWORD = 0x40000000
 private let wsClipChildren: DWORD = 0x02000000
+private let wsBorder: DWORD = 0x00800000
+private let esAutoHScroll: DWORD = 0x0080
 
 /// Win32 implementation of WinChocolate's native backend.
 ///
@@ -171,6 +180,7 @@ public final class Win32NativeControlBackend: NativeControlBackend {
     private var mainMenu: NSMenu?
     private var windowHandles: Set<NativeHandle> = []
     private var controlActions: [UInt: () -> Void] = [:]
+    private var textChangeActions: [UInt: (String) -> Void] = [:]
     private var commandActions: [UInt: () -> Void] = [:]
     private var nextCommandIdentifier: UInt = 1_000
 
@@ -261,6 +271,7 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         _ = winDestroyWindow(hwnd)
         windowHandles.remove(handle)
         controlActions.removeValue(forKey: handle.rawValue)
+        textChangeActions.removeValue(forKey: handle.rawValue)
     }
 
     /// Destroys a native child control.
@@ -271,6 +282,7 @@ public final class Win32NativeControlBackend: NativeControlBackend {
 
         _ = winDestroyWindow(hwnd)
         controlActions.removeValue(forKey: handle.rawValue)
+        textChangeActions.removeValue(forKey: handle.rawValue)
     }
 
     /// Creates a native view child.
@@ -299,14 +311,16 @@ public final class Win32NativeControlBackend: NativeControlBackend {
     }
 
     /// Creates a native static text field child.
-    public func createTextField(text: String, frame: NSRect, parent: NativeHandle?) -> NativeHandle {
+    public func createTextField(text: String, frame: NSRect, parent: NativeHandle?, isEditable: Bool) -> NativeHandle {
         createChildWindow(
-            className: "STATIC",
+            className: isEditable ? "EDIT" : "STATIC",
             text: text,
             frame: frame,
             parent: parent,
             commandIdentifier: nil,
-            style: wsChild | wsVisible
+            style: isEditable
+                ? wsChild | wsVisible | wsBorder | esAutoHScroll
+                : wsChild | wsVisible
         )
     }
 
@@ -360,6 +374,11 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         controlActions[handle.rawValue] = action
     }
 
+    /// Registers the action to perform when native text changes.
+    public func registerTextChangeAction(for handle: NativeHandle, action: @escaping (String) -> Void) {
+        textChangeActions[handle.rawValue] = action
+    }
+
     /// Runs a native modal alert.
     public func runAlert(_ alert: NSAlert) -> NSApplication.ModalResponse {
         let body = alert.informativeText.isEmpty
@@ -387,9 +406,15 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         switch message {
         case wmCommand:
             let commandIdentifier = UInt(wParam & 0xffff)
+            let notificationCode = UInt((wParam >> 16) & 0xffff)
 
             if let action = commandActions[commandIdentifier] {
                 action()
+                return 0
+            }
+
+            if lParam != 0, notificationCode == enChange, let action = textChangeActions[UInt(bitPattern: lParam)] {
+                action(text(from: HWND(bitPattern: lParam)))
                 return 0
             }
 
@@ -590,6 +615,16 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         }
 
         return buttonFlags | iconFlags
+    }
+
+    private func text(from hwnd: HWND?) -> String {
+        let length = Int(winGetWindowTextLengthW(hwnd))
+        var buffer = Array(repeating: UInt16(0), count: length + 1)
+        let maximumCount = Int32(buffer.count)
+        let copiedCount = buffer.withUnsafeMutableBufferPointer { pointer in
+            winGetWindowTextW(hwnd, pointer.baseAddress, maximumCount)
+        }
+        return String(decoding: buffer.prefix(Int(copiedCount)), as: UTF16.self)
     }
 
     private func nativeHandle(from hwnd: HWND) -> NativeHandle {
