@@ -104,6 +104,17 @@ open class NSWindow: NSObject {
         self.nativeHandle = nil
     }
 
+    /// Sets the window frame and optionally requests display.
+    open func setFrame(_ frameRect: NSRect, display flag: Bool) {
+        frame = frameRect
+
+        guard let nativeHandle else {
+            return
+        }
+
+        nativeBackend.setFrame(frameRect, for: nativeHandle)
+    }
+
     /// Ensures the window and content hierarchy have native peers.
     @discardableResult
     open func realizeNativePeer() -> NativeHandle {

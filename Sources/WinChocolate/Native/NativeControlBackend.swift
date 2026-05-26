@@ -34,6 +34,9 @@ public protocol NativeControlBackend: AnyObject {
     /// Updates the visible text for a native control.
     func setText(_ text: String, for handle: NativeHandle)
 
+    /// Updates the native frame for a window or control.
+    func setFrame(_ frame: NSRect, for handle: NativeHandle)
+
     /// Registers the action to perform when a native control is activated.
     func registerAction(for handle: NativeHandle, action: @escaping () -> Void)
 }

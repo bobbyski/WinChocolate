@@ -5,7 +5,15 @@
 /// control kind while keeping AppKit-style view composition at the public API.
 open class NSView: NSObject {
     /// The view frame in its parent coordinate space.
-    open var frame: NSRect
+    open var frame: NSRect {
+        didSet {
+            guard let nativeHandle else {
+                return
+            }
+
+            realizedBackend?.setFrame(frame, for: nativeHandle)
+        }
+    }
 
     /// The view bounds in its own coordinate space.
     open var bounds: NSRect {

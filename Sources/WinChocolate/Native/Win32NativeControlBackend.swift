@@ -87,6 +87,16 @@ private func winGetLastError() -> DWORD
 @_silgen_name("LoadCursorW")
 private func winLoadCursorW(_ instance: HINSTANCE?, _ cursorName: UnsafePointer<UInt16>?) -> HCURSOR?
 
+@_silgen_name("MoveWindow")
+private func winMoveWindow(
+    _ hwnd: HWND?,
+    _ x: Int32,
+    _ y: Int32,
+    _ width: Int32,
+    _ height: Int32,
+    _ repaint: Int32
+) -> Int32
+
 @_silgen_name("PostQuitMessage")
 private func winPostQuitMessage(_ exitCode: Int32)
 
@@ -109,6 +119,7 @@ private func winTranslateMessage(_ message: UnsafePointer<MSG>) -> Int32
 private func winUpdateWindow(_ hwnd: HWND?) -> Int32
 
 private let winChocolateWindowClassName = "WinChocolateWindow"
+private let winChocolateViewClassName = "WinChocolateView"
 
 private let csVRedraw: UINT = 0x0001
 private let csHRedraw: UINT = 0x0002
@@ -126,6 +137,7 @@ private let wsMinimizeBox: DWORD = 0x00020000
 private let wsMaximizeBox: DWORD = 0x00010000
 private let wsVisible: DWORD = 0x10000000
 private let wsChild: DWORD = 0x40000000
+private let wsClipChildren: DWORD = 0x02000000
 
 /// Win32 implementation of WinChocolate's native backend.
 ///
@@ -135,8 +147,9 @@ public final class Win32NativeControlBackend: NativeControlBackend {
     nonisolated(unsafe) private static weak var activeBackend: Win32NativeControlBackend?
 
     private var isWindowClassRegistered = false
+    private var isViewClassRegistered = false
     private var mainMenu: NSMenu?
-    private var windowHandles: [NativeHandle] = []
+    private var windowHandles: Set<NativeHandle> = []
     private var controlActions: [UInt: () -> Void] = [:]
     private var commandActions: [UInt: () -> Void] = [:]
     private var nextCommandIdentifier: UInt = 1_000
@@ -205,7 +218,7 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         }
 
         let handle = nativeHandle(from: hwnd)
-        windowHandles.append(handle)
+        windowHandles.insert(handle)
         return handle
     }
 
@@ -226,12 +239,20 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         }
 
         _ = winDestroyWindow(hwnd)
-        windowHandles.removeAll { $0 == handle }
+        windowHandles.remove(handle)
     }
 
     /// Creates a native view child.
     public func createView(frame: NSRect, parent: NativeHandle?) -> NativeHandle {
-        parent ?? NativeHandle(rawValue: 0)
+        registerViewClassIfNeeded()
+        return createChildWindow(
+            className: winChocolateViewClassName,
+            text: "",
+            frame: frame,
+            parent: parent,
+            commandIdentifier: nil,
+            style: wsChild | wsVisible | wsClipChildren
+        )
     }
 
     /// Creates a native push button child.
@@ -241,13 +262,21 @@ public final class Win32NativeControlBackend: NativeControlBackend {
             text: title,
             frame: frame,
             parent: parent,
-            commandIdentifier: nextCommandID()
+            commandIdentifier: nextCommandID(),
+            style: wsChild | wsVisible
         )
     }
 
     /// Creates a native static text field child.
     public func createTextField(text: String, frame: NSRect, parent: NativeHandle?) -> NativeHandle {
-        createChildWindow(className: "STATIC", text: text, frame: frame, parent: parent, commandIdentifier: nil)
+        createChildWindow(
+            className: "STATIC",
+            text: text,
+            frame: frame,
+            parent: parent,
+            commandIdentifier: nil,
+            style: wsChild | wsVisible
+        )
     }
 
     /// Updates the visible text for a native control.
@@ -261,16 +290,32 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         }
     }
 
+    /// Updates the native frame for a window or control.
+    public func setFrame(_ frame: NSRect, for handle: NativeHandle) {
+        guard let hwnd = hwnd(from: handle) else {
+            return
+        }
+
+        _ = winMoveWindow(
+            hwnd,
+            Int32(frame.origin.x),
+            Int32(frame.origin.y),
+            Int32(frame.size.width),
+            Int32(frame.size.height),
+            1
+        )
+    }
+
     /// Registers the action to perform when a native control is activated.
     public func registerAction(for handle: NativeHandle, action: @escaping () -> Void) {
         controlActions[handle.rawValue] = action
     }
 
-    fileprivate static func dispatchMessage(message: UINT, wParam: WPARAM, lParam: LPARAM) -> LRESULT? {
-        activeBackend?.dispatchMessage(message: message, wParam: wParam, lParam: lParam)
+    fileprivate static func dispatchMessage(hwnd: HWND?, message: UINT, wParam: WPARAM, lParam: LPARAM) -> LRESULT? {
+        activeBackend?.dispatchMessage(hwnd: hwnd, message: message, wParam: wParam, lParam: lParam)
     }
 
-    private func dispatchMessage(message: UINT, wParam: WPARAM, lParam: LPARAM) -> LRESULT? {
+    private func dispatchMessage(hwnd: HWND?, message: UINT, wParam: WPARAM, lParam: LPARAM) -> LRESULT? {
         switch message {
         case wmCommand:
             let commandIdentifier = UInt(wParam & 0xffff)
@@ -287,7 +332,9 @@ public final class Win32NativeControlBackend: NativeControlBackend {
 
             return nil
         case wmDestroy:
-            winPostQuitMessage(0)
+            if let hwnd, windowHandles.contains(nativeHandle(from: hwnd)) {
+                winPostQuitMessage(0)
+            }
             return 0
         default:
             return nil
@@ -319,12 +366,38 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         isWindowClassRegistered = true
     }
 
+    private func registerViewClassIfNeeded() {
+        guard !isViewClassRegistered else {
+            return
+        }
+
+        withWideString(winChocolateViewClassName) { className in
+            var windowClass = WNDCLASSW()
+            windowClass.style = csHRedraw | csVRedraw
+            windowClass.lpfnWndProc = winChocolateWindowProcedure
+            windowClass.hInstance = winGetModuleHandleW(nil)
+            windowClass.hCursor = winLoadCursorW(nil, systemResourcePointer(32_512))
+            windowClass.hbrBackground = HBRUSH(bitPattern: 6)
+            windowClass.lpszClassName = className
+
+            withUnsafePointer(to: windowClass) { windowClassPointer in
+                let atom = winRegisterClassW(windowClassPointer)
+                if atom == 0 {
+                    print("WinChocolate: RegisterClassW for view failed with error \(winGetLastError()).")
+                }
+            }
+        }
+
+        isViewClassRegistered = true
+    }
+
     private func createChildWindow(
         className: String,
         text: String,
         frame: NSRect,
         parent: NativeHandle?,
-        commandIdentifier: UInt?
+        commandIdentifier: UInt?,
+        style: DWORD
     ) -> NativeHandle {
         guard let parentHwnd = parent.flatMap({ hwnd(from: $0) }) else {
             return NativeHandle(rawValue: 0)
@@ -337,7 +410,7 @@ public final class Win32NativeControlBackend: NativeControlBackend {
                     0,
                     nativeClassName,
                     nativeText,
-                    wsChild | wsVisible,
+                    style,
                     Int32(frame.origin.x),
                     Int32(frame.origin.y),
                     Int32(frame.size.width),
@@ -459,6 +532,7 @@ private func winChocolateWindowProcedure(
     lParam: LPARAM
 ) -> LRESULT {
     if let result = Win32NativeControlBackend.dispatchMessage(
+        hwnd: hwnd,
         message: message,
         wParam: wParam,
         lParam: lParam

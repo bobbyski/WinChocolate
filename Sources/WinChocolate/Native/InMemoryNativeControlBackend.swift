@@ -92,6 +92,16 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
         records[handle] = record
     }
 
+    /// Updates a recorded control frame.
+    public func setFrame(_ frame: NSRect, for handle: NativeHandle) {
+        guard var record = records[handle] else {
+            return
+        }
+
+        record.frame = frame
+        records[handle] = record
+    }
+
     /// Records a control action.
     public func registerAction(for handle: NativeHandle, action: @escaping () -> Void) {
         actions[handle] = action

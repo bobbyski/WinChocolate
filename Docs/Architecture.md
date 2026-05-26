@@ -4,7 +4,7 @@
 
 WinChocolate is an AppKit-shaped SwiftPM framework for Windows. The goal is to let application code replace `import Cocoa` or `import AppKit` with `import WinChocolate` and keep familiar names such as `NSApplication`, `NSWindow`, `NSView`, `NSButton`, and `NSTextField`, while the implementation wraps native Windows controls behind a backend boundary.
 
-Overall planned-code progress: `████░░░░░░` 40%
+Overall planned-code progress: `████░░░░░░` 45%
 
 ## First Milestone
 
@@ -22,7 +22,7 @@ The first milestone is a runnable AppKit-shaped Windows application slice:
 | Phase | Status | Progress | Planned Commands | Notes |
 |---|---:|---:|---|---|
 | 1: SwiftPM Shape And Core Names | Implemented | 100% | package, sources, tests, docs | Initial AppKit-compatible public type names are in place. |
-| 2: Native Backend Boundary | Partial | 65% | HWND creation, message loop, child controls | First real User32-backed window, menu, button, static text, and command dispatch path is in place. |
+| 2: Native Backend Boundary | Partial | 72% | HWND creation, message loop, child controls | User32-backed window, custom view container, menu, button, static text, text/frame updates, and command dispatch are in place. |
 | 3: AppKit Surface Expansion | Partial | 10% | menus, responders, layout, text, images | Initial `NSMenu` and `NSMenuItem` APIs are present. |
 | 4: Demo Application | Partial | 45% | SwiftPM demo app | Demo source now builds as a SwiftPM executable and models the click counter milestone. |
 
@@ -67,7 +67,7 @@ Native code is isolated behind `NativeControlBackend`. Public controls do not ca
 
 `InMemoryNativeControlBackend` records native creation requests for tests. `Win32NativeControlBackend` owns the current native Windows path for windows, menu items, static text, push buttons, text updates, and command dispatch.
 
-Plain `NSView` is currently treated as a transparent container by the Win32 backend. Child controls are parented directly to the containing window so button `WM_COMMAND` messages reach the top-level WinChocolate window procedure. A later milestone should replace this with a custom container HWND for nested view hierarchies.
+`NSView` maps to a lightweight custom child HWND. The same WinChocolate window procedure handles top-level windows and view containers, while only top-level window destruction terminates the application. This allows nested view hierarchies without losing button `WM_COMMAND` dispatch.
 
 ## Review Notes
 
