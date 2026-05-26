@@ -16,6 +16,7 @@ The first milestone is a runnable AppKit-shaped Windows application slice:
 - [x] A demo window contains a classic click counter.
 - [x] The menu bar and click counter are backed by real HWND/message dispatch.
 - [x] The demo executable uses the Windows subsystem so launching it does not create a separate console window.
+- [x] The demo visibly exercises title, text, enabled, hidden, and frame updates.
 
 ## Project Dashboard
 
@@ -24,7 +25,7 @@ The first milestone is a runnable AppKit-shaped Windows application slice:
 | 1: SwiftPM Shape And Core Names | Implemented | 100% | package, sources, tests, docs | Initial AppKit-compatible public type names are in place. |
 | 2: Native Backend Boundary | Partial | 78% | HWND creation, message loop, child controls | User32-backed window, custom view container, menu, button, static text, text/frame/visibility/enabled updates, native cleanup, and command dispatch are in place. |
 | 3: AppKit Surface Expansion | Partial | 10% | menus, responders, layout, text, images | Initial `NSMenu` and `NSMenuItem` APIs are present. |
-| 4: Demo Application | Partial | 45% | SwiftPM demo app | Demo source now builds as a SwiftPM executable and models the click counter milestone. |
+| 4: Demo Application | Partial | 60% | SwiftPM demo app | Demo source builds as a SwiftPM executable and visibly exercises the first native state APIs. |
 
 ## Checklist
 

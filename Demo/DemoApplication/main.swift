@@ -13,25 +13,60 @@ menuBar.addItem(appMenuItem)
 app.mainMenu = menuBar
 
 let window = NSWindow(
-    contentRect: NSMakeRect(100, 100, 480, 320),
+    contentRect: NSMakeRect(100, 100, 560, 360),
     styleMask: [.titled, .closable, .miniaturizable, .resizable],
     backing: .buffered,
     defer: false
 )
 window.title = "WinChocolate Click Counter"
 
-let contentView = NSView(frame: NSMakeRect(0, 0, 480, 320))
-let counterLabel = NSTextField(string: "Clicks: 0", frame: NSMakeRect(24, 240, 260, 24))
-let button = NSButton(title: "Click", frame: NSMakeRect(24, 196, 88, 32))
+let contentView = NSView(frame: NSMakeRect(0, 0, 560, 360))
+let counterLabel = NSTextField(string: "Clicks: 0", frame: NSMakeRect(24, 286, 260, 24))
+let statusLabel = NSTextField(string: "Ready", frame: NSMakeRect(24, 252, 360, 24))
+let button = NSButton(title: "Click", frame: NSMakeRect(24, 204, 88, 32))
+let enableButton = NSButton(title: "Disable Click", frame: NSMakeRect(128, 204, 128, 32))
+let hideButton = NSButton(title: "Hide Counter", frame: NSMakeRect(272, 204, 128, 32))
+let moveButton = NSButton(title: "Move Click", frame: NSMakeRect(416, 204, 112, 32))
 var clickCount = 0
+var isClickEnabled = true
+var isCounterHidden = false
+var movedRight = false
 
 button.onAction = { _ in
     clickCount += 1
     counterLabel.stringValue = "Clicks: \(clickCount)"
+    window.title = "WinChocolate Click Counter (\(clickCount))"
+    statusLabel.stringValue = "Click button fired"
+}
+
+enableButton.onAction = { _ in
+    isClickEnabled.toggle()
+    button.isEnabled = isClickEnabled
+    enableButton.title = isClickEnabled ? "Disable Click" : "Enable Click"
+    statusLabel.stringValue = isClickEnabled ? "Click button enabled" : "Click button disabled"
+}
+
+hideButton.onAction = { _ in
+    isCounterHidden.toggle()
+    counterLabel.isHidden = isCounterHidden
+    hideButton.title = isCounterHidden ? "Show Counter" : "Hide Counter"
+    statusLabel.stringValue = isCounterHidden ? "Counter hidden" : "Counter visible"
+}
+
+moveButton.onAction = { _ in
+    movedRight.toggle()
+    button.frame = movedRight
+        ? NSMakeRect(24, 156, 88, 32)
+        : NSMakeRect(24, 204, 88, 32)
+    statusLabel.stringValue = movedRight ? "Click button moved down" : "Click button moved back"
 }
 
 contentView.addSubview(counterLabel)
+contentView.addSubview(statusLabel)
 contentView.addSubview(button)
+contentView.addSubview(enableButton)
+contentView.addSubview(hideButton)
+contentView.addSubview(moveButton)
 window.contentView = contentView
 window.makeKeyAndOrderFront(nil)
 
