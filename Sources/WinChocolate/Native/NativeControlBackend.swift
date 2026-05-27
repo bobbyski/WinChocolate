@@ -31,6 +31,9 @@ public protocol NativeControlBackend: AnyObject {
     /// Creates a native push button child.
     func createButton(title: String, frame: NSRect, parent: NativeHandle?) -> NativeHandle
 
+    /// Creates a native checkbox child.
+    func createCheckbox(title: String, frame: NSRect, parent: NativeHandle?) -> NativeHandle
+
     /// Creates a native text field child.
     func createTextField(text: String, frame: NSRect, parent: NativeHandle?, isEditable: Bool) -> NativeHandle
 
@@ -45,6 +48,12 @@ public protocol NativeControlBackend: AnyObject {
 
     /// Updates whether a native control is enabled.
     func setEnabled(_ isEnabled: Bool, for handle: NativeHandle)
+
+    /// Updates a native button check state.
+    func setButtonState(_ state: NSControl.StateValue, for handle: NativeHandle)
+
+    /// Reads a native button check state.
+    func buttonState(for handle: NativeHandle) -> NSControl.StateValue
 
     /// Registers the action to perform when a native control is activated.
     func registerAction(for handle: NativeHandle, action: @escaping () -> Void)

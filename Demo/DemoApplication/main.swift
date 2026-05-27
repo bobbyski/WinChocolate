@@ -30,10 +30,14 @@ let enableButton = NSButton(title: "Disable Click", frame: NSMakeRect(128, 204, 
 let hideButton = NSButton(title: "Hide Counter", frame: NSMakeRect(272, 204, 128, 32))
 let moveButton = NSButton(title: "Move Click", frame: NSMakeRect(416, 204, 112, 32))
 let alertButton = NSButton(title: "Alert", frame: NSMakeRect(24, 108, 88, 32))
+let titleCheckbox = NSButton(title: "Show count in title", frame: NSMakeRect(128, 108, 180, 32))
 var clickCount = 0
 var isClickEnabled = true
 var isCounterHidden = false
 var movedRight = false
+
+titleCheckbox.setButtonType(.switchButton)
+titleCheckbox.state = .on
 
 editableTextField.isEditable = true
 editableTextField.onTextChanged = { field in
@@ -45,7 +49,9 @@ editableTextField.onTextChanged = { field in
 button.onAction = { _ in
     clickCount += 1
     counterLabel.stringValue = "Clicks: \(clickCount)"
-    window.title = "WinChocolate Click Counter (\(clickCount))"
+    if titleCheckbox.state == .on {
+        window.title = "WinChocolate Click Counter (\(clickCount))"
+    }
     statusLabel.stringValue = "Click button fired"
 }
 
@@ -81,6 +87,15 @@ alertButton.onAction = { _ in
     statusLabel.stringValue = "Alert dismissed"
 }
 
+titleCheckbox.onAction = { _ in
+    statusLabel.stringValue = titleCheckbox.state == .on
+        ? "Title count enabled"
+        : "Title count disabled"
+    if titleCheckbox.state == .off {
+        window.title = "WinChocolate Click Counter"
+    }
+}
+
 contentView.addSubview(counterLabel)
 contentView.addSubview(statusLabel)
 contentView.addSubview(editableLabel)
@@ -90,6 +105,7 @@ contentView.addSubview(enableButton)
 contentView.addSubview(hideButton)
 contentView.addSubview(moveButton)
 contentView.addSubview(alertButton)
+contentView.addSubview(titleCheckbox)
 window.contentView = contentView
 window.makeKeyAndOrderFront(nil)
 

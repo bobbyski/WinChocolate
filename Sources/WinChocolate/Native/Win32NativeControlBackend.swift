@@ -63,6 +63,9 @@ private func winCreateWindowExW(
     _ parameter: UnsafeMutableRawPointer?
 ) -> HWND?
 
+@_silgen_name("SendMessageW")
+private func winSendMessageW(_ hwnd: HWND?, _ message: UINT, _ wParam: WPARAM, _ lParam: LPARAM) -> LRESULT
+
 @_silgen_name("DefWindowProcW")
 private func winDefWindowProcW(_ hwnd: HWND?, _ message: UINT, _ wParam: WPARAM, _ lParam: LPARAM) -> LRESULT
 
@@ -153,7 +156,13 @@ private let swShow: Int32 = 5
 private let swHide: Int32 = 0
 private let wmDestroy: UINT = 0x0002
 private let wmCommand: UINT = 0x0111
+private let bmGetCheck: UINT = 0x00f0
+private let bmSetCheck: UINT = 0x00f1
 private let enChange: UInt = 0x0300
+private let bnClicked: UInt = 0
+private let bstUnchecked: WPARAM = 0
+private let bstChecked: WPARAM = 1
+private let bstIndeterminate: WPARAM = 2
 private let idOK: Int32 = 1
 private let idYes: Int32 = 6
 private let wsOverlapped: DWORD = 0x00000000
@@ -167,6 +176,7 @@ private let wsChild: DWORD = 0x40000000
 private let wsClipChildren: DWORD = 0x02000000
 private let wsBorder: DWORD = 0x00800000
 private let esAutoHScroll: DWORD = 0x0080
+private let bsAutoCheckBox: DWORD = 0x00000003
 
 /// Win32 implementation of WinChocolate's native backend.
 ///
@@ -310,6 +320,18 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         )
     }
 
+    /// Creates a native checkbox child.
+    public func createCheckbox(title: String, frame: NSRect, parent: NativeHandle?) -> NativeHandle {
+        createChildWindow(
+            className: "BUTTON",
+            text: title,
+            frame: frame,
+            parent: parent,
+            commandIdentifier: nextCommandID(),
+            style: wsChild | wsVisible | bsAutoCheckBox
+        )
+    }
+
     /// Creates a native static text field child.
     public func createTextField(text: String, frame: NSRect, parent: NativeHandle?, isEditable: Bool) -> NativeHandle {
         createChildWindow(
@@ -369,6 +391,42 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         _ = winEnableWindow(hwnd, isEnabled ? 1 : 0)
     }
 
+    /// Updates a native button check state.
+    public func setButtonState(_ state: NSControl.StateValue, for handle: NativeHandle) {
+        guard let hwnd = hwnd(from: handle) else {
+            return
+        }
+
+        let nativeState: WPARAM
+        switch state {
+        case .off:
+            nativeState = bstUnchecked
+        case .on:
+            nativeState = bstChecked
+        case .mixed:
+            nativeState = bstIndeterminate
+        }
+
+        _ = winSendMessageW(hwnd, bmSetCheck, nativeState, 0)
+    }
+
+    /// Reads a native button check state.
+    public func buttonState(for handle: NativeHandle) -> NSControl.StateValue {
+        guard let hwnd = hwnd(from: handle) else {
+            return .off
+        }
+
+        let nativeState = winSendMessageW(hwnd, bmGetCheck, 0, 0)
+        switch WPARAM(nativeState) {
+        case bstChecked:
+            return .on
+        case bstIndeterminate:
+            return .mixed
+        default:
+            return .off
+        }
+    }
+
     /// Registers the action to perform when a native control is activated.
     public func registerAction(for handle: NativeHandle, action: @escaping () -> Void) {
         controlActions[handle.rawValue] = action
@@ -418,7 +476,7 @@ public final class Win32NativeControlBackend: NativeControlBackend {
                 return 0
             }
 
-            if lParam != 0, let action = controlActions[UInt(bitPattern: lParam)] {
+            if lParam != 0, notificationCode == bnClicked, let action = controlActions[UInt(bitPattern: lParam)] {
                 action()
                 return 0
             }

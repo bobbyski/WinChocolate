@@ -4,6 +4,18 @@
 /// exposing a Swift closure for Windows-native dispatch that does not depend on
 /// Objective-C selector invocation.
 open class NSControl: NSView {
+    /// A control state value.
+    public enum StateValue: Int, Sendable {
+        /// Control is off.
+        case off = 0
+
+        /// Control is on.
+        case on = 1
+
+        /// Control is in a mixed state.
+        case mixed = -1
+    }
+
     /// Object intended to receive the action.
     open weak var target: AnyObject?
 

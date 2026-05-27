@@ -74,6 +74,17 @@ func testButtonPerformClickHonorsEnabledState() {
     expect(actionCount == 1, "Disabled button still sent its action.")
 }
 
+func testSwitchButtonTogglesStateOnPerformClick() {
+    let checkbox = NSButton(title: "Check", frame: NSMakeRect(0, 0, 120, 24))
+    checkbox.setButtonType(.switchButton)
+
+    checkbox.performClick(nil)
+    expect(checkbox.state == .on, "Switch button did not toggle on.")
+
+    checkbox.performClick(nil)
+    expect(checkbox.state == .off, "Switch button did not toggle off.")
+}
+
 func testRealizedViewStatePropagatesToBackend() {
     let backend = InMemoryNativeControlBackend()
     let view = NSView(frame: NSMakeRect(0, 0, 100, 100))
@@ -113,6 +124,19 @@ func testEditableTextFieldUsesEditableNativePeer() {
 
     expect(backend.records[handle]?.kind == "editableTextField", "Editable text field did not request editable native peer.")
 }
+
+func testSwitchButtonUsesCheckboxNativePeer() {
+    let backend = InMemoryNativeControlBackend()
+    let checkbox = NSButton(title: "Check", frame: NSMakeRect(0, 0, 120, 24))
+    checkbox.setButtonType(.switchButton)
+    checkbox.state = .on
+
+    let handle = checkbox.realizeNativePeer(in: backend, parent: nil)
+
+    expect(backend.records[handle]?.kind == "checkbox", "Switch button did not request checkbox native peer.")
+    expect(backend.records[handle]?.buttonState == .on, "Switch button state was not synced to backend.")
+}
+
 
 func testRemovingRealizedSubviewDestroysNativePeer() {
     let backend = InMemoryNativeControlBackend()
@@ -165,9 +189,11 @@ testWindowRealizationCreatesNativeHierarchy()
 testViewHierarchyMaintainsSuperviewOwnership()
 testControlClosureActionIsInvoked()
 testButtonPerformClickHonorsEnabledState()
+testSwitchButtonTogglesStateOnPerformClick()
 testRealizedViewStatePropagatesToBackend()
 testWindowTitleAndFramePropagateToBackend()
 testEditableTextFieldUsesEditableNativePeer()
+testSwitchButtonUsesCheckboxNativePeer()
 testRemovingRealizedSubviewDestroysNativePeer()
 testMainMenuQuitItemTerminatesApplication()
 testAlertReturnsFirstButtonInMemory()

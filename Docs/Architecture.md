@@ -4,7 +4,7 @@
 
 WinChocolate is an AppKit-shaped SwiftPM framework for Windows. The goal is to let application code replace `import Cocoa` or `import AppKit` with `import WinChocolate` and keep familiar names such as `NSApplication`, `NSWindow`, `NSView`, `NSButton`, and `NSTextField`, while the implementation wraps native Windows controls behind a backend boundary.
 
-Overall planned-code progress: `██████░░░░` 60%
+Overall planned-code progress: `██████░░░░` 63%
 
 ## First Milestone
 
@@ -23,9 +23,9 @@ The first milestone is a runnable AppKit-shaped Windows application slice:
 | Phase | Status | Progress | Planned Commands | Notes |
 |---|---:|---:|---|---|
 | 1: SwiftPM Shape And Core Names | Implemented | 100% | package, sources, tests, docs | Initial AppKit-compatible public type names are in place. |
-| 2: Native Backend Boundary | Partial | 82% | HWND creation, message loop, child controls | User32-backed window, custom view container, menu, button, static/edit text, text/frame/visibility/enabled updates, native cleanup, and command dispatch are in place. |
-| 3: AppKit Surface Expansion | Partial | 20% | menus, dialogs, responders, layout, text, images | Initial `NSMenu`, `NSMenuItem`, `NSAlert`, and editable `NSTextField` APIs are present. |
-| 4: Demo Application | Partial | 70% | SwiftPM demo app | Demo source builds as a SwiftPM executable and visibly exercises native state APIs, modal alerts, and editable text. |
+| 2: Native Backend Boundary | Partial | 85% | HWND creation, message loop, child controls | User32-backed window, custom view container, menu, button, checkbox, static/edit text, text/frame/visibility/enabled updates, native cleanup, and command dispatch are in place. |
+| 3: AppKit Surface Expansion | Partial | 24% | menus, dialogs, responders, layout, text, images | Initial `NSMenu`, `NSMenuItem`, `NSAlert`, editable `NSTextField`, and switch-style `NSButton` APIs are present. |
+| 4: Demo Application | Partial | 74% | SwiftPM demo app | Demo source builds as a SwiftPM executable and visibly exercises native state APIs, modal alerts, editable text, and checkbox state. |
 
 ## Checklist
 
@@ -37,6 +37,7 @@ The first milestone is a runnable AppKit-shaped Windows application slice:
 - [x] Add initial menu APIs.
 - [x] Add initial `NSAlert` API backed by native modal dialogs.
 - [x] Add editable `NSTextField` backed by native edit controls.
+- [x] Add switch-style `NSButton` backed by native checkboxes.
 - [x] Add native state updates for title/text, frame, hidden, enabled, and destroyed views.
 - [ ] Add `NSResponder`, image, font, color, layout, and deeper event APIs.
 - [x] Add a Swift demo application skeleton under `Demo`.
@@ -78,6 +79,8 @@ Realized views and controls now propagate common state changes to native peers. 
 `NSAlert` runs through the backend and currently maps to native `MessageBoxW`. This gives real modal behavior for the first milestone. Custom alert button captions are recorded in the public API, but the Win32 backend still uses standard MessageBox button sets until a custom dialog backend is added.
 
 `NSTextField` now supports editable and static modes. Static fields map to native `STATIC` controls; editable fields map to native `EDIT` controls and use `EN_CHANGE` notifications to update `stringValue` and invoke `onTextChanged`.
+
+`NSButton` now supports `momentaryPushIn` and `switchButton` modes. Switch buttons map to native auto-checkbox controls and synchronize `NSControl.StateValue` through `BM_GETCHECK` and `BM_SETCHECK`.
 
 ## Review Notes
 

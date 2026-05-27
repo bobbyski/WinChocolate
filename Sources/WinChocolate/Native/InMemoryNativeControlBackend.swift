@@ -23,6 +23,9 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
 
         /// Whether the native object accepts input.
         public var isEnabled: Bool
+
+        /// Native button check state.
+        public var buttonState: NSControl.StateValue
     }
 
     private var nextRawHandle: UInt = 1
@@ -93,6 +96,11 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
         makeHandle(kind: "button", text: title, frame: frame, parent: parent)
     }
 
+    /// Records a checkbox creation request.
+    public func createCheckbox(title: String, frame: NSRect, parent: NativeHandle?) -> NativeHandle {
+        makeHandle(kind: "checkbox", text: title, frame: frame, parent: parent)
+    }
+
     /// Records a text field creation request.
     public func createTextField(text: String, frame: NSRect, parent: NativeHandle?, isEditable: Bool) -> NativeHandle {
         makeHandle(kind: isEditable ? "editableTextField" : "textField", text: text, frame: frame, parent: parent)
@@ -138,6 +146,21 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
         records[handle] = record
     }
 
+    /// Updates a recorded button state.
+    public func setButtonState(_ state: NSControl.StateValue, for handle: NativeHandle) {
+        guard var record = records[handle] else {
+            return
+        }
+
+        record.buttonState = state
+        records[handle] = record
+    }
+
+    /// Reads a recorded button state.
+    public func buttonState(for handle: NativeHandle) -> NSControl.StateValue {
+        records[handle]?.buttonState ?? .off
+    }
+
     /// Records a control action.
     public func registerAction(for handle: NativeHandle, action: @escaping () -> Void) {
         actions[handle] = action
@@ -162,7 +185,8 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
             frame: frame,
             parent: parent,
             isHidden: false,
-            isEnabled: true
+            isEnabled: true,
+            buttonState: .off
         )
         return handle
     }

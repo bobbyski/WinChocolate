@@ -28,6 +28,7 @@ WinChocolate is early and intentionally incomplete. The current milestone proves
 - Top-level native window
 - Menu bar with Quit item
 - Native buttons
+- Native checkboxes through switch-style `NSButton`
 - Static and editable `NSTextField`
 - Native text, frame, hidden, and enabled updates
 - Native modal `NSAlert` through `MessageBoxW`
