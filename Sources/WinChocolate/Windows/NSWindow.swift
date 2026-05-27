@@ -131,6 +131,24 @@ open class NSWindow: NSResponder {
         NSApplication.shared.makeMainWindow(self)
     }
 
+    /// Selects the next view in the key-view loop.
+    open func selectNextKeyView(_ sender: Any?) {
+        guard let target = nextKeyView(after: firstResponder) else {
+            return
+        }
+
+        _ = makeFirstResponder(target)
+    }
+
+    /// Selects the previous view in the key-view loop.
+    open func selectPreviousKeyView(_ sender: Any?) {
+        guard let target = previousKeyView(before: firstResponder) else {
+            return
+        }
+
+        _ = makeFirstResponder(target)
+    }
+
     /// Attempts to make a responder the window's first responder.
     @discardableResult
     open func makeFirstResponder(_ responder: NSResponder?) -> Bool {
@@ -194,6 +212,106 @@ open class NSWindow: NSResponder {
         NSApplication.shared.addWindowsItem(self)
         contentView?.realizeNativePeer(in: nativeBackend, parent: handle)
         return handle
+    }
+
+    private func nextKeyView(after responder: NSResponder?) -> NSView? {
+        if let view = responder as? NSView, let nextKeyView = firstFocusableNextKeyView(startingAt: view.nextKeyView) {
+            return nextKeyView
+        }
+
+        return firstFocusableView(startingAt: contentView)
+    }
+
+    private func previousKeyView(before responder: NSResponder?) -> NSView? {
+        if let view = responder as? NSView, let previousKeyView = firstFocusablePreviousKeyView(startingAt: view.previousKeyView) {
+            return previousKeyView
+        }
+
+        return lastFocusableView(in: contentView)
+    }
+
+    private func firstFocusableNextKeyView(startingAt view: NSView?) -> NSView? {
+        var visited: Set<ObjectIdentifier> = []
+        var current = view
+
+        while let candidate = current {
+            let identifier = ObjectIdentifier(candidate)
+            guard !visited.contains(identifier) else {
+                return nil
+            }
+
+            visited.insert(identifier)
+
+            if candidate.acceptsFirstResponder && !candidate.isHidden {
+                return candidate
+            }
+
+            if let focusableChild = firstFocusableView(startingAt: candidate) {
+                return focusableChild
+            }
+
+            current = candidate.nextKeyView
+        }
+
+        return nil
+    }
+
+    private func firstFocusablePreviousKeyView(startingAt view: NSView?) -> NSView? {
+        var visited: Set<ObjectIdentifier> = []
+        var current = view
+
+        while let candidate = current {
+            let identifier = ObjectIdentifier(candidate)
+            guard !visited.contains(identifier) else {
+                return nil
+            }
+
+            visited.insert(identifier)
+
+            if candidate.acceptsFirstResponder && !candidate.isHidden {
+                return candidate
+            }
+
+            if let focusableChild = lastFocusableView(in: candidate) {
+                return focusableChild
+            }
+
+            current = candidate.previousKeyView
+        }
+
+        return nil
+    }
+
+    private func firstFocusableView(startingAt view: NSView?) -> NSView? {
+        guard let view else {
+            return nil
+        }
+
+        if view.acceptsFirstResponder && !view.isHidden {
+            return view
+        }
+
+        for subview in view.subviews {
+            if let focusable = firstFocusableView(startingAt: subview) {
+                return focusable
+            }
+        }
+
+        return nil
+    }
+
+    private func lastFocusableView(in view: NSView?) -> NSView? {
+        guard let view else {
+            return nil
+        }
+
+        for subview in view.subviews.reversed() {
+            if let focusable = lastFocusableView(in: subview) {
+                return focusable
+            }
+        }
+
+        return view.acceptsFirstResponder && !view.isHidden ? view : nil
     }
 }
 

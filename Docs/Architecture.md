@@ -23,8 +23,8 @@ The first milestone is a runnable AppKit-shaped Windows application slice:
 | Phase | Status | Progress | Planned Commands | Notes |
 |---|---:|---:|---|---|
 | 1: SwiftPM Shape And Core Names | Implemented | 100% | package, sources, tests, docs | Initial AppKit-compatible public type names are in place. |
-| 2: Classic Win32 Backend | Partial | 94% | HWND creation, message loop, child controls | User32-backed window, custom view container, menu, button, checkbox, radio button, combo box, group box, static/edit text, text/frame/visibility/enabled updates, native cleanup, mouse/key event dispatch, and command dispatch are in place. This backend should keep the classic Win32 look available for apps that want it. |
-| 3: AppKit Surface Expansion | Partial | 45% | menus, dialogs, responders, layout, text, images | Initial `NSMenu`, `NSMenuItem`, `NSAlert`, `NSBox`, `NSColor`, `NSFont`, `NSEvent`, `NSResponder`, `NSApp`, `NSWindow.firstResponder`, key/main window tracking, editable `NSTextField`, `NSPopUpButton`, and push/switch/radio `NSButton` APIs are present. |
+| 2: Classic Win32 Backend | Partial | 95% | HWND creation, message loop, child controls | User32-backed window, custom view container, menu, button, checkbox, radio button, combo box, group box, static/edit text, text/frame/visibility/enabled updates, native cleanup, mouse/key event dispatch, experimental edit-control Tab interception, and command dispatch are in place. This backend should keep the classic Win32 look available for apps that want it. |
+| 3: AppKit Surface Expansion | Partial | 46% | menus, dialogs, responders, layout, text, images | Initial `NSMenu`, `NSMenuItem`, `NSAlert`, `NSBox`, `NSColor`, `NSFont`, `NSEvent`, `NSResponder`, `NSApp`, `NSWindow.firstResponder`, key-view loop APIs, key/main window tracking, editable `NSTextField`, `NSPopUpButton`, and push/switch/radio `NSButton` APIs are present. |
 | 4: Demo Application | Partial | 84% | SwiftPM demo app | Demo source builds as a SwiftPM executable and visibly exercises native state APIs, modal alerts, editable text, checkbox state, radio groups, pop-up selection, mouse events, and key events. |
 | 5: Modern Windows Appearance | Planned | 0% | visual manager, themed controls, modern backend option | The eventual default should look like a modern Windows app while preserving the classic Win32 backend as an opt-in retro/native-simple mode. |
 | 6: Backend Selection And Theming | Planned | 0% | app/config API, backend factory, tests | Add an AppKit-shaped way to choose the classic or modern presentation without changing application UI code. |
@@ -47,9 +47,11 @@ The first milestone is a runnable AppKit-shaped Windows application slice:
 - [x] Add initial `NSFont` and font propagation for text fields.
 - [x] Add initial `NSResponder` chain support for windows and views.
 - [x] Add initial `NSWindow.firstResponder` and `makeFirstResponder(_:)` support.
+- [x] Add initial `NSView.nextKeyView`, `previousKeyView`, and window key-view selection.
 - [x] Add initial `NSApp`, application window list, and key/main window tracking.
 - [x] Add native mouse-down/up/move dispatch into `NSView` responder methods.
 - [x] Add native key-down/up dispatch into `NSView.keyDown(with:)` and `NSView.keyUp(with:)`.
+- [ ] Stabilize native child-control Tab interception across all focusable controls.
 - [x] Add `NSEvent.characters` and `NSEvent.modifierFlags` for native key and mouse events.
 - [x] Add native state updates for title/text, frame, hidden, enabled, and destroyed views.
 - [ ] Preserve the current classic Win32 look as an explicit supported presentation mode.
@@ -103,6 +105,10 @@ Modern appearance work is not part of the first native milestone. It should be t
 `NSWindow.firstResponder` and `makeFirstResponder(_:)` now provide a first pass at AppKit-shaped focus ownership. The method honors `resignFirstResponder()` and `becomeFirstResponder()`, records the active responder, and asks the backend to move native focus when the responder is a realized view. Mouse-down dispatch attempts to make the clicked view first responder before delivering the mouse event.
 
 `NSApplication` now keeps an AppKit-shaped window list with `windows`, `keyWindow`, and `mainWindow`, plus the global `NSApp` alias. `NSWindow.makeKeyAndOrderFront(_:)` realizes the native peer, marks the window key and main, and shows it. Closing a tracked window clears key/main references when appropriate.
+
+Key-view traversal has an initial explicit loop. `NSView.nextKeyView` and `previousKeyView` can be wired by application code, while `NSWindow.selectNextKeyView(_:)` and `selectPreviousKeyView(_:)` move first responder and native focus to the next enabled visible view. Automatic AppKit-style key-view recalculation is still future work.
+
+Native child-control Tab interception is being introduced narrowly. A first broad subclassing attempt proved too risky because it touched every child HWND during startup. The current experimental path subclasses only editable `NSTextField` peers, preserves the original edit-control window procedure, and asks the edit control to report `DLGC_WANTTAB` so Tab can travel through the WinChocolate key-view loop. Other native controls should be added one family at a time.
 
 Native mouse dispatch now reaches realized `NSView` instances. The Win32 backend translates `WM_LBUTTONDOWN`, `WM_LBUTTONUP`, and `WM_MOUSEMOVE` on WinChocolate view HWNDs into `NSEvent` values, then invokes `NSView.mouseDown(with:)`, `NSView.mouseUp(with:)`, or `NSView.mouseMoved(with:)` through the backend registration path. Mouse events include the current modifier flags.
 

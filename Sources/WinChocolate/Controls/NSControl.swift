@@ -36,6 +36,11 @@ open class NSControl: NSView {
         }
     }
 
+    /// Enabled controls can participate in keyboard focus.
+    open override var acceptsFirstResponder: Bool {
+        isEnabled
+    }
+
     /// Sends this control's action.
     open func sendAction() {
         guard isEnabled else {

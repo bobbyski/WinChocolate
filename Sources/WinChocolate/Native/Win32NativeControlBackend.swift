@@ -12,6 +12,7 @@ private typealias DWORD = UInt32
 private typealias WPARAM = UInt
 private typealias LPARAM = Int
 private typealias LRESULT = Int
+private typealias LONG_PTR = Int
 private typealias WNDPROC = @convention(c) (HWND?, UINT, WPARAM, LPARAM) -> LRESULT
 
 private struct POINT {
@@ -93,6 +94,9 @@ private func winCreateWindowExW(
     _ instance: HINSTANCE?,
     _ parameter: UnsafeMutableRawPointer?
 ) -> HWND?
+
+@_silgen_name("CallWindowProcW")
+private func winCallWindowProcW(_ previousProcedure: WNDPROC?, _ hwnd: HWND?, _ message: UINT, _ wParam: WPARAM, _ lParam: LPARAM) -> LRESULT
 
 @_silgen_name("SendMessageW")
 private func winSendMessageW(_ hwnd: HWND?, _ message: UINT, _ wParam: WPARAM, _ lParam: LPARAM) -> LRESULT
@@ -181,6 +185,9 @@ private func winSetTextColor(_ deviceContext: HDC?, _ color: DWORD) -> DWORD
 @_silgen_name("SetFocus")
 private func winSetFocus(_ hwnd: HWND?) -> HWND?
 
+@_silgen_name("SetWindowLongPtrW")
+private func winSetWindowLongPtrW(_ hwnd: HWND?, _ index: Int32, _ newLong: LONG_PTR) -> LONG_PTR
+
 @_silgen_name("SetWindowTextW")
 private func winSetWindowTextW(_ hwnd: HWND?, _ text: UnsafePointer<UInt16>?) -> Int32
 
@@ -219,6 +226,7 @@ private let wmKeyDown: UINT = 0x0100
 private let wmKeyUp: UINT = 0x0101
 private let wmSysKeyDown: UINT = 0x0104
 private let wmSysKeyUp: UINT = 0x0105
+private let wmGetDlgCode: UINT = 0x0087
 private let wmMouseMove: UINT = 0x0200
 private let wmLButtonDown: UINT = 0x0201
 private let wmLButtonUp: UINT = 0x0202
@@ -254,6 +262,8 @@ private let vkLControl: Int32 = 0xa2
 private let vkRControl: Int32 = 0xa3
 private let vkLMenu: Int32 = 0xa4
 private let vkRMenu: Int32 = 0xa5
+private let gwlpWndProc: Int32 = -4
+private let dlgcWantTab: LRESULT = 0x0002
 private let idOK: Int32 = 1
 private let idYes: Int32 = 6
 private let wsOverlapped: DWORD = 0x00000000
@@ -291,6 +301,7 @@ public final class Win32NativeControlBackend: NativeControlBackend {
     private var mouseMovedActions: [UInt: (NSEvent) -> Void] = [:]
     private var keyDownActions: [UInt: (NSEvent) -> Void] = [:]
     private var keyUpActions: [UInt: (NSEvent) -> Void] = [:]
+    private var originalControlProcedures: [UInt: WNDPROC] = [:]
     private var commandActions: [UInt: () -> Void] = [:]
     private var textColors: [UInt: DWORD] = [:]
     private var backgroundColors: [UInt: DWORD] = [:]
@@ -391,6 +402,7 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         mouseMovedActions.removeValue(forKey: handle.rawValue)
         keyDownActions.removeValue(forKey: handle.rawValue)
         keyUpActions.removeValue(forKey: handle.rawValue)
+        originalControlProcedures.removeValue(forKey: handle.rawValue)
         clearAppearance(for: handle)
     }
 
@@ -408,6 +420,7 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         mouseMovedActions.removeValue(forKey: handle.rawValue)
         keyDownActions.removeValue(forKey: handle.rawValue)
         keyUpActions.removeValue(forKey: handle.rawValue)
+        originalControlProcedures.removeValue(forKey: handle.rawValue)
         clearAppearance(for: handle)
     }
 
@@ -426,7 +439,7 @@ public final class Win32NativeControlBackend: NativeControlBackend {
 
     /// Creates a native push button child.
     public func createButton(title: String, frame: NSRect, parent: NativeHandle?) -> NativeHandle {
-        createChildWindow(
+        let handle = createChildWindow(
             className: "BUTTON",
             text: title,
             frame: frame,
@@ -434,11 +447,13 @@ public final class Win32NativeControlBackend: NativeControlBackend {
             commandIdentifier: nextCommandID(),
             style: wsChild | wsVisible
         )
+        subclassControlForTabKey(handle)
+        return handle
     }
 
     /// Creates a native checkbox child.
     public func createCheckbox(title: String, frame: NSRect, parent: NativeHandle?) -> NativeHandle {
-        createChildWindow(
+        let handle = createChildWindow(
             className: "BUTTON",
             text: title,
             frame: frame,
@@ -446,11 +461,13 @@ public final class Win32NativeControlBackend: NativeControlBackend {
             commandIdentifier: nextCommandID(),
             style: wsChild | wsVisible | bsAutoCheckBox
         )
+        subclassControlForTabKey(handle)
+        return handle
     }
 
     /// Creates a native radio button child.
     public func createRadioButton(title: String, frame: NSRect, parent: NativeHandle?) -> NativeHandle {
-        createChildWindow(
+        let handle = createChildWindow(
             className: "BUTTON",
             text: title,
             frame: frame,
@@ -458,6 +475,8 @@ public final class Win32NativeControlBackend: NativeControlBackend {
             commandIdentifier: nextCommandID(),
             style: wsChild | wsVisible | bsAutoRadioButton
         )
+        subclassControlForTabKey(handle)
+        return handle
     }
 
     /// Creates a native box child.
@@ -474,7 +493,7 @@ public final class Win32NativeControlBackend: NativeControlBackend {
 
     /// Creates a native static text field child.
     public func createTextField(text: String, frame: NSRect, parent: NativeHandle?, isEditable: Bool) -> NativeHandle {
-        createChildWindow(
+        let handle = createChildWindow(
             className: isEditable ? "EDIT" : "STATIC",
             text: text,
             frame: frame,
@@ -484,6 +503,10 @@ public final class Win32NativeControlBackend: NativeControlBackend {
                 ? wsChild | wsVisible | wsBorder | esAutoHScroll
                 : wsChild | wsVisible
         )
+        if isEditable {
+            subclassControlForTabKey(handle)
+        }
+        return handle
     }
 
     /// Creates a native pop-up button child.
@@ -496,6 +519,7 @@ public final class Win32NativeControlBackend: NativeControlBackend {
             commandIdentifier: nextCommandID(),
             style: wsChild | wsVisible | wsVScroll | cbsDropdownList
         )
+        subclassControlForTabKey(handle)
         setPopUpButtonItems(items, selectedIndex: selectedIndex, for: handle)
         return handle
     }
@@ -755,6 +779,15 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         activeBackend?.dispatchMessage(hwnd: hwnd, message: message, wParam: wParam, lParam: lParam)
     }
 
+    fileprivate static func dispatchControlMessage(hwnd: HWND?, message: UINT, wParam: WPARAM, lParam: LPARAM) -> LRESULT? {
+        activeBackend?.dispatchControlMessage(hwnd: hwnd, message: message, wParam: wParam, lParam: lParam)
+    }
+
+    fileprivate static func callOriginalControlProcedure(hwnd: HWND?, message: UINT, wParam: WPARAM, lParam: LPARAM) -> LRESULT {
+        activeBackend?.callOriginalControlProcedure(hwnd: hwnd, message: message, wParam: wParam, lParam: lParam)
+            ?? winDefWindowProcW(hwnd, message, wParam, lParam)
+    }
+
     private func dispatchMessage(hwnd: HWND?, message: UINT, wParam: WPARAM, lParam: LPARAM) -> LRESULT? {
         switch message {
         case wmKeyDown, wmSysKeyDown:
@@ -861,6 +894,34 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         }
     }
 
+    private func dispatchControlMessage(hwnd: HWND?, message: UINT, wParam: WPARAM, lParam: LPARAM) -> LRESULT? {
+        switch message {
+        case wmGetDlgCode:
+            let original = callOriginalControlProcedure(hwnd: hwnd, message: message, wParam: wParam, lParam: lParam)
+            return original | dlgcWantTab
+        case wmKeyDown, wmSysKeyDown:
+            guard UInt16(wParam & 0xffff) == UInt16(vkTab),
+                  let hwnd,
+                  let action = keyDownActions[nativeHandle(from: hwnd).rawValue] else {
+                return nil
+            }
+
+            action(keyEvent(type: .keyDown, wParam: wParam))
+            return 0
+        case wmKeyUp, wmSysKeyUp:
+            guard UInt16(wParam & 0xffff) == UInt16(vkTab),
+                  let hwnd,
+                  let action = keyUpActions[nativeHandle(from: hwnd).rawValue] else {
+                return nil
+            }
+
+            action(keyEvent(type: .keyUp, wParam: wParam))
+            return 0
+        default:
+            return nil
+        }
+    }
+
     private func registerWindowClassIfNeeded() {
         guard !isWindowClassRegistered else {
             return
@@ -949,6 +1010,33 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         }
 
         return nativeHandle(from: childHwnd)
+    }
+
+    private func subclassChildControl(_ hwnd: HWND, handle: NativeHandle) {
+        let replacement = unsafeBitCast(winChocolateControlProcedure as WNDPROC, to: LONG_PTR.self)
+        let previous = winSetWindowLongPtrW(hwnd, gwlpWndProc, replacement)
+        guard previous != 0 else {
+            return
+        }
+
+        originalControlProcedures[handle.rawValue] = unsafeBitCast(previous, to: WNDPROC.self)
+    }
+
+    private func subclassControlForTabKey(_ handle: NativeHandle) {
+        guard let hwnd = hwnd(from: handle) else {
+            return
+        }
+
+        subclassChildControl(hwnd, handle: handle)
+    }
+
+    private func callOriginalControlProcedure(hwnd: HWND?, message: UINT, wParam: WPARAM, lParam: LPARAM) -> LRESULT {
+        guard let hwnd,
+              let originalProcedure = originalControlProcedures[nativeHandle(from: hwnd).rawValue] else {
+            return winDefWindowProcW(hwnd, message, wParam, lParam)
+        }
+
+        return winCallWindowProcW(originalProcedure, hwnd, message, wParam, lParam)
     }
 
     private func createNativeMenu(from menu: NSMenu?) -> HMENU? {
@@ -1216,5 +1304,28 @@ private func winChocolateWindowProcedure(
     }
 
     return winDefWindowProcW(hwnd, message, wParam, lParam)
+}
+
+private func winChocolateControlProcedure(
+    hwnd: HWND?,
+    message: UINT,
+    wParam: WPARAM,
+    lParam: LPARAM
+) -> LRESULT {
+    if let result = Win32NativeControlBackend.dispatchControlMessage(
+        hwnd: hwnd,
+        message: message,
+        wParam: wParam,
+        lParam: lParam
+    ) {
+        return result
+    }
+
+    return Win32NativeControlBackend.callOriginalControlProcedure(
+        hwnd: hwnd,
+        message: message,
+        wParam: wParam,
+        lParam: lParam
+    )
 }
 #endif

@@ -56,6 +56,7 @@ final class DemoContentView: NSView {
 let contentView = DemoContentView(frame: NSMakeRect(0, 0, 760, 500))
 let counterLabel = NSTextField(string: "Clicks: 0", frame: NSMakeRect(32, 36, 300, 24))
 let statusLabel = NSTextField(string: "Ready", frame: NSMakeRect(32, 74, 520, 24))
+let focusLabel = NSTextField(string: "Focus: none", frame: NSMakeRect(568, 74, 160, 24))
 let button = NSButton(title: "Click", frame: NSMakeRect(32, 124, 100, 34))
 let enableButton = NSButton(title: "Disable Click", frame: NSMakeRect(152, 124, 144, 34))
 let hideButton = NSButton(title: "Hide Counter", frame: NSMakeRect(316, 124, 144, 34))
@@ -70,6 +71,10 @@ let alertStylePopup = NSPopUpButton(frame: NSMakeRect(472, 286, 184, 96), pullsD
 let infoRadio = NSButton(title: "Info", frame: NSMakeRect(32, 334, 88, 24))
 let warningRadio = NSButton(title: "Warning", frame: NSMakeRect(136, 334, 116, 24))
 let criticalRadio = NSButton(title: "Critical", frame: NSMakeRect(268, 334, 116, 24))
+let contentFocusColor = NSColor(calibratedRed: 0.92, green: 0.97, blue: 1.0, alpha: 1.0)
+let normalContentColor = NSColor.windowBackgroundColor
+let controlFocusColor = NSColor(calibratedRed: 1.0, green: 0.96, blue: 0.72, alpha: 1.0)
+let normalTextFieldColor = NSColor.white
 var clickCount = 0
 var isClickEnabled = true
 var isCounterHidden = false
@@ -157,14 +162,73 @@ func keyText(for event: NSEvent) -> String {
     return "\(code)\(name)\(printableCharacterText(for: event))\(modifierText(for: event))"
 }
 
-contentView.backgroundColor = .windowBackgroundColor
+@MainActor
+func focusName() -> String {
+    guard let responder = window.firstResponder else {
+        return "none"
+    }
+
+    if responder === contentView {
+        return "content"
+    }
+    if responder === editableTextField {
+        return "text field"
+    }
+    if responder === button {
+        return "click button"
+    }
+    if responder === enableButton {
+        return "disable button"
+    }
+    if responder === hideButton {
+        return "hide button"
+    }
+    if responder === moveButton {
+        return "move button"
+    }
+    if responder === alertButton {
+        return "alert button"
+    }
+    if responder === titleCheckbox {
+        return "title checkbox"
+    }
+    if responder === alertStylePopup {
+        return "alert style popup"
+    }
+    if responder === infoRadio {
+        return "info radio"
+    }
+    if responder === warningRadio {
+        return "warning radio"
+    }
+    if responder === criticalRadio {
+        return "critical radio"
+    }
+    return "view"
+}
+
+@MainActor
+func updateFocusDisplay() {
+    let name = focusName()
+    focusLabel.stringValue = "Focus: \(name)"
+    contentView.backgroundColor = name == "content" ? contentFocusColor : normalContentColor
+    editableTextField.backgroundColor = name == "text field"
+        ? controlFocusColor
+        : normalTextFieldColor
+}
+
+contentView.backgroundColor = normalContentColor
 counterLabel.font = NSFont.boldSystemFont(ofSize: 14)
 counterLabel.textColor = .green
 statusLabel.font = NSFont.systemFont(ofSize: 13)
 statusLabel.textColor = .blue
 statusLabel.backgroundColor = NSColor(calibratedRed: 0.94, green: 0.97, blue: 1.0, alpha: 1.0)
+focusLabel.font = NSFont.boldSystemFont(ofSize: 12)
+focusLabel.textColor = .black
+focusLabel.backgroundColor = NSColor(calibratedRed: 1.0, green: 0.98, blue: 0.86, alpha: 1.0)
 contentView.onBlankAreaMouseDown = { event in
     statusLabel.stringValue = "Mouse down at \(Int(event.locationInWindow.x)), \(Int(event.locationInWindow.y))\(modifierText(for: event))"
+    updateFocusDisplay()
 }
 contentView.onBlankAreaMouseUp = { event in
     statusLabel.stringValue = "Mouse up at \(Int(event.locationInWindow.x)), \(Int(event.locationInWindow.y))\(modifierText(for: event))"
@@ -176,9 +240,24 @@ contentView.onMouseMoved = { event in
     }
 }
 contentView.onKeyDown = { event in
+    if event.keyCode == 0x09 {
+        if event.modifierFlags.contains(.shift) {
+            window.selectPreviousKeyView(nil)
+        } else {
+            window.selectNextKeyView(nil)
+        }
+        updateFocusDisplay()
+        statusLabel.stringValue = "Focus moved with Tab"
+        return
+    }
+
     statusLabel.stringValue = "Key down: \(keyText(for: event))"
 }
 contentView.onKeyUp = { event in
+    if event.keyCode == 0x09 {
+        return
+    }
+
     statusLabel.stringValue = "Key up: \(keyText(for: event))"
 }
 
@@ -190,6 +269,32 @@ criticalRadio.setButtonType(.radioButton)
 infoRadio.state = .on
 alertStylePopup.addItems(withTitles: ["Info", "Warning", "Critical"])
 alertStylePopup.selectItem(withTitle: "Info")
+
+contentView.nextKeyView = editableTextField
+editableTextField.nextKeyView = button
+button.nextKeyView = enableButton
+enableButton.nextKeyView = hideButton
+hideButton.nextKeyView = moveButton
+moveButton.nextKeyView = alertButton
+alertButton.nextKeyView = titleCheckbox
+titleCheckbox.nextKeyView = alertStylePopup
+alertStylePopup.nextKeyView = infoRadio
+infoRadio.nextKeyView = warningRadio
+warningRadio.nextKeyView = criticalRadio
+criticalRadio.nextKeyView = contentView
+
+contentView.previousKeyView = criticalRadio
+criticalRadio.previousKeyView = warningRadio
+warningRadio.previousKeyView = infoRadio
+infoRadio.previousKeyView = alertStylePopup
+alertStylePopup.previousKeyView = titleCheckbox
+titleCheckbox.previousKeyView = alertButton
+alertButton.previousKeyView = moveButton
+moveButton.previousKeyView = hideButton
+hideButton.previousKeyView = enableButton
+enableButton.previousKeyView = button
+button.previousKeyView = editableTextField
+editableTextField.previousKeyView = contentView
 
 editableTextField.isEditable = true
 editableTextField.onTextChanged = { field in
@@ -282,6 +387,7 @@ alertStylePopup.onAction = { _ in
 
 contentView.addSubview(counterLabel)
 contentView.addSubview(statusLabel)
+contentView.addSubview(focusLabel)
 contentView.addSubview(editableLabel)
 contentView.addSubview(editableTextField)
 contentView.addSubview(button)
@@ -298,6 +404,7 @@ contentView.addSubview(warningRadio)
 contentView.addSubview(criticalRadio)
 window.contentView = contentView
 window.makeKeyAndOrderFront(nil)
+updateFocusDisplay()
 statusLabel.stringValue = window.isKeyWindow && window.isMainWindow
     ? "Ready - key/main window"
     : "Ready - window shown"

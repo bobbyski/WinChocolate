@@ -26,6 +26,12 @@ open class NSView: NSResponder {
     /// The view's child views.
     public private(set) var subviews: [NSView] = []
 
+    /// The next view in the keyboard focus loop.
+    open weak var nextKeyView: NSView?
+
+    /// The previous view in the keyboard focus loop.
+    open weak var previousKeyView: NSView?
+
     /// The nearest containing window, when this view is attached to one.
     open var window: NSWindow? {
         if let superview {

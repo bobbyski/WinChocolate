@@ -225,6 +225,68 @@ func testApplicationTracksWindowListAndKeyMainWindow() {
     clearApplicationWindows()
 }
 
+func testWindowSelectNextAndPreviousKeyView() {
+    let backend = InMemoryNativeControlBackend()
+    let window = NSWindow(
+        contentRect: NSMakeRect(0, 0, 100, 100),
+        styleMask: [.titled],
+        backing: .buffered,
+        defer: false,
+        nativeBackend: backend
+    )
+    let contentView = NSView(frame: NSMakeRect(0, 0, 100, 100))
+    let first = NSButton(title: "First", frame: NSMakeRect(0, 0, 40, 20))
+    let second = NSButton(title: "Second", frame: NSMakeRect(0, 24, 40, 20))
+
+    first.nextKeyView = second
+    second.previousKeyView = first
+    contentView.addSubview(first)
+    contentView.addSubview(second)
+    window.contentView = contentView
+    window.realizeNativePeer()
+
+    expect(window.makeFirstResponder(first), "Window did not accept first key view.")
+
+    window.selectNextKeyView(nil)
+
+    expect(window.firstResponder === second, "Window did not select next key view.")
+    expect(backend.focusedHandle == second.nativeHandle, "Backend focus did not move to next key view.")
+
+    window.selectPreviousKeyView(nil)
+
+    expect(window.firstResponder === first, "Window did not select previous key view.")
+    expect(backend.focusedHandle == first.nativeHandle, "Backend focus did not move to previous key view.")
+}
+
+func testWindowSelectNextKeyViewSkipsDisabledExplicitTarget() {
+    let window = NSWindow(
+        contentRect: NSMakeRect(0, 0, 100, 100),
+        styleMask: [.titled],
+        backing: .buffered,
+        defer: false,
+        nativeBackend: InMemoryNativeControlBackend()
+    )
+    let contentView = NSView(frame: NSMakeRect(0, 0, 100, 100))
+    let first = NSButton(title: "First", frame: NSMakeRect(0, 0, 40, 20))
+    let disabled = NSButton(title: "Disabled", frame: NSMakeRect(0, 24, 60, 20))
+    let fallback = NSButton(title: "Fallback", frame: NSMakeRect(0, 48, 60, 20))
+
+    disabled.isEnabled = false
+    first.nextKeyView = disabled
+    disabled.nextKeyView = fallback
+    contentView.addSubview(first)
+    contentView.addSubview(disabled)
+    contentView.addSubview(fallback)
+    window.contentView = contentView
+    window.realizeNativePeer()
+
+    expect(window.makeFirstResponder(first), "Window did not accept first key view.")
+
+    window.selectNextKeyView(nil)
+
+    expect(window.firstResponder === fallback, "Window did not skip disabled key view target.")
+}
+
 func testNativeMouseDownDispatchesToView() {
     let backend = InMemoryNativeControlBackend()
     let view = RecordingView(frame: NSMakeRect(0, 0, 100, 100))
@@ -549,6 +611,8 @@ testWindowIsContentViewNextResponder()
 testWindowMakeFirstResponderFocusesNativeView()
 testWindowMakeFirstResponderHonorsResignFailure()
 testApplicationTracksWindowListAndKeyMainWindow()
+testWindowSelectNextAndPreviousKeyView()
+testWindowSelectNextKeyViewSkipsDisabledExplicitTarget()
 testNativeMouseDownDispatchesToView()
 testNativeMouseUpDispatchesToView()
 testNativeMouseMovedDispatchesToView()
