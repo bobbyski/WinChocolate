@@ -34,6 +34,17 @@ open class NSTextField: NSControl {
         }
     }
 
+    /// The text field font, when explicitly set.
+    open var font: NSFont? {
+        didSet {
+            guard let nativeHandle else {
+                return
+            }
+
+            realizedBackend?.setFont(font, for: nativeHandle)
+        }
+    }
+
     /// Swift-native action invoked when user editing changes the string value.
     open var onTextChanged: ((NSTextField) -> Void)?
 
@@ -59,6 +70,7 @@ open class NSTextField: NSControl {
     open override func realizeNativePeer(in backend: NativeControlBackend, parent: NativeHandle?) -> NativeHandle {
         let handle = super.realizeNativePeer(in: backend, parent: parent)
         backend.setTextColor(textColor, for: handle)
+        backend.setFont(font, for: handle)
         backend.registerTextChangeAction(for: handle) { [weak self] text in
             self?.updateStringValueFromNative(text)
         }

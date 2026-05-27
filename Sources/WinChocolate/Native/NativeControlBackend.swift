@@ -64,6 +64,9 @@ public protocol NativeControlBackend: AnyObject {
     /// Updates a native control's background color.
     func setBackgroundColor(_ color: NSColor?, for handle: NativeHandle)
 
+    /// Updates a native control's font.
+    func setFont(_ font: NSFont?, for handle: NativeHandle)
+
     /// Updates a native button check state.
     func setButtonState(_ state: NSControl.StateValue, for handle: NativeHandle)
 

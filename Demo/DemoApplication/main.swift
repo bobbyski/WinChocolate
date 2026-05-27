@@ -43,7 +43,9 @@ var isCounterHidden = false
 var movedRight = false
 
 contentView.backgroundColor = .windowBackgroundColor
+counterLabel.font = NSFont.boldSystemFont(ofSize: 14)
 counterLabel.textColor = .green
+statusLabel.font = NSFont.systemFont(ofSize: 13)
 statusLabel.textColor = .blue
 statusLabel.backgroundColor = NSColor(calibratedRed: 0.94, green: 0.97, blue: 1.0, alpha: 1.0)
 

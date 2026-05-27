@@ -5,6 +5,7 @@ private typealias HINSTANCE = UnsafeMutableRawPointer
 private typealias HBRUSH = UnsafeMutableRawPointer
 private typealias HCURSOR = UnsafeMutableRawPointer
 private typealias HDC = UnsafeMutableRawPointer
+private typealias HFONT = UnsafeMutableRawPointer
 private typealias HGDIOBJ = UnsafeMutableRawPointer
 private typealias UINT = UInt32
 private typealias DWORD = UInt32
@@ -58,6 +59,24 @@ private func winCreatePopupMenu() -> HMENU?
 
 @_silgen_name("CreateSolidBrush")
 private func winCreateSolidBrush(_ color: DWORD) -> HBRUSH?
+
+@_silgen_name("CreateFontW")
+private func winCreateFontW(
+    _ height: Int32,
+    _ width: Int32,
+    _ escapement: Int32,
+    _ orientation: Int32,
+    _ weight: Int32,
+    _ italic: DWORD,
+    _ underline: DWORD,
+    _ strikeOut: DWORD,
+    _ charSet: DWORD,
+    _ outputPrecision: DWORD,
+    _ clipPrecision: DWORD,
+    _ quality: DWORD,
+    _ pitchAndFamily: DWORD,
+    _ faceName: UnsafePointer<UInt16>?
+) -> HFONT?
 
 @_silgen_name("CreateWindowExW")
 private func winCreateWindowExW(
@@ -186,6 +205,7 @@ private let swShow: Int32 = 5
 private let swHide: Int32 = 0
 private let wmDestroy: UINT = 0x0002
 private let wmEraseBackground: UINT = 0x0014
+private let wmSetFont: UINT = 0x0030
 private let wmCommand: UINT = 0x0111
 private let wmCtlColorEdit: UINT = 0x0133
 private let wmCtlColorStatic: UINT = 0x0138
@@ -201,6 +221,10 @@ private let cbnSelChange: UInt = 1
 private let bstUnchecked: WPARAM = 0
 private let bstChecked: WPARAM = 1
 private let bstIndeterminate: WPARAM = 2
+private let defaultCharset: DWORD = 1
+private let defaultPrecision: DWORD = 0
+private let defaultQuality: DWORD = 0
+private let defaultPitchAndFamily: DWORD = 0
 private let idOK: Int32 = 1
 private let idYes: Int32 = 6
 private let wsOverlapped: DWORD = 0x00000000
@@ -237,6 +261,7 @@ public final class Win32NativeControlBackend: NativeControlBackend {
     private var textColors: [UInt: DWORD] = [:]
     private var backgroundColors: [UInt: DWORD] = [:]
     private var backgroundBrushes: [UInt: HBRUSH] = [:]
+    private var fonts: [UInt: HFONT] = [:]
     private var nextCommandIdentifier: UInt = 1_000
 
     /// Creates a Win32 backend.
@@ -501,6 +526,51 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         } else {
             backgroundColors.removeValue(forKey: handle.rawValue)
         }
+        invalidate(handle)
+    }
+
+    /// Updates a native control's font.
+    public func setFont(_ font: NSFont?, for handle: NativeHandle) {
+        guard let hwnd = hwnd(from: handle) else {
+            return
+        }
+
+        if let nativeFont = fonts.removeValue(forKey: handle.rawValue) {
+            _ = winDeleteObject(nativeFont)
+        }
+
+        guard let font else {
+            _ = winSendMessageW(hwnd, wmSetFont, 0, 1)
+            invalidate(handle)
+            return
+        }
+
+        let fontHeight = -Int32((font.pointSize * 96.0 / 72.0).rounded())
+        let nativeFont = withWideString(font.fontName) { faceName in
+            winCreateFontW(
+                fontHeight,
+                0,
+                0,
+                0,
+                Int32(font.weight.rawValue),
+                0,
+                0,
+                0,
+                defaultCharset,
+                defaultPrecision,
+                defaultPrecision,
+                defaultQuality,
+                defaultPitchAndFamily,
+                faceName
+            )
+        }
+
+        guard let nativeFont else {
+            return
+        }
+
+        fonts[handle.rawValue] = nativeFont
+        _ = winSendMessageW(hwnd, wmSetFont, UInt(bitPattern: nativeFont), 1)
         invalidate(handle)
     }
 
@@ -890,6 +960,9 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         backgroundColors.removeValue(forKey: handle.rawValue)
         if let brush = backgroundBrushes.removeValue(forKey: handle.rawValue) {
             _ = winDeleteObject(brush)
+        }
+        if let font = fonts.removeValue(forKey: handle.rawValue) {
+            _ = winDeleteObject(font)
         }
     }
 

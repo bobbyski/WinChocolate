@@ -238,6 +238,21 @@ func testViewAndTextFieldColorsSyncToBackend() {
     expect(backend.records[textHandle]?.backgroundColor == NSColor(calibratedRed: 0.9, green: 0.95, blue: 1, alpha: 1), "Text field background color was not synced.")
 }
 
+func testFontValuesClampSizeAndSyncToBackend() {
+    let backend = InMemoryNativeControlBackend()
+    let textField = NSTextField(string: "Font", frame: NSMakeRect(0, 0, 120, 24))
+    let tinyFont = NSFont(name: "Segoe UI", size: -4)
+    let boldFont = NSFont.boldSystemFont(ofSize: 16)
+
+    textField.font = boldFont
+    let handle = textField.realizeNativePeer(in: backend, parent: nil)
+
+    expect(tinyFont.pointSize == 1, "Font point size did not clamp low.")
+    expect(boldFont.fontName == "Segoe UI", "Bold system font did not use system face.")
+    expect(boldFont.weight == .bold, "Bold system font did not use bold weight.")
+    expect(backend.records[handle]?.font == boldFont, "Text field font was not synced.")
+}
+
 
 func testRemovingRealizedSubviewDestroysNativePeer() {
     let backend = InMemoryNativeControlBackend()
@@ -302,6 +317,7 @@ testPopUpButtonNativeActionUpdatesSelection()
 testBoxUsesNativePeerAndSyncsTitle()
 testColorValuesClampComponents()
 testViewAndTextFieldColorsSyncToBackend()
+testFontValuesClampSizeAndSyncToBackend()
 testRemovingRealizedSubviewDestroysNativePeer()
 testMainMenuQuitItemTerminatesApplication()
 testAlertReturnsFirstButtonInMemory()

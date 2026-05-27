@@ -38,6 +38,9 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
 
         /// Recorded background color.
         public var backgroundColor: NSColor?
+
+        /// Recorded font.
+        public var font: NSFont?
     }
 
     private var nextRawHandle: UInt = 1
@@ -196,6 +199,16 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
         records[handle] = record
     }
 
+    /// Updates a recorded font.
+    public func setFont(_ font: NSFont?, for handle: NativeHandle) {
+        guard var record = records[handle] else {
+            return
+        }
+
+        record.font = font
+        records[handle] = record
+    }
+
     /// Updates a recorded button state.
     public func setButtonState(_ state: NSControl.StateValue, for handle: NativeHandle) {
         guard var record = records[handle] else {
@@ -268,7 +281,8 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
             popUpItems: [],
             popUpSelectedIndex: -1,
             textColor: nil,
-            backgroundColor: nil
+            backgroundColor: nil,
+            font: nil
         )
         return handle
     }
