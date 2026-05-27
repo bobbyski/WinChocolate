@@ -4,7 +4,7 @@
 
 WinChocolate is an AppKit-shaped SwiftPM framework for Windows. The goal is to let application code replace `import Cocoa` or `import AppKit` with `import WinChocolate` and keep familiar names such as `NSApplication`, `NSWindow`, `NSView`, `NSButton`, and `NSTextField`, while the implementation wraps native Windows controls behind a backend boundary.
 
-Overall planned-code progress: `██████░░░░` 63%
+Overall planned-code progress: `██████░░░░` 66%
 
 ## First Milestone
 
@@ -23,9 +23,9 @@ The first milestone is a runnable AppKit-shaped Windows application slice:
 | Phase | Status | Progress | Planned Commands | Notes |
 |---|---:|---:|---|---|
 | 1: SwiftPM Shape And Core Names | Implemented | 100% | package, sources, tests, docs | Initial AppKit-compatible public type names are in place. |
-| 2: Native Backend Boundary | Partial | 85% | HWND creation, message loop, child controls | User32-backed window, custom view container, menu, button, checkbox, static/edit text, text/frame/visibility/enabled updates, native cleanup, and command dispatch are in place. |
-| 3: AppKit Surface Expansion | Partial | 24% | menus, dialogs, responders, layout, text, images | Initial `NSMenu`, `NSMenuItem`, `NSAlert`, editable `NSTextField`, and switch-style `NSButton` APIs are present. |
-| 4: Demo Application | Partial | 74% | SwiftPM demo app | Demo source builds as a SwiftPM executable and visibly exercises native state APIs, modal alerts, editable text, and checkbox state. |
+| 2: Native Backend Boundary | Partial | 87% | HWND creation, message loop, child controls | User32-backed window, custom view container, menu, button, checkbox, radio button, static/edit text, text/frame/visibility/enabled updates, native cleanup, and command dispatch are in place. |
+| 3: AppKit Surface Expansion | Partial | 28% | menus, dialogs, responders, layout, text, images | Initial `NSMenu`, `NSMenuItem`, `NSAlert`, editable `NSTextField`, and push/switch/radio `NSButton` APIs are present. |
+| 4: Demo Application | Partial | 78% | SwiftPM demo app | Demo source builds as a SwiftPM executable and visibly exercises native state APIs, modal alerts, editable text, checkbox state, and radio groups. |
 
 ## Checklist
 
@@ -38,6 +38,7 @@ The first milestone is a runnable AppKit-shaped Windows application slice:
 - [x] Add initial `NSAlert` API backed by native modal dialogs.
 - [x] Add editable `NSTextField` backed by native edit controls.
 - [x] Add switch-style `NSButton` backed by native checkboxes.
+- [x] Add radio-style `NSButton` backed by native radio buttons.
 - [x] Add native state updates for title/text, frame, hidden, enabled, and destroyed views.
 - [ ] Add `NSResponder`, image, font, color, layout, and deeper event APIs.
 - [x] Add a Swift demo application skeleton under `Demo`.
@@ -66,6 +67,8 @@ The public API uses Apple counterpart names exactly where implemented. The first
 
 Objective-C runtime behavior is not available in normal Swift on Windows. Where AppKit depends on Objective-C selectors, WinChocolate preserves the property names and adds Swift-native closure dispatch so native Windows applications can still be ergonomic.
 
+Foundation should be preferred for shared data structures and platform-neutral behavior whenever it is available and appropriate. Windows-native data constructs should stay behind backend boundaries or be used only when Foundation does not provide a suitable cross-platform representation.
+
 ## Native Control Strategy
 
 Native code is isolated behind `NativeControlBackend`. Public controls do not call Win32 directly; they ask the backend to create or update peers. This keeps tests deterministic and makes future platform work easier to review.
@@ -81,6 +84,8 @@ Realized views and controls now propagate common state changes to native peers. 
 `NSTextField` now supports editable and static modes. Static fields map to native `STATIC` controls; editable fields map to native `EDIT` controls and use `EN_CHANGE` notifications to update `stringValue` and invoke `onTextChanged`.
 
 `NSButton` now supports `momentaryPushIn` and `switchButton` modes. Switch buttons map to native auto-checkbox controls and synchronize `NSControl.StateValue` through `BM_GETCHECK` and `BM_SETCHECK`.
+
+Radio-style `NSButton` controls map to native auto-radio buttons and enforce sibling exclusivity in the Swift view hierarchy. This keeps the public behavior AppKit-shaped while the backend handles native check state.
 
 ## Review Notes
 

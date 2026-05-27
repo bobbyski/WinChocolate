@@ -31,6 +31,9 @@ let hideButton = NSButton(title: "Hide Counter", frame: NSMakeRect(272, 204, 128
 let moveButton = NSButton(title: "Move Click", frame: NSMakeRect(416, 204, 112, 32))
 let alertButton = NSButton(title: "Alert", frame: NSMakeRect(24, 108, 88, 32))
 let titleCheckbox = NSButton(title: "Show count in title", frame: NSMakeRect(128, 108, 180, 32))
+let infoRadio = NSButton(title: "Info", frame: NSMakeRect(24, 28, 72, 24))
+let warningRadio = NSButton(title: "Warning", frame: NSMakeRect(104, 28, 92, 24))
+let criticalRadio = NSButton(title: "Critical", frame: NSMakeRect(204, 28, 92, 24))
 var clickCount = 0
 var isClickEnabled = true
 var isCounterHidden = false
@@ -38,6 +41,10 @@ var movedRight = false
 
 titleCheckbox.setButtonType(.switchButton)
 titleCheckbox.state = .on
+infoRadio.setButtonType(.radioButton)
+warningRadio.setButtonType(.radioButton)
+criticalRadio.setButtonType(.radioButton)
+infoRadio.state = .on
 
 editableTextField.isEditable = true
 editableTextField.onTextChanged = { field in
@@ -81,7 +88,13 @@ alertButton.onAction = { _ in
     let alert = NSAlert()
     alert.messageText = "WinChocolate is running"
     alert.informativeText = "This is a native modal NSAlert backed by MessageBoxW."
-    alert.alertStyle = .informational
+    if warningRadio.state == .on {
+        alert.alertStyle = .warning
+    } else if criticalRadio.state == .on {
+        alert.alertStyle = .critical
+    } else {
+        alert.alertStyle = .informational
+    }
     alert.addButton(withTitle: "OK")
     _ = alert.runModal()
     statusLabel.stringValue = "Alert dismissed"
@@ -96,6 +109,18 @@ titleCheckbox.onAction = { _ in
     }
 }
 
+infoRadio.onAction = { _ in
+    statusLabel.stringValue = "Alert style: info"
+}
+
+warningRadio.onAction = { _ in
+    statusLabel.stringValue = "Alert style: warning"
+}
+
+criticalRadio.onAction = { _ in
+    statusLabel.stringValue = "Alert style: critical"
+}
+
 contentView.addSubview(counterLabel)
 contentView.addSubview(statusLabel)
 contentView.addSubview(editableLabel)
@@ -106,6 +131,9 @@ contentView.addSubview(hideButton)
 contentView.addSubview(moveButton)
 contentView.addSubview(alertButton)
 contentView.addSubview(titleCheckbox)
+contentView.addSubview(infoRadio)
+contentView.addSubview(warningRadio)
+contentView.addSubview(criticalRadio)
 window.contentView = contentView
 window.makeKeyAndOrderFront(nil)
 

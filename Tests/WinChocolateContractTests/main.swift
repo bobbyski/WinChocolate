@@ -85,6 +85,22 @@ func testSwitchButtonTogglesStateOnPerformClick() {
     expect(checkbox.state == .off, "Switch button did not toggle off.")
 }
 
+func testRadioButtonClearsSiblingRadioButtons() {
+    let parent = NSView(frame: NSMakeRect(0, 0, 300, 100))
+    let first = NSButton(title: "First", frame: NSMakeRect(0, 0, 80, 24))
+    let second = NSButton(title: "Second", frame: NSMakeRect(90, 0, 80, 24))
+    first.setButtonType(.radioButton)
+    second.setButtonType(.radioButton)
+    parent.addSubview(first)
+    parent.addSubview(second)
+
+    first.performClick(nil)
+    second.performClick(nil)
+
+    expect(first.state == .off, "First radio button was not cleared.")
+    expect(second.state == .on, "Second radio button was not selected.")
+}
+
 func testRealizedViewStatePropagatesToBackend() {
     let backend = InMemoryNativeControlBackend()
     let view = NSView(frame: NSMakeRect(0, 0, 100, 100))
@@ -135,6 +151,18 @@ func testSwitchButtonUsesCheckboxNativePeer() {
 
     expect(backend.records[handle]?.kind == "checkbox", "Switch button did not request checkbox native peer.")
     expect(backend.records[handle]?.buttonState == .on, "Switch button state was not synced to backend.")
+}
+
+func testRadioButtonUsesRadioNativePeer() {
+    let backend = InMemoryNativeControlBackend()
+    let radioButton = NSButton(title: "Radio", frame: NSMakeRect(0, 0, 120, 24))
+    radioButton.setButtonType(.radioButton)
+    radioButton.state = .on
+
+    let handle = radioButton.realizeNativePeer(in: backend, parent: nil)
+
+    expect(backend.records[handle]?.kind == "radioButton", "Radio button did not request radio native peer.")
+    expect(backend.records[handle]?.buttonState == .on, "Radio button state was not synced to backend.")
 }
 
 
@@ -190,10 +218,12 @@ testViewHierarchyMaintainsSuperviewOwnership()
 testControlClosureActionIsInvoked()
 testButtonPerformClickHonorsEnabledState()
 testSwitchButtonTogglesStateOnPerformClick()
+testRadioButtonClearsSiblingRadioButtons()
 testRealizedViewStatePropagatesToBackend()
 testWindowTitleAndFramePropagateToBackend()
 testEditableTextFieldUsesEditableNativePeer()
 testSwitchButtonUsesCheckboxNativePeer()
+testRadioButtonUsesRadioNativePeer()
 testRemovingRealizedSubviewDestroysNativePeer()
 testMainMenuQuitItemTerminatesApplication()
 testAlertReturnsFirstButtonInMemory()

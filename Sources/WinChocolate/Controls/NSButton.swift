@@ -11,6 +11,9 @@ open class NSButton: NSControl {
 
         /// Toggle checkbox button.
         case switchButton
+
+        /// Mutually exclusive radio button.
+        case radioButton
     }
 
     /// The button title.
@@ -64,6 +67,8 @@ open class NSButton: NSControl {
             return backend.createButton(title: title, frame: frame, parent: parent)
         case .switchButton:
             return backend.createCheckbox(title: title, frame: frame, parent: parent)
+        case .radioButton:
+            return backend.createRadioButton(title: title, frame: frame, parent: parent)
         }
     }
 
@@ -90,6 +95,9 @@ open class NSButton: NSControl {
     open func performClick(_ sender: Any?) {
         if buttonType == .switchButton {
             state = state == .on ? .off : .on
+        } else if buttonType == .radioButton {
+            state = .on
+            clearSiblingRadioButtons()
         }
 
         sendAction()
@@ -104,5 +112,19 @@ open class NSButton: NSControl {
         isUpdatingStateFromNative = true
         self.state = state
         isUpdatingStateFromNative = false
+
+        if buttonType == .radioButton, state == .on {
+            clearSiblingRadioButtons()
+        }
+    }
+
+    private func clearSiblingRadioButtons() {
+        guard let superview else {
+            return
+        }
+
+        for case let button as NSButton in superview.subviews where button !== self && button.buttonType == .radioButton {
+            button.state = .off
+        }
     }
 }

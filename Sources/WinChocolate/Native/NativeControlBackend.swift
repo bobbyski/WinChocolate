@@ -34,6 +34,9 @@ public protocol NativeControlBackend: AnyObject {
     /// Creates a native checkbox child.
     func createCheckbox(title: String, frame: NSRect, parent: NativeHandle?) -> NativeHandle
 
+    /// Creates a native radio button child.
+    func createRadioButton(title: String, frame: NSRect, parent: NativeHandle?) -> NativeHandle
+
     /// Creates a native text field child.
     func createTextField(text: String, frame: NSRect, parent: NativeHandle?, isEditable: Bool) -> NativeHandle
 
