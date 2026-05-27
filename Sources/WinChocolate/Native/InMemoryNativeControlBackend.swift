@@ -60,6 +60,12 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     /// Registered mouse-up actions by handle.
     public private(set) var mouseUpActions: [NativeHandle: (NSEvent) -> Void] = [:]
 
+    /// Registered key-down actions by handle.
+    public private(set) var keyDownActions: [NativeHandle: (NSEvent) -> Void] = [:]
+
+    /// Registered key-up actions by handle.
+    public private(set) var keyUpActions: [NativeHandle: (NSEvent) -> Void] = [:]
+
     /// Whether the application run loop has been requested.
     public private(set) var didRunApplication = false
 
@@ -101,6 +107,8 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
         actions.removeValue(forKey: handle)
         mouseDownActions.removeValue(forKey: handle)
         mouseUpActions.removeValue(forKey: handle)
+        keyDownActions.removeValue(forKey: handle)
+        keyUpActions.removeValue(forKey: handle)
     }
 
     /// Removes a recorded native child object.
@@ -109,6 +117,8 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
         actions.removeValue(forKey: handle)
         mouseDownActions.removeValue(forKey: handle)
         mouseUpActions.removeValue(forKey: handle)
+        keyDownActions.removeValue(forKey: handle)
+        keyUpActions.removeValue(forKey: handle)
     }
 
     /// Records a view creation request.
@@ -280,6 +290,16 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     /// Records a mouse-up action.
     public func registerMouseUpAction(for handle: NativeHandle, action: @escaping (NSEvent) -> Void) {
         mouseUpActions[handle] = action
+    }
+
+    /// Records a key-down action.
+    public func registerKeyDownAction(for handle: NativeHandle, action: @escaping (NSEvent) -> Void) {
+        keyDownActions[handle] = action
+    }
+
+    /// Records a key-up action.
+    public func registerKeyUpAction(for handle: NativeHandle, action: @escaping (NSEvent) -> Void) {
+        keyUpActions[handle] = action
     }
 
     /// Returns the default alert response without displaying UI.

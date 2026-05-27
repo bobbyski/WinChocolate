@@ -23,6 +23,8 @@ window.title = "WinChocolate Click Counter"
 final class DemoContentView: NSView {
     var onBlankAreaMouseDown: ((NSEvent) -> Void)?
     var onBlankAreaMouseUp: ((NSEvent) -> Void)?
+    var onKeyDown: ((NSEvent) -> Void)?
+    var onKeyUp: ((NSEvent) -> Void)?
 
     override func mouseDown(with event: NSEvent) {
         onBlankAreaMouseDown?(event)
@@ -32,6 +34,16 @@ final class DemoContentView: NSView {
     override func mouseUp(with event: NSEvent) {
         onBlankAreaMouseUp?(event)
         super.mouseUp(with: event)
+    }
+
+    override func keyDown(with event: NSEvent) {
+        onKeyDown?(event)
+        super.keyDown(with: event)
+    }
+
+    override func keyUp(with event: NSEvent) {
+        onKeyUp?(event)
+        super.keyUp(with: event)
     }
 }
 
@@ -68,6 +80,12 @@ contentView.onBlankAreaMouseDown = { event in
 }
 contentView.onBlankAreaMouseUp = { event in
     statusLabel.stringValue = "Mouse up at \(Int(event.locationInWindow.x)), \(Int(event.locationInWindow.y))"
+}
+contentView.onKeyDown = { event in
+    statusLabel.stringValue = "Key down: \(event.keyCode ?? 0)"
+}
+contentView.onKeyUp = { event in
+    statusLabel.stringValue = "Key up: \(event.keyCode ?? 0)"
 }
 
 titleCheckbox.setButtonType(.switchButton)

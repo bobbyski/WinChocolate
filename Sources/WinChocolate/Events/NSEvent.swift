@@ -24,9 +24,13 @@ public struct NSEvent: Equatable, Sendable {
     /// The event location in window coordinates.
     public var locationInWindow: NSPoint
 
+    /// Native key code for keyboard events, when available.
+    public var keyCode: UInt16?
+
     /// Creates an event.
-    public init(type: EventType, locationInWindow: NSPoint) {
+    public init(type: EventType, locationInWindow: NSPoint, keyCode: UInt16? = nil) {
         self.type = type
         self.locationInWindow = locationInWindow
+        self.keyCode = keyCode
     }
 }

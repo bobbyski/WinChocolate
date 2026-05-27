@@ -37,6 +37,7 @@ WinChocolate is early and intentionally incomplete. The current milestone proves
 - Initial `NSFont` support for text field fonts
 - Initial `NSResponder` chain support for windows and views
 - Native mouse-down/up dispatch into `NSView.mouseDown(with:)` and `NSView.mouseUp(with:)`
+- Native key-down/up dispatch into `NSView.keyDown(with:)` and `NSView.keyUp(with:)`
 - SwiftPM demo app with a click counter and editable text field
 
 The Win32 backend currently uses a narrow manual User32/Gdi32 FFI layer because this local ARM64 Swift toolchain cannot import `WinSDK` cleanly.

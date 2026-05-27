@@ -112,6 +112,12 @@ open class NSView: NSResponder {
         backend.registerMouseUpAction(for: handle) { [weak self] event in
             self?.mouseUp(with: event)
         }
+        backend.registerKeyDownAction(for: handle) { [weak self] event in
+            self?.keyDown(with: event)
+        }
+        backend.registerKeyUpAction(for: handle) { [weak self] event in
+            self?.keyUp(with: event)
+        }
 
         for subview in subviews {
             subview.realizeNativePeer(in: backend, parent: handle)

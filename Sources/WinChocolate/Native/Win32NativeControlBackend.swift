@@ -175,6 +175,9 @@ private func winSetBkColor(_ deviceContext: HDC?, _ color: DWORD) -> DWORD
 @_silgen_name("SetTextColor")
 private func winSetTextColor(_ deviceContext: HDC?, _ color: DWORD) -> DWORD
 
+@_silgen_name("SetFocus")
+private func winSetFocus(_ hwnd: HWND?) -> HWND?
+
 @_silgen_name("SetWindowTextW")
 private func winSetWindowTextW(_ hwnd: HWND?, _ text: UnsafePointer<UInt16>?) -> Int32
 
@@ -209,6 +212,8 @@ private let wmSetFont: UINT = 0x0030
 private let wmCommand: UINT = 0x0111
 private let wmCtlColorEdit: UINT = 0x0133
 private let wmCtlColorStatic: UINT = 0x0138
+private let wmKeyDown: UINT = 0x0100
+private let wmKeyUp: UINT = 0x0101
 private let wmLButtonDown: UINT = 0x0201
 private let wmLButtonUp: UINT = 0x0202
 private let bmGetCheck: UINT = 0x00f0
@@ -261,6 +266,8 @@ public final class Win32NativeControlBackend: NativeControlBackend {
     private var textChangeActions: [UInt: (String) -> Void] = [:]
     private var mouseDownActions: [UInt: (NSEvent) -> Void] = [:]
     private var mouseUpActions: [UInt: (NSEvent) -> Void] = [:]
+    private var keyDownActions: [UInt: (NSEvent) -> Void] = [:]
+    private var keyUpActions: [UInt: (NSEvent) -> Void] = [:]
     private var commandActions: [UInt: () -> Void] = [:]
     private var textColors: [UInt: DWORD] = [:]
     private var backgroundColors: [UInt: DWORD] = [:]
@@ -358,6 +365,8 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         textChangeActions.removeValue(forKey: handle.rawValue)
         mouseDownActions.removeValue(forKey: handle.rawValue)
         mouseUpActions.removeValue(forKey: handle.rawValue)
+        keyDownActions.removeValue(forKey: handle.rawValue)
+        keyUpActions.removeValue(forKey: handle.rawValue)
         clearAppearance(for: handle)
     }
 
@@ -372,6 +381,8 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         textChangeActions.removeValue(forKey: handle.rawValue)
         mouseDownActions.removeValue(forKey: handle.rawValue)
         mouseUpActions.removeValue(forKey: handle.rawValue)
+        keyDownActions.removeValue(forKey: handle.rawValue)
+        keyUpActions.removeValue(forKey: handle.rawValue)
         clearAppearance(for: handle)
     }
 
@@ -672,6 +683,16 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         mouseUpActions[handle.rawValue] = action
     }
 
+    /// Registers the action to perform when a native view receives a key-down event.
+    public func registerKeyDownAction(for handle: NativeHandle, action: @escaping (NSEvent) -> Void) {
+        keyDownActions[handle.rawValue] = action
+    }
+
+    /// Registers the action to perform when a native view receives a key-up event.
+    public func registerKeyUpAction(for handle: NativeHandle, action: @escaping (NSEvent) -> Void) {
+        keyUpActions[handle.rawValue] = action
+    }
+
     /// Runs a native modal alert.
     public func runAlert(_ alert: NSAlert) -> NSApplication.ModalResponse {
         let body = alert.informativeText.isEmpty
@@ -697,11 +718,26 @@ public final class Win32NativeControlBackend: NativeControlBackend {
 
     private func dispatchMessage(hwnd: HWND?, message: UINT, wParam: WPARAM, lParam: LPARAM) -> LRESULT? {
         switch message {
+        case wmKeyDown:
+            guard let hwnd, let action = keyDownActions[nativeHandle(from: hwnd).rawValue] else {
+                return nil
+            }
+
+            action(NSEvent(type: .keyDown, locationInWindow: NSMakePoint(0, 0), keyCode: UInt16(wParam & 0xffff)))
+            return 0
+        case wmKeyUp:
+            guard let hwnd, let action = keyUpActions[nativeHandle(from: hwnd).rawValue] else {
+                return nil
+            }
+
+            action(NSEvent(type: .keyUp, locationInWindow: NSMakePoint(0, 0), keyCode: UInt16(wParam & 0xffff)))
+            return 0
         case wmLButtonDown:
             guard let hwnd, let action = mouseDownActions[nativeHandle(from: hwnd).rawValue] else {
                 return nil
             }
 
+            _ = winSetFocus(hwnd)
             action(NSEvent(type: .leftMouseDown, locationInWindow: point(from: lParam)))
             return 0
         case wmLButtonUp:

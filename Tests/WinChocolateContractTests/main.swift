@@ -61,6 +61,8 @@ final class RecordingResponder: NSResponder {
 final class RecordingView: NSView {
     var mouseDownCount = 0
     var mouseUpCount = 0
+    var keyDownCount = 0
+    var keyUpCount = 0
     var lastEvent: NSEvent?
 
     override func mouseDown(with event: NSEvent) {
@@ -70,6 +72,16 @@ final class RecordingView: NSView {
 
     override func mouseUp(with event: NSEvent) {
         mouseUpCount += 1
+        lastEvent = event
+    }
+
+    override func keyDown(with event: NSEvent) {
+        keyDownCount += 1
+        lastEvent = event
+    }
+
+    override func keyUp(with event: NSEvent) {
+        keyUpCount += 1
         lastEvent = event
     }
 }
@@ -138,6 +150,30 @@ func testNativeMouseUpDispatchesToView() {
 
     expect(view.mouseUpCount == 1, "Native mouse-up action did not reach view.")
     expect(view.lastEvent == event, "Native mouse-up event was not forwarded intact.")
+}
+
+func testNativeKeyDownDispatchesToView() {
+    let backend = InMemoryNativeControlBackend()
+    let view = RecordingView(frame: NSMakeRect(0, 0, 100, 100))
+    let handle = view.realizeNativePeer(in: backend, parent: nil)
+    let event = NSEvent(type: .keyDown, locationInWindow: NSMakePoint(0, 0), keyCode: 65)
+
+    backend.keyDownActions[handle]?(event)
+
+    expect(view.keyDownCount == 1, "Native key-down action did not reach view.")
+    expect(view.lastEvent == event, "Native key-down event was not forwarded intact.")
+}
+
+func testNativeKeyUpDispatchesToView() {
+    let backend = InMemoryNativeControlBackend()
+    let view = RecordingView(frame: NSMakeRect(0, 0, 100, 100))
+    let handle = view.realizeNativePeer(in: backend, parent: nil)
+    let event = NSEvent(type: .keyUp, locationInWindow: NSMakePoint(0, 0), keyCode: 65)
+
+    backend.keyUpActions[handle]?(event)
+
+    expect(view.keyUpCount == 1, "Native key-up action did not reach view.")
+    expect(view.lastEvent == event, "Native key-up event was not forwarded intact.")
 }
 
 func testControlClosureActionIsInvoked() {
@@ -403,6 +439,8 @@ testResponderForwardsUnhandledEvents()
 testWindowIsContentViewNextResponder()
 testNativeMouseDownDispatchesToView()
 testNativeMouseUpDispatchesToView()
+testNativeKeyDownDispatchesToView()
+testNativeKeyUpDispatchesToView()
 testControlClosureActionIsInvoked()
 testButtonPerformClickHonorsEnabledState()
 testSwitchButtonTogglesStateOnPerformClick()
