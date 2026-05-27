@@ -199,6 +199,17 @@ func testPopUpButtonNativeActionUpdatesSelection() {
     expect(actionCount == 1, "Pop-up button action was not sent.")
 }
 
+func testBoxUsesNativePeerAndSyncsTitle() {
+    let backend = InMemoryNativeControlBackend()
+    let box = NSBox(title: "Group", frame: NSMakeRect(0, 0, 200, 120))
+
+    let handle = box.realizeNativePeer(in: backend, parent: nil)
+    box.title = "Updated Group"
+
+    expect(backend.records[handle]?.kind == "box", "Box did not request native peer.")
+    expect(backend.records[handle]?.text == "Updated Group", "Box title was not synced to backend.")
+}
+
 
 func testRemovingRealizedSubviewDestroysNativePeer() {
     let backend = InMemoryNativeControlBackend()
@@ -260,6 +271,7 @@ testSwitchButtonUsesCheckboxNativePeer()
 testRadioButtonUsesRadioNativePeer()
 testPopUpButtonUsesNativePeerAndSelection()
 testPopUpButtonNativeActionUpdatesSelection()
+testBoxUsesNativePeerAndSyncsTitle()
 testRemovingRealizedSubviewDestroysNativePeer()
 testMainMenuQuitItemTerminatesApplication()
 testAlertReturnsFirstButtonInMemory()

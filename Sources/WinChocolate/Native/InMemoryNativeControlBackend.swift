@@ -112,6 +112,11 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
         makeHandle(kind: "radioButton", text: title, frame: frame, parent: parent)
     }
 
+    /// Records a box creation request.
+    public func createBox(title: String, frame: NSRect, parent: NativeHandle?) -> NativeHandle {
+        makeHandle(kind: "box", text: title, frame: frame, parent: parent)
+    }
+
     /// Records a text field creation request.
     public func createTextField(text: String, frame: NSRect, parent: NativeHandle?, isEditable: Bool) -> NativeHandle {
         makeHandle(kind: isEditable ? "editableTextField" : "textField", text: text, frame: frame, parent: parent)

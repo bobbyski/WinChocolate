@@ -184,6 +184,7 @@ private let wsBorder: DWORD = 0x00800000
 private let esAutoHScroll: DWORD = 0x0080
 private let bsAutoCheckBox: DWORD = 0x00000003
 private let bsAutoRadioButton: DWORD = 0x00000009
+private let bsGroupBox: DWORD = 0x00000007
 private let cbsDropdownList: DWORD = 0x0003
 
 /// Win32 implementation of WinChocolate's native backend.
@@ -349,6 +350,18 @@ public final class Win32NativeControlBackend: NativeControlBackend {
             parent: parent,
             commandIdentifier: nextCommandID(),
             style: wsChild | wsVisible | bsAutoRadioButton
+        )
+    }
+
+    /// Creates a native box child.
+    public func createBox(title: String, frame: NSRect, parent: NativeHandle?) -> NativeHandle {
+        createChildWindow(
+            className: "BUTTON",
+            text: title,
+            frame: frame,
+            parent: parent,
+            commandIdentifier: nil,
+            style: wsChild | wsVisible | bsGroupBox
         )
     }
 

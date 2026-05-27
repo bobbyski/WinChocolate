@@ -9,6 +9,7 @@ if not defined SWIFT_EXE (
 )
 set "DEMO_EXE=%SCRIPT_DIR%.build\aarch64-unknown-windows-msvc\debug\WinChocolateDemo.exe"
 set "CONTRACT_TEST_EXE=%SCRIPT_DIR%.build\aarch64-unknown-windows-msvc\debug\WinChocolateContractTests.exe"
+set "RUN_DIR=%SCRIPT_DIR%Run"
 
 echo Building WinChocolate...
 "%SWIFT_EXE%" build
@@ -41,7 +42,17 @@ if errorlevel 1 (
 
 echo.
 echo Launching WinChocolate demo window...
-start "" "%DEMO_EXE%"
+if not exist "%RUN_DIR%" mkdir "%RUN_DIR%"
+set "RUN_DEMO_EXE=%RUN_DIR%\WinChocolateDemo-%RANDOM%-%RANDOM%.exe"
+copy /y "%DEMO_EXE%" "%RUN_DEMO_EXE%" >nul
+if errorlevel 1 (
+    echo.
+    echo Demo staging failed.
+    popd >nul
+    exit /b 1
+)
+
+start "" "%RUN_DEMO_EXE%"
 if errorlevel 1 (
     echo.
     echo Demo launch failed.

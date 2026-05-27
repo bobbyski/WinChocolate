@@ -13,29 +13,30 @@ menuBar.addItem(appMenuItem)
 app.mainMenu = menuBar
 
 let window = NSWindow(
-    contentRect: NSMakeRect(100, 100, 560, 360),
+    contentRect: NSMakeRect(100, 100, 760, 500),
     styleMask: [.titled, .closable, .miniaturizable, .resizable],
     backing: .buffered,
     defer: false
 )
 window.title = "WinChocolate Click Counter"
 
-let contentView = NSView(frame: NSMakeRect(0, 0, 560, 360))
-let counterLabel = NSTextField(string: "Clicks: 0", frame: NSMakeRect(24, 286, 260, 24))
-let statusLabel = NSTextField(string: "Ready", frame: NSMakeRect(24, 252, 360, 24))
-let editableLabel = NSTextField(string: "Type here:", frame: NSMakeRect(24, 72, 80, 24))
-let editableTextField = NSTextField(string: "", frame: NSMakeRect(112, 72, 240, 24))
-let button = NSButton(title: "Click", frame: NSMakeRect(24, 204, 88, 32))
-let enableButton = NSButton(title: "Disable Click", frame: NSMakeRect(128, 204, 128, 32))
-let hideButton = NSButton(title: "Hide Counter", frame: NSMakeRect(272, 204, 128, 32))
-let moveButton = NSButton(title: "Move Click", frame: NSMakeRect(416, 204, 112, 32))
-let alertButton = NSButton(title: "Alert", frame: NSMakeRect(24, 108, 88, 32))
-let titleCheckbox = NSButton(title: "Show count in title", frame: NSMakeRect(128, 108, 180, 32))
-let alertStyleLabel = NSTextField(string: "Alert style:", frame: NSMakeRect(316, 108, 84, 24))
-let alertStylePopup = NSPopUpButton(frame: NSMakeRect(404, 104, 124, 92), pullsDown: false)
-let infoRadio = NSButton(title: "Info", frame: NSMakeRect(24, 28, 72, 24))
-let warningRadio = NSButton(title: "Warning", frame: NSMakeRect(104, 28, 92, 24))
-let criticalRadio = NSButton(title: "Critical", frame: NSMakeRect(204, 28, 92, 24))
+let contentView = NSView(frame: NSMakeRect(0, 0, 760, 500))
+let counterLabel = NSTextField(string: "Clicks: 0", frame: NSMakeRect(32, 36, 300, 24))
+let statusLabel = NSTextField(string: "Ready", frame: NSMakeRect(32, 74, 520, 24))
+let button = NSButton(title: "Click", frame: NSMakeRect(32, 124, 100, 34))
+let enableButton = NSButton(title: "Disable Click", frame: NSMakeRect(152, 124, 144, 34))
+let hideButton = NSButton(title: "Hide Counter", frame: NSMakeRect(316, 124, 144, 34))
+let moveButton = NSButton(title: "Move Click", frame: NSMakeRect(480, 124, 128, 34))
+let editableLabel = NSTextField(string: "Type here:", frame: NSMakeRect(32, 188, 104, 24))
+let editableTextField = NSTextField(string: "", frame: NSMakeRect(152, 186, 360, 28))
+let alertButton = NSButton(title: "Alert", frame: NSMakeRect(32, 252, 100, 34))
+let titleCheckbox = NSButton(title: "Show count in title", frame: NSMakeRect(152, 252, 228, 34))
+let alertStyleBox = NSBox(title: "Alert Style", frame: NSMakeRect(448, 220, 248, 116))
+let alertStyleLabel = NSTextField(string: "Alert style:", frame: NSMakeRect(472, 256, 112, 24))
+let alertStylePopup = NSPopUpButton(frame: NSMakeRect(472, 286, 184, 96), pullsDown: false)
+let infoRadio = NSButton(title: "Info", frame: NSMakeRect(32, 334, 88, 24))
+let warningRadio = NSButton(title: "Warning", frame: NSMakeRect(136, 334, 116, 24))
+let criticalRadio = NSButton(title: "Critical", frame: NSMakeRect(268, 334, 116, 24))
 var clickCount = 0
 var isClickEnabled = true
 var isCounterHidden = false
@@ -83,8 +84,8 @@ hideButton.onAction = { _ in
 moveButton.onAction = { _ in
     movedRight.toggle()
     button.frame = movedRight
-        ? NSMakeRect(24, 156, 88, 32)
-        : NSMakeRect(24, 204, 88, 32)
+        ? NSMakeRect(32, 386, 100, 34)
+        : NSMakeRect(32, 124, 100, 34)
     statusLabel.stringValue = movedRight ? "Click button moved down" : "Click button moved back"
 }
 
@@ -149,6 +150,7 @@ contentView.addSubview(hideButton)
 contentView.addSubview(moveButton)
 contentView.addSubview(alertButton)
 contentView.addSubview(titleCheckbox)
+contentView.addSubview(alertStyleBox)
 contentView.addSubview(alertStyleLabel)
 contentView.addSubview(alertStylePopup)
 contentView.addSubview(infoRadio)
