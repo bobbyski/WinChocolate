@@ -209,6 +209,7 @@ private let wmSetFont: UINT = 0x0030
 private let wmCommand: UINT = 0x0111
 private let wmCtlColorEdit: UINT = 0x0133
 private let wmCtlColorStatic: UINT = 0x0138
+private let wmLButtonDown: UINT = 0x0201
 private let bmGetCheck: UINT = 0x00f0
 private let bmSetCheck: UINT = 0x00f1
 private let cbAddString: UINT = 0x0143
@@ -257,6 +258,7 @@ public final class Win32NativeControlBackend: NativeControlBackend {
     private var windowHandles: Set<NativeHandle> = []
     private var controlActions: [UInt: () -> Void] = [:]
     private var textChangeActions: [UInt: (String) -> Void] = [:]
+    private var mouseDownActions: [UInt: (NSEvent) -> Void] = [:]
     private var commandActions: [UInt: () -> Void] = [:]
     private var textColors: [UInt: DWORD] = [:]
     private var backgroundColors: [UInt: DWORD] = [:]
@@ -352,6 +354,7 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         windowHandles.remove(handle)
         controlActions.removeValue(forKey: handle.rawValue)
         textChangeActions.removeValue(forKey: handle.rawValue)
+        mouseDownActions.removeValue(forKey: handle.rawValue)
         clearAppearance(for: handle)
     }
 
@@ -364,6 +367,7 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         _ = winDestroyWindow(hwnd)
         controlActions.removeValue(forKey: handle.rawValue)
         textChangeActions.removeValue(forKey: handle.rawValue)
+        mouseDownActions.removeValue(forKey: handle.rawValue)
         clearAppearance(for: handle)
     }
 
@@ -654,6 +658,11 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         textChangeActions[handle.rawValue] = action
     }
 
+    /// Registers the action to perform when a native view receives a mouse-down event.
+    public func registerMouseDownAction(for handle: NativeHandle, action: @escaping (NSEvent) -> Void) {
+        mouseDownActions[handle.rawValue] = action
+    }
+
     /// Runs a native modal alert.
     public func runAlert(_ alert: NSAlert) -> NSApplication.ModalResponse {
         let body = alert.informativeText.isEmpty
@@ -679,6 +688,13 @@ public final class Win32NativeControlBackend: NativeControlBackend {
 
     private func dispatchMessage(hwnd: HWND?, message: UINT, wParam: WPARAM, lParam: LPARAM) -> LRESULT? {
         switch message {
+        case wmLButtonDown:
+            guard let hwnd, let action = mouseDownActions[nativeHandle(from: hwnd).rawValue] else {
+                return nil
+            }
+
+            action(NSEvent(type: .leftMouseDown, locationInWindow: point(from: lParam)))
+            return 0
         case wmEraseBackground:
             guard let hwnd else {
                 return nil
@@ -964,6 +980,12 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         if let font = fonts.removeValue(forKey: handle.rawValue) {
             _ = winDeleteObject(font)
         }
+    }
+
+    private func point(from lParam: LPARAM) -> NSPoint {
+        let x = Int16(bitPattern: UInt16(lParam & 0xffff))
+        let y = Int16(bitPattern: UInt16((lParam >> 16) & 0xffff))
+        return NSMakePoint(CGFloat(x), CGFloat(y))
     }
 
     private func nativeHandle(from hwnd: HWND) -> NativeHandle {

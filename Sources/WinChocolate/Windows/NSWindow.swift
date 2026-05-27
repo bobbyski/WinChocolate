@@ -3,7 +3,7 @@
 /// `NSWindow` owns an optional content view and a backend-created native window.
 /// Showing the window realizes the content hierarchy into native Windows
 /// controls through `NativeControlBackend`.
-open class NSWindow: NSObject {
+open class NSWindow: NSResponder {
     /// Window style options matching AppKit names.
     public struct StyleMask: OptionSet, Sendable {
         /// Raw option value.
@@ -57,7 +57,11 @@ open class NSWindow: NSObject {
     public let isDeferred: Bool
 
     /// The root content view.
-    open var contentView: NSView?
+    open var contentView: NSView? {
+        didSet {
+            contentView?.nextResponder = self
+        }
+    }
 
     /// The backend-created native handle, if realized.
     public private(set) var nativeHandle: NativeHandle?

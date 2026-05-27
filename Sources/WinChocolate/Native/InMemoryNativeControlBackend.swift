@@ -54,6 +54,9 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     /// Registered text change actions by handle.
     public private(set) var textChangeActions: [NativeHandle: (String) -> Void] = [:]
 
+    /// Registered mouse-down actions by handle.
+    public private(set) var mouseDownActions: [NativeHandle: (NSEvent) -> Void] = [:]
+
     /// Whether the application run loop has been requested.
     public private(set) var didRunApplication = false
 
@@ -93,12 +96,14 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     public func closeWindow(_ handle: NativeHandle) {
         records.removeValue(forKey: handle)
         actions.removeValue(forKey: handle)
+        mouseDownActions.removeValue(forKey: handle)
     }
 
     /// Removes a recorded native child object.
     public func destroyControl(_ handle: NativeHandle) {
         records.removeValue(forKey: handle)
         actions.removeValue(forKey: handle)
+        mouseDownActions.removeValue(forKey: handle)
     }
 
     /// Records a view creation request.
@@ -260,6 +265,11 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     /// Records a text change action.
     public func registerTextChangeAction(for handle: NativeHandle, action: @escaping (String) -> Void) {
         textChangeActions[handle] = action
+    }
+
+    /// Records a mouse-down action.
+    public func registerMouseDownAction(for handle: NativeHandle, action: @escaping (NSEvent) -> Void) {
+        mouseDownActions[handle] = action
     }
 
     /// Returns the default alert response without displaying UI.

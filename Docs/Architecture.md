@@ -23,8 +23,8 @@ The first milestone is a runnable AppKit-shaped Windows application slice:
 | Phase | Status | Progress | Planned Commands | Notes |
 |---|---:|---:|---|---|
 | 1: SwiftPM Shape And Core Names | Implemented | 100% | package, sources, tests, docs | Initial AppKit-compatible public type names are in place. |
-| 2: Classic Win32 Backend | Partial | 90% | HWND creation, message loop, child controls | User32-backed window, custom view container, menu, button, checkbox, radio button, combo box, group box, static/edit text, text/frame/visibility/enabled updates, native cleanup, and command dispatch are in place. This backend should keep the classic Win32 look available for apps that want it. |
-| 3: AppKit Surface Expansion | Partial | 37% | menus, dialogs, responders, layout, text, images | Initial `NSMenu`, `NSMenuItem`, `NSAlert`, `NSBox`, `NSColor`, `NSFont`, editable `NSTextField`, `NSPopUpButton`, and push/switch/radio `NSButton` APIs are present. |
+| 2: Classic Win32 Backend | Partial | 91% | HWND creation, message loop, child controls | User32-backed window, custom view container, menu, button, checkbox, radio button, combo box, group box, static/edit text, text/frame/visibility/enabled updates, native cleanup, mouse-down event dispatch, and command dispatch are in place. This backend should keep the classic Win32 look available for apps that want it. |
+| 3: AppKit Surface Expansion | Partial | 39% | menus, dialogs, responders, layout, text, images | Initial `NSMenu`, `NSMenuItem`, `NSAlert`, `NSBox`, `NSColor`, `NSFont`, `NSResponder`, editable `NSTextField`, `NSPopUpButton`, and push/switch/radio `NSButton` APIs are present. |
 | 4: Demo Application | Partial | 81% | SwiftPM demo app | Demo source builds as a SwiftPM executable and visibly exercises native state APIs, modal alerts, editable text, checkbox state, radio groups, and pop-up selection. |
 | 5: Modern Windows Appearance | Planned | 0% | visual manager, themed controls, modern backend option | The eventual default should look like a modern Windows app while preserving the classic Win32 backend as an opt-in retro/native-simple mode. |
 | 6: Backend Selection And Theming | Planned | 0% | app/config API, backend factory, tests | Add an AppKit-shaped way to choose the classic or modern presentation without changing application UI code. |
@@ -45,6 +45,8 @@ The first milestone is a runnable AppKit-shaped Windows application slice:
 - [x] Add `NSBox` backed by native group boxes.
 - [x] Add initial `NSColor` and color propagation for views and text fields.
 - [x] Add initial `NSFont` and font propagation for text fields.
+- [x] Add initial `NSResponder` chain support for windows and views.
+- [x] Add native mouse-down dispatch into `NSView.mouseDown(with:)`.
 - [x] Add native state updates for title/text, frame, hidden, enabled, and destroyed views.
 - [ ] Preserve the current classic Win32 look as an explicit supported presentation mode.
 - [ ] Add a modern Windows presentation layer as the eventual default.
@@ -91,6 +93,10 @@ Modern appearance work is not part of the first native milestone. It should be t
 `NSColor` is the first appearance primitive. It stores normalized RGBA components and currently drives `NSView.backgroundColor` plus `NSTextField.textColor`. The classic Win32 backend maps these values to simple `COLORREF` and brush handling for native static/edit controls and custom view background painting; future modern rendering should build on the same public properties.
 
 `NSFont` stores a portable font request with family name, point size, and regular/bold weight. `NSTextField.font` is the first consumer. The classic Win32 backend maps this to `CreateFontW` and applies it with `WM_SETFONT`, while the in-memory backend records the requested font for contract tests.
+
+`NSResponder` now sits between `NSObject` and visible objects such as `NSView` and `NSWindow`. The first implementation provides `nextResponder`, first-responder hooks, and default mouse/key forwarding. `NSView.addSubview(_:)` wires child views to their superview, and `NSWindow.contentView` wires the content view back to the window.
+
+Native mouse-down dispatch now reaches realized `NSView` instances. The Win32 backend translates `WM_LBUTTONDOWN` on WinChocolate view HWNDs into `NSEvent(type: .leftMouseDown, locationInWindow:)`, then invokes `NSView.mouseDown(with:)` through the backend registration path.
 
 `NSView` maps to a lightweight custom child HWND. The same WinChocolate window procedure handles top-level windows and view containers, while only top-level window destruction terminates the application. This allows nested view hierarchies without losing button `WM_COMMAND` dispatch.
 

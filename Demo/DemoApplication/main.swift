@@ -20,7 +20,16 @@ let window = NSWindow(
 )
 window.title = "WinChocolate Click Counter"
 
-let contentView = NSView(frame: NSMakeRect(0, 0, 760, 500))
+final class DemoContentView: NSView {
+    var onBlankAreaClick: ((NSEvent) -> Void)?
+
+    override func mouseDown(with event: NSEvent) {
+        onBlankAreaClick?(event)
+        super.mouseDown(with: event)
+    }
+}
+
+let contentView = DemoContentView(frame: NSMakeRect(0, 0, 760, 500))
 let counterLabel = NSTextField(string: "Clicks: 0", frame: NSMakeRect(32, 36, 300, 24))
 let statusLabel = NSTextField(string: "Ready", frame: NSMakeRect(32, 74, 520, 24))
 let button = NSButton(title: "Click", frame: NSMakeRect(32, 124, 100, 34))
@@ -48,6 +57,9 @@ counterLabel.textColor = .green
 statusLabel.font = NSFont.systemFont(ofSize: 13)
 statusLabel.textColor = .blue
 statusLabel.backgroundColor = NSColor(calibratedRed: 0.94, green: 0.97, blue: 1.0, alpha: 1.0)
+contentView.onBlankAreaClick = { event in
+    statusLabel.stringValue = "Content click at \(Int(event.locationInWindow.x)), \(Int(event.locationInWindow.y))"
+}
 
 titleCheckbox.setButtonType(.switchButton)
 titleCheckbox.state = .on

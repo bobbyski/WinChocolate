@@ -88,6 +88,9 @@ public protocol NativeControlBackend: AnyObject {
     /// Registers the action to perform when native text changes.
     func registerTextChangeAction(for handle: NativeHandle, action: @escaping (String) -> Void)
 
+    /// Registers the action to perform when a native view receives a mouse-down event.
+    func registerMouseDownAction(for handle: NativeHandle, action: @escaping (NSEvent) -> Void)
+
     /// Runs a native modal alert.
     func runAlert(_ alert: NSAlert) -> NSApplication.ModalResponse
 }

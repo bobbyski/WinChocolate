@@ -3,7 +3,7 @@
 /// `NSView` owns a frame, a child hierarchy, and a lazily-created native peer.
 /// Subclasses override `realizeNativePeer(in:)` to request a specific Windows
 /// control kind while keeping AppKit-style view composition at the public API.
-open class NSView: NSObject {
+open class NSView: NSResponder {
     /// The view frame in its parent coordinate space.
     open var frame: NSRect {
         didSet {
@@ -67,6 +67,7 @@ open class NSView: NSObject {
     open func addSubview(_ view: NSView) {
         view.removeFromSuperview()
         view.superview = self
+        view.nextResponder = self
         subviews.append(view)
 
         guard let realizedBackend, let nativeHandle else {
@@ -84,6 +85,7 @@ open class NSView: NSObject {
 
         superview.subviews.removeAll { $0 === self }
         self.superview = nil
+        self.nextResponder = nil
         destroyNativePeer()
     }
 
@@ -104,6 +106,9 @@ open class NSView: NSObject {
         realizedBackend = backend
         backend.setHidden(isHidden, for: handle)
         backend.setBackgroundColor(backgroundColor, for: handle)
+        backend.registerMouseDownAction(for: handle) { [weak self] event in
+            self?.mouseDown(with: event)
+        }
 
         for subview in subviews {
             subview.realizeNativePeer(in: backend, parent: handle)

@@ -45,6 +45,83 @@ func testViewHierarchyMaintainsSuperviewOwnership() {
     expect(child.superview === secondParent, "Child superview was not updated.")
 }
 
+final class RecordingResponder: NSResponder {
+    var mouseDownCount = 0
+    var keyDownCount = 0
+
+    override func mouseDown(with event: NSEvent) {
+        mouseDownCount += 1
+    }
+
+    override func keyDown(with event: NSEvent) {
+        keyDownCount += 1
+    }
+}
+
+final class RecordingView: NSView {
+    var mouseDownCount = 0
+    var lastEvent: NSEvent?
+
+    override func mouseDown(with event: NSEvent) {
+        mouseDownCount += 1
+        lastEvent = event
+    }
+}
+
+func testSubviewResponderChainTargetsSuperview() {
+    let parent = NSView(frame: NSMakeRect(0, 0, 100, 100))
+    let child = NSView(frame: NSMakeRect(0, 0, 20, 20))
+
+    parent.addSubview(child)
+
+    expect(child.nextResponder === parent, "Subview next responder was not its superview.")
+
+    child.removeFromSuperview()
+
+    expect(child.nextResponder == nil, "Subview next responder was not cleared on removal.")
+}
+
+func testResponderForwardsUnhandledEvents() {
+    let child = NSResponder()
+    let parent = RecordingResponder()
+    let mouseEvent = NSEvent(type: .leftMouseDown, locationInWindow: NSMakePoint(4, 5))
+    let keyEvent = NSEvent(type: .keyDown, locationInWindow: NSMakePoint(0, 0))
+
+    child.nextResponder = parent
+    child.mouseDown(with: mouseEvent)
+    child.keyDown(with: keyEvent)
+
+    expect(parent.mouseDownCount == 1, "Mouse event did not forward to next responder.")
+    expect(parent.keyDownCount == 1, "Key event did not forward to next responder.")
+}
+
+func testWindowIsContentViewNextResponder() {
+    let window = NSWindow(
+        contentRect: NSMakeRect(0, 0, 100, 100),
+        styleMask: [.titled],
+        backing: .buffered,
+        defer: false,
+        nativeBackend: InMemoryNativeControlBackend()
+    )
+    let contentView = NSView(frame: NSMakeRect(0, 0, 100, 100))
+
+    window.contentView = contentView
+
+    expect(contentView.nextResponder === window, "Window was not content view's next responder.")
+}
+
+func testNativeMouseDownDispatchesToView() {
+    let backend = InMemoryNativeControlBackend()
+    let view = RecordingView(frame: NSMakeRect(0, 0, 100, 100))
+    let handle = view.realizeNativePeer(in: backend, parent: nil)
+    let event = NSEvent(type: .leftMouseDown, locationInWindow: NSMakePoint(12, 34))
+
+    backend.mouseDownActions[handle]?(event)
+
+    expect(view.mouseDownCount == 1, "Native mouse-down action did not reach view.")
+    expect(view.lastEvent == event, "Native mouse-down event was not forwarded intact.")
+}
+
 func testControlClosureActionIsInvoked() {
     let button = NSButton(title: "Run", frame: NSMakeRect(0, 0, 80, 24))
     var actionCount = 0
@@ -303,6 +380,10 @@ func testAlertReturnsFirstButtonInMemory() {
 
 testWindowRealizationCreatesNativeHierarchy()
 testViewHierarchyMaintainsSuperviewOwnership()
+testSubviewResponderChainTargetsSuperview()
+testResponderForwardsUnhandledEvents()
+testWindowIsContentViewNextResponder()
+testNativeMouseDownDispatchesToView()
 testControlClosureActionIsInvoked()
 testButtonPerformClickHonorsEnabledState()
 testSwitchButtonTogglesStateOnPerformClick()
