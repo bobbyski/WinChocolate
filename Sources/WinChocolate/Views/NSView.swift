@@ -26,6 +26,15 @@ open class NSView: NSResponder {
     /// The view's child views.
     public private(set) var subviews: [NSView] = []
 
+    /// The nearest containing window, when this view is attached to one.
+    open var window: NSWindow? {
+        if let superview {
+            return superview.window
+        }
+
+        return nextResponder as? NSWindow
+    }
+
     /// The backend-created native handle, if realized.
     public private(set) var nativeHandle: NativeHandle?
 
@@ -61,6 +70,11 @@ open class NSView: NSResponder {
     public init(frame frameRect: NSRect) {
         self.frame = frameRect
         super.init()
+    }
+
+    /// Plain WinChocolate views can accept keyboard focus.
+    open override var acceptsFirstResponder: Bool {
+        true
     }
 
     /// Adds a child view.
@@ -107,10 +121,14 @@ open class NSView: NSResponder {
         backend.setHidden(isHidden, for: handle)
         backend.setBackgroundColor(backgroundColor, for: handle)
         backend.registerMouseDownAction(for: handle) { [weak self] event in
+            _ = self?.window?.makeFirstResponder(self)
             self?.mouseDown(with: event)
         }
         backend.registerMouseUpAction(for: handle) { [weak self] event in
             self?.mouseUp(with: event)
+        }
+        backend.registerMouseMovedAction(for: handle) { [weak self] event in
+            self?.mouseMoved(with: event)
         }
         backend.registerKeyDownAction(for: handle) { [weak self] event in
             self?.keyDown(with: event)

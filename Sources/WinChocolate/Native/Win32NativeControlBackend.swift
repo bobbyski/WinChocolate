@@ -130,6 +130,9 @@ private func winGetModuleHandleW(_ moduleName: UnsafePointer<UInt16>?) -> HINSTA
 @_silgen_name("GetLastError")
 private func winGetLastError() -> DWORD
 
+@_silgen_name("GetKeyState")
+private func winGetKeyState(_ virtualKey: Int32) -> Int16
+
 @_silgen_name("GetWindowTextLengthW")
 private func winGetWindowTextLengthW(_ hwnd: HWND?) -> Int32
 
@@ -214,6 +217,9 @@ private let wmCtlColorEdit: UINT = 0x0133
 private let wmCtlColorStatic: UINT = 0x0138
 private let wmKeyDown: UINT = 0x0100
 private let wmKeyUp: UINT = 0x0101
+private let wmSysKeyDown: UINT = 0x0104
+private let wmSysKeyUp: UINT = 0x0105
+private let wmMouseMove: UINT = 0x0200
 private let wmLButtonDown: UINT = 0x0201
 private let wmLButtonUp: UINT = 0x0202
 private let bmGetCheck: UINT = 0x00f0
@@ -232,6 +238,22 @@ private let defaultCharset: DWORD = 1
 private let defaultPrecision: DWORD = 0
 private let defaultQuality: DWORD = 0
 private let defaultPitchAndFamily: DWORD = 0
+private let vkBack: Int32 = 0x08
+private let vkTab: Int32 = 0x09
+private let vkReturn: Int32 = 0x0d
+private let vkShift: Int32 = 0x10
+private let vkControl: Int32 = 0x11
+private let vkMenu: Int32 = 0x12
+private let vkEscape: Int32 = 0x1b
+private let vkSpace: Int32 = 0x20
+private let vkLWin: Int32 = 0x5b
+private let vkRWin: Int32 = 0x5c
+private let vkLShift: Int32 = 0xa0
+private let vkRShift: Int32 = 0xa1
+private let vkLControl: Int32 = 0xa2
+private let vkRControl: Int32 = 0xa3
+private let vkLMenu: Int32 = 0xa4
+private let vkRMenu: Int32 = 0xa5
 private let idOK: Int32 = 1
 private let idYes: Int32 = 6
 private let wsOverlapped: DWORD = 0x00000000
@@ -266,6 +288,7 @@ public final class Win32NativeControlBackend: NativeControlBackend {
     private var textChangeActions: [UInt: (String) -> Void] = [:]
     private var mouseDownActions: [UInt: (NSEvent) -> Void] = [:]
     private var mouseUpActions: [UInt: (NSEvent) -> Void] = [:]
+    private var mouseMovedActions: [UInt: (NSEvent) -> Void] = [:]
     private var keyDownActions: [UInt: (NSEvent) -> Void] = [:]
     private var keyUpActions: [UInt: (NSEvent) -> Void] = [:]
     private var commandActions: [UInt: () -> Void] = [:]
@@ -365,6 +388,7 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         textChangeActions.removeValue(forKey: handle.rawValue)
         mouseDownActions.removeValue(forKey: handle.rawValue)
         mouseUpActions.removeValue(forKey: handle.rawValue)
+        mouseMovedActions.removeValue(forKey: handle.rawValue)
         keyDownActions.removeValue(forKey: handle.rawValue)
         keyUpActions.removeValue(forKey: handle.rawValue)
         clearAppearance(for: handle)
@@ -381,6 +405,7 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         textChangeActions.removeValue(forKey: handle.rawValue)
         mouseDownActions.removeValue(forKey: handle.rawValue)
         mouseUpActions.removeValue(forKey: handle.rawValue)
+        mouseMovedActions.removeValue(forKey: handle.rawValue)
         keyDownActions.removeValue(forKey: handle.rawValue)
         keyUpActions.removeValue(forKey: handle.rawValue)
         clearAppearance(for: handle)
@@ -518,6 +543,15 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         }
 
         _ = winEnableWindow(hwnd, isEnabled ? 1 : 0)
+    }
+
+    /// Moves native keyboard focus to a control.
+    public func focusControl(_ handle: NativeHandle) {
+        guard let hwnd = hwnd(from: handle) else {
+            return
+        }
+
+        _ = winSetFocus(hwnd)
     }
 
     /// Updates a native control's text color.
@@ -683,6 +717,11 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         mouseUpActions[handle.rawValue] = action
     }
 
+    /// Registers the action to perform when a native view receives a mouse-moved event.
+    public func registerMouseMovedAction(for handle: NativeHandle, action: @escaping (NSEvent) -> Void) {
+        mouseMovedActions[handle.rawValue] = action
+    }
+
     /// Registers the action to perform when a native view receives a key-down event.
     public func registerKeyDownAction(for handle: NativeHandle, action: @escaping (NSEvent) -> Void) {
         keyDownActions[handle.rawValue] = action
@@ -718,19 +757,26 @@ public final class Win32NativeControlBackend: NativeControlBackend {
 
     private func dispatchMessage(hwnd: HWND?, message: UINT, wParam: WPARAM, lParam: LPARAM) -> LRESULT? {
         switch message {
-        case wmKeyDown:
+        case wmKeyDown, wmSysKeyDown:
             guard let hwnd, let action = keyDownActions[nativeHandle(from: hwnd).rawValue] else {
                 return nil
             }
 
-            action(NSEvent(type: .keyDown, locationInWindow: NSMakePoint(0, 0), keyCode: UInt16(wParam & 0xffff)))
+            action(keyEvent(type: .keyDown, wParam: wParam))
             return 0
-        case wmKeyUp:
+        case wmKeyUp, wmSysKeyUp:
             guard let hwnd, let action = keyUpActions[nativeHandle(from: hwnd).rawValue] else {
                 return nil
             }
 
-            action(NSEvent(type: .keyUp, locationInWindow: NSMakePoint(0, 0), keyCode: UInt16(wParam & 0xffff)))
+            action(keyEvent(type: .keyUp, wParam: wParam))
+            return 0
+        case wmMouseMove:
+            guard let hwnd, let action = mouseMovedActions[nativeHandle(from: hwnd).rawValue] else {
+                return nil
+            }
+
+            action(NSEvent(type: .mouseMoved, locationInWindow: point(from: lParam), modifierFlags: currentModifierFlags()))
             return 0
         case wmLButtonDown:
             guard let hwnd, let action = mouseDownActions[nativeHandle(from: hwnd).rawValue] else {
@@ -738,14 +784,14 @@ public final class Win32NativeControlBackend: NativeControlBackend {
             }
 
             _ = winSetFocus(hwnd)
-            action(NSEvent(type: .leftMouseDown, locationInWindow: point(from: lParam)))
+            action(NSEvent(type: .leftMouseDown, locationInWindow: point(from: lParam), modifierFlags: currentModifierFlags()))
             return 0
         case wmLButtonUp:
             guard let hwnd, let action = mouseUpActions[nativeHandle(from: hwnd).rawValue] else {
                 return nil
             }
 
-            action(NSEvent(type: .leftMouseUp, locationInWindow: point(from: lParam)))
+            action(NSEvent(type: .leftMouseUp, locationInWindow: point(from: lParam), modifierFlags: currentModifierFlags()))
             return 0
         case wmEraseBackground:
             guard let hwnd else {
@@ -1038,6 +1084,95 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         let x = Int16(bitPattern: UInt16(lParam & 0xffff))
         let y = Int16(bitPattern: UInt16((lParam >> 16) & 0xffff))
         return NSMakePoint(CGFloat(x), CGFloat(y))
+    }
+
+    private func keyEvent(type: NSEvent.EventType, wParam: WPARAM) -> NSEvent {
+        let keyCode = UInt16(wParam & 0xffff)
+        let modifierFlags = modifierFlags(forKeyCode: keyCode, eventType: type)
+        return NSEvent(
+            type: type,
+            locationInWindow: NSMakePoint(0, 0),
+            keyCode: keyCode,
+            characters: characters(forVirtualKey: keyCode, modifierFlags: modifierFlags),
+            modifierFlags: modifierFlags
+        )
+    }
+
+    private func characters(forVirtualKey virtualKey: UInt16, modifierFlags: NSEvent.ModifierFlags) -> String? {
+        let shiftIsDown = modifierFlags.contains(.shift)
+        switch virtualKey {
+        case 0x30...0x39:
+            return String(UnicodeScalar(UInt32(virtualKey))!)
+        case 0x41...0x5a:
+            let scalar = shiftIsDown ? UInt32(virtualKey) : UInt32(virtualKey + 32)
+            return String(UnicodeScalar(scalar)!)
+        case UInt16(vkSpace):
+            return " "
+        case UInt16(vkTab):
+            return "\t"
+        case UInt16(vkReturn):
+            return "\n"
+        case UInt16(vkEscape):
+            return "\u{1b}"
+        case UInt16(vkBack):
+            return "\u{8}"
+        default:
+            return nil
+        }
+    }
+
+    private func modifierFlags(forKeyCode keyCode: UInt16, eventType: NSEvent.EventType) -> NSEvent.ModifierFlags {
+        var flags = currentModifierFlags()
+        guard let eventFlag = modifierFlag(forVirtualKey: keyCode) else {
+            return flags
+        }
+
+        switch eventType {
+        case .keyDown:
+            flags.insert(eventFlag)
+        case .keyUp:
+            flags.remove(eventFlag)
+        default:
+            break
+        }
+
+        return flags
+    }
+
+    private func currentModifierFlags() -> NSEvent.ModifierFlags {
+        var flags: NSEvent.ModifierFlags = []
+        if keyIsDown(vkShift) || keyIsDown(vkLShift) || keyIsDown(vkRShift) {
+            flags.insert(.shift)
+        }
+        if keyIsDown(vkControl) || keyIsDown(vkLControl) || keyIsDown(vkRControl) {
+            flags.insert(.control)
+        }
+        if keyIsDown(vkMenu) || keyIsDown(vkLMenu) || keyIsDown(vkRMenu) {
+            flags.insert(.option)
+        }
+        if keyIsDown(vkLWin) || keyIsDown(vkRWin) {
+            flags.insert(.command)
+        }
+        return flags
+    }
+
+    private func modifierFlag(forVirtualKey virtualKey: UInt16) -> NSEvent.ModifierFlags? {
+        switch Int32(virtualKey) {
+        case vkShift, vkLShift, vkRShift:
+            return .shift
+        case vkControl, vkLControl, vkRControl:
+            return .control
+        case vkMenu, vkLMenu, vkRMenu:
+            return .option
+        case vkLWin, vkRWin:
+            return .command
+        default:
+            return nil
+        }
+    }
+
+    private func keyIsDown(_ virtualKey: Int32) -> Bool {
+        (winGetKeyState(virtualKey) & Int16(bitPattern: 0x8000)) != 0
     }
 
     private func nativeHandle(from hwnd: HWND) -> NativeHandle {

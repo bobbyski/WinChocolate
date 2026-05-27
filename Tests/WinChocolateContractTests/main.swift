@@ -6,6 +6,12 @@ func expect(_ condition: @autoclosure () -> Bool, _ message: String) {
     }
 }
 
+func clearApplicationWindows() {
+    for window in NSApplication.shared.windows {
+        NSApplication.shared.removeWindowsItem(window)
+    }
+}
+
 func testWindowRealizationCreatesNativeHierarchy() {
     let backend = InMemoryNativeControlBackend()
     let window = NSWindow(
@@ -58,9 +64,20 @@ final class RecordingResponder: NSResponder {
     }
 }
 
+final class RefusingResponder: NSResponder {
+    override var acceptsFirstResponder: Bool {
+        true
+    }
+
+    override func resignFirstResponder() -> Bool {
+        false
+    }
+}
+
 final class RecordingView: NSView {
     var mouseDownCount = 0
     var mouseUpCount = 0
+    var mouseMovedCount = 0
     var keyDownCount = 0
     var keyUpCount = 0
     var lastEvent: NSEvent?
@@ -72,6 +89,11 @@ final class RecordingView: NSView {
 
     override func mouseUp(with event: NSEvent) {
         mouseUpCount += 1
+        lastEvent = event
+    }
+
+    override func mouseMoved(with event: NSEvent) {
+        mouseMovedCount += 1
         lastEvent = event
     }
 
@@ -128,6 +150,81 @@ func testWindowIsContentViewNextResponder() {
     expect(contentView.nextResponder === window, "Window was not content view's next responder.")
 }
 
+func testWindowMakeFirstResponderFocusesNativeView() {
+    let backend = InMemoryNativeControlBackend()
+    let window = NSWindow(
+        contentRect: NSMakeRect(0, 0, 100, 100),
+        styleMask: [.titled],
+        backing: .buffered,
+        defer: false,
+        nativeBackend: backend
+    )
+    let contentView = NSView(frame: NSMakeRect(0, 0, 100, 100))
+
+    window.contentView = contentView
+    window.realizeNativePeer()
+
+    expect(window.makeFirstResponder(contentView), "Window did not accept content view as first responder.")
+    expect(window.firstResponder === contentView, "Window first responder was not updated.")
+    expect(backend.focusedHandle == contentView.nativeHandle, "Backend did not receive native focus request.")
+}
+
+func testWindowMakeFirstResponderHonorsResignFailure() {
+    let backend = InMemoryNativeControlBackend()
+    let window = NSWindow(
+        contentRect: NSMakeRect(0, 0, 100, 100),
+        styleMask: [.titled],
+        backing: .buffered,
+        defer: false,
+        nativeBackend: backend
+    )
+    let refusing = RefusingResponder()
+    let next = NSView(frame: NSMakeRect(0, 0, 10, 10))
+
+    expect(window.makeFirstResponder(refusing), "Window did not accept initial responder.")
+    expect(!window.makeFirstResponder(next), "Window ignored first responder resign failure.")
+    expect(window.firstResponder === refusing, "Window first responder changed after resign failure.")
+}
+
+func testApplicationTracksWindowListAndKeyMainWindow() {
+    clearApplicationWindows()
+
+    let first = NSWindow(
+        contentRect: NSMakeRect(0, 0, 100, 100),
+        styleMask: [.titled],
+        backing: .buffered,
+        defer: false,
+        nativeBackend: InMemoryNativeControlBackend()
+    )
+    let second = NSWindow(
+        contentRect: NSMakeRect(0, 0, 100, 100),
+        styleMask: [.titled],
+        backing: .buffered,
+        defer: false,
+        nativeBackend: InMemoryNativeControlBackend()
+    )
+
+    first.realizeNativePeer()
+    second.realizeNativePeer()
+    second.makeKeyAndOrderFront(nil)
+
+    expect(NSApp === NSApplication.shared, "NSApp did not alias NSApplication.shared.")
+    expect(NSApplication.shared.windows.contains { $0 === first }, "Application did not track first window.")
+    expect(NSApplication.shared.windows.contains { $0 === second }, "Application did not track second window.")
+    expect(NSApplication.shared.keyWindow === second, "Application key window was not updated.")
+    expect(NSApplication.shared.mainWindow === second, "Application main window was not updated.")
+    expect(second.isKeyWindow, "Window did not report key window state.")
+    expect(second.isMainWindow, "Window did not report main window state.")
+
+    second.close()
+
+    expect(NSApplication.shared.keyWindow == nil, "Closing key window did not clear application key window.")
+    expect(NSApplication.shared.mainWindow == nil, "Closing main window did not clear application main window.")
+    expect(!NSApplication.shared.windows.contains { $0 === second }, "Closing window did not remove it from application windows.")
+
+    clearApplicationWindows()
+}
+
 func testNativeMouseDownDispatchesToView() {
     let backend = InMemoryNativeControlBackend()
     let view = RecordingView(frame: NSMakeRect(0, 0, 100, 100))
@@ -152,11 +249,23 @@ func testNativeMouseUpDispatchesToView() {
     expect(view.lastEvent == event, "Native mouse-up event was not forwarded intact.")
 }
 
+func testNativeMouseMovedDispatchesToView() {
+    let backend = InMemoryNativeControlBackend()
+    let view = RecordingView(frame: NSMakeRect(0, 0, 100, 100))
+    let handle = view.realizeNativePeer(in: backend, parent: nil)
+    let event = NSEvent(type: .mouseMoved, locationInWindow: NSMakePoint(7, 9), modifierFlags: [.shift])
+
+    backend.mouseMovedActions[handle]?(event)
+
+    expect(view.mouseMovedCount == 1, "Native mouse-moved action did not reach view.")
+    expect(view.lastEvent == event, "Native mouse-moved event was not forwarded intact.")
+}
+
 func testNativeKeyDownDispatchesToView() {
     let backend = InMemoryNativeControlBackend()
     let view = RecordingView(frame: NSMakeRect(0, 0, 100, 100))
     let handle = view.realizeNativePeer(in: backend, parent: nil)
-    let event = NSEvent(type: .keyDown, locationInWindow: NSMakePoint(0, 0), keyCode: 65)
+    let event = NSEvent(type: .keyDown, locationInWindow: NSMakePoint(0, 0), keyCode: 65, characters: "A", modifierFlags: [.shift])
 
     backend.keyDownActions[handle]?(event)
 
@@ -168,7 +277,7 @@ func testNativeKeyUpDispatchesToView() {
     let backend = InMemoryNativeControlBackend()
     let view = RecordingView(frame: NSMakeRect(0, 0, 100, 100))
     let handle = view.realizeNativePeer(in: backend, parent: nil)
-    let event = NSEvent(type: .keyUp, locationInWindow: NSMakePoint(0, 0), keyCode: 65)
+    let event = NSEvent(type: .keyUp, locationInWindow: NSMakePoint(0, 0), keyCode: 65, characters: "a")
 
     backend.keyUpActions[handle]?(event)
 
@@ -437,8 +546,12 @@ testViewHierarchyMaintainsSuperviewOwnership()
 testSubviewResponderChainTargetsSuperview()
 testResponderForwardsUnhandledEvents()
 testWindowIsContentViewNextResponder()
+testWindowMakeFirstResponderFocusesNativeView()
+testWindowMakeFirstResponderHonorsResignFailure()
+testApplicationTracksWindowListAndKeyMainWindow()
 testNativeMouseDownDispatchesToView()
 testNativeMouseUpDispatchesToView()
+testNativeMouseMovedDispatchesToView()
 testNativeKeyDownDispatchesToView()
 testNativeKeyUpDispatchesToView()
 testControlClosureActionIsInvoked()

@@ -66,8 +66,21 @@ open class NSWindow: NSResponder {
     /// The backend-created native handle, if realized.
     public private(set) var nativeHandle: NativeHandle?
 
+    /// The responder currently receiving keyboard focus in this window.
+    public private(set) weak var firstResponder: NSResponder?
+
     /// Backend used for native work.
     public let nativeBackend: NativeControlBackend
+
+    /// Whether this window is the application's key window.
+    open var isKeyWindow: Bool {
+        NSApplication.shared.keyWindow === self
+    }
+
+    /// Whether this window is the application's main window.
+    open var isMainWindow: Bool {
+        NSApplication.shared.mainWindow === self
+    }
 
     /// Creates a window using AppKit's designated initializer shape.
     public init(
@@ -103,7 +116,48 @@ open class NSWindow: NSResponder {
     /// Shows the window and makes it the key window.
     open func makeKeyAndOrderFront(_ sender: Any?) {
         let handle = realizeNativePeer()
+        makeMain()
+        makeKey()
         nativeBackend.showWindow(handle)
+    }
+
+    /// Makes the window the key window.
+    open func makeKey() {
+        NSApplication.shared.makeKeyWindow(self)
+    }
+
+    /// Makes the window the main window.
+    open func makeMain() {
+        NSApplication.shared.makeMainWindow(self)
+    }
+
+    /// Attempts to make a responder the window's first responder.
+    @discardableResult
+    open func makeFirstResponder(_ responder: NSResponder?) -> Bool {
+        if responder === firstResponder {
+            return true
+        }
+
+        if let firstResponder, !firstResponder.resignFirstResponder() {
+            return false
+        }
+
+        guard let responder else {
+            firstResponder = nil
+            return true
+        }
+
+        guard responder.becomeFirstResponder() else {
+            return false
+        }
+
+        firstResponder = responder
+
+        if let view = responder as? NSView, let nativeHandle = view.nativeHandle {
+            view.realizedBackend?.focusControl(nativeHandle)
+        }
+
+        return true
     }
 
     /// Closes the native window.
@@ -114,6 +168,7 @@ open class NSWindow: NSResponder {
 
         nativeBackend.closeWindow(nativeHandle)
         self.nativeHandle = nil
+        NSApplication.shared.removeWindowsItem(self)
     }
 
     /// Sets the window frame and optionally requests display.
@@ -136,6 +191,7 @@ open class NSWindow: NSResponder {
 
         let handle = nativeBackend.createWindow(title: title, frame: frame, styleMask: styleMask)
         nativeHandle = handle
+        NSApplication.shared.addWindowsItem(self)
         contentView?.realizeNativePeer(in: nativeBackend, parent: handle)
         return handle
     }

@@ -23,6 +23,7 @@ window.title = "WinChocolate Click Counter"
 final class DemoContentView: NSView {
     var onBlankAreaMouseDown: ((NSEvent) -> Void)?
     var onBlankAreaMouseUp: ((NSEvent) -> Void)?
+    var onMouseMoved: ((NSEvent) -> Void)?
     var onKeyDown: ((NSEvent) -> Void)?
     var onKeyUp: ((NSEvent) -> Void)?
 
@@ -34,6 +35,11 @@ final class DemoContentView: NSView {
     override func mouseUp(with event: NSEvent) {
         onBlankAreaMouseUp?(event)
         super.mouseUp(with: event)
+    }
+
+    override func mouseMoved(with event: NSEvent) {
+        onMouseMoved?(event)
+        super.mouseMoved(with: event)
     }
 
     override func keyDown(with event: NSEvent) {
@@ -68,6 +74,88 @@ var clickCount = 0
 var isClickEnabled = true
 var isCounterHidden = false
 var movedRight = false
+var mouseMoveEventCount = 0
+
+func modifierText(for event: NSEvent) -> String {
+    var names: [String] = []
+    if event.modifierFlags.contains(.shift) {
+        names.append("shift")
+    }
+    if event.modifierFlags.contains(.control) {
+        names.append("control")
+    }
+    if event.modifierFlags.contains(.option) {
+        names.append("option")
+    }
+    if event.modifierFlags.contains(.command) {
+        names.append("command")
+    }
+    return names.isEmpty ? "" : " [" + names.joined(separator: "+") + "]"
+}
+
+func keyName(for keyCode: UInt16) -> String? {
+    switch keyCode {
+    case 0x08:
+        return "Backspace"
+    case 0x09:
+        return "Tab"
+    case 0x0d:
+        return "Enter"
+    case 0x10:
+        return "Shift"
+    case 0x11:
+        return "Control"
+    case 0x12:
+        return "Alt"
+    case 0x1b:
+        return "Escape"
+    case 0x20:
+        return "Space"
+    case 0x5b:
+        return "Left Windows"
+    case 0x5c:
+        return "Right Windows"
+    case 0xa0:
+        return "Left Shift"
+    case 0xa1:
+        return "Right Shift"
+    case 0xa2:
+        return "Left Control"
+    case 0xa3:
+        return "Right Control"
+    case 0xa4:
+        return "Left Alt"
+    case 0xa5:
+        return "Right Alt"
+    default:
+        return nil
+    }
+}
+
+func printableCharacterText(for event: NSEvent) -> String {
+    guard let characters = event.characters, !characters.isEmpty else {
+        return ""
+    }
+
+    switch characters {
+    case "\t":
+        return " <tab>"
+    case "\n":
+        return " <enter>"
+    case "\u{1b}":
+        return " <escape>"
+    case "\u{8}":
+        return " <backspace>"
+    default:
+        return " '\(characters)'"
+    }
+}
+
+func keyText(for event: NSEvent) -> String {
+    let code = event.keyCode ?? 0
+    let name = keyName(for: code).map { " \($0)" } ?? ""
+    return "\(code)\(name)\(printableCharacterText(for: event))\(modifierText(for: event))"
+}
 
 contentView.backgroundColor = .windowBackgroundColor
 counterLabel.font = NSFont.boldSystemFont(ofSize: 14)
@@ -76,16 +164,22 @@ statusLabel.font = NSFont.systemFont(ofSize: 13)
 statusLabel.textColor = .blue
 statusLabel.backgroundColor = NSColor(calibratedRed: 0.94, green: 0.97, blue: 1.0, alpha: 1.0)
 contentView.onBlankAreaMouseDown = { event in
-    statusLabel.stringValue = "Mouse down at \(Int(event.locationInWindow.x)), \(Int(event.locationInWindow.y))"
+    statusLabel.stringValue = "Mouse down at \(Int(event.locationInWindow.x)), \(Int(event.locationInWindow.y))\(modifierText(for: event))"
 }
 contentView.onBlankAreaMouseUp = { event in
-    statusLabel.stringValue = "Mouse up at \(Int(event.locationInWindow.x)), \(Int(event.locationInWindow.y))"
+    statusLabel.stringValue = "Mouse up at \(Int(event.locationInWindow.x)), \(Int(event.locationInWindow.y))\(modifierText(for: event))"
+}
+contentView.onMouseMoved = { event in
+    mouseMoveEventCount += 1
+    if mouseMoveEventCount % 8 == 0 {
+        statusLabel.stringValue = "Mouse moved to \(Int(event.locationInWindow.x)), \(Int(event.locationInWindow.y))\(modifierText(for: event))"
+    }
 }
 contentView.onKeyDown = { event in
-    statusLabel.stringValue = "Key down: \(event.keyCode ?? 0)"
+    statusLabel.stringValue = "Key down: \(keyText(for: event))"
 }
 contentView.onKeyUp = { event in
-    statusLabel.stringValue = "Key up: \(event.keyCode ?? 0)"
+    statusLabel.stringValue = "Key up: \(keyText(for: event))"
 }
 
 titleCheckbox.setButtonType(.switchButton)
@@ -204,9 +298,15 @@ contentView.addSubview(warningRadio)
 contentView.addSubview(criticalRadio)
 window.contentView = contentView
 window.makeKeyAndOrderFront(nil)
+statusLabel.stringValue = window.isKeyWindow && window.isMainWindow
+    ? "Ready - key/main window"
+    : "Ready - window shown"
 
 if CommandLine.arguments.contains("--diagnose") {
     print("Window native handle: \(window.nativeHandle?.rawValue ?? 0)")
+    print("App windows: \(NSApp.windows.count)")
+    print("Is key window: \(window.isKeyWindow)")
+    print("Is main window: \(window.isMainWindow)")
 } else {
     app.run()
 }

@@ -32,6 +32,11 @@ open class NSResponder: NSObject {
         nextResponder?.mouseUp(with: event)
     }
 
+    /// Handles mouse movement.
+    open func mouseMoved(with event: NSEvent) {
+        nextResponder?.mouseMoved(with: event)
+    }
+
     /// Handles a key press.
     open func keyDown(with event: NSEvent) {
         nextResponder?.keyDown(with: event)

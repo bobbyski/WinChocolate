@@ -58,6 +58,9 @@ public protocol NativeControlBackend: AnyObject {
     /// Updates whether a native control is enabled.
     func setEnabled(_ isEnabled: Bool, for handle: NativeHandle)
 
+    /// Moves native keyboard focus to a control.
+    func focusControl(_ handle: NativeHandle)
+
     /// Updates a native control's text color.
     func setTextColor(_ color: NSColor?, for handle: NativeHandle)
 
@@ -93,6 +96,9 @@ public protocol NativeControlBackend: AnyObject {
 
     /// Registers the action to perform when a native view receives a mouse-up event.
     func registerMouseUpAction(for handle: NativeHandle, action: @escaping (NSEvent) -> Void)
+
+    /// Registers the action to perform when a native view receives a mouse-moved event.
+    func registerMouseMovedAction(for handle: NativeHandle, action: @escaping (NSEvent) -> Void)
 
     /// Registers the action to perform when a native view receives a key-down event.
     func registerKeyDownAction(for handle: NativeHandle, action: @escaping (NSEvent) -> Void)

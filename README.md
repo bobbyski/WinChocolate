@@ -26,6 +26,7 @@ WinChocolate is early and intentionally incomplete. The current milestone proves
 
 - `NSApplication` lifecycle
 - Top-level native window
+- Application window list plus key/main window tracking
 - Menu bar with Quit item
 - Native buttons
 - Native checkboxes through switch-style `NSButton`
@@ -36,8 +37,10 @@ WinChocolate is early and intentionally incomplete. The current milestone proves
 - Initial `NSColor` support for view backgrounds and text field text color
 - Initial `NSFont` support for text field fonts
 - Initial `NSResponder` chain support for windows and views
-- Native mouse-down/up dispatch into `NSView.mouseDown(with:)` and `NSView.mouseUp(with:)`
-- Native key-down/up dispatch into `NSView.keyDown(with:)` and `NSView.keyUp(with:)`
+- Initial `NSWindow.firstResponder` and `makeFirstResponder(_:)` support
+- Initial `NSApp`, `NSApplication.keyWindow`, and `NSApplication.mainWindow` support
+- Native mouse-down/up/move dispatch into `NSView` responder methods
+- Native key-down/up dispatch with key code, basic characters, and modifier flags
 - SwiftPM demo app with a click counter and editable text field
 
 The Win32 backend currently uses a narrow manual User32/Gdi32 FFI layer because this local ARM64 Swift toolchain cannot import `WinSDK` cleanly.

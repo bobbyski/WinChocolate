@@ -32,6 +32,15 @@ public final class NSApplication: NSObject {
     /// Backend used to create native windows and run the platform event loop.
     public var nativeBackend: NativeControlBackend
 
+    /// Windows known to the application.
+    public private(set) var windows: [NSWindow] = []
+
+    /// The window currently receiving key events.
+    public private(set) weak var keyWindow: NSWindow?
+
+    /// The application's main document-style window.
+    public private(set) weak var mainWindow: NSWindow?
+
     /// The application's main menu bar.
     public var mainMenu: NSMenu? {
         didSet {
@@ -67,9 +76,46 @@ public final class NSApplication: NSObject {
         nativeBackend.terminateApplication()
     }
 
+    /// Records that a window is owned by this application.
+    public func addWindowsItem(_ window: NSWindow) {
+        guard !windows.contains(where: { $0 === window }) else {
+            return
+        }
+
+        windows.append(window)
+    }
+
+    /// Removes a window from the application window list.
+    public func removeWindowsItem(_ window: NSWindow) {
+        windows.removeAll { $0 === window }
+
+        if keyWindow === window {
+            keyWindow = nil
+        }
+
+        if mainWindow === window {
+            mainWindow = nil
+        }
+    }
+
+    /// Makes a window the key window.
+    public func makeKeyWindow(_ window: NSWindow) {
+        addWindowsItem(window)
+        keyWindow = window
+    }
+
+    /// Makes a window the main window.
+    public func makeMainWindow(_ window: NSWindow) {
+        addWindowsItem(window)
+        mainWindow = window
+    }
+
     private func notification(named name: String) -> NSNotification {
         NSNotification(name: name, object: self)
     }
 }
 
 extension NSApplication: @unchecked Sendable {}
+
+/// AppKit-compatible global application alias.
+public let NSApp = NSApplication.shared

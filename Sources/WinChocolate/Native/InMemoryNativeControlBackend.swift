@@ -60,11 +60,17 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     /// Registered mouse-up actions by handle.
     public private(set) var mouseUpActions: [NativeHandle: (NSEvent) -> Void] = [:]
 
+    /// Registered mouse-moved actions by handle.
+    public private(set) var mouseMovedActions: [NativeHandle: (NSEvent) -> Void] = [:]
+
     /// Registered key-down actions by handle.
     public private(set) var keyDownActions: [NativeHandle: (NSEvent) -> Void] = [:]
 
     /// Registered key-up actions by handle.
     public private(set) var keyUpActions: [NativeHandle: (NSEvent) -> Void] = [:]
+
+    /// The handle most recently asked to take keyboard focus.
+    public private(set) var focusedHandle: NativeHandle?
 
     /// Whether the application run loop has been requested.
     public private(set) var didRunApplication = false
@@ -107,6 +113,7 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
         actions.removeValue(forKey: handle)
         mouseDownActions.removeValue(forKey: handle)
         mouseUpActions.removeValue(forKey: handle)
+        mouseMovedActions.removeValue(forKey: handle)
         keyDownActions.removeValue(forKey: handle)
         keyUpActions.removeValue(forKey: handle)
     }
@@ -117,6 +124,7 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
         actions.removeValue(forKey: handle)
         mouseDownActions.removeValue(forKey: handle)
         mouseUpActions.removeValue(forKey: handle)
+        mouseMovedActions.removeValue(forKey: handle)
         keyDownActions.removeValue(forKey: handle)
         keyUpActions.removeValue(forKey: handle)
     }
@@ -197,6 +205,11 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
 
         record.isEnabled = isEnabled
         records[handle] = record
+    }
+
+    /// Records native focus movement.
+    public func focusControl(_ handle: NativeHandle) {
+        focusedHandle = handle
     }
 
     /// Updates a recorded text color.
@@ -290,6 +303,11 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     /// Records a mouse-up action.
     public func registerMouseUpAction(for handle: NativeHandle, action: @escaping (NSEvent) -> Void) {
         mouseUpActions[handle] = action
+    }
+
+    /// Records a mouse-moved action.
+    public func registerMouseMovedAction(for handle: NativeHandle, action: @escaping (NSEvent) -> Void) {
+        mouseMovedActions[handle] = action
     }
 
     /// Records a key-down action.
