@@ -60,10 +60,16 @@ final class RecordingResponder: NSResponder {
 
 final class RecordingView: NSView {
     var mouseDownCount = 0
+    var mouseUpCount = 0
     var lastEvent: NSEvent?
 
     override func mouseDown(with event: NSEvent) {
         mouseDownCount += 1
+        lastEvent = event
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        mouseUpCount += 1
         lastEvent = event
     }
 }
@@ -120,6 +126,18 @@ func testNativeMouseDownDispatchesToView() {
 
     expect(view.mouseDownCount == 1, "Native mouse-down action did not reach view.")
     expect(view.lastEvent == event, "Native mouse-down event was not forwarded intact.")
+}
+
+func testNativeMouseUpDispatchesToView() {
+    let backend = InMemoryNativeControlBackend()
+    let view = RecordingView(frame: NSMakeRect(0, 0, 100, 100))
+    let handle = view.realizeNativePeer(in: backend, parent: nil)
+    let event = NSEvent(type: .leftMouseUp, locationInWindow: NSMakePoint(56, 78))
+
+    backend.mouseUpActions[handle]?(event)
+
+    expect(view.mouseUpCount == 1, "Native mouse-up action did not reach view.")
+    expect(view.lastEvent == event, "Native mouse-up event was not forwarded intact.")
 }
 
 func testControlClosureActionIsInvoked() {
@@ -384,6 +402,7 @@ testSubviewResponderChainTargetsSuperview()
 testResponderForwardsUnhandledEvents()
 testWindowIsContentViewNextResponder()
 testNativeMouseDownDispatchesToView()
+testNativeMouseUpDispatchesToView()
 testControlClosureActionIsInvoked()
 testButtonPerformClickHonorsEnabledState()
 testSwitchButtonTogglesStateOnPerformClick()

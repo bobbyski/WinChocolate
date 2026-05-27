@@ -57,6 +57,9 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     /// Registered mouse-down actions by handle.
     public private(set) var mouseDownActions: [NativeHandle: (NSEvent) -> Void] = [:]
 
+    /// Registered mouse-up actions by handle.
+    public private(set) var mouseUpActions: [NativeHandle: (NSEvent) -> Void] = [:]
+
     /// Whether the application run loop has been requested.
     public private(set) var didRunApplication = false
 
@@ -97,6 +100,7 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
         records.removeValue(forKey: handle)
         actions.removeValue(forKey: handle)
         mouseDownActions.removeValue(forKey: handle)
+        mouseUpActions.removeValue(forKey: handle)
     }
 
     /// Removes a recorded native child object.
@@ -104,6 +108,7 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
         records.removeValue(forKey: handle)
         actions.removeValue(forKey: handle)
         mouseDownActions.removeValue(forKey: handle)
+        mouseUpActions.removeValue(forKey: handle)
     }
 
     /// Records a view creation request.
@@ -270,6 +275,11 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     /// Records a mouse-down action.
     public func registerMouseDownAction(for handle: NativeHandle, action: @escaping (NSEvent) -> Void) {
         mouseDownActions[handle] = action
+    }
+
+    /// Records a mouse-up action.
+    public func registerMouseUpAction(for handle: NativeHandle, action: @escaping (NSEvent) -> Void) {
+        mouseUpActions[handle] = action
     }
 
     /// Returns the default alert response without displaying UI.

@@ -210,6 +210,7 @@ private let wmCommand: UINT = 0x0111
 private let wmCtlColorEdit: UINT = 0x0133
 private let wmCtlColorStatic: UINT = 0x0138
 private let wmLButtonDown: UINT = 0x0201
+private let wmLButtonUp: UINT = 0x0202
 private let bmGetCheck: UINT = 0x00f0
 private let bmSetCheck: UINT = 0x00f1
 private let cbAddString: UINT = 0x0143
@@ -259,6 +260,7 @@ public final class Win32NativeControlBackend: NativeControlBackend {
     private var controlActions: [UInt: () -> Void] = [:]
     private var textChangeActions: [UInt: (String) -> Void] = [:]
     private var mouseDownActions: [UInt: (NSEvent) -> Void] = [:]
+    private var mouseUpActions: [UInt: (NSEvent) -> Void] = [:]
     private var commandActions: [UInt: () -> Void] = [:]
     private var textColors: [UInt: DWORD] = [:]
     private var backgroundColors: [UInt: DWORD] = [:]
@@ -355,6 +357,7 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         controlActions.removeValue(forKey: handle.rawValue)
         textChangeActions.removeValue(forKey: handle.rawValue)
         mouseDownActions.removeValue(forKey: handle.rawValue)
+        mouseUpActions.removeValue(forKey: handle.rawValue)
         clearAppearance(for: handle)
     }
 
@@ -368,6 +371,7 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         controlActions.removeValue(forKey: handle.rawValue)
         textChangeActions.removeValue(forKey: handle.rawValue)
         mouseDownActions.removeValue(forKey: handle.rawValue)
+        mouseUpActions.removeValue(forKey: handle.rawValue)
         clearAppearance(for: handle)
     }
 
@@ -663,6 +667,11 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         mouseDownActions[handle.rawValue] = action
     }
 
+    /// Registers the action to perform when a native view receives a mouse-up event.
+    public func registerMouseUpAction(for handle: NativeHandle, action: @escaping (NSEvent) -> Void) {
+        mouseUpActions[handle.rawValue] = action
+    }
+
     /// Runs a native modal alert.
     public func runAlert(_ alert: NSAlert) -> NSApplication.ModalResponse {
         let body = alert.informativeText.isEmpty
@@ -694,6 +703,13 @@ public final class Win32NativeControlBackend: NativeControlBackend {
             }
 
             action(NSEvent(type: .leftMouseDown, locationInWindow: point(from: lParam)))
+            return 0
+        case wmLButtonUp:
+            guard let hwnd, let action = mouseUpActions[nativeHandle(from: hwnd).rawValue] else {
+                return nil
+            }
+
+            action(NSEvent(type: .leftMouseUp, locationInWindow: point(from: lParam)))
             return 0
         case wmEraseBackground:
             guard let hwnd else {

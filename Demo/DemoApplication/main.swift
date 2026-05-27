@@ -21,11 +21,17 @@ let window = NSWindow(
 window.title = "WinChocolate Click Counter"
 
 final class DemoContentView: NSView {
-    var onBlankAreaClick: ((NSEvent) -> Void)?
+    var onBlankAreaMouseDown: ((NSEvent) -> Void)?
+    var onBlankAreaMouseUp: ((NSEvent) -> Void)?
 
     override func mouseDown(with event: NSEvent) {
-        onBlankAreaClick?(event)
+        onBlankAreaMouseDown?(event)
         super.mouseDown(with: event)
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        onBlankAreaMouseUp?(event)
+        super.mouseUp(with: event)
     }
 }
 
@@ -57,8 +63,11 @@ counterLabel.textColor = .green
 statusLabel.font = NSFont.systemFont(ofSize: 13)
 statusLabel.textColor = .blue
 statusLabel.backgroundColor = NSColor(calibratedRed: 0.94, green: 0.97, blue: 1.0, alpha: 1.0)
-contentView.onBlankAreaClick = { event in
-    statusLabel.stringValue = "Content click at \(Int(event.locationInWindow.x)), \(Int(event.locationInWindow.y))"
+contentView.onBlankAreaMouseDown = { event in
+    statusLabel.stringValue = "Mouse down at \(Int(event.locationInWindow.x)), \(Int(event.locationInWindow.y))"
+}
+contentView.onBlankAreaMouseUp = { event in
+    statusLabel.stringValue = "Mouse up at \(Int(event.locationInWindow.x)), \(Int(event.locationInWindow.y))"
 }
 
 titleCheckbox.setButtonType(.switchButton)
