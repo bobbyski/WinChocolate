@@ -42,6 +42,11 @@ var isClickEnabled = true
 var isCounterHidden = false
 var movedRight = false
 
+contentView.backgroundColor = .windowBackgroundColor
+counterLabel.textColor = .green
+statusLabel.textColor = .blue
+statusLabel.backgroundColor = NSColor(calibratedRed: 0.94, green: 0.97, blue: 1.0, alpha: 1.0)
+
 titleCheckbox.setButtonType(.switchButton)
 titleCheckbox.state = .on
 infoRadio.setButtonType(.radioButton)

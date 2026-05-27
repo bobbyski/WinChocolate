@@ -58,6 +58,12 @@ public protocol NativeControlBackend: AnyObject {
     /// Updates whether a native control is enabled.
     func setEnabled(_ isEnabled: Bool, for handle: NativeHandle)
 
+    /// Updates a native control's text color.
+    func setTextColor(_ color: NSColor?, for handle: NativeHandle)
+
+    /// Updates a native control's background color.
+    func setBackgroundColor(_ color: NSColor?, for handle: NativeHandle)
+
     /// Updates a native button check state.
     func setButtonState(_ state: NSControl.StateValue, for handle: NativeHandle)
 

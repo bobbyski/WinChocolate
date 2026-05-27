@@ -4,6 +4,8 @@ private typealias HMENU = UnsafeMutableRawPointer
 private typealias HINSTANCE = UnsafeMutableRawPointer
 private typealias HBRUSH = UnsafeMutableRawPointer
 private typealias HCURSOR = UnsafeMutableRawPointer
+private typealias HDC = UnsafeMutableRawPointer
+private typealias HGDIOBJ = UnsafeMutableRawPointer
 private typealias UINT = UInt32
 private typealias DWORD = UInt32
 private typealias WPARAM = UInt
@@ -38,6 +40,13 @@ private struct WNDCLASSW {
     var lpszClassName: UnsafePointer<UInt16>?
 }
 
+private struct RECT {
+    var left: Int32 = 0
+    var top: Int32 = 0
+    var right: Int32 = 0
+    var bottom: Int32 = 0
+}
+
 @_silgen_name("AppendMenuW")
 private func winAppendMenuW(_ menu: HMENU?, _ flags: UINT, _ identifier: UInt, _ title: UnsafePointer<UInt16>?) -> Int32
 
@@ -46,6 +55,9 @@ private func winCreateMenu() -> HMENU?
 
 @_silgen_name("CreatePopupMenu")
 private func winCreatePopupMenu() -> HMENU?
+
+@_silgen_name("CreateSolidBrush")
+private func winCreateSolidBrush(_ color: DWORD) -> HBRUSH?
 
 @_silgen_name("CreateWindowExW")
 private func winCreateWindowExW(
@@ -72,6 +84,9 @@ private func winDefWindowProcW(_ hwnd: HWND?, _ message: UINT, _ wParam: WPARAM,
 @_silgen_name("DestroyWindow")
 private func winDestroyWindow(_ hwnd: HWND?) -> Int32
 
+@_silgen_name("DeleteObject")
+private func winDeleteObject(_ object: HGDIOBJ?) -> Int32
+
 @_silgen_name("EnableWindow")
 private func winEnableWindow(_ hwnd: HWND?, _ enable: Int32) -> Int32
 
@@ -80,6 +95,12 @@ private func winDispatchMessageW(_ message: UnsafePointer<MSG>) -> LRESULT
 
 @_silgen_name("DrawMenuBar")
 private func winDrawMenuBar(_ hwnd: HWND?) -> Int32
+
+@_silgen_name("FillRect")
+private func winFillRect(_ deviceContext: HDC?, _ rectangle: UnsafePointer<RECT>?, _ brush: HBRUSH?) -> Int32
+
+@_silgen_name("GetClientRect")
+private func winGetClientRect(_ hwnd: HWND?, _ rectangle: UnsafeMutablePointer<RECT>?) -> Int32
 
 @_silgen_name("GetMessageW")
 private func winGetMessageW(_ message: UnsafeMutablePointer<MSG>, _ hwnd: HWND?, _ minimumMessage: UINT, _ maximumMessage: UINT) -> Int32
@@ -95,6 +116,9 @@ private func winGetWindowTextLengthW(_ hwnd: HWND?) -> Int32
 
 @_silgen_name("GetWindowTextW")
 private func winGetWindowTextW(_ hwnd: HWND?, _ text: UnsafeMutablePointer<UInt16>?, _ maximumCount: Int32) -> Int32
+
+@_silgen_name("InvalidateRect")
+private func winInvalidateRect(_ hwnd: HWND?, _ rectangle: UnsafePointer<RECT>?, _ erase: Int32) -> Int32
 
 @_silgen_name("LoadCursorW")
 private func winLoadCursorW(_ instance: HINSTANCE?, _ cursorName: UnsafePointer<UInt16>?) -> HCURSOR?
@@ -126,6 +150,12 @@ private func winRegisterClassW(_ windowClass: UnsafePointer<WNDCLASSW>) -> UInt1
 @_silgen_name("SetMenu")
 private func winSetMenu(_ hwnd: HWND?, _ menu: HMENU?) -> Int32
 
+@_silgen_name("SetBkColor")
+private func winSetBkColor(_ deviceContext: HDC?, _ color: DWORD) -> DWORD
+
+@_silgen_name("SetTextColor")
+private func winSetTextColor(_ deviceContext: HDC?, _ color: DWORD) -> DWORD
+
 @_silgen_name("SetWindowTextW")
 private func winSetWindowTextW(_ hwnd: HWND?, _ text: UnsafePointer<UInt16>?) -> Int32
 
@@ -155,7 +185,10 @@ private let mbIconError: UINT = 0x00000010
 private let swShow: Int32 = 5
 private let swHide: Int32 = 0
 private let wmDestroy: UINT = 0x0002
+private let wmEraseBackground: UINT = 0x0014
 private let wmCommand: UINT = 0x0111
+private let wmCtlColorEdit: UINT = 0x0133
+private let wmCtlColorStatic: UINT = 0x0138
 private let bmGetCheck: UINT = 0x00f0
 private let bmSetCheck: UINT = 0x00f1
 private let cbAddString: UINT = 0x0143
@@ -201,6 +234,9 @@ public final class Win32NativeControlBackend: NativeControlBackend {
     private var controlActions: [UInt: () -> Void] = [:]
     private var textChangeActions: [UInt: (String) -> Void] = [:]
     private var commandActions: [UInt: () -> Void] = [:]
+    private var textColors: [UInt: DWORD] = [:]
+    private var backgroundColors: [UInt: DWORD] = [:]
+    private var backgroundBrushes: [UInt: HBRUSH] = [:]
     private var nextCommandIdentifier: UInt = 1_000
 
     /// Creates a Win32 backend.
@@ -291,6 +327,7 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         windowHandles.remove(handle)
         controlActions.removeValue(forKey: handle.rawValue)
         textChangeActions.removeValue(forKey: handle.rawValue)
+        clearAppearance(for: handle)
     }
 
     /// Destroys a native child control.
@@ -302,6 +339,7 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         _ = winDestroyWindow(hwnd)
         controlActions.removeValue(forKey: handle.rawValue)
         textChangeActions.removeValue(forKey: handle.rawValue)
+        clearAppearance(for: handle)
     }
 
     /// Creates a native view child.
@@ -438,6 +476,34 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         _ = winEnableWindow(hwnd, isEnabled ? 1 : 0)
     }
 
+    /// Updates a native control's text color.
+    public func setTextColor(_ color: NSColor?, for handle: NativeHandle) {
+        if let color {
+            textColors[handle.rawValue] = colorRef(from: color)
+        } else {
+            textColors.removeValue(forKey: handle.rawValue)
+        }
+        invalidate(handle)
+    }
+
+    /// Updates a native control's background color.
+    public func setBackgroundColor(_ color: NSColor?, for handle: NativeHandle) {
+        if let brush = backgroundBrushes.removeValue(forKey: handle.rawValue) {
+            _ = winDeleteObject(brush)
+        }
+
+        if let color {
+            let colorRef = colorRef(from: color)
+            backgroundColors[handle.rawValue] = colorRef
+            if let brush = winCreateSolidBrush(colorRef) {
+                backgroundBrushes[handle.rawValue] = brush
+            }
+        } else {
+            backgroundColors.removeValue(forKey: handle.rawValue)
+        }
+        invalidate(handle)
+    }
+
     /// Updates a native button check state.
     public func setButtonState(_ state: NSControl.StateValue, for handle: NativeHandle) {
         guard let hwnd = hwnd(from: handle) else {
@@ -543,6 +609,22 @@ public final class Win32NativeControlBackend: NativeControlBackend {
 
     private func dispatchMessage(hwnd: HWND?, message: UINT, wParam: WPARAM, lParam: LPARAM) -> LRESULT? {
         switch message {
+        case wmEraseBackground:
+            guard let hwnd else {
+                return nil
+            }
+
+            let handle = nativeHandle(from: hwnd)
+            guard let brush = backgroundBrushes[handle.rawValue] else {
+                return nil
+            }
+
+            var rectangle = RECT()
+            _ = winGetClientRect(hwnd, &rectangle)
+            withUnsafePointer(to: rectangle) { rectanglePointer in
+                _ = winFillRect(HDC(bitPattern: Int(wParam)), rectanglePointer, brush)
+            }
+            return 1
         case wmCommand:
             let commandIdentifier = UInt(wParam & 0xffff)
             let notificationCode = UInt((wParam >> 16) & 0xffff)
@@ -567,6 +649,23 @@ public final class Win32NativeControlBackend: NativeControlBackend {
                 return 0
             }
 
+            return nil
+        case wmCtlColorEdit, wmCtlColorStatic:
+            guard lParam != 0 else {
+                return nil
+            }
+
+            let rawHandle = UInt(bitPattern: lParam)
+            let deviceContext = HDC(bitPattern: Int(wParam))
+            if let textColor = textColors[rawHandle] {
+                _ = winSetTextColor(deviceContext, textColor)
+            }
+            if let backgroundColor = backgroundColors[rawHandle] {
+                _ = winSetBkColor(deviceContext, backgroundColor)
+            }
+            if let brush = backgroundBrushes[rawHandle] {
+                return Int(bitPattern: brush)
+            }
             return nil
         case wmDestroy:
             if let hwnd, windowHandles.contains(nativeHandle(from: hwnd)) {
@@ -769,6 +868,29 @@ public final class Win32NativeControlBackend: NativeControlBackend {
             winGetWindowTextW(hwnd, pointer.baseAddress, maximumCount)
         }
         return String(decoding: buffer.prefix(Int(copiedCount)), as: UTF16.self)
+    }
+
+    private func colorRef(from color: NSColor) -> DWORD {
+        let red = DWORD(color.redComponent * 255) & 0xff
+        let green = DWORD(color.greenComponent * 255) & 0xff
+        let blue = DWORD(color.blueComponent * 255) & 0xff
+        return red | (green << 8) | (blue << 16)
+    }
+
+    private func invalidate(_ handle: NativeHandle) {
+        guard let hwnd = hwnd(from: handle) else {
+            return
+        }
+
+        _ = winInvalidateRect(hwnd, nil, 1)
+    }
+
+    private func clearAppearance(for handle: NativeHandle) {
+        textColors.removeValue(forKey: handle.rawValue)
+        backgroundColors.removeValue(forKey: handle.rawValue)
+        if let brush = backgroundBrushes.removeValue(forKey: handle.rawValue) {
+            _ = winDeleteObject(brush)
+        }
     }
 
     private func nativeHandle(from hwnd: HWND) -> NativeHandle {

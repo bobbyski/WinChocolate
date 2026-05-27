@@ -33,6 +33,7 @@ WinChocolate is early and intentionally incomplete. The current milestone proves
 - Static and editable `NSTextField`
 - Native text, frame, hidden, and enabled updates
 - Native modal `NSAlert` through `MessageBoxW`
+- Initial `NSColor` support for view backgrounds and text field text color
 - SwiftPM demo app with a click counter and editable text field
 
 The Win32 backend currently uses a narrow manual User32/Gdi32 FFI layer because this local ARM64 Swift toolchain cannot import `WinSDK` cleanly.

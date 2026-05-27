@@ -32,6 +32,12 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
 
         /// Native pop-up button selected index.
         public var popUpSelectedIndex: Int
+
+        /// Recorded text color.
+        public var textColor: NSColor?
+
+        /// Recorded background color.
+        public var backgroundColor: NSColor?
     }
 
     private var nextRawHandle: UInt = 1
@@ -170,6 +176,26 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
         records[handle] = record
     }
 
+    /// Updates a recorded text color.
+    public func setTextColor(_ color: NSColor?, for handle: NativeHandle) {
+        guard var record = records[handle] else {
+            return
+        }
+
+        record.textColor = color
+        records[handle] = record
+    }
+
+    /// Updates a recorded background color.
+    public func setBackgroundColor(_ color: NSColor?, for handle: NativeHandle) {
+        guard var record = records[handle] else {
+            return
+        }
+
+        record.backgroundColor = color
+        records[handle] = record
+    }
+
     /// Updates a recorded button state.
     public func setButtonState(_ state: NSControl.StateValue, for handle: NativeHandle) {
         guard var record = records[handle] else {
@@ -240,7 +266,9 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
             isEnabled: true,
             buttonState: .off,
             popUpItems: [],
-            popUpSelectedIndex: -1
+            popUpSelectedIndex: -1,
+            textColor: nil,
+            backgroundColor: nil
         )
         return handle
     }

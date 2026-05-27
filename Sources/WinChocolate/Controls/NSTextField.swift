@@ -23,6 +23,17 @@ open class NSTextField: NSControl {
     /// Whether the text field accepts keyboard editing.
     open var isEditable: Bool = false
 
+    /// The text color, when explicitly set.
+    open var textColor: NSColor? {
+        didSet {
+            guard let nativeHandle else {
+                return
+            }
+
+            realizedBackend?.setTextColor(textColor, for: nativeHandle)
+        }
+    }
+
     /// Swift-native action invoked when user editing changes the string value.
     open var onTextChanged: ((NSTextField) -> Void)?
 
@@ -47,6 +58,7 @@ open class NSTextField: NSControl {
     @discardableResult
     open override func realizeNativePeer(in backend: NativeControlBackend, parent: NativeHandle?) -> NativeHandle {
         let handle = super.realizeNativePeer(in: backend, parent: parent)
+        backend.setTextColor(textColor, for: handle)
         backend.registerTextChangeAction(for: handle) { [weak self] text in
             self?.updateStringValueFromNative(text)
         }

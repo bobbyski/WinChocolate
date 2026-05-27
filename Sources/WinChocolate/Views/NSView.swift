@@ -46,6 +46,17 @@ open class NSView: NSObject {
         }
     }
 
+    /// The view background color, when explicitly set.
+    open var backgroundColor: NSColor? {
+        didSet {
+            guard let nativeHandle else {
+                return
+            }
+
+            realizedBackend?.setBackgroundColor(backgroundColor, for: nativeHandle)
+        }
+    }
+
     /// Creates a view with a frame.
     public init(frame frameRect: NSRect) {
         self.frame = frameRect
@@ -92,6 +103,7 @@ open class NSView: NSObject {
         nativeHandle = handle
         realizedBackend = backend
         backend.setHidden(isHidden, for: handle)
+        backend.setBackgroundColor(backgroundColor, for: handle)
 
         for subview in subviews {
             subview.realizeNativePeer(in: backend, parent: handle)

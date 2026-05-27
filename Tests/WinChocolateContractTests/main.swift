@@ -210,6 +210,34 @@ func testBoxUsesNativePeerAndSyncsTitle() {
     expect(backend.records[handle]?.text == "Updated Group", "Box title was not synced to backend.")
 }
 
+func testColorValuesClampComponents() {
+    let color = NSColor(calibratedRed: 2, green: -1, blue: 0.25, alpha: 3)
+
+    expect(color.redComponent == 1, "Color red component did not clamp high.")
+    expect(color.greenComponent == 0, "Color green component did not clamp low.")
+    expect(color.blueComponent == 0.25, "Color blue component changed unexpectedly.")
+    expect(color.alphaComponent == 1, "Color alpha component did not clamp high.")
+}
+
+func testViewAndTextFieldColorsSyncToBackend() {
+    let backend = InMemoryNativeControlBackend()
+    let view = NSView(frame: NSMakeRect(0, 0, 100, 100))
+    let textField = NSTextField(string: "Color", frame: NSMakeRect(0, 0, 80, 24))
+    view.backgroundColor = .white
+    textField.textColor = .blue
+    textField.backgroundColor = NSColor(calibratedRed: 0.9, green: 0.95, blue: 1, alpha: 1)
+    view.addSubview(textField)
+
+    let viewHandle = view.realizeNativePeer(in: backend, parent: nil)
+    guard let textHandle = textField.nativeHandle else {
+        fatalError("Text field did not realize.")
+    }
+
+    expect(backend.records[viewHandle]?.backgroundColor == .white, "View background color was not synced.")
+    expect(backend.records[textHandle]?.textColor == .blue, "Text field text color was not synced.")
+    expect(backend.records[textHandle]?.backgroundColor == NSColor(calibratedRed: 0.9, green: 0.95, blue: 1, alpha: 1), "Text field background color was not synced.")
+}
+
 
 func testRemovingRealizedSubviewDestroysNativePeer() {
     let backend = InMemoryNativeControlBackend()
@@ -272,6 +300,8 @@ testRadioButtonUsesRadioNativePeer()
 testPopUpButtonUsesNativePeerAndSelection()
 testPopUpButtonNativeActionUpdatesSelection()
 testBoxUsesNativePeerAndSyncsTitle()
+testColorValuesClampComponents()
+testViewAndTextFieldColorsSyncToBackend()
 testRemovingRealizedSubviewDestroysNativePeer()
 testMainMenuQuitItemTerminatesApplication()
 testAlertReturnsFirstButtonInMemory()

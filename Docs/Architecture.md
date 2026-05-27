@@ -24,7 +24,7 @@ The first milestone is a runnable AppKit-shaped Windows application slice:
 |---|---:|---:|---|---|
 | 1: SwiftPM Shape And Core Names | Implemented | 100% | package, sources, tests, docs | Initial AppKit-compatible public type names are in place. |
 | 2: Classic Win32 Backend | Partial | 90% | HWND creation, message loop, child controls | User32-backed window, custom view container, menu, button, checkbox, radio button, combo box, group box, static/edit text, text/frame/visibility/enabled updates, native cleanup, and command dispatch are in place. This backend should keep the classic Win32 look available for apps that want it. |
-| 3: AppKit Surface Expansion | Partial | 33% | menus, dialogs, responders, layout, text, images | Initial `NSMenu`, `NSMenuItem`, `NSAlert`, `NSBox`, editable `NSTextField`, `NSPopUpButton`, and push/switch/radio `NSButton` APIs are present. |
+| 3: AppKit Surface Expansion | Partial | 35% | menus, dialogs, responders, layout, text, images | Initial `NSMenu`, `NSMenuItem`, `NSAlert`, `NSBox`, `NSColor`, editable `NSTextField`, `NSPopUpButton`, and push/switch/radio `NSButton` APIs are present. |
 | 4: Demo Application | Partial | 81% | SwiftPM demo app | Demo source builds as a SwiftPM executable and visibly exercises native state APIs, modal alerts, editable text, checkbox state, radio groups, and pop-up selection. |
 | 5: Modern Windows Appearance | Planned | 0% | visual manager, themed controls, modern backend option | The eventual default should look like a modern Windows app while preserving the classic Win32 backend as an opt-in retro/native-simple mode. |
 | 6: Backend Selection And Theming | Planned | 0% | app/config API, backend factory, tests | Add an AppKit-shaped way to choose the classic or modern presentation without changing application UI code. |
@@ -43,6 +43,7 @@ The first milestone is a runnable AppKit-shaped Windows application slice:
 - [x] Add radio-style `NSButton` backed by native radio buttons.
 - [x] Add `NSPopUpButton` backed by native combo boxes.
 - [x] Add `NSBox` backed by native group boxes.
+- [x] Add initial `NSColor` and color propagation for views and text fields.
 - [x] Add native state updates for title/text, frame, hidden, enabled, and destroyed views.
 - [ ] Preserve the current classic Win32 look as an explicit supported presentation mode.
 - [ ] Add a modern Windows presentation layer as the eventual default.
@@ -85,6 +86,8 @@ Native code is isolated behind `NativeControlBackend`. Public controls do not ca
 The current `Win32NativeControlBackend` is intentionally allowed to keep its classic Windows look. That appearance is useful for retro apps, very small tools, and as a simple correctness backend. The long-term default should become a modern Windows presentation, likely through a separate appearance/backend layer rather than by breaking the classic backend.
 
 Modern appearance work is not part of the first native milestone. It should be tracked separately from API compatibility because visual polish, theming, high-DPI behavior, font/color systems, dark mode, and modern control rendering are substantial work on their own.
+
+`NSColor` is the first appearance primitive. It stores normalized RGBA components and currently drives `NSView.backgroundColor` plus `NSTextField.textColor`. The classic Win32 backend maps these values to simple `COLORREF` and brush handling for native static/edit controls and custom view background painting; future modern rendering should build on the same public properties.
 
 `NSView` maps to a lightweight custom child HWND. The same WinChocolate window procedure handles top-level windows and view containers, while only top-level window destruction terminates the application. This allows nested view hierarchies without losing button `WM_COMMAND` dispatch.
 
