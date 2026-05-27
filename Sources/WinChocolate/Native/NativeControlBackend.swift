@@ -40,6 +40,9 @@ public protocol NativeControlBackend: AnyObject {
     /// Creates a native text field child.
     func createTextField(text: String, frame: NSRect, parent: NativeHandle?, isEditable: Bool) -> NativeHandle
 
+    /// Creates a native pop-up button child.
+    func createPopUpButton(items: [String], selectedIndex: Int, frame: NSRect, parent: NativeHandle?) -> NativeHandle
+
     /// Updates the visible text for a native control.
     func setText(_ text: String, for handle: NativeHandle)
 
@@ -57,6 +60,15 @@ public protocol NativeControlBackend: AnyObject {
 
     /// Reads a native button check state.
     func buttonState(for handle: NativeHandle) -> NSControl.StateValue
+
+    /// Replaces native pop-up button items.
+    func setPopUpButtonItems(_ items: [String], selectedIndex: Int, for handle: NativeHandle)
+
+    /// Updates native pop-up button selection.
+    func setPopUpButtonSelectedIndex(_ selectedIndex: Int, for handle: NativeHandle)
+
+    /// Reads native pop-up button selection.
+    func popUpButtonSelectedIndex(for handle: NativeHandle) -> Int
 
     /// Registers the action to perform when a native control is activated.
     func registerAction(for handle: NativeHandle, action: @escaping () -> Void)

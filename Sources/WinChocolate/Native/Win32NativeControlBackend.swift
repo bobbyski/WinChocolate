@@ -158,8 +158,13 @@ private let wmDestroy: UINT = 0x0002
 private let wmCommand: UINT = 0x0111
 private let bmGetCheck: UINT = 0x00f0
 private let bmSetCheck: UINT = 0x00f1
+private let cbAddString: UINT = 0x0143
+private let cbGetCurSel: UINT = 0x0147
+private let cbResetContent: UINT = 0x014b
+private let cbSetCurSel: UINT = 0x014e
 private let enChange: UInt = 0x0300
 private let bnClicked: UInt = 0
+private let cbnSelChange: UInt = 1
 private let bstUnchecked: WPARAM = 0
 private let bstChecked: WPARAM = 1
 private let bstIndeterminate: WPARAM = 2
@@ -172,12 +177,14 @@ private let wsThickFrame: DWORD = 0x00040000
 private let wsMinimizeBox: DWORD = 0x00020000
 private let wsMaximizeBox: DWORD = 0x00010000
 private let wsVisible: DWORD = 0x10000000
+private let wsVScroll: DWORD = 0x00200000
 private let wsChild: DWORD = 0x40000000
 private let wsClipChildren: DWORD = 0x02000000
 private let wsBorder: DWORD = 0x00800000
 private let esAutoHScroll: DWORD = 0x0080
 private let bsAutoCheckBox: DWORD = 0x00000003
 private let bsAutoRadioButton: DWORD = 0x00000009
+private let cbsDropdownList: DWORD = 0x0003
 
 /// Win32 implementation of WinChocolate's native backend.
 ///
@@ -359,6 +366,20 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         )
     }
 
+    /// Creates a native pop-up button child.
+    public func createPopUpButton(items: [String], selectedIndex: Int, frame: NSRect, parent: NativeHandle?) -> NativeHandle {
+        let handle = createChildWindow(
+            className: "COMBOBOX",
+            text: "",
+            frame: frame,
+            parent: parent,
+            commandIdentifier: nextCommandID(),
+            style: wsChild | wsVisible | wsVScroll | cbsDropdownList
+        )
+        setPopUpButtonItems(items, selectedIndex: selectedIndex, for: handle)
+        return handle
+    }
+
     /// Updates the visible text for a native control.
     public func setText(_ text: String, for handle: NativeHandle) {
         guard let hwnd = hwnd(from: handle) else {
@@ -440,6 +461,40 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         }
     }
 
+    /// Replaces native pop-up button items.
+    public func setPopUpButtonItems(_ items: [String], selectedIndex: Int, for handle: NativeHandle) {
+        guard let hwnd = hwnd(from: handle) else {
+            return
+        }
+
+        _ = winSendMessageW(hwnd, cbResetContent, 0, 0)
+        for item in items {
+            withWideString(item) { title in
+                _ = winSendMessageW(hwnd, cbAddString, 0, Int(bitPattern: title))
+            }
+        }
+        setPopUpButtonSelectedIndex(selectedIndex, for: handle)
+    }
+
+    /// Updates native pop-up button selection.
+    public func setPopUpButtonSelectedIndex(_ selectedIndex: Int, for handle: NativeHandle) {
+        guard let hwnd = hwnd(from: handle) else {
+            return
+        }
+
+        let nativeIndex = selectedIndex < 0 ? WPARAM.max : WPARAM(selectedIndex)
+        _ = winSendMessageW(hwnd, cbSetCurSel, nativeIndex, 0)
+    }
+
+    /// Reads native pop-up button selection.
+    public func popUpButtonSelectedIndex(for handle: NativeHandle) -> Int {
+        guard let hwnd = hwnd(from: handle) else {
+            return -1
+        }
+
+        return Int(winSendMessageW(hwnd, cbGetCurSel, 0, 0))
+    }
+
     /// Registers the action to perform when a native control is activated.
     public func registerAction(for handle: NativeHandle, action: @escaping () -> Void) {
         controlActions[handle.rawValue] = action
@@ -486,6 +541,11 @@ public final class Win32NativeControlBackend: NativeControlBackend {
 
             if lParam != 0, notificationCode == enChange, let action = textChangeActions[UInt(bitPattern: lParam)] {
                 action(text(from: HWND(bitPattern: lParam)))
+                return 0
+            }
+
+            if lParam != 0, notificationCode == cbnSelChange, let action = controlActions[UInt(bitPattern: lParam)] {
+                action()
                 return 0
             }
 

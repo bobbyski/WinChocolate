@@ -165,6 +165,40 @@ func testRadioButtonUsesRadioNativePeer() {
     expect(backend.records[handle]?.buttonState == .on, "Radio button state was not synced to backend.")
 }
 
+func testPopUpButtonUsesNativePeerAndSelection() {
+    let backend = InMemoryNativeControlBackend()
+    let popUpButton = NSPopUpButton(frame: NSMakeRect(0, 0, 140, 80), pullsDown: false)
+    popUpButton.addItems(withTitles: ["Info", "Warning", "Critical"])
+    popUpButton.selectItem(withTitle: "Warning")
+
+    let handle = popUpButton.realizeNativePeer(in: backend, parent: nil)
+
+    expect(backend.records[handle]?.kind == "popUpButton", "Pop-up button did not request native peer.")
+    expect(backend.records[handle]?.popUpItems == ["Info", "Warning", "Critical"], "Pop-up button items were not synced.")
+    expect(backend.records[handle]?.popUpSelectedIndex == 1, "Pop-up button selection was not synced.")
+    expect(popUpButton.titleOfSelectedItem == "Warning", "Pop-up button selected title was not reported.")
+}
+
+func testPopUpButtonNativeActionUpdatesSelection() {
+    let backend = InMemoryNativeControlBackend()
+    let popUpButton = NSPopUpButton(frame: NSMakeRect(0, 0, 140, 80), pullsDown: false)
+    popUpButton.addItems(withTitles: ["Info", "Warning", "Critical"])
+    let handle = popUpButton.realizeNativePeer(in: backend, parent: nil)
+    var actionCount = 0
+
+    popUpButton.onAction = { control in
+        expect(control === popUpButton, "Pop-up action sender was not the control.")
+        actionCount += 1
+    }
+
+    backend.setPopUpButtonSelectedIndex(2, for: handle)
+    backend.actions[handle]?()
+
+    expect(popUpButton.indexOfSelectedItem == 2, "Pop-up button did not read native selection.")
+    expect(popUpButton.titleOfSelectedItem == "Critical", "Pop-up button selected title did not update.")
+    expect(actionCount == 1, "Pop-up button action was not sent.")
+}
+
 
 func testRemovingRealizedSubviewDestroysNativePeer() {
     let backend = InMemoryNativeControlBackend()
@@ -224,6 +258,8 @@ testWindowTitleAndFramePropagateToBackend()
 testEditableTextFieldUsesEditableNativePeer()
 testSwitchButtonUsesCheckboxNativePeer()
 testRadioButtonUsesRadioNativePeer()
+testPopUpButtonUsesNativePeerAndSelection()
+testPopUpButtonNativeActionUpdatesSelection()
 testRemovingRealizedSubviewDestroysNativePeer()
 testMainMenuQuitItemTerminatesApplication()
 testAlertReturnsFirstButtonInMemory()

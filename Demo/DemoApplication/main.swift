@@ -31,6 +31,8 @@ let hideButton = NSButton(title: "Hide Counter", frame: NSMakeRect(272, 204, 128
 let moveButton = NSButton(title: "Move Click", frame: NSMakeRect(416, 204, 112, 32))
 let alertButton = NSButton(title: "Alert", frame: NSMakeRect(24, 108, 88, 32))
 let titleCheckbox = NSButton(title: "Show count in title", frame: NSMakeRect(128, 108, 180, 32))
+let alertStyleLabel = NSTextField(string: "Alert style:", frame: NSMakeRect(316, 108, 84, 24))
+let alertStylePopup = NSPopUpButton(frame: NSMakeRect(404, 104, 124, 92), pullsDown: false)
 let infoRadio = NSButton(title: "Info", frame: NSMakeRect(24, 28, 72, 24))
 let warningRadio = NSButton(title: "Warning", frame: NSMakeRect(104, 28, 92, 24))
 let criticalRadio = NSButton(title: "Critical", frame: NSMakeRect(204, 28, 92, 24))
@@ -45,6 +47,8 @@ infoRadio.setButtonType(.radioButton)
 warningRadio.setButtonType(.radioButton)
 criticalRadio.setButtonType(.radioButton)
 infoRadio.state = .on
+alertStylePopup.addItems(withTitles: ["Info", "Warning", "Critical"])
+alertStylePopup.selectItem(withTitle: "Info")
 
 editableTextField.isEditable = true
 editableTextField.onTextChanged = { field in
@@ -88,9 +92,9 @@ alertButton.onAction = { _ in
     let alert = NSAlert()
     alert.messageText = "WinChocolate is running"
     alert.informativeText = "This is a native modal NSAlert backed by MessageBoxW."
-    if warningRadio.state == .on {
+    if alertStylePopup.titleOfSelectedItem == "Warning" {
         alert.alertStyle = .warning
-    } else if criticalRadio.state == .on {
+    } else if alertStylePopup.titleOfSelectedItem == "Critical" {
         alert.alertStyle = .critical
     } else {
         alert.alertStyle = .informational
@@ -110,15 +114,29 @@ titleCheckbox.onAction = { _ in
 }
 
 infoRadio.onAction = { _ in
+    alertStylePopup.selectItem(withTitle: "Info")
     statusLabel.stringValue = "Alert style: info"
 }
 
 warningRadio.onAction = { _ in
+    alertStylePopup.selectItem(withTitle: "Warning")
     statusLabel.stringValue = "Alert style: warning"
 }
 
 criticalRadio.onAction = { _ in
+    alertStylePopup.selectItem(withTitle: "Critical")
     statusLabel.stringValue = "Alert style: critical"
+}
+
+alertStylePopup.onAction = { _ in
+    let title = alertStylePopup.titleOfSelectedItem ?? "Info"
+    if title == "Warning" {
+        warningRadio.performClick(nil)
+    } else if title == "Critical" {
+        criticalRadio.performClick(nil)
+    } else {
+        infoRadio.performClick(nil)
+    }
 }
 
 contentView.addSubview(counterLabel)
@@ -131,6 +149,8 @@ contentView.addSubview(hideButton)
 contentView.addSubview(moveButton)
 contentView.addSubview(alertButton)
 contentView.addSubview(titleCheckbox)
+contentView.addSubview(alertStyleLabel)
+contentView.addSubview(alertStylePopup)
 contentView.addSubview(infoRadio)
 contentView.addSubview(warningRadio)
 contentView.addSubview(criticalRadio)

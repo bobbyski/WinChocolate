@@ -26,6 +26,12 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
 
         /// Native button check state.
         public var buttonState: NSControl.StateValue
+
+        /// Native pop-up button items.
+        public var popUpItems: [String]
+
+        /// Native pop-up button selected index.
+        public var popUpSelectedIndex: Int
     }
 
     private var nextRawHandle: UInt = 1
@@ -111,6 +117,14 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
         makeHandle(kind: isEditable ? "editableTextField" : "textField", text: text, frame: frame, parent: parent)
     }
 
+    /// Records a pop-up button creation request.
+    public func createPopUpButton(items: [String], selectedIndex: Int, frame: NSRect, parent: NativeHandle?) -> NativeHandle {
+        let handle = makeHandle(kind: "popUpButton", text: items.indices.contains(selectedIndex) ? items[selectedIndex] : "", frame: frame, parent: parent)
+        records[handle]?.popUpItems = items
+        records[handle]?.popUpSelectedIndex = selectedIndex
+        return handle
+    }
+
     /// Updates a recorded control text value.
     public func setText(_ text: String, for handle: NativeHandle) {
         guard var record = records[handle] else {
@@ -166,6 +180,34 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
         records[handle]?.buttonState ?? .off
     }
 
+    /// Replaces recorded pop-up button items.
+    public func setPopUpButtonItems(_ items: [String], selectedIndex: Int, for handle: NativeHandle) {
+        guard var record = records[handle] else {
+            return
+        }
+
+        record.popUpItems = items
+        record.popUpSelectedIndex = selectedIndex
+        record.text = items.indices.contains(selectedIndex) ? items[selectedIndex] : ""
+        records[handle] = record
+    }
+
+    /// Updates recorded pop-up button selection.
+    public func setPopUpButtonSelectedIndex(_ selectedIndex: Int, for handle: NativeHandle) {
+        guard var record = records[handle] else {
+            return
+        }
+
+        record.popUpSelectedIndex = selectedIndex
+        record.text = record.popUpItems.indices.contains(selectedIndex) ? record.popUpItems[selectedIndex] : ""
+        records[handle] = record
+    }
+
+    /// Reads recorded pop-up button selection.
+    public func popUpButtonSelectedIndex(for handle: NativeHandle) -> Int {
+        records[handle]?.popUpSelectedIndex ?? -1
+    }
+
     /// Records a control action.
     public func registerAction(for handle: NativeHandle, action: @escaping () -> Void) {
         actions[handle] = action
@@ -191,7 +233,9 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
             parent: parent,
             isHidden: false,
             isEnabled: true,
-            buttonState: .off
+            buttonState: .off,
+            popUpItems: [],
+            popUpSelectedIndex: -1
         )
         return handle
     }

@@ -4,7 +4,7 @@
 
 WinChocolate is an AppKit-shaped SwiftPM framework for Windows. The goal is to let application code replace `import Cocoa` or `import AppKit` with `import WinChocolate` and keep familiar names such as `NSApplication`, `NSWindow`, `NSView`, `NSButton`, and `NSTextField`, while the implementation wraps native Windows controls behind a backend boundary.
 
-Overall planned-code progress: `██████░░░░` 66%
+Overall planned-code progress: `███████░░░` 69%
 
 ## First Milestone
 
@@ -23,9 +23,9 @@ The first milestone is a runnable AppKit-shaped Windows application slice:
 | Phase | Status | Progress | Planned Commands | Notes |
 |---|---:|---:|---|---|
 | 1: SwiftPM Shape And Core Names | Implemented | 100% | package, sources, tests, docs | Initial AppKit-compatible public type names are in place. |
-| 2: Native Backend Boundary | Partial | 87% | HWND creation, message loop, child controls | User32-backed window, custom view container, menu, button, checkbox, radio button, static/edit text, text/frame/visibility/enabled updates, native cleanup, and command dispatch are in place. |
-| 3: AppKit Surface Expansion | Partial | 28% | menus, dialogs, responders, layout, text, images | Initial `NSMenu`, `NSMenuItem`, `NSAlert`, editable `NSTextField`, and push/switch/radio `NSButton` APIs are present. |
-| 4: Demo Application | Partial | 78% | SwiftPM demo app | Demo source builds as a SwiftPM executable and visibly exercises native state APIs, modal alerts, editable text, checkbox state, and radio groups. |
+| 2: Native Backend Boundary | Partial | 89% | HWND creation, message loop, child controls | User32-backed window, custom view container, menu, button, checkbox, radio button, combo box, static/edit text, text/frame/visibility/enabled updates, native cleanup, and command dispatch are in place. |
+| 3: AppKit Surface Expansion | Partial | 31% | menus, dialogs, responders, layout, text, images | Initial `NSMenu`, `NSMenuItem`, `NSAlert`, editable `NSTextField`, `NSPopUpButton`, and push/switch/radio `NSButton` APIs are present. |
+| 4: Demo Application | Partial | 81% | SwiftPM demo app | Demo source builds as a SwiftPM executable and visibly exercises native state APIs, modal alerts, editable text, checkbox state, radio groups, and pop-up selection. |
 
 ## Checklist
 
@@ -39,6 +39,7 @@ The first milestone is a runnable AppKit-shaped Windows application slice:
 - [x] Add editable `NSTextField` backed by native edit controls.
 - [x] Add switch-style `NSButton` backed by native checkboxes.
 - [x] Add radio-style `NSButton` backed by native radio buttons.
+- [x] Add `NSPopUpButton` backed by native combo boxes.
 - [x] Add native state updates for title/text, frame, hidden, enabled, and destroyed views.
 - [ ] Add `NSResponder`, image, font, color, layout, and deeper event APIs.
 - [x] Add a Swift demo application skeleton under `Demo`.
@@ -86,6 +87,8 @@ Realized views and controls now propagate common state changes to native peers. 
 `NSButton` now supports `momentaryPushIn` and `switchButton` modes. Switch buttons map to native auto-checkbox controls and synchronize `NSControl.StateValue` through `BM_GETCHECK` and `BM_SETCHECK`.
 
 Radio-style `NSButton` controls map to native auto-radio buttons and enforce sibling exclusivity in the Swift view hierarchy. This keeps the public behavior AppKit-shaped while the backend handles native check state.
+
+`NSPopUpButton` maps to a native Windows `COMBOBOX` in dropdown-list mode. The Swift control owns item titles and AppKit-shaped selection APIs such as `addItems(withTitles:)`, `selectItem(at:)`, `selectItem(withTitle:)`, `indexOfSelectedItem`, and `titleOfSelectedItem`, while the backend synchronizes native items and reads selection changes through `CBN_SELCHANGE`.
 
 ## Review Notes
 
