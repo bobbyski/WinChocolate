@@ -19,7 +19,8 @@ let package = Package(
             name: "WinChocolate",
             linkerSettings: [
                 .linkedLibrary("User32"),
-                .linkedLibrary("Gdi32")
+                .linkedLibrary("Gdi32"),
+                .linkedLibrary("Comctl32")
             ]
         ),
         .executableTarget(

@@ -6,7 +6,7 @@ WinChocolate is an AppKit-shaped SwiftPM framework for Windows. The goal is to l
 
 Overall planned-code progress: `█████░░░░░` 54%
 
-Current planned-code progress after the table plan update: `██████░░░░` 58%
+Current planned-code progress after the table selection update: `██████░░░░` 59%
 
 ## First Milestone
 
@@ -26,9 +26,9 @@ The first milestone is a runnable AppKit-shaped Windows application slice:
 |---|---:|---:|---|---|
 | 1: SwiftPM Shape And Core Names | Implemented | 100% | package, sources, tests, docs | Initial AppKit-compatible public type names are in place. |
 | 2: Classic Win32 Backend | Partial | 95% | HWND creation, message loop, child controls | User32-backed window, custom view container, menu, button, checkbox, radio button, combo box, group box, static/edit text, text/frame/visibility/enabled updates, native cleanup, mouse/key event dispatch, experimental edit-control Tab interception, and command dispatch are in place. This backend should keep the classic Win32 look available for apps that want it. |
-| 3: AppKit Surface Expansion | Partial | 52% | menus, dialogs, responders, layout, text, tables, images | Initial `NSMenu`, `NSMenuItem`, `NSAlert`, `NSBox`, `NSColor`, `NSFont`, `NSEvent`, `NSResponder`, `NSApp`, `NSWindow.firstResponder`, key-view loop APIs, key/main window tracking, editable `NSTextField`, `NSPopUpButton`, `NSScrollView`, `NSTableColumn`, `NSTableView`, and push/switch/radio `NSButton` APIs are present. |
-| 4: Demo Application | Partial | 88% | SwiftPM demo app | Demo source builds as a SwiftPM executable and visibly exercises native state APIs, modal alerts, editable text, checkbox state, radio groups, pop-up selection, table selection, mouse events, and key events. |
-| 5: AppKit Tables And Collection Controls | Partial | 15% | `NSTableView`, `NSOutlineView`, collection/list selection, cells/views | First AppKit-shaped `NSTableView` slice exists with columns, data source, selection, scroll-view hosting, tests, and a temporary classic backend renderer. Future work should move toward view/cell-based tables, headers, column resizing, sorting, editing, and native accessibility. |
+| 3: AppKit Surface Expansion | Partial | 55% | menus, dialogs, responders, layout, text, tables, images | Initial `NSMenu`, `NSMenuItem`, `NSAlert`, `NSBox`, `NSColor`, `NSFont`, `NSEvent`, `NSResponder`, `NSApp`, `NSWindow.firstResponder`, key-view loop APIs, key/main window tracking, editable `NSTextField`, `NSPopUpButton`, `NSScrollView`, `NSTableColumn`, `NSTableView`, `NSCell`, `NSTableCellView`, `NSTableRowView`, `NSSortDescriptor`, and push/switch/radio `NSButton` APIs are present. |
+| 4: Demo Application | Partial | 90% | SwiftPM demo app | Demo source builds as a SwiftPM executable and visibly exercises native state APIs, modal alerts, editable text, checkbox state, radio groups, pop-up selection, table selection/action, mouse events, and key events. |
+| 5: AppKit Tables And Collection Controls | Partial | 27% | `NSTableView`, `NSOutlineView`, collection/list selection, cells/views | First AppKit-shaped `NSTableView` slice exists with columns, data source, delegate, row and column selection helpers, sort descriptors, row/cell-view placeholders, scroll-view hosting, table action/double-action surface, tests, and a temporary classic backend renderer. Future work should move toward visible headers, column resizing, sorting behavior, editing, reuse identifiers, and native accessibility. |
 | 6: Modern Windows Appearance | Planned | 0% | visual manager, themed controls, modern backend option | The eventual default should look like a modern Windows app while preserving the classic Win32 backend as an opt-in retro/native-simple mode. |
 | 7: Backend Selection And Theming | Planned | 0% | app/config API, backend factory, tests | Add an AppKit-shaped way to choose the classic or modern presentation without changing application UI code. |
 
@@ -47,6 +47,8 @@ The first milestone is a runnable AppKit-shaped Windows application slice:
 - [x] Add `NSPopUpButton` backed by native combo boxes.
 - [x] Add `NSBox` backed by native group boxes.
 - [x] Add first `NSScrollView` and `NSTableView` public API slice with AppKit-shaped data-source contracts.
+- [x] Add first table cell/view, sort-descriptor, column movement, and selection helper contracts.
+- [x] Add table column-selection helpers and double-action compatibility surface.
 - [ ] Replace the temporary classic table renderer with a fuller Mac-like table implementation: headers, columns, selection, editing, sorting, and view/cell reuse.
 - [x] Add initial `NSColor` and color propagation for views and text fields.
 - [x] Add initial `NSFont` and font propagation for text fields.

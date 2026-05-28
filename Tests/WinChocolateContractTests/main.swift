@@ -249,33 +249,136 @@ final class RecordingTableDataSource: NSTableViewDataSource {
             return nil
         }
     }
+
+    func tableView(_ tableView: NSTableView, setObjectValue object: Any?, for tableColumn: NSTableColumn?, row: Int) {
+        guard rows.indices.contains(row) else {
+            return
+        }
+
+        switch tableColumn?.identifier.rawValue {
+        case "name":
+            rows[row][0] = object.map { String(describing: $0) } ?? ""
+        case "note":
+            rows[row][1] = object.map { String(describing: $0) } ?? ""
+        default:
+            break
+        }
+    }
 }
 
 final class RecordingTableDelegate: NSTableViewDelegate {
     var selectionChangeCount = 0
     var lastObject: AnyObject?
+    var requestedViewRows: [Int] = []
+    var oldSortDescriptorCount = -1
+    var rowHeights: [Int: CGFloat] = [:]
+    var cellView = NSTableCellView(frame: NSMakeRect(0, 0, 100, 24))
 
     func tableViewSelectionDidChange(_ notification: NSNotification) {
         selectionChangeCount += 1
         lastObject = notification.object
     }
+
+    func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
+        requestedViewRows.append(row)
+        return cellView
+    }
+
+    func tableView(_ tableView: NSTableView, heightOfRow row: Int) -> CGFloat {
+        rowHeights[row] ?? tableView.rowHeight
+    }
+
+    func tableView(_ tableView: NSTableView, sortDescriptorsDidChange oldDescriptors: [NSSortDescriptor]) {
+        oldSortDescriptorCount = oldDescriptors.count
+    }
+}
+
+final class TabRecordingWindow: NSWindow {
+    var nextSelectionCount = 0
+    var previousSelectionCount = 0
+
+    override func selectNextKeyView(_ sender: Any?) {
+        nextSelectionCount += 1
+        super.selectNextKeyView(sender)
+    }
+
+    override func selectPreviousKeyView(_ sender: Any?) {
+        previousSelectionCount += 1
+        super.selectPreviousKeyView(sender)
+    }
+}
+
+func testCellStoresStringAndObjectValues() {
+    let cell = NSTextFieldCell(textCell: "Header")
+
+    expect(cell.stringValue == "Header", "Text cell did not store initial string.")
+
+    cell.objectValue = 42
+
+    expect(cell.stringValue == "42", "Text cell did not stringify object value.")
+
+    cell.stringValue = "Updated"
+
+    expect(cell.objectValue as? String == "Updated", "Text cell stringValue did not update objectValue.")
+}
+
+func testSortDescriptorStoresKeyDirectionAndReverse() {
+    let descriptor = NSSortDescriptor(key: "name", ascending: true, selector: "compare:")
+    let reversed = descriptor.reversedSortDescriptor
+
+    expect(descriptor.key == "name", "Sort descriptor key was not stored.")
+    expect(descriptor.ascending, "Sort descriptor ascending flag was not stored.")
+    expect(descriptor.selector == "compare:", "Sort descriptor selector was not stored.")
+    expect(reversed.key == "name", "Reversed sort descriptor did not preserve key.")
+    expect(!reversed.ascending, "Reversed sort descriptor did not flip direction.")
+    expect(reversed.selector == "compare:", "Reversed sort descriptor did not preserve selector.")
+}
+
+func testTableCellAndRowViewsStoreState() {
+    let cellView = NSTableCellView(frame: NSMakeRect(0, 0, 120, 24))
+    let textField = NSTextField.label(withString: "Cell")
+    let rowView = NSTableRowView(frame: NSMakeRect(0, 0, 120, 24))
+
+    cellView.objectValue = "Value"
+    cellView.textField = textField
+    rowView.isSelected = true
+    rowView.isEmphasized = false
+    rowView.selectionHighlightStyle = .sourceList
+    rowView.shouldDrawSeparator = false
+
+    expect(cellView.objectValue as? String == "Value", "Table cell view objectValue was not stored.")
+    expect(cellView.textField === textField, "Table cell view textField was not stored.")
+    expect(textField.superview === cellView, "Table cell view did not host textField.")
+    expect(rowView.isSelected, "Table row view selected state was not stored.")
+    expect(!rowView.isEmphasized, "Table row view emphasized state was not stored.")
+    expect(rowView.selectionHighlightStyle == .sourceList, "Table row view highlight style was not stored.")
+    expect(!rowView.shouldDrawSeparator, "Table row view separator state was not stored.")
 }
 
 func testTableColumnStoresAppKitIdentifierShape() {
     let column = NSTableColumn(identifier: "name")
+    let dataCell = NSTextFieldCell(textCell: "Data")
+    let sortDescriptor = NSSortDescriptor(key: "name", ascending: true)
 
     column.title = "Name"
     column.width = 160
     column.minWidth = 40
     column.maxWidth = 400
     column.isEditable = true
+    column.resizingMask = [.userResizingMask]
+    column.setDataCell(dataCell)
+    column.sortDescriptorPrototype = sortDescriptor
 
     expect(column.identifier == NSUserInterfaceItemIdentifier("name"), "Table column identifier was not stored.")
     expect(column.title == "Name", "Table column title was not stored.")
+    expect(column.headerCell.stringValue == "Name", "Table column title did not update header cell.")
     expect(column.width == 160, "Table column width was not stored.")
     expect(column.minWidth == 40, "Table column min width was not stored.")
     expect(column.maxWidth == 400, "Table column max width was not stored.")
     expect(column.isEditable, "Table column editability was not stored.")
+    expect(column.resizingMask == [.userResizingMask], "Table column resizing mask was not stored.")
+    expect(column.dataCell === dataCell, "Table column data cell was not stored.")
+    expect(column.sortDescriptorPrototype === sortDescriptor, "Table column sort descriptor prototype was not stored.")
 }
 
 func testTableViewReloadsRowsFromDataSource() {
@@ -295,8 +398,244 @@ func testTableViewReloadsRowsFromDataSource() {
     expect(tableView.numberOfRows == 3, "Table view row count was wrong.")
     expect(tableView.tableColumn(withIdentifier: "note") === note, "Table column identifier lookup failed.")
     expect(tableView.tableColumn(at: 0) === name, "Table column index lookup failed.")
+    expect(tableView.column(withIdentifier: "note") == 1, "Table column index lookup by identifier failed.")
     expect(tableView.value(atColumn: 0, row: 1) == "Grace", "Table view did not load first column value.")
     expect(tableView.value(atColumn: 1, row: 2) == "Orbit", "Table view did not load second column value.")
+    expect(tableView.value(for: note, row: 0) == "Compiler", "Table view did not load value for table column.")
+}
+
+func testTableViewColumnMovementAndRemoval() {
+    let tableView = NSTableView(frame: NSMakeRect(0, 0, 300, 160))
+    let first = NSTableColumn(identifier: "first")
+    let second = NSTableColumn(identifier: "second")
+    let third = NSTableColumn(identifier: "third")
+
+    tableView.addTableColumn(first)
+    tableView.addTableColumn(second)
+    tableView.addTableColumn(third)
+    tableView.moveColumn(0, toColumn: 2)
+
+    expect(tableView.tableColumn(at: 0) === second, "moveColumn did not shift second column into first position.")
+    expect(tableView.tableColumn(at: 2) === first, "moveColumn did not move first column to requested position.")
+
+    tableView.removeTableColumn(second)
+
+    expect(tableView.numberOfColumns == 2, "removeTableColumn did not remove a column.")
+    expect(tableView.column(withIdentifier: "second") == -1, "Removed table column was still found.")
+}
+
+func testTableViewSelectionOptionsAndHelpers() {
+    let tableView = NSTableView(frame: NSMakeRect(0, 0, 300, 160))
+    let dataSource = RecordingTableDataSource()
+    let name = NSTableColumn(identifier: "name")
+
+    tableView.addTableColumn(name)
+    tableView.dataSource = dataSource
+    tableView.reloadData()
+
+    tableView.allowsEmptySelection = false
+    tableView.selectRowIndexes([1], byExtendingSelection: false)
+    tableView.deselectAll(nil)
+
+    expect(tableView.selectedRow == 1, "Table view allowed empty selection when disabled.")
+
+    tableView.allowsEmptySelection = true
+    tableView.deselectAll(nil)
+
+    expect(tableView.selectedRow == -1, "Table view did not clear selection.")
+
+    tableView.allowsMultipleSelection = true
+    tableView.selectRowIndexes([0], byExtendingSelection: false)
+    tableView.selectRowIndexes([2], byExtendingSelection: true)
+
+    expect(tableView.isRowSelected(0), "Table view did not keep extended row selection.")
+    expect(tableView.isRowSelected(2), "Table view did not add extended row selection.")
+    expect(tableView.numberOfSelectedRows == 2, "Table view selected row count was wrong.")
+
+    tableView.deselectRow(0)
+
+    expect(!tableView.isRowSelected(0), "Table view did not deselect a row.")
+    expect(tableView.selectedRow == 2, "Table view selected row was not updated after deselect.")
+
+    tableView.selectAll(nil)
+
+    expect(tableView.numberOfSelectedRows == 3, "Table view selectAll did not select all rows.")
+}
+
+func testTableViewStoresDisplayOptionsAndSetObjectValue() {
+    let tableView = NSTableView(frame: NSMakeRect(0, 0, 300, 160))
+    let dataSource = RecordingTableDataSource()
+    let note = NSTableColumn(identifier: "note")
+
+    tableView.addTableColumn(note)
+    tableView.dataSource = dataSource
+    tableView.rowHeight = 24
+    tableView.intercellSpacing = NSMakeSize(4, 5)
+    tableView.gridStyleMask = [.solidHorizontalGridLineMask, .solidVerticalGridLineMask]
+    tableView.selectionHighlightStyle = .sourceList
+    tableView.columnAutoresizingStyle = .lastColumnOnlyAutoresizingStyle
+    tableView.allowsColumnReordering = true
+    tableView.allowsColumnResizing = false
+    tableView.reloadData()
+    tableView.setObjectValue("Updated", for: note, row: 1)
+
+    expect(tableView.rowHeight == 24, "Table rowHeight was not stored.")
+    expect(tableView.intercellSpacing == NSMakeSize(4, 5), "Table intercellSpacing was not stored.")
+    expect(tableView.gridStyleMask.contains(.solidHorizontalGridLineMask), "Table horizontal grid style was not stored.")
+    expect(tableView.gridStyleMask.contains(.solidVerticalGridLineMask), "Table vertical grid style was not stored.")
+    expect(tableView.selectionHighlightStyle == .sourceList, "Table selection highlight style was not stored.")
+    expect(tableView.columnAutoresizingStyle == .lastColumnOnlyAutoresizingStyle, "Table autoresizing style was not stored.")
+    expect(tableView.allowsColumnReordering, "Table column reordering flag was not stored.")
+    expect(!tableView.allowsColumnResizing, "Table column resizing flag was not stored.")
+    expect(tableView.value(atColumn: 0, row: 1) == "Updated", "Table setObjectValue did not update through data source.")
+}
+
+func testTableViewDelegateViewHeightAndSortHooks() {
+    let tableView = NSTableView(frame: NSMakeRect(0, 0, 300, 160))
+    let dataSource = RecordingTableDataSource()
+    let delegate = RecordingTableDelegate()
+    let name = NSTableColumn(identifier: "name")
+    let firstSort = NSSortDescriptor(key: "name", ascending: true)
+    let secondSort = NSSortDescriptor(key: "name", ascending: false)
+
+    delegate.rowHeights[1] = 31
+    tableView.addTableColumn(name)
+    tableView.dataSource = dataSource
+    tableView.delegate = delegate
+    tableView.reloadData()
+
+    let view = tableView.view(atColumn: 0, row: 1, makeIfNecessary: true)
+    let missingView = tableView.view(atColumn: 0, row: 9, makeIfNecessary: true)
+    tableView.sortDescriptors = [firstSort]
+    tableView.sortDescriptors = [secondSort]
+
+    expect(view === delegate.cellView, "Table delegate did not provide view-based cell view.")
+    expect(missingView == nil, "Table view produced view for invalid row.")
+    expect(delegate.requestedViewRows == [1], "Table delegate did not record requested row.")
+    expect(tableView.heightOfRow(1) == 31, "Table delegate row height was not used.")
+    expect(tableView.heightOfRow(0) == tableView.rowHeight, "Table delegate default row height was not used.")
+    expect(delegate.oldSortDescriptorCount == 1, "Table delegate sort change did not receive old descriptors.")
+    expect(tableView.sortDescriptors.first === secondSort, "Table sort descriptors were not stored.")
+}
+
+func testTableViewTabKeyMovesThroughKeyViewLoop() {
+    let backend = InMemoryNativeControlBackend()
+    let window = TabRecordingWindow(
+        contentRect: NSMakeRect(0, 0, 300, 160),
+        styleMask: [.titled],
+        backing: .buffered,
+        defer: false,
+        nativeBackend: backend
+    )
+    let contentView = NSView(frame: NSMakeRect(0, 0, 300, 160))
+    let tableView = NSTableView(frame: NSMakeRect(0, 0, 200, 100))
+    let nextButton = NSButton(title: "Next", frame: NSMakeRect(0, 110, 80, 24))
+
+    tableView.nextKeyView = nextButton
+    tableView.previousKeyView = nextButton
+    nextButton.nextKeyView = tableView
+    nextButton.previousKeyView = tableView
+    contentView.addSubview(tableView)
+    contentView.addSubview(nextButton)
+    window.contentView = contentView
+    window.realizeNativePeer()
+    _ = window.makeFirstResponder(tableView)
+
+    tableView.keyDown(with: NSEvent(type: .keyDown, locationInWindow: NSZeroPoint, keyCode: 0x09))
+
+    expect(window.nextSelectionCount == 1, "Table view Tab did not request next key view.")
+    expect(window.firstResponder === nextButton, "Table view Tab did not move focus to next key view.")
+
+    _ = window.makeFirstResponder(tableView)
+    tableView.keyDown(with: NSEvent(type: .keyDown, locationInWindow: NSZeroPoint, keyCode: 0x09, modifierFlags: [.shift]))
+
+    expect(window.previousSelectionCount == 1, "Table view Shift-Tab did not request previous key view.")
+    expect(window.firstResponder === nextButton, "Table view Shift-Tab did not move focus to previous key view.")
+}
+
+func testTableViewKeyboardNavigationUpdatesSelection() {
+    let tableView = NSTableView(frame: NSMakeRect(0, 0, 300, 160))
+    let dataSource = RecordingTableDataSource()
+    let delegate = RecordingTableDelegate()
+    let name = NSTableColumn(identifier: "name")
+
+    tableView.addTableColumn(name)
+    tableView.dataSource = dataSource
+    tableView.delegate = delegate
+    tableView.reloadData()
+
+    tableView.keyDown(with: NSEvent(type: .keyDown, locationInWindow: NSZeroPoint, keyCode: 0x28))
+
+    expect(tableView.selectedRow == 0, "Down arrow did not select the first row from empty selection.")
+    expect(delegate.selectionChangeCount == 1, "Down arrow did not notify selection change.")
+
+    tableView.keyDown(with: NSEvent(type: .keyDown, locationInWindow: NSZeroPoint, keyCode: 0x28))
+
+    expect(tableView.selectedRow == 1, "Down arrow did not advance table selection.")
+
+    tableView.keyDown(with: NSEvent(type: .keyDown, locationInWindow: NSZeroPoint, keyCode: 0x26))
+
+    expect(tableView.selectedRow == 0, "Up arrow did not move table selection up.")
+
+    tableView.keyDown(with: NSEvent(type: .keyDown, locationInWindow: NSZeroPoint, keyCode: 0x23))
+
+    expect(tableView.selectedRow == 2, "End key did not move table selection to the last row.")
+
+    tableView.keyDown(with: NSEvent(type: .keyDown, locationInWindow: NSZeroPoint, keyCode: 0x24))
+
+    expect(tableView.selectedRow == 0, "Home key did not move table selection to the first row.")
+}
+
+func testTableViewKeyboardExtendedSelection() {
+    let tableView = NSTableView(frame: NSMakeRect(0, 0, 300, 160))
+    let dataSource = RecordingTableDataSource()
+    let name = NSTableColumn(identifier: "name")
+
+    tableView.addTableColumn(name)
+    tableView.dataSource = dataSource
+    tableView.allowsMultipleSelection = true
+    tableView.reloadData()
+    tableView.selectRowIndexes([0], byExtendingSelection: false)
+    tableView.keyDown(with: NSEvent(type: .keyDown, locationInWindow: NSZeroPoint, keyCode: 0x28, modifierFlags: [.shift]))
+
+    expect(tableView.selectedRowIndexes == [0, 1], "Shift-Down did not extend table selection.")
+}
+
+func testTableViewColumnSelectionAndDoubleActionSurface() {
+    let tableView = NSTableView(frame: NSMakeRect(0, 0, 300, 160))
+    let dataSource = RecordingTableDataSource()
+    let name = NSTableColumn(identifier: "name")
+    let note = NSTableColumn(identifier: "note")
+    var doubleActionCount = 0
+
+    tableView.addTableColumn(name)
+    tableView.addTableColumn(note)
+    tableView.dataSource = dataSource
+    tableView.reloadData()
+    tableView.selectColumnIndexes([0], byExtendingSelection: false)
+
+    expect(tableView.numberOfSelectedColumns == 0, "Table selected columns before column selection was enabled.")
+
+    tableView.allowsColumnSelection = true
+    tableView.selectColumnIndexes([0], byExtendingSelection: false)
+    tableView.selectColumnIndexes([1], byExtendingSelection: true)
+    tableView.doubleAction = "doubleClick:"
+    tableView.onDoubleAction = { table in
+        expect(table === tableView, "Table double-action sender was not table view.")
+        doubleActionCount += 1
+    }
+    tableView.sendDoubleAction()
+    tableView.deselectColumn(0)
+
+    expect(tableView.isColumnSelected(1), "Table did not keep extended column selection.")
+    expect(!tableView.isColumnSelected(0), "Table did not deselect column.")
+    expect(tableView.numberOfSelectedColumns == 1, "Table selected column count was wrong.")
+    expect(tableView.doubleAction == "doubleClick:", "Table doubleAction selector was not stored.")
+    expect(doubleActionCount == 1, "Table double action callback was not sent.")
+
+    tableView.allowsColumnSelection = false
+
+    expect(tableView.numberOfSelectedColumns == 0, "Disabling column selection did not clear selected columns.")
 }
 
 func testTableViewNativePeerReceivesColumnsRowsAndSelection() {
@@ -354,6 +693,31 @@ func testTableViewNativeSelectionNotifiesDelegateAndAction() {
     expect(callbackCount == 1, "Table view did not invoke selection callback.")
     expect(delegate.selectionChangeCount == 1, "Table view delegate was not notified.")
     expect(delegate.lastObject === tableView, "Table view delegate notification object was wrong.")
+}
+
+func testTableViewActionCanReadSelectedRowValue() {
+    let tableView = NSTableView(frame: NSMakeRect(0, 0, 300, 160))
+    let dataSource = RecordingTableDataSource()
+    let name = NSTableColumn(identifier: "name")
+    var actionRow = -1
+    var actionValue: String?
+
+    tableView.addTableColumn(name)
+    tableView.dataSource = dataSource
+    tableView.reloadData()
+    tableView.selectRowIndexes([1], byExtendingSelection: false)
+    tableView.onAction = { control in
+        guard let table = control as? NSTableView else {
+            return
+        }
+
+        actionRow = table.selectedRow
+        actionValue = table.value(atColumn: 0, row: actionRow)
+    }
+    tableView.keyDown(with: NSEvent(type: .keyDown, locationInWindow: NSZeroPoint, keyCode: 0x20))
+
+    expect(actionRow == 1, "Table action could not read selected row.")
+    expect(actionValue == "Grace", "Table action could not read selected row value.")
 }
 
 func testSubviewResponderChainTargetsSuperview() {
@@ -1155,10 +1519,22 @@ testGeometryConvenienceFunctions()
 testViewCoordinateConversionAndHitTesting()
 testScrollViewHostsDocumentView()
 testScrollViewUsesNativePeerAndRealizesDocumentView()
+testCellStoresStringAndObjectValues()
+testSortDescriptorStoresKeyDirectionAndReverse()
+testTableCellAndRowViewsStoreState()
 testTableColumnStoresAppKitIdentifierShape()
 testTableViewReloadsRowsFromDataSource()
+testTableViewColumnMovementAndRemoval()
+testTableViewSelectionOptionsAndHelpers()
+testTableViewStoresDisplayOptionsAndSetObjectValue()
+testTableViewDelegateViewHeightAndSortHooks()
+testTableViewTabKeyMovesThroughKeyViewLoop()
+testTableViewKeyboardNavigationUpdatesSelection()
+testTableViewKeyboardExtendedSelection()
+testTableViewColumnSelectionAndDoubleActionSurface()
 testTableViewNativePeerReceivesColumnsRowsAndSelection()
 testTableViewNativeSelectionNotifiesDelegateAndAction()
+testTableViewActionCanReadSelectedRowValue()
 testSubviewResponderChainTargetsSuperview()
 testResponderForwardsUnhandledEvents()
 testWindowIsContentViewNextResponder()

@@ -49,6 +49,63 @@ private struct RECT {
     var bottom: Int32 = 0
 }
 
+private struct INITCOMMONCONTROLSEX {
+    var dwSize: DWORD = 0
+    var dwICC: DWORD = 0
+}
+
+private struct NMHDR {
+    var hwndFrom: HWND?
+    var idFrom: UInt = 0
+    var code: UINT = 0
+}
+
+private struct NMLISTVIEW {
+    var hdr: NMHDR = NMHDR()
+    var iItem: Int32 = 0
+    var iSubItem: Int32 = 0
+    var uNewState: UINT = 0
+    var uOldState: UINT = 0
+    var uChanged: UINT = 0
+    var ptAction: POINT = POINT()
+    var lParam: LPARAM = 0
+}
+
+private struct LVCOLUMNW {
+    var mask: UINT = 0
+    var fmt: Int32 = 0
+    var cx: Int32 = 0
+    var pszText: UnsafeMutablePointer<UInt16>?
+    var cchTextMax: Int32 = 0
+    var iSubItem: Int32 = 0
+    var iImage: Int32 = 0
+    var iOrder: Int32 = 0
+    var cxMin: Int32 = 0
+    var cxDefault: Int32 = 0
+    var cxIdeal: Int32 = 0
+}
+
+private struct LVITEMW {
+    var mask: UINT = 0
+    var iItem: Int32 = 0
+    var iSubItem: Int32 = 0
+    var state: UINT = 0
+    var stateMask: UINT = 0
+    var pszText: UnsafeMutablePointer<UInt16>?
+    var cchTextMax: Int32 = 0
+    var iImage: Int32 = 0
+    var lParam: LPARAM = 0
+    var iIndent: Int32 = 0
+    var iGroupId: Int32 = 0
+    var cColumns: UINT = 0
+    var puColumns: UnsafeMutablePointer<UINT>?
+    var piColFmt: UnsafeMutablePointer<Int32>?
+    var iGroup: Int32 = 0
+}
+
+@_silgen_name("InitCommonControlsEx")
+private func winInitCommonControlsEx(_ initControls: UnsafePointer<INITCOMMONCONTROLSEX>) -> Int32
+
 @_silgen_name("AppendMenuW")
 private func winAppendMenuW(_ menu: HMENU?, _ flags: UINT, _ identifier: UInt, _ title: UnsafePointer<UInt16>?) -> Int32
 
@@ -218,6 +275,7 @@ private let mbIconError: UINT = 0x00000010
 private let swShow: Int32 = 5
 private let swHide: Int32 = 0
 private let wmDestroy: UINT = 0x0002
+private let wmNotify: UINT = 0x004e
 private let wmEraseBackground: UINT = 0x0014
 private let wmSetFont: UINT = 0x0030
 private let wmCommand: UINT = 0x0111
@@ -241,10 +299,20 @@ private let lbAddString: UINT = 0x0180
 private let lbSetCurSel: UINT = 0x0186
 private let lbGetCurSel: UINT = 0x0188
 private let lbResetContent: UINT = 0x0184
+private let lvmFirst: UINT = 0x1000
+private let lvmDeleteAllItems: UINT = lvmFirst + 9
+private let lvmGetNextItem: UINT = lvmFirst + 12
+private let lvmSetItemState: UINT = lvmFirst + 43
+private let lvmInsertItemW: UINT = lvmFirst + 77
+private let lvmInsertColumnW: UINT = lvmFirst + 97
+private let lvmSetItemTextW: UINT = lvmFirst + 116
+private let lvmSetExtendedListViewStyle: UINT = lvmFirst + 54
 private let enChange: UInt = 0x0300
 private let lbnSelChange: UInt = 1
+private let lvnItemChanged: UINT = 0xffffff9b
 private let bnClicked: UInt = 0
 private let cbnSelChange: UInt = 1
+private let iccListViewClasses: DWORD = 0x00000001
 private let bstUnchecked: WPARAM = 0
 private let bstChecked: WPARAM = 1
 private let bstIndeterminate: WPARAM = 2
@@ -278,6 +346,7 @@ private let wsSysMenu: DWORD = 0x00080000
 private let wsThickFrame: DWORD = 0x00040000
 private let wsMinimizeBox: DWORD = 0x00020000
 private let wsMaximizeBox: DWORD = 0x00010000
+private let wsTabStop: DWORD = 0x00010000
 private let wsVisible: DWORD = 0x10000000
 private let wsVScroll: DWORD = 0x00200000
 private let wsHScroll: DWORD = 0x00100000
@@ -286,6 +355,19 @@ private let wsClipChildren: DWORD = 0x02000000
 private let wsBorder: DWORD = 0x00800000
 private let esAutoHScroll: DWORD = 0x0080
 private let lbsNotify: DWORD = 0x0001
+private let lvsReport: DWORD = 0x0001
+private let lvsSingleSel: DWORD = 0x0004
+private let lvsShowSelAlways: DWORD = 0x0008
+private let lvsExGridLines: DWORD = 0x00000001
+private let lvsExFullRowSelect: DWORD = 0x00000020
+private let lvifText: UINT = 0x0001
+private let lvifState: UINT = 0x0008
+private let lvcfWidth: UINT = 0x0002
+private let lvcfText: UINT = 0x0004
+private let lvcfSubItem: UINT = 0x0008
+private let lvisFocused: UINT = 0x0001
+private let lvisSelected: UINT = 0x0002
+private let lvniSelected: WPARAM = 0x0002
 private let bsAutoCheckBox: DWORD = 0x00000003
 private let bsAutoRadioButton: DWORD = 0x00000009
 private let bsGroupBox: DWORD = 0x00000007
@@ -311,6 +393,7 @@ public final class Win32NativeControlBackend: NativeControlBackend {
     private var keyUpActions: [UInt: (NSEvent) -> Void] = [:]
     private var originalControlProcedures: [UInt: WNDPROC] = [:]
     private var commandActions: [UInt: () -> Void] = [:]
+    private var tableColumnTitles: [UInt: [String]] = [:]
     private var textColors: [UInt: DWORD] = [:]
     private var backgroundColors: [UInt: DWORD] = [:]
     private var backgroundBrushes: [UInt: HBRUSH] = [:]
@@ -411,6 +494,7 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         keyDownActions.removeValue(forKey: handle.rawValue)
         keyUpActions.removeValue(forKey: handle.rawValue)
         originalControlProcedures.removeValue(forKey: handle.rawValue)
+        tableColumnTitles.removeValue(forKey: handle.rawValue)
         clearAppearance(for: handle)
     }
 
@@ -429,6 +513,7 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         keyDownActions.removeValue(forKey: handle.rawValue)
         keyUpActions.removeValue(forKey: handle.rawValue)
         originalControlProcedures.removeValue(forKey: handle.rawValue)
+        tableColumnTitles.removeValue(forKey: handle.rawValue)
         clearAppearance(for: handle)
     }
 
@@ -453,7 +538,7 @@ public final class Win32NativeControlBackend: NativeControlBackend {
             frame: frame,
             parent: parent,
             commandIdentifier: nextCommandID(),
-            style: wsChild | wsVisible
+            style: wsChild | wsVisible | wsTabStop
         )
         subclassControlForTabKey(handle)
         return handle
@@ -467,7 +552,7 @@ public final class Win32NativeControlBackend: NativeControlBackend {
             frame: frame,
             parent: parent,
             commandIdentifier: nextCommandID(),
-            style: wsChild | wsVisible | bsAutoCheckBox
+            style: wsChild | wsVisible | wsTabStop | bsAutoCheckBox
         )
         subclassControlForTabKey(handle)
         return handle
@@ -481,7 +566,7 @@ public final class Win32NativeControlBackend: NativeControlBackend {
             frame: frame,
             parent: parent,
             commandIdentifier: nextCommandID(),
-            style: wsChild | wsVisible | bsAutoRadioButton
+            style: wsChild | wsVisible | wsTabStop | bsAutoRadioButton
         )
         subclassControlForTabKey(handle)
         return handle
@@ -508,7 +593,7 @@ public final class Win32NativeControlBackend: NativeControlBackend {
             parent: parent,
             commandIdentifier: nil,
             style: isEditable
-                ? wsChild | wsVisible | wsBorder | esAutoHScroll
+                ? wsChild | wsVisible | wsTabStop | wsBorder | esAutoHScroll
                 : wsChild | wsVisible
         )
         if isEditable {
@@ -525,7 +610,7 @@ public final class Win32NativeControlBackend: NativeControlBackend {
             frame: frame,
             parent: parent,
             commandIdentifier: nextCommandID(),
-            style: wsChild | wsVisible | wsVScroll | cbsDropdownList
+            style: wsChild | wsVisible | wsTabStop | wsVScroll | cbsDropdownList
         )
         subclassControlForTabKey(handle)
         setPopUpButtonItems(items, selectedIndex: selectedIndex, for: handle)
@@ -555,15 +640,21 @@ public final class Win32NativeControlBackend: NativeControlBackend {
 
     /// Creates a native table-view child.
     public func createTableView(columns: [String], rows: [[String]], selectedRow: Int, frame: NSRect, parent: NativeHandle?) -> NativeHandle {
+        initializeListViewControls()
         let handle = createChildWindow(
-            className: "LISTBOX",
+            className: "SysListView32",
             text: "",
             frame: frame,
             parent: parent,
             commandIdentifier: nextCommandID(),
-            style: wsChild | wsVisible | wsBorder | wsVScroll | lbsNotify
+            style: wsChild | wsVisible | wsTabStop | wsBorder | wsVScroll | lvsReport | lvsSingleSel | lvsShowSelAlways
         )
         subclassControlForTabKey(handle)
+        tableColumnTitles[handle.rawValue] = columns
+        installTableColumns(columns, for: handle)
+        if let hwnd = hwnd(from: handle) {
+            _ = winSendMessageW(hwnd, lvmSetExtendedListViewStyle, 0, LPARAM(lvsExFullRowSelect | lvsExGridLines))
+        }
         setTableRows(rows, selectedRow: selectedRow, for: handle)
         return handle
     }
@@ -771,10 +862,24 @@ public final class Win32NativeControlBackend: NativeControlBackend {
             return
         }
 
-        _ = winSendMessageW(hwnd, lbResetContent, 0, 0)
-        for row in rows {
-            withWideString(row.joined(separator: "\t")) { title in
-                _ = winSendMessageW(hwnd, lbAddString, 0, Int(bitPattern: title))
+        _ = winSendMessageW(hwnd, lvmDeleteAllItems, 0, 0)
+        for (rowIndex, row) in rows.enumerated() {
+            let firstValue = row.first ?? ""
+            withWideString(firstValue) { title in
+                var item = LVITEMW()
+                item.mask = lvifText
+                item.iItem = Int32(rowIndex)
+                item.iSubItem = 0
+                item.pszText = UnsafeMutablePointer(mutating: title)
+                withUnsafePointer(to: item) { itemPointer in
+                    _ = winSendMessageW(hwnd, lvmInsertItemW, 0, Int(bitPattern: itemPointer))
+                }
+            }
+
+            if row.count > 1 {
+                for columnIndex in 1..<row.count {
+                    setTableCellText(row[columnIndex], row: rowIndex, column: columnIndex, hwnd: hwnd)
+                }
             }
         }
         setTableSelectedRow(selectedRow, for: handle)
@@ -786,7 +891,24 @@ public final class Win32NativeControlBackend: NativeControlBackend {
             return
         }
 
-        _ = winSendMessageW(hwnd, lbSetCurSel, selectedRow < 0 ? WPARAM.max : WPARAM(selectedRow), 0)
+        let selectedState = lvisSelected | lvisFocused
+        var clearItem = LVITEMW()
+        clearItem.stateMask = selectedState
+        clearItem.state = 0
+        withUnsafePointer(to: clearItem) { itemPointer in
+            _ = winSendMessageW(hwnd, lvmSetItemState, WPARAM.max, Int(bitPattern: itemPointer))
+        }
+
+        guard selectedRow >= 0 else {
+            return
+        }
+
+        var item = LVITEMW()
+        item.stateMask = selectedState
+        item.state = selectedState
+        withUnsafePointer(to: item) { itemPointer in
+            _ = winSendMessageW(hwnd, lvmSetItemState, WPARAM(selectedRow), Int(bitPattern: itemPointer))
+        }
     }
 
     /// Reads native table selection.
@@ -795,7 +917,7 @@ public final class Win32NativeControlBackend: NativeControlBackend {
             return -1
         }
 
-        return Int(winSendMessageW(hwnd, lbGetCurSel, 0, 0))
+        return Int(winSendMessageW(hwnd, lvmGetNextItem, WPARAM.max, LPARAM(lvniSelected)))
     }
 
     /// Registers the action to perform when a native control is activated.
@@ -920,6 +1042,29 @@ public final class Win32NativeControlBackend: NativeControlBackend {
                 _ = winFillRect(HDC(bitPattern: Int(wParam)), rectanglePointer, brush)
             }
             return 1
+        case wmNotify:
+            guard lParam != 0 else {
+                return nil
+            }
+
+            let header = UnsafeRawPointer(bitPattern: lParam)?.assumingMemoryBound(to: NMHDR.self).pointee
+            guard let header, header.code == lvnItemChanged else {
+                return nil
+            }
+
+            let notification = UnsafeRawPointer(bitPattern: lParam)?.assumingMemoryBound(to: NMLISTVIEW.self).pointee
+            guard let notification,
+                  notification.iItem >= 0,
+                  (notification.uChanged & lvifState) != 0,
+                  (notification.uNewState & lvisSelected) != (notification.uOldState & lvisSelected),
+                  (notification.uNewState & lvisSelected) != 0,
+                  let source = header.hwndFrom,
+                  let action = controlActions[nativeHandle(from: source).rawValue] else {
+                return nil
+            }
+
+            action()
+            return 0
         case wmCommand:
             let commandIdentifier = UInt(wParam & 0xffff)
             let notificationCode = UInt((wParam >> 16) & 0xffff)
@@ -1070,6 +1215,60 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         }
 
         isViewClassRegistered = true
+    }
+
+    private func initializeListViewControls() {
+        var initControls = INITCOMMONCONTROLSEX()
+        initControls.dwSize = DWORD(MemoryLayout<INITCOMMONCONTROLSEX>.size)
+        initControls.dwICC = iccListViewClasses
+        withUnsafePointer(to: initControls) { pointer in
+            _ = winInitCommonControlsEx(pointer)
+        }
+    }
+
+    private func installTableColumns(_ columns: [String], for handle: NativeHandle) {
+        guard let hwnd = hwnd(from: handle) else {
+            return
+        }
+
+        let fallbackWidth = max(80, Int32(frameWidth(for: handle) / CGFloat(max(columns.count, 1))))
+        for (index, titleText) in columns.enumerated() {
+            withWideString(titleText.isEmpty ? "Column \(index + 1)" : titleText) { title in
+                var column = LVCOLUMNW()
+                column.mask = lvcfText | lvcfWidth | lvcfSubItem
+                column.cx = fallbackWidth
+                column.pszText = UnsafeMutablePointer(mutating: title)
+                column.iSubItem = Int32(index)
+                withUnsafePointer(to: column) { columnPointer in
+                    _ = winSendMessageW(hwnd, lvmInsertColumnW, WPARAM(index), Int(bitPattern: columnPointer))
+                }
+            }
+        }
+    }
+
+    private func setTableCellText(_ text: String, row: Int, column: Int, hwnd: HWND?) {
+        withWideString(text) { title in
+            var item = LVITEMW()
+            item.iItem = Int32(row)
+            item.iSubItem = Int32(column)
+            item.pszText = UnsafeMutablePointer(mutating: title)
+            withUnsafePointer(to: item) { itemPointer in
+                _ = winSendMessageW(hwnd, lvmSetItemTextW, WPARAM(row), Int(bitPattern: itemPointer))
+            }
+        }
+    }
+
+    private func frameWidth(for handle: NativeHandle) -> CGFloat {
+        guard let hwnd = hwnd(from: handle) else {
+            return 240
+        }
+
+        var rectangle = RECT()
+        guard winGetClientRect(hwnd, &rectangle) != 0 else {
+            return 240
+        }
+
+        return CGFloat(max(1, rectangle.right - rectangle.left))
     }
 
     private func createChildWindow(

@@ -59,7 +59,17 @@ final class DemoTableDataSource: NSTableViewDataSource {
         ["NSWindow", "Key/Main"],
         ["NSButton", "Actions"],
         ["NSTextField", "Editing"],
-        ["NSTableView", "First slice"]
+        ["NSTableView", "First slice"],
+        ["NSTableColumn", "Identifiers"],
+        ["NSTableCellView", "View based"],
+        ["NSTableRowView", "Selection state"],
+        ["NSScrollView", "Document view"],
+        ["NSResponder", "Key loop"],
+        ["NSEvent", "Keyboard/mouse"],
+        ["NSMenu", "Quit command"],
+        ["NSAlert", "Modal"],
+        ["NSColor", "Native paint"],
+        ["NSFont", "Native font"]
     ]
 
     func numberOfRows(in tableView: NSTableView) -> Int {
@@ -112,7 +122,7 @@ var clickCount = 0
 var isClickEnabled = true
 var isCounterHidden = false
 var movedRight = false
-var mouseMoveEventCount = 0
+var suppressNextTableSelectionStatus = false
 
 func modifierText(for event: NSEvent) -> String {
     var names: [String] = []
@@ -149,6 +159,18 @@ func keyName(for keyCode: UInt16) -> String? {
         return "Escape"
     case 0x20:
         return "Space"
+    case 0x21:
+        return "Page Up"
+    case 0x22:
+        return "Page Down"
+    case 0x23:
+        return "End"
+    case 0x24:
+        return "Home"
+    case 0x26:
+        return "Up"
+    case 0x28:
+        return "Down"
     case 0x5b:
         return "Left Windows"
     case 0x5c:
@@ -193,6 +215,17 @@ func keyText(for event: NSEvent) -> String {
     let code = event.keyCode ?? 0
     let name = keyName(for: code).map { " \($0)" } ?? ""
     return "\(code)\(name)\(printableCharacterText(for: event))\(modifierText(for: event))"
+}
+
+func tableRowSummary(_ table: NSTableView, prefix: String) -> String {
+    let row = table.selectedRow
+    if row >= 0,
+       let name = table.value(atColumn: 0, row: row),
+       let status = table.value(atColumn: 1, row: row) {
+        return "\(prefix): row \(row + 1) - \(name) - \(status)"
+    }
+
+    return "\(prefix): no row"
 }
 
 @MainActor
@@ -269,12 +302,9 @@ contentView.onBlankAreaMouseDown = { event in
 contentView.onBlankAreaMouseUp = { event in
     statusLabel.stringValue = "Mouse up at \(Int(event.locationInWindow.x)), \(Int(event.locationInWindow.y))\(modifierText(for: event))"
 }
-contentView.onMouseMoved = { event in
-    mouseMoveEventCount += 1
-    if mouseMoveEventCount % 8 == 0 {
-        statusLabel.stringValue = "Mouse moved to \(Int(event.locationInWindow.x)), \(Int(event.locationInWindow.y))\(modifierText(for: event))"
-    }
-}
+// Keep mouse-move dispatch wired in the framework, but leave demo status quiet
+// unless we are actively testing mouse movement.
+contentView.onMouseMoved = nil
 contentView.onKeyDown = { event in
     if event.keyCode == 0x09 {
         if event.modifierFlags.contains(.shift) {
@@ -312,7 +342,10 @@ tableStatusColumn.title = "Status"
 tableView.addTableColumn(tableNameColumn)
 tableView.addTableColumn(tableStatusColumn)
 tableView.dataSource = tableDataSource
+tableView.allowsColumnSelection = true
 tableView.reloadData()
+tableView.selectRowIndexes([0], byExtendingSelection: false)
+tableView.selectColumnIndexes([0], byExtendingSelection: false)
 tableScrollView.hasVerticalScroller = true
 tableScrollView.documentView = tableView
 
@@ -447,14 +480,26 @@ alertStylePopup.onAction = { _ in
 
 tableView.onSelectionChanged = { table in
     updateFocusDisplay()
-    let row = table.selectedRow
-    if row >= 0,
-       let name = table.value(atColumn: 0, row: row),
-       let status = table.value(atColumn: 1, row: row) {
-        statusLabel.stringValue = "Table selected: \(name) - \(status)"
-    } else {
-        statusLabel.stringValue = "Table selection cleared"
+    if suppressNextTableSelectionStatus {
+        suppressNextTableSelectionStatus = false
+        return
     }
+
+    statusLabel.stringValue = tableRowSummary(table, prefix: "Table selected")
+}
+tableView.onAction = { control in
+    guard let table = control as? NSTableView else {
+        return
+    }
+
+    updateFocusDisplay()
+    suppressNextTableSelectionStatus = true
+    statusLabel.stringValue = tableRowSummary(table, prefix: "Table action")
+}
+tableView.doubleAction = "openTableRow:"
+tableView.onDoubleAction = { table in
+    updateFocusDisplay()
+    statusLabel.stringValue = tableRowSummary(table, prefix: "Table double action")
 }
 
 contentView.addSubview(counterLabel)
