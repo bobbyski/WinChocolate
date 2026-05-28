@@ -20,6 +20,9 @@ open class NSView: NSResponder {
         NSRect(x: 0, y: 0, width: frame.size.width, height: frame.size.height)
     }
 
+    /// Application-defined integer tag used to find views in a hierarchy.
+    open var tag: Int = 0
+
     /// The view's parent view.
     public private(set) weak var superview: NSView?
 
@@ -85,16 +88,43 @@ open class NSView: NSResponder {
 
     /// Adds a child view.
     open func addSubview(_ view: NSView) {
+        addSubview(view, positioned: .above, relativeTo: nil)
+    }
+
+    /// Adds a child view at a position relative to another child view.
+    open func addSubview(_ view: NSView, positioned place: NSWindow.OrderingMode, relativeTo otherView: NSView?) {
         view.removeFromSuperview()
         view.superview = self
         view.nextResponder = self
-        subviews.append(view)
+        insertSubview(view, positioned: place, relativeTo: otherView)
 
         guard let realizedBackend, let nativeHandle else {
             return
         }
 
         view.realizeNativePeer(in: realizedBackend, parent: nativeHandle)
+    }
+
+    /// Replaces one child view with another while preserving the child position.
+    open func replaceSubview(_ oldView: NSView, with newView: NSView) {
+        guard let index = subviews.firstIndex(where: { $0 === oldView }) else {
+            addSubview(newView)
+            return
+        }
+
+        oldView.superview = nil
+        oldView.nextResponder = nil
+        oldView.destroyNativePeer()
+        newView.removeFromSuperview()
+        newView.superview = self
+        newView.nextResponder = self
+        subviews[index] = newView
+
+        guard let realizedBackend, let nativeHandle else {
+            return
+        }
+
+        newView.realizeNativePeer(in: realizedBackend, parent: nativeHandle)
     }
 
     /// Removes the view from its parent hierarchy.
@@ -112,6 +142,33 @@ open class NSView: NSResponder {
     /// Marks the view as needing display.
     open func setNeedsDisplay(_ needsDisplay: Bool) {
         self.needsDisplay = needsDisplay
+    }
+
+    /// Returns true when this view is contained by the given ancestor.
+    open func isDescendant(of view: NSView) -> Bool {
+        var current = superview
+        while let candidate = current {
+            if candidate === view {
+                return true
+            }
+            current = candidate.superview
+        }
+        return false
+    }
+
+    /// Finds the first view in this hierarchy with the given tag.
+    open func viewWithTag(_ tag: Int) -> NSView? {
+        if self.tag == tag {
+            return self
+        }
+
+        for subview in subviews {
+            if let match = subview.viewWithTag(tag) {
+                return match
+            }
+        }
+
+        return nil
     }
 
     /// Converts a point from another view's coordinate space into this view's coordinate space.
@@ -237,5 +294,28 @@ open class NSView: NSResponder {
         }
 
         return converted
+    }
+
+    private func insertSubview(_ view: NSView, positioned place: NSWindow.OrderingMode, relativeTo otherView: NSView?) {
+        guard let otherView, let index = subviews.firstIndex(where: { $0 === otherView }) else {
+            switch place {
+            case .above:
+                subviews.append(view)
+            case .below:
+                subviews.insert(view, at: 0)
+            case .out:
+                subviews.append(view)
+            }
+            return
+        }
+
+        switch place {
+        case .above:
+            subviews.insert(view, at: index + 1)
+        case .below:
+            subviews.insert(view, at: index)
+        case .out:
+            subviews.append(view)
+        }
     }
 }

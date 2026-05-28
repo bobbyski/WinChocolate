@@ -33,6 +33,18 @@ open class NSWindow: NSResponder {
         case buffered
     }
 
+    /// Relative ordering used when inserting views.
+    public enum OrderingMode: Sendable {
+        /// Place above the reference object.
+        case above
+
+        /// Place below the reference object.
+        case below
+
+        /// Remove from ordering.
+        case out
+    }
+
     /// The window frame rectangle.
     open var frame: NSRect
 
@@ -80,6 +92,11 @@ open class NSWindow: NSResponder {
     /// Whether this window is the application's main window.
     open var isMainWindow: Bool {
         NSApplication.shared.mainWindow === self
+    }
+
+    /// The rectangle available for content in window coordinates.
+    open var contentLayoutRect: NSRect {
+        NSRect(origin: NSZeroPoint, size: frame.size)
     }
 
     /// Creates a window using AppKit's designated initializer shape.
@@ -198,6 +215,22 @@ open class NSWindow: NSResponder {
         }
 
         nativeBackend.setFrame(frameRect, for: nativeHandle)
+    }
+
+    /// Sets the window content size while preserving its origin.
+    open func setContentSize(_ size: NSSize) {
+        setFrame(NSRect(origin: frame.origin, size: size), display: true)
+        contentView?.frame = NSRect(origin: NSZeroPoint, size: size)
+    }
+
+    /// Centers the window in a conservative default desktop area.
+    open func center() {
+        let defaultScreen = NSRect(x: 0, y: 0, width: 1024, height: 768)
+        let origin = NSPoint(
+            x: NSMidX(defaultScreen) - frame.size.width / 2,
+            y: NSMidY(defaultScreen) - frame.size.height / 2
+        )
+        setFrame(NSRect(origin: origin, size: frame.size), display: true)
     }
 
     /// Ensures the window and content hierarchy have native peers.

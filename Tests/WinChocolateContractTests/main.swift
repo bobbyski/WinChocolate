@@ -51,6 +51,39 @@ func testViewHierarchyMaintainsSuperviewOwnership() {
     expect(child.superview === secondParent, "Child superview was not updated.")
 }
 
+func testViewInsertionReplacementTagsAndDescendants() {
+    let parent = NSView(frame: NSMakeRect(0, 0, 200, 200))
+    let first = NSView(frame: NSMakeRect(0, 0, 20, 20))
+    let second = NSView(frame: NSMakeRect(0, 0, 20, 20))
+    let belowSecond = NSView(frame: NSMakeRect(0, 0, 20, 20))
+    let aboveFirst = NSView(frame: NSMakeRect(0, 0, 20, 20))
+    let replacement = NSView(frame: NSMakeRect(0, 0, 20, 20))
+
+    first.tag = 11
+    replacement.tag = 22
+
+    parent.addSubview(first)
+    parent.addSubview(second)
+    parent.addSubview(belowSecond, positioned: .below, relativeTo: second)
+    parent.addSubview(aboveFirst, positioned: .above, relativeTo: first)
+
+    expect(parent.subviews.count == 4, "Positioned subviews were not added.")
+    expect(parent.subviews[0] === first, "First subview moved unexpectedly.")
+    expect(parent.subviews[1] === aboveFirst, "Subview was not inserted above the reference view.")
+    expect(parent.subviews[2] === belowSecond, "Subview was not inserted below the reference view.")
+    expect(parent.subviews[3] === second, "Second subview moved unexpectedly.")
+    expect(aboveFirst.isDescendant(of: parent), "Subview did not report descendant relationship.")
+    expect(!parent.isDescendant(of: aboveFirst), "Ancestor reported descendant relationship.")
+    expect(parent.viewWithTag(11) === first, "viewWithTag did not find existing tagged view.")
+
+    parent.replaceSubview(first, with: replacement)
+
+    expect(parent.subviews[0] === replacement, "Replacement did not preserve subview position.")
+    expect(first.superview == nil, "Replaced view still had a superview.")
+    expect(replacement.superview === parent, "Replacement superview was not updated.")
+    expect(parent.viewWithTag(22) === replacement, "viewWithTag did not find replacement view.")
+}
+
 func testGeometryConvenienceFunctions() {
     let rect = NSMakeRect(10, 20, 100, 50)
 
@@ -500,6 +533,32 @@ func testWindowTitleAndFramePropagateToBackend() {
     expect(backend.records[handle]?.frame == NSMakeRect(10, 20, 300, 200), "Window frame update did not reach backend.")
 }
 
+func testWindowContentSizeAndCenterUpdateFrame() {
+    let backend = InMemoryNativeControlBackend()
+    let window = NSWindow(
+        contentRect: NSMakeRect(10, 20, 100, 80),
+        styleMask: [.titled],
+        backing: .buffered,
+        defer: false,
+        nativeBackend: backend
+    )
+    let contentView = NSView(frame: NSMakeRect(0, 0, 100, 80))
+    window.contentView = contentView
+    let handle = window.realizeNativePeer()
+
+    window.setContentSize(NSMakeSize(240, 160))
+
+    expect(window.frame == NSMakeRect(10, 20, 240, 160), "setContentSize did not update window frame.")
+    expect(contentView.frame == NSMakeRect(0, 0, 240, 160), "setContentSize did not update content view frame.")
+    expect(window.contentLayoutRect == NSMakeRect(0, 0, 240, 160), "contentLayoutRect did not reflect content size.")
+    expect(backend.records[handle]?.frame == NSMakeRect(10, 20, 240, 160), "setContentSize did not reach backend.")
+
+    window.center()
+
+    expect(window.frame == NSMakeRect(392, 304, 240, 160), "center did not use the expected default screen frame.")
+    expect(backend.records[handle]?.frame == NSMakeRect(392, 304, 240, 160), "center did not reach backend.")
+}
+
 func testEditableTextFieldUsesEditableNativePeer() {
     let backend = InMemoryNativeControlBackend()
     let textField = NSTextField(string: "Seed", frame: NSMakeRect(0, 0, 120, 24))
@@ -790,6 +849,7 @@ func testAlertRestoresKeyWindowAndFirstResponder() {
 
 testWindowRealizationCreatesNativeHierarchy()
 testViewHierarchyMaintainsSuperviewOwnership()
+testViewInsertionReplacementTagsAndDescendants()
 testGeometryConvenienceFunctions()
 testViewCoordinateConversionAndHitTesting()
 testSubviewResponderChainTargetsSuperview()
@@ -812,6 +872,7 @@ testSwitchButtonTogglesStateOnPerformClick()
 testRadioButtonClearsSiblingRadioButtons()
 testRealizedViewStatePropagatesToBackend()
 testWindowTitleAndFramePropagateToBackend()
+testWindowContentSizeAndCenterUpdateFrame()
 testEditableTextFieldUsesEditableNativePeer()
 testSwitchButtonUsesCheckboxNativePeer()
 testRadioButtonUsesRadioNativePeer()
