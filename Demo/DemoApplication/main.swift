@@ -218,14 +218,31 @@ func keyText(for event: NSEvent) -> String {
 }
 
 func tableRowSummary(_ table: NSTableView, prefix: String) -> String {
-    let row = table.selectedRow
+    let row = table.clickedRow
     if row >= 0,
        let name = table.value(atColumn: 0, row: row),
        let status = table.value(atColumn: 1, row: row) {
+        let column = table.clickedColumn
+        if column >= 0,
+           let tableColumn = table.tableColumn(at: column) {
+            return "\(prefix): row \(row + 1), \(tableColumn.title) - \(name) - \(status)"
+        }
+
         return "\(prefix): row \(row + 1) - \(name) - \(status)"
     }
 
     return "\(prefix): no row"
+}
+
+func tableColumnSummary(_ table: NSTableView) -> String? {
+    let column = table.clickedColumn
+    guard table.clickedRow < 0,
+          column >= 0,
+          let tableColumn = table.tableColumn(at: column) else {
+        return nil
+    }
+
+    return "Table column: \(tableColumn.title)"
 }
 
 @MainActor
@@ -296,7 +313,6 @@ focusLabel.font = NSFont.boldSystemFont(ofSize: 12)
 focusLabel.textColor = .black
 focusLabel.backgroundColor = NSColor(calibratedRed: 1.0, green: 0.98, blue: 0.86, alpha: 1.0)
 contentView.onBlankAreaMouseDown = { event in
-    statusLabel.stringValue = "Mouse down at \(Int(event.locationInWindow.x)), \(Int(event.locationInWindow.y))\(modifierText(for: event))"
     updateFocusDisplay()
 }
 contentView.onBlankAreaMouseUp = { event in
@@ -339,6 +355,8 @@ let tableNameColumn = NSTableColumn(identifier: "name")
 let tableStatusColumn = NSTableColumn(identifier: "status")
 tableNameColumn.title = "Name"
 tableStatusColumn.title = "Status"
+tableNameColumn.width = 150
+tableStatusColumn.width = 150
 tableView.addTableColumn(tableNameColumn)
 tableView.addTableColumn(tableStatusColumn)
 tableView.dataSource = tableDataSource
@@ -494,7 +512,7 @@ tableView.onAction = { control in
 
     updateFocusDisplay()
     suppressNextTableSelectionStatus = true
-    statusLabel.stringValue = tableRowSummary(table, prefix: "Table action")
+    statusLabel.stringValue = tableColumnSummary(table) ?? tableRowSummary(table, prefix: "Table action")
 }
 tableView.doubleAction = "openTableRow:"
 tableView.onDoubleAction = { table in

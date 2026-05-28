@@ -720,6 +720,26 @@ func testTableViewActionCanReadSelectedRowValue() {
     expect(actionValue == "Grace", "Table action could not read selected row value.")
 }
 
+func testTableViewClickedRowAndColumnFollowSelection() {
+    let tableView = NSTableView(frame: NSMakeRect(0, 0, 300, 160))
+    let dataSource = RecordingTableDataSource()
+    let name = NSTableColumn(identifier: "name")
+    let note = NSTableColumn(identifier: "note")
+
+    tableView.addTableColumn(name)
+    tableView.addTableColumn(note)
+    tableView.dataSource = dataSource
+    tableView.reloadData()
+
+    expect(tableView.clickedRow == -1, "Table clickedRow should default to -1.")
+    expect(tableView.clickedColumn == -1, "Table clickedColumn should default to -1.")
+
+    tableView.selectRowIndexes([2], byExtendingSelection: false)
+
+    expect(tableView.clickedRow == 2, "Table clickedRow did not follow selected row.")
+    expect(tableView.clickedColumn == 0, "Table clickedColumn did not follow selected column.")
+}
+
 func testSubviewResponderChainTargetsSuperview() {
     let parent = NSView(frame: NSMakeRect(0, 0, 100, 100))
     let child = NSView(frame: NSMakeRect(0, 0, 20, 20))
@@ -1535,6 +1555,7 @@ testTableViewColumnSelectionAndDoubleActionSurface()
 testTableViewNativePeerReceivesColumnsRowsAndSelection()
 testTableViewNativeSelectionNotifiesDelegateAndAction()
 testTableViewActionCanReadSelectedRowValue()
+testTableViewClickedRowAndColumnFollowSelection()
 testSubviewResponderChainTargetsSuperview()
 testResponderForwardsUnhandledEvents()
 testWindowIsContentViewNextResponder()

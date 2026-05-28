@@ -4,6 +4,33 @@ nonisolated(unsafe) private var tableDoubleActions: [ObjectIdentifier: Selector]
 nonisolated(unsafe) private var tableDoubleActionHandlers: [ObjectIdentifier: (NSTableView) -> Void] = [:]
 
 public extension NSTableView {
+    /// Most recent row activated by mouse or keyboard, or `-1`.
+    var clickedRow: Int {
+        if let nativeHandle,
+           let backend = realizedBackend {
+            let nativeRow = backend.tableClickedRow(for: nativeHandle)
+            if nativeRow >= 0 {
+                return nativeRow
+            }
+            if backend.tableClickedColumn(for: nativeHandle) >= 0 {
+                return -1
+            }
+        }
+
+        return selectedRow
+    }
+
+    /// Most recent column activated by mouse or keyboard, or `-1`.
+    var clickedColumn: Int {
+        if let nativeHandle,
+           let nativeColumn = realizedBackend?.tableClickedColumn(for: nativeHandle),
+           nativeColumn >= 0 {
+            return nativeColumn
+        }
+
+        return selectedColumn
+    }
+
     /// Whether columns can be selected.
     var allowsColumnSelection: Bool {
         get {

@@ -71,6 +71,19 @@ private struct NMLISTVIEW {
     var lParam: LPARAM = 0
 }
 
+private struct NMHEADERW {
+    var hdr: NMHDR = NMHDR()
+    var iItem: Int32 = 0
+    var iButton: Int32 = 0
+    var pItem: UnsafeMutableRawPointer?
+}
+
+private struct HDHITTESTINFO {
+    var pt: POINT = POINT()
+    var flags: UINT = 0
+    var iItem: Int32 = 0
+}
+
 private struct LVCOLUMNW {
     var mask: UINT = 0
     var fmt: Int32 = 0
@@ -100,6 +113,14 @@ private struct LVITEMW {
     var cColumns: UINT = 0
     var puColumns: UnsafeMutablePointer<UINT>?
     var piColFmt: UnsafeMutablePointer<Int32>?
+    var iGroup: Int32 = 0
+}
+
+private struct LVHITTESTINFO {
+    var pt: POINT = POINT()
+    var flags: UINT = 0
+    var iItem: Int32 = 0
+    var iSubItem: Int32 = 0
     var iGroup: Int32 = 0
 }
 
@@ -194,6 +215,9 @@ private func winGetLastError() -> DWORD
 @_silgen_name("GetKeyState")
 private func winGetKeyState(_ virtualKey: Int32) -> Int16
 
+@_silgen_name("GetCursorPos")
+private func winGetCursorPos(_ point: UnsafeMutablePointer<POINT>?) -> Int32
+
 @_silgen_name("GetWindowTextLengthW")
 private func winGetWindowTextLengthW(_ hwnd: HWND?) -> Int32
 
@@ -235,6 +259,9 @@ private func winSetMenu(_ hwnd: HWND?, _ menu: HMENU?) -> Int32
 
 @_silgen_name("SetBkColor")
 private func winSetBkColor(_ deviceContext: HDC?, _ color: DWORD) -> DWORD
+
+@_silgen_name("ScreenToClient")
+private func winScreenToClient(_ hwnd: HWND?, _ point: UnsafeMutablePointer<POINT>?) -> Int32
 
 @_silgen_name("SetTextColor")
 private func winSetTextColor(_ deviceContext: HDC?, _ color: DWORD) -> DWORD
@@ -299,17 +326,25 @@ private let lbAddString: UINT = 0x0180
 private let lbSetCurSel: UINT = 0x0186
 private let lbGetCurSel: UINT = 0x0188
 private let lbResetContent: UINT = 0x0184
+private let hdmFirst: UINT = 0x1200
+private let hdmHitTest: UINT = hdmFirst + 6
 private let lvmFirst: UINT = 0x1000
 private let lvmDeleteAllItems: UINT = lvmFirst + 9
 private let lvmGetNextItem: UINT = lvmFirst + 12
+private let lvmGetHeader: UINT = lvmFirst + 31
 private let lvmSetItemState: UINT = lvmFirst + 43
+private let lvmSubItemHitTest: UINT = lvmFirst + 57
 private let lvmInsertItemW: UINT = lvmFirst + 77
 private let lvmInsertColumnW: UINT = lvmFirst + 97
 private let lvmSetItemTextW: UINT = lvmFirst + 116
 private let lvmSetExtendedListViewStyle: UINT = lvmFirst + 54
 private let enChange: UInt = 0x0300
 private let lbnSelChange: UInt = 1
+private let nmClick: UINT = 0xfffffffe
 private let lvnItemChanged: UINT = 0xffffff9b
+private let lvnColumnClick: UINT = 0xffffff94
+private let hdnItemClickA: UINT = 0xfffffed2
+private let hdnItemClickW: UINT = 0xfffffebe
 private let bnClicked: UInt = 0
 private let cbnSelChange: UInt = 1
 private let iccListViewClasses: DWORD = 0x00000001
@@ -394,6 +429,9 @@ public final class Win32NativeControlBackend: NativeControlBackend {
     private var originalControlProcedures: [UInt: WNDPROC] = [:]
     private var commandActions: [UInt: () -> Void] = [:]
     private var tableColumnTitles: [UInt: [String]] = [:]
+    private var tableHeaderOwners: [UInt: NativeHandle] = [:]
+    private var tableClickedRows: [UInt: Int] = [:]
+    private var tableClickedColumns: [UInt: Int] = [:]
     private var textColors: [UInt: DWORD] = [:]
     private var backgroundColors: [UInt: DWORD] = [:]
     private var backgroundBrushes: [UInt: HBRUSH] = [:]
@@ -495,6 +533,9 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         keyUpActions.removeValue(forKey: handle.rawValue)
         originalControlProcedures.removeValue(forKey: handle.rawValue)
         tableColumnTitles.removeValue(forKey: handle.rawValue)
+        tableHeaderOwners = tableHeaderOwners.filter { $0.value != handle }
+        tableClickedRows.removeValue(forKey: handle.rawValue)
+        tableClickedColumns.removeValue(forKey: handle.rawValue)
         clearAppearance(for: handle)
     }
 
@@ -514,6 +555,9 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         keyUpActions.removeValue(forKey: handle.rawValue)
         originalControlProcedures.removeValue(forKey: handle.rawValue)
         tableColumnTitles.removeValue(forKey: handle.rawValue)
+        tableHeaderOwners = tableHeaderOwners.filter { $0.value != handle }
+        tableClickedRows.removeValue(forKey: handle.rawValue)
+        tableClickedColumns.removeValue(forKey: handle.rawValue)
         clearAppearance(for: handle)
     }
 
@@ -651,9 +695,14 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         )
         subclassControlForTabKey(handle)
         tableColumnTitles[handle.rawValue] = columns
+        tableClickedRows[handle.rawValue] = -1
+        tableClickedColumns[handle.rawValue] = -1
         installTableColumns(columns, for: handle)
         if let hwnd = hwnd(from: handle) {
             _ = winSendMessageW(hwnd, lvmSetExtendedListViewStyle, 0, LPARAM(lvsExFullRowSelect | lvsExGridLines))
+            if let headerHwnd = HWND(bitPattern: winSendMessageW(hwnd, lvmGetHeader, 0, 0)) {
+                tableHeaderOwners[UInt(bitPattern: headerHwnd)] = handle
+            }
         }
         setTableRows(rows, selectedRow: selectedRow, for: handle)
         return handle
@@ -891,6 +940,8 @@ public final class Win32NativeControlBackend: NativeControlBackend {
             return
         }
 
+        tableClickedColumns[handle.rawValue] = -1
+        tableClickedRows[handle.rawValue] = -1
         let selectedState = lvisSelected | lvisFocused
         var clearItem = LVITEMW()
         clearItem.stateMask = selectedState
@@ -918,6 +969,16 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         }
 
         return Int(winSendMessageW(hwnd, lvmGetNextItem, WPARAM.max, LPARAM(lvniSelected)))
+    }
+
+    /// Reads the most recent native table row activation.
+    public func tableClickedRow(for handle: NativeHandle) -> Int {
+        tableClickedRows[handle.rawValue] ?? -1
+    }
+
+    /// Reads the most recent native table column activation.
+    public func tableClickedColumn(for handle: NativeHandle) -> Int {
+        tableClickedColumns[handle.rawValue] ?? -1
     }
 
     /// Registers the action to perform when a native control is activated.
@@ -1048,23 +1109,81 @@ public final class Win32NativeControlBackend: NativeControlBackend {
             }
 
             let header = UnsafeRawPointer(bitPattern: lParam)?.assumingMemoryBound(to: NMHDR.self).pointee
-            guard let header, header.code == lvnItemChanged else {
+            guard let header else {
                 return nil
+            }
+
+            if header.code == hdnItemClickA || header.code == hdnItemClickW {
+                guard let source = header.hwndFrom,
+                      let handle = tableHeaderOwners[UInt(bitPattern: source)],
+                      let action = controlActions[handle.rawValue] else {
+                    return nil
+                }
+
+                let headerNotification = UnsafeRawPointer(bitPattern: lParam)?.assumingMemoryBound(to: NMHEADERW.self).pointee
+                let hitColumn = headerHitTestAtCursor(hwnd: source)
+                let clickedColumn = hitColumn >= 0 ? hitColumn : Int(headerNotification?.iItem ?? -1)
+                guard clickedColumn >= 0 else {
+                    return nil
+                }
+
+                tableClickedRows[handle.rawValue] = -1
+                tableClickedColumns[handle.rawValue] = clickedColumn
+                action()
+                return 0
             }
 
             let notification = UnsafeRawPointer(bitPattern: lParam)?.assumingMemoryBound(to: NMLISTVIEW.self).pointee
             guard let notification,
-                  notification.iItem >= 0,
-                  (notification.uChanged & lvifState) != 0,
-                  (notification.uNewState & lvisSelected) != (notification.uOldState & lvisSelected),
-                  (notification.uNewState & lvisSelected) != 0,
-                  let source = header.hwndFrom,
-                  let action = controlActions[nativeHandle(from: source).rawValue] else {
+                  let source = header.hwndFrom else {
                 return nil
             }
 
-            action()
-            return 0
+            let handle = nativeHandle(from: source)
+            switch header.code {
+            case lvnColumnClick:
+                guard let action = controlActions[handle.rawValue] else {
+                    return nil
+                }
+
+                let headerHwnd = HWND(bitPattern: winSendMessageW(source, lvmGetHeader, 0, 0))
+                let hitColumn = headerHitTestAtCursor(hwnd: headerHwnd)
+                tableClickedRows[handle.rawValue] = -1
+                tableClickedColumns[handle.rawValue] = hitColumn >= 0 ? hitColumn : Int(notification.iSubItem)
+                action()
+                return 0
+            case nmClick:
+                guard let action = controlActions[handle.rawValue] else {
+                    return nil
+                }
+
+                let hit = tableHitTest(at: notification.ptAction, hwnd: source)
+                let clickedRow = hit.row >= 0 ? hit.row : Int(notification.iItem)
+                let clickedColumn = hit.column >= 0 ? hit.column : Int(notification.iSubItem)
+                guard clickedRow >= 0 else {
+                    return nil
+                }
+
+                tableClickedRows[handle.rawValue] = clickedRow
+                tableClickedColumns[handle.rawValue] = clickedColumn
+                action()
+                return 0
+            case lvnItemChanged:
+                guard notification.iItem >= 0,
+                      (notification.uChanged & lvifState) != 0,
+                      (notification.uNewState & lvisSelected) != (notification.uOldState & lvisSelected),
+                      (notification.uNewState & lvisSelected) != 0,
+                      let action = controlActions[handle.rawValue] else {
+                    return nil
+                }
+
+                tableClickedRows[handle.rawValue] = Int(notification.iItem)
+                tableClickedColumns[handle.rawValue] = max(0, tableClickedColumns[handle.rawValue] ?? -1)
+                action()
+                return 0
+            default:
+                return nil
+            }
         case wmCommand:
             let commandIdentifier = UInt(wParam & 0xffff)
             let notificationCode = UInt((wParam >> 16) & 0xffff)
@@ -1256,6 +1375,40 @@ public final class Win32NativeControlBackend: NativeControlBackend {
                 _ = winSendMessageW(hwnd, lvmSetItemTextW, WPARAM(row), Int(bitPattern: itemPointer))
             }
         }
+    }
+
+    private func tableHitTest(at point: POINT, hwnd: HWND?) -> (row: Int, column: Int) {
+        guard let hwnd else {
+            return (-1, -1)
+        }
+
+        var hitTest = LVHITTESTINFO()
+        hitTest.pt = point
+        withUnsafeMutablePointer(to: &hitTest) { hitTestPointer in
+            _ = winSendMessageW(hwnd, lvmSubItemHitTest, 0, Int(bitPattern: hitTestPointer))
+        }
+
+        return (Int(hitTest.iItem), Int(hitTest.iSubItem))
+    }
+
+    private func headerHitTestAtCursor(hwnd: HWND?) -> Int {
+        guard let hwnd else {
+            return -1
+        }
+
+        var point = POINT()
+        guard winGetCursorPos(&point) != 0,
+              winScreenToClient(hwnd, &point) != 0 else {
+            return -1
+        }
+
+        var hitTest = HDHITTESTINFO()
+        hitTest.pt = point
+        withUnsafeMutablePointer(to: &hitTest) { hitTestPointer in
+            _ = winSendMessageW(hwnd, hdmHitTest, 0, Int(bitPattern: hitTestPointer))
+        }
+
+        return Int(hitTest.iItem)
     }
 
     private func frameWidth(for handle: NativeHandle) -> CGFloat {

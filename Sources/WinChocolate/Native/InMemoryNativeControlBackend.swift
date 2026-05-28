@@ -42,6 +42,12 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
         /// Native table selected row.
         public var tableSelectedRow: Int
 
+        /// Native table clicked row.
+        public var tableClickedRow: Int
+
+        /// Native table clicked column.
+        public var tableClickedColumn: Int
+
         /// Recorded text color.
         public var textColor: NSColor?
 
@@ -187,6 +193,8 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
         records[handle]?.tableColumns = columns
         records[handle]?.tableRows = rows
         records[handle]?.tableSelectedRow = selectedRow
+        records[handle]?.tableClickedRow = -1
+        records[handle]?.tableClickedColumn = -1
         return handle
     }
 
@@ -334,6 +342,16 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
         records[handle]?.tableSelectedRow ?? -1
     }
 
+    /// Reads recorded table clicked row.
+    public func tableClickedRow(for handle: NativeHandle) -> Int {
+        records[handle]?.tableClickedRow ?? -1
+    }
+
+    /// Reads recorded table clicked column.
+    public func tableClickedColumn(for handle: NativeHandle) -> Int {
+        records[handle]?.tableClickedColumn ?? -1
+    }
+
     /// Records a control action.
     public func registerAction(for handle: NativeHandle, action: @escaping () -> Void) {
         actions[handle] = action
@@ -390,6 +408,8 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
             tableColumns: [],
             tableRows: [],
             tableSelectedRow: -1,
+            tableClickedRow: -1,
+            tableClickedColumn: -1,
             textColor: nil,
             backgroundColor: nil,
             font: nil

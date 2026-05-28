@@ -100,6 +100,12 @@ public protocol NativeControlBackend: AnyObject {
     /// Reads native table selection.
     func tableSelectedRow(for handle: NativeHandle) -> Int
 
+    /// Reads the most recent native table row activation.
+    func tableClickedRow(for handle: NativeHandle) -> Int
+
+    /// Reads the most recent native table column activation.
+    func tableClickedColumn(for handle: NativeHandle) -> Int
+
     /// Registers the action to perform when a native control is activated.
     func registerAction(for handle: NativeHandle, action: @escaping () -> Void)
 
