@@ -3,7 +3,7 @@
 /// The public surface follows AppKit's common item-title and selected-index
 /// workflow while keeping native Windows selection messages behind the backend.
 open class NSPopUpButton: NSControl {
-    private var itemTitles: [String]
+    private var titles: [String]
     private var isUpdatingSelectionFromNative = false
 
     /// The selected item index, or `-1` when there is no selection.
@@ -32,26 +32,36 @@ open class NSPopUpButton: NSControl {
 
     /// Creates a pop-up button with a frame.
     public override init(frame frameRect: NSRect) {
-        self.itemTitles = []
+        self.titles = []
         self.indexOfSelectedItem = -1
         super.init(frame: frameRect)
     }
 
     /// Creates a pop-up button with AppKit's common initializer shape.
     public init(frame buttonFrame: NSRect, pullsDown flag: Bool) {
-        self.itemTitles = []
+        self.titles = []
         self.indexOfSelectedItem = -1
         super.init(frame: buttonFrame)
     }
 
+    /// All item titles in display order.
+    open var itemTitles: [String] {
+        titles
+    }
+
     /// Returns the number of items.
     open var numberOfItems: Int {
-        itemTitles.count
+        titles.count
+    }
+
+    /// Returns the last item title, if any.
+    open var lastItem: String? {
+        titles.last
     }
 
     /// Adds one item title.
     open func addItem(withTitle title: String) {
-        itemTitles.append(title)
+        titles.append(title)
         if indexOfSelectedItem < 0 {
             indexOfSelectedItem = 0
         }
@@ -60,8 +70,8 @@ open class NSPopUpButton: NSControl {
 
     /// Adds multiple item titles.
     open func addItems(withTitles titles: [String]) {
-        itemTitles.append(contentsOf: titles)
-        if indexOfSelectedItem < 0 && !itemTitles.isEmpty {
+        self.titles.append(contentsOf: titles)
+        if indexOfSelectedItem < 0 && !self.titles.isEmpty {
             indexOfSelectedItem = 0
         }
         syncItemsToNative()
@@ -69,19 +79,48 @@ open class NSPopUpButton: NSControl {
 
     /// Removes all items.
     open func removeAllItems() {
-        itemTitles.removeAll()
+        titles.removeAll()
         indexOfSelectedItem = -1
         syncItemsToNative()
     }
 
+    /// Removes an item at an index.
+    open func removeItem(at index: Int) {
+        guard titles.indices.contains(index) else {
+            return
+        }
+
+        titles.remove(at: index)
+        if titles.isEmpty {
+            indexOfSelectedItem = -1
+        } else if indexOfSelectedItem >= titles.count {
+            indexOfSelectedItem = titles.count - 1
+        }
+        syncItemsToNative()
+    }
+
+    /// Removes the first item matching a title.
+    open func removeItem(withTitle title: String) {
+        guard let index = titles.firstIndex(of: title) else {
+            return
+        }
+
+        removeItem(at: index)
+    }
+
     /// Returns the title at an item index.
     open func itemTitle(at index: Int) -> String {
-        itemTitles[index]
+        titles[index]
+    }
+
+    /// Returns the index of an item title, or `-1` when absent.
+    open func indexOfItem(withTitle title: String) -> Int {
+        titles.firstIndex(of: title) ?? -1
     }
 
     /// Selects an item by index.
     open func selectItem(at index: Int) {
-        guard itemTitles.indices.contains(index) else {
+        guard titles.indices.contains(index) else {
             return
         }
 
@@ -90,7 +129,7 @@ open class NSPopUpButton: NSControl {
 
     /// Selects the first item matching a title.
     open func selectItem(withTitle title: String) {
-        guard let index = itemTitles.firstIndex(of: title) else {
+        guard let index = titles.firstIndex(of: title) else {
             return
         }
 
@@ -99,7 +138,7 @@ open class NSPopUpButton: NSControl {
 
     /// Creates the native Windows pop-up button peer.
     open override func createNativePeer(in backend: NativeControlBackend, parent: NativeHandle?) -> NativeHandle {
-        backend.createPopUpButton(items: itemTitles, selectedIndex: indexOfSelectedItem, frame: frame, parent: parent)
+        backend.createPopUpButton(items: titles, selectedIndex: indexOfSelectedItem, frame: frame, parent: parent)
     }
 
     /// Ensures the pop-up button has a native peer and registers selection dispatch.
@@ -123,7 +162,7 @@ open class NSPopUpButton: NSControl {
             return
         }
 
-        realizedBackend?.setPopUpButtonItems(itemTitles, selectedIndex: indexOfSelectedItem, for: nativeHandle)
+        realizedBackend?.setPopUpButtonItems(titles, selectedIndex: indexOfSelectedItem, for: nativeHandle)
     }
 
     private func updateSelectionFromNative(_ index: Int) {

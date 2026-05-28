@@ -84,6 +84,21 @@ func testViewInsertionReplacementTagsAndDescendants() {
     expect(parent.viewWithTag(22) === replacement, "viewWithTag did not find replacement view.")
 }
 
+func testViewCompatibilityMetadataStoresValues() {
+    let view = NSView(frame: NSMakeRect(0, 0, 100, 100))
+
+    view.autoresizingMask = [.width, .height]
+    view.autoresizesSubviews = false
+    view.wantsLayer = true
+    view.toolTip = "Hello"
+
+    expect(view.autoresizingMask.contains(.width), "Autoresizing width mask was not stored.")
+    expect(view.autoresizingMask.contains(.height), "Autoresizing height mask was not stored.")
+    expect(!view.autoresizesSubviews, "autoresizesSubviews was not stored.")
+    expect(view.wantsLayer, "wantsLayer was not stored.")
+    expect(view.toolTip == "Hello", "toolTip was not stored.")
+}
+
 func testGeometryConvenienceFunctions() {
     let rect = NSMakeRect(10, 20, 100, 50)
 
@@ -476,6 +491,16 @@ func testButtonPerformClickHonorsEnabledState() {
     expect(actionCount == 1, "Disabled button still sent its action.")
 }
 
+func testControlCompatibilityMetadataStoresValues() {
+    let control = NSControl(frame: NSMakeRect(0, 0, 80, 24))
+
+    control.objectValue = "Value"
+    control.isContinuous = true
+
+    expect(control.objectValue as? String == "Value", "Control objectValue was not stored.")
+    expect(control.isContinuous, "Control continuous flag was not stored.")
+}
+
 func testSwitchButtonTogglesStateOnPerformClick() {
     let checkbox = NSButton(title: "Check", frame: NSMakeRect(0, 0, 120, 24))
     checkbox.setButtonType(.switchButton)
@@ -485,6 +510,24 @@ func testSwitchButtonTogglesStateOnPerformClick() {
 
     checkbox.performClick(nil)
     expect(checkbox.state == .off, "Switch button did not toggle off.")
+}
+
+func testButtonMixedStateAndCompatibilityProperties() {
+    let checkbox = NSButton(title: "Check", frame: NSMakeRect(0, 0, 120, 24))
+
+    checkbox.setButtonType(.switchButton)
+    checkbox.allowsMixedState = true
+    checkbox.keyEquivalent = "\r"
+    checkbox.isBordered = false
+
+    checkbox.setNextState()
+    expect(checkbox.state == .on, "Mixed-state button did not move from off to on.")
+    checkbox.setNextState()
+    expect(checkbox.state == .mixed, "Mixed-state button did not move from on to mixed.")
+    checkbox.setNextState()
+    expect(checkbox.state == .off, "Mixed-state button did not move from mixed to off.")
+    expect(checkbox.keyEquivalent == "\r", "Button key equivalent was not stored.")
+    expect(!checkbox.isBordered, "Button bordered flag was not stored.")
 }
 
 func testRadioButtonClearsSiblingRadioButtons() {
@@ -569,6 +612,27 @@ func testEditableTextFieldUsesEditableNativePeer() {
     expect(backend.records[handle]?.kind == "editableTextField", "Editable text field did not request editable native peer.")
 }
 
+func testTextFieldFactoryConstructorsAndCompatibilityProperties() {
+    let label = NSTextField.label(withString: "Label")
+    let wrappingLabel = NSTextField.wrappingLabel(withString: "Wrapped")
+    let textField = NSTextField.textField(withString: "Edit")
+
+    textField.placeholderString = "Placeholder"
+
+    expect(label.stringValue == "Label", "Label factory did not set string.")
+    expect(!label.isEditable, "Label factory created editable field.")
+    expect(!label.isSelectable, "Label factory created selectable field.")
+    expect(!label.isBordered, "Label factory created bordered field.")
+    expect(!label.drawsBackground, "Label factory enabled background drawing.")
+    expect(wrappingLabel.stringValue == "Wrapped", "Wrapping label factory did not set string.")
+    expect(textField.stringValue == "Edit", "Text field factory did not set string.")
+    expect(textField.isEditable, "Text field factory did not create editable field.")
+    expect(textField.isSelectable, "Text field factory did not create selectable field.")
+    expect(textField.isBordered, "Text field factory did not create bordered field.")
+    expect(textField.drawsBackground, "Text field factory did not enable background drawing.")
+    expect(textField.placeholderString == "Placeholder", "Placeholder string was not stored.")
+}
+
 func testSwitchButtonUsesCheckboxNativePeer() {
     let backend = InMemoryNativeControlBackend()
     let checkbox = NSButton(title: "Check", frame: NSMakeRect(0, 0, 120, 24))
@@ -625,6 +689,33 @@ func testPopUpButtonNativeActionUpdatesSelection() {
     expect(popUpButton.indexOfSelectedItem == 2, "Pop-up button did not read native selection.")
     expect(popUpButton.titleOfSelectedItem == "Critical", "Pop-up button selected title did not update.")
     expect(actionCount == 1, "Pop-up button action was not sent.")
+}
+
+func testPopUpButtonItemLookupAndRemoval() {
+    let popUpButton = NSPopUpButton(frame: NSMakeRect(0, 0, 140, 80), pullsDown: false)
+
+    popUpButton.addItems(withTitles: ["Info", "Warning", "Critical"])
+    popUpButton.selectItem(withTitle: "Critical")
+
+    expect(popUpButton.itemTitles == ["Info", "Warning", "Critical"], "Pop-up itemTitles did not match.")
+    expect(popUpButton.lastItem == "Critical", "Pop-up lastItem was wrong.")
+    expect(popUpButton.indexOfItem(withTitle: "Warning") == 1, "Pop-up index lookup failed.")
+    expect(popUpButton.indexOfItem(withTitle: "Missing") == -1, "Pop-up missing index should be -1.")
+
+    popUpButton.removeItem(withTitle: "Warning")
+
+    expect(popUpButton.itemTitles == ["Info", "Critical"], "Pop-up title removal failed.")
+    expect(popUpButton.indexOfSelectedItem == 1, "Pop-up selected index was not adjusted after title removal.")
+
+    popUpButton.removeItem(at: 1)
+
+    expect(popUpButton.itemTitles == ["Info"], "Pop-up index removal failed.")
+    expect(popUpButton.indexOfSelectedItem == 0, "Pop-up selected index was not clamped after removal.")
+
+    popUpButton.removeItem(at: 0)
+
+    expect(popUpButton.itemTitles.isEmpty, "Pop-up final removal failed.")
+    expect(popUpButton.indexOfSelectedItem == -1, "Pop-up selected index was not cleared.")
 }
 
 func testNativeButtonActionMakesButtonFirstResponder() {
@@ -900,6 +991,7 @@ func testAlertRestoresKeyWindowAndFirstResponder() {
 testWindowRealizationCreatesNativeHierarchy()
 testViewHierarchyMaintainsSuperviewOwnership()
 testViewInsertionReplacementTagsAndDescendants()
+testViewCompatibilityMetadataStoresValues()
 testGeometryConvenienceFunctions()
 testViewCoordinateConversionAndHitTesting()
 testSubviewResponderChainTargetsSuperview()
@@ -918,16 +1010,20 @@ testNativeKeyDownDispatchesToView()
 testNativeKeyUpDispatchesToView()
 testControlClosureActionIsInvoked()
 testButtonPerformClickHonorsEnabledState()
+testControlCompatibilityMetadataStoresValues()
 testSwitchButtonTogglesStateOnPerformClick()
+testButtonMixedStateAndCompatibilityProperties()
 testRadioButtonClearsSiblingRadioButtons()
 testRealizedViewStatePropagatesToBackend()
 testWindowTitleAndFramePropagateToBackend()
 testWindowContentSizeAndCenterUpdateFrame()
 testEditableTextFieldUsesEditableNativePeer()
+testTextFieldFactoryConstructorsAndCompatibilityProperties()
 testSwitchButtonUsesCheckboxNativePeer()
 testRadioButtonUsesRadioNativePeer()
 testPopUpButtonUsesNativePeerAndSelection()
 testPopUpButtonNativeActionUpdatesSelection()
+testPopUpButtonItemLookupAndRemoval()
 testNativeButtonActionMakesButtonFirstResponder()
 testNativePopUpActionMakesPopUpFirstResponder()
 testNativeTextChangeMakesEditableTextFieldFirstResponder()

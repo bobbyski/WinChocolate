@@ -4,6 +4,35 @@
 /// Subclasses override `realizeNativePeer(in:)` to request a specific Windows
 /// control kind while keeping AppKit-style view composition at the public API.
 open class NSView: NSResponder {
+    /// Autoresizing behavior flags matching AppKit names.
+    public struct AutoresizingMask: OptionSet, Sendable {
+        /// Raw option value.
+        public let rawValue: UInt
+
+        /// Creates an autoresizing mask from a raw value.
+        public init(rawValue: UInt) {
+            self.rawValue = rawValue
+        }
+
+        /// Left margin can change.
+        public static let minXMargin = AutoresizingMask(rawValue: 1 << 0)
+
+        /// Width can change.
+        public static let width = AutoresizingMask(rawValue: 1 << 1)
+
+        /// Right margin can change.
+        public static let maxXMargin = AutoresizingMask(rawValue: 1 << 2)
+
+        /// Bottom margin can change.
+        public static let minYMargin = AutoresizingMask(rawValue: 1 << 3)
+
+        /// Height can change.
+        public static let height = AutoresizingMask(rawValue: 1 << 4)
+
+        /// Top margin can change.
+        public static let maxYMargin = AutoresizingMask(rawValue: 1 << 5)
+    }
+
     /// The view frame in its parent coordinate space.
     open var frame: NSRect {
         didSet {
@@ -22,6 +51,18 @@ open class NSView: NSResponder {
 
     /// Application-defined integer tag used to find views in a hierarchy.
     open var tag: Int = 0
+
+    /// Autoresizing behavior for legacy frame-based layouts.
+    open var autoresizingMask: AutoresizingMask = []
+
+    /// Whether child views should be autoresized by this view.
+    open var autoresizesSubviews: Bool = true
+
+    /// Whether this view requests layer-backed rendering.
+    open var wantsLayer: Bool = false
+
+    /// Informational tooltip text.
+    open var toolTip: String?
 
     /// The view's parent view.
     public private(set) weak var superview: NSView?

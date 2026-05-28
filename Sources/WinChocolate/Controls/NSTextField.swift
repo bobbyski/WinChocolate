@@ -23,6 +23,18 @@ open class NSTextField: NSControl {
     /// Whether the text field accepts keyboard editing.
     open var isEditable: Bool = false
 
+    /// Whether the text field accepts selection.
+    open var isSelectable: Bool = false
+
+    /// Whether the text field draws a border.
+    open var isBordered: Bool = true
+
+    /// Whether the text field draws its background.
+    open var drawsBackground: Bool = true
+
+    /// Placeholder text for editable fields.
+    open var placeholderString: String?
+
     /// The text color, when explicitly set.
     open var textColor: NSColor? {
         didSet {
@@ -58,6 +70,31 @@ open class NSTextField: NSControl {
     public init(string stringValue: String, frame frameRect: NSRect) {
         self.stringValue = stringValue
         super.init(frame: frameRect)
+    }
+
+    /// Creates a non-editable label-style text field.
+    public static func label(withString stringValue: String) -> NSTextField {
+        let field = NSTextField(string: stringValue, frame: NSZeroRect)
+        field.isEditable = false
+        field.isSelectable = false
+        field.isBordered = false
+        field.drawsBackground = false
+        return field
+    }
+
+    /// Creates a non-editable wrapping label-style text field.
+    public static func wrappingLabel(withString stringValue: String) -> NSTextField {
+        label(withString: stringValue)
+    }
+
+    /// Creates an editable text field with an initial string.
+    public static func textField(withString stringValue: String) -> NSTextField {
+        let field = NSTextField(string: stringValue, frame: NSZeroRect)
+        field.isEditable = true
+        field.isSelectable = true
+        field.isBordered = true
+        field.drawsBackground = true
+        return field
     }
 
     /// Creates the native Windows text field peer.

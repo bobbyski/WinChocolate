@@ -25,6 +25,12 @@ open class NSControl: NSView {
     /// Swift-native action invoked by `sendAction()`.
     open var onAction: ((NSControl) -> Void)?
 
+    /// Generic object value used by controls that expose value-like state.
+    open var objectValue: Any?
+
+    /// Whether the control should continuously send actions while tracking.
+    open var isContinuous: Bool = false
+
     /// Whether the control accepts user interaction.
     open var isEnabled: Bool = true {
         didSet {

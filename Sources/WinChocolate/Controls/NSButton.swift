@@ -33,6 +33,15 @@ open class NSButton: NSControl {
     /// Button state for switch-like buttons.
     private var isUpdatingStateFromNative = false
 
+    /// Keyboard equivalent for button activation.
+    open var keyEquivalent: String = ""
+
+    /// Whether the button draws a border.
+    open var isBordered: Bool = true
+
+    /// Whether switch-style buttons can enter the mixed state.
+    open var allowsMixedState: Bool = false
+
     /// Button state for switch-like buttons.
     open var state: StateValue = .off {
         didSet {
@@ -95,13 +104,29 @@ open class NSButton: NSControl {
     /// Programmatically performs the button action.
     open func performClick(_ sender: Any?) {
         if buttonType == .switchButton {
-            state = state == .on ? .off : .on
+            setNextState()
         } else if buttonType == .radioButton {
             state = .on
             clearSiblingRadioButtons()
         }
 
         sendAction()
+    }
+
+    /// Advances the button to its next state.
+    open func setNextState() {
+        if allowsMixedState {
+            switch state {
+            case .off:
+                state = .on
+            case .on:
+                state = .mixed
+            case .mixed:
+                state = .off
+            }
+        } else {
+            state = state == .on ? .off : .on
+        }
     }
 
     /// Sets the button type.
