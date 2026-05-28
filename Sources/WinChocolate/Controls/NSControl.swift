@@ -56,7 +56,12 @@ open class NSControl: NSView {
         let handle = super.realizeNativePeer(in: backend, parent: parent)
         backend.setEnabled(isEnabled, for: handle)
         backend.registerAction(for: handle) { [weak self] in
-            self?.sendAction()
+            guard let self else {
+                return
+            }
+
+            _ = self.window?.makeFirstResponder(self)
+            self.sendAction()
         }
         return handle
     }

@@ -114,6 +114,44 @@ open class NSView: NSResponder {
         self.needsDisplay = needsDisplay
     }
 
+    /// Converts a point from another view's coordinate space into this view's coordinate space.
+    open func convert(_ point: NSPoint, from view: NSView?) -> NSPoint {
+        let windowPoint = view?.convertPointToWindow(point) ?? point
+        return convertPointFromWindow(windowPoint)
+    }
+
+    /// Converts a point from this view's coordinate space into another view's coordinate space.
+    open func convert(_ point: NSPoint, to view: NSView?) -> NSPoint {
+        let windowPoint = convertPointToWindow(point)
+        return view?.convertPointFromWindow(windowPoint) ?? windowPoint
+    }
+
+    /// Converts a rectangle from another view's coordinate space into this view's coordinate space.
+    open func convert(_ rect: NSRect, from view: NSView?) -> NSRect {
+        NSRect(origin: convert(rect.origin, from: view), size: rect.size)
+    }
+
+    /// Converts a rectangle from this view's coordinate space into another view's coordinate space.
+    open func convert(_ rect: NSRect, to view: NSView?) -> NSRect {
+        NSRect(origin: convert(rect.origin, to: view), size: rect.size)
+    }
+
+    /// Returns the deepest visible subview containing the point, or this view.
+    open func hitTest(_ point: NSPoint) -> NSView? {
+        guard !isHidden, NSPointInRect(point, bounds) else {
+            return nil
+        }
+
+        for subview in subviews.reversed() {
+            let childPoint = subview.convert(point, from: self)
+            if let hitView = subview.hitTest(childPoint) {
+                return hitView
+            }
+        }
+
+        return self
+    }
+
     /// Ensures the view and its children have native peers.
     @discardableResult
     open func realizeNativePeer(in backend: NativeControlBackend, parent: NativeHandle?) -> NativeHandle {
@@ -168,5 +206,36 @@ open class NSView: NSResponder {
         realizedBackend.destroyControl(nativeHandle)
         self.nativeHandle = nil
         self.realizedBackend = nil
+    }
+
+    private func convertPointToWindow(_ point: NSPoint) -> NSPoint {
+        var converted = point
+        var current: NSView? = self
+
+        while let view = current {
+            converted.x += view.frame.origin.x
+            converted.y += view.frame.origin.y
+            current = view.superview
+        }
+
+        return converted
+    }
+
+    private func convertPointFromWindow(_ point: NSPoint) -> NSPoint {
+        var converted = point
+        var chain: [NSView] = []
+        var current: NSView? = self
+
+        while let view = current {
+            chain.append(view)
+            current = view.superview
+        }
+
+        for view in chain {
+            converted.x -= view.frame.origin.x
+            converted.y -= view.frame.origin.y
+        }
+
+        return converted
     }
 }

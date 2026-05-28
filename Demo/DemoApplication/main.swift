@@ -298,12 +298,14 @@ editableTextField.previousKeyView = contentView
 
 editableTextField.isEditable = true
 editableTextField.onTextChanged = { field in
+    updateFocusDisplay()
     statusLabel.stringValue = field.stringValue.isEmpty
         ? "Edit field cleared"
         : "Typed: \(field.stringValue)"
 }
 
 button.onAction = { _ in
+    updateFocusDisplay()
     clickCount += 1
     counterLabel.stringValue = "Clicks: \(clickCount)"
     if titleCheckbox.state == .on {
@@ -313,6 +315,7 @@ button.onAction = { _ in
 }
 
 enableButton.onAction = { _ in
+    updateFocusDisplay()
     isClickEnabled.toggle()
     button.isEnabled = isClickEnabled
     enableButton.title = isClickEnabled ? "Disable Click" : "Enable Click"
@@ -320,6 +323,7 @@ enableButton.onAction = { _ in
 }
 
 hideButton.onAction = { _ in
+    updateFocusDisplay()
     isCounterHidden.toggle()
     counterLabel.isHidden = isCounterHidden
     hideButton.title = isCounterHidden ? "Show Counter" : "Hide Counter"
@@ -327,6 +331,7 @@ hideButton.onAction = { _ in
 }
 
 moveButton.onAction = { _ in
+    updateFocusDisplay()
     movedRight.toggle()
     button.frame = movedRight
         ? NSMakeRect(32, 386, 100, 34)
@@ -335,6 +340,7 @@ moveButton.onAction = { _ in
 }
 
 alertButton.onAction = { _ in
+    updateFocusDisplay()
     let alert = NSAlert()
     alert.messageText = "WinChocolate is running"
     alert.informativeText = "This is a native modal NSAlert backed by MessageBoxW."
@@ -347,10 +353,12 @@ alertButton.onAction = { _ in
     }
     alert.addButton(withTitle: "OK")
     _ = alert.runModal()
+    updateFocusDisplay()
     statusLabel.stringValue = "Alert dismissed"
 }
 
 titleCheckbox.onAction = { _ in
+    updateFocusDisplay()
     statusLabel.stringValue = titleCheckbox.state == .on
         ? "Title count enabled"
         : "Title count disabled"
@@ -360,21 +368,25 @@ titleCheckbox.onAction = { _ in
 }
 
 infoRadio.onAction = { _ in
+    updateFocusDisplay()
     alertStylePopup.selectItem(withTitle: "Info")
     statusLabel.stringValue = "Alert style: info"
 }
 
 warningRadio.onAction = { _ in
+    updateFocusDisplay()
     alertStylePopup.selectItem(withTitle: "Warning")
     statusLabel.stringValue = "Alert style: warning"
 }
 
 criticalRadio.onAction = { _ in
+    updateFocusDisplay()
     alertStylePopup.selectItem(withTitle: "Critical")
     statusLabel.stringValue = "Alert style: critical"
 }
 
 alertStylePopup.onAction = { _ in
+    updateFocusDisplay()
     let title = alertStylePopup.titleOfSelectedItem ?? "Info"
     if title == "Warning" {
         warningRadio.performClick(nil)

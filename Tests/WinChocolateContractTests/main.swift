@@ -51,6 +51,47 @@ func testViewHierarchyMaintainsSuperviewOwnership() {
     expect(child.superview === secondParent, "Child superview was not updated.")
 }
 
+func testGeometryConvenienceFunctions() {
+    let rect = NSMakeRect(10, 20, 100, 50)
+
+    expect(NSZeroPoint == NSMakePoint(0, 0), "NSZeroPoint was not zero.")
+    expect(NSZeroSize == NSMakeSize(0, 0), "NSZeroSize was not zero.")
+    expect(NSZeroRect == NSMakeRect(0, 0, 0, 0), "NSZeroRect was not zero.")
+    expect(NSMinX(rect) == 10, "NSMinX returned the wrong value.")
+    expect(NSMidX(rect) == 60, "NSMidX returned the wrong value.")
+    expect(NSMaxX(rect) == 110, "NSMaxX returned the wrong value.")
+    expect(NSMinY(rect) == 20, "NSMinY returned the wrong value.")
+    expect(NSMidY(rect) == 45, "NSMidY returned the wrong value.")
+    expect(NSMaxY(rect) == 70, "NSMaxY returned the wrong value.")
+    expect(NSWidth(rect) == 100, "NSWidth returned the wrong value.")
+    expect(NSHeight(rect) == 50, "NSHeight returned the wrong value.")
+    expect(NSPointInRect(NSMakePoint(10, 20), rect), "NSPointInRect rejected the minimum edge.")
+    expect(!NSPointInRect(NSMakePoint(110, 70), rect), "NSPointInRect included the maximum edge.")
+    expect(NSOffsetRect(rect, 3, 4) == NSMakeRect(13, 24, 100, 50), "NSOffsetRect returned the wrong rect.")
+    expect(NSInsetRect(rect, 5, 6) == NSMakeRect(15, 26, 90, 38), "NSInsetRect returned the wrong rect.")
+    expect(NSEqualRects(rect, NSMakeRect(10, 20, 100, 50)), "NSEqualRects rejected equal rects.")
+}
+
+func testViewCoordinateConversionAndHitTesting() {
+    let root = NSView(frame: NSMakeRect(0, 0, 300, 300))
+    let parent = NSView(frame: NSMakeRect(20, 30, 200, 200))
+    let child = NSView(frame: NSMakeRect(5, 7, 40, 50))
+    let hiddenChild = NSView(frame: NSMakeRect(6, 8, 10, 10))
+
+    root.addSubview(parent)
+    parent.addSubview(child)
+    child.addSubview(hiddenChild)
+    hiddenChild.isHidden = true
+
+    expect(child.convert(NSMakePoint(1, 2), to: root) == NSMakePoint(26, 39), "Point conversion to ancestor failed.")
+    expect(root.convert(NSMakePoint(26, 39), to: child) == NSMakePoint(1, 2), "Point conversion from ancestor failed.")
+    expect(parent.convert(NSMakeRect(1, 2, 10, 11), from: child) == NSMakeRect(6, 9, 10, 11), "Rect conversion from child failed.")
+    expect(root.hitTest(NSMakePoint(26, 39)) === child, "Hit testing did not return deepest visible child.")
+    expect(root.hitTest(NSMakePoint(31, 46)) === child, "Hit testing returned hidden child.")
+    expect(root.hitTest(NSMakePoint(250, 250)) === root, "Hit testing did not return root for empty visible area.")
+    expect(root.hitTest(NSMakePoint(400, 400)) == nil, "Hit testing accepted a point outside bounds.")
+}
+
 final class RecordingResponder: NSResponder {
     var mouseDownCount = 0
     var keyDownCount = 0
@@ -299,6 +340,32 @@ func testNativeMouseDownDispatchesToView() {
     expect(view.lastEvent == event, "Native mouse-down event was not forwarded intact.")
 }
 
+func testNativeMouseDownOnControlMakesControlFirstResponder() {
+    let backend = InMemoryNativeControlBackend()
+    let window = NSWindow(
+        contentRect: NSMakeRect(0, 0, 200, 100),
+        styleMask: [.titled],
+        backing: .buffered,
+        defer: false,
+        nativeBackend: backend
+    )
+    let contentView = NSView(frame: NSMakeRect(0, 0, 200, 100))
+    let button = NSButton(title: "Click", frame: NSMakeRect(20, 20, 80, 24))
+
+    contentView.addSubview(button)
+    window.contentView = contentView
+    window.realizeNativePeer()
+
+    guard let handle = button.nativeHandle else {
+        fatalError("Button did not realize.")
+    }
+
+    backend.mouseDownActions[handle]?(NSEvent(type: .leftMouseDown, locationInWindow: NSMakePoint(2, 3)))
+
+    expect(window.firstResponder === button, "Native mouse-down on control did not make it first responder.")
+    expect(backend.focusedHandle == handle, "Native mouse-down on control did not request native focus.")
+}
+
 func testNativeMouseUpDispatchesToView() {
     let backend = InMemoryNativeControlBackend()
     let view = RecordingView(frame: NSMakeRect(0, 0, 100, 100))
@@ -501,6 +568,92 @@ func testPopUpButtonNativeActionUpdatesSelection() {
     expect(actionCount == 1, "Pop-up button action was not sent.")
 }
 
+func testNativeButtonActionMakesButtonFirstResponder() {
+    let backend = InMemoryNativeControlBackend()
+    let window = NSWindow(
+        contentRect: NSMakeRect(0, 0, 200, 100),
+        styleMask: [.titled],
+        backing: .buffered,
+        defer: false,
+        nativeBackend: backend
+    )
+    let contentView = NSView(frame: NSMakeRect(0, 0, 200, 100))
+    let button = NSButton(title: "Click", frame: NSMakeRect(20, 20, 80, 24))
+    var actionCount = 0
+
+    button.onAction = { _ in
+        actionCount += 1
+    }
+    contentView.addSubview(button)
+    window.contentView = contentView
+    window.realizeNativePeer()
+
+    guard let handle = button.nativeHandle else {
+        fatalError("Button did not realize.")
+    }
+
+    backend.actions[handle]?()
+
+    expect(window.firstResponder === button, "Native button action did not make button first responder.")
+    expect(backend.focusedHandle == handle, "Native button action did not request native focus.")
+    expect(actionCount == 1, "Native button action did not send action.")
+}
+
+func testNativePopUpActionMakesPopUpFirstResponder() {
+    let backend = InMemoryNativeControlBackend()
+    let window = NSWindow(
+        contentRect: NSMakeRect(0, 0, 200, 120),
+        styleMask: [.titled],
+        backing: .buffered,
+        defer: false,
+        nativeBackend: backend
+    )
+    let contentView = NSView(frame: NSMakeRect(0, 0, 200, 120))
+    let popUpButton = NSPopUpButton(frame: NSMakeRect(20, 20, 140, 80), pullsDown: false)
+
+    popUpButton.addItems(withTitles: ["Info", "Warning"])
+    contentView.addSubview(popUpButton)
+    window.contentView = contentView
+    window.realizeNativePeer()
+
+    guard let handle = popUpButton.nativeHandle else {
+        fatalError("Pop-up button did not realize.")
+    }
+
+    backend.actions[handle]?()
+
+    expect(window.firstResponder === popUpButton, "Native pop-up action did not make pop-up first responder.")
+    expect(backend.focusedHandle == handle, "Native pop-up action did not request native focus.")
+}
+
+func testNativeTextChangeMakesEditableTextFieldFirstResponder() {
+    let backend = InMemoryNativeControlBackend()
+    let window = NSWindow(
+        contentRect: NSMakeRect(0, 0, 200, 100),
+        styleMask: [.titled],
+        backing: .buffered,
+        defer: false,
+        nativeBackend: backend
+    )
+    let contentView = NSView(frame: NSMakeRect(0, 0, 200, 100))
+    let textField = NSTextField(string: "", frame: NSMakeRect(20, 20, 140, 24))
+
+    textField.isEditable = true
+    contentView.addSubview(textField)
+    window.contentView = contentView
+    window.realizeNativePeer()
+
+    guard let handle = textField.nativeHandle else {
+        fatalError("Text field did not realize.")
+    }
+
+    backend.textChangeActions[handle]?("Typed")
+
+    expect(window.firstResponder === textField, "Native text change did not make text field first responder.")
+    expect(backend.focusedHandle == handle, "Native text change did not request native focus.")
+    expect(textField.stringValue == "Typed", "Native text change did not update string value.")
+}
+
 func testBoxUsesNativePeerAndSyncsTitle() {
     let backend = InMemoryNativeControlBackend()
     let box = NSBox(title: "Group", frame: NSMakeRect(0, 0, 200, 120))
@@ -603,8 +756,42 @@ func testAlertReturnsFirstButtonInMemory() {
     expect(response == .alertFirstButtonReturn, "In-memory alert did not return first button.")
 }
 
+func testAlertRestoresKeyWindowAndFirstResponder() {
+    clearApplicationWindows()
+
+    let backend = InMemoryNativeControlBackend()
+    NSApplication.shared.nativeBackend = backend
+    let window = NSWindow(
+        contentRect: NSMakeRect(0, 0, 200, 100),
+        styleMask: [.titled],
+        backing: .buffered,
+        defer: false,
+        nativeBackend: backend
+    )
+    let contentView = NSView(frame: NSMakeRect(0, 0, 200, 100))
+    let button = NSButton(title: "Alert", frame: NSMakeRect(20, 20, 80, 24))
+    let alert = NSAlert()
+
+    contentView.addSubview(button)
+    window.contentView = contentView
+    window.makeKeyAndOrderFront(nil)
+    _ = window.makeFirstResponder(button)
+
+    let response = alert.runModal()
+
+    expect(response == .alertFirstButtonReturn, "Alert did not return expected response.")
+    expect(NSApplication.shared.keyWindow === window, "Alert did not restore key window.")
+    expect(NSApplication.shared.mainWindow === window, "Alert did not restore main window.")
+    expect(window.firstResponder === button, "Alert did not restore first responder.")
+    expect(backend.focusedHandle == button.nativeHandle, "Alert did not restore native focus.")
+
+    clearApplicationWindows()
+}
+
 testWindowRealizationCreatesNativeHierarchy()
 testViewHierarchyMaintainsSuperviewOwnership()
+testGeometryConvenienceFunctions()
+testViewCoordinateConversionAndHitTesting()
 testSubviewResponderChainTargetsSuperview()
 testResponderForwardsUnhandledEvents()
 testWindowIsContentViewNextResponder()
@@ -614,6 +801,7 @@ testApplicationTracksWindowListAndKeyMainWindow()
 testWindowSelectNextAndPreviousKeyView()
 testWindowSelectNextKeyViewSkipsDisabledExplicitTarget()
 testNativeMouseDownDispatchesToView()
+testNativeMouseDownOnControlMakesControlFirstResponder()
 testNativeMouseUpDispatchesToView()
 testNativeMouseMovedDispatchesToView()
 testNativeKeyDownDispatchesToView()
@@ -629,6 +817,9 @@ testSwitchButtonUsesCheckboxNativePeer()
 testRadioButtonUsesRadioNativePeer()
 testPopUpButtonUsesNativePeerAndSelection()
 testPopUpButtonNativeActionUpdatesSelection()
+testNativeButtonActionMakesButtonFirstResponder()
+testNativePopUpActionMakesPopUpFirstResponder()
+testNativeTextChangeMakesEditableTextFieldFirstResponder()
 testBoxUsesNativePeerAndSyncsTitle()
 testColorValuesClampComponents()
 testViewAndTextFieldColorsSyncToBackend()
@@ -636,5 +827,6 @@ testFontValuesClampSizeAndSyncToBackend()
 testRemovingRealizedSubviewDestroysNativePeer()
 testMainMenuQuitItemTerminatesApplication()
 testAlertReturnsFirstButtonInMemory()
+testAlertRestoresKeyWindowAndFirstResponder()
 
 print("WinChocolate contract tests passed.")

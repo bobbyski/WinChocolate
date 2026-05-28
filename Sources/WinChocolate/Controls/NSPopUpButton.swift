@@ -112,6 +112,7 @@ open class NSPopUpButton: NSControl {
             }
 
             self.updateSelectionFromNative(backend.popUpButtonSelectedIndex(for: nativeHandle))
+            _ = self.window?.makeFirstResponder(self)
             self.sendAction()
         }
         return handle

@@ -43,7 +43,21 @@ open class NSAlert: NSObject {
 
     /// Runs the alert modally.
     open func runModal() -> NSApplication.ModalResponse {
-        NSApplication.shared.nativeBackend.runAlert(self)
+        let application = NSApplication.shared
+        let keyWindow = application.keyWindow
+        let mainWindow = application.mainWindow
+        let firstResponder = keyWindow?.firstResponder
+        let response = application.nativeBackend.runAlert(self)
+
+        if let mainWindow {
+            mainWindow.makeMain()
+        }
+        if let keyWindow {
+            keyWindow.makeKey()
+            _ = keyWindow.makeFirstResponder(firstResponder)
+        }
+
+        return response
     }
 }
 

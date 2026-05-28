@@ -86,6 +86,7 @@ open class NSButton: NSControl {
                 self.updateStateFromNative(backend.buttonState(for: nativeHandle))
             }
 
+            _ = self.window?.makeFirstResponder(self)
             self.sendAction()
         }
         return handle

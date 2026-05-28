@@ -761,10 +761,11 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         let body = alert.informativeText.isEmpty
             ? alert.messageText
             : "\(alert.messageText)\n\n\(alert.informativeText)"
+        let owner = NSApplication.shared.keyWindow?.nativeHandle.flatMap { hwnd(from: $0) }
 
         let result = withWideString(body) { text in
             withWideString("WinChocolate") { caption in
-                winMessageBoxW(nil, text, caption, messageBoxFlags(for: alert))
+                winMessageBoxW(owner, text, caption, messageBoxFlags(for: alert))
             }
         }
 
@@ -917,6 +918,23 @@ public final class Win32NativeControlBackend: NativeControlBackend {
 
             action(keyEvent(type: .keyUp, wParam: wParam))
             return 0
+        case wmLButtonDown:
+            guard let hwnd,
+                  let action = mouseDownActions[nativeHandle(from: hwnd).rawValue] else {
+                return nil
+            }
+
+            _ = winSetFocus(hwnd)
+            action(NSEvent(type: .leftMouseDown, locationInWindow: point(from: lParam), modifierFlags: currentModifierFlags()))
+            return nil
+        case wmLButtonUp:
+            guard let hwnd,
+                  let action = mouseUpActions[nativeHandle(from: hwnd).rawValue] else {
+                return nil
+            }
+
+            action(NSEvent(type: .leftMouseUp, locationInWindow: point(from: lParam), modifierFlags: currentModifierFlags()))
+            return nil
         default:
             return nil
         }

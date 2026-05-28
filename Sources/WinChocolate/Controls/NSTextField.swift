@@ -72,7 +72,12 @@ open class NSTextField: NSControl {
         backend.setTextColor(textColor, for: handle)
         backend.setFont(font, for: handle)
         backend.registerTextChangeAction(for: handle) { [weak self] text in
-            self?.updateStringValueFromNative(text)
+            guard let self else {
+                return
+            }
+
+            _ = self.window?.makeFirstResponder(self)
+            self.updateStringValueFromNative(text)
         }
         return handle
     }
