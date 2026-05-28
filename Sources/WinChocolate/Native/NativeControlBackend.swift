@@ -46,6 +46,12 @@ public protocol NativeControlBackend: AnyObject {
     /// Creates a native pop-up button child.
     func createPopUpButton(items: [String], selectedIndex: Int, frame: NSRect, parent: NativeHandle?) -> NativeHandle
 
+    /// Creates a native scroll-view child.
+    func createScrollView(frame: NSRect, parent: NativeHandle?, hasVerticalScroller: Bool, hasHorizontalScroller: Bool) -> NativeHandle
+
+    /// Creates a native table-view child.
+    func createTableView(columns: [String], rows: [[String]], selectedRow: Int, frame: NSRect, parent: NativeHandle?) -> NativeHandle
+
     /// Updates the visible text for a native control.
     func setText(_ text: String, for handle: NativeHandle)
 
@@ -84,6 +90,15 @@ public protocol NativeControlBackend: AnyObject {
 
     /// Reads native pop-up button selection.
     func popUpButtonSelectedIndex(for handle: NativeHandle) -> Int
+
+    /// Replaces native table rows.
+    func setTableRows(_ rows: [[String]], selectedRow: Int, for handle: NativeHandle)
+
+    /// Updates native table selection.
+    func setTableSelectedRow(_ selectedRow: Int, for handle: NativeHandle)
+
+    /// Reads native table selection.
+    func tableSelectedRow(for handle: NativeHandle) -> Int
 
     /// Registers the action to perform when a native control is activated.
     func registerAction(for handle: NativeHandle, action: @escaping () -> Void)

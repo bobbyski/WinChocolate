@@ -13,7 +13,7 @@ menuBar.addItem(appMenuItem)
 app.mainMenu = menuBar
 
 let window = NSWindow(
-    contentRect: NSMakeRect(100, 100, 760, 500),
+    contentRect: NSMakeRect(100, 100, 920, 640),
     styleMask: [.titled, .closable, .miniaturizable, .resizable],
     backing: .buffered,
     defer: false
@@ -53,10 +53,39 @@ final class DemoContentView: NSView {
     }
 }
 
-let contentView = DemoContentView(frame: NSMakeRect(0, 0, 760, 500))
+final class DemoTableDataSource: NSTableViewDataSource {
+    let rows: [[String]] = [
+        ["NSApplication", "Running"],
+        ["NSWindow", "Key/Main"],
+        ["NSButton", "Actions"],
+        ["NSTextField", "Editing"],
+        ["NSTableView", "First slice"]
+    ]
+
+    func numberOfRows(in tableView: NSTableView) -> Int {
+        rows.count
+    }
+
+    func tableView(_ tableView: NSTableView, objectValueFor tableColumn: NSTableColumn?, row: Int) -> Any? {
+        guard rows.indices.contains(row) else {
+            return nil
+        }
+
+        switch tableColumn?.identifier.rawValue {
+        case "name":
+            return rows[row][0]
+        case "status":
+            return rows[row][1]
+        default:
+            return nil
+        }
+    }
+}
+
+let contentView = DemoContentView(frame: NSMakeRect(0, 0, 920, 640))
 let counterLabel = NSTextField(string: "Clicks: 0", frame: NSMakeRect(32, 36, 300, 24))
 let statusLabel = NSTextField(string: "Ready", frame: NSMakeRect(32, 74, 520, 24))
-let focusLabel = NSTextField(string: "Focus: none", frame: NSMakeRect(568, 74, 160, 24))
+let focusLabel = NSTextField(string: "Focus: none", frame: NSMakeRect(568, 74, 260, 24))
 let button = NSButton(title: "Click", frame: NSMakeRect(32, 124, 100, 34))
 let enableButton = NSButton(title: "Disable Click", frame: NSMakeRect(152, 124, 144, 34))
 let hideButton = NSButton(title: "Hide Counter", frame: NSMakeRect(316, 124, 144, 34))
@@ -71,6 +100,10 @@ let alertStylePopup = NSPopUpButton(frame: NSMakeRect(472, 286, 184, 96), pullsD
 let infoRadio = NSButton(title: "Info", frame: NSMakeRect(32, 334, 88, 24))
 let warningRadio = NSButton(title: "Warning", frame: NSMakeRect(136, 334, 116, 24))
 let criticalRadio = NSButton(title: "Critical", frame: NSMakeRect(268, 334, 116, 24))
+let tableLabel = NSTextField(string: "Table view:", frame: NSMakeRect(560, 392, 120, 24))
+let tableScrollView = NSScrollView(frame: NSMakeRect(560, 424, 300, 160))
+let tableView = NSTableView(frame: NSMakeRect(0, 0, 300, 160))
+let tableDataSource = DemoTableDataSource()
 let contentFocusColor = NSColor(calibratedRed: 0.92, green: 0.97, blue: 1.0, alpha: 1.0)
 let normalContentColor = NSColor.windowBackgroundColor
 let controlFocusColor = NSColor(calibratedRed: 1.0, green: 0.96, blue: 0.72, alpha: 1.0)
@@ -204,6 +237,9 @@ func focusName() -> String {
     if responder === criticalRadio {
         return "critical radio"
     }
+    if responder === tableView {
+        return "table view"
+    }
     return "view"
 }
 
@@ -269,6 +305,16 @@ criticalRadio.setButtonType(.radioButton)
 infoRadio.state = .on
 alertStylePopup.addItems(withTitles: ["Info", "Warning", "Critical"])
 alertStylePopup.selectItem(withTitle: "Info")
+let tableNameColumn = NSTableColumn(identifier: "name")
+let tableStatusColumn = NSTableColumn(identifier: "status")
+tableNameColumn.title = "Name"
+tableStatusColumn.title = "Status"
+tableView.addTableColumn(tableNameColumn)
+tableView.addTableColumn(tableStatusColumn)
+tableView.dataSource = tableDataSource
+tableView.reloadData()
+tableScrollView.hasVerticalScroller = true
+tableScrollView.documentView = tableView
 
 contentView.nextKeyView = editableTextField
 editableTextField.nextKeyView = button
@@ -281,9 +327,11 @@ titleCheckbox.nextKeyView = alertStylePopup
 alertStylePopup.nextKeyView = infoRadio
 infoRadio.nextKeyView = warningRadio
 warningRadio.nextKeyView = criticalRadio
-criticalRadio.nextKeyView = contentView
+criticalRadio.nextKeyView = tableView
+tableView.nextKeyView = contentView
 
-contentView.previousKeyView = criticalRadio
+contentView.previousKeyView = tableView
+tableView.previousKeyView = criticalRadio
 criticalRadio.previousKeyView = warningRadio
 warningRadio.previousKeyView = infoRadio
 infoRadio.previousKeyView = alertStylePopup
@@ -397,6 +445,18 @@ alertStylePopup.onAction = { _ in
     }
 }
 
+tableView.onSelectionChanged = { table in
+    updateFocusDisplay()
+    let row = table.selectedRow
+    if row >= 0,
+       let name = table.value(atColumn: 0, row: row),
+       let status = table.value(atColumn: 1, row: row) {
+        statusLabel.stringValue = "Table selected: \(name) - \(status)"
+    } else {
+        statusLabel.stringValue = "Table selection cleared"
+    }
+}
+
 contentView.addSubview(counterLabel)
 contentView.addSubview(statusLabel)
 contentView.addSubview(focusLabel)
@@ -414,6 +474,8 @@ contentView.addSubview(alertStylePopup)
 contentView.addSubview(infoRadio)
 contentView.addSubview(warningRadio)
 contentView.addSubview(criticalRadio)
+contentView.addSubview(tableLabel)
+contentView.addSubview(tableScrollView)
 window.contentView = contentView
 window.makeKeyAndOrderFront(nil)
 updateFocusDisplay()

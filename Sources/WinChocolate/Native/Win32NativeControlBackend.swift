@@ -237,7 +237,12 @@ private let cbAddString: UINT = 0x0143
 private let cbGetCurSel: UINT = 0x0147
 private let cbResetContent: UINT = 0x014b
 private let cbSetCurSel: UINT = 0x014e
+private let lbAddString: UINT = 0x0180
+private let lbSetCurSel: UINT = 0x0186
+private let lbGetCurSel: UINT = 0x0188
+private let lbResetContent: UINT = 0x0184
 private let enChange: UInt = 0x0300
+private let lbnSelChange: UInt = 1
 private let bnClicked: UInt = 0
 private let cbnSelChange: UInt = 1
 private let bstUnchecked: WPARAM = 0
@@ -275,10 +280,12 @@ private let wsMinimizeBox: DWORD = 0x00020000
 private let wsMaximizeBox: DWORD = 0x00010000
 private let wsVisible: DWORD = 0x10000000
 private let wsVScroll: DWORD = 0x00200000
+private let wsHScroll: DWORD = 0x00100000
 private let wsChild: DWORD = 0x40000000
 private let wsClipChildren: DWORD = 0x02000000
 private let wsBorder: DWORD = 0x00800000
 private let esAutoHScroll: DWORD = 0x0080
+private let lbsNotify: DWORD = 0x0001
 private let bsAutoCheckBox: DWORD = 0x00000003
 private let bsAutoRadioButton: DWORD = 0x00000009
 private let bsGroupBox: DWORD = 0x00000007
@@ -525,6 +532,42 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         return handle
     }
 
+    /// Creates a native scroll-view child.
+    public func createScrollView(frame: NSRect, parent: NativeHandle?, hasVerticalScroller: Bool, hasHorizontalScroller: Bool) -> NativeHandle {
+        registerViewClassIfNeeded()
+        var style = wsChild | wsVisible | wsClipChildren | wsBorder
+        if hasVerticalScroller {
+            style |= wsVScroll
+        }
+        if hasHorizontalScroller {
+            style |= wsHScroll
+        }
+
+        return createChildWindow(
+            className: winChocolateViewClassName,
+            text: "",
+            frame: frame,
+            parent: parent,
+            commandIdentifier: nil,
+            style: style
+        )
+    }
+
+    /// Creates a native table-view child.
+    public func createTableView(columns: [String], rows: [[String]], selectedRow: Int, frame: NSRect, parent: NativeHandle?) -> NativeHandle {
+        let handle = createChildWindow(
+            className: "LISTBOX",
+            text: "",
+            frame: frame,
+            parent: parent,
+            commandIdentifier: nextCommandID(),
+            style: wsChild | wsVisible | wsBorder | wsVScroll | lbsNotify
+        )
+        subclassControlForTabKey(handle)
+        setTableRows(rows, selectedRow: selectedRow, for: handle)
+        return handle
+    }
+
     /// Updates the visible text for a native control.
     public func setText(_ text: String, for handle: NativeHandle) {
         guard let hwnd = hwnd(from: handle) else {
@@ -722,6 +765,39 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         return Int(winSendMessageW(hwnd, cbGetCurSel, 0, 0))
     }
 
+    /// Replaces native table rows.
+    public func setTableRows(_ rows: [[String]], selectedRow: Int, for handle: NativeHandle) {
+        guard let hwnd = hwnd(from: handle) else {
+            return
+        }
+
+        _ = winSendMessageW(hwnd, lbResetContent, 0, 0)
+        for row in rows {
+            withWideString(row.joined(separator: "\t")) { title in
+                _ = winSendMessageW(hwnd, lbAddString, 0, Int(bitPattern: title))
+            }
+        }
+        setTableSelectedRow(selectedRow, for: handle)
+    }
+
+    /// Updates native table selection.
+    public func setTableSelectedRow(_ selectedRow: Int, for handle: NativeHandle) {
+        guard let hwnd = hwnd(from: handle) else {
+            return
+        }
+
+        _ = winSendMessageW(hwnd, lbSetCurSel, selectedRow < 0 ? WPARAM.max : WPARAM(selectedRow), 0)
+    }
+
+    /// Reads native table selection.
+    public func tableSelectedRow(for handle: NativeHandle) -> Int {
+        guard let hwnd = hwnd(from: handle) else {
+            return -1
+        }
+
+        return Int(winSendMessageW(hwnd, lbGetCurSel, 0, 0))
+    }
+
     /// Registers the action to perform when a native control is activated.
     public func registerAction(for handle: NativeHandle, action: @escaping () -> Void) {
         controlActions[handle.rawValue] = action
@@ -859,6 +935,11 @@ public final class Win32NativeControlBackend: NativeControlBackend {
             }
 
             if lParam != 0, notificationCode == cbnSelChange, let action = controlActions[UInt(bitPattern: lParam)] {
+                action()
+                return 0
+            }
+
+            if lParam != 0, notificationCode == lbnSelChange, let action = controlActions[UInt(bitPattern: lParam)] {
                 action()
                 return 0
             }

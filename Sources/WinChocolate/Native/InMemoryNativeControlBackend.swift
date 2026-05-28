@@ -33,6 +33,15 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
         /// Native pop-up button selected index.
         public var popUpSelectedIndex: Int
 
+        /// Native table column titles.
+        public var tableColumns: [String]
+
+        /// Native table row values.
+        public var tableRows: [[String]]
+
+        /// Native table selected row.
+        public var tableSelectedRow: Int
+
         /// Recorded text color.
         public var textColor: NSColor?
 
@@ -167,6 +176,20 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
         return handle
     }
 
+    /// Records a scroll view creation request.
+    public func createScrollView(frame: NSRect, parent: NativeHandle?, hasVerticalScroller: Bool, hasHorizontalScroller: Bool) -> NativeHandle {
+        makeHandle(kind: "scrollView", text: "", frame: frame, parent: parent)
+    }
+
+    /// Records a table view creation request.
+    public func createTableView(columns: [String], rows: [[String]], selectedRow: Int, frame: NSRect, parent: NativeHandle?) -> NativeHandle {
+        let handle = makeHandle(kind: "tableView", text: "", frame: frame, parent: parent)
+        records[handle]?.tableColumns = columns
+        records[handle]?.tableRows = rows
+        records[handle]?.tableSelectedRow = selectedRow
+        return handle
+    }
+
     /// Updates a recorded control text value.
     public func setText(_ text: String, for handle: NativeHandle) {
         guard var record = records[handle] else {
@@ -285,6 +308,32 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
         records[handle]?.popUpSelectedIndex ?? -1
     }
 
+    /// Replaces recorded table rows.
+    public func setTableRows(_ rows: [[String]], selectedRow: Int, for handle: NativeHandle) {
+        guard var record = records[handle] else {
+            return
+        }
+
+        record.tableRows = rows
+        record.tableSelectedRow = selectedRow
+        records[handle] = record
+    }
+
+    /// Updates recorded table selection.
+    public func setTableSelectedRow(_ selectedRow: Int, for handle: NativeHandle) {
+        guard var record = records[handle] else {
+            return
+        }
+
+        record.tableSelectedRow = selectedRow
+        records[handle] = record
+    }
+
+    /// Reads recorded table selection.
+    public func tableSelectedRow(for handle: NativeHandle) -> Int {
+        records[handle]?.tableSelectedRow ?? -1
+    }
+
     /// Records a control action.
     public func registerAction(for handle: NativeHandle, action: @escaping () -> Void) {
         actions[handle] = action
@@ -338,6 +387,9 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
             buttonState: .off,
             popUpItems: [],
             popUpSelectedIndex: -1,
+            tableColumns: [],
+            tableRows: [],
+            tableSelectedRow: -1,
             textColor: nil,
             backgroundColor: nil,
             font: nil

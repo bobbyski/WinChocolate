@@ -140,6 +140,33 @@ func testViewCoordinateConversionAndHitTesting() {
     expect(root.hitTest(NSMakePoint(400, 400)) == nil, "Hit testing accepted a point outside bounds.")
 }
 
+func testScrollViewHostsDocumentView() {
+    let scrollView = NSScrollView(frame: NSMakeRect(0, 0, 200, 120))
+    let documentView = NSView(frame: NSMakeRect(0, 0, 180, 240))
+
+    scrollView.hasVerticalScroller = true
+    scrollView.documentView = documentView
+
+    expect(scrollView.subviews.count == 1, "Scroll view did not add document view as subview.")
+    expect(scrollView.subviews.first === documentView, "Scroll view subview was not the document view.")
+    expect(documentView.superview === scrollView, "Document view superview was not the scroll view.")
+}
+
+func testScrollViewUsesNativePeerAndRealizesDocumentView() {
+    let backend = InMemoryNativeControlBackend()
+    let scrollView = NSScrollView(frame: NSMakeRect(0, 0, 200, 120))
+    let documentView = NSView(frame: NSMakeRect(0, 0, 180, 240))
+
+    scrollView.hasVerticalScroller = true
+    scrollView.documentView = documentView
+
+    let handle = scrollView.realizeNativePeer(in: backend, parent: nil)
+
+    expect(backend.records[handle]?.kind == "scrollView", "Scroll view did not request native scroll peer.")
+    expect(documentView.nativeHandle != nil, "Scroll view did not realize document view.")
+    expect(backend.records[documentView.nativeHandle!]?.parent == handle, "Document view native parent was not scroll view.")
+}
+
 final class RecordingResponder: NSResponder {
     var mouseDownCount = 0
     var keyDownCount = 0
@@ -195,6 +222,138 @@ final class RecordingView: NSView {
         keyUpCount += 1
         lastEvent = event
     }
+}
+
+final class RecordingTableDataSource: NSTableViewDataSource {
+    var rows: [[String]] = [
+        ["Ada", "Compiler"],
+        ["Grace", "Navy"],
+        ["Katherine", "Orbit"]
+    ]
+
+    func numberOfRows(in tableView: NSTableView) -> Int {
+        rows.count
+    }
+
+    func tableView(_ tableView: NSTableView, objectValueFor tableColumn: NSTableColumn?, row: Int) -> Any? {
+        guard rows.indices.contains(row) else {
+            return nil
+        }
+
+        switch tableColumn?.identifier.rawValue {
+        case "name":
+            return rows[row][0]
+        case "note":
+            return rows[row][1]
+        default:
+            return nil
+        }
+    }
+}
+
+final class RecordingTableDelegate: NSTableViewDelegate {
+    var selectionChangeCount = 0
+    var lastObject: AnyObject?
+
+    func tableViewSelectionDidChange(_ notification: NSNotification) {
+        selectionChangeCount += 1
+        lastObject = notification.object
+    }
+}
+
+func testTableColumnStoresAppKitIdentifierShape() {
+    let column = NSTableColumn(identifier: "name")
+
+    column.title = "Name"
+    column.width = 160
+    column.minWidth = 40
+    column.maxWidth = 400
+    column.isEditable = true
+
+    expect(column.identifier == NSUserInterfaceItemIdentifier("name"), "Table column identifier was not stored.")
+    expect(column.title == "Name", "Table column title was not stored.")
+    expect(column.width == 160, "Table column width was not stored.")
+    expect(column.minWidth == 40, "Table column min width was not stored.")
+    expect(column.maxWidth == 400, "Table column max width was not stored.")
+    expect(column.isEditable, "Table column editability was not stored.")
+}
+
+func testTableViewReloadsRowsFromDataSource() {
+    let tableView = NSTableView(frame: NSMakeRect(0, 0, 300, 160))
+    let dataSource = RecordingTableDataSource()
+    let name = NSTableColumn(identifier: "name")
+    let note = NSTableColumn(identifier: "note")
+
+    name.title = "Name"
+    note.title = "Note"
+    tableView.addTableColumn(name)
+    tableView.addTableColumn(note)
+    tableView.dataSource = dataSource
+    tableView.reloadData()
+
+    expect(tableView.numberOfColumns == 2, "Table view column count was wrong.")
+    expect(tableView.numberOfRows == 3, "Table view row count was wrong.")
+    expect(tableView.tableColumn(withIdentifier: "note") === note, "Table column identifier lookup failed.")
+    expect(tableView.tableColumn(at: 0) === name, "Table column index lookup failed.")
+    expect(tableView.value(atColumn: 0, row: 1) == "Grace", "Table view did not load first column value.")
+    expect(tableView.value(atColumn: 1, row: 2) == "Orbit", "Table view did not load second column value.")
+}
+
+func testTableViewNativePeerReceivesColumnsRowsAndSelection() {
+    let backend = InMemoryNativeControlBackend()
+    let tableView = NSTableView(frame: NSMakeRect(0, 0, 300, 160))
+    let dataSource = RecordingTableDataSource()
+    let name = NSTableColumn(identifier: "name")
+    let note = NSTableColumn(identifier: "note")
+
+    name.title = "Name"
+    note.title = "Note"
+    tableView.addTableColumn(name)
+    tableView.addTableColumn(note)
+    tableView.dataSource = dataSource
+    tableView.reloadData()
+    tableView.selectRowIndexes([1], byExtendingSelection: false)
+
+    let handle = tableView.realizeNativePeer(in: backend, parent: nil)
+
+    expect(backend.records[handle]?.kind == "tableView", "Table view did not request native table peer.")
+    expect(backend.records[handle]?.tableColumns == ["Name", "Note"], "Table columns were not synced to backend.")
+    expect(backend.records[handle]?.tableRows == [["Ada", "Compiler"], ["Grace", "Navy"], ["Katherine", "Orbit"]], "Table rows were not synced to backend.")
+    expect(backend.records[handle]?.tableSelectedRow == 1, "Table selection was not synced to backend.")
+    expect(tableView.selectedRowIndexes == [1], "Table selectedRowIndexes was not updated.")
+}
+
+func testTableViewNativeSelectionNotifiesDelegateAndAction() {
+    let backend = InMemoryNativeControlBackend()
+    let tableView = NSTableView(frame: NSMakeRect(0, 0, 300, 160))
+    let dataSource = RecordingTableDataSource()
+    let delegate = RecordingTableDelegate()
+    let name = NSTableColumn(identifier: "name")
+    var actionCount = 0
+    var callbackCount = 0
+
+    tableView.addTableColumn(name)
+    tableView.dataSource = dataSource
+    tableView.delegate = delegate
+    tableView.onAction = { control in
+        expect(control === tableView, "Table action sender was not table view.")
+        actionCount += 1
+    }
+    tableView.onSelectionChanged = { table in
+        expect(table === tableView, "Table selection callback sender was not table view.")
+        callbackCount += 1
+    }
+    tableView.reloadData()
+
+    let handle = tableView.realizeNativePeer(in: backend, parent: nil)
+    backend.setTableSelectedRow(2, for: handle)
+    backend.actions[handle]?()
+
+    expect(tableView.selectedRow == 2, "Table view did not read native selection.")
+    expect(actionCount == 1, "Table view did not send action after selection.")
+    expect(callbackCount == 1, "Table view did not invoke selection callback.")
+    expect(delegate.selectionChangeCount == 1, "Table view delegate was not notified.")
+    expect(delegate.lastObject === tableView, "Table view delegate notification object was wrong.")
 }
 
 func testSubviewResponderChainTargetsSuperview() {
@@ -994,6 +1153,12 @@ testViewInsertionReplacementTagsAndDescendants()
 testViewCompatibilityMetadataStoresValues()
 testGeometryConvenienceFunctions()
 testViewCoordinateConversionAndHitTesting()
+testScrollViewHostsDocumentView()
+testScrollViewUsesNativePeerAndRealizesDocumentView()
+testTableColumnStoresAppKitIdentifierShape()
+testTableViewReloadsRowsFromDataSource()
+testTableViewNativePeerReceivesColumnsRowsAndSelection()
+testTableViewNativeSelectionNotifiesDelegateAndAction()
 testSubviewResponderChainTargetsSuperview()
 testResponderForwardsUnhandledEvents()
 testWindowIsContentViewNextResponder()

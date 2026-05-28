@@ -6,6 +6,8 @@ WinChocolate is an AppKit-shaped SwiftPM framework for Windows. The goal is to l
 
 Overall planned-code progress: `█████░░░░░` 54%
 
+Current planned-code progress after the table plan update: `██████░░░░` 58%
+
 ## First Milestone
 
 The first milestone is a runnable AppKit-shaped Windows application slice:
@@ -24,10 +26,11 @@ The first milestone is a runnable AppKit-shaped Windows application slice:
 |---|---:|---:|---|---|
 | 1: SwiftPM Shape And Core Names | Implemented | 100% | package, sources, tests, docs | Initial AppKit-compatible public type names are in place. |
 | 2: Classic Win32 Backend | Partial | 95% | HWND creation, message loop, child controls | User32-backed window, custom view container, menu, button, checkbox, radio button, combo box, group box, static/edit text, text/frame/visibility/enabled updates, native cleanup, mouse/key event dispatch, experimental edit-control Tab interception, and command dispatch are in place. This backend should keep the classic Win32 look available for apps that want it. |
-| 3: AppKit Surface Expansion | Partial | 46% | menus, dialogs, responders, layout, text, images | Initial `NSMenu`, `NSMenuItem`, `NSAlert`, `NSBox`, `NSColor`, `NSFont`, `NSEvent`, `NSResponder`, `NSApp`, `NSWindow.firstResponder`, key-view loop APIs, key/main window tracking, editable `NSTextField`, `NSPopUpButton`, and push/switch/radio `NSButton` APIs are present. |
-| 4: Demo Application | Partial | 84% | SwiftPM demo app | Demo source builds as a SwiftPM executable and visibly exercises native state APIs, modal alerts, editable text, checkbox state, radio groups, pop-up selection, mouse events, and key events. |
-| 5: Modern Windows Appearance | Planned | 0% | visual manager, themed controls, modern backend option | The eventual default should look like a modern Windows app while preserving the classic Win32 backend as an opt-in retro/native-simple mode. |
-| 6: Backend Selection And Theming | Planned | 0% | app/config API, backend factory, tests | Add an AppKit-shaped way to choose the classic or modern presentation without changing application UI code. |
+| 3: AppKit Surface Expansion | Partial | 52% | menus, dialogs, responders, layout, text, tables, images | Initial `NSMenu`, `NSMenuItem`, `NSAlert`, `NSBox`, `NSColor`, `NSFont`, `NSEvent`, `NSResponder`, `NSApp`, `NSWindow.firstResponder`, key-view loop APIs, key/main window tracking, editable `NSTextField`, `NSPopUpButton`, `NSScrollView`, `NSTableColumn`, `NSTableView`, and push/switch/radio `NSButton` APIs are present. |
+| 4: Demo Application | Partial | 88% | SwiftPM demo app | Demo source builds as a SwiftPM executable and visibly exercises native state APIs, modal alerts, editable text, checkbox state, radio groups, pop-up selection, table selection, mouse events, and key events. |
+| 5: AppKit Tables And Collection Controls | Partial | 15% | `NSTableView`, `NSOutlineView`, collection/list selection, cells/views | First AppKit-shaped `NSTableView` slice exists with columns, data source, selection, scroll-view hosting, tests, and a temporary classic backend renderer. Future work should move toward view/cell-based tables, headers, column resizing, sorting, editing, and native accessibility. |
+| 6: Modern Windows Appearance | Planned | 0% | visual manager, themed controls, modern backend option | The eventual default should look like a modern Windows app while preserving the classic Win32 backend as an opt-in retro/native-simple mode. |
+| 7: Backend Selection And Theming | Planned | 0% | app/config API, backend factory, tests | Add an AppKit-shaped way to choose the classic or modern presentation without changing application UI code. |
 
 ## Checklist
 
@@ -43,6 +46,8 @@ The first milestone is a runnable AppKit-shaped Windows application slice:
 - [x] Add radio-style `NSButton` backed by native radio buttons.
 - [x] Add `NSPopUpButton` backed by native combo boxes.
 - [x] Add `NSBox` backed by native group boxes.
+- [x] Add first `NSScrollView` and `NSTableView` public API slice with AppKit-shaped data-source contracts.
+- [ ] Replace the temporary classic table renderer with a fuller Mac-like table implementation: headers, columns, selection, editing, sorting, and view/cell reuse.
 - [x] Add initial `NSColor` and color propagation for views and text fields.
 - [x] Add initial `NSFont` and font propagation for text fields.
 - [x] Add initial `NSResponder` chain support for windows and views.
@@ -83,6 +88,8 @@ Win32 HWND-backed implementation
 The public API uses Apple counterpart names exactly where implemented. The first compatibility slice focuses on the smallest useful application shape: application lifecycle, windows, views, buttons, text fields, geometry, notifications, events, and selector-shaped control actions.
 
 Objective-C runtime behavior is not available in normal Swift on Windows. Where AppKit depends on Objective-C selectors, WinChocolate preserves the property names and adds Swift-native closure dispatch so native Windows applications can still be ergonomic.
+
+For complex controls, WinChocolate should model AppKit first and treat Windows controls as replaceable renderers. `NSTableView`, `NSTableColumn`, and `NSScrollView.documentView` should grow in the Mac direction: data source and delegate ownership, column identifiers, selection notifications, headers, cell/view reuse, editing, sorting, and keyboard behavior. Native Windows list/list-view controls can be used behind the backend boundary, but their API shape should not leak into application code.
 
 Foundation should be preferred for shared data structures and platform-neutral behavior whenever it is available and appropriate. Windows-native data constructs should stay behind backend boundaries or be used only when Foundation does not provide a suitable cross-platform representation.
 
