@@ -804,6 +804,56 @@ func testMainMenuQuitItemTerminatesApplication() {
     expect(backend.didTerminateApplication, "Quit menu item did not terminate the application.")
 }
 
+func testMenuItemInsertionLookupAndRemoval() {
+    let menu = NSMenu(title: "File")
+    let open = menu.addItem(withTitle: "Open", action: nil, keyEquivalent: "o")
+    let save = NSMenuItem(title: "Save", action: nil, keyEquivalent: "s")
+    let close = menu.insertItem(withTitle: "Close", action: nil, keyEquivalent: "w", at: 1)
+
+    menu.insertItem(save, at: 99)
+
+    expect(menu.numberOfItems == 3, "Menu item count was wrong.")
+    expect(menu.item(at: 0) === open, "Menu item lookup by index failed.")
+    expect(menu.item(at: 1) === close, "Menu insertItem(withTitle:) inserted at wrong index.")
+    expect(menu.item(at: 2) === save, "Menu insertItem clamping failed.")
+    expect(menu.item(withTitle: "Save") === save, "Menu lookup by title failed.")
+    expect(menu.index(of: close) == 1, "Menu index(of:) failed.")
+    expect(menu.indexOfItem(withTitle: "Missing") == -1, "Menu missing title index should be -1.")
+    expect(save.menu === menu, "Inserted item did not receive parent menu.")
+
+    menu.removeItem(at: 1)
+
+    expect(close.menu == nil, "Removed item retained parent menu.")
+    expect(menu.numberOfItems == 2, "removeItem(at:) did not remove one item.")
+
+    menu.removeItem(open)
+
+    expect(open.menu == nil, "removeItem did not clear parent menu.")
+    expect(menu.numberOfItems == 1, "removeItem did not remove matching item.")
+
+    menu.removeAllItems()
+
+    expect(save.menu == nil, "removeAllItems did not clear parent menu.")
+    expect(menu.numberOfItems == 0, "removeAllItems did not clear menu.")
+}
+
+func testMenuItemStateAndSeparatorContracts() {
+    let separator = NSMenuItem.separator()
+    let item = NSMenuItem(title: "Toggle", action: nil, keyEquivalent: "t")
+
+    item.isEnabled = false
+    item.isHidden = true
+    item.state = .on
+    item.keyEquivalentModifierMask = [.command, .shift]
+
+    expect(separator.isSeparatorItem, "Separator item was not recognized.")
+    expect(!item.performAction(), "Disabled menu item performed action.")
+    expect(item.isHidden, "Menu item hidden state was not stored.")
+    expect(item.state == .on, "Menu item state was not stored.")
+    expect(item.keyEquivalentModifierMask.contains(.command), "Menu item command modifier was not stored.")
+    expect(item.keyEquivalentModifierMask.contains(.shift), "Menu item shift modifier was not stored.")
+}
+
 func testAlertReturnsFirstButtonInMemory() {
     NSApplication.shared.nativeBackend = InMemoryNativeControlBackend()
     let alert = NSAlert()
@@ -887,6 +937,8 @@ testViewAndTextFieldColorsSyncToBackend()
 testFontValuesClampSizeAndSyncToBackend()
 testRemovingRealizedSubviewDestroysNativePeer()
 testMainMenuQuitItemTerminatesApplication()
+testMenuItemInsertionLookupAndRemoval()
+testMenuItemStateAndSeparatorContracts()
 testAlertReturnsFirstButtonInMemory()
 testAlertRestoresKeyWindowAndFirstResponder()
 

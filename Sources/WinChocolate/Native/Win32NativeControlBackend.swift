@@ -206,6 +206,7 @@ private let winChocolateViewClassName = "WinChocolateView"
 private let csVRedraw: UINT = 0x0001
 private let csHRedraw: UINT = 0x0002
 private let mfString: UINT = 0x0000
+private let mfGrayed: UINT = 0x0001
 private let mfPopup: UINT = 0x0010
 private let mfSeparator: UINT = 0x0800
 private let mbOK: UINT = 0x00000000
@@ -1075,14 +1076,18 @@ public final class Win32NativeControlBackend: NativeControlBackend {
 
     private func appendItems(_ items: [NSMenuItem], to nativeMenu: HMENU?) {
         for item in items {
+            guard !item.isHidden else {
+                continue
+            }
+
             if let submenu = item.submenu, let nativeSubmenu = createNativePopupMenu(from: submenu) {
                 withWideString(item.title) { title in
-                    _ = winAppendMenuW(nativeMenu, mfPopup, UInt(bitPattern: nativeSubmenu), title)
+                    _ = winAppendMenuW(nativeMenu, mfPopup | menuStateFlags(for: item), UInt(bitPattern: nativeSubmenu), title)
                 }
                 continue
             }
 
-            if item.title.isEmpty {
+            if item.isSeparatorItem {
                 _ = winAppendMenuW(nativeMenu, mfSeparator, 0, nil)
                 continue
             }
@@ -1093,9 +1098,13 @@ public final class Win32NativeControlBackend: NativeControlBackend {
             }
 
             withWideString(item.title) { title in
-                _ = winAppendMenuW(nativeMenu, mfString, commandIdentifier, title)
+                _ = winAppendMenuW(nativeMenu, mfString | menuStateFlags(for: item), commandIdentifier, title)
             }
         }
+    }
+
+    private func menuStateFlags(for item: NSMenuItem) -> UINT {
+        item.isEnabled ? 0 : mfGrayed
     }
 
     private func nextCommandID() -> UInt {
