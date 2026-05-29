@@ -49,6 +49,9 @@ public protocol NativeControlBackend: AnyObject {
     /// Creates a native pop-up button child.
     func createPopUpButton(items: [String], selectedIndex: Int, frame: NSRect, parent: NativeHandle?) -> NativeHandle
 
+    /// Creates a native slider child.
+    func createSlider(value: Double, minValue: Double, maxValue: Double, frame: NSRect, parent: NativeHandle?) -> NativeHandle
+
     /// Creates a native scroll-view child.
     func createScrollView(frame: NSRect, parent: NativeHandle?, hasVerticalScroller: Bool, hasHorizontalScroller: Bool) -> NativeHandle
 
@@ -96,6 +99,15 @@ public protocol NativeControlBackend: AnyObject {
 
     /// Reads native pop-up button selection.
     func popUpButtonSelectedIndex(for handle: NativeHandle) -> Int
+
+    /// Updates native slider range.
+    func setSliderRange(minValue: Double, maxValue: Double, for handle: NativeHandle)
+
+    /// Updates native slider value.
+    func setSliderValue(_ value: Double, for handle: NativeHandle)
+
+    /// Reads native slider value.
+    func sliderValue(for handle: NativeHandle) -> Double
 
     /// Replaces native table rows.
     func setTableRows(_ rows: [[String]], selectedRow: Int, for handle: NativeHandle)

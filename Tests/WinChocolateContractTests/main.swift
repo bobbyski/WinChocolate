@@ -666,6 +666,57 @@ func testTableViewSortDescriptorPrototypeToggle() {
     expect(missingSort == nil, "Table returned a sort descriptor for a missing column.")
 }
 
+func testSliderStoresRangeValueAndSyncsNativePeer() {
+    let backend = InMemoryNativeControlBackend()
+    let slider = NSSlider(value: 25, minValue: 0, maxValue: 100, target: nil, action: "sliderChanged:")
+    slider.frame = NSMakeRect(0, 0, 240, 24)
+
+    expect(slider.minValue == 0, "Slider minValue was not stored.")
+    expect(slider.maxValue == 100, "Slider maxValue was not stored.")
+    expect(slider.doubleValue == 25, "Slider doubleValue was not stored.")
+    expect(slider.intValue == 25, "Slider intValue did not follow doubleValue.")
+    expect(slider.action == "sliderChanged:", "Slider action selector was not stored.")
+
+    let handle = slider.realizeNativePeer(in: backend, parent: nil)
+
+    expect(backend.records[handle]?.kind == "slider", "Slider did not request a native slider peer.")
+    expect(backend.records[handle]?.sliderMinValue == 0, "Slider minValue was not synced to native backend.")
+    expect(backend.records[handle]?.sliderMaxValue == 100, "Slider maxValue was not synced to native backend.")
+    expect(backend.records[handle]?.sliderValue == 25, "Slider value was not synced to native backend.")
+
+    slider.doubleValue = 140
+    expect(slider.doubleValue == 100, "Slider did not clamp value to maxValue.")
+    expect(backend.records[handle]?.sliderValue == 100, "Slider clamped value was not synced to native backend.")
+
+    slider.minValue = 20
+    slider.maxValue = 80
+    slider.intValue = 10
+    expect(slider.doubleValue == 20, "Slider did not clamp intValue to minValue.")
+    expect(backend.records[handle]?.sliderMinValue == 20, "Slider updated minValue was not synced to native backend.")
+    expect(backend.records[handle]?.sliderMaxValue == 80, "Slider updated maxValue was not synced to native backend.")
+}
+
+func testSliderNativeActionUpdatesValue() {
+    let backend = InMemoryNativeControlBackend()
+    let slider = NSSlider(value: 1, minValue: 0, maxValue: 10, target: nil, action: nil)
+    var actionCount = 0
+    slider.onAction = { control in
+        guard let slider = control as? NSSlider else {
+            expect(false, "Slider action sender was not slider.")
+            return
+        }
+
+        actionCount += 1
+        expect(slider.doubleValue == 7, "Slider action did not read native value.")
+    }
+
+    let handle = slider.realizeNativePeer(in: backend, parent: nil)
+    backend.setSliderValue(7, for: handle)
+    backend.actions[handle]?()
+
+    expect(actionCount == 1, "Slider native action was not dispatched.")
+}
+
 func testTableViewNativePeerReceivesColumnsRowsAndSelection() {
     let backend = InMemoryNativeControlBackend()
     let tableView = NSTableView(frame: NSMakeRect(0, 0, 300, 160))
@@ -1581,6 +1632,8 @@ testTableViewKeyboardNavigationUpdatesSelection()
 testTableViewKeyboardExtendedSelection()
 testTableViewColumnSelectionAndDoubleActionSurface()
 testTableViewSortDescriptorPrototypeToggle()
+testSliderStoresRangeValueAndSyncsNativePeer()
+testSliderNativeActionUpdatesValue()
 testTableViewNativePeerReceivesColumnsRowsAndSelection()
 testTableViewNativeSelectionNotifiesDelegateAndAction()
 testTableViewActionCanReadSelectedRowValue()

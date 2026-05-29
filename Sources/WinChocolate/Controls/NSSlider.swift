@@ -1,0 +1,114 @@
+/// A slider control.
+///
+/// `NSSlider` maps to the native Windows trackbar while preserving AppKit's
+/// common value, range, target, and action shape.
+open class NSSlider: NSControl {
+    private var isUpdatingValueFromNative = false
+
+    /// The slider's minimum value.
+    open var minValue: Double {
+        didSet {
+            if maxValue < minValue {
+                maxValue = minValue
+            }
+            doubleValue = clamped(doubleValue)
+            syncRangeToNative()
+        }
+    }
+
+    /// The slider's maximum value.
+    open var maxValue: Double {
+        didSet {
+            if minValue > maxValue {
+                minValue = maxValue
+            }
+            doubleValue = clamped(doubleValue)
+            syncRangeToNative()
+        }
+    }
+
+    /// The slider's current floating-point value.
+    open var doubleValue: Double {
+        didSet {
+            doubleValue = clamped(doubleValue)
+            objectValue = doubleValue
+            guard !isUpdatingValueFromNative, let nativeHandle else {
+                return
+            }
+
+            realizedBackend?.setSliderValue(doubleValue, for: nativeHandle)
+        }
+    }
+
+    /// The slider's current integer value.
+    open var intValue: Int32 {
+        get {
+            Int32(doubleValue.rounded())
+        }
+        set {
+            doubleValue = Double(newValue)
+        }
+    }
+
+    /// Creates a slider with a frame.
+    public override init(frame frameRect: NSRect) {
+        self.minValue = 0
+        self.maxValue = 1
+        self.doubleValue = 0
+        super.init(frame: frameRect)
+        self.objectValue = doubleValue
+    }
+
+    /// Creates a slider with a value and range.
+    public init(value: Double, minValue: Double, maxValue: Double, target: AnyObject?, action: Selector?) {
+        self.minValue = min(minValue, maxValue)
+        self.maxValue = max(minValue, maxValue)
+        self.doubleValue = min(max(value, self.minValue), self.maxValue)
+        super.init(frame: NSMakeRect(0, 0, 100, 24))
+        self.target = target
+        self.action = action
+        self.objectValue = doubleValue
+    }
+
+    /// Creates the native Windows slider peer.
+    open override func createNativePeer(in backend: NativeControlBackend, parent: NativeHandle?) -> NativeHandle {
+        backend.createSlider(value: doubleValue, minValue: minValue, maxValue: maxValue, frame: frame, parent: parent)
+    }
+
+    /// Ensures the slider has a native peer and syncs value tracking.
+    @discardableResult
+    open override func realizeNativePeer(in backend: NativeControlBackend, parent: NativeHandle?) -> NativeHandle {
+        let handle = super.realizeNativePeer(in: backend, parent: parent)
+        backend.setSliderRange(minValue: minValue, maxValue: maxValue, for: handle)
+        backend.setSliderValue(doubleValue, for: handle)
+        backend.registerAction(for: handle) { [weak self, weak backend] in
+            guard let self, let backend, let nativeHandle = self.nativeHandle else {
+                return
+            }
+
+            self.updateValueFromNative(backend.sliderValue(for: nativeHandle))
+            _ = self.window?.makeFirstResponder(self)
+            self.sendAction()
+        }
+        return handle
+    }
+
+    private func syncRangeToNative() {
+        guard let nativeHandle else {
+            return
+        }
+
+        realizedBackend?.setSliderRange(minValue: minValue, maxValue: maxValue, for: nativeHandle)
+        realizedBackend?.setSliderValue(doubleValue, for: nativeHandle)
+    }
+
+    private func updateValueFromNative(_ value: Double) {
+        isUpdatingValueFromNative = true
+        doubleValue = value
+        isUpdatingValueFromNative = false
+    }
+
+    private func clamped(_ value: Double) -> Double {
+        min(max(value, minValue), maxValue)
+    }
+}

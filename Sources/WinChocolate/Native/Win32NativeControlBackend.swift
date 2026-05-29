@@ -309,6 +309,8 @@ private let wmNotify: UINT = 0x004e
 private let wmEraseBackground: UINT = 0x0014
 private let wmSetFont: UINT = 0x0030
 private let wmCommand: UINT = 0x0111
+private let wmHScroll: UINT = 0x0114
+private let wmVScroll: UINT = 0x0115
 private let wmCtlColorEdit: UINT = 0x0133
 private let wmCtlColorStatic: UINT = 0x0138
 private let wmKeyDown: UINT = 0x0100
@@ -327,6 +329,9 @@ private let cbAddString: UINT = 0x0143
 private let cbGetCurSel: UINT = 0x0147
 private let cbResetContent: UINT = 0x014b
 private let cbSetCurSel: UINT = 0x014e
+private let sbmSetPos: UINT = 0x00e0
+private let sbmGetPos: UINT = 0x00e1
+private let sbmSetRange: UINT = 0x00e2
 private let lbAddString: UINT = 0x0180
 private let lbSetCurSel: UINT = 0x0186
 private let lbGetCurSel: UINT = 0x0188
@@ -412,6 +417,15 @@ private let bsAutoCheckBox: DWORD = 0x00000003
 private let bsAutoRadioButton: DWORD = 0x00000009
 private let bsGroupBox: DWORD = 0x00000007
 private let cbsDropdownList: DWORD = 0x0003
+private let sbsHorz: DWORD = 0x0000
+private let sbLineLeft: UInt = 0
+private let sbLineRight: UInt = 1
+private let sbPageLeft: UInt = 2
+private let sbPageRight: UInt = 3
+private let sbThumbPosition: UInt = 4
+private let sbThumbTrack: UInt = 5
+private let sbTop: UInt = 6
+private let sbBottom: UInt = 7
 
 /// Win32 implementation of WinChocolate's native backend.
 ///
@@ -436,8 +450,10 @@ public final class Win32NativeControlBackend: NativeControlBackend {
     private var asyncActions: [() -> Void] = []
     private var tableColumnTitles: [UInt: [String]] = [:]
     private var tableHeaderOwners: [UInt: NativeHandle] = [:]
+    private var tableSuppressedColumnClicks: [UInt: Int] = [:]
     private var tableClickedRows: [UInt: Int] = [:]
     private var tableClickedColumns: [UInt: Int] = [:]
+    private var sliderRanges: [UInt: (minValue: Double, maxValue: Double)] = [:]
     private var textColors: [UInt: DWORD] = [:]
     private var backgroundColors: [UInt: DWORD] = [:]
     private var backgroundBrushes: [UInt: HBRUSH] = [:]
@@ -547,8 +563,10 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         originalControlProcedures.removeValue(forKey: handle.rawValue)
         tableColumnTitles.removeValue(forKey: handle.rawValue)
         tableHeaderOwners = tableHeaderOwners.filter { $0.value != handle }
+        tableSuppressedColumnClicks.removeValue(forKey: handle.rawValue)
         tableClickedRows.removeValue(forKey: handle.rawValue)
         tableClickedColumns.removeValue(forKey: handle.rawValue)
+        sliderRanges.removeValue(forKey: handle.rawValue)
         clearAppearance(for: handle)
     }
 
@@ -569,8 +587,10 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         originalControlProcedures.removeValue(forKey: handle.rawValue)
         tableColumnTitles.removeValue(forKey: handle.rawValue)
         tableHeaderOwners = tableHeaderOwners.filter { $0.value != handle }
+        tableSuppressedColumnClicks.removeValue(forKey: handle.rawValue)
         tableClickedRows.removeValue(forKey: handle.rawValue)
         tableClickedColumns.removeValue(forKey: handle.rawValue)
+        sliderRanges.removeValue(forKey: handle.rawValue)
         clearAppearance(for: handle)
     }
 
@@ -671,6 +691,21 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         )
         subclassControlForTabKey(handle)
         setPopUpButtonItems(items, selectedIndex: selectedIndex, for: handle)
+        return handle
+    }
+
+    /// Creates a native slider child.
+    public func createSlider(value: Double, minValue: Double, maxValue: Double, frame: NSRect, parent: NativeHandle?) -> NativeHandle {
+        let handle = createChildWindow(
+            className: "SCROLLBAR",
+            text: "",
+            frame: frame,
+            parent: parent,
+            commandIdentifier: nil,
+            style: wsChild | wsVisible | wsTabStop | sbsHorz
+        )
+        setSliderRange(minValue: minValue, maxValue: maxValue, for: handle)
+        setSliderValue(value, for: handle)
         return handle
     }
 
@@ -923,6 +958,72 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         return Int(winSendMessageW(hwnd, cbGetCurSel, 0, 0))
     }
 
+    /// Updates native slider range.
+    public func setSliderRange(minValue: Double, maxValue: Double, for handle: NativeHandle) {
+        guard let hwnd = hwnd(from: handle) else {
+            return
+        }
+
+        let lower = Int32(min(minValue, maxValue).rounded())
+        let upper = Int32(max(minValue, maxValue).rounded())
+        sliderRanges[handle.rawValue] = (Double(lower), Double(upper))
+        _ = winSendMessageW(hwnd, sbmSetRange, WPARAM(lower), LPARAM(upper))
+    }
+
+    /// Updates native slider value.
+    public func setSliderValue(_ value: Double, for handle: NativeHandle) {
+        guard let hwnd = hwnd(from: handle) else {
+            return
+        }
+
+        let range = sliderRanges[handle.rawValue] ?? (0, 1)
+        let clampedValue = min(max(value, range.minValue), range.maxValue)
+        _ = winSendMessageW(hwnd, sbmSetPos, WPARAM(Int32(clampedValue.rounded())), 1)
+    }
+
+    /// Reads native slider value.
+    public func sliderValue(for handle: NativeHandle) -> Double {
+        guard let hwnd = hwnd(from: handle) else {
+            return 0
+        }
+
+        return Double(winSendMessageW(hwnd, sbmGetPos, 0, 0))
+    }
+
+    private func updateSliderPosition(from scrollParameter: WPARAM, for handle: NativeHandle) {
+        guard let hwnd = hwnd(from: handle) else {
+            return
+        }
+
+        let range = sliderRanges[handle.rawValue] ?? (0, 1)
+        let current = Double(winSendMessageW(hwnd, sbmGetPos, 0, 0))
+        let code = scrollParameter & 0xffff
+        let thumb = Double((scrollParameter >> 16) & 0xffff)
+        let pageStep = max(1, ((range.maxValue - range.minValue) / 10).rounded())
+        let nextValue: Double
+
+        switch code {
+        case sbLineLeft:
+            nextValue = current - 1
+        case sbLineRight:
+            nextValue = current + 1
+        case sbPageLeft:
+            nextValue = current - pageStep
+        case sbPageRight:
+            nextValue = current + pageStep
+        case sbThumbPosition, sbThumbTrack:
+            nextValue = thumb
+        case sbTop:
+            nextValue = range.minValue
+        case sbBottom:
+            nextValue = range.maxValue
+        default:
+            nextValue = current
+        }
+
+        setSliderValue(nextValue, for: handle)
+    }
+
     /// Replaces native table rows.
     public func setTableRows(_ rows: [[String]], selectedRow: Int, for handle: NativeHandle) {
         guard let hwnd = hwnd(from: handle) else {
@@ -1072,6 +1173,19 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         case wmWinChocolateAsync:
             runAsyncActions()
             return 0
+        case wmHScroll, wmVScroll:
+            guard lParam != 0, let sliderHwnd = HWND(bitPattern: lParam) else {
+                return nil
+            }
+
+            let handle = nativeHandle(from: sliderHwnd)
+            updateSliderPosition(from: wParam, for: handle)
+            guard let action = controlActions[handle.rawValue] else {
+                return nil
+            }
+
+            action()
+            return 0
         case wmKeyDown, wmSysKeyDown:
             guard let hwnd, let action = keyDownActions[nativeHandle(from: hwnd).rawValue] else {
                 return nil
@@ -1150,6 +1264,7 @@ public final class Win32NativeControlBackend: NativeControlBackend {
 
                 tableClickedRows[handle.rawValue] = -1
                 tableClickedColumns[handle.rawValue] = clickedColumn
+                tableSuppressedColumnClicks[handle.rawValue] = clickedColumn
                 action()
                 return 0
             }
@@ -1168,9 +1283,21 @@ public final class Win32NativeControlBackend: NativeControlBackend {
                 }
 
                 let headerHwnd = HWND(bitPattern: winSendMessageW(source, lvmGetHeader, 0, 0))
+                if let headerHwnd,
+                   tableHeaderOwners[UInt(bitPattern: headerHwnd)] == handle {
+                    tableSuppressedColumnClicks.removeValue(forKey: handle.rawValue)
+                    return 0
+                }
+
                 let hitColumn = headerHitTestAtCursor(hwnd: headerHwnd)
+                let clickedColumn = hitColumn >= 0 ? hitColumn : Int(notification.iSubItem)
+                if tableSuppressedColumnClicks[handle.rawValue] == clickedColumn {
+                    tableSuppressedColumnClicks.removeValue(forKey: handle.rawValue)
+                    return 0
+                }
+
                 tableClickedRows[handle.rawValue] = -1
-                tableClickedColumns[handle.rawValue] = hitColumn >= 0 ? hitColumn : Int(notification.iSubItem)
+                tableClickedColumns[handle.rawValue] = clickedColumn
                 action()
                 return 0
             case nmClick:

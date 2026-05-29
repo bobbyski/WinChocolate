@@ -33,6 +33,15 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
         /// Native pop-up button selected index.
         public var popUpSelectedIndex: Int
 
+        /// Native slider minimum value.
+        public var sliderMinValue: Double
+
+        /// Native slider maximum value.
+        public var sliderMaxValue: Double
+
+        /// Native slider value.
+        public var sliderValue: Double
+
         /// Native table column titles.
         public var tableColumns: [String]
 
@@ -190,6 +199,15 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
         return handle
     }
 
+    /// Records a slider creation request.
+    public func createSlider(value: Double, minValue: Double, maxValue: Double, frame: NSRect, parent: NativeHandle?) -> NativeHandle {
+        let handle = makeHandle(kind: "slider", text: "", frame: frame, parent: parent)
+        records[handle]?.sliderMinValue = minValue
+        records[handle]?.sliderMaxValue = maxValue
+        records[handle]?.sliderValue = value
+        return handle
+    }
+
     /// Records a scroll view creation request.
     public func createScrollView(frame: NSRect, parent: NativeHandle?, hasVerticalScroller: Bool, hasHorizontalScroller: Bool) -> NativeHandle {
         makeHandle(kind: "scrollView", text: "", frame: frame, parent: parent)
@@ -330,6 +348,32 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
         records[handle]?.popUpSelectedIndex ?? -1
     }
 
+    /// Updates recorded slider range.
+    public func setSliderRange(minValue: Double, maxValue: Double, for handle: NativeHandle) {
+        guard var record = records[handle] else {
+            return
+        }
+
+        record.sliderMinValue = minValue
+        record.sliderMaxValue = maxValue
+        records[handle] = record
+    }
+
+    /// Updates recorded slider value.
+    public func setSliderValue(_ value: Double, for handle: NativeHandle) {
+        guard var record = records[handle] else {
+            return
+        }
+
+        record.sliderValue = value
+        records[handle] = record
+    }
+
+    /// Reads recorded slider value.
+    public func sliderValue(for handle: NativeHandle) -> Double {
+        records[handle]?.sliderValue ?? 0
+    }
+
     /// Replaces recorded table rows.
     public func setTableRows(_ rows: [[String]], selectedRow: Int, for handle: NativeHandle) {
         guard var record = records[handle] else {
@@ -419,6 +463,9 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
             buttonState: .off,
             popUpItems: [],
             popUpSelectedIndex: -1,
+            sliderMinValue: 0,
+            sliderMaxValue: 1,
+            sliderValue: 0,
             tableColumns: [],
             tableColumnWidths: [],
             tableRows: [],

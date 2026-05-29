@@ -136,6 +136,9 @@ let alertStylePopup = NSPopUpButton(frame: NSMakeRect(472, 286, 184, 96), pullsD
 let infoRadio = NSButton(title: "Info", frame: NSMakeRect(32, 334, 88, 24))
 let warningRadio = NSButton(title: "Warning", frame: NSMakeRect(136, 334, 116, 24))
 let criticalRadio = NSButton(title: "Critical", frame: NSMakeRect(268, 334, 116, 24))
+let sliderLabel = NSTextField(string: "Slider:", frame: NSMakeRect(568, 166, 72, 24))
+let slider = NSSlider(value: 50, minValue: 0, maxValue: 100, target: nil, action: "sliderChanged:")
+let sliderValueLabel = NSTextField(string: "50", frame: NSMakeRect(824, 166, 48, 24))
 let tableLabel = NSTextField(string: "Table view:", frame: NSMakeRect(560, 392, 120, 24))
 let tableScrollView = NSScrollView(frame: NSMakeRect(560, 424, 300, 160))
 let tableView = NSTableView(frame: NSMakeRect(0, 0, 300, 160))
@@ -313,6 +316,9 @@ func focusName() -> String {
     if responder === criticalRadio {
         return "critical radio"
     }
+    if responder === slider {
+        return "slider"
+    }
     if responder === tableView {
         return "table view"
     }
@@ -338,6 +344,9 @@ statusLabel.backgroundColor = NSColor(calibratedRed: 0.94, green: 0.97, blue: 1.
 focusLabel.font = NSFont.boldSystemFont(ofSize: 12)
 focusLabel.textColor = .black
 focusLabel.backgroundColor = NSColor(calibratedRed: 1.0, green: 0.98, blue: 0.86, alpha: 1.0)
+slider.frame = NSMakeRect(640, 166, 176, 28)
+sliderLabel.font = NSFont.boldSystemFont(ofSize: 12)
+sliderValueLabel.textColor = .blue
 contentView.onBlankAreaMouseDown = { event in
     updateFocusDisplay()
 }
@@ -406,11 +415,13 @@ titleCheckbox.nextKeyView = alertStylePopup
 alertStylePopup.nextKeyView = infoRadio
 infoRadio.nextKeyView = warningRadio
 warningRadio.nextKeyView = criticalRadio
-criticalRadio.nextKeyView = tableView
+criticalRadio.nextKeyView = slider
+slider.nextKeyView = tableView
 tableView.nextKeyView = contentView
 
 contentView.previousKeyView = tableView
-tableView.previousKeyView = criticalRadio
+tableView.previousKeyView = slider
+slider.previousKeyView = criticalRadio
 criticalRadio.previousKeyView = warningRadio
 warningRadio.previousKeyView = infoRadio
 infoRadio.previousKeyView = alertStylePopup
@@ -524,6 +535,16 @@ alertStylePopup.onAction = { _ in
     }
 }
 
+slider.onAction = { control in
+    guard let slider = control as? NSSlider else {
+        return
+    }
+
+    updateFocusDisplay()
+    sliderValueLabel.stringValue = "\(slider.intValue)"
+    statusLabel.stringValue = "Slider value: \(slider.intValue)"
+}
+
 tableView.onSelectionChanged = { table in
     updateFocusDisplay()
     if suppressNextTableSelectionStatus {
@@ -578,6 +599,9 @@ contentView.addSubview(alertStylePopup)
 contentView.addSubview(infoRadio)
 contentView.addSubview(warningRadio)
 contentView.addSubview(criticalRadio)
+contentView.addSubview(sliderLabel)
+contentView.addSubview(slider)
+contentView.addSubview(sliderValueLabel)
 contentView.addSubview(tableLabel)
 contentView.addSubview(tableScrollView)
 window.contentView = contentView
