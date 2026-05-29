@@ -36,6 +36,9 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
         /// Native table column titles.
         public var tableColumns: [String]
 
+        /// Native table column widths.
+        public var tableColumnWidths: [CGFloat]
+
         /// Native table row values.
         public var tableRows: [[String]]
 
@@ -107,6 +110,11 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     /// Records that application termination was requested.
     public func terminateApplication() {
         didTerminateApplication = true
+    }
+
+    /// Runs deferred work immediately in deterministic tests.
+    public func dispatchAsync(_ action: @escaping () -> Void) {
+        action()
     }
 
     /// Records the installed main menu.
@@ -189,8 +197,14 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
 
     /// Records a table view creation request.
     public func createTableView(columns: [String], rows: [[String]], selectedRow: Int, frame: NSRect, parent: NativeHandle?) -> NativeHandle {
+        createTableView(columns: columns, columnWidths: [], rows: rows, selectedRow: selectedRow, frame: frame, parent: parent)
+    }
+
+    /// Records a table view creation request with explicit column widths.
+    public func createTableView(columns: [String], columnWidths: [CGFloat], rows: [[String]], selectedRow: Int, frame: NSRect, parent: NativeHandle?) -> NativeHandle {
         let handle = makeHandle(kind: "tableView", text: "", frame: frame, parent: parent)
         records[handle]?.tableColumns = columns
+        records[handle]?.tableColumnWidths = columnWidths
         records[handle]?.tableRows = rows
         records[handle]?.tableSelectedRow = selectedRow
         records[handle]?.tableClickedRow = -1
@@ -406,6 +420,7 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
             popUpItems: [],
             popUpSelectedIndex: -1,
             tableColumns: [],
+            tableColumnWidths: [],
             tableRows: [],
             tableSelectedRow: -1,
             tableClickedRow: -1,

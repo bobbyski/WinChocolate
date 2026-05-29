@@ -105,6 +105,27 @@ public extension NSTableView {
         selectedColumnIndexes.contains(column)
     }
 
+    /// Applies the column's sort descriptor prototype, toggling it when already active.
+    @discardableResult
+    func sortUsingDescriptorPrototype(forColumn column: Int) -> NSSortDescriptor? {
+        guard let tableColumn = tableColumn(at: column),
+              let prototype = tableColumn.sortDescriptorPrototype else {
+            return nil
+        }
+
+        let nextDescriptor: NSSortDescriptor
+        if let current = sortDescriptors.first,
+           current.key == prototype.key,
+           current.ascending == prototype.ascending {
+            nextDescriptor = prototype.reversedSortDescriptor
+        } else {
+            nextDescriptor = prototype
+        }
+
+        sortDescriptors = [nextDescriptor]
+        return nextDescriptor
+    }
+
     /// Sends the table's double-action callback.
     func sendDoubleAction() {
         guard isEnabled else {

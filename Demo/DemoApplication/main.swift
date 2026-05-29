@@ -54,7 +54,7 @@ final class DemoContentView: NSView {
 }
 
 final class DemoTableDataSource: NSTableViewDataSource {
-    let rows: [[String]] = [
+    var rows: [[String]] = [
         ["NSApplication", "Running"],
         ["NSWindow", "Key/Main"],
         ["NSButton", "Actions"],
@@ -88,6 +88,32 @@ final class DemoTableDataSource: NSTableViewDataSource {
             return rows[row][1]
         default:
             return nil
+        }
+    }
+
+    func sort(using descriptor: NSSortDescriptor) {
+        guard let key = descriptor.key else {
+            return
+        }
+
+        let columnIndex: Int
+        switch key {
+        case "name":
+            columnIndex = 0
+        case "status":
+            columnIndex = 1
+        default:
+            return
+        }
+
+        rows.sort { left, right in
+            let leftValue = left.indices.contains(columnIndex) ? left[columnIndex] : ""
+            let rightValue = right.indices.contains(columnIndex) ? right[columnIndex] : ""
+            if descriptor.ascending {
+                return leftValue < rightValue
+            }
+
+            return leftValue > rightValue
         }
     }
 }
@@ -357,6 +383,8 @@ tableNameColumn.title = "Name"
 tableStatusColumn.title = "Status"
 tableNameColumn.width = 150
 tableStatusColumn.width = 150
+tableNameColumn.sortDescriptorPrototype = NSSortDescriptor(key: "name", ascending: true)
+tableStatusColumn.sortDescriptorPrototype = NSSortDescriptor(key: "status", ascending: true)
 tableView.addTableColumn(tableNameColumn)
 tableView.addTableColumn(tableStatusColumn)
 tableView.dataSource = tableDataSource
@@ -512,6 +540,19 @@ tableView.onAction = { control in
 
     updateFocusDisplay()
     suppressNextTableSelectionStatus = true
+    if let columnSummary = tableColumnSummary(table) {
+        if let sortDescriptor = table.sortUsingDescriptorPrototype(forColumn: table.clickedColumn) {
+            tableDataSource.sort(using: sortDescriptor)
+            NSApp.nativeBackend.dispatchAsync {
+                table.reloadData()
+            }
+            statusLabel.stringValue = "\(columnSummary), sorted \(sortDescriptor.ascending ? "ascending" : "descending")"
+        } else {
+            statusLabel.stringValue = columnSummary
+        }
+        return
+    }
+
     statusLabel.stringValue = tableColumnSummary(table) ?? tableRowSummary(table, prefix: "Table action")
 }
 tableView.doubleAction = "openTableRow:"

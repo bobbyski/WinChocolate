@@ -251,6 +251,9 @@ private func winMessageBoxW(
 @_silgen_name("PostQuitMessage")
 private func winPostQuitMessage(_ exitCode: Int32)
 
+@_silgen_name("PostMessageW")
+private func winPostMessageW(_ hwnd: HWND?, _ message: UINT, _ wParam: WPARAM, _ lParam: LPARAM) -> Int32
+
 @_silgen_name("RegisterClassW")
 private func winRegisterClassW(_ windowClass: UnsafePointer<WNDCLASSW>) -> UInt16
 
@@ -316,6 +319,8 @@ private let wmGetDlgCode: UINT = 0x0087
 private let wmMouseMove: UINT = 0x0200
 private let wmLButtonDown: UINT = 0x0201
 private let wmLButtonUp: UINT = 0x0202
+private let wmApp: UINT = 0x8000
+private let wmWinChocolateAsync: UINT = wmApp + 1
 private let bmGetCheck: UINT = 0x00f0
 private let bmSetCheck: UINT = 0x00f1
 private let cbAddString: UINT = 0x0143
@@ -428,6 +433,7 @@ public final class Win32NativeControlBackend: NativeControlBackend {
     private var keyUpActions: [UInt: (NSEvent) -> Void] = [:]
     private var originalControlProcedures: [UInt: WNDPROC] = [:]
     private var commandActions: [UInt: () -> Void] = [:]
+    private var asyncActions: [() -> Void] = []
     private var tableColumnTitles: [UInt: [String]] = [:]
     private var tableHeaderOwners: [UInt: NativeHandle] = [:]
     private var tableClickedRows: [UInt: Int] = [:]
@@ -457,6 +463,13 @@ public final class Win32NativeControlBackend: NativeControlBackend {
     /// Requests native application termination.
     public func terminateApplication() {
         winPostQuitMessage(0)
+    }
+
+    /// Schedules work after the current native message dispatch returns.
+    public func dispatchAsync(_ action: @escaping () -> Void) {
+        asyncActions.append(action)
+        let targetWindow = windowHandles.first.flatMap { hwnd(from: $0) }
+        _ = winPostMessageW(targetWindow, wmWinChocolateAsync, 0, 0)
     }
 
     /// Installs the native application menu bar.
@@ -684,6 +697,11 @@ public final class Win32NativeControlBackend: NativeControlBackend {
 
     /// Creates a native table-view child.
     public func createTableView(columns: [String], rows: [[String]], selectedRow: Int, frame: NSRect, parent: NativeHandle?) -> NativeHandle {
+        createTableView(columns: columns, columnWidths: [], rows: rows, selectedRow: selectedRow, frame: frame, parent: parent)
+    }
+
+    /// Creates a native table-view child with explicit column widths.
+    public func createTableView(columns: [String], columnWidths: [CGFloat], rows: [[String]], selectedRow: Int, frame: NSRect, parent: NativeHandle?) -> NativeHandle {
         initializeListViewControls()
         let handle = createChildWindow(
             className: "SysListView32",
@@ -697,7 +715,7 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         tableColumnTitles[handle.rawValue] = columns
         tableClickedRows[handle.rawValue] = -1
         tableClickedColumns[handle.rawValue] = -1
-        installTableColumns(columns, for: handle)
+        installTableColumns(columns, widths: columnWidths, for: handle)
         if let hwnd = hwnd(from: handle) {
             _ = winSendMessageW(hwnd, lvmSetExtendedListViewStyle, 0, LPARAM(lvsExFullRowSelect | lvsExGridLines))
             if let headerHwnd = HWND(bitPattern: winSendMessageW(hwnd, lvmGetHeader, 0, 0)) {
@@ -1051,6 +1069,9 @@ public final class Win32NativeControlBackend: NativeControlBackend {
 
     private func dispatchMessage(hwnd: HWND?, message: UINT, wParam: WPARAM, lParam: LPARAM) -> LRESULT? {
         switch message {
+        case wmWinChocolateAsync:
+            runAsyncActions()
+            return 0
         case wmKeyDown, wmSysKeyDown:
             guard let hwnd, let action = keyDownActions[nativeHandle(from: hwnd).rawValue] else {
                 return nil
@@ -1241,6 +1262,14 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         }
     }
 
+    private func runAsyncActions() {
+        let pendingActions = asyncActions
+        asyncActions.removeAll()
+        for action in pendingActions {
+            action()
+        }
+    }
+
     private func dispatchControlMessage(hwnd: HWND?, message: UINT, wParam: WPARAM, lParam: LPARAM) -> LRESULT? {
         switch message {
         case wmGetDlgCode:
@@ -1345,7 +1374,7 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         }
     }
 
-    private func installTableColumns(_ columns: [String], for handle: NativeHandle) {
+    private func installTableColumns(_ columns: [String], widths: [CGFloat], for handle: NativeHandle) {
         guard let hwnd = hwnd(from: handle) else {
             return
         }
@@ -1355,7 +1384,8 @@ public final class Win32NativeControlBackend: NativeControlBackend {
             withWideString(titleText.isEmpty ? "Column \(index + 1)" : titleText) { title in
                 var column = LVCOLUMNW()
                 column.mask = lvcfText | lvcfWidth | lvcfSubItem
-                column.cx = fallbackWidth
+                let requestedWidth = widths.indices.contains(index) ? Int32(widths[index]) : fallbackWidth
+                column.cx = max(24, requestedWidth)
                 column.pszText = UnsafeMutablePointer(mutating: title)
                 column.iSubItem = Int32(index)
                 withUnsafePointer(to: column) { columnPointer in

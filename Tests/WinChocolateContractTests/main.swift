@@ -638,6 +638,34 @@ func testTableViewColumnSelectionAndDoubleActionSurface() {
     expect(tableView.numberOfSelectedColumns == 0, "Disabling column selection did not clear selected columns.")
 }
 
+func testTableViewSortDescriptorPrototypeToggle() {
+    let tableView = NSTableView(frame: NSMakeRect(0, 0, 300, 160))
+    let dataSource = RecordingTableDataSource()
+    let name = NSTableColumn(identifier: "name")
+    let note = NSTableColumn(identifier: "note")
+    let nameSort = NSSortDescriptor(key: "name", ascending: true)
+    let noteSort = NSSortDescriptor(key: "note", ascending: true)
+
+    name.sortDescriptorPrototype = nameSort
+    note.sortDescriptorPrototype = noteSort
+    tableView.addTableColumn(name)
+    tableView.addTableColumn(note)
+    tableView.dataSource = dataSource
+    tableView.reloadData()
+
+    let firstSort = tableView.sortUsingDescriptorPrototype(forColumn: 0)
+    let secondSort = tableView.sortUsingDescriptorPrototype(forColumn: 0)
+    let thirdSort = tableView.sortUsingDescriptorPrototype(forColumn: 1)
+    let missingSort = tableView.sortUsingDescriptorPrototype(forColumn: 9)
+
+    expect(firstSort === nameSort, "Table did not apply the column sort descriptor prototype.")
+    expect(tableView.sortDescriptors.first === thirdSort, "Table did not store the most recent sort descriptor.")
+    expect(secondSort?.key == "name", "Table reversed descriptor lost its key.")
+    expect(secondSort?.ascending == false, "Table did not toggle an already-active sort descriptor.")
+    expect(thirdSort === noteSort, "Table did not switch to another column's sort descriptor prototype.")
+    expect(missingSort == nil, "Table returned a sort descriptor for a missing column.")
+}
+
 func testTableViewNativePeerReceivesColumnsRowsAndSelection() {
     let backend = InMemoryNativeControlBackend()
     let tableView = NSTableView(frame: NSMakeRect(0, 0, 300, 160))
@@ -1552,6 +1580,7 @@ testTableViewTabKeyMovesThroughKeyViewLoop()
 testTableViewKeyboardNavigationUpdatesSelection()
 testTableViewKeyboardExtendedSelection()
 testTableViewColumnSelectionAndDoubleActionSurface()
+testTableViewSortDescriptorPrototypeToggle()
 testTableViewNativePeerReceivesColumnsRowsAndSelection()
 testTableViewNativeSelectionNotifiesDelegateAndAction()
 testTableViewActionCanReadSelectedRowValue()

@@ -10,6 +10,9 @@ public protocol NativeControlBackend: AnyObject {
     /// Requests application termination.
     func terminateApplication()
 
+    /// Schedules work after the current native message dispatch returns.
+    func dispatchAsync(_ action: @escaping () -> Void)
+
     /// Installs the application's main menu.
     func installMainMenu(_ menu: NSMenu?)
 
@@ -51,6 +54,9 @@ public protocol NativeControlBackend: AnyObject {
 
     /// Creates a native table-view child.
     func createTableView(columns: [String], rows: [[String]], selectedRow: Int, frame: NSRect, parent: NativeHandle?) -> NativeHandle
+
+    /// Creates a native table-view child with explicit column widths.
+    func createTableView(columns: [String], columnWidths: [CGFloat], rows: [[String]], selectedRow: Int, frame: NSRect, parent: NativeHandle?) -> NativeHandle
 
     /// Updates the visible text for a native control.
     func setText(_ text: String, for handle: NativeHandle)
