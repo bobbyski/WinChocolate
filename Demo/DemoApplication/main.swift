@@ -136,9 +136,13 @@ let alertStylePopup = NSPopUpButton(frame: NSMakeRect(472, 286, 184, 96), pullsD
 let infoRadio = NSButton(title: "Info", frame: NSMakeRect(32, 334, 88, 24))
 let warningRadio = NSButton(title: "Warning", frame: NSMakeRect(136, 334, 116, 24))
 let criticalRadio = NSButton(title: "Critical", frame: NSMakeRect(268, 334, 116, 24))
+let notesLabel = NSTextField(string: "Notes:", frame: NSMakeRect(32, 386, 72, 24))
+let notesTextView = NSTextView(frame: NSMakeRect(112, 386, 304, 72))
 let sliderLabel = NSTextField(string: "Slider:", frame: NSMakeRect(568, 166, 72, 24))
 let slider = NSSlider(value: 50, minValue: 0, maxValue: 100, target: nil, action: "sliderChanged:")
 let sliderValueLabel = NSTextField(string: "50", frame: NSMakeRect(824, 166, 48, 24))
+let progressLabel = NSTextField(string: "Progress:", frame: NSMakeRect(568, 198, 88, 24))
+let progressIndicator = NSProgressIndicator(frame: NSMakeRect(664, 202, 208, 18))
 let tableLabel = NSTextField(string: "Table view:", frame: NSMakeRect(560, 392, 120, 24))
 let tableScrollView = NSScrollView(frame: NSMakeRect(560, 424, 300, 160))
 let tableView = NSTableView(frame: NSMakeRect(0, 0, 300, 160))
@@ -316,6 +320,9 @@ func focusName() -> String {
     if responder === criticalRadio {
         return "critical radio"
     }
+    if responder === notesTextView {
+        return "notes"
+    }
     if responder === slider {
         return "slider"
     }
@@ -347,6 +354,12 @@ focusLabel.backgroundColor = NSColor(calibratedRed: 1.0, green: 0.98, blue: 0.86
 slider.frame = NSMakeRect(640, 166, 176, 28)
 sliderLabel.font = NSFont.boldSystemFont(ofSize: 12)
 sliderValueLabel.textColor = .blue
+progressLabel.font = NSFont.boldSystemFont(ofSize: 12)
+progressIndicator.minValue = 0
+progressIndicator.maxValue = 100
+progressIndicator.doubleValue = slider.doubleValue
+notesLabel.font = NSFont.boldSystemFont(ofSize: 12)
+notesTextView.string = "Multiline NSTextView"
 contentView.onBlankAreaMouseDown = { event in
     updateFocusDisplay()
 }
@@ -415,13 +428,15 @@ titleCheckbox.nextKeyView = alertStylePopup
 alertStylePopup.nextKeyView = infoRadio
 infoRadio.nextKeyView = warningRadio
 warningRadio.nextKeyView = criticalRadio
-criticalRadio.nextKeyView = slider
+criticalRadio.nextKeyView = notesTextView
+notesTextView.nextKeyView = slider
 slider.nextKeyView = tableView
 tableView.nextKeyView = contentView
 
 contentView.previousKeyView = tableView
 tableView.previousKeyView = slider
-slider.previousKeyView = criticalRadio
+slider.previousKeyView = notesTextView
+notesTextView.previousKeyView = criticalRadio
 criticalRadio.previousKeyView = warningRadio
 warningRadio.previousKeyView = infoRadio
 infoRadio.previousKeyView = alertStylePopup
@@ -440,6 +455,11 @@ editableTextField.onTextChanged = { field in
     statusLabel.stringValue = field.stringValue.isEmpty
         ? "Edit field cleared"
         : "Typed: \(field.stringValue)"
+}
+
+notesTextView.onTextChanged = { textView in
+    updateFocusDisplay()
+    statusLabel.stringValue = "Notes length: \(textView.string.count)"
 }
 
 button.onAction = { _ in
@@ -542,6 +562,7 @@ slider.onAction = { control in
 
     updateFocusDisplay()
     sliderValueLabel.stringValue = "\(slider.intValue)"
+    progressIndicator.doubleValue = slider.doubleValue
     statusLabel.stringValue = "Slider value: \(slider.intValue)"
 }
 
@@ -599,9 +620,13 @@ contentView.addSubview(alertStylePopup)
 contentView.addSubview(infoRadio)
 contentView.addSubview(warningRadio)
 contentView.addSubview(criticalRadio)
+contentView.addSubview(notesLabel)
+contentView.addSubview(notesTextView)
 contentView.addSubview(sliderLabel)
 contentView.addSubview(slider)
 contentView.addSubview(sliderValueLabel)
+contentView.addSubview(progressLabel)
+contentView.addSubview(progressIndicator)
 contentView.addSubview(tableLabel)
 contentView.addSubview(tableScrollView)
 window.contentView = contentView

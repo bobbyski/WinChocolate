@@ -717,6 +717,34 @@ func testSliderNativeActionUpdatesValue() {
     expect(actionCount == 1, "Slider native action was not dispatched.")
 }
 
+func testProgressIndicatorStoresRangeValueAndSyncsNativePeer() {
+    let backend = InMemoryNativeControlBackend()
+    let progress = NSProgressIndicator(frame: NSMakeRect(0, 0, 240, 16))
+    progress.minValue = 0
+    progress.maxValue = 100
+    progress.doubleValue = 30
+
+    expect(progress.doubleValue == 30, "Progress indicator doubleValue was not stored.")
+    expect(progress.minValue == 0, "Progress indicator minValue was not stored.")
+    expect(progress.maxValue == 100, "Progress indicator maxValue was not stored.")
+
+    let handle = progress.realizeNativePeer(in: backend, parent: nil)
+
+    expect(backend.records[handle]?.kind == "progressIndicator", "Progress indicator did not request native peer.")
+    expect(backend.records[handle]?.progressMinValue == 0, "Progress indicator minValue was not synced.")
+    expect(backend.records[handle]?.progressMaxValue == 100, "Progress indicator maxValue was not synced.")
+    expect(backend.records[handle]?.progressValue == 30, "Progress indicator value was not synced.")
+
+    progress.increment(by: 90)
+    expect(progress.doubleValue == 100, "Progress indicator did not clamp increment to maxValue.")
+    expect(backend.records[handle]?.progressValue == 100, "Progress indicator clamped value was not synced.")
+
+    progress.startAnimation(nil)
+    expect(progress.isAnimating, "Progress indicator did not store animation state.")
+    progress.stopAnimation(nil)
+    expect(!progress.isAnimating, "Progress indicator did not stop animation state.")
+}
+
 func testTableViewNativePeerReceivesColumnsRowsAndSelection() {
     let backend = InMemoryNativeControlBackend()
     let tableView = NSTableView(frame: NSMakeRect(0, 0, 300, 160))
@@ -1234,6 +1262,24 @@ func testEditableTextFieldUsesEditableNativePeer() {
     expect(backend.records[handle]?.kind == "editableTextField", "Editable text field did not request editable native peer.")
 }
 
+func testTextViewUsesMultilineNativePeerAndStoresText() {
+    let backend = InMemoryNativeControlBackend()
+    let textView = NSTextView(frame: NSMakeRect(0, 0, 220, 80))
+    textView.string = "Line one"
+    textView.insertText("\nLine two")
+
+    let handle = textView.realizeNativePeer(in: backend, parent: nil)
+
+    expect(textView.string == "Line one\nLine two", "Text view did not store multiline text.")
+    expect(textView.isEditable, "Text view should default to editable.")
+    expect(textView.isSelectable, "Text view should default to selectable.")
+    expect(backend.records[handle]?.kind == "editableTextView", "Text view did not request editable native peer.")
+    expect(backend.records[handle]?.text == "Line one\nLine two", "Text view text was not synced to backend.")
+
+    textView.setString("Reset")
+    expect(backend.records[handle]?.text == "Reset", "Text view setString did not update backend.")
+}
+
 func testTextFieldFactoryConstructorsAndCompatibilityProperties() {
     let label = NSTextField.label(withString: "Label")
     let wrappingLabel = NSTextField.wrappingLabel(withString: "Wrapped")
@@ -1424,6 +1470,38 @@ func testNativeTextChangeMakesEditableTextFieldFirstResponder() {
     expect(window.firstResponder === textField, "Native text change did not make text field first responder.")
     expect(backend.focusedHandle == handle, "Native text change did not request native focus.")
     expect(textField.stringValue == "Typed", "Native text change did not update string value.")
+}
+
+func testNativeTextChangeMakesTextViewFirstResponder() {
+    let backend = InMemoryNativeControlBackend()
+    let window = NSWindow(
+        contentRect: NSMakeRect(0, 0, 240, 140),
+        styleMask: [.titled],
+        backing: .buffered,
+        defer: false,
+        nativeBackend: backend
+    )
+    let contentView = NSView(frame: NSMakeRect(0, 0, 240, 140))
+    let textView = NSTextView(frame: NSMakeRect(20, 20, 160, 80))
+
+    contentView.addSubview(textView)
+    window.contentView = contentView
+    window.realizeNativePeer()
+
+    guard let handle = textView.nativeHandle else {
+        fatalError("Text view did not realize.")
+    }
+
+    var callbackText = ""
+    textView.onTextChanged = { view in
+        callbackText = view.string
+    }
+    backend.textChangeActions[handle]?("Typed\nMore")
+
+    expect(window.firstResponder === textView, "Native text view change did not make text view first responder.")
+    expect(backend.focusedHandle == handle, "Native text view change did not request native focus.")
+    expect(textView.string == "Typed\nMore", "Native text view change did not update string.")
+    expect(callbackText == "Typed\nMore", "Native text view change did not invoke callback.")
 }
 
 func testBoxUsesNativePeerAndSyncsTitle() {
@@ -1634,6 +1712,7 @@ testTableViewColumnSelectionAndDoubleActionSurface()
 testTableViewSortDescriptorPrototypeToggle()
 testSliderStoresRangeValueAndSyncsNativePeer()
 testSliderNativeActionUpdatesValue()
+testProgressIndicatorStoresRangeValueAndSyncsNativePeer()
 testTableViewNativePeerReceivesColumnsRowsAndSelection()
 testTableViewNativeSelectionNotifiesDelegateAndAction()
 testTableViewActionCanReadSelectedRowValue()
@@ -1662,6 +1741,7 @@ testRealizedViewStatePropagatesToBackend()
 testWindowTitleAndFramePropagateToBackend()
 testWindowContentSizeAndCenterUpdateFrame()
 testEditableTextFieldUsesEditableNativePeer()
+testTextViewUsesMultilineNativePeerAndStoresText()
 testTextFieldFactoryConstructorsAndCompatibilityProperties()
 testSwitchButtonUsesCheckboxNativePeer()
 testRadioButtonUsesRadioNativePeer()
@@ -1671,6 +1751,7 @@ testPopUpButtonItemLookupAndRemoval()
 testNativeButtonActionMakesButtonFirstResponder()
 testNativePopUpActionMakesPopUpFirstResponder()
 testNativeTextChangeMakesEditableTextFieldFirstResponder()
+testNativeTextChangeMakesTextViewFirstResponder()
 testBoxUsesNativePeerAndSyncsTitle()
 testColorValuesClampComponents()
 testViewAndTextFieldColorsSyncToBackend()

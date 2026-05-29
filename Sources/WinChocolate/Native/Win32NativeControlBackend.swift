@@ -332,6 +332,8 @@ private let cbSetCurSel: UINT = 0x014e
 private let sbmSetPos: UINT = 0x00e0
 private let sbmGetPos: UINT = 0x00e1
 private let sbmSetRange: UINT = 0x00e2
+private let pbmSetRange32: UINT = 0x0406
+private let pbmSetPos: UINT = 0x0402
 private let lbAddString: UINT = 0x0180
 private let lbSetCurSel: UINT = 0x0186
 private let lbGetCurSel: UINT = 0x0188
@@ -358,6 +360,7 @@ private let hdnItemClickW: UINT = 0xfffffebe
 private let bnClicked: UInt = 0
 private let cbnSelChange: UInt = 1
 private let iccListViewClasses: DWORD = 0x00000001
+private let iccProgressClass: DWORD = 0x00000020
 private let bstUnchecked: WPARAM = 0
 private let bstChecked: WPARAM = 1
 private let bstIndeterminate: WPARAM = 2
@@ -398,7 +401,10 @@ private let wsHScroll: DWORD = 0x00100000
 private let wsChild: DWORD = 0x40000000
 private let wsClipChildren: DWORD = 0x02000000
 private let wsBorder: DWORD = 0x00800000
+private let esMultiline: DWORD = 0x0004
+private let esAutoVScroll: DWORD = 0x0040
 private let esAutoHScroll: DWORD = 0x0080
+private let esWantReturn: DWORD = 0x1000
 private let lbsNotify: DWORD = 0x0001
 private let lvsReport: DWORD = 0x0001
 private let lvsSingleSel: DWORD = 0x0004
@@ -679,6 +685,24 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         return handle
     }
 
+    /// Creates a native multiline text view child.
+    public func createTextView(text: String, frame: NSRect, parent: NativeHandle?, isEditable: Bool) -> NativeHandle {
+        let handle = createChildWindow(
+            className: isEditable ? "EDIT" : "STATIC",
+            text: text,
+            frame: frame,
+            parent: parent,
+            commandIdentifier: nil,
+            style: isEditable
+                ? wsChild | wsVisible | wsTabStop | wsBorder | wsVScroll | esMultiline | esAutoVScroll | esWantReturn
+                : wsChild | wsVisible | wsBorder
+        )
+        if isEditable {
+            subclassControlForTabKey(handle)
+        }
+        return handle
+    }
+
     /// Creates a native pop-up button child.
     public func createPopUpButton(items: [String], selectedIndex: Int, frame: NSRect, parent: NativeHandle?) -> NativeHandle {
         let handle = createChildWindow(
@@ -704,8 +728,25 @@ public final class Win32NativeControlBackend: NativeControlBackend {
             commandIdentifier: nil,
             style: wsChild | wsVisible | wsTabStop | sbsHorz
         )
+        subclassControlForTabKey(handle)
         setSliderRange(minValue: minValue, maxValue: maxValue, for: handle)
         setSliderValue(value, for: handle)
+        return handle
+    }
+
+    /// Creates a native progress-indicator child.
+    public func createProgressIndicator(value: Double, minValue: Double, maxValue: Double, frame: NSRect, parent: NativeHandle?) -> NativeHandle {
+        initializeProgressControls()
+        let handle = createChildWindow(
+            className: "msctls_progress32",
+            text: "",
+            frame: frame,
+            parent: parent,
+            commandIdentifier: nil,
+            style: wsChild | wsVisible
+        )
+        setProgressIndicatorRange(minValue: minValue, maxValue: maxValue, for: handle)
+        setProgressIndicatorValue(value, for: handle)
         return handle
     }
 
@@ -988,6 +1029,26 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         }
 
         return Double(winSendMessageW(hwnd, sbmGetPos, 0, 0))
+    }
+
+    /// Updates native progress-indicator range.
+    public func setProgressIndicatorRange(minValue: Double, maxValue: Double, for handle: NativeHandle) {
+        guard let hwnd = hwnd(from: handle) else {
+            return
+        }
+
+        let lower = Int32(min(minValue, maxValue).rounded())
+        let upper = Int32(max(minValue, maxValue).rounded())
+        _ = winSendMessageW(hwnd, pbmSetRange32, WPARAM(lower), LPARAM(upper))
+    }
+
+    /// Updates native progress-indicator value.
+    public func setProgressIndicatorValue(_ value: Double, for handle: NativeHandle) {
+        guard let hwnd = hwnd(from: handle) else {
+            return
+        }
+
+        _ = winSendMessageW(hwnd, pbmSetPos, WPARAM(Int32(value.rounded())), 0)
     }
 
     private func updateSliderPosition(from scrollParameter: WPARAM, for handle: NativeHandle) {
@@ -1496,6 +1557,15 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         var initControls = INITCOMMONCONTROLSEX()
         initControls.dwSize = DWORD(MemoryLayout<INITCOMMONCONTROLSEX>.size)
         initControls.dwICC = iccListViewClasses
+        withUnsafePointer(to: initControls) { pointer in
+            _ = winInitCommonControlsEx(pointer)
+        }
+    }
+
+    private func initializeProgressControls() {
+        var initControls = INITCOMMONCONTROLSEX()
+        initControls.dwSize = DWORD(MemoryLayout<INITCOMMONCONTROLSEX>.size)
+        initControls.dwICC = iccProgressClass
         withUnsafePointer(to: initControls) { pointer in
             _ = winInitCommonControlsEx(pointer)
         }

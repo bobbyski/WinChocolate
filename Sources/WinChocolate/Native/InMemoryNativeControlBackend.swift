@@ -42,6 +42,15 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
         /// Native slider value.
         public var sliderValue: Double
 
+        /// Native progress minimum value.
+        public var progressMinValue: Double
+
+        /// Native progress maximum value.
+        public var progressMaxValue: Double
+
+        /// Native progress value.
+        public var progressValue: Double
+
         /// Native table column titles.
         public var tableColumns: [String]
 
@@ -191,6 +200,11 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
         makeHandle(kind: isEditable ? "editableTextField" : "textField", text: text, frame: frame, parent: parent)
     }
 
+    /// Records a text view creation request.
+    public func createTextView(text: String, frame: NSRect, parent: NativeHandle?, isEditable: Bool) -> NativeHandle {
+        makeHandle(kind: isEditable ? "editableTextView" : "textView", text: text, frame: frame, parent: parent)
+    }
+
     /// Records a pop-up button creation request.
     public func createPopUpButton(items: [String], selectedIndex: Int, frame: NSRect, parent: NativeHandle?) -> NativeHandle {
         let handle = makeHandle(kind: "popUpButton", text: items.indices.contains(selectedIndex) ? items[selectedIndex] : "", frame: frame, parent: parent)
@@ -205,6 +219,15 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
         records[handle]?.sliderMinValue = minValue
         records[handle]?.sliderMaxValue = maxValue
         records[handle]?.sliderValue = value
+        return handle
+    }
+
+    /// Records a progress indicator creation request.
+    public func createProgressIndicator(value: Double, minValue: Double, maxValue: Double, frame: NSRect, parent: NativeHandle?) -> NativeHandle {
+        let handle = makeHandle(kind: "progressIndicator", text: "", frame: frame, parent: parent)
+        records[handle]?.progressMinValue = minValue
+        records[handle]?.progressMaxValue = maxValue
+        records[handle]?.progressValue = value
         return handle
     }
 
@@ -374,6 +397,27 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
         records[handle]?.sliderValue ?? 0
     }
 
+    /// Updates recorded progress indicator range.
+    public func setProgressIndicatorRange(minValue: Double, maxValue: Double, for handle: NativeHandle) {
+        guard var record = records[handle] else {
+            return
+        }
+
+        record.progressMinValue = minValue
+        record.progressMaxValue = maxValue
+        records[handle] = record
+    }
+
+    /// Updates recorded progress indicator value.
+    public func setProgressIndicatorValue(_ value: Double, for handle: NativeHandle) {
+        guard var record = records[handle] else {
+            return
+        }
+
+        record.progressValue = value
+        records[handle] = record
+    }
+
     /// Replaces recorded table rows.
     public func setTableRows(_ rows: [[String]], selectedRow: Int, for handle: NativeHandle) {
         guard var record = records[handle] else {
@@ -466,6 +510,9 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
             sliderMinValue: 0,
             sliderMaxValue: 1,
             sliderValue: 0,
+            progressMinValue: 0,
+            progressMaxValue: 1,
+            progressValue: 0,
             tableColumns: [],
             tableColumnWidths: [],
             tableRows: [],

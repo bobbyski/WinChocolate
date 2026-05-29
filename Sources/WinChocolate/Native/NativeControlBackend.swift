@@ -46,11 +46,17 @@ public protocol NativeControlBackend: AnyObject {
     /// Creates a native text field child.
     func createTextField(text: String, frame: NSRect, parent: NativeHandle?, isEditable: Bool) -> NativeHandle
 
+    /// Creates a native multiline text view child.
+    func createTextView(text: String, frame: NSRect, parent: NativeHandle?, isEditable: Bool) -> NativeHandle
+
     /// Creates a native pop-up button child.
     func createPopUpButton(items: [String], selectedIndex: Int, frame: NSRect, parent: NativeHandle?) -> NativeHandle
 
     /// Creates a native slider child.
     func createSlider(value: Double, minValue: Double, maxValue: Double, frame: NSRect, parent: NativeHandle?) -> NativeHandle
+
+    /// Creates a native progress-indicator child.
+    func createProgressIndicator(value: Double, minValue: Double, maxValue: Double, frame: NSRect, parent: NativeHandle?) -> NativeHandle
 
     /// Creates a native scroll-view child.
     func createScrollView(frame: NSRect, parent: NativeHandle?, hasVerticalScroller: Bool, hasHorizontalScroller: Bool) -> NativeHandle
@@ -108,6 +114,12 @@ public protocol NativeControlBackend: AnyObject {
 
     /// Reads native slider value.
     func sliderValue(for handle: NativeHandle) -> Double
+
+    /// Updates native progress-indicator range.
+    func setProgressIndicatorRange(minValue: Double, maxValue: Double, for handle: NativeHandle)
+
+    /// Updates native progress-indicator value.
+    func setProgressIndicatorValue(_ value: Double, for handle: NativeHandle)
 
     /// Replaces native table rows.
     func setTableRows(_ rows: [[String]], selectedRow: Int, for handle: NativeHandle)
