@@ -6,7 +6,7 @@ WinChocolate is an AppKit-shaped SwiftPM framework for Windows. The goal is to l
 
 Overall planned-code progress: `█████░░░░░` 54%
 
-Current planned-code progress after the table selection update: `██████░░░░` 59%
+Current planned-code progress after the scroller update: `██████░░░░` 60%
 
 ## First Milestone
 
@@ -26,8 +26,8 @@ The first milestone is a runnable AppKit-shaped Windows application slice:
 |---|---:|---:|---|---|
 | 1: SwiftPM Shape And Core Names | Implemented | 100% | package, sources, tests, docs | Initial AppKit-compatible public type names are in place. |
 | 2: Classic Win32 Backend | Partial | 96% | HWND creation, message loop, child controls | User32-backed window, custom view container, menu, button, checkbox, radio button, pop-up/combo box, group box, static/edit/secure/multiline text, image placeholder, tab view, slider, progress, stepper, text/frame/visibility/enabled updates, native cleanup, mouse/key event dispatch, experimental child-control Tab interception, and command dispatch are in place. This backend should keep the classic Win32 look available for apps that want it. |
-| 3: AppKit Surface Expansion | Partial | 66% | menus, dialogs, responders, layout, text, tables, images | Initial `NSMenu`, `NSMenuItem`, `NSAlert`, `NSBox`, `NSColor`, `NSFont`, `NSEvent`, `NSResponder`, `NSApp`, `NSWindow.firstResponder`, key-view loop APIs, key/main window tracking, editable `NSTextField`, `NSSecureTextField`, `NSSearchField`, multiline `NSTextView`, `NSPopUpButton`, `NSComboBox`, `NSImageView`, `NSTabView`, `NSSlider`, `NSProgressIndicator`, `NSLevelIndicator`, `NSStepper`, `NSColorWell`, `NSScrollView`, `NSSplitView`, `NSTableColumn`, `NSTableView`, `NSCell`, `NSTableCellView`, `NSTableRowView`, `NSSortDescriptor`, and push/switch/radio `NSButton` APIs are present. |
-| 4: Demo Application | Partial | 95% | SwiftPM demo app | Demo source builds as a SwiftPM executable and visibly exercises native state APIs, modal alerts, editable/secure/combo text, multiline notes, checkbox state, radio groups, pop-up selection, image placeholder, split view pane layout, tab selection, slider/progress/stepper values, table selection/action, mouse events, and key events. |
+| 3: AppKit Surface Expansion | Partial | 67% | menus, dialogs, responders, layout, text, tables, images | Initial `NSMenu`, `NSMenuItem`, `NSAlert`, `NSBox`, `NSColor`, `NSFont`, `NSEvent`, `NSResponder`, `NSApp`, `NSWindow.firstResponder`, key-view loop APIs, key/main window tracking, editable `NSTextField`, `NSSecureTextField`, `NSSearchField`, multiline `NSTextView`, `NSPopUpButton`, `NSComboBox`, `NSImageView`, `NSTabView`, `NSSlider`, `NSScroller`, `NSProgressIndicator`, `NSLevelIndicator`, `NSStepper`, `NSColorWell`, `NSScrollView`, `NSSplitView`, `NSTableColumn`, `NSTableView`, `NSCell`, `NSTableCellView`, `NSTableRowView`, `NSSortDescriptor`, and push/switch/radio `NSButton` APIs are present. |
+| 4: Demo Application | Partial | 96% | SwiftPM demo app | Demo source builds as a SwiftPM executable and visibly exercises native state APIs, modal alerts, editable/secure/combo text, multiline notes, checkbox state, radio groups, pop-up selection, bitmap image tests, split view pane layout, tab selection, slider/progress/scroller/stepper values, table selection/action, mouse events, and key events. |
 | 5: AppKit Tables And Collection Controls | Partial | 27% | `NSTableView`, `NSOutlineView`, collection/list selection, cells/views | First AppKit-shaped `NSTableView` slice exists with columns, data source, delegate, row and column selection helpers, sort descriptors, row/cell-view placeholders, scroll-view hosting, table action/double-action surface, tests, and a temporary classic backend renderer. Future work should move toward visible headers, column resizing, sorting behavior, editing, reuse identifiers, and native accessibility. |
 | 6: Modern Windows Appearance | Planned | 0% | visual manager, themed controls, modern backend option | The eventual default should look like a modern Windows app while preserving the classic Win32 backend as an opt-in retro/native-simple mode. |
 | 7: Backend Selection And Theming | Planned | 0% | app/config API, backend factory, tests | Add an AppKit-shaped way to choose the classic or modern presentation without changing application UI code. |
@@ -52,6 +52,7 @@ The first milestone is a runnable AppKit-shaped Windows application slice:
 - [x] Add initial `NSImageView` and `NSTabView` backed by native placeholders/tab controls.
 - [x] Add `NSSlider`, `NSProgressIndicator`, and `NSStepper` value controls backed by native controls.
 - [x] Add first `NSSearchField`, `NSLevelIndicator`, and `NSColorWell` slices.
+- [x] Add first standalone `NSScroller` slice.
 - [x] Add `NSBox` backed by native group boxes.
 - [x] Add first `NSScrollView` and `NSTableView` public API slice with AppKit-shaped data-source contracts.
 - [x] Add first table cell/view, sort-descriptor, column movement, and selection helper contracts.
@@ -67,7 +68,7 @@ The first milestone is a runnable AppKit-shaped Windows application slice:
 - [x] Add native mouse-down/up/move dispatch into `NSView` responder methods.
 - [x] Add native key-down/up dispatch into `NSView.keyDown(with:)` and `NSView.keyUp(with:)`.
 - [ ] Stabilize native child-control Tab interception across all focusable controls.
-- [ ] Fix key-loop parity for display-only controls: `NSLevelIndicator` should not accept first responder by default and should be skipped during normal Tab traversal.
+- [x] Fix key-loop parity for display-only controls: `NSLevelIndicator` should not accept first responder by default and should be skipped during normal Tab traversal.
 - [x] Add `NSEvent.characters` and `NSEvent.modifierFlags` for native key and mouse events.
 - [x] Add native state updates for title/text, frame, hidden, enabled, and destroyed views.
 - [ ] Preserve the current classic Win32 look as an explicit supported presentation mode.

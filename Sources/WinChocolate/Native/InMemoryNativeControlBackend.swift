@@ -63,6 +63,12 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
         /// Native progress value.
         public var progressValue: Double
 
+        /// Native scroller knob proportion.
+        public var scrollerKnobProportion: Double
+
+        /// Whether the native scroller is vertical.
+        public var scrollerIsVertical: Bool
+
         /// Native stepper minimum value.
         public var stepperMinValue: Double
 
@@ -279,6 +285,17 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
         records[handle]?.progressMinValue = minValue
         records[handle]?.progressMaxValue = maxValue
         records[handle]?.progressValue = value
+        return handle
+    }
+
+    /// Records a scroller creation request.
+    public func createScroller(value: Double, knobProportion: Double, isVertical: Bool, frame: NSRect, parent: NativeHandle?) -> NativeHandle {
+        let handle = makeHandle(kind: "scroller", text: "", frame: frame, parent: parent)
+        records[handle]?.sliderMinValue = 0
+        records[handle]?.sliderMaxValue = 1
+        records[handle]?.sliderValue = value
+        records[handle]?.scrollerKnobProportion = knobProportion
+        records[handle]?.scrollerIsVertical = isVertical
         return handle
     }
 
@@ -534,6 +551,22 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
         records[handle] = record
     }
 
+    /// Updates recorded scroller state.
+    public func setScrollerValue(_ value: Double, knobProportion: Double, for handle: NativeHandle) {
+        guard var record = records[handle] else {
+            return
+        }
+
+        record.sliderValue = value
+        record.scrollerKnobProportion = knobProportion
+        records[handle] = record
+    }
+
+    /// Reads recorded scroller value.
+    public func scrollerValue(for handle: NativeHandle) -> Double {
+        records[handle]?.sliderValue ?? 0
+    }
+
     /// Updates recorded stepper range.
     public func setStepperRange(minValue: Double, maxValue: Double, increment: Double, for handle: NativeHandle) {
         guard var record = records[handle] else {
@@ -660,6 +693,8 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
             progressMinValue: 0,
             progressMaxValue: 1,
             progressValue: 0,
+            scrollerKnobProportion: 0,
+            scrollerIsVertical: false,
             stepperMinValue: 0,
             stepperMaxValue: 1,
             stepperIncrement: 1,

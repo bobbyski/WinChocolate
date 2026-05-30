@@ -879,6 +879,21 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         return handle
     }
 
+    /// Creates a native scroller child.
+    public func createScroller(value: Double, knobProportion: Double, isVertical: Bool, frame: NSRect, parent: NativeHandle?) -> NativeHandle {
+        let handle = createChildWindow(
+            className: "SCROLLBAR",
+            text: "",
+            frame: frame,
+            parent: parent,
+            commandIdentifier: nil,
+            style: wsChild | wsVisible | (isVertical ? sbsVert : sbsHorz)
+        )
+        setSliderRange(minValue: 0, maxValue: 100, for: handle)
+        setScrollerValue(value, knobProportion: knobProportion, for: handle)
+        return handle
+    }
+
     /// Creates a native stepper child.
     public func createStepper(value: Double, minValue: Double, maxValue: Double, increment: Double, frame: NSRect, parent: NativeHandle?) -> NativeHandle {
         initializeUpDownControls()
@@ -1297,6 +1312,16 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         }
 
         _ = winSendMessageW(hwnd, pbmSetPos, WPARAM(Int32(value.rounded())), 0)
+    }
+
+    /// Updates native scroller state.
+    public func setScrollerValue(_ value: Double, knobProportion: Double, for handle: NativeHandle) {
+        setSliderValue(min(max(value, 0), 1) * 100, for: handle)
+    }
+
+    /// Reads native scroller value.
+    public func scrollerValue(for handle: NativeHandle) -> Double {
+        min(max(sliderValue(for: handle) / 100, 0), 1)
     }
 
     /// Updates native stepper range.

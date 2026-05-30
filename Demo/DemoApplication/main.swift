@@ -163,6 +163,9 @@ let levelLabel = NSTextField(string: "Level:", frame: NSMakeRect(744, 364, 88, 2
 let levelIndicator = NSLevelIndicator(frame: NSMakeRect(840, 368, 144, 18))
 let colorWellLabel = NSTextField(string: "Color:", frame: NSMakeRect(992, 364, 56, 24))
 let colorWell = NSColorWell(frame: NSMakeRect(1052, 362, 32, 28))
+let scrollerLabel = NSTextField(string: "Scroller:", frame: NSMakeRect(744, 640, 88, 24))
+let scroller = NSScroller(frame: NSMakeRect(840, 646, 184, 18))
+let scrollerValueLabel = NSTextField(string: "0", frame: NSMakeRect(1032, 640, 48, 24))
 let tabLabel = NSTextField(string: "Tabs:", frame: NSMakeRect(32, 520, 88, 24))
 let tabView = NSTabView(frame: NSMakeRect(152, 520, 280, 88))
 let imageLabel = NSTextField(string: "Image view:", frame: NSMakeRect(448, 520, 104, 24))
@@ -443,6 +446,10 @@ levelIndicator.criticalValue = 90
 levelIndicator.doubleValue = stepper.doubleValue
 colorWellLabel.font = NSFont.boldSystemFont(ofSize: 12)
 colorWell.color = demoColors[colorIndex]
+scrollerLabel.font = NSFont.boldSystemFont(ofSize: 12)
+scroller.doubleValue = 0
+scroller.knobProportion = 0.25
+scrollerValueLabel.textColor = .blue
 tabLabel.font = NSFont.boldSystemFont(ofSize: 12)
 let firstTab = NSTabViewItem(identifier: "controls")
 firstTab.label = "Controls"
@@ -619,6 +626,17 @@ colorWell.onAction = { _ in
     colorIndex = (colorIndex + 1) % demoColors.count
     colorWell.color = demoColors[colorIndex]
     statusLabel.stringValue = "Color well changed"
+}
+
+scroller.onAction = { control in
+    guard let scroller = control as? NSScroller else {
+        return
+    }
+
+    updateFocusDisplay()
+    let percent = Int((scroller.doubleValue * 100).rounded())
+    scrollerValueLabel.stringValue = "\(percent)"
+    statusLabel.stringValue = "Scroller value: \(percent)%"
 }
 
 tabView.onSelectionChanged = { tabs in
@@ -830,6 +848,9 @@ contentView.addSubview(levelLabel)
 contentView.addSubview(levelIndicator)
 contentView.addSubview(colorWellLabel)
 contentView.addSubview(colorWell)
+contentView.addSubview(scrollerLabel)
+contentView.addSubview(scroller)
+contentView.addSubview(scrollerValueLabel)
 contentView.addSubview(tabLabel)
 contentView.addSubview(tabView)
 contentView.addSubview(imageLabel)

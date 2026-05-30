@@ -70,6 +70,9 @@ public protocol NativeControlBackend: AnyObject {
     /// Creates a native progress-indicator child.
     func createProgressIndicator(value: Double, minValue: Double, maxValue: Double, frame: NSRect, parent: NativeHandle?) -> NativeHandle
 
+    /// Creates a native scroller child.
+    func createScroller(value: Double, knobProportion: Double, isVertical: Bool, frame: NSRect, parent: NativeHandle?) -> NativeHandle
+
     /// Creates a native stepper child.
     func createStepper(value: Double, minValue: Double, maxValue: Double, increment: Double, frame: NSRect, parent: NativeHandle?) -> NativeHandle
 
@@ -153,6 +156,12 @@ public protocol NativeControlBackend: AnyObject {
 
     /// Updates native progress-indicator value.
     func setProgressIndicatorValue(_ value: Double, for handle: NativeHandle)
+
+    /// Updates native scroller state.
+    func setScrollerValue(_ value: Double, knobProportion: Double, for handle: NativeHandle)
+
+    /// Reads native scroller value.
+    func scrollerValue(for handle: NativeHandle) -> Double
 
     /// Updates native stepper range.
     func setStepperRange(minValue: Double, maxValue: Double, increment: Double, for handle: NativeHandle)

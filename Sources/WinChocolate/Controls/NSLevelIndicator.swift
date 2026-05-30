@@ -77,6 +77,11 @@ open class NSLevelIndicator: NSControl {
         self.objectValue = doubleValue
     }
 
+    /// Level indicators are display controls and skip normal key-view traversal.
+    open override var acceptsFirstResponder: Bool {
+        false
+    }
+
     /// Creates the native level peer.
     open override func createNativePeer(in backend: NativeControlBackend, parent: NativeHandle?) -> NativeHandle {
         backend.createProgressIndicator(value: doubleValue, minValue: minValue, maxValue: maxValue, frame: frame, parent: parent)

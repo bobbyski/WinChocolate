@@ -35,7 +35,7 @@ References used for this map:
 | `NSSearchField` | `EDIT` plus search/cancel adornments | `AutoSuggestBox` / `TextBox` with buttons | Basic editable search text and immediate action dispatch exist; adornments/recent-search UI are future work. | Partial | Planned |
 | `NSTokenField` | Owner-drawn/composed edit/list | Tokenizing text box pattern | No direct Win32 peer; needs custom/composed control. | Planned | Planned |
 | `NSTextView` | Multiline `EDIT` or RichEdit | `TextBox` multiline / `RichEditBox` | Basic multiline edit exists; rich text and selection APIs are missing. | Partial | Planned |
-| `NSImageView` | `STATIC` bitmap/icon or custom paint | `Image` | Placeholder image/name model plus scaling/alignment/frame-style state exists; bitmap loading and drawing are future work. | Partial | Planned |
+| `NSImageView` | `STATIC` bitmap/icon or custom paint | `Image` | File-backed BMP loading plus image/name model and scaling/alignment/frame-style state exists; richer formats and true custom scaling are future work. | Partial | Planned |
 | `NSColorWell` | Custom button/color swatch plus color dialog | `ColorPicker` | Basic clickable swatch and color state exist; shared color panel is future work. | Partial | Planned |
 | `NSSlider` | `SCROLLBAR` first slice, later trackbar/custom | `Slider` | Value/range/action works; current classic peer is visually rough. | Partial | Planned |
 | `NSStepper` | `SCROLLBAR` first slice, later `msctls_updown32` or custom | `NumberBox` with spin buttons | Value/range/increment/action works; current classic peer is provisional. | Partial | Planned |
@@ -49,7 +49,7 @@ References used for this map:
 | `NSForm` | Group of labels/edit controls | Form layout pattern | Deprecated AppKit API; likely composed from text fields. | Planned | Planned |
 | `NSBox` | `BUTTON` group-box style | `GroupBox` | Basic title/frame peer exists. | Done | Planned |
 | `NSScrollView` | Custom child `HWND` with scrollbars | `ScrollViewer` | First document-view host exists; scrolling behavior needs depth. | Partial | Planned |
-| `NSScroller` | `SCROLLBAR` | `ScrollBar` | Not exposed yet as standalone AppKit control. | Planned | Planned |
+| `NSScroller` | `SCROLLBAR` | `ScrollBar` | Standalone normalized value/knob-proportion slice exists; detailed parts, overlay behavior, and custom styling are future work. | Partial | Planned |
 | `NSTableView` | `SysListView32` report mode | `ListView` / `DataGrid` pattern | Columns, rows, selection, sorting slice exists; editing/reuse/accessibility incomplete. | Partial | Planned |
 | `NSTableColumn` | List-view column/header metadata | Grid/list column metadata | Swift-side column model exists. | Partial | Planned |
 | `NSTableCellView` | List-view subitem/custom view | Data template cell | Placeholder API exists; no real cell-view hosting. | Partial | Planned |

@@ -816,6 +816,53 @@ func testLevelIndicatorStoresRangeValueAndUsesProgressPeer() {
     level.doubleValue = 20
     expect(level.doubleValue == 10, "Level indicator did not clamp to maxValue.")
     expect(backend.records[handle]?.progressValue == 10, "Level indicator clamped value was not synced.")
+    expect(!level.acceptsFirstResponder, "Level indicator should skip key-view traversal.")
+}
+
+func testScrollerStoresValueAndSyncsNativePeer() {
+    let backend = InMemoryNativeControlBackend()
+    let scroller = NSScroller(frame: NSMakeRect(0, 0, 20, 120))
+    scroller.doubleValue = 0.4
+    scroller.knobProportion = 0.25
+
+    expect(scroller.doubleValue == 0.4, "Scroller doubleValue was not stored.")
+    expect(scroller.knobProportion == 0.25, "Scroller knobProportion was not stored.")
+    expect(scroller.isVertical, "Scroller orientation did not infer vertical frame.")
+    expect(!scroller.acceptsFirstResponder, "Scroller should skip key-view traversal.")
+
+    let handle = scroller.realizeNativePeer(in: backend, parent: nil)
+
+    expect(backend.records[handle]?.kind == "scroller", "Scroller did not request native scroller peer.")
+    expect(backend.records[handle]?.sliderValue == 0.4, "Scroller value was not synced.")
+    expect(backend.records[handle]?.scrollerKnobProportion == 0.25, "Scroller knob proportion was not synced.")
+    expect(backend.records[handle]?.scrollerIsVertical == true, "Scroller orientation was not synced.")
+
+    scroller.setFloatValue(1.5, knobProportion: -1)
+    expect(scroller.doubleValue == 1, "Scroller did not clamp doubleValue.")
+    expect(scroller.knobProportion == 0, "Scroller did not clamp knobProportion.")
+    expect(backend.records[handle]?.sliderValue == 1, "Scroller clamped value was not synced.")
+}
+
+func testScrollerNativeActionUpdatesValue() {
+    let backend = InMemoryNativeControlBackend()
+    let scroller = NSScroller(frame: NSMakeRect(0, 0, 120, 18))
+    var actionCount = 0
+    scroller.onAction = { control in
+        guard let scroller = control as? NSScroller else {
+            expect(false, "Scroller action sender was not scroller.")
+            return
+        }
+
+        actionCount += 1
+        expect(scroller.doubleValue == 0.75, "Scroller action did not read native value.")
+        expect(scroller.hitPart == .knob, "Scroller did not record a coarse hit part.")
+    }
+
+    let handle = scroller.realizeNativePeer(in: backend, parent: nil)
+    backend.setScrollerValue(0.75, knobProportion: 0.2, for: handle)
+    backend.actions[handle]?()
+
+    expect(actionCount == 1, "Scroller native action was not dispatched.")
 }
 
 func testStepperStoresRangeIncrementAndSyncsNativePeer() {
@@ -2077,6 +2124,8 @@ testSliderStoresRangeValueAndSyncsNativePeer()
 testSliderNativeActionUpdatesValue()
 testProgressIndicatorStoresRangeValueAndSyncsNativePeer()
 testLevelIndicatorStoresRangeValueAndUsesProgressPeer()
+testScrollerStoresValueAndSyncsNativePeer()
+testScrollerNativeActionUpdatesValue()
 testStepperStoresRangeIncrementAndSyncsNativePeer()
 testStepperNativeActionUpdatesValue()
 testSearchFieldTracksRecentSearchesAndNativeChanges()
