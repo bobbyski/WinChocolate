@@ -65,7 +65,7 @@ final class DemoTableDataSource: NSTableViewDataSource {
         ["NSLevelIndicator", "Value meter"],
         ["NSColorWell", "Color swatch"],
         ["NSTabView", "Native tabs"],
-        ["NSImageView", "Placeholder"],
+        ["NSImageView", "Bitmap artwork"],
         ["NSTableView", "First slice"],
         ["NSTableColumn", "Identifiers"],
         ["NSTableCellView", "View based"],
@@ -166,7 +166,11 @@ let colorWell = NSColorWell(frame: NSMakeRect(1052, 362, 32, 28))
 let tabLabel = NSTextField(string: "Tabs:", frame: NSMakeRect(32, 520, 88, 24))
 let tabView = NSTabView(frame: NSMakeRect(152, 520, 280, 88))
 let imageLabel = NSTextField(string: "Image view:", frame: NSMakeRect(448, 520, 104, 24))
-let imageView = NSImageView(frame: NSMakeRect(560, 520, 112, 64))
+let imageView = NSImageView(frame: NSMakeRect(560, 500, 160, 100))
+let splitLabel = NSTextField(string: "Split view:", frame: NSMakeRect(448, 608, 104, 24))
+let splitView = NSSplitView(frame: NSMakeRect(560, 604, 160, 64))
+let splitLeftPane = NSView(frame: NSZeroRect)
+let splitRightPane = NSView(frame: NSZeroRect)
 let tableLabel = NSTextField(string: "Table view:", frame: NSMakeRect(744, 392, 120, 24))
 let tableScrollView = NSScrollView(frame: NSMakeRect(744, 424, 330, 210))
 let tableView = NSTableView(frame: NSMakeRect(0, 0, 330, 210))
@@ -182,6 +186,15 @@ var movedRight = false
 var suppressNextTableSelectionStatus = false
 var colorIndex = 0
 let demoColors: [NSColor] = [.red, .green, .blue, .white]
+let demoArtworkPath = "Demo\\DemoApplication\\Resources\\WinChocolateArtwork.bmp"
+let demoScreenArtworkPath = "Demo\\DemoApplication\\Resources\\WinChocolateScreenArtwork.bmp"
+var imageModeIndex = 0
+let imageModes: [(NSImageView.ImageScaling, NSImageView.ImageAlignment, String, String)] = [
+    (.scaleProportionallyDown, .alignCenter, demoArtworkPath, "bird center/down"),
+    (.scaleProportionallyUpOrDown, .alignTopLeft, demoScreenArtworkPath, "screen top-left/fit"),
+    (.scaleAxesIndependently, .alignBottomRight, demoArtworkPath, "bird bottom-right/axes"),
+    (.scaleNone, .alignRight, demoScreenArtworkPath, "screen right/none")
+]
 
 func modifierText(for event: NSEvent) -> String {
     var names: [String] = []
@@ -441,7 +454,14 @@ tabView.addTabViewItem(firstTab)
 tabView.addTabViewItem(secondTab)
 tabView.addTabViewItem(thirdTab)
 imageLabel.font = NSFont.boldSystemFont(ofSize: 12)
-imageView.image = NSImage(named: "NSImage placeholder")
+imageView.image = NSImage(contentsOfFile: demoArtworkPath) ?? NSImage(named: "WinChocolate artwork")
+imageView.imageFrameStyle = .grayBezel
+splitLabel.font = NSFont.boldSystemFont(ofSize: 12)
+splitLeftPane.backgroundColor = NSColor(calibratedRed: 0.86, green: 0.93, blue: 1.0, alpha: 1.0)
+splitRightPane.backgroundColor = NSColor(calibratedRed: 1.0, green: 0.92, blue: 0.84, alpha: 1.0)
+splitView.addSubview(splitLeftPane)
+splitView.addSubview(splitRightPane)
+splitView.setPosition(70, ofDividerAt: 0)
 notesLabel.font = NSFont.boldSystemFont(ofSize: 12)
 secureLabel.font = NSFont.boldSystemFont(ofSize: 12)
 notesTextView.string = "Multiline NSTextView"
@@ -604,6 +624,16 @@ colorWell.onAction = { _ in
 tabView.onSelectionChanged = { tabs in
     updateFocusDisplay()
     statusLabel.stringValue = "Tab selected: \(tabs.selectedTabViewItem?.label ?? "none")"
+}
+
+imageView.onAction = { _ in
+    updateFocusDisplay()
+    imageModeIndex = (imageModeIndex + 1) % imageModes.count
+    let mode = imageModes[imageModeIndex]
+    imageView.imageScaling = mode.0
+    imageView.imageAlignment = mode.1
+    imageView.image = NSImage(contentsOfFile: mode.2) ?? NSImage(named: mode.2)
+    statusLabel.stringValue = "Image mode: \(mode.3)"
 }
 
 notesTextView.onTextChanged = { textView in
@@ -804,6 +834,8 @@ contentView.addSubview(tabLabel)
 contentView.addSubview(tabView)
 contentView.addSubview(imageLabel)
 contentView.addSubview(imageView)
+contentView.addSubview(splitLabel)
+contentView.addSubview(splitView)
 contentView.addSubview(tableLabel)
 contentView.addSubview(tableScrollView)
 window.contentView = contentView

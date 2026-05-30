@@ -36,6 +36,9 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
         /// Native combo-box items.
         public var comboBoxItems: [String]
 
+        /// Native image-view file path.
+        public var imagePath: String?
+
         /// Native tab-view items.
         public var tabViewItems: [String]
 
@@ -247,8 +250,10 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     }
 
     /// Records an image-view creation request.
-    public func createImageView(description: String, frame: NSRect, parent: NativeHandle?) -> NativeHandle {
-        makeHandle(kind: "imageView", text: description, frame: frame, parent: parent)
+    public func createImageView(description: String, imagePath: String?, frame: NSRect, parent: NativeHandle?) -> NativeHandle {
+        let handle = makeHandle(kind: "imageView", text: description, frame: frame, parent: parent)
+        records[handle]?.imagePath = imagePath
+        return handle
     }
 
     /// Records a tab-view creation request.
@@ -381,6 +386,17 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
         }
 
         record.font = font
+        records[handle] = record
+    }
+
+    /// Records an image-view bitmap source update.
+    public func setImagePath(_ imagePath: String?, description: String, for handle: NativeHandle) {
+        guard var record = records[handle] else {
+            return
+        }
+
+        record.imagePath = imagePath
+        record.text = description
         records[handle] = record
     }
 
@@ -635,6 +651,7 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
             popUpItems: [],
             popUpSelectedIndex: -1,
             comboBoxItems: [],
+            imagePath: nil,
             tabViewItems: [],
             tabViewSelectedIndex: -1,
             sliderMinValue: 0,

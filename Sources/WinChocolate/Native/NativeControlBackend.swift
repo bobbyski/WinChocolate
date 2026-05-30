@@ -59,7 +59,7 @@ public protocol NativeControlBackend: AnyObject {
     func createComboBox(items: [String], text: String, frame: NSRect, parent: NativeHandle?) -> NativeHandle
 
     /// Creates a native image-view child.
-    func createImageView(description: String, frame: NSRect, parent: NativeHandle?) -> NativeHandle
+    func createImageView(description: String, imagePath: String?, frame: NSRect, parent: NativeHandle?) -> NativeHandle
 
     /// Creates a native tab-view child.
     func createTabView(items: [String], selectedIndex: Int, frame: NSRect, parent: NativeHandle?) -> NativeHandle
@@ -105,6 +105,9 @@ public protocol NativeControlBackend: AnyObject {
 
     /// Updates a native control's font.
     func setFont(_ font: NSFont?, for handle: NativeHandle)
+
+    /// Updates a native image-view bitmap source.
+    func setImagePath(_ imagePath: String?, description: String, for handle: NativeHandle)
 
     /// Updates a native button check state.
     func setButtonState(_ state: NSControl.StateValue, for handle: NativeHandle)

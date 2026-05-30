@@ -37,7 +37,7 @@ open class NSColorWell: NSControl {
 
     /// Creates the native swatch peer.
     open override func createNativePeer(in backend: NativeControlBackend, parent: NativeHandle?) -> NativeHandle {
-        backend.createImageView(description: "", frame: frame, parent: parent)
+        backend.createImageView(description: "", imagePath: nil, frame: frame, parent: parent)
     }
 
     /// Ensures the swatch color is synced after realization.

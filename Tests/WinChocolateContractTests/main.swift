@@ -1024,6 +1024,29 @@ func testTableViewClickedRowAndColumnFollowSelection() {
     expect(tableView.clickedColumn == 0, "Table clickedColumn did not follow selected column.")
 }
 
+func testSplitViewArrangesSubviewsAndDividerPosition() {
+    let splitView = NSSplitView(frame: NSMakeRect(0, 0, 300, 100))
+    let first = NSView(frame: NSZeroRect)
+    let second = NSView(frame: NSZeroRect)
+
+    splitView.addSubview(first)
+    splitView.addSubview(second)
+
+    expect(!splitView.acceptsFirstResponder, "Split view should not accept first responder by default.")
+    expect(first.frame == NSMakeRect(0, 0, 146, 100), "Vertical split did not size first pane evenly.")
+    expect(second.frame == NSMakeRect(154, 0, 146, 100), "Vertical split did not size second pane evenly.")
+
+    splitView.setPosition(120, ofDividerAt: 0)
+
+    expect(first.frame == NSMakeRect(0, 0, 120, 100), "Split divider did not resize first pane.")
+    expect(second.frame == NSMakeRect(128, 0, 172, 100), "Split divider did not resize second pane.")
+
+    splitView.isVertical = false
+
+    expect(first.frame == NSMakeRect(0, 0, 300, 46), "Horizontal split did not size first pane evenly.")
+    expect(second.frame == NSMakeRect(0, 54, 300, 46), "Horizontal split did not size second pane evenly.")
+}
+
 func testSubviewResponderChainTargetsSuperview() {
     let parent = NSView(frame: NSMakeRect(0, 0, 100, 100))
     let child = NSView(frame: NSMakeRect(0, 0, 20, 20))
@@ -1631,16 +1654,26 @@ func testComboBoxNativeTextChangeAndActionUpdateState() {
 func testImageViewStoresImageAndUsesNativePeer() {
     let backend = InMemoryNativeControlBackend()
     let imageView = NSImageView(frame: NSMakeRect(0, 0, 64, 64))
-    imageView.image = NSImage(named: "Icon")
+    imageView.image = NSImage(contentsOfFile: "Resources/Icon.bmp")
+    imageView.imageScaling = .scaleNone
+    imageView.imageAlignment = .alignTopLeft
+    imageView.imageFrameStyle = .grayBezel
 
     let handle = imageView.realizeNativePeer(in: backend, parent: nil)
 
     expect(backend.records[handle]?.kind == "imageView", "Image view did not request native peer.")
-    expect(backend.records[handle]?.text == "Icon", "Image view did not sync image description.")
+    expect(backend.records[handle]?.imagePath == "Resources/Icon.bmp", "Image view did not sync image path.")
+    expect(backend.records[handle]?.text == "Resources/Icon.bmp\nno scale, top left", "Image view did not sync image description.")
     expect(!imageView.acceptsFirstResponder, "Image view should not accept first responder by default.")
+    expect(imageView.imageFrameStyle == .grayBezel, "Image view frame style was not stored.")
 
-    imageView.image = NSImage(named: "Updated")
-    expect(backend.records[handle]?.text == "Updated", "Image view image changes did not sync.")
+    imageView.image = NSImage(contentsOfFile: "Resources/Updated.bmp")
+    expect(backend.records[handle]?.imagePath == "Resources/Updated.bmp", "Image view image path changes did not sync.")
+    expect(backend.records[handle]?.text == "Resources/Updated.bmp\nno scale, top left", "Image view image changes did not sync.")
+
+    imageView.imageScaling = .scaleProportionallyUpOrDown
+    imageView.imageAlignment = .alignBottomRight
+    expect(backend.records[handle]?.text == "Resources/Updated.bmp\nscale fit, bottom right", "Image view scaling/alignment changes did not sync.")
 }
 
 func testTabViewStoresItemsSelectionAndUsesNativePeer() {
@@ -2052,6 +2085,7 @@ testTableViewNativePeerReceivesColumnsRowsAndSelection()
 testTableViewNativeSelectionNotifiesDelegateAndAction()
 testTableViewActionCanReadSelectedRowValue()
 testTableViewClickedRowAndColumnFollowSelection()
+testSplitViewArrangesSubviewsAndDividerPosition()
 testSubviewResponderChainTargetsSuperview()
 testResponderForwardsUnhandledEvents()
 testWindowIsContentViewNextResponder()

@@ -35,7 +35,7 @@ References used for this map:
 | `NSSearchField` | `EDIT` plus search/cancel adornments | `AutoSuggestBox` / `TextBox` with buttons | Basic editable search text and immediate action dispatch exist; adornments/recent-search UI are future work. | Partial | Planned |
 | `NSTokenField` | Owner-drawn/composed edit/list | Tokenizing text box pattern | No direct Win32 peer; needs custom/composed control. | Planned | Planned |
 | `NSTextView` | Multiline `EDIT` or RichEdit | `TextBox` multiline / `RichEditBox` | Basic multiline edit exists; rich text and selection APIs are missing. | Partial | Planned |
-| `NSImageView` | `STATIC` bitmap/icon or custom paint | `Image` | Placeholder image/name model exists; bitmap loading and drawing are future work. | Partial | Planned |
+| `NSImageView` | `STATIC` bitmap/icon or custom paint | `Image` | Placeholder image/name model plus scaling/alignment/frame-style state exists; bitmap loading and drawing are future work. | Partial | Planned |
 | `NSColorWell` | Custom button/color swatch plus color dialog | `ColorPicker` | Basic clickable swatch and color state exist; shared color panel is future work. | Partial | Planned |
 | `NSSlider` | `SCROLLBAR` first slice, later trackbar/custom | `Slider` | Value/range/action works; current classic peer is visually rough. | Partial | Planned |
 | `NSStepper` | `SCROLLBAR` first slice, later `msctls_updown32` or custom | `NumberBox` with spin buttons | Value/range/increment/action works; current classic peer is provisional. | Partial | Planned |
@@ -61,7 +61,7 @@ References used for this map:
 | `NSPredicateEditor` | Custom composed rows | Custom composed control | No native Windows peer. | Planned | Planned |
 | `NSScrubber` | Custom horizontal item strip | Custom item strip | Touch Bar-era AppKit control; low priority. | Planned | Planned |
 | `NSTabView` | `SysTabControl32` | `TabView` | Basic item labels and selection bridge exist; hosted per-tab content is future work. | Partial | Planned |
-| `NSSplitView` | Custom child-window splitter | `GridSplitter` / `SplitView` pattern | Needs layout and resize tracking. | Planned | Planned |
+| `NSSplitView` | Custom child-window splitter | `GridSplitter` / `SplitView` pattern | Basic pane arrangement and programmatic divider positioning exist; drag tracking and delegate callbacks are future work. | Partial | Planned |
 | `NSToolbar` | `ToolbarWindow32` / rebar | `CommandBar` / `AppBar` | AppKit toolbar item model differs from Win32. | Planned | Planned |
 | `NSStatusBar` / `NSStatusItem` | Shell notification icon / tray menu | App notification area integration | Not a normal child control; likely later app-shell work. | Planned | Planned |
 | `NSMenu` | `HMENU` | `MenuBar` / `MenuFlyout` | Menu model and Quit dispatch exist. | Partial | Planned |

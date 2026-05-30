@@ -36,8 +36,9 @@ WinChocolate is early and intentionally incomplete. The current milestone proves
 - Multiline `NSTextView`
 - Editable `NSComboBox`
 - Initial `NSSearchField`, `NSLevelIndicator`, and `NSColorWell`
-- Initial `NSImageView` placeholder and `NSTabView`
+- Initial `NSImageView` placeholder with scaling/alignment state and `NSTabView`
 - `NSSlider`, `NSProgressIndicator`, and `NSStepper` value controls
+- Initial `NSSplitView` pane layout and programmatic divider positioning
 - First `NSScrollView`, `NSTableColumn`, `NSTableView`, table cell/view, row/column selection, action/double-action, and sort-descriptor compatibility slice
 - Native text, frame, hidden, and enabled updates
 - Native modal `NSAlert` through `MessageBoxW`
@@ -50,7 +51,7 @@ WinChocolate is early and intentionally incomplete. The current milestone proves
 - Native mouse-down/up/move dispatch into `NSView` responder methods
 - Native key-down/up dispatch with key code, basic characters, and modifier flags
 - Experimental editable text-field Tab interception for key-view traversal
-- SwiftPM demo app with a click counter, editable/secure/combo text, multiline notes, tabs, image placeholder, value controls, and a larger table-selection/action exercise
+- SwiftPM demo app with a click counter, editable/secure/combo text, multiline notes, tabs, image placeholder, split view panes, value controls, and a larger table-selection/action exercise
 
 The Win32 backend currently uses a narrow manual User32/Gdi32 FFI layer because this local ARM64 Swift toolchain cannot import `WinSDK` cleanly.
 

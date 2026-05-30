@@ -7,6 +7,7 @@ private typealias HCURSOR = UnsafeMutableRawPointer
 private typealias HDC = UnsafeMutableRawPointer
 private typealias HFONT = UnsafeMutableRawPointer
 private typealias HGDIOBJ = UnsafeMutableRawPointer
+private typealias HBITMAP = UnsafeMutableRawPointer
 private typealias UINT = UInt32
 private typealias DWORD = UInt32
 private typealias WPARAM = UInt
@@ -249,6 +250,16 @@ private func winInvalidateRect(_ hwnd: HWND?, _ rectangle: UnsafePointer<RECT>?,
 @_silgen_name("LoadCursorW")
 private func winLoadCursorW(_ instance: HINSTANCE?, _ cursorName: UnsafePointer<UInt16>?) -> HCURSOR?
 
+@_silgen_name("LoadImageW")
+private func winLoadImageW(
+    _ instance: HINSTANCE?,
+    _ name: UnsafePointer<UInt16>?,
+    _ type: UINT,
+    _ width: Int32,
+    _ height: Int32,
+    _ loadFlags: UINT
+) -> UnsafeMutableRawPointer?
+
 @_silgen_name("MoveWindow")
 private func winMoveWindow(
     _ hwnd: HWND?,
@@ -328,6 +339,7 @@ private let wmNotify: UINT = 0x004e
 private let wmEraseBackground: UINT = 0x0014
 private let wmSetFont: UINT = 0x0030
 private let wmCommand: UINT = 0x0111
+private let stmSetImage: UINT = 0x0172
 private let wmHScroll: UINT = 0x0114
 private let wmVScroll: UINT = 0x0115
 private let wmCtlColorEdit: UINT = 0x0133
@@ -457,6 +469,8 @@ private let bsAutoCheckBox: DWORD = 0x00000003
 private let bsAutoRadioButton: DWORD = 0x00000009
 private let bsGroupBox: DWORD = 0x00000007
 private let ssNotify: DWORD = 0x00000100
+private let ssBitmap: DWORD = 0x0000000e
+private let ssCenterImage: DWORD = 0x00000200
 private let cbsDropdown: DWORD = 0x0002
 private let cbsDropdownList: DWORD = 0x0003
 private let tciText: UINT = 0x0001
@@ -471,6 +485,8 @@ private let sbThumbPosition: UInt = 4
 private let sbThumbTrack: UInt = 5
 private let sbTop: UInt = 6
 private let sbBottom: UInt = 7
+private let imageBitmap: UINT = 0
+private let lrLoadFromFile: UINT = 0x00000010
 
 /// Win32 implementation of WinChocolate's native backend.
 ///
@@ -505,6 +521,7 @@ public final class Win32NativeControlBackend: NativeControlBackend {
     private var backgroundColors: [UInt: DWORD] = [:]
     private var backgroundBrushes: [UInt: HBRUSH] = [:]
     private var fonts: [UInt: HFONT] = [:]
+    private var bitmaps: [UInt: HBITMAP] = [:]
     private var nextCommandIdentifier: UInt = 1_000
 
     /// Creates a Win32 backend.
@@ -800,16 +817,17 @@ public final class Win32NativeControlBackend: NativeControlBackend {
     }
 
     /// Creates a native image-view child.
-    public func createImageView(description: String, frame: NSRect, parent: NativeHandle?) -> NativeHandle {
+    public func createImageView(description: String, imagePath: String?, frame: NSRect, parent: NativeHandle?) -> NativeHandle {
         let handle = createChildWindow(
             className: "STATIC",
             text: description,
             frame: frame,
             parent: parent,
             commandIdentifier: nil,
-            style: wsChild | wsVisible | wsBorder | ssNotify
+            style: wsChild | wsVisible | wsBorder | ssNotify | (imagePath == nil ? 0 : ssBitmap | ssCenterImage)
         )
         subclassControlForTabKey(handle)
+        setImagePath(imagePath, description: description, for: handle)
         return handle
     }
 
@@ -1054,6 +1072,46 @@ public final class Win32NativeControlBackend: NativeControlBackend {
 
         fonts[handle.rawValue] = nativeFont
         _ = winSendMessageW(hwnd, wmSetFont, UInt(bitPattern: nativeFont), 1)
+        invalidate(handle)
+    }
+
+    /// Updates a native image-view bitmap source.
+    public func setImagePath(_ imagePath: String?, description: String, for handle: NativeHandle) {
+        guard let hwnd = hwnd(from: handle) else {
+            return
+        }
+
+        if let bitmap = bitmaps.removeValue(forKey: handle.rawValue) {
+            _ = winDeleteObject(bitmap)
+        }
+
+        guard let imagePath, !imagePath.isEmpty else {
+            setText(description, for: handle)
+            return
+        }
+
+        var rectangle = RECT()
+        let width: Int32
+        let height: Int32
+        if winGetClientRect(hwnd, &rectangle) != 0 {
+            width = max(1, rectangle.right - rectangle.left)
+            height = max(1, rectangle.bottom - rectangle.top)
+        } else {
+            width = 0
+            height = 0
+        }
+
+        let bitmap = withWideString(imagePath) { path in
+            winLoadImageW(nil, path, imageBitmap, width, height, lrLoadFromFile)
+        }
+
+        guard let bitmap else {
+            setText(description, for: handle)
+            return
+        }
+
+        bitmaps[handle.rawValue] = bitmap
+        _ = winSendMessageW(hwnd, stmSetImage, WPARAM(imageBitmap), LPARAM(bitPattern: bitmap))
         invalidate(handle)
     }
 
@@ -2213,6 +2271,9 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         }
         if let font = fonts.removeValue(forKey: handle.rawValue) {
             _ = winDeleteObject(font)
+        }
+        if let bitmap = bitmaps.removeValue(forKey: handle.rawValue) {
+            _ = winDeleteObject(bitmap)
         }
     }
 
