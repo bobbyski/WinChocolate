@@ -60,7 +60,10 @@ final class DemoTableDataSource: NSTableViewDataSource {
         ["NSButton", "Actions"],
         ["NSTextField", "Editing"],
         ["NSSecureTextField", "Password"],
+        ["NSSearchField", "Immediate search"],
         ["NSComboBox", "Editable list"],
+        ["NSLevelIndicator", "Value meter"],
+        ["NSColorWell", "Color swatch"],
         ["NSTabView", "Native tabs"],
         ["NSImageView", "Placeholder"],
         ["NSTableView", "First slice"],
@@ -151,9 +154,15 @@ let progressLabel = NSTextField(string: "Progress:", frame: NSMakeRect(744, 198,
 let progressIndicator = NSProgressIndicator(frame: NSMakeRect(840, 202, 232, 18))
 let stepperLabel = NSTextField(string: "Stepper:", frame: NSMakeRect(744, 232, 88, 24))
 let stepper = NSStepper(frame: NSMakeRect(840, 232, 20, 28))
-let stepperValueLabel = NSTextField(string: "5", frame: NSMakeRect(888, 232, 64, 24))
+let stepperValueLabel = NSTextField(string: "50", frame: NSMakeRect(888, 232, 64, 24))
 let comboLabel = NSTextField(string: "Combo:", frame: NSMakeRect(744, 292, 88, 24))
-let comboBox = NSComboBox(frame: NSMakeRect(840, 290, 184, 120))
+let comboBox = NSComboBox(frame: NSMakeRect(840, 290, 184, 28))
+let searchLabel = NSTextField(string: "Search:", frame: NSMakeRect(744, 328, 88, 24))
+let searchField = NSSearchField(frame: NSMakeRect(840, 326, 232, 28))
+let levelLabel = NSTextField(string: "Level:", frame: NSMakeRect(744, 364, 88, 24))
+let levelIndicator = NSLevelIndicator(frame: NSMakeRect(840, 368, 144, 18))
+let colorWellLabel = NSTextField(string: "Color:", frame: NSMakeRect(992, 364, 56, 24))
+let colorWell = NSColorWell(frame: NSMakeRect(1052, 362, 32, 28))
 let tabLabel = NSTextField(string: "Tabs:", frame: NSMakeRect(32, 520, 88, 24))
 let tabView = NSTabView(frame: NSMakeRect(152, 520, 280, 88))
 let imageLabel = NSTextField(string: "Image view:", frame: NSMakeRect(448, 520, 104, 24))
@@ -171,6 +180,8 @@ var isClickEnabled = true
 var isCounterHidden = false
 var movedRight = false
 var suppressNextTableSelectionStatus = false
+var colorIndex = 0
+let demoColors: [NSColor] = [.red, .green, .blue, .white]
 
 func modifierText(for event: NSEvent) -> String {
     var names: [String] = []
@@ -350,6 +361,15 @@ func focusName() -> String {
     if responder === comboBox {
         return "combo box"
     }
+    if responder === searchField {
+        return "search field"
+    }
+    if responder === levelIndicator {
+        return "level indicator"
+    }
+    if responder === colorWell {
+        return "color well"
+    }
     if responder === tabView {
         return "tab view"
     }
@@ -368,6 +388,9 @@ func updateFocusDisplay() {
         ? controlFocusColor
         : normalTextFieldColor
     secureTextField.backgroundColor = name == "secure text field"
+        ? controlFocusColor
+        : normalTextFieldColor
+    searchField.backgroundColor = name == "search field"
         ? controlFocusColor
         : normalTextFieldColor
 }
@@ -390,13 +413,23 @@ progressIndicator.maxValue = 100
 progressIndicator.doubleValue = slider.doubleValue
 stepperLabel.font = NSFont.boldSystemFont(ofSize: 12)
 stepper.minValue = 0
-stepper.maxValue = 10
+stepper.maxValue = 100
 stepper.increment = 1
-stepper.doubleValue = 5
+stepper.doubleValue = 50
 stepperValueLabel.textColor = .blue
 comboLabel.font = NSFont.boldSystemFont(ofSize: 12)
 comboBox.addItems(withObjectValues: ["Cocoa", "AppKit", "WinChocolate"])
 comboBox.stringValue = "WinChocolate"
+searchLabel.font = NSFont.boldSystemFont(ofSize: 12)
+searchField.placeholderString = "Find controls"
+levelLabel.font = NSFont.boldSystemFont(ofSize: 12)
+levelIndicator.minValue = 0
+levelIndicator.maxValue = 100
+levelIndicator.warningValue = 70
+levelIndicator.criticalValue = 90
+levelIndicator.doubleValue = stepper.doubleValue
+colorWellLabel.font = NSFont.boldSystemFont(ofSize: 12)
+colorWell.color = demoColors[colorIndex]
 tabLabel.font = NSFont.boldSystemFont(ofSize: 12)
 let firstTab = NSTabViewItem(identifier: "controls")
 firstTab.label = "Controls"
@@ -485,13 +518,19 @@ criticalRadio.nextKeyView = notesTextView
 notesTextView.nextKeyView = slider
 slider.nextKeyView = stepper
 stepper.nextKeyView = comboBox
-comboBox.nextKeyView = tabView
+comboBox.nextKeyView = searchField
+searchField.nextKeyView = levelIndicator
+levelIndicator.nextKeyView = colorWell
+colorWell.nextKeyView = tabView
 tabView.nextKeyView = tableView
 tableView.nextKeyView = contentView
 
 contentView.previousKeyView = tableView
 tableView.previousKeyView = tabView
-tabView.previousKeyView = comboBox
+tabView.previousKeyView = colorWell
+colorWell.previousKeyView = levelIndicator
+levelIndicator.previousKeyView = searchField
+searchField.previousKeyView = comboBox
 comboBox.previousKeyView = stepper
 stepper.previousKeyView = slider
 slider.previousKeyView = notesTextView
@@ -533,6 +572,33 @@ comboBox.onAction = { control in
 
     updateFocusDisplay()
     statusLabel.stringValue = "Combo selected: \(combo.stringValue)"
+}
+
+searchField.onAction = { control in
+    guard let searchField = control as? NSSearchField else {
+        return
+    }
+
+    updateFocusDisplay()
+    statusLabel.stringValue = searchField.stringValue.isEmpty
+        ? "Search cleared"
+        : "Search: \(searchField.stringValue)"
+}
+
+levelIndicator.onAction = { control in
+    guard let level = control as? NSLevelIndicator else {
+        return
+    }
+
+    updateFocusDisplay()
+    statusLabel.stringValue = "Level value: \(level.intValue)"
+}
+
+colorWell.onAction = { _ in
+    updateFocusDisplay()
+    colorIndex = (colorIndex + 1) % demoColors.count
+    colorWell.color = demoColors[colorIndex]
+    statusLabel.stringValue = "Color well changed"
 }
 
 tabView.onSelectionChanged = { tabs in
@@ -656,6 +722,7 @@ stepper.onAction = { control in
 
     updateFocusDisplay()
     stepperValueLabel.stringValue = "\(stepper.intValue)"
+    levelIndicator.doubleValue = stepper.doubleValue
     statusLabel.stringValue = "Stepper value: \(stepper.intValue)"
 }
 
@@ -727,6 +794,12 @@ contentView.addSubview(stepper)
 contentView.addSubview(stepperValueLabel)
 contentView.addSubview(comboLabel)
 contentView.addSubview(comboBox)
+contentView.addSubview(searchLabel)
+contentView.addSubview(searchField)
+contentView.addSubview(levelLabel)
+contentView.addSubview(levelIndicator)
+contentView.addSubview(colorWellLabel)
+contentView.addSubview(colorWell)
 contentView.addSubview(tabLabel)
 contentView.addSubview(tabView)
 contentView.addSubview(imageLabel)

@@ -240,6 +240,9 @@ private func winGetWindowTextLengthW(_ hwnd: HWND?) -> Int32
 @_silgen_name("GetWindowTextW")
 private func winGetWindowTextW(_ hwnd: HWND?, _ text: UnsafeMutablePointer<UInt16>?, _ maximumCount: Int32) -> Int32
 
+@_silgen_name("GetWindow")
+private func winGetWindow(_ hwnd: HWND?, _ command: UINT) -> HWND?
+
 @_silgen_name("InvalidateRect")
 private func winInvalidateRect(_ hwnd: HWND?, _ rectangle: UnsafePointer<RECT>?, _ erase: Int32) -> Int32
 
@@ -414,6 +417,7 @@ private let vkRControl: Int32 = 0xa3
 private let vkLMenu: Int32 = 0xa4
 private let vkRMenu: Int32 = 0xa5
 private let gwlpWndProc: Int32 = -4
+private let gwChild: UINT = 5
 private let dlgcWantTab: LRESULT = 0x0002
 private let idOK: Int32 = 1
 private let idYes: Int32 = 6
@@ -452,6 +456,7 @@ private let lvniSelected: WPARAM = 0x0002
 private let bsAutoCheckBox: DWORD = 0x00000003
 private let bsAutoRadioButton: DWORD = 0x00000009
 private let bsGroupBox: DWORD = 0x00000007
+private let ssNotify: DWORD = 0x00000100
 private let cbsDropdown: DWORD = 0x0002
 private let cbsDropdownList: DWORD = 0x0003
 private let tciText: UINT = 0x0001
@@ -486,6 +491,7 @@ public final class Win32NativeControlBackend: NativeControlBackend {
     private var keyDownActions: [UInt: (NSEvent) -> Void] = [:]
     private var keyUpActions: [UInt: (NSEvent) -> Void] = [:]
     private var originalControlProcedures: [UInt: WNDPROC] = [:]
+    private var controlHandleAliases: [UInt: NativeHandle] = [:]
     private var commandActions: [UInt: () -> Void] = [:]
     private var asyncActions: [() -> Void] = []
     private var tableColumnTitles: [UInt: [String]] = [:]
@@ -602,6 +608,7 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         keyDownActions.removeValue(forKey: handle.rawValue)
         keyUpActions.removeValue(forKey: handle.rawValue)
         originalControlProcedures.removeValue(forKey: handle.rawValue)
+        controlHandleAliases = controlHandleAliases.filter { $0.value != handle }
         tableColumnTitles.removeValue(forKey: handle.rawValue)
         tableHeaderOwners = tableHeaderOwners.filter { $0.value != handle }
         tableSuppressedColumnClicks.removeValue(forKey: handle.rawValue)
@@ -627,6 +634,7 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         keyDownActions.removeValue(forKey: handle.rawValue)
         keyUpActions.removeValue(forKey: handle.rawValue)
         originalControlProcedures.removeValue(forKey: handle.rawValue)
+        controlHandleAliases = controlHandleAliases.filter { $0.value != handle }
         tableColumnTitles.removeValue(forKey: handle.rawValue)
         tableHeaderOwners = tableHeaderOwners.filter { $0.value != handle }
         tableSuppressedColumnClicks.removeValue(forKey: handle.rawValue)
@@ -771,29 +779,38 @@ public final class Win32NativeControlBackend: NativeControlBackend {
 
     /// Creates a native editable combo-box child.
     public func createComboBox(items: [String], text: String, frame: NSRect, parent: NativeHandle?) -> NativeHandle {
+        let nativeFrame = NSRect(
+            x: frame.origin.x,
+            y: frame.origin.y,
+            width: frame.size.width,
+            height: max(frame.size.height, 128)
+        )
         let handle = createChildWindow(
             className: "COMBOBOX",
             text: text,
-            frame: frame,
+            frame: nativeFrame,
             parent: parent,
             commandIdentifier: nil,
             style: wsChild | wsVisible | wsTabStop | wsVScroll | cbsDropdown
         )
         subclassControlForTabKey(handle)
+        subclassFirstChildControlForTabKey(handle)
         setComboBoxItems(items, text: text, for: handle)
         return handle
     }
 
     /// Creates a native image-view child.
     public func createImageView(description: String, frame: NSRect, parent: NativeHandle?) -> NativeHandle {
-        createChildWindow(
+        let handle = createChildWindow(
             className: "STATIC",
             text: description,
             frame: frame,
             parent: parent,
             commandIdentifier: nil,
-            style: wsChild | wsVisible | wsBorder
+            style: wsChild | wsVisible | wsBorder | ssNotify
         )
+        subclassControlForTabKey(handle)
+        return handle
     }
 
     /// Creates a native tab-view child.
@@ -1325,12 +1342,31 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         setStepperValue(nextValue, for: handle)
     }
 
-    private func updateStepperPosition(delta: Int32, for handle: NativeHandle) {
+    private func updateStepperPosition(position: Int32, delta: Int32, for handle: NativeHandle) {
         guard let range = stepperRanges[handle.rawValue], delta != 0 else {
             return
         }
 
         let direction = delta > 0 ? 1.0 : -1.0
+        let nativePosition = Double(position)
+        let baseValue = min(max(nativePosition, range.minValue), range.maxValue)
+        setStepperValue(baseValue + (direction * range.increment), for: handle)
+    }
+
+    private func updateStepperPosition(fromClickAt point: NSPoint, hwnd: HWND, for handle: NativeHandle) {
+        guard let range = stepperRanges[handle.rawValue] else {
+            return
+        }
+
+        var rectangle = RECT()
+        let height: Double
+        if winGetClientRect(hwnd, &rectangle) != 0 {
+            height = Double(max(1, rectangle.bottom - rectangle.top))
+        } else {
+            height = 1
+        }
+
+        let direction = point.y < height / 2 ? 1.0 : -1.0
         setStepperValue(range.value + (direction * range.increment), for: handle)
     }
 
@@ -1589,14 +1625,10 @@ public final class Win32NativeControlBackend: NativeControlBackend {
                 }
 
                 let handle = nativeHandle(from: source)
-                guard stepperRanges[handle.rawValue] != nil,
-                      let action = controlActions[handle.rawValue],
-                      let notification = UnsafeRawPointer(bitPattern: lParam)?.assumingMemoryBound(to: NMUPDOWN.self).pointee else {
+                guard stepperRanges[handle.rawValue] != nil else {
                     return nil
                 }
 
-                updateStepperPosition(delta: notification.iDelta, for: handle)
-                action()
                 return 1
             }
 
@@ -1755,7 +1787,7 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         case wmKeyDown, wmSysKeyDown:
             guard UInt16(wParam & 0xffff) == UInt16(vkTab),
                   let hwnd,
-                  let action = keyDownActions[nativeHandle(from: hwnd).rawValue] else {
+                  let action = keyDownActions[actionHandle(from: hwnd).rawValue] else {
                 return nil
             }
 
@@ -1764,15 +1796,27 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         case wmKeyUp, wmSysKeyUp:
             guard UInt16(wParam & 0xffff) == UInt16(vkTab),
                   let hwnd,
-                  let action = keyUpActions[nativeHandle(from: hwnd).rawValue] else {
+                  let action = keyUpActions[actionHandle(from: hwnd).rawValue] else {
                 return nil
             }
 
             action(keyEvent(type: .keyUp, wParam: wParam))
             return 0
         case wmLButtonDown:
-            guard let hwnd,
-                  let action = mouseDownActions[nativeHandle(from: hwnd).rawValue] else {
+            guard let hwnd else {
+                return nil
+            }
+
+            let handle = actionHandle(from: hwnd)
+            if stepperRanges[handle.rawValue] != nil,
+               let action = controlActions[handle.rawValue] {
+                updateStepperPosition(fromClickAt: point(from: lParam), hwnd: hwnd, for: handle)
+                _ = winSetFocus(hwnd)
+                action()
+                return 0
+            }
+
+            guard let action = mouseDownActions[handle.rawValue] else {
                 return nil
             }
 
@@ -1781,7 +1825,7 @@ public final class Win32NativeControlBackend: NativeControlBackend {
             return nil
         case wmLButtonUp:
             guard let hwnd,
-                  let action = mouseUpActions[nativeHandle(from: hwnd).rawValue] else {
+                  let action = mouseUpActions[actionHandle(from: hwnd).rawValue] else {
                 return nil
             }
 
@@ -2005,7 +2049,8 @@ public final class Win32NativeControlBackend: NativeControlBackend {
             return
         }
 
-        originalControlProcedures[handle.rawValue] = unsafeBitCast(previous, to: WNDPROC.self)
+        originalControlProcedures[UInt(bitPattern: hwnd)] = unsafeBitCast(previous, to: WNDPROC.self)
+        controlHandleAliases[UInt(bitPattern: hwnd)] = handle
     }
 
     private func subclassControlForTabKey(_ handle: NativeHandle) {
@@ -2016,9 +2061,18 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         subclassChildControl(hwnd, handle: handle)
     }
 
+    private func subclassFirstChildControlForTabKey(_ handle: NativeHandle) {
+        guard let hwnd = hwnd(from: handle),
+              let child = winGetWindow(hwnd, gwChild) else {
+            return
+        }
+
+        subclassChildControl(child, handle: handle)
+    }
+
     private func callOriginalControlProcedure(hwnd: HWND?, message: UINT, wParam: WPARAM, lParam: LPARAM) -> LRESULT {
         guard let hwnd,
-              let originalProcedure = originalControlProcedures[nativeHandle(from: hwnd).rawValue] else {
+              let originalProcedure = originalControlProcedures[UInt(bitPattern: hwnd)] else {
             return winDefWindowProcW(hwnd, message, wParam, lParam)
         }
 
@@ -2259,6 +2313,10 @@ public final class Win32NativeControlBackend: NativeControlBackend {
 
     private func nativeHandle(from hwnd: HWND) -> NativeHandle {
         NativeHandle(rawValue: UInt(bitPattern: hwnd))
+    }
+
+    private func actionHandle(from hwnd: HWND) -> NativeHandle {
+        controlHandleAliases[UInt(bitPattern: hwnd)] ?? nativeHandle(from: hwnd)
     }
 
     private func hwnd(from handle: NativeHandle) -> HWND? {

@@ -56,6 +56,20 @@ open class NSControl: NSView {
         onAction?(self)
     }
 
+    /// Controls participate in the standard key-view loop for Tab traversal.
+    open override func keyDown(with event: NSEvent) {
+        guard event.keyCode == 0x09 else {
+            super.keyDown(with: event)
+            return
+        }
+
+        if event.modifierFlags.contains(.shift) {
+            window?.selectPreviousKeyView(nil)
+        } else {
+            window?.selectNextKeyView(nil)
+        }
+    }
+
     /// Ensures the control has a native peer and registers its action bridge.
     @discardableResult
     open override func realizeNativePeer(in backend: NativeControlBackend, parent: NativeHandle?) -> NativeHandle {

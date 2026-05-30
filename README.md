@@ -35,6 +35,7 @@ WinChocolate is early and intentionally incomplete. The current milestone proves
 - Secure text entry through `NSSecureTextField`
 - Multiline `NSTextView`
 - Editable `NSComboBox`
+- Initial `NSSearchField`, `NSLevelIndicator`, and `NSColorWell`
 - Initial `NSImageView` placeholder and `NSTabView`
 - `NSSlider`, `NSProgressIndicator`, and `NSStepper` value controls
 - First `NSScrollView`, `NSTableColumn`, `NSTableView`, table cell/view, row/column selection, action/double-action, and sort-descriptor compatibility slice

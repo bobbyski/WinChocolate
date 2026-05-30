@@ -32,16 +32,16 @@ References used for this map:
 | `NSTextField` label | `STATIC` | `TextBlock` | Static text and color/font syncing exist. | Done | Planned |
 | `NSTextField` editable | Single-line `EDIT` | `TextBox` | Editing and change notifications exist. | Done | Planned |
 | `NSSecureTextField` | `EDIT` with password style | `PasswordBox` | Basic password-style native edit peer exists; deeper secure paste/autofill/privacy behavior is future work. | Partial | Planned |
-| `NSSearchField` | `EDIT` plus search/cancel adornments | `AutoSuggestBox` / `TextBox` with buttons | No direct classic control; likely composed. | Planned | Planned |
+| `NSSearchField` | `EDIT` plus search/cancel adornments | `AutoSuggestBox` / `TextBox` with buttons | Basic editable search text and immediate action dispatch exist; adornments/recent-search UI are future work. | Partial | Planned |
 | `NSTokenField` | Owner-drawn/composed edit/list | Tokenizing text box pattern | No direct Win32 peer; needs custom/composed control. | Planned | Planned |
 | `NSTextView` | Multiline `EDIT` or RichEdit | `TextBox` multiline / `RichEditBox` | Basic multiline edit exists; rich text and selection APIs are missing. | Partial | Planned |
 | `NSImageView` | `STATIC` bitmap/icon or custom paint | `Image` | Placeholder image/name model exists; bitmap loading and drawing are future work. | Partial | Planned |
-| `NSColorWell` | Custom button/color swatch plus color dialog | `ColorPicker` | No simple classic peer. | Planned | Planned |
+| `NSColorWell` | Custom button/color swatch plus color dialog | `ColorPicker` | Basic clickable swatch and color state exist; shared color panel is future work. | Partial | Planned |
 | `NSSlider` | `SCROLLBAR` first slice, later trackbar/custom | `Slider` | Value/range/action works; current classic peer is visually rough. | Partial | Planned |
 | `NSStepper` | `SCROLLBAR` first slice, later `msctls_updown32` or custom | `NumberBox` with spin buttons | Value/range/increment/action works; current classic peer is provisional. | Partial | Planned |
 | `NSProgressIndicator` bar | `msctls_progress32` | `ProgressBar` | Determinate bar exists. | Done | Planned |
 | `NSProgressIndicator` spinning | Custom animation | `ProgressRing` | Spinning/indeterminate behavior not implemented. | Planned | Planned |
-| `NSLevelIndicator` | Custom owner-drawn meter | Rating/value indicator pattern | No direct Win32 peer. | Planned | Planned |
+| `NSLevelIndicator` | Progress bar/custom owner-drawn meter | Rating/value indicator pattern | Basic value/range state exists over a progress-style peer; discrete/rating visuals are future work. | Partial | Planned |
 | `NSDatePicker` | `SysDateTimePick32` / `SysMonthCal32` | `DatePicker`, `TimePicker`, `CalendarDatePicker` | Good native peers exist, but AppKit styles differ. | Planned | Planned |
 | `NSPathControl` | Breadcrumb/custom toolbar/edit composition | Breadcrumb bar pattern | No direct classic peer; likely composed. | Planned | Planned |
 | `NSSegmentedControl` | Toolbar buttons/custom owner draw | `Segmented` style via `RadioButtons`/custom | No direct classic peer. | Planned | Planned |
@@ -88,7 +88,7 @@ These are out of scope unless they become useful as an implementation detail beh
 | Status bar | `msctls_statusbar32` | `InfoBar` / custom footer | No standard AppKit status bar control | AppKit apps usually compose their own bottom status area. | Out of scope | Out of scope |
 | Tooltip control | `tooltips_class32` | `ToolTip` | `NSToolTip`/view tooltip APIs | Should appear as tooltip API, not as public control. | Planned | Planned |
 | Trackbar tick buddy controls | `msctls_trackbar32` buddies | `Slider` labels | `NSSlider` accessory labels | Implementation detail only. | Out of scope | Out of scope |
-| Up-down buddy control | `msctls_updown32` | `NumberBox` spin buttons | `NSStepper` | Good future peer for `NSStepper`, not an AppKit public name. | Planned | Planned |
+| Up-down buddy control | `msctls_updown32` | `NumberBox` spin buttons | `NSStepper` | Used by the classic `NSStepper` backend, not exposed as a public AppKit name. | Done | Planned |
 | Hot key control | `msctls_hotkey32` | Keyboard accelerator capture pattern | Custom key-equivalent recorder | No standard AppKit control name; may become a custom helper later. | Out of scope | Out of scope |
 | IP address control | `SysIPAddress32` | TextBox with mask/custom | No direct AppKit control | Domain-specific Windows control. | Out of scope | Out of scope |
 | Month calendar standalone | `SysMonthCal32` | `CalendarView` | `NSDatePicker` calendar style | Could implement date picker internals. | Planned | Planned |

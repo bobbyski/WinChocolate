@@ -553,6 +553,53 @@ func testTableViewTabKeyMovesThroughKeyViewLoop() {
     expect(window.firstResponder === nextButton, "Table view Shift-Tab did not move focus to previous key view.")
 }
 
+func testSearchFieldTabKeyMovesThroughKeyViewLoop() {
+    let backend = InMemoryNativeControlBackend()
+    let window = TabRecordingWindow(
+        contentRect: NSMakeRect(0, 0, 300, 160),
+        styleMask: [.titled],
+        backing: .buffered,
+        defer: false,
+        nativeBackend: backend
+    )
+    let contentView = NSView(frame: NSMakeRect(0, 0, 300, 160))
+    let previousButton = NSButton(title: "Previous", frame: NSMakeRect(0, 0, 80, 24))
+    let searchField = NSSearchField(frame: NSMakeRect(0, 32, 160, 24))
+    let nextButton = NSButton(title: "Next", frame: NSMakeRect(0, 64, 80, 24))
+
+    previousButton.nextKeyView = searchField
+    searchField.previousKeyView = previousButton
+    searchField.nextKeyView = nextButton
+    nextButton.previousKeyView = searchField
+    contentView.addSubview(previousButton)
+    contentView.addSubview(searchField)
+    contentView.addSubview(nextButton)
+    window.contentView = contentView
+    window.realizeNativePeer()
+
+    guard let searchHandle = searchField.nativeHandle else {
+        fatalError("Search field did not realize.")
+    }
+
+    expect(window.makeFirstResponder(searchField), "Window did not accept search field as first responder.")
+
+    backend.keyDownActions[searchHandle]?(
+        NSEvent(type: .keyDown, locationInWindow: NSMakePoint(0, 0), keyCode: 0x09, characters: "\t")
+    )
+
+    expect(window.nextSelectionCount == 1, "Search field Tab did not request next key view.")
+    expect(window.firstResponder === nextButton, "Search field Tab did not move focus to next key view.")
+
+    expect(window.makeFirstResponder(searchField), "Window did not reaccept search field as first responder.")
+
+    backend.keyDownActions[searchHandle]?(
+        NSEvent(type: .keyDown, locationInWindow: NSMakePoint(0, 0), keyCode: 0x09, characters: "\t", modifierFlags: [.shift])
+    )
+
+    expect(window.previousSelectionCount == 1, "Search field Shift-Tab did not request previous key view.")
+    expect(window.firstResponder === previousButton, "Search field Shift-Tab did not move focus to previous key view.")
+}
+
 func testTableViewKeyboardNavigationUpdatesSelection() {
     let tableView = NSTableView(frame: NSMakeRect(0, 0, 300, 160))
     let dataSource = RecordingTableDataSource()
@@ -745,6 +792,32 @@ func testProgressIndicatorStoresRangeValueAndSyncsNativePeer() {
     expect(!progress.isAnimating, "Progress indicator did not stop animation state.")
 }
 
+func testLevelIndicatorStoresRangeValueAndUsesProgressPeer() {
+    let backend = InMemoryNativeControlBackend()
+    let level = NSLevelIndicator(frame: NSMakeRect(0, 0, 160, 18))
+    level.minValue = 0
+    level.maxValue = 10
+    level.warningValue = 7
+    level.criticalValue = 9
+    level.doubleValue = 6
+
+    expect(level.doubleValue == 6, "Level indicator doubleValue was not stored.")
+    expect(level.intValue == 6, "Level indicator intValue did not reflect doubleValue.")
+    expect(level.warningValue == 7, "Level indicator warningValue was not stored.")
+    expect(level.criticalValue == 9, "Level indicator criticalValue was not stored.")
+
+    let handle = level.realizeNativePeer(in: backend, parent: nil)
+
+    expect(backend.records[handle]?.kind == "progressIndicator", "Level indicator did not request progress-style native peer.")
+    expect(backend.records[handle]?.progressMinValue == 0, "Level indicator minValue was not synced.")
+    expect(backend.records[handle]?.progressMaxValue == 10, "Level indicator maxValue was not synced.")
+    expect(backend.records[handle]?.progressValue == 6, "Level indicator value was not synced.")
+
+    level.doubleValue = 20
+    expect(level.doubleValue == 10, "Level indicator did not clamp to maxValue.")
+    expect(backend.records[handle]?.progressValue == 10, "Level indicator clamped value was not synced.")
+}
+
 func testStepperStoresRangeIncrementAndSyncsNativePeer() {
     let backend = InMemoryNativeControlBackend()
     let stepper = NSStepper(frame: NSMakeRect(0, 0, 24, 48))
@@ -800,6 +873,53 @@ func testStepperNativeActionUpdatesValue() {
     backend.actions[handle]?()
 
     expect(actionCount == 1, "Stepper native action was not dispatched.")
+}
+
+func testSearchFieldTracksRecentSearchesAndNativeChanges() {
+    let backend = InMemoryNativeControlBackend()
+    let searchField = NSSearchField(frame: NSMakeRect(0, 0, 180, 28))
+    var actionCount = 0
+    searchField.onAction = { control in
+        actionCount += 1
+        expect(control is NSSearchField, "Search field action sender was not search field.")
+    }
+
+    let handle = searchField.realizeNativePeer(in: backend, parent: nil)
+    expect(backend.records[handle]?.kind == "editableTextField", "Search field did not use editable native peer.")
+
+    backend.textChangeActions[handle]?("cocoa")
+
+    expect(searchField.stringValue == "cocoa", "Search field native edit did not update stringValue.")
+    expect(searchField.recentSearches == ["cocoa"], "Search field did not remember immediate search.")
+    expect(actionCount == 1, "Search field did not send immediate search action.")
+
+    searchField.cancelSearch(nil)
+    expect(searchField.stringValue.isEmpty, "Search field cancel did not clear text.")
+    expect(actionCount == 2, "Search field cancel did not send action.")
+}
+
+func testColorWellStoresColorAndSendsAction() {
+    let backend = InMemoryNativeControlBackend()
+    let colorWell = NSColorWell(frame: NSMakeRect(0, 0, 40, 24))
+    colorWell.color = .red
+    var actionCount = 0
+    colorWell.onAction = { control in
+        actionCount += 1
+        expect((control as? NSColorWell)?.color == .blue, "Color well action did not expose color.")
+    }
+
+    let handle = colorWell.realizeNativePeer(in: backend, parent: nil)
+
+    expect(backend.records[handle]?.kind == "imageView", "Color well did not request a bordered swatch peer.")
+    expect(backend.records[handle]?.backgroundColor == .red, "Color well color was not synced to background.")
+
+    colorWell.color = .blue
+    expect(backend.records[handle]?.backgroundColor == .blue, "Color well updated color was not synced.")
+
+    backend.mouseDownActions[handle]?(NSEvent(type: .leftMouseDown, locationInWindow: NSMakePoint(2, 2)))
+
+    expect(colorWell.isActive, "Color well did not activate on click.")
+    expect(actionCount == 1, "Color well did not send action on click.")
 }
 
 func testTableViewNativePeerReceivesColumnsRowsAndSelection() {
@@ -1915,6 +2035,7 @@ testTableViewSelectionOptionsAndHelpers()
 testTableViewStoresDisplayOptionsAndSetObjectValue()
 testTableViewDelegateViewHeightAndSortHooks()
 testTableViewTabKeyMovesThroughKeyViewLoop()
+testSearchFieldTabKeyMovesThroughKeyViewLoop()
 testTableViewKeyboardNavigationUpdatesSelection()
 testTableViewKeyboardExtendedSelection()
 testTableViewColumnSelectionAndDoubleActionSurface()
@@ -1922,8 +2043,11 @@ testTableViewSortDescriptorPrototypeToggle()
 testSliderStoresRangeValueAndSyncsNativePeer()
 testSliderNativeActionUpdatesValue()
 testProgressIndicatorStoresRangeValueAndSyncsNativePeer()
+testLevelIndicatorStoresRangeValueAndUsesProgressPeer()
 testStepperStoresRangeIncrementAndSyncsNativePeer()
 testStepperNativeActionUpdatesValue()
+testSearchFieldTracksRecentSearchesAndNativeChanges()
+testColorWellStoresColorAndSendsAction()
 testTableViewNativePeerReceivesColumnsRowsAndSelection()
 testTableViewNativeSelectionNotifiesDelegateAndAction()
 testTableViewActionCanReadSelectedRowValue()
