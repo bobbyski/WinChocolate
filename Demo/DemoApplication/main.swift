@@ -13,7 +13,7 @@ menuBar.addItem(appMenuItem)
 app.mainMenu = menuBar
 
 let window = NSWindow(
-    contentRect: NSMakeRect(100, 100, 1120, 700),
+    contentRect: NSMakeRect(100, 100, 1120, 760),
     styleMask: [.titled, .closable, .miniaturizable, .resizable],
     backing: .buffered,
     defer: false
@@ -64,6 +64,7 @@ final class DemoTableDataSource: NSTableViewDataSource {
         ["NSComboBox", "Editable list"],
         ["NSLevelIndicator", "Value meter"],
         ["NSColorWell", "Color swatch"],
+        ["NSSegmentedControl", "Composed segments"],
         ["NSTabView", "Native tabs"],
         ["NSImageView", "Bitmap artwork"],
         ["NSTableView", "First slice"],
@@ -125,7 +126,7 @@ final class DemoTableDataSource: NSTableViewDataSource {
     }
 }
 
-let contentView = DemoContentView(frame: NSMakeRect(0, 0, 1120, 700))
+let contentView = DemoContentView(frame: NSMakeRect(0, 0, 1120, 760))
 let counterLabel = NSTextField(string: "Clicks: 0", frame: NSMakeRect(32, 36, 300, 24))
 let statusLabel = NSTextField(string: "Ready", frame: NSMakeRect(32, 74, 640, 24))
 let focusLabel = NSTextField(string: "Focus: none", frame: NSMakeRect(744, 74, 300, 24))
@@ -163,9 +164,11 @@ let levelLabel = NSTextField(string: "Level:", frame: NSMakeRect(744, 364, 88, 2
 let levelIndicator = NSLevelIndicator(frame: NSMakeRect(840, 368, 144, 18))
 let colorWellLabel = NSTextField(string: "Color:", frame: NSMakeRect(992, 364, 56, 24))
 let colorWell = NSColorWell(frame: NSMakeRect(1052, 362, 32, 28))
-let scrollerLabel = NSTextField(string: "Scroller:", frame: NSMakeRect(744, 640, 88, 24))
-let scroller = NSScroller(frame: NSMakeRect(840, 646, 184, 18))
-let scrollerValueLabel = NSTextField(string: "0", frame: NSMakeRect(1032, 640, 48, 24))
+let segmentedLabel = NSTextField(string: "Segments:", frame: NSMakeRect(32, 650, 104, 24))
+let segmentedControl = NSSegmentedControl(labels: ["One", "Two", "Three"], frame: NSMakeRect(152, 648, 240, 28))
+let scrollerLabel = NSTextField(string: "Scroller:", frame: NSMakeRect(448, 650, 88, 24))
+let scroller = NSScroller(frame: NSMakeRect(560, 656, 240, 18))
+let scrollerValueLabel = NSTextField(string: "0", frame: NSMakeRect(816, 650, 48, 24))
 let tabLabel = NSTextField(string: "Tabs:", frame: NSMakeRect(32, 520, 88, 24))
 let tabView = NSTabView(frame: NSMakeRect(152, 520, 280, 88))
 let imageLabel = NSTextField(string: "Image view:", frame: NSMakeRect(448, 520, 104, 24))
@@ -386,6 +389,9 @@ func focusName() -> String {
     if responder === colorWell {
         return "color well"
     }
+    if responder === segmentedControl {
+        return "segments"
+    }
     if responder === tabView {
         return "tab view"
     }
@@ -446,6 +452,8 @@ levelIndicator.criticalValue = 90
 levelIndicator.doubleValue = stepper.doubleValue
 colorWellLabel.font = NSFont.boldSystemFont(ofSize: 12)
 colorWell.color = demoColors[colorIndex]
+segmentedLabel.font = NSFont.boldSystemFont(ofSize: 12)
+segmentedControl.selectedSegment = 0
 scrollerLabel.font = NSFont.boldSystemFont(ofSize: 12)
 scroller.doubleValue = 0
 scroller.knobProportion = 0.25
@@ -548,13 +556,15 @@ stepper.nextKeyView = comboBox
 comboBox.nextKeyView = searchField
 searchField.nextKeyView = levelIndicator
 levelIndicator.nextKeyView = colorWell
-colorWell.nextKeyView = tabView
+colorWell.nextKeyView = segmentedControl
+segmentedControl.nextKeyView = tabView
 tabView.nextKeyView = tableView
 tableView.nextKeyView = contentView
 
 contentView.previousKeyView = tableView
 tableView.previousKeyView = tabView
-tabView.previousKeyView = colorWell
+tabView.previousKeyView = segmentedControl
+segmentedControl.previousKeyView = colorWell
 colorWell.previousKeyView = levelIndicator
 levelIndicator.previousKeyView = searchField
 searchField.previousKeyView = comboBox
@@ -626,6 +636,17 @@ colorWell.onAction = { _ in
     colorIndex = (colorIndex + 1) % demoColors.count
     colorWell.color = demoColors[colorIndex]
     statusLabel.stringValue = "Color well changed"
+}
+
+segmentedControl.onAction = { control in
+    guard let segmentedControl = control as? NSSegmentedControl else {
+        return
+    }
+
+    updateFocusDisplay()
+    let index = segmentedControl.selectedSegment
+    let label = segmentedControl.label(forSegment: index) ?? "none"
+    statusLabel.stringValue = "Segment selected: \(label)"
 }
 
 scroller.onAction = { control in
@@ -848,6 +869,8 @@ contentView.addSubview(levelLabel)
 contentView.addSubview(levelIndicator)
 contentView.addSubview(colorWellLabel)
 contentView.addSubview(colorWell)
+contentView.addSubview(segmentedLabel)
+contentView.addSubview(segmentedControl)
 contentView.addSubview(scrollerLabel)
 contentView.addSubview(scroller)
 contentView.addSubview(scrollerValueLabel)

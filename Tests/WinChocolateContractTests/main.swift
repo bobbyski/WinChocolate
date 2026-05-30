@@ -865,6 +865,62 @@ func testScrollerNativeActionUpdatesValue() {
     expect(actionCount == 1, "Scroller native action was not dispatched.")
 }
 
+func testSegmentedControlStoresSegmentsAndComposesButtons() {
+    let backend = InMemoryNativeControlBackend()
+    let segmented = NSSegmentedControl(labels: ["One", "Two"], frame: NSMakeRect(0, 0, 160, 28))
+    segmented.setLabel("First", forSegment: 0)
+    segmented.setWidth(90, forSegment: 0)
+    segmented.setEnabled(false, forSegment: 1)
+    segmented.selectedSegment = 0
+
+    expect(segmented.segmentCount == 2, "Segmented control segment count was not stored.")
+    expect(segmented.label(forSegment: 0) == "First", "Segmented control label was not stored.")
+    expect(segmented.width(forSegment: 0) == 90, "Segmented control width was not stored.")
+    expect(!segmented.isEnabled(forSegment: 1), "Segmented control segment enabled state was not stored.")
+    expect(segmented.isSelected(forSegment: 0), "Segmented control selected segment was not stored.")
+
+    let handle = segmented.realizeNativePeer(in: backend, parent: nil)
+
+    expect(backend.records[handle]?.kind == "view", "Segmented control did not request a native container view.")
+    expect(segmented.subviews.count == 2, "Segmented control did not compose segment buttons.")
+    guard segmented.subviews.count == 2,
+          let first = segmented.subviews[0] as? NSButton,
+          let second = segmented.subviews[1] as? NSButton,
+          let firstHandle = first.nativeHandle,
+          let secondHandle = second.nativeHandle else {
+        expect(false, "Segmented control segment buttons were not realized.")
+        return
+    }
+
+    expect(backend.records[firstHandle]?.kind == "button", "First segment was not backed by a button.")
+    expect(backend.records[firstHandle]?.text == "First", "First segment label was not synced.")
+    expect(backend.records[firstHandle]?.frame.size.width == 90, "First segment width was not synced.")
+    expect(backend.records[secondHandle]?.isEnabled == false, "Second segment enabled state was not synced.")
+}
+
+func testSegmentedControlActionSelectsSegment() {
+    let segmented = NSSegmentedControl(labels: ["One", "Two"], frame: NSMakeRect(0, 0, 160, 28))
+    var actionCount = 0
+    segmented.onAction = { control in
+        guard let segmented = control as? NSSegmentedControl else {
+            expect(false, "Segmented action sender was not segmented control.")
+            return
+        }
+
+        actionCount += 1
+        expect(segmented.selectedSegment == 1, "Segmented control did not select clicked segment.")
+    }
+
+    guard segmented.subviews.count == 2,
+          let second = segmented.subviews[1] as? NSButton else {
+        expect(false, "Segmented control did not create segment buttons before realization.")
+        return
+    }
+
+    second.performClick(nil)
+    expect(actionCount == 1, "Segmented control action was not dispatched.")
+}
+
 func testStepperStoresRangeIncrementAndSyncsNativePeer() {
     let backend = InMemoryNativeControlBackend()
     let stepper = NSStepper(frame: NSMakeRect(0, 0, 24, 48))
@@ -2126,6 +2182,8 @@ testProgressIndicatorStoresRangeValueAndSyncsNativePeer()
 testLevelIndicatorStoresRangeValueAndUsesProgressPeer()
 testScrollerStoresValueAndSyncsNativePeer()
 testScrollerNativeActionUpdatesValue()
+testSegmentedControlStoresSegmentsAndComposesButtons()
+testSegmentedControlActionSelectsSegment()
 testStepperStoresRangeIncrementAndSyncsNativePeer()
 testStepperNativeActionUpdatesValue()
 testSearchFieldTracksRecentSearchesAndNativeChanges()

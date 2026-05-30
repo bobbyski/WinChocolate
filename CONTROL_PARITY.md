@@ -44,7 +44,7 @@ References used for this map:
 | `NSLevelIndicator` | Progress bar/custom owner-drawn meter | Rating/value indicator pattern | Basic value/range state exists over a progress-style peer; discrete/rating visuals are future work. | Partial | Planned |
 | `NSDatePicker` | `SysDateTimePick32` / `SysMonthCal32` | `DatePicker`, `TimePicker`, `CalendarDatePicker` | Good native peers exist, but AppKit styles differ. | Planned | Planned |
 | `NSPathControl` | Breadcrumb/custom toolbar/edit composition | Breadcrumb bar pattern | No direct classic peer; likely composed. | Planned | Planned |
-| `NSSegmentedControl` | Toolbar buttons/custom owner draw | `Segmented` style via `RadioButtons`/custom | No direct classic peer. | Planned | Planned |
+| `NSSegmentedControl` | Composed `BUTTON` peers/custom owner draw | `Segmented` style via `RadioButtons`/custom | First composed segment state/action slice exists; unified drawing and keyboard behavior are future work. | Partial | Planned |
 | `NSMatrix` | Group of child controls | ItemsControl/custom panel | Deprecated AppKit API; low priority but useful for old ports. | Planned | Planned |
 | `NSForm` | Group of labels/edit controls | Form layout pattern | Deprecated AppKit API; likely composed from text fields. | Planned | Planned |
 | `NSBox` | `BUTTON` group-box style | `GroupBox` | Basic title/frame peer exists. | Done | Planned |
