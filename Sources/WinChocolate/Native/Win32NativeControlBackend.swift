@@ -1326,11 +1326,12 @@ public final class Win32NativeControlBackend: NativeControlBackend {
     }
 
     private func updateStepperPosition(delta: Int32, for handle: NativeHandle) {
-        guard let range = stepperRanges[handle.rawValue] else {
+        guard let range = stepperRanges[handle.rawValue], delta != 0 else {
             return
         }
 
-        setStepperValue(range.value + (Double(delta) * range.increment), for: handle)
+        let direction = delta > 0 ? 1.0 : -1.0
+        setStepperValue(range.value + (direction * range.increment), for: handle)
     }
 
     /// Replaces native table rows.
@@ -1488,11 +1489,11 @@ public final class Win32NativeControlBackend: NativeControlBackend {
             }
 
             let handle = nativeHandle(from: scrollHwnd)
-            if stepperRanges[handle.rawValue] != nil {
-                updateStepperPosition(from: wParam, for: handle)
-            } else {
-                updateSliderPosition(from: wParam, for: handle)
+            guard stepperRanges[handle.rawValue] == nil else {
+                return 0
             }
+
+            updateSliderPosition(from: wParam, for: handle)
             guard let action = controlActions[handle.rawValue] else {
                 return nil
             }

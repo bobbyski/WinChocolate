@@ -90,7 +90,7 @@ open class NSComboBox: NSTextField {
             }
 
             _ = self.window?.makeFirstResponder(self)
-            self.stringValue = text
+            self.updateStringValueFromNative(text)
             self.onComboBoxTextChanged?(self)
         }
         backend.registerAction(for: handle) { [weak self, weak backend] in
@@ -99,7 +99,7 @@ open class NSComboBox: NSTextField {
             }
 
             _ = self.window?.makeFirstResponder(self)
-            self.stringValue = backend.comboBoxText(for: nativeHandle)
+            self.updateStringValueFromNative(backend.comboBoxText(for: nativeHandle))
             self.sendAction()
         }
         return handle

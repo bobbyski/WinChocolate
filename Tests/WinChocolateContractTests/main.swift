@@ -1500,6 +1500,7 @@ func testComboBoxNativeTextChangeAndActionUpdateState() {
 
     let handle = comboBox.realizeNativePeer(in: backend, parent: nil)
     backend.textChangeActions[handle]?("Typed")
+    expect(backend.records[handle]?.text == "", "Combo box native text change should not echo text back to the native peer.")
     backend.setText("Selected", for: handle)
     backend.actions[handle]?()
 

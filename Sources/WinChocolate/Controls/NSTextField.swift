@@ -119,7 +119,7 @@ open class NSTextField: NSControl {
         return handle
     }
 
-    private func updateStringValueFromNative(_ text: String) {
+    func updateStringValueFromNative(_ text: String) {
         isUpdatingFromNative = true
         stringValue = text
         isUpdatingFromNative = false
