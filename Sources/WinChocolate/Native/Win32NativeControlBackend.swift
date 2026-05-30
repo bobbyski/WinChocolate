@@ -78,6 +78,12 @@ private struct NMHEADERW {
     var pItem: UnsafeMutableRawPointer?
 }
 
+private struct NMUPDOWN {
+    var hdr: NMHDR = NMHDR()
+    var iPos: Int32 = 0
+    var iDelta: Int32 = 0
+}
+
 private struct HDHITTESTINFO {
     var pt: POINT = POINT()
     var flags: UINT = 0
@@ -122,6 +128,16 @@ private struct LVHITTESTINFO {
     var iItem: Int32 = 0
     var iSubItem: Int32 = 0
     var iGroup: Int32 = 0
+}
+
+private struct TCITEMW {
+    var mask: UINT = 0
+    var dwState: DWORD = 0
+    var dwStateMask: DWORD = 0
+    var pszText: UnsafeMutablePointer<UInt16>?
+    var cchTextMax: Int32 = 0
+    var iImage: Int32 = 0
+    var lParam: LPARAM = 0
 }
 
 @_silgen_name("InitCommonControlsEx")
@@ -329,11 +345,14 @@ private let cbAddString: UINT = 0x0143
 private let cbGetCurSel: UINT = 0x0147
 private let cbResetContent: UINT = 0x014b
 private let cbSetCurSel: UINT = 0x014e
+private let cbShowDropDown: UINT = 0x014f
 private let sbmSetPos: UINT = 0x00e0
 private let sbmGetPos: UINT = 0x00e1
 private let sbmSetRange: UINT = 0x00e2
 private let pbmSetRange32: UINT = 0x0406
 private let pbmSetPos: UINT = 0x0402
+private let udmSetRange32: UINT = 0x046f
+private let udmSetPos32: UINT = 0x0471
 private let lbAddString: UINT = 0x0180
 private let lbSetCurSel: UINT = 0x0186
 private let lbGetCurSel: UINT = 0x0188
@@ -350,6 +369,11 @@ private let lvmInsertItemW: UINT = lvmFirst + 77
 private let lvmInsertColumnW: UINT = lvmFirst + 97
 private let lvmSetItemTextW: UINT = lvmFirst + 116
 private let lvmSetExtendedListViewStyle: UINT = lvmFirst + 54
+private let tcmFirst: UINT = 0x1300
+private let tcmGetCurSel: UINT = tcmFirst + 11
+private let tcmSetCurSel: UINT = tcmFirst + 12
+private let tcmDeleteAllItems: UINT = tcmFirst + 9
+private let tcmInsertItemW: UINT = tcmFirst + 62
 private let enChange: UInt = 0x0300
 private let lbnSelChange: UInt = 1
 private let nmClick: UINT = 0xfffffffe
@@ -357,9 +381,14 @@ private let lvnItemChanged: UINT = 0xffffff9b
 private let lvnColumnClick: UINT = 0xffffff94
 private let hdnItemClickA: UINT = 0xfffffed2
 private let hdnItemClickW: UINT = 0xfffffebe
+private let udnDeltapos: UINT = 0xfffffd2e
+private let tcnSelChange: UINT = 0xffffffc9
 private let bnClicked: UInt = 0
 private let cbnSelChange: UInt = 1
+private let cbnEditChange: UInt = 5
 private let iccListViewClasses: DWORD = 0x00000001
+private let iccTabClasses: DWORD = 0x00000008
+private let iccUpDownClass: DWORD = 0x00000010
 private let iccProgressClass: DWORD = 0x00000020
 private let bstUnchecked: WPARAM = 0
 private let bstChecked: WPARAM = 1
@@ -402,6 +431,7 @@ private let wsChild: DWORD = 0x40000000
 private let wsClipChildren: DWORD = 0x02000000
 private let wsBorder: DWORD = 0x00800000
 private let esMultiline: DWORD = 0x0004
+private let esPassword: DWORD = 0x0020
 private let esAutoVScroll: DWORD = 0x0040
 private let esAutoHScroll: DWORD = 0x0080
 private let esWantReturn: DWORD = 0x1000
@@ -422,8 +452,12 @@ private let lvniSelected: WPARAM = 0x0002
 private let bsAutoCheckBox: DWORD = 0x00000003
 private let bsAutoRadioButton: DWORD = 0x00000009
 private let bsGroupBox: DWORD = 0x00000007
+private let cbsDropdown: DWORD = 0x0002
 private let cbsDropdownList: DWORD = 0x0003
+private let tciText: UINT = 0x0001
 private let sbsHorz: DWORD = 0x0000
+private let sbsVert: DWORD = 0x0001
+private let udsArrowKeys: DWORD = 0x0020
 private let sbLineLeft: UInt = 0
 private let sbLineRight: UInt = 1
 private let sbPageLeft: UInt = 2
@@ -460,6 +494,7 @@ public final class Win32NativeControlBackend: NativeControlBackend {
     private var tableClickedRows: [UInt: Int] = [:]
     private var tableClickedColumns: [UInt: Int] = [:]
     private var sliderRanges: [UInt: (minValue: Double, maxValue: Double)] = [:]
+    private var stepperRanges: [UInt: (minValue: Double, maxValue: Double, increment: Double, value: Double)] = [:]
     private var textColors: [UInt: DWORD] = [:]
     private var backgroundColors: [UInt: DWORD] = [:]
     private var backgroundBrushes: [UInt: HBRUSH] = [:]
@@ -573,6 +608,7 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         tableClickedRows.removeValue(forKey: handle.rawValue)
         tableClickedColumns.removeValue(forKey: handle.rawValue)
         sliderRanges.removeValue(forKey: handle.rawValue)
+        stepperRanges.removeValue(forKey: handle.rawValue)
         clearAppearance(for: handle)
     }
 
@@ -597,6 +633,7 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         tableClickedRows.removeValue(forKey: handle.rawValue)
         tableClickedColumns.removeValue(forKey: handle.rawValue)
         sliderRanges.removeValue(forKey: handle.rawValue)
+        stepperRanges.removeValue(forKey: handle.rawValue)
         clearAppearance(for: handle)
     }
 
@@ -685,6 +722,20 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         return handle
     }
 
+    /// Creates a native secure text field child.
+    public func createSecureTextField(text: String, frame: NSRect, parent: NativeHandle?) -> NativeHandle {
+        let handle = createChildWindow(
+            className: "EDIT",
+            text: text,
+            frame: frame,
+            parent: parent,
+            commandIdentifier: nil,
+            style: wsChild | wsVisible | wsTabStop | wsBorder | esAutoHScroll | esPassword
+        )
+        subclassControlForTabKey(handle)
+        return handle
+    }
+
     /// Creates a native multiline text view child.
     public func createTextView(text: String, frame: NSRect, parent: NativeHandle?, isEditable: Bool) -> NativeHandle {
         let handle = createChildWindow(
@@ -718,6 +769,49 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         return handle
     }
 
+    /// Creates a native editable combo-box child.
+    public func createComboBox(items: [String], text: String, frame: NSRect, parent: NativeHandle?) -> NativeHandle {
+        let handle = createChildWindow(
+            className: "COMBOBOX",
+            text: text,
+            frame: frame,
+            parent: parent,
+            commandIdentifier: nil,
+            style: wsChild | wsVisible | wsTabStop | wsVScroll | cbsDropdown
+        )
+        subclassControlForTabKey(handle)
+        setComboBoxItems(items, text: text, for: handle)
+        return handle
+    }
+
+    /// Creates a native image-view child.
+    public func createImageView(description: String, frame: NSRect, parent: NativeHandle?) -> NativeHandle {
+        createChildWindow(
+            className: "STATIC",
+            text: description,
+            frame: frame,
+            parent: parent,
+            commandIdentifier: nil,
+            style: wsChild | wsVisible | wsBorder
+        )
+    }
+
+    /// Creates a native tab-view child.
+    public func createTabView(items: [String], selectedIndex: Int, frame: NSRect, parent: NativeHandle?) -> NativeHandle {
+        initializeTabControls()
+        let handle = createChildWindow(
+            className: "SysTabControl32",
+            text: "",
+            frame: frame,
+            parent: parent,
+            commandIdentifier: nil,
+            style: wsChild | wsVisible | wsTabStop
+        )
+        subclassControlForTabKey(handle)
+        setTabViewItems(items, selectedIndex: selectedIndex, for: handle)
+        return handle
+    }
+
     /// Creates a native slider child.
     public func createSlider(value: Double, minValue: Double, maxValue: Double, frame: NSRect, parent: NativeHandle?) -> NativeHandle {
         let handle = createChildWindow(
@@ -747,6 +841,23 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         )
         setProgressIndicatorRange(minValue: minValue, maxValue: maxValue, for: handle)
         setProgressIndicatorValue(value, for: handle)
+        return handle
+    }
+
+    /// Creates a native stepper child.
+    public func createStepper(value: Double, minValue: Double, maxValue: Double, increment: Double, frame: NSRect, parent: NativeHandle?) -> NativeHandle {
+        initializeUpDownControls()
+        let handle = createChildWindow(
+            className: "msctls_updown32",
+            text: "",
+            frame: frame,
+            parent: parent,
+            commandIdentifier: nil,
+            style: wsChild | wsVisible | wsTabStop | udsArrowKeys
+        )
+        subclassControlForTabKey(handle)
+        setStepperRange(minValue: minValue, maxValue: maxValue, increment: increment, for: handle)
+        setStepperValue(value, for: handle)
         return handle
     }
 
@@ -999,6 +1110,68 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         return Int(winSendMessageW(hwnd, cbGetCurSel, 0, 0))
     }
 
+    /// Replaces native combo-box items.
+    public func setComboBoxItems(_ items: [String], text: String, for handle: NativeHandle) {
+        guard let hwnd = hwnd(from: handle) else {
+            return
+        }
+
+        _ = winSendMessageW(hwnd, cbResetContent, 0, 0)
+        for item in items {
+            withWideString(item) { title in
+                _ = winSendMessageW(hwnd, cbAddString, 0, Int(bitPattern: title))
+            }
+        }
+        setText(text, for: handle)
+    }
+
+    /// Reads native combo-box text.
+    public func comboBoxText(for handle: NativeHandle) -> String {
+        guard let hwnd = hwnd(from: handle) else {
+            return ""
+        }
+
+        return text(from: hwnd)
+    }
+
+    /// Replaces native tab-view items.
+    public func setTabViewItems(_ items: [String], selectedIndex: Int, for handle: NativeHandle) {
+        guard let hwnd = hwnd(from: handle) else {
+            return
+        }
+
+        _ = winSendMessageW(hwnd, tcmDeleteAllItems, 0, 0)
+        for (index, title) in items.enumerated() {
+            withWideString(title) { wideTitle in
+                var item = TCITEMW()
+                item.mask = tciText
+                item.pszText = UnsafeMutablePointer(mutating: wideTitle)
+                withUnsafePointer(to: item) { itemPointer in
+                    _ = winSendMessageW(hwnd, tcmInsertItemW, WPARAM(index), Int(bitPattern: itemPointer))
+                }
+            }
+        }
+        setTabViewSelectedIndex(selectedIndex, for: handle)
+    }
+
+    /// Updates native tab-view selection.
+    public func setTabViewSelectedIndex(_ selectedIndex: Int, for handle: NativeHandle) {
+        guard let hwnd = hwnd(from: handle) else {
+            return
+        }
+
+        _ = winSendMessageW(hwnd, tcmSetCurSel, WPARAM(selectedIndex), 0)
+    }
+
+    /// Reads native tab-view selection.
+    public func tabViewSelectedIndex(for handle: NativeHandle) -> Int {
+        guard let hwnd = hwnd(from: handle) else {
+            return -1
+        }
+
+        return Int(winSendMessageW(hwnd, tcmGetCurSel, 0, 0))
+    }
+
     /// Updates native slider range.
     public func setSliderRange(minValue: Double, maxValue: Double, for handle: NativeHandle) {
         guard let hwnd = hwnd(from: handle) else {
@@ -1051,6 +1224,41 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         _ = winSendMessageW(hwnd, pbmSetPos, WPARAM(Int32(value.rounded())), 0)
     }
 
+    /// Updates native stepper range.
+    public func setStepperRange(minValue: Double, maxValue: Double, increment: Double, for handle: NativeHandle) {
+        guard let hwnd = hwnd(from: handle) else {
+            return
+        }
+
+        let lower = Int32(min(minValue, maxValue).rounded())
+        let upper = Int32(max(minValue, maxValue).rounded())
+        let current = stepperRanges[handle.rawValue]?.value ?? Double(lower)
+        stepperRanges[handle.rawValue] = (
+            Double(lower),
+            Double(upper),
+            max(1, increment.rounded()),
+            min(max(current, Double(lower)), Double(upper))
+        )
+        _ = winSendMessageW(hwnd, udmSetRange32, WPARAM(lower), LPARAM(upper))
+    }
+
+    /// Updates native stepper value.
+    public func setStepperValue(_ value: Double, for handle: NativeHandle) {
+        guard let hwnd = hwnd(from: handle) else {
+            return
+        }
+
+        var range = stepperRanges[handle.rawValue] ?? (0, 100, 1, 0)
+        range.value = min(max(value, range.minValue), range.maxValue)
+        stepperRanges[handle.rawValue] = range
+        _ = winSendMessageW(hwnd, udmSetPos32, 0, LPARAM(Int32(range.value.rounded())))
+    }
+
+    /// Reads native stepper value.
+    public func stepperValue(for handle: NativeHandle) -> Double {
+        stepperRanges[handle.rawValue]?.value ?? 0
+    }
+
     private func updateSliderPosition(from scrollParameter: WPARAM, for handle: NativeHandle) {
         guard let hwnd = hwnd(from: handle) else {
             return
@@ -1083,6 +1291,46 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         }
 
         setSliderValue(nextValue, for: handle)
+    }
+
+    private func updateStepperPosition(from scrollParameter: WPARAM, for handle: NativeHandle) {
+        guard stepperRanges[handle.rawValue] != nil else {
+            return
+        }
+
+        let range = stepperRanges[handle.rawValue] ?? (0, 100, 1, 0)
+        let code = scrollParameter & 0xffff
+        let thumb = Double((scrollParameter >> 16) & 0xffff)
+        let nextValue: Double
+
+        switch code {
+        case sbLineLeft:
+            nextValue = range.value + range.increment
+        case sbLineRight:
+            nextValue = range.value - range.increment
+        case sbPageLeft:
+            nextValue = range.value + range.increment
+        case sbPageRight:
+            nextValue = range.value - range.increment
+        case sbThumbPosition, sbThumbTrack:
+            nextValue = thumb
+        case sbTop:
+            nextValue = range.maxValue
+        case sbBottom:
+            nextValue = range.minValue
+        default:
+            nextValue = range.value
+        }
+
+        setStepperValue(nextValue, for: handle)
+    }
+
+    private func updateStepperPosition(delta: Int32, for handle: NativeHandle) {
+        guard let range = stepperRanges[handle.rawValue] else {
+            return
+        }
+
+        setStepperValue(range.value + (Double(delta) * range.increment), for: handle)
     }
 
     /// Replaces native table rows.
@@ -1235,12 +1483,16 @@ public final class Win32NativeControlBackend: NativeControlBackend {
             runAsyncActions()
             return 0
         case wmHScroll, wmVScroll:
-            guard lParam != 0, let sliderHwnd = HWND(bitPattern: lParam) else {
+            guard lParam != 0, let scrollHwnd = HWND(bitPattern: lParam) else {
                 return nil
             }
 
-            let handle = nativeHandle(from: sliderHwnd)
-            updateSliderPosition(from: wParam, for: handle)
+            let handle = nativeHandle(from: scrollHwnd)
+            if stepperRanges[handle.rawValue] != nil {
+                updateStepperPosition(from: wParam, for: handle)
+            } else {
+                updateSliderPosition(from: wParam, for: handle)
+            }
             guard let action = controlActions[handle.rawValue] else {
                 return nil
             }
@@ -1330,6 +1582,37 @@ public final class Win32NativeControlBackend: NativeControlBackend {
                 return 0
             }
 
+            if header.code == udnDeltapos {
+                guard let source = header.hwndFrom else {
+                    return nil
+                }
+
+                let handle = nativeHandle(from: source)
+                guard stepperRanges[handle.rawValue] != nil,
+                      let action = controlActions[handle.rawValue],
+                      let notification = UnsafeRawPointer(bitPattern: lParam)?.assumingMemoryBound(to: NMUPDOWN.self).pointee else {
+                    return nil
+                }
+
+                updateStepperPosition(delta: notification.iDelta, for: handle)
+                action()
+                return 1
+            }
+
+            if header.code == tcnSelChange {
+                guard let source = header.hwndFrom else {
+                    return nil
+                }
+
+                let handle = nativeHandle(from: source)
+                guard let action = controlActions[handle.rawValue] else {
+                    return nil
+                }
+
+                action()
+                return 0
+            }
+
             let notification = UnsafeRawPointer(bitPattern: lParam)?.assumingMemoryBound(to: NMLISTVIEW.self).pointee
             guard let notification,
                   let source = header.hwndFrom else {
@@ -1403,6 +1686,11 @@ public final class Win32NativeControlBackend: NativeControlBackend {
             }
 
             if lParam != 0, notificationCode == enChange, let action = textChangeActions[UInt(bitPattern: lParam)] {
+                action(text(from: HWND(bitPattern: lParam)))
+                return 0
+            }
+
+            if lParam != 0, notificationCode == cbnEditChange, let action = textChangeActions[UInt(bitPattern: lParam)] {
                 action(text(from: HWND(bitPattern: lParam)))
                 return 0
             }
@@ -1557,6 +1845,24 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         var initControls = INITCOMMONCONTROLSEX()
         initControls.dwSize = DWORD(MemoryLayout<INITCOMMONCONTROLSEX>.size)
         initControls.dwICC = iccListViewClasses
+        withUnsafePointer(to: initControls) { pointer in
+            _ = winInitCommonControlsEx(pointer)
+        }
+    }
+
+    private func initializeTabControls() {
+        var initControls = INITCOMMONCONTROLSEX()
+        initControls.dwSize = DWORD(MemoryLayout<INITCOMMONCONTROLSEX>.size)
+        initControls.dwICC = iccTabClasses
+        withUnsafePointer(to: initControls) { pointer in
+            _ = winInitCommonControlsEx(pointer)
+        }
+    }
+
+    private func initializeUpDownControls() {
+        var initControls = INITCOMMONCONTROLSEX()
+        initControls.dwSize = DWORD(MemoryLayout<INITCOMMONCONTROLSEX>.size)
+        initControls.dwICC = iccUpDownClass
         withUnsafePointer(to: initControls) { pointer in
             _ = winInitCommonControlsEx(pointer)
         }

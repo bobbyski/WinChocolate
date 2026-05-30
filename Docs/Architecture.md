@@ -25,12 +25,13 @@ The first milestone is a runnable AppKit-shaped Windows application slice:
 | Phase | Status | Progress | Planned Commands | Notes |
 |---|---:|---:|---|---|
 | 1: SwiftPM Shape And Core Names | Implemented | 100% | package, sources, tests, docs | Initial AppKit-compatible public type names are in place. |
-| 2: Classic Win32 Backend | Partial | 95% | HWND creation, message loop, child controls | User32-backed window, custom view container, menu, button, checkbox, radio button, combo box, group box, static/edit text, text/frame/visibility/enabled updates, native cleanup, mouse/key event dispatch, experimental edit-control Tab interception, and command dispatch are in place. This backend should keep the classic Win32 look available for apps that want it. |
-| 3: AppKit Surface Expansion | Partial | 55% | menus, dialogs, responders, layout, text, tables, images | Initial `NSMenu`, `NSMenuItem`, `NSAlert`, `NSBox`, `NSColor`, `NSFont`, `NSEvent`, `NSResponder`, `NSApp`, `NSWindow.firstResponder`, key-view loop APIs, key/main window tracking, editable `NSTextField`, `NSPopUpButton`, `NSScrollView`, `NSTableColumn`, `NSTableView`, `NSCell`, `NSTableCellView`, `NSTableRowView`, `NSSortDescriptor`, and push/switch/radio `NSButton` APIs are present. |
-| 4: Demo Application | Partial | 90% | SwiftPM demo app | Demo source builds as a SwiftPM executable and visibly exercises native state APIs, modal alerts, editable text, checkbox state, radio groups, pop-up selection, table selection/action, mouse events, and key events. |
+| 2: Classic Win32 Backend | Partial | 96% | HWND creation, message loop, child controls | User32-backed window, custom view container, menu, button, checkbox, radio button, pop-up/combo box, group box, static/edit/secure/multiline text, image placeholder, tab view, slider, progress, stepper, text/frame/visibility/enabled updates, native cleanup, mouse/key event dispatch, experimental child-control Tab interception, and command dispatch are in place. This backend should keep the classic Win32 look available for apps that want it. |
+| 3: AppKit Surface Expansion | Partial | 62% | menus, dialogs, responders, layout, text, tables, images | Initial `NSMenu`, `NSMenuItem`, `NSAlert`, `NSBox`, `NSColor`, `NSFont`, `NSEvent`, `NSResponder`, `NSApp`, `NSWindow.firstResponder`, key-view loop APIs, key/main window tracking, editable `NSTextField`, `NSSecureTextField`, multiline `NSTextView`, `NSPopUpButton`, `NSComboBox`, `NSImageView`, `NSTabView`, `NSSlider`, `NSProgressIndicator`, `NSStepper`, `NSScrollView`, `NSTableColumn`, `NSTableView`, `NSCell`, `NSTableCellView`, `NSTableRowView`, `NSSortDescriptor`, and push/switch/radio `NSButton` APIs are present. |
+| 4: Demo Application | Partial | 94% | SwiftPM demo app | Demo source builds as a SwiftPM executable and visibly exercises native state APIs, modal alerts, editable/secure/combo text, multiline notes, checkbox state, radio groups, pop-up selection, image placeholder, tab selection, slider/progress/stepper values, table selection/action, mouse events, and key events. |
 | 5: AppKit Tables And Collection Controls | Partial | 27% | `NSTableView`, `NSOutlineView`, collection/list selection, cells/views | First AppKit-shaped `NSTableView` slice exists with columns, data source, delegate, row and column selection helpers, sort descriptors, row/cell-view placeholders, scroll-view hosting, table action/double-action surface, tests, and a temporary classic backend renderer. Future work should move toward visible headers, column resizing, sorting behavior, editing, reuse identifiers, and native accessibility. |
 | 6: Modern Windows Appearance | Planned | 0% | visual manager, themed controls, modern backend option | The eventual default should look like a modern Windows app while preserving the classic Win32 backend as an opt-in retro/native-simple mode. |
 | 7: Backend Selection And Theming | Planned | 0% | app/config API, backend factory, tests | Add an AppKit-shaped way to choose the classic or modern presentation without changing application UI code. |
+| 8: Auto Layout And Constraints | Planned | 0% | `NSLayoutConstraint`, anchors, intrinsic sizes, priorities | Add AppKit-shaped constraint APIs after the core view/control surface is stable, so Mac-style layout code can move across without leaking Windows layout primitives. |
 
 ## Checklist
 
@@ -42,9 +43,14 @@ The first milestone is a runnable AppKit-shaped Windows application slice:
 - [x] Add initial menu APIs.
 - [x] Add initial `NSAlert` API backed by native modal dialogs.
 - [x] Add editable `NSTextField` backed by native edit controls.
+- [x] Add initial `NSSecureTextField` backed by native password edit controls.
+- [x] Add multiline `NSTextView` backed by native edit controls.
 - [x] Add switch-style `NSButton` backed by native checkboxes.
 - [x] Add radio-style `NSButton` backed by native radio buttons.
 - [x] Add `NSPopUpButton` backed by native combo boxes.
+- [x] Add initial `NSComboBox` backed by editable native combo boxes.
+- [x] Add initial `NSImageView` and `NSTabView` backed by native placeholders/tab controls.
+- [x] Add `NSSlider`, `NSProgressIndicator`, and `NSStepper` value controls backed by native controls.
 - [x] Add `NSBox` backed by native group boxes.
 - [x] Add first `NSScrollView` and `NSTableView` public API slice with AppKit-shaped data-source contracts.
 - [x] Add first table cell/view, sort-descriptor, column movement, and selection helper contracts.
@@ -64,6 +70,7 @@ The first milestone is a runnable AppKit-shaped Windows application slice:
 - [ ] Preserve the current classic Win32 look as an explicit supported presentation mode.
 - [ ] Add a modern Windows presentation layer as the eventual default.
 - [ ] Add backend or appearance selection APIs so apps can opt into classic mode.
+- [ ] Add AppKit-style Auto Layout and constraint APIs: `NSLayoutConstraint`, layout anchors, intrinsic content size, priorities, hugging, compression resistance, and `translatesAutoresizingMaskIntoConstraints`.
 - [ ] Add `NSResponder`, image, font, color, layout, and deeper event APIs.
 - [x] Add a Swift demo application skeleton under `Demo`.
 
@@ -94,6 +101,8 @@ Objective-C runtime behavior is not available in normal Swift on Windows. Where 
 For complex controls, WinChocolate should model AppKit first and treat Windows controls as replaceable renderers. `NSTableView`, `NSTableColumn`, and `NSScrollView.documentView` should grow in the Mac direction: data source and delegate ownership, column identifiers, selection notifications, headers, cell/view reuse, editing, sorting, and keyboard behavior. Native Windows list/list-view controls can be used behind the backend boundary, but their API shape should not leak into application code.
 
 Foundation should be preferred for shared data structures and platform-neutral behavior whenever it is available and appropriate. Windows-native data constructs should stay behind backend boundaries or be used only when Foundation does not provide a suitable cross-platform representation.
+
+Layout should stay Mac-first. Manual frames are enough for the early controls and demo, but the long-term compatibility plan includes AppKit-style Auto Layout rather than a Windows layout model. `NSLayoutConstraint`, layout anchors, intrinsic content size, priority handling, content hugging, compression resistance, and `translatesAutoresizingMaskIntoConstraints` should be added after the core view hierarchy and native control wrappers are stable enough to make constraint solving meaningful.
 
 ## Native Control Strategy
 

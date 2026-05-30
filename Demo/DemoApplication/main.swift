@@ -13,7 +13,7 @@ menuBar.addItem(appMenuItem)
 app.mainMenu = menuBar
 
 let window = NSWindow(
-    contentRect: NSMakeRect(100, 100, 920, 640),
+    contentRect: NSMakeRect(100, 100, 1120, 700),
     styleMask: [.titled, .closable, .miniaturizable, .resizable],
     backing: .buffered,
     defer: false
@@ -59,6 +59,10 @@ final class DemoTableDataSource: NSTableViewDataSource {
         ["NSWindow", "Key/Main"],
         ["NSButton", "Actions"],
         ["NSTextField", "Editing"],
+        ["NSSecureTextField", "Password"],
+        ["NSComboBox", "Editable list"],
+        ["NSTabView", "Native tabs"],
+        ["NSImageView", "Placeholder"],
         ["NSTableView", "First slice"],
         ["NSTableColumn", "Identifiers"],
         ["NSTableCellView", "View based"],
@@ -118,16 +122,18 @@ final class DemoTableDataSource: NSTableViewDataSource {
     }
 }
 
-let contentView = DemoContentView(frame: NSMakeRect(0, 0, 920, 640))
+let contentView = DemoContentView(frame: NSMakeRect(0, 0, 1120, 700))
 let counterLabel = NSTextField(string: "Clicks: 0", frame: NSMakeRect(32, 36, 300, 24))
-let statusLabel = NSTextField(string: "Ready", frame: NSMakeRect(32, 74, 520, 24))
-let focusLabel = NSTextField(string: "Focus: none", frame: NSMakeRect(568, 74, 260, 24))
+let statusLabel = NSTextField(string: "Ready", frame: NSMakeRect(32, 74, 640, 24))
+let focusLabel = NSTextField(string: "Focus: none", frame: NSMakeRect(744, 74, 300, 24))
 let button = NSButton(title: "Click", frame: NSMakeRect(32, 124, 100, 34))
 let enableButton = NSButton(title: "Disable Click", frame: NSMakeRect(152, 124, 144, 34))
 let hideButton = NSButton(title: "Hide Counter", frame: NSMakeRect(316, 124, 144, 34))
 let moveButton = NSButton(title: "Move Click", frame: NSMakeRect(480, 124, 128, 34))
 let editableLabel = NSTextField(string: "Type here:", frame: NSMakeRect(32, 188, 104, 24))
 let editableTextField = NSTextField(string: "", frame: NSMakeRect(152, 186, 360, 28))
+let secureLabel = NSTextField(string: "Password:", frame: NSMakeRect(32, 222, 104, 24))
+let secureTextField = NSSecureTextField(string: "", frame: NSMakeRect(152, 220, 240, 28))
 let alertButton = NSButton(title: "Alert", frame: NSMakeRect(32, 252, 100, 34))
 let titleCheckbox = NSButton(title: "Show count in title", frame: NSMakeRect(152, 252, 228, 34))
 let alertStyleBox = NSBox(title: "Alert Style", frame: NSMakeRect(448, 220, 248, 116))
@@ -136,16 +142,25 @@ let alertStylePopup = NSPopUpButton(frame: NSMakeRect(472, 286, 184, 96), pullsD
 let infoRadio = NSButton(title: "Info", frame: NSMakeRect(32, 334, 88, 24))
 let warningRadio = NSButton(title: "Warning", frame: NSMakeRect(136, 334, 116, 24))
 let criticalRadio = NSButton(title: "Critical", frame: NSMakeRect(268, 334, 116, 24))
-let notesLabel = NSTextField(string: "Notes:", frame: NSMakeRect(32, 386, 72, 24))
-let notesTextView = NSTextView(frame: NSMakeRect(112, 386, 304, 72))
-let sliderLabel = NSTextField(string: "Slider:", frame: NSMakeRect(568, 166, 72, 24))
+let notesLabel = NSTextField(string: "Notes:", frame: NSMakeRect(32, 386, 104, 24))
+let notesTextView = NSTextView(frame: NSMakeRect(152, 386, 360, 96))
+let sliderLabel = NSTextField(string: "Slider:", frame: NSMakeRect(744, 166, 72, 24))
 let slider = NSSlider(value: 50, minValue: 0, maxValue: 100, target: nil, action: "sliderChanged:")
-let sliderValueLabel = NSTextField(string: "50", frame: NSMakeRect(824, 166, 48, 24))
-let progressLabel = NSTextField(string: "Progress:", frame: NSMakeRect(568, 198, 88, 24))
-let progressIndicator = NSProgressIndicator(frame: NSMakeRect(664, 202, 208, 18))
-let tableLabel = NSTextField(string: "Table view:", frame: NSMakeRect(560, 392, 120, 24))
-let tableScrollView = NSScrollView(frame: NSMakeRect(560, 424, 300, 160))
-let tableView = NSTableView(frame: NSMakeRect(0, 0, 300, 160))
+let sliderValueLabel = NSTextField(string: "50", frame: NSMakeRect(1024, 166, 48, 24))
+let progressLabel = NSTextField(string: "Progress:", frame: NSMakeRect(744, 198, 88, 24))
+let progressIndicator = NSProgressIndicator(frame: NSMakeRect(840, 202, 232, 18))
+let stepperLabel = NSTextField(string: "Stepper:", frame: NSMakeRect(744, 232, 88, 24))
+let stepper = NSStepper(frame: NSMakeRect(840, 232, 20, 28))
+let stepperValueLabel = NSTextField(string: "5", frame: NSMakeRect(888, 232, 64, 24))
+let comboLabel = NSTextField(string: "Combo:", frame: NSMakeRect(744, 292, 88, 24))
+let comboBox = NSComboBox(frame: NSMakeRect(840, 290, 184, 120))
+let tabLabel = NSTextField(string: "Tabs:", frame: NSMakeRect(32, 520, 88, 24))
+let tabView = NSTabView(frame: NSMakeRect(152, 520, 280, 88))
+let imageLabel = NSTextField(string: "Image view:", frame: NSMakeRect(448, 520, 104, 24))
+let imageView = NSImageView(frame: NSMakeRect(560, 520, 112, 64))
+let tableLabel = NSTextField(string: "Table view:", frame: NSMakeRect(744, 392, 120, 24))
+let tableScrollView = NSScrollView(frame: NSMakeRect(744, 424, 330, 210))
+let tableView = NSTableView(frame: NSMakeRect(0, 0, 330, 210))
 let tableDataSource = DemoTableDataSource()
 let contentFocusColor = NSColor(calibratedRed: 0.92, green: 0.97, blue: 1.0, alpha: 1.0)
 let normalContentColor = NSColor.windowBackgroundColor
@@ -290,6 +305,9 @@ func focusName() -> String {
     if responder === editableTextField {
         return "text field"
     }
+    if responder === secureTextField {
+        return "secure text field"
+    }
     if responder === button {
         return "click button"
     }
@@ -326,6 +344,15 @@ func focusName() -> String {
     if responder === slider {
         return "slider"
     }
+    if responder === stepper {
+        return "stepper"
+    }
+    if responder === comboBox {
+        return "combo box"
+    }
+    if responder === tabView {
+        return "tab view"
+    }
     if responder === tableView {
         return "table view"
     }
@@ -340,6 +367,9 @@ func updateFocusDisplay() {
     editableTextField.backgroundColor = name == "text field"
         ? controlFocusColor
         : normalTextFieldColor
+    secureTextField.backgroundColor = name == "secure text field"
+        ? controlFocusColor
+        : normalTextFieldColor
 }
 
 contentView.backgroundColor = normalContentColor
@@ -351,14 +381,36 @@ statusLabel.backgroundColor = NSColor(calibratedRed: 0.94, green: 0.97, blue: 1.
 focusLabel.font = NSFont.boldSystemFont(ofSize: 12)
 focusLabel.textColor = .black
 focusLabel.backgroundColor = NSColor(calibratedRed: 1.0, green: 0.98, blue: 0.86, alpha: 1.0)
-slider.frame = NSMakeRect(640, 166, 176, 28)
+slider.frame = NSMakeRect(832, 166, 184, 28)
 sliderLabel.font = NSFont.boldSystemFont(ofSize: 12)
 sliderValueLabel.textColor = .blue
 progressLabel.font = NSFont.boldSystemFont(ofSize: 12)
 progressIndicator.minValue = 0
 progressIndicator.maxValue = 100
 progressIndicator.doubleValue = slider.doubleValue
+stepperLabel.font = NSFont.boldSystemFont(ofSize: 12)
+stepper.minValue = 0
+stepper.maxValue = 10
+stepper.increment = 1
+stepper.doubleValue = 5
+stepperValueLabel.textColor = .blue
+comboLabel.font = NSFont.boldSystemFont(ofSize: 12)
+comboBox.addItems(withObjectValues: ["Cocoa", "AppKit", "WinChocolate"])
+comboBox.stringValue = "WinChocolate"
+tabLabel.font = NSFont.boldSystemFont(ofSize: 12)
+let firstTab = NSTabViewItem(identifier: "controls")
+firstTab.label = "Controls"
+let secondTab = NSTabViewItem(identifier: "tables")
+secondTab.label = "Tables"
+let thirdTab = NSTabViewItem(identifier: "events")
+thirdTab.label = "Events"
+tabView.addTabViewItem(firstTab)
+tabView.addTabViewItem(secondTab)
+tabView.addTabViewItem(thirdTab)
+imageLabel.font = NSFont.boldSystemFont(ofSize: 12)
+imageView.image = NSImage(named: "NSImage placeholder")
 notesLabel.font = NSFont.boldSystemFont(ofSize: 12)
+secureLabel.font = NSFont.boldSystemFont(ofSize: 12)
 notesTextView.string = "Multiline NSTextView"
 contentView.onBlankAreaMouseDown = { event in
     updateFocusDisplay()
@@ -417,12 +469,13 @@ tableView.selectColumnIndexes([0], byExtendingSelection: false)
 tableScrollView.hasVerticalScroller = true
 tableScrollView.documentView = tableView
 
-contentView.nextKeyView = editableTextField
-editableTextField.nextKeyView = button
+contentView.nextKeyView = button
+editableTextField.nextKeyView = secureTextField
+secureTextField.nextKeyView = alertButton
 button.nextKeyView = enableButton
 enableButton.nextKeyView = hideButton
 hideButton.nextKeyView = moveButton
-moveButton.nextKeyView = alertButton
+moveButton.nextKeyView = editableTextField
 alertButton.nextKeyView = titleCheckbox
 titleCheckbox.nextKeyView = alertStylePopup
 alertStylePopup.nextKeyView = infoRadio
@@ -430,11 +483,17 @@ infoRadio.nextKeyView = warningRadio
 warningRadio.nextKeyView = criticalRadio
 criticalRadio.nextKeyView = notesTextView
 notesTextView.nextKeyView = slider
-slider.nextKeyView = tableView
+slider.nextKeyView = stepper
+stepper.nextKeyView = comboBox
+comboBox.nextKeyView = tabView
+tabView.nextKeyView = tableView
 tableView.nextKeyView = contentView
 
 contentView.previousKeyView = tableView
-tableView.previousKeyView = slider
+tableView.previousKeyView = tabView
+tabView.previousKeyView = comboBox
+comboBox.previousKeyView = stepper
+stepper.previousKeyView = slider
 slider.previousKeyView = notesTextView
 notesTextView.previousKeyView = criticalRadio
 criticalRadio.previousKeyView = warningRadio
@@ -442,12 +501,13 @@ warningRadio.previousKeyView = infoRadio
 infoRadio.previousKeyView = alertStylePopup
 alertStylePopup.previousKeyView = titleCheckbox
 titleCheckbox.previousKeyView = alertButton
-alertButton.previousKeyView = moveButton
+alertButton.previousKeyView = secureTextField
 moveButton.previousKeyView = hideButton
 hideButton.previousKeyView = enableButton
 enableButton.previousKeyView = button
-button.previousKeyView = editableTextField
-editableTextField.previousKeyView = contentView
+button.previousKeyView = contentView
+secureTextField.previousKeyView = editableTextField
+editableTextField.previousKeyView = moveButton
 
 editableTextField.isEditable = true
 editableTextField.onTextChanged = { field in
@@ -455,6 +515,29 @@ editableTextField.onTextChanged = { field in
     statusLabel.stringValue = field.stringValue.isEmpty
         ? "Edit field cleared"
         : "Typed: \(field.stringValue)"
+}
+
+secureTextField.onTextChanged = { field in
+    updateFocusDisplay()
+    statusLabel.stringValue = "Password length: \(field.stringValue.count)"
+}
+
+comboBox.onComboBoxTextChanged = { combo in
+    updateFocusDisplay()
+    statusLabel.stringValue = "Combo typed: \(combo.stringValue)"
+}
+comboBox.onAction = { control in
+    guard let combo = control as? NSComboBox else {
+        return
+    }
+
+    updateFocusDisplay()
+    statusLabel.stringValue = "Combo selected: \(combo.stringValue)"
+}
+
+tabView.onSelectionChanged = { tabs in
+    updateFocusDisplay()
+    statusLabel.stringValue = "Tab selected: \(tabs.selectedTabViewItem?.label ?? "none")"
 }
 
 notesTextView.onTextChanged = { textView in
@@ -492,7 +575,7 @@ moveButton.onAction = { _ in
     updateFocusDisplay()
     movedRight.toggle()
     button.frame = movedRight
-        ? NSMakeRect(32, 386, 100, 34)
+        ? NSMakeRect(32, 430, 100, 34)
         : NSMakeRect(32, 124, 100, 34)
     statusLabel.stringValue = movedRight ? "Click button moved down" : "Click button moved back"
 }
@@ -566,6 +649,16 @@ slider.onAction = { control in
     statusLabel.stringValue = "Slider value: \(slider.intValue)"
 }
 
+stepper.onAction = { control in
+    guard let stepper = control as? NSStepper else {
+        return
+    }
+
+    updateFocusDisplay()
+    stepperValueLabel.stringValue = "\(stepper.intValue)"
+    statusLabel.stringValue = "Stepper value: \(stepper.intValue)"
+}
+
 tableView.onSelectionChanged = { table in
     updateFocusDisplay()
     if suppressNextTableSelectionStatus {
@@ -608,6 +701,8 @@ contentView.addSubview(statusLabel)
 contentView.addSubview(focusLabel)
 contentView.addSubview(editableLabel)
 contentView.addSubview(editableTextField)
+contentView.addSubview(secureLabel)
+contentView.addSubview(secureTextField)
 contentView.addSubview(button)
 contentView.addSubview(enableButton)
 contentView.addSubview(hideButton)
@@ -627,6 +722,15 @@ contentView.addSubview(slider)
 contentView.addSubview(sliderValueLabel)
 contentView.addSubview(progressLabel)
 contentView.addSubview(progressIndicator)
+contentView.addSubview(stepperLabel)
+contentView.addSubview(stepper)
+contentView.addSubview(stepperValueLabel)
+contentView.addSubview(comboLabel)
+contentView.addSubview(comboBox)
+contentView.addSubview(tabLabel)
+contentView.addSubview(tabView)
+contentView.addSubview(imageLabel)
+contentView.addSubview(imageView)
 contentView.addSubview(tableLabel)
 contentView.addSubview(tableScrollView)
 window.contentView = contentView

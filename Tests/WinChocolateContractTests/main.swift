@@ -745,6 +745,63 @@ func testProgressIndicatorStoresRangeValueAndSyncsNativePeer() {
     expect(!progress.isAnimating, "Progress indicator did not stop animation state.")
 }
 
+func testStepperStoresRangeIncrementAndSyncsNativePeer() {
+    let backend = InMemoryNativeControlBackend()
+    let stepper = NSStepper(frame: NSMakeRect(0, 0, 24, 48))
+    stepper.minValue = 0
+    stepper.maxValue = 10
+    stepper.increment = 2
+    stepper.doubleValue = 4
+
+    expect(stepper.doubleValue == 4, "Stepper doubleValue was not stored.")
+    expect(stepper.intValue == 4, "Stepper intValue did not reflect doubleValue.")
+    expect(stepper.minValue == 0, "Stepper minValue was not stored.")
+    expect(stepper.maxValue == 10, "Stepper maxValue was not stored.")
+    expect(stepper.increment == 2, "Stepper increment was not stored.")
+
+    let handle = stepper.realizeNativePeer(in: backend, parent: nil)
+
+    expect(backend.records[handle]?.kind == "stepper", "Stepper did not request native peer.")
+    expect(backend.records[handle]?.stepperMinValue == 0, "Stepper minValue was not synced.")
+    expect(backend.records[handle]?.stepperMaxValue == 10, "Stepper maxValue was not synced.")
+    expect(backend.records[handle]?.stepperIncrement == 2, "Stepper increment was not synced.")
+    expect(backend.records[handle]?.stepperValue == 4, "Stepper value was not synced.")
+
+    stepper.doubleValue = 20
+    expect(stepper.doubleValue == 10, "Stepper did not clamp value to maxValue.")
+    expect(backend.records[handle]?.stepperValue == 10, "Stepper clamped value was not synced.")
+
+    stepper.valueWraps = true
+    stepper.stepUp(nil)
+    expect(stepper.doubleValue == 0, "Stepper did not wrap upward to minValue.")
+    stepper.stepDown(nil)
+    expect(stepper.doubleValue == 10, "Stepper did not wrap downward to maxValue.")
+}
+
+func testStepperNativeActionUpdatesValue() {
+    let backend = InMemoryNativeControlBackend()
+    let stepper = NSStepper(frame: NSMakeRect(0, 0, 24, 48))
+    stepper.minValue = 0
+    stepper.maxValue = 10
+    stepper.doubleValue = 1
+    var actionCount = 0
+    stepper.onAction = { control in
+        guard let stepper = control as? NSStepper else {
+            expect(false, "Stepper action sender was not stepper.")
+            return
+        }
+
+        actionCount += 1
+        expect(stepper.doubleValue == 7, "Stepper action did not read native value.")
+    }
+
+    let handle = stepper.realizeNativePeer(in: backend, parent: nil)
+    backend.setStepperValue(7, for: handle)
+    backend.actions[handle]?()
+
+    expect(actionCount == 1, "Stepper native action was not dispatched.")
+}
+
 func testTableViewNativePeerReceivesColumnsRowsAndSelection() {
     let backend = InMemoryNativeControlBackend()
     let tableView = NSTableView(frame: NSMakeRect(0, 0, 300, 160))
@@ -1262,6 +1319,22 @@ func testEditableTextFieldUsesEditableNativePeer() {
     expect(backend.records[handle]?.kind == "editableTextField", "Editable text field did not request editable native peer.")
 }
 
+func testSecureTextFieldUsesSecureNativePeer() {
+    let backend = InMemoryNativeControlBackend()
+    let secureField = NSSecureTextField(string: "Secret", frame: NSMakeRect(0, 0, 160, 24))
+
+    expect(secureField.isEditable, "Secure text field should be editable by default.")
+    expect(secureField.isSelectable, "Secure text field should be selectable by default.")
+
+    let handle = secureField.realizeNativePeer(in: backend, parent: nil)
+
+    expect(backend.records[handle]?.kind == "secureTextField", "Secure text field did not request secure native peer.")
+    expect(backend.records[handle]?.text == "Secret", "Secure text field initial string was not sent to backend.")
+
+    secureField.stringValue = "Changed"
+    expect(backend.records[handle]?.text == "Changed", "Secure text field changes did not sync to backend.")
+}
+
 func testTextViewUsesMultilineNativePeerAndStoresText() {
     let backend = InMemoryNativeControlBackend()
     let textView = NSTextView(frame: NSMakeRect(0, 0, 220, 80))
@@ -1284,6 +1357,7 @@ func testTextFieldFactoryConstructorsAndCompatibilityProperties() {
     let label = NSTextField.label(withString: "Label")
     let wrappingLabel = NSTextField.wrappingLabel(withString: "Wrapped")
     let textField = NSTextField.textField(withString: "Edit")
+    let secureField = NSSecureTextField.secureTextField(withString: "Password")
 
     textField.placeholderString = "Placeholder"
 
@@ -1299,6 +1373,11 @@ func testTextFieldFactoryConstructorsAndCompatibilityProperties() {
     expect(textField.isBordered, "Text field factory did not create bordered field.")
     expect(textField.drawsBackground, "Text field factory did not enable background drawing.")
     expect(textField.placeholderString == "Placeholder", "Placeholder string was not stored.")
+    expect(secureField.stringValue == "Password", "Secure text field factory did not store string.")
+    expect(secureField.isEditable, "Secure text field factory did not create editable field.")
+    expect(secureField.isSelectable, "Secure text field factory did not create selectable field.")
+    expect(secureField.isBordered, "Secure text field factory did not create bordered field.")
+    expect(secureField.drawsBackground, "Secure text field factory did not draw background.")
 }
 
 func testSwitchButtonUsesCheckboxNativePeer() {
@@ -1386,6 +1465,108 @@ func testPopUpButtonItemLookupAndRemoval() {
     expect(popUpButton.indexOfSelectedItem == -1, "Pop-up selected index was not cleared.")
 }
 
+func testComboBoxStoresItemsTextAndUsesNativePeer() {
+    let backend = InMemoryNativeControlBackend()
+    let comboBox = NSComboBox(frame: NSMakeRect(0, 0, 180, 28))
+    comboBox.addItems(withObjectValues: ["Cocoa", "AppKit"])
+    comboBox.stringValue = "WinChocolate"
+
+    let handle = comboBox.realizeNativePeer(in: backend, parent: nil)
+
+    expect(backend.records[handle]?.kind == "comboBox", "Combo box did not request native peer.")
+    expect(backend.records[handle]?.comboBoxItems == ["Cocoa", "AppKit"], "Combo box items were not synced.")
+    expect(backend.records[handle]?.text == "WinChocolate", "Combo box text was not synced.")
+    expect(comboBox.numberOfItems == 2, "Combo box numberOfItems was wrong.")
+    expect(comboBox.indexOfItem(withObjectValue: "AppKit") == 1, "Combo box item lookup failed.")
+
+    comboBox.selectItem(at: 0)
+    expect(comboBox.stringValue == "Cocoa", "Combo box selection did not update stringValue.")
+}
+
+func testComboBoxNativeTextChangeAndActionUpdateState() {
+    let backend = InMemoryNativeControlBackend()
+    let comboBox = NSComboBox(frame: NSMakeRect(0, 0, 180, 28))
+    var textChangeCount = 0
+    var actionCount = 0
+
+    comboBox.onComboBoxTextChanged = { combo in
+        textChangeCount += 1
+        expect(combo.stringValue == "Typed", "Combo box text change did not update stringValue.")
+    }
+    comboBox.onAction = { control in
+        actionCount += 1
+        expect((control as? NSComboBox)?.stringValue == "Selected", "Combo box action did not read backend text.")
+    }
+
+    let handle = comboBox.realizeNativePeer(in: backend, parent: nil)
+    backend.textChangeActions[handle]?("Typed")
+    backend.setText("Selected", for: handle)
+    backend.actions[handle]?()
+
+    expect(textChangeCount == 1, "Combo box text-change callback did not fire.")
+    expect(actionCount == 1, "Combo box action callback did not fire.")
+}
+
+func testImageViewStoresImageAndUsesNativePeer() {
+    let backend = InMemoryNativeControlBackend()
+    let imageView = NSImageView(frame: NSMakeRect(0, 0, 64, 64))
+    imageView.image = NSImage(named: "Icon")
+
+    let handle = imageView.realizeNativePeer(in: backend, parent: nil)
+
+    expect(backend.records[handle]?.kind == "imageView", "Image view did not request native peer.")
+    expect(backend.records[handle]?.text == "Icon", "Image view did not sync image description.")
+    expect(!imageView.acceptsFirstResponder, "Image view should not accept first responder by default.")
+
+    imageView.image = NSImage(named: "Updated")
+    expect(backend.records[handle]?.text == "Updated", "Image view image changes did not sync.")
+}
+
+func testTabViewStoresItemsSelectionAndUsesNativePeer() {
+    let backend = InMemoryNativeControlBackend()
+    let tabView = NSTabView(frame: NSMakeRect(0, 0, 220, 80))
+    let first = NSTabViewItem(identifier: "first")
+    let second = NSTabViewItem(identifier: "second")
+    first.label = "First"
+    second.label = "Second"
+
+    tabView.addTabViewItem(first)
+    tabView.addTabViewItem(second)
+
+    let handle = tabView.realizeNativePeer(in: backend, parent: nil)
+
+    expect(backend.records[handle]?.kind == "tabView", "Tab view did not request native peer.")
+    expect(backend.records[handle]?.tabViewItems == ["First", "Second"], "Tab view labels were not synced.")
+    expect(tabView.selectedTabViewItem === first, "Tab view did not select first item by default.")
+
+    tabView.selectTabViewItem(second)
+    expect(tabView.selectedTabViewItem === second, "Tab view did not update selected item.")
+    expect(backend.records[handle]?.tabViewSelectedIndex == 1, "Tab view selection was not synced.")
+}
+
+func testTabViewNativeSelectionDispatchesAction() {
+    let backend = InMemoryNativeControlBackend()
+    let tabView = NSTabView(frame: NSMakeRect(0, 0, 220, 80))
+    let first = NSTabViewItem(identifier: "first")
+    let second = NSTabViewItem(identifier: "second")
+    first.label = "First"
+    second.label = "Second"
+    tabView.addTabViewItem(first)
+    tabView.addTabViewItem(second)
+    var selectionCount = 0
+
+    tabView.onSelectionChanged = { tabs in
+        selectionCount += 1
+        expect(tabs.selectedTabViewItem === second, "Native tab selection did not update selected item.")
+    }
+
+    let handle = tabView.realizeNativePeer(in: backend, parent: nil)
+    backend.setTabViewSelectedIndex(1, for: handle)
+    backend.actions[handle]?()
+
+    expect(selectionCount == 1, "Native tab selection callback did not fire.")
+}
+
 func testNativeButtonActionMakesButtonFirstResponder() {
     let backend = InMemoryNativeControlBackend()
     let window = NSWindow(
@@ -1470,6 +1651,33 @@ func testNativeTextChangeMakesEditableTextFieldFirstResponder() {
     expect(window.firstResponder === textField, "Native text change did not make text field first responder.")
     expect(backend.focusedHandle == handle, "Native text change did not request native focus.")
     expect(textField.stringValue == "Typed", "Native text change did not update string value.")
+}
+
+func testNativeTextChangeMakesSecureTextFieldFirstResponder() {
+    let backend = InMemoryNativeControlBackend()
+    let window = NSWindow(
+        contentRect: NSMakeRect(0, 0, 200, 100),
+        styleMask: [.titled],
+        backing: .buffered,
+        defer: false,
+        nativeBackend: backend
+    )
+    let contentView = NSView(frame: NSMakeRect(0, 0, 200, 100))
+    let secureField = NSSecureTextField(string: "", frame: NSMakeRect(20, 20, 140, 24))
+
+    contentView.addSubview(secureField)
+    window.contentView = contentView
+    window.realizeNativePeer()
+
+    guard let handle = secureField.nativeHandle else {
+        fatalError("Secure text field did not realize.")
+    }
+
+    backend.textChangeActions[handle]?("Typed")
+
+    expect(window.firstResponder === secureField, "Native secure text change did not make secure field first responder.")
+    expect(backend.focusedHandle == handle, "Native secure text change did not request native focus.")
+    expect(secureField.stringValue == "Typed", "Native secure text change did not update string value.")
 }
 
 func testNativeTextChangeMakesTextViewFirstResponder() {
@@ -1713,6 +1921,8 @@ testTableViewSortDescriptorPrototypeToggle()
 testSliderStoresRangeValueAndSyncsNativePeer()
 testSliderNativeActionUpdatesValue()
 testProgressIndicatorStoresRangeValueAndSyncsNativePeer()
+testStepperStoresRangeIncrementAndSyncsNativePeer()
+testStepperNativeActionUpdatesValue()
 testTableViewNativePeerReceivesColumnsRowsAndSelection()
 testTableViewNativeSelectionNotifiesDelegateAndAction()
 testTableViewActionCanReadSelectedRowValue()
@@ -1741,6 +1951,7 @@ testRealizedViewStatePropagatesToBackend()
 testWindowTitleAndFramePropagateToBackend()
 testWindowContentSizeAndCenterUpdateFrame()
 testEditableTextFieldUsesEditableNativePeer()
+testSecureTextFieldUsesSecureNativePeer()
 testTextViewUsesMultilineNativePeerAndStoresText()
 testTextFieldFactoryConstructorsAndCompatibilityProperties()
 testSwitchButtonUsesCheckboxNativePeer()
@@ -1748,9 +1959,15 @@ testRadioButtonUsesRadioNativePeer()
 testPopUpButtonUsesNativePeerAndSelection()
 testPopUpButtonNativeActionUpdatesSelection()
 testPopUpButtonItemLookupAndRemoval()
+testComboBoxStoresItemsTextAndUsesNativePeer()
+testComboBoxNativeTextChangeAndActionUpdateState()
+testImageViewStoresImageAndUsesNativePeer()
+testTabViewStoresItemsSelectionAndUsesNativePeer()
+testTabViewNativeSelectionDispatchesAction()
 testNativeButtonActionMakesButtonFirstResponder()
 testNativePopUpActionMakesPopUpFirstResponder()
 testNativeTextChangeMakesEditableTextFieldFirstResponder()
+testNativeTextChangeMakesSecureTextFieldFirstResponder()
 testNativeTextChangeMakesTextViewFirstResponder()
 testBoxUsesNativePeerAndSyncsTitle()
 testColorValuesClampComponents()

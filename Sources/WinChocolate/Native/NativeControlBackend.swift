@@ -46,17 +46,32 @@ public protocol NativeControlBackend: AnyObject {
     /// Creates a native text field child.
     func createTextField(text: String, frame: NSRect, parent: NativeHandle?, isEditable: Bool) -> NativeHandle
 
+    /// Creates a native secure text field child.
+    func createSecureTextField(text: String, frame: NSRect, parent: NativeHandle?) -> NativeHandle
+
     /// Creates a native multiline text view child.
     func createTextView(text: String, frame: NSRect, parent: NativeHandle?, isEditable: Bool) -> NativeHandle
 
     /// Creates a native pop-up button child.
     func createPopUpButton(items: [String], selectedIndex: Int, frame: NSRect, parent: NativeHandle?) -> NativeHandle
 
+    /// Creates a native editable combo box child.
+    func createComboBox(items: [String], text: String, frame: NSRect, parent: NativeHandle?) -> NativeHandle
+
+    /// Creates a native image-view child.
+    func createImageView(description: String, frame: NSRect, parent: NativeHandle?) -> NativeHandle
+
+    /// Creates a native tab-view child.
+    func createTabView(items: [String], selectedIndex: Int, frame: NSRect, parent: NativeHandle?) -> NativeHandle
+
     /// Creates a native slider child.
     func createSlider(value: Double, minValue: Double, maxValue: Double, frame: NSRect, parent: NativeHandle?) -> NativeHandle
 
     /// Creates a native progress-indicator child.
     func createProgressIndicator(value: Double, minValue: Double, maxValue: Double, frame: NSRect, parent: NativeHandle?) -> NativeHandle
+
+    /// Creates a native stepper child.
+    func createStepper(value: Double, minValue: Double, maxValue: Double, increment: Double, frame: NSRect, parent: NativeHandle?) -> NativeHandle
 
     /// Creates a native scroll-view child.
     func createScrollView(frame: NSRect, parent: NativeHandle?, hasVerticalScroller: Bool, hasHorizontalScroller: Bool) -> NativeHandle
@@ -106,6 +121,21 @@ public protocol NativeControlBackend: AnyObject {
     /// Reads native pop-up button selection.
     func popUpButtonSelectedIndex(for handle: NativeHandle) -> Int
 
+    /// Replaces native combo-box items.
+    func setComboBoxItems(_ items: [String], text: String, for handle: NativeHandle)
+
+    /// Reads native combo-box text.
+    func comboBoxText(for handle: NativeHandle) -> String
+
+    /// Replaces native tab-view items.
+    func setTabViewItems(_ items: [String], selectedIndex: Int, for handle: NativeHandle)
+
+    /// Updates native tab-view selection.
+    func setTabViewSelectedIndex(_ selectedIndex: Int, for handle: NativeHandle)
+
+    /// Reads native tab-view selection.
+    func tabViewSelectedIndex(for handle: NativeHandle) -> Int
+
     /// Updates native slider range.
     func setSliderRange(minValue: Double, maxValue: Double, for handle: NativeHandle)
 
@@ -120,6 +150,15 @@ public protocol NativeControlBackend: AnyObject {
 
     /// Updates native progress-indicator value.
     func setProgressIndicatorValue(_ value: Double, for handle: NativeHandle)
+
+    /// Updates native stepper range.
+    func setStepperRange(minValue: Double, maxValue: Double, increment: Double, for handle: NativeHandle)
+
+    /// Updates native stepper value.
+    func setStepperValue(_ value: Double, for handle: NativeHandle)
+
+    /// Reads native stepper value.
+    func stepperValue(for handle: NativeHandle) -> Double
 
     /// Replaces native table rows.
     func setTableRows(_ rows: [[String]], selectedRow: Int, for handle: NativeHandle)

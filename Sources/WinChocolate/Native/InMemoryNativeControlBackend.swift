@@ -33,6 +33,15 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
         /// Native pop-up button selected index.
         public var popUpSelectedIndex: Int
 
+        /// Native combo-box items.
+        public var comboBoxItems: [String]
+
+        /// Native tab-view items.
+        public var tabViewItems: [String]
+
+        /// Native tab-view selected index.
+        public var tabViewSelectedIndex: Int
+
         /// Native slider minimum value.
         public var sliderMinValue: Double
 
@@ -50,6 +59,18 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
 
         /// Native progress value.
         public var progressValue: Double
+
+        /// Native stepper minimum value.
+        public var stepperMinValue: Double
+
+        /// Native stepper maximum value.
+        public var stepperMaxValue: Double
+
+        /// Native stepper increment.
+        public var stepperIncrement: Double
+
+        /// Native stepper value.
+        public var stepperValue: Double
 
         /// Native table column titles.
         public var tableColumns: [String]
@@ -200,6 +221,11 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
         makeHandle(kind: isEditable ? "editableTextField" : "textField", text: text, frame: frame, parent: parent)
     }
 
+    /// Records a secure text field creation request.
+    public func createSecureTextField(text: String, frame: NSRect, parent: NativeHandle?) -> NativeHandle {
+        makeHandle(kind: "secureTextField", text: text, frame: frame, parent: parent)
+    }
+
     /// Records a text view creation request.
     public func createTextView(text: String, frame: NSRect, parent: NativeHandle?, isEditable: Bool) -> NativeHandle {
         makeHandle(kind: isEditable ? "editableTextView" : "textView", text: text, frame: frame, parent: parent)
@@ -210,6 +236,26 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
         let handle = makeHandle(kind: "popUpButton", text: items.indices.contains(selectedIndex) ? items[selectedIndex] : "", frame: frame, parent: parent)
         records[handle]?.popUpItems = items
         records[handle]?.popUpSelectedIndex = selectedIndex
+        return handle
+    }
+
+    /// Records a combo-box creation request.
+    public func createComboBox(items: [String], text: String, frame: NSRect, parent: NativeHandle?) -> NativeHandle {
+        let handle = makeHandle(kind: "comboBox", text: text, frame: frame, parent: parent)
+        records[handle]?.comboBoxItems = items
+        return handle
+    }
+
+    /// Records an image-view creation request.
+    public func createImageView(description: String, frame: NSRect, parent: NativeHandle?) -> NativeHandle {
+        makeHandle(kind: "imageView", text: description, frame: frame, parent: parent)
+    }
+
+    /// Records a tab-view creation request.
+    public func createTabView(items: [String], selectedIndex: Int, frame: NSRect, parent: NativeHandle?) -> NativeHandle {
+        let handle = makeHandle(kind: "tabView", text: items.indices.contains(selectedIndex) ? items[selectedIndex] : "", frame: frame, parent: parent)
+        records[handle]?.tabViewItems = items
+        records[handle]?.tabViewSelectedIndex = selectedIndex
         return handle
     }
 
@@ -228,6 +274,16 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
         records[handle]?.progressMinValue = minValue
         records[handle]?.progressMaxValue = maxValue
         records[handle]?.progressValue = value
+        return handle
+    }
+
+    /// Records a stepper creation request.
+    public func createStepper(value: Double, minValue: Double, maxValue: Double, increment: Double, frame: NSRect, parent: NativeHandle?) -> NativeHandle {
+        let handle = makeHandle(kind: "stepper", text: "", frame: frame, parent: parent)
+        records[handle]?.stepperMinValue = minValue
+        records[handle]?.stepperMaxValue = maxValue
+        records[handle]?.stepperIncrement = increment
+        records[handle]?.stepperValue = value
         return handle
     }
 
@@ -371,6 +427,50 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
         records[handle]?.popUpSelectedIndex ?? -1
     }
 
+    /// Replaces recorded combo-box items.
+    public func setComboBoxItems(_ items: [String], text: String, for handle: NativeHandle) {
+        guard var record = records[handle] else {
+            return
+        }
+
+        record.comboBoxItems = items
+        record.text = text
+        records[handle] = record
+    }
+
+    /// Reads recorded combo-box text.
+    public func comboBoxText(for handle: NativeHandle) -> String {
+        records[handle]?.text ?? ""
+    }
+
+    /// Replaces recorded tab-view items.
+    public func setTabViewItems(_ items: [String], selectedIndex: Int, for handle: NativeHandle) {
+        guard var record = records[handle] else {
+            return
+        }
+
+        record.tabViewItems = items
+        record.tabViewSelectedIndex = selectedIndex
+        record.text = items.indices.contains(selectedIndex) ? items[selectedIndex] : ""
+        records[handle] = record
+    }
+
+    /// Updates recorded tab-view selection.
+    public func setTabViewSelectedIndex(_ selectedIndex: Int, for handle: NativeHandle) {
+        guard var record = records[handle] else {
+            return
+        }
+
+        record.tabViewSelectedIndex = selectedIndex
+        record.text = record.tabViewItems.indices.contains(selectedIndex) ? record.tabViewItems[selectedIndex] : ""
+        records[handle] = record
+    }
+
+    /// Reads recorded tab-view selection.
+    public func tabViewSelectedIndex(for handle: NativeHandle) -> Int {
+        records[handle]?.tabViewSelectedIndex ?? -1
+    }
+
     /// Updates recorded slider range.
     public func setSliderRange(minValue: Double, maxValue: Double, for handle: NativeHandle) {
         guard var record = records[handle] else {
@@ -416,6 +516,33 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
 
         record.progressValue = value
         records[handle] = record
+    }
+
+    /// Updates recorded stepper range.
+    public func setStepperRange(minValue: Double, maxValue: Double, increment: Double, for handle: NativeHandle) {
+        guard var record = records[handle] else {
+            return
+        }
+
+        record.stepperMinValue = minValue
+        record.stepperMaxValue = maxValue
+        record.stepperIncrement = increment
+        records[handle] = record
+    }
+
+    /// Updates recorded stepper value.
+    public func setStepperValue(_ value: Double, for handle: NativeHandle) {
+        guard var record = records[handle] else {
+            return
+        }
+
+        record.stepperValue = value
+        records[handle] = record
+    }
+
+    /// Reads recorded stepper value.
+    public func stepperValue(for handle: NativeHandle) -> Double {
+        records[handle]?.stepperValue ?? 0
     }
 
     /// Replaces recorded table rows.
@@ -507,12 +634,19 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
             buttonState: .off,
             popUpItems: [],
             popUpSelectedIndex: -1,
+            comboBoxItems: [],
+            tabViewItems: [],
+            tabViewSelectedIndex: -1,
             sliderMinValue: 0,
             sliderMaxValue: 1,
             sliderValue: 0,
             progressMinValue: 0,
             progressMaxValue: 1,
             progressValue: 0,
+            stepperMinValue: 0,
+            stepperMaxValue: 1,
+            stepperIncrement: 1,
+            stepperValue: 0,
             tableColumns: [],
             tableColumnWidths: [],
             tableRows: [],
