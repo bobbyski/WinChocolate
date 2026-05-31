@@ -1850,9 +1850,25 @@ func testPathControlStoresURLAndPathComponentCells() {
 
 func testWinFoundationCompatibilitySurface() {
     let url = URL(fileURLWithPath: "C:\\AIResearch\\WinChocolate\\")
-    expect(url.path == "C:\\AIResearch\\WinChocolate", "WinFoundation URL did not normalize trailing separator.")
+    expect(url.path == "C:\\AIResearch\\WinChocolate\\", "WinFoundation URL did not preserve directory-style trailing separator.")
+    expect(url.isFileURL, "WinFoundation URL(fileURLWithPath:) should create a file URL.")
+    expect(url.absoluteString == "file:///C:/AIResearch/WinChocolate/", "WinFoundation URL absoluteString did not create a file URL string.")
+    expect(url.relativeString == url.absoluteString, "WinFoundation URL relativeString should match absoluteString without base URL support.")
     expect(url.lastPathComponent == "WinChocolate", "WinFoundation URL lastPathComponent failed.")
     expect(url.appendingPathComponent("Code").path.hasSuffix("WinChocolate\\Code"), "WinFoundation URL appendingPathComponent failed.")
+    expect(url.appendingPathComponent("Code", isDirectory: true).hasDirectoryPath, "WinFoundation URL directory appending failed.")
+    expect(url.appendingPathComponent("README").appendingPathExtension("md").lastPathComponent == "README.md", "WinFoundation URL appendingPathExtension failed.")
+    expect(url.appendingPathComponent("README.md").pathExtension == "md", "WinFoundation URL pathExtension failed.")
+    expect(url.appendingPathComponent("README.md").deletingPathExtension().lastPathComponent == "README", "WinFoundation URL deletingPathExtension failed.")
+    expect(url.appendingPathComponent("Code").deletingLastPathComponent().lastPathComponent == "WinChocolate", "WinFoundation URL deletingLastPathComponent failed.")
+
+    let parsedFileURL = URL(string: "file:///C:/AIResearch/WinChocolate/Code")
+    expect(parsedFileURL?.isFileURL == true, "WinFoundation URL(string:) did not parse file URL.")
+    expect(parsedFileURL?.lastPathComponent == "Code", "WinFoundation parsed file URL lastPathComponent failed.")
+
+    let webURL = URL(string: "https://example.com/index.html")
+    expect(webURL?.isFileURL == false, "WinFoundation URL(string:) should preserve non-file URLs.")
+    expect(webURL?.absoluteString == "https://example.com/index.html", "WinFoundation non-file URL absoluteString failed.")
 
     let data = Data([1, 2, 3])
     expect(data.count == 3, "WinFoundation Data count failed.")

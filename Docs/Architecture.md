@@ -4,9 +4,7 @@
 
 WinChocolate is an AppKit-shaped SwiftPM framework for Windows. The goal is to let application code replace `import Cocoa` or `import AppKit` with `import WinChocolate` and keep familiar names such as `NSApplication`, `NSWindow`, `NSView`, `NSButton`, and `NSTextField`, while the implementation wraps native Windows controls behind a backend boundary.
 
-Overall planned-code progress: `█████░░░░░` 54%
-
-Current planned-code progress after the clip-view update: `██████░░░░` 62%
+Overall planned-code progress: `######....` 62%
 
 Note: real Foundation remains the intended default for Foundation-shaped APIs. The local ARM64 Windows Swift toolchain currently fails while building UCRT/Swift overlay shim modules, so Windows builds define `USE_WIN_FOUNDATION` and use the repo-local `WinFoundation` target as a temporary bridge. Pass `-Xswiftc -DUSE_REAL_FOUNDATION` to test newer Windows toolchains against real Foundation.
 
@@ -24,12 +22,14 @@ The first milestone is a runnable AppKit-shaped Windows application slice:
 
 ## Project Dashboard
 
+Current planning emphasis: keep building the AppKit surface, but treat `WinFoundation.URL` as the next bridge priority before adding deeper file, resource, panel, or document APIs.
+
 | Phase | Status | Progress | Planned Commands | Notes |
 |---|---:|---:|---|---|
 | 1: SwiftPM Shape And Core Names | Implemented | 100% | package, sources, tests, docs | Initial AppKit-compatible public type names are in place. |
 | 2: Classic Win32 Backend | Partial | 96% | HWND creation, message loop, child controls | User32-backed window, custom view container, menu, button, checkbox, radio button, pop-up/combo box, group box, static/edit/secure/multiline text, image placeholder, tab view, slider, progress, stepper, text/frame/visibility/enabled updates, native cleanup, mouse/key event dispatch, experimental child-control Tab interception, and command dispatch are in place. This backend should keep the classic Win32 look available for apps that want it. |
 | 3: AppKit Surface Expansion | Partial | 71% | menus, dialogs, responders, layout, text, tables, images | Initial `NSMenu`, `NSMenuItem`, `NSAlert`, `NSBox`, `NSColor`, `NSFont`, `NSEvent`, `NSResponder`, `NSApp`, `NSWindow.firstResponder`, key-view loop APIs, key/main window tracking, editable `NSTextField`, `NSSecureTextField`, `NSSearchField`, `NSTokenField`, `NSPathControl`, multiline `NSTextView`, `NSPopUpButton`, `NSComboBox`, `NSImageView`, `NSTabView`, `NSSlider`, `NSScroller`, `NSSegmentedControl`, `NSProgressIndicator`, `NSLevelIndicator`, `NSStepper`, `NSColorWell`, `NSClipView`, `NSScrollView`, `NSSplitView`, `NSTableColumn`, `NSTableView`, `NSCell`, `NSTableCellView`, `NSTableRowView`, `NSSortDescriptor`, and push/switch/radio `NSButton` APIs are present. |
-| Foundation Bridge | Partial | 10% | `WinFoundation`, compile-time switch | First repo-local `WinFoundation` slice exists for `URL`, `Data`, `Date`, and `IndexSet`; Windows builds use it through `USE_WIN_FOUNDATION`, while `USE_REAL_FOUNDATION` forces real Foundation for toolchain verification. |
+| Foundation Bridge | Partial | 20% | `WinFoundation`, compile-time switch, URL parity | First repo-local `WinFoundation` slice exists for `URL`, `Data`, `Date`, and `IndexSet`; Windows builds use it through `USE_WIN_FOUNDATION`, while `USE_REAL_FOUNDATION` forces real Foundation for toolchain verification. `FOUNDATION_SHIMS.md` now tracks the shim contract and release canary. The next priority is deeper `URL` parity because `NSPathControl`, panels, bundles, image loading, file dialogs, and document APIs will all lean on it. |
 | 4: Demo Application | Partial | 98% | SwiftPM demo app | Demo source builds as a SwiftPM executable and visibly exercises native state APIs, modal alerts, editable/secure/combo/token text, path display, multiline notes, checkbox state, radio groups, pop-up selection, segmented selection, bitmap image tests, clip-view scrolling, split view pane layout, tab selection, slider/progress/scroller/stepper values, table selection/action, mouse events, and key events. |
 | 5: AppKit Tables And Collection Controls | Partial | 27% | `NSTableView`, `NSOutlineView`, collection/list selection, cells/views | First AppKit-shaped `NSTableView` slice exists with columns, data source, delegate, row and column selection helpers, sort descriptors, row/cell-view placeholders, scroll-view hosting, table action/double-action surface, tests, and a temporary classic backend renderer. Future work should move toward visible headers, column resizing, sorting behavior, editing, reuse identifiers, and native accessibility. |
 | 6: Modern Windows Appearance | Planned | 0% | visual manager, themed controls, modern backend option | The eventual default should look like a modern Windows app while preserving the classic Win32 backend as an opt-in retro/native-simple mode. |
@@ -62,6 +62,11 @@ The first milestone is a runnable AppKit-shaped Windows application slice:
 - [x] Add first table cell/view, sort-descriptor, column movement, and selection helper contracts.
 - [x] Add table column-selection helpers and double-action compatibility surface.
 - [x] Add first `NSSplitView` pane-layout and divider-positioning slice.
+- [x] Add initial `WinFoundation` bridge target with `URL`, `Data`, `Date`, and `IndexSet` shims for broken Windows Foundation imports.
+- [x] Add `FOUNDATION_SHIMS.md` describing the shim surface, maintenance rules, and real-Foundation release canary.
+- [x] Expand first `WinFoundation.URL` compatibility slice with `absoluteString`, `relativeString`, `isFileURL`, directory-aware appending, path extension helpers, file URL parsing, and path-component deletion.
+- [ ] Continue `WinFoundation.URL` toward common Foundation source compatibility: base URLs, percent encoding/decoding, resource values, relative paths, path standardization, and safer file URL display.
+- [ ] Keep `swift build -Xswiftc -DUSE_REAL_FOUNDATION` as the real-Foundation canary whenever a newer Windows Swift toolchain is tested.
 - [ ] Replace the temporary classic table renderer with a fuller Mac-like table implementation: headers, columns, selection, editing, sorting, and view/cell reuse.
 - [x] Add initial `NSColor` and color propagation for views and text fields.
 - [x] Add initial `NSFont` and font propagation for text fields.
@@ -109,6 +114,10 @@ Objective-C runtime behavior is not available in normal Swift on Windows. Where 
 For complex controls, WinChocolate should model AppKit first and treat Windows controls as replaceable renderers. `NSTableView`, `NSTableColumn`, and `NSScrollView.documentView` should grow in the Mac direction: data source and delegate ownership, column identifiers, selection notifications, headers, cell/view reuse, editing, sorting, and keyboard behavior. Native Windows list/list-view controls can be used behind the backend boundary, but their API shape should not leak into application code.
 
 Foundation should be preferred for shared data structures and platform-neutral behavior whenever it is available and appropriate. Windows-native data constructs should stay behind backend boundaries or be used only when Foundation does not provide a suitable cross-platform representation.
+
+Until real Foundation imports on Windows, `WinFoundation` is the compatibility pressure valve. It should remain small, source-oriented, and covered by contract tests. Add only Foundation surfaces that WinChocolate needs, keep their names aligned with Foundation, and prefer migration paths that make deleting the shim easy once `import Foundation` works.
+
+`URL` is the first important Foundation-shaped type. It should be treated as a near-term compatibility target rather than a tiny helper, because path controls, open/save panels, image loading, bundle/resource lookup, document APIs, and file-backed controls will all need file URL behavior.
 
 Layout should stay Mac-first. Manual frames are enough for the early controls and demo, but the long-term compatibility plan includes AppKit-style Auto Layout rather than a Windows layout model. `NSLayoutConstraint`, layout anchors, intrinsic content size, priority handling, content hugging, compression resistance, and `translatesAutoresizingMaskIntoConstraints` should be added after the core view hierarchy and native control wrappers are stable enough to make constraint solving meaningful.
 
