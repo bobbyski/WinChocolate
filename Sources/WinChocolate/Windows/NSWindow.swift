@@ -275,7 +275,7 @@ open class NSWindow: NSResponder {
 
             visited.insert(identifier)
 
-            if candidate.acceptsFirstResponder && !candidate.isHidden {
+            if candidate.acceptsFirstResponder && !isHiddenInHierarchy(candidate) {
                 return candidate
             }
 
@@ -301,7 +301,7 @@ open class NSWindow: NSResponder {
 
             visited.insert(identifier)
 
-            if candidate.acceptsFirstResponder && !candidate.isHidden {
+            if candidate.acceptsFirstResponder && !isHiddenInHierarchy(candidate) {
                 return candidate
             }
 
@@ -320,7 +320,11 @@ open class NSWindow: NSResponder {
             return nil
         }
 
-        if view.acceptsFirstResponder && !view.isHidden {
+        if isHiddenInHierarchy(view) {
+            return nil
+        }
+
+        if view.acceptsFirstResponder {
             return view
         }
 
@@ -338,13 +342,28 @@ open class NSWindow: NSResponder {
             return nil
         }
 
+        if isHiddenInHierarchy(view) {
+            return nil
+        }
+
         for subview in view.subviews.reversed() {
             if let focusable = lastFocusableView(in: subview) {
                 return focusable
             }
         }
 
-        return view.acceptsFirstResponder && !view.isHidden ? view : nil
+        return view.acceptsFirstResponder ? view : nil
+    }
+
+    private func isHiddenInHierarchy(_ view: NSView) -> Bool {
+        var current: NSView? = view
+        while let candidate = current {
+            if candidate.isHidden {
+                return true
+            }
+            current = candidate.superview
+        }
+        return false
     }
 }
 

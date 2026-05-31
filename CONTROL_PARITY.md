@@ -48,7 +48,7 @@ References used for this map:
 | `NSMatrix` | Group of child controls | ItemsControl/custom panel | Deprecated AppKit API; low priority but useful for old ports. | Planned | Planned |
 | `NSForm` | Group of labels/edit controls | Form layout pattern | Deprecated AppKit API; likely composed from text fields. | Planned | Planned |
 | `NSBox` | `BUTTON` group-box style | `GroupBox` | Basic title/frame peer exists. | Done | Planned |
-| `NSScrollView` | Custom child `HWND` with scrollbars | `ScrollViewer` | First document-view host exists; scrolling behavior needs depth. | Partial | Planned |
+| `NSScrollView` | Custom child `HWND` with scrollbars | `ScrollViewer` | Owns an `NSClipView` content view and document-view host; native scrolling behavior needs depth. | Partial | Planned |
 | `NSScroller` | `SCROLLBAR` | `ScrollBar` | Standalone normalized value/knob-proportion slice exists; detailed parts, overlay behavior, and custom styling are future work. | Partial | Planned |
 | `NSTableView` | `SysListView32` report mode | `ListView` / `DataGrid` pattern | Columns, rows, selection, sorting slice exists; editing/reuse/accessibility incomplete. | Partial | Planned |
 | `NSTableColumn` | List-view column/header metadata | Grid/list column metadata | Swift-side column model exists. | Partial | Planned |
@@ -74,7 +74,7 @@ References used for this map:
 | `NSFontPanel` | Common font dialog/custom | Custom font picker | Classic font dialog exists, but AppKit panel model differs. | Planned | Planned |
 | `NSColorPanel` | ChooseColor dialog/custom | `ColorPicker` dialog | Needs shared color-panel behavior. | Planned | Planned |
 | `NSRulerView` | Custom drawing | Custom drawing | Text/document companion view; no direct Windows peer. | Planned | Planned |
-| `NSClipView` | Child clipping `HWND`/viewport | `ScrollViewer` viewport | Internal scroll-view component; likely needed for fidelity. | Planned | Planned |
+| `NSClipView` | Child clipping `HWND`/viewport | `ScrollViewer` viewport | First viewport/document-host slice exists with bounds origin and visible-rect state. | Partial | Planned |
 | `NSVisualEffectView` | DWM/acrylic/custom composition | Acrylic/Mica/Backdrop | Modern appearance feature; not a classic Win32 peer. | Planned | Planned |
 
 ## Windows Controls With No Direct AppKit Counterpart

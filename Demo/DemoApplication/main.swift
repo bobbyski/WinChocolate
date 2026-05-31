@@ -53,6 +53,12 @@ final class DemoContentView: NSView {
     }
 }
 
+final class DemoPageView: NSView {
+    override var acceptsFirstResponder: Bool {
+        false
+    }
+}
+
 final class DemoTableDataSource: NSTableViewDataSource {
     var rows: [[String]] = [
         ["NSApplication", "Running"],
@@ -127,59 +133,62 @@ final class DemoTableDataSource: NSTableViewDataSource {
 }
 
 let contentView = DemoContentView(frame: NSMakeRect(0, 0, 1120, 760))
+let controlsPage = DemoPageView(frame: NSMakeRect(0, 144, 1120, 560))
+let valuesPage = DemoPageView(frame: NSMakeRect(0, 144, 1120, 560))
+let tablesPage = DemoPageView(frame: NSMakeRect(0, 144, 1120, 560))
 let counterLabel = NSTextField(string: "Clicks: 0", frame: NSMakeRect(32, 36, 300, 24))
 let statusLabel = NSTextField(string: "Ready", frame: NSMakeRect(32, 74, 640, 24))
 let focusLabel = NSTextField(string: "Focus: none", frame: NSMakeRect(744, 74, 300, 24))
-let button = NSButton(title: "Click", frame: NSMakeRect(32, 124, 100, 34))
-let enableButton = NSButton(title: "Disable Click", frame: NSMakeRect(152, 124, 144, 34))
-let hideButton = NSButton(title: "Hide Counter", frame: NSMakeRect(316, 124, 144, 34))
-let moveButton = NSButton(title: "Move Click", frame: NSMakeRect(480, 124, 128, 34))
-let editableLabel = NSTextField(string: "Type here:", frame: NSMakeRect(32, 188, 104, 24))
-let editableTextField = NSTextField(string: "", frame: NSMakeRect(152, 186, 360, 28))
-let secureLabel = NSTextField(string: "Password:", frame: NSMakeRect(32, 222, 104, 24))
-let secureTextField = NSSecureTextField(string: "", frame: NSMakeRect(152, 220, 240, 28))
-let alertButton = NSButton(title: "Alert", frame: NSMakeRect(32, 252, 100, 34))
-let titleCheckbox = NSButton(title: "Show count in title", frame: NSMakeRect(152, 252, 228, 34))
-let alertStyleBox = NSBox(title: "Alert Style", frame: NSMakeRect(448, 220, 248, 116))
-let alertStyleLabel = NSTextField(string: "Alert style:", frame: NSMakeRect(472, 256, 112, 24))
-let alertStylePopup = NSPopUpButton(frame: NSMakeRect(472, 286, 184, 96), pullsDown: false)
-let infoRadio = NSButton(title: "Info", frame: NSMakeRect(32, 334, 88, 24))
-let warningRadio = NSButton(title: "Warning", frame: NSMakeRect(136, 334, 116, 24))
-let criticalRadio = NSButton(title: "Critical", frame: NSMakeRect(268, 334, 116, 24))
-let notesLabel = NSTextField(string: "Notes:", frame: NSMakeRect(32, 386, 104, 24))
-let notesTextView = NSTextView(frame: NSMakeRect(152, 386, 360, 96))
-let sliderLabel = NSTextField(string: "Slider:", frame: NSMakeRect(744, 166, 72, 24))
+let button = NSButton(title: "Click", frame: NSMakeRect(32, 24, 100, 34))
+let enableButton = NSButton(title: "Disable Click", frame: NSMakeRect(152, 24, 144, 34))
+let hideButton = NSButton(title: "Hide Counter", frame: NSMakeRect(316, 24, 144, 34))
+let moveButton = NSButton(title: "Move Click", frame: NSMakeRect(480, 24, 128, 34))
+let editableLabel = NSTextField(string: "Type here:", frame: NSMakeRect(32, 88, 104, 24))
+let editableTextField = NSTextField(string: "", frame: NSMakeRect(152, 86, 360, 28))
+let secureLabel = NSTextField(string: "Password:", frame: NSMakeRect(32, 122, 104, 24))
+let secureTextField = NSSecureTextField(string: "", frame: NSMakeRect(152, 120, 240, 28))
+let alertButton = NSButton(title: "Alert", frame: NSMakeRect(32, 152, 100, 34))
+let titleCheckbox = NSButton(title: "Show count in title", frame: NSMakeRect(152, 152, 228, 34))
+let alertStyleBox = NSBox(title: "Alert Style", frame: NSMakeRect(448, 120, 248, 116))
+let alertStyleLabel = NSTextField(string: "Alert style:", frame: NSMakeRect(472, 156, 112, 24))
+let alertStylePopup = NSPopUpButton(frame: NSMakeRect(472, 186, 184, 96), pullsDown: false)
+let infoRadio = NSButton(title: "Info", frame: NSMakeRect(32, 234, 88, 24))
+let warningRadio = NSButton(title: "Warning", frame: NSMakeRect(136, 234, 116, 24))
+let criticalRadio = NSButton(title: "Critical", frame: NSMakeRect(268, 234, 116, 24))
+let notesLabel = NSTextField(string: "Notes:", frame: NSMakeRect(32, 286, 104, 24))
+let notesTextView = NSTextView(frame: NSMakeRect(152, 286, 360, 96))
+let sliderLabel = NSTextField(string: "Slider:", frame: NSMakeRect(32, 28, 72, 24))
 let slider = NSSlider(value: 50, minValue: 0, maxValue: 100, target: nil, action: "sliderChanged:")
-let sliderValueLabel = NSTextField(string: "50", frame: NSMakeRect(1024, 166, 48, 24))
-let progressLabel = NSTextField(string: "Progress:", frame: NSMakeRect(744, 198, 88, 24))
-let progressIndicator = NSProgressIndicator(frame: NSMakeRect(840, 202, 232, 18))
-let stepperLabel = NSTextField(string: "Stepper:", frame: NSMakeRect(744, 232, 88, 24))
-let stepper = NSStepper(frame: NSMakeRect(840, 232, 20, 28))
-let stepperValueLabel = NSTextField(string: "50", frame: NSMakeRect(888, 232, 64, 24))
-let comboLabel = NSTextField(string: "Combo:", frame: NSMakeRect(744, 292, 88, 24))
-let comboBox = NSComboBox(frame: NSMakeRect(840, 290, 184, 28))
-let searchLabel = NSTextField(string: "Search:", frame: NSMakeRect(744, 328, 88, 24))
-let searchField = NSSearchField(frame: NSMakeRect(840, 326, 232, 28))
-let levelLabel = NSTextField(string: "Level:", frame: NSMakeRect(744, 364, 88, 24))
-let levelIndicator = NSLevelIndicator(frame: NSMakeRect(840, 368, 144, 18))
-let colorWellLabel = NSTextField(string: "Color:", frame: NSMakeRect(992, 364, 56, 24))
-let colorWell = NSColorWell(frame: NSMakeRect(1052, 362, 32, 28))
-let segmentedLabel = NSTextField(string: "Segments:", frame: NSMakeRect(32, 650, 104, 24))
-let segmentedControl = NSSegmentedControl(labels: ["One", "Two", "Three"], frame: NSMakeRect(152, 648, 240, 28))
-let scrollerLabel = NSTextField(string: "Scroller:", frame: NSMakeRect(448, 650, 88, 24))
-let scroller = NSScroller(frame: NSMakeRect(560, 656, 240, 18))
-let scrollerValueLabel = NSTextField(string: "0", frame: NSMakeRect(816, 650, 48, 24))
-let tabLabel = NSTextField(string: "Tabs:", frame: NSMakeRect(32, 520, 88, 24))
-let tabView = NSTabView(frame: NSMakeRect(152, 520, 280, 88))
-let imageLabel = NSTextField(string: "Image view:", frame: NSMakeRect(448, 520, 104, 24))
-let imageView = NSImageView(frame: NSMakeRect(560, 500, 160, 100))
-let splitLabel = NSTextField(string: "Split view:", frame: NSMakeRect(448, 608, 104, 24))
-let splitView = NSSplitView(frame: NSMakeRect(560, 604, 160, 64))
+let sliderValueLabel = NSTextField(string: "50", frame: NSMakeRect(312, 28, 48, 24))
+let progressLabel = NSTextField(string: "Progress:", frame: NSMakeRect(32, 60, 88, 24))
+let progressIndicator = NSProgressIndicator(frame: NSMakeRect(128, 64, 232, 18))
+let stepperLabel = NSTextField(string: "Stepper:", frame: NSMakeRect(32, 94, 88, 24))
+let stepper = NSStepper(frame: NSMakeRect(128, 94, 20, 28))
+let stepperValueLabel = NSTextField(string: "50", frame: NSMakeRect(176, 94, 64, 24))
+let comboLabel = NSTextField(string: "Combo:", frame: NSMakeRect(32, 154, 88, 24))
+let comboBox = NSComboBox(frame: NSMakeRect(128, 152, 184, 28))
+let searchLabel = NSTextField(string: "Search:", frame: NSMakeRect(32, 190, 88, 24))
+let searchField = NSSearchField(frame: NSMakeRect(128, 188, 232, 28))
+let levelLabel = NSTextField(string: "Level:", frame: NSMakeRect(32, 226, 88, 24))
+let levelIndicator = NSLevelIndicator(frame: NSMakeRect(128, 230, 144, 18))
+let colorWellLabel = NSTextField(string: "Color:", frame: NSMakeRect(288, 226, 56, 24))
+let colorWell = NSColorWell(frame: NSMakeRect(348, 224, 32, 28))
+let segmentedLabel = NSTextField(string: "Segments:", frame: NSMakeRect(32, 286, 104, 24))
+let segmentedControl = NSSegmentedControl(labels: ["One", "Two", "Three"], frame: NSMakeRect(152, 284, 240, 28))
+let scrollerLabel = NSTextField(string: "Scroller:", frame: NSMakeRect(32, 334, 88, 24))
+let scroller = NSScroller(frame: NSMakeRect(128, 340, 240, 18))
+let scrollerValueLabel = NSTextField(string: "0", frame: NSMakeRect(384, 334, 48, 24))
+let tabLabel = NSTextField(string: "Groups:", frame: NSMakeRect(32, 114, 104, 24))
+let tabView = NSTabView(frame: NSMakeRect(152, 112, 360, 32))
+let imageLabel = NSTextField(string: "Image view:", frame: NSMakeRect(32, 28, 104, 24))
+let imageView = NSImageView(frame: NSMakeRect(152, 28, 300, 190))
+let splitLabel = NSTextField(string: "Split view:", frame: NSMakeRect(496, 28, 104, 24))
+let splitView = NSSplitView(frame: NSMakeRect(616, 28, 240, 96))
 let splitLeftPane = NSView(frame: NSZeroRect)
 let splitRightPane = NSView(frame: NSZeroRect)
-let tableLabel = NSTextField(string: "Table view:", frame: NSMakeRect(744, 392, 120, 24))
-let tableScrollView = NSScrollView(frame: NSMakeRect(744, 424, 330, 210))
-let tableView = NSTableView(frame: NSMakeRect(0, 0, 330, 210))
+let tableLabel = NSTextField(string: "Table view:", frame: NSMakeRect(32, 246, 120, 24))
+let tableScrollView = NSScrollView(frame: NSMakeRect(152, 246, 520, 250))
+let tableView = NSTableView(frame: NSMakeRect(0, 0, 520, 250))
 let tableDataSource = DemoTableDataSource()
 let contentFocusColor = NSColor(calibratedRed: 0.92, green: 0.97, blue: 1.0, alpha: 1.0)
 let normalContentColor = NSColor.windowBackgroundColor
@@ -426,7 +435,7 @@ statusLabel.backgroundColor = NSColor(calibratedRed: 0.94, green: 0.97, blue: 1.
 focusLabel.font = NSFont.boldSystemFont(ofSize: 12)
 focusLabel.textColor = .black
 focusLabel.backgroundColor = NSColor(calibratedRed: 1.0, green: 0.98, blue: 0.86, alpha: 1.0)
-slider.frame = NSMakeRect(832, 166, 184, 28)
+slider.frame = NSMakeRect(120, 28, 184, 28)
 sliderLabel.font = NSFont.boldSystemFont(ofSize: 12)
 sliderValueLabel.textColor = .blue
 progressLabel.font = NSFont.boldSystemFont(ofSize: 12)
@@ -461,10 +470,10 @@ scrollerValueLabel.textColor = .blue
 tabLabel.font = NSFont.boldSystemFont(ofSize: 12)
 let firstTab = NSTabViewItem(identifier: "controls")
 firstTab.label = "Controls"
-let secondTab = NSTabViewItem(identifier: "tables")
-secondTab.label = "Tables"
-let thirdTab = NSTabViewItem(identifier: "events")
-thirdTab.label = "Events"
+let secondTab = NSTabViewItem(identifier: "values")
+secondTab.label = "Values"
+let thirdTab = NSTabViewItem(identifier: "tables")
+thirdTab.label = "Tables/Media"
 tabView.addTabViewItem(firstTab)
 tabView.addTabViewItem(secondTab)
 tabView.addTabViewItem(thirdTab)
@@ -511,6 +520,14 @@ contentView.onKeyUp = { event in
     statusLabel.stringValue = "Key up: \(keyText(for: event))"
 }
 
+@MainActor
+func showDemoPage(_ index: Int) {
+    controlsPage.isHidden = index != 0
+    valuesPage.isHidden = index != 1
+    tablesPage.isHidden = index != 2
+    updateFocusDisplay()
+}
+
 titleCheckbox.setButtonType(.switchButton)
 titleCheckbox.state = .on
 infoRadio.setButtonType(.radioButton)
@@ -523,8 +540,8 @@ let tableNameColumn = NSTableColumn(identifier: "name")
 let tableStatusColumn = NSTableColumn(identifier: "status")
 tableNameColumn.title = "Name"
 tableStatusColumn.title = "Status"
-tableNameColumn.width = 150
-tableStatusColumn.width = 150
+tableNameColumn.width = 250
+tableStatusColumn.width = 240
 tableNameColumn.sortDescriptorPrototype = NSSortDescriptor(key: "name", ascending: true)
 tableStatusColumn.sortDescriptorPrototype = NSSortDescriptor(key: "status", ascending: true)
 tableView.addTableColumn(tableNameColumn)
@@ -661,6 +678,7 @@ scroller.onAction = { control in
 }
 
 tabView.onSelectionChanged = { tabs in
+    showDemoPage(tabs.indexOfTabViewItem(tabs.selectedTabViewItem ?? firstTab))
     updateFocusDisplay()
     statusLabel.stringValue = "Tab selected: \(tabs.selectedTabViewItem?.label ?? "none")"
 }
@@ -711,7 +729,7 @@ moveButton.onAction = { _ in
     movedRight.toggle()
     button.frame = movedRight
         ? NSMakeRect(32, 430, 100, 34)
-        : NSMakeRect(32, 124, 100, 34)
+        : NSMakeRect(32, 24, 100, 34)
     statusLabel.stringValue = movedRight ? "Click button moved down" : "Click button moved back"
 }
 
@@ -835,55 +853,62 @@ tableView.onDoubleAction = { table in
 contentView.addSubview(counterLabel)
 contentView.addSubview(statusLabel)
 contentView.addSubview(focusLabel)
-contentView.addSubview(editableLabel)
-contentView.addSubview(editableTextField)
-contentView.addSubview(secureLabel)
-contentView.addSubview(secureTextField)
-contentView.addSubview(button)
-contentView.addSubview(enableButton)
-contentView.addSubview(hideButton)
-contentView.addSubview(moveButton)
-contentView.addSubview(alertButton)
-contentView.addSubview(titleCheckbox)
-contentView.addSubview(alertStyleBox)
-contentView.addSubview(alertStyleLabel)
-contentView.addSubview(alertStylePopup)
-contentView.addSubview(infoRadio)
-contentView.addSubview(warningRadio)
-contentView.addSubview(criticalRadio)
-contentView.addSubview(notesLabel)
-contentView.addSubview(notesTextView)
-contentView.addSubview(sliderLabel)
-contentView.addSubview(slider)
-contentView.addSubview(sliderValueLabel)
-contentView.addSubview(progressLabel)
-contentView.addSubview(progressIndicator)
-contentView.addSubview(stepperLabel)
-contentView.addSubview(stepper)
-contentView.addSubview(stepperValueLabel)
-contentView.addSubview(comboLabel)
-contentView.addSubview(comboBox)
-contentView.addSubview(searchLabel)
-contentView.addSubview(searchField)
-contentView.addSubview(levelLabel)
-contentView.addSubview(levelIndicator)
-contentView.addSubview(colorWellLabel)
-contentView.addSubview(colorWell)
-contentView.addSubview(segmentedLabel)
-contentView.addSubview(segmentedControl)
-contentView.addSubview(scrollerLabel)
-contentView.addSubview(scroller)
-contentView.addSubview(scrollerValueLabel)
 contentView.addSubview(tabLabel)
 contentView.addSubview(tabView)
-contentView.addSubview(imageLabel)
-contentView.addSubview(imageView)
-contentView.addSubview(splitLabel)
-contentView.addSubview(splitView)
-contentView.addSubview(tableLabel)
-contentView.addSubview(tableScrollView)
+contentView.addSubview(controlsPage)
+contentView.addSubview(valuesPage)
+contentView.addSubview(tablesPage)
+
+controlsPage.addSubview(editableLabel)
+controlsPage.addSubview(editableTextField)
+controlsPage.addSubview(secureLabel)
+controlsPage.addSubview(secureTextField)
+controlsPage.addSubview(button)
+controlsPage.addSubview(enableButton)
+controlsPage.addSubview(hideButton)
+controlsPage.addSubview(moveButton)
+controlsPage.addSubview(alertButton)
+controlsPage.addSubview(titleCheckbox)
+controlsPage.addSubview(alertStyleBox)
+controlsPage.addSubview(alertStyleLabel)
+controlsPage.addSubview(alertStylePopup)
+controlsPage.addSubview(infoRadio)
+controlsPage.addSubview(warningRadio)
+controlsPage.addSubview(criticalRadio)
+controlsPage.addSubview(notesLabel)
+controlsPage.addSubview(notesTextView)
+
+valuesPage.addSubview(sliderLabel)
+valuesPage.addSubview(slider)
+valuesPage.addSubview(sliderValueLabel)
+valuesPage.addSubview(progressLabel)
+valuesPage.addSubview(progressIndicator)
+valuesPage.addSubview(stepperLabel)
+valuesPage.addSubview(stepper)
+valuesPage.addSubview(stepperValueLabel)
+valuesPage.addSubview(comboLabel)
+valuesPage.addSubview(comboBox)
+valuesPage.addSubview(searchLabel)
+valuesPage.addSubview(searchField)
+valuesPage.addSubview(levelLabel)
+valuesPage.addSubview(levelIndicator)
+valuesPage.addSubview(colorWellLabel)
+valuesPage.addSubview(colorWell)
+valuesPage.addSubview(segmentedLabel)
+valuesPage.addSubview(segmentedControl)
+valuesPage.addSubview(scrollerLabel)
+valuesPage.addSubview(scroller)
+valuesPage.addSubview(scrollerValueLabel)
+
+tablesPage.addSubview(imageLabel)
+tablesPage.addSubview(imageView)
+tablesPage.addSubview(splitLabel)
+tablesPage.addSubview(splitView)
+tablesPage.addSubview(tableLabel)
+tablesPage.addSubview(tableScrollView)
 window.contentView = contentView
 window.makeKeyAndOrderFront(nil)
+showDemoPage(0)
 updateFocusDisplay()
 statusLabel.stringValue = window.isKeyWindow && window.isMainWindow
     ? "Ready - key/main window"

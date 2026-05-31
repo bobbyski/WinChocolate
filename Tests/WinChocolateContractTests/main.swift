@@ -147,9 +147,11 @@ func testScrollViewHostsDocumentView() {
     scrollView.hasVerticalScroller = true
     scrollView.documentView = documentView
 
-    expect(scrollView.subviews.count == 1, "Scroll view did not add document view as subview.")
-    expect(scrollView.subviews.first === documentView, "Scroll view subview was not the document view.")
-    expect(documentView.superview === scrollView, "Document view superview was not the scroll view.")
+    expect(scrollView.subviews.count == 1, "Scroll view should own one clip view child.")
+    expect(scrollView.subviews.first === scrollView.contentView, "Scroll view subview was not the clip view.")
+    expect(scrollView.contentView.documentView === documentView, "Clip view did not host the document view.")
+    expect(documentView.superview === scrollView.contentView, "Document view superview was not the clip view.")
+    expect(!scrollView.contentView.acceptsFirstResponder, "Clip view should skip key-view traversal.")
 }
 
 func testScrollViewUsesNativePeerAndRealizesDocumentView() {
@@ -163,8 +165,25 @@ func testScrollViewUsesNativePeerAndRealizesDocumentView() {
     let handle = scrollView.realizeNativePeer(in: backend, parent: nil)
 
     expect(backend.records[handle]?.kind == "scrollView", "Scroll view did not request native scroll peer.")
+    expect(scrollView.contentView.nativeHandle != nil, "Scroll view did not realize clip view.")
     expect(documentView.nativeHandle != nil, "Scroll view did not realize document view.")
-    expect(backend.records[documentView.nativeHandle!]?.parent == handle, "Document view native parent was not scroll view.")
+    expect(backend.records[scrollView.contentView.nativeHandle!]?.parent == handle, "Clip view native parent was not scroll view.")
+    expect(backend.records[documentView.nativeHandle!]?.parent == scrollView.contentView.nativeHandle, "Document view native parent was not clip view.")
+}
+
+func testClipViewScrollsDocumentView() {
+    let clipView = NSClipView(frame: NSMakeRect(0, 0, 100, 80))
+    let documentView = NSView(frame: NSMakeRect(0, 0, 180, 160))
+    clipView.documentView = documentView
+
+    clipView.scroll(to: NSMakePoint(40, 50))
+
+    expect(clipView.boundsOrigin == NSMakePoint(40, 50), "Clip view did not store scroll origin.")
+    expect(clipView.documentVisibleRect == NSMakeRect(40, 50, 100, 80), "Clip view visible rect was not document-space bounds.")
+    expect(documentView.frame.origin == NSMakePoint(-40, -50), "Clip view did not offset document frame.")
+
+    clipView.scroll(to: NSMakePoint(400, 400))
+    expect(clipView.boundsOrigin == NSMakePoint(80, 80), "Clip view did not constrain scroll origin to document extent.")
 }
 
 final class RecordingResponder: NSResponder {
@@ -1329,6 +1348,37 @@ func testWindowSelectNextKeyViewSkipsDisabledExplicitTarget() {
     expect(window.firstResponder === fallback, "Window did not skip disabled key view target.")
 }
 
+func testWindowSelectNextKeyViewSkipsHiddenContainerChildren() {
+    let window = NSWindow(
+        contentRect: NSMakeRect(0, 0, 140, 100),
+        styleMask: [.titled],
+        backing: .buffered,
+        defer: false,
+        nativeBackend: InMemoryNativeControlBackend()
+    )
+    let contentView = NSView(frame: NSMakeRect(0, 0, 140, 100))
+    let first = NSButton(title: "First", frame: NSMakeRect(0, 0, 40, 20))
+    let hiddenContainer = NSView(frame: NSMakeRect(0, 24, 80, 48))
+    let hiddenChild = NSButton(title: "Hidden", frame: NSMakeRect(0, 0, 60, 20))
+    let fallback = NSButton(title: "Fallback", frame: NSMakeRect(0, 76, 60, 20))
+
+    hiddenContainer.isHidden = true
+    first.nextKeyView = hiddenChild
+    hiddenChild.nextKeyView = fallback
+    hiddenContainer.addSubview(hiddenChild)
+    contentView.addSubview(first)
+    contentView.addSubview(hiddenContainer)
+    contentView.addSubview(fallback)
+    window.contentView = contentView
+    window.realizeNativePeer()
+
+    expect(window.makeFirstResponder(first), "Window did not accept first key view.")
+
+    window.selectNextKeyView(nil)
+
+    expect(window.firstResponder === fallback, "Window did not skip hidden key view container children.")
+}
+
 func testNativeMouseDownDispatchesToView() {
     let backend = InMemoryNativeControlBackend()
     let view = RecordingView(frame: NSMakeRect(0, 0, 100, 100))
@@ -2161,6 +2211,7 @@ testGeometryConvenienceFunctions()
 testViewCoordinateConversionAndHitTesting()
 testScrollViewHostsDocumentView()
 testScrollViewUsesNativePeerAndRealizesDocumentView()
+testClipViewScrollsDocumentView()
 testCellStoresStringAndObjectValues()
 testSortDescriptorStoresKeyDirectionAndReverse()
 testTableCellAndRowViewsStoreState()
@@ -2201,6 +2252,7 @@ testWindowMakeFirstResponderHonorsResignFailure()
 testApplicationTracksWindowListAndKeyMainWindow()
 testWindowSelectNextAndPreviousKeyView()
 testWindowSelectNextKeyViewSkipsDisabledExplicitTarget()
+testWindowSelectNextKeyViewSkipsHiddenContainerChildren()
 testNativeMouseDownDispatchesToView()
 testNativeMouseDownOnControlMakesControlFirstResponder()
 testNativeMouseUpDispatchesToView()
