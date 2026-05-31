@@ -6,7 +6,42 @@ WinChocolate should use Foundation wherever AppKit-compatible APIs naturally use
 
 The current blocker is not WinChocolate code. On this machine, the installed Windows Swift toolchain cannot compile a minimal package that imports `Foundation`. The failure happens while Swift is building its Windows C overlay modules, before any WinChocolate source is involved.
 
-Until the toolchain issue is resolved, WinChocolate must avoid `import Foundation` in package sources. The current local `URL` shim is a temporary compatibility bridge, not a desired architecture.
+Until the toolchain issue is resolved, WinChocolate must avoid `import Foundation` in ordinary Windows package builds. The project now has a repo-local `WinFoundation` target as a temporary compatibility bridge, not a desired permanent architecture.
+
+## Current Bridge
+
+The package defines a `WinFoundation` target with small source-compatible subsets of Foundation types that WinChocolate needs while the installed Windows toolchain cannot import real Foundation.
+
+Current first-slice types:
+
+- `URL`
+- `Data`
+- `Date`
+- `IndexSet`
+
+WinChocolate imports Foundation-shaped APIs through:
+
+`C:\AIResearch\WinChocolate\Code\WinChocolate\Sources\WinChocolate\Runtime\FoundationBridge.swift`
+
+The bridge logic is:
+
+```swift
+#if USE_REAL_FOUNDATION
+@_exported import Foundation
+#elseif USE_WIN_FOUNDATION
+@_exported import WinFoundation
+#else
+@_exported import Foundation
+#endif
+```
+
+`Package.swift` currently defines `USE_WIN_FOUNDATION` for Windows builds so `buildandrun.bat` keeps working with this local toolchain. To test a newer Windows Swift toolchain against real Foundation, build with:
+
+```powershell
+swift build -Xswiftc -DUSE_REAL_FOUNDATION
+```
+
+On Apple platforms or any non-Windows environment where no shim flag is defined, doing nothing uses real Foundation.
 
 ## Current Environment
 
@@ -187,27 +222,31 @@ The current `URL` shim exists only because `NSPathControl.url` is naturally a Fo
 
 ## Current WinChocolate State
 
-Current local shim:
+Current local bridge:
 
-`C:\AIResearch\WinChocolate\Code\WinChocolate\Sources\WinChocolate\Runtime\URL.swift`
+`C:\AIResearch\WinChocolate\Code\WinChocolate\Sources\WinFoundation`
 
-It provides only:
+The first `URL` slice provides:
 
 - `URL(fileURLWithPath:)`
 - `path`
 - `pathComponents`
+- `lastPathComponent`
+- `appendingPathComponent(_:)`
 
 It is enough for the first `NSPathControl` slice, but it is not a replacement for real Foundation.
 
-No WinChocolate source currently imports Foundation, because a single `import Foundation` breaks the build with the installed toolchain.
+No ordinary Windows WinChocolate build currently imports real Foundation, because a single `import Foundation` breaks the build with the installed toolchain.
 
 ## Can We Fork Foundation?
 
-Short answer: maybe eventually, but it is probably not the first fix.
+Short answer: yes, we can create a `WinFoundation` bridge, and the project now has a first slice of that. Forking the full upstream Foundation source is probably not the first fix.
 
 Apple/Swift's newer Foundation work lives in the open-source `swift-foundation` repository. That repository is real and relevant, but the failure we are seeing occurs before Foundation source code is the useful thing to debug. The compiler is failing while importing Swift's Windows SDK C overlay modules, specifically around UCRT and Visual C intrinsic module maps.
 
-That means a Foundation fork alone probably will not fix this exact failure unless one of these is also true:
+The current `WinFoundation` approach does not fork all of Foundation. It implements the specific types WinChocolate needs under familiar names, behind conditional compilation. That is repo-local, repeatable, and removable.
+
+A full Foundation fork alone probably will not fix this exact failure unless one of these is also true:
 
 - the fork is built in a way that avoids the failing Windows C overlay imports,
 - the fork includes a workaround for this specific Windows ARM64 module-map issue,
@@ -247,6 +286,12 @@ For example, one might try mapping `arm_neon.h` under the ARM64/aarch64 module i
 
 I do not recommend this as the project solution. It would be machine-local, fragile, and hard for another developer to reproduce. It might be acceptable only as a short experiment to confirm the root cause before filing/upstreaming a toolchain issue.
 
+## Compatibility Notes
+
+Swift modules are nominal. `Foundation.URL` and `WinFoundation.URL` are not the same binary type. In normal source, explicit `Foundation.URL` qualification is rare, so source compatibility should still be good for common Cocoa/AppKit-style app code that writes `URL(...)`.
+
+This bridge is intended to be source-compatible enough for WinChocolate API work, not binary-compatible with real Foundation or third-party packages expecting Foundation's concrete types.
+
 ## Source Links
 
 - Swift Foundation repository: https://github.com/swiftlang/swift-foundation
@@ -259,7 +304,7 @@ I do not recommend this as the project solution. It would be machine-local, frag
 Local files and paths used during investigation:
 
 - Repro package: `C:\AIResearch\WinChocolate\Temp\FoundationProbe`
-- WinChocolate URL shim: `C:\AIResearch\WinChocolate\Code\WinChocolate\Sources\WinChocolate\Runtime\URL.swift`
+- WinFoundation bridge target: `C:\AIResearch\WinChocolate\Code\WinChocolate\Sources\WinFoundation`
 - Architecture note: `C:\AIResearch\WinChocolate\Code\WinChocolate\Docs\Architecture.md`
 - Installed Swift module map: `C:\Users\bobby\AppData\Local\Programs\Swift\Platforms\0.0.0\Windows.platform\Developer\SDKs\Windows.sdk\usr\share\vcruntime.modulemap`
 

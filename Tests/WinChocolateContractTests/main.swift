@@ -1848,6 +1848,27 @@ func testPathControlStoresURLAndPathComponentCells() {
     expect(pathControl.pathComponentCells.contains { $0.title == "Code" }, "Path control setURL did not refresh component cells.")
 }
 
+func testWinFoundationCompatibilitySurface() {
+    let url = URL(fileURLWithPath: "C:\\AIResearch\\WinChocolate\\")
+    expect(url.path == "C:\\AIResearch\\WinChocolate", "WinFoundation URL did not normalize trailing separator.")
+    expect(url.lastPathComponent == "WinChocolate", "WinFoundation URL lastPathComponent failed.")
+    expect(url.appendingPathComponent("Code").path.hasSuffix("WinChocolate\\Code"), "WinFoundation URL appendingPathComponent failed.")
+
+    let data = Data([1, 2, 3])
+    expect(data.count == 3, "WinFoundation Data count failed.")
+    expect(Array(data) == [1, 2, 3], "WinFoundation Data iteration failed.")
+
+    var indexes = IndexSet(integer: 2)
+    indexes.insert(1)
+    indexes.insert(3)
+    indexes.remove(2)
+    expect(Array(indexes) == [1, 3], "WinFoundation IndexSet ordering or mutation failed.")
+
+    let early = Date(timeIntervalSinceReferenceDate: 1)
+    let later = Date(timeIntervalSinceReferenceDate: 2)
+    expect(early < later, "WinFoundation Date comparison failed.")
+}
+
 func testImageViewStoresImageAndUsesNativePeer() {
     let backend = InMemoryNativeControlBackend()
     let imageView = NSImageView(frame: NSMakeRect(0, 0, 64, 64))
@@ -2325,6 +2346,7 @@ testComboBoxStoresItemsTextAndUsesNativePeer()
 testComboBoxNativeTextChangeAndActionUpdateState()
 testTokenFieldStoresTokensAndTokenizesNativeText()
 testPathControlStoresURLAndPathComponentCells()
+testWinFoundationCompatibilitySurface()
 testImageViewStoresImageAndUsesNativePeer()
 testTabViewStoresItemsSelectionAndUsesNativePeer()
 testTabViewNativeSelectionDispatchesAction()

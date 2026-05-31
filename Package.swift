@@ -6,6 +6,10 @@ let package = Package(
     name: "WinChocolate",
     products: [
         .library(
+            name: "WinFoundation",
+            targets: ["WinFoundation"]
+        ),
+        .library(
             name: "WinChocolate",
             targets: ["WinChocolate"]
         ),
@@ -16,7 +20,14 @@ let package = Package(
     ],
     targets: [
         .target(
+            name: "WinFoundation"
+        ),
+        .target(
             name: "WinChocolate",
+            dependencies: ["WinFoundation"],
+            swiftSettings: [
+                .define("USE_WIN_FOUNDATION", .when(platforms: [.windows]))
+            ],
             linkerSettings: [
                 .linkedLibrary("User32"),
                 .linkedLibrary("Gdi32"),
