@@ -20,7 +20,10 @@ let package = Package(
     ],
     targets: [
         .target(
-            name: "WinFoundation"
+            name: "WinFoundation",
+            linkerSettings: [
+                .linkedLibrary("Ole32")
+            ]
         ),
         .target(
             name: "WinChocolate",
@@ -43,6 +46,7 @@ let package = Package(
             name: "WinChocolateDemo",
             dependencies: ["WinChocolate"],
             path: "Demo/DemoApplication",
+            exclude: ["Resources"],
             linkerSettings: [
                 .unsafeFlags(
                     ["-Xlinker", "/SUBSYSTEM:WINDOWS", "-Xlinker", "/ENTRY:mainCRTStartup"],

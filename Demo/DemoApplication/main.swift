@@ -222,8 +222,14 @@ var movedRight = false
 var suppressNextTableSelectionStatus = false
 var colorIndex = 0
 let demoColors: [NSColor] = [.red, .green, .blue, .white]
-let demoArtworkPath = "Demo\\DemoApplication\\Resources\\WinChocolateArtwork.bmp"
-let demoScreenArtworkPath = "Demo\\DemoApplication\\Resources\\WinChocolateScreenArtwork.bmp"
+func demoResourcePath(named name: String) -> String {
+    Bundle.main.path(forResource: name, ofType: "bmp", inDirectory: "Resources")
+        ?? Bundle(path: ".")?.path(forResource: name, ofType: "bmp", inDirectory: "Demo\\DemoApplication\\Resources")
+        ?? "Demo\\DemoApplication\\Resources\\\(name).bmp"
+}
+
+let demoArtworkPath = demoResourcePath(named: "WinChocolateArtwork")
+let demoScreenArtworkPath = demoResourcePath(named: "WinChocolateScreenArtwork")
 var imageModeIndex = 0
 let imageModes: [(NSImageView.ImageScaling, NSImageView.ImageAlignment, String, String)] = [
     (.scaleProportionallyDown, .alignCenter, demoArtworkPath, "bird center/down"),

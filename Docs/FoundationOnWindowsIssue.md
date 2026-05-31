@@ -254,6 +254,8 @@ A full Foundation fork alone probably will not fix this exact failure unless one
 
 A local Foundation fork may become useful after we have a compatible Swift toolchain baseline. It is less attractive as the first move because we would be taking on upstream Foundation maintenance while the root issue appears to be in the installed Swift platform SDK/module-map layer.
 
+One related resource wrinkle showed up in practice: SwiftPM target `resources` generate a `resource_bundle_accessor.swift` that imports Foundation. On this toolchain that generated file trips the same UCRT/module-map failure. WinChocolate currently excludes demo resources from SwiftPM target compilation and resolves them through the repo-local `WinFoundation.Bundle` shim instead. Once the real Foundation canary passes, remove that workaround and retest normal SwiftPM resource handling.
+
 ## Better Solution Path
 
 Recommended order:

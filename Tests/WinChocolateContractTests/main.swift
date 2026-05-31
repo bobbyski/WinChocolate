@@ -1868,26 +1868,207 @@ func testWinFoundationCompatibilitySurface() {
 
     let webURL = URL(string: "https://example.com/index.html")
     expect(webURL?.isFileURL == false, "WinFoundation URL(string:) should preserve non-file URLs.")
+    expect(webURL?.scheme == "https", "WinFoundation URL scheme failed.")
+    expect(webURL?.host == "example.com", "WinFoundation URL host failed.")
+    expect(webURL?.path == "/index.html", "WinFoundation URL path failed for web URL.")
     expect(webURL?.absoluteString == "https://example.com/index.html", "WinFoundation non-file URL absoluteString failed.")
+
+    let queriedURL = URL(string: "https://example.com/search docs/index.html?q=hello world&sort=up#top item")
+    expect(queriedURL?.scheme == "https", "WinFoundation queried URL scheme failed.")
+    expect(queriedURL?.host == "example.com", "WinFoundation queried URL host failed.")
+    expect(queriedURL?.path == "/search docs/index.html", "WinFoundation queried URL path failed.")
+    expect(queriedURL?.query == "q=hello world&sort=up", "WinFoundation queried URL query failed.")
+    expect(queriedURL?.fragment == "top item", "WinFoundation queried URL fragment failed.")
+    expect(queriedURL?.percentEncodedPath == "/search%20docs/index.html", "WinFoundation queried URL percentEncodedPath failed.")
+    expect(queriedURL?.percentEncodedQuery == "q=hello%20world&sort=up", "WinFoundation queried URL percentEncodedQuery failed.")
+    expect(queriedURL?.percentEncodedFragment == "top%20item", "WinFoundation queried URL percentEncodedFragment failed.")
+    expect(queriedURL?.absoluteString == "https://example.com/search%20docs/index.html?q=hello%20world&sort=up#top%20item", "WinFoundation queried URL absoluteString failed.")
+
+    let spacedFileURL = URL(fileURLWithPath: "C:\\AIResearch\\Win Chocolate\\hello world.txt")
+    expect(spacedFileURL.absoluteString == "file:///C:/AIResearch/Win%20Chocolate/hello%20world.txt", "WinFoundation URL did not percent-encode file URL spaces.")
+    expect(spacedFileURL.percentEncodedPath == "C:/AIResearch/Win%20Chocolate/hello%20world.txt", "WinFoundation URL percentEncodedPath failed.")
+
+    let decodedFileURL = URL(string: "file:///C:/AIResearch/Win%20Chocolate/hello%20world.txt")
+    expect(decodedFileURL?.path == "C:\\AIResearch\\Win Chocolate\\hello world.txt", "WinFoundation URL did not decode percent-encoded file URL path.")
+
+    let baseURL = URL(string: "https://example.com/docs/")
+    let relativeURL = URL(string: "guide/index.html", relativeTo: baseURL)
+    expect(relativeURL?.baseURL?.absoluteString == "https://example.com/docs/", "WinFoundation relative URL did not preserve base URL.")
+    expect(relativeURL?.relativePath == "guide/index.html", "WinFoundation relative URL did not preserve relative path.")
+    expect(relativeURL?.relativeString == "guide/index.html", "WinFoundation relative URL did not preserve relativeString.")
+    expect(relativeURL?.absoluteString == "https://example.com/docs/guide/index.html", "WinFoundation relative URL did not resolve absoluteString with base URL.")
+    expect(relativeURL?.absoluteURL.absoluteString == "https://example.com/docs/guide/index.html", "WinFoundation relative URL absoluteURL failed.")
+
+    let queriedRelativeURL = URL(string: "guide/search results.html?q=hello world#section 1", relativeTo: baseURL)
+    expect(queriedRelativeURL?.absoluteString == "https://example.com/docs/guide/search%20results.html?q=hello%20world#section%201", "WinFoundation queried relative URL absoluteString failed.")
+    expect(queriedRelativeURL?.absoluteURL.query == "q=hello world", "WinFoundation queried relative URL query failed.")
+    expect(queriedRelativeURL?.absoluteURL.fragment == "section 1", "WinFoundation queried relative URL fragment failed.")
+
+    let weirdPath = URL(fileURLWithPath: "C:\\AIResearch\\.\\WinChocolate\\Code\\..\\Docs\\")
+    expect(weirdPath.standardizedFileURL.path == "C:\\AIResearch\\WinChocolate\\Docs\\", "WinFoundation URL standardizedFileURL did not collapse dot components.")
+
+    let uncURL = URL(fileURLWithPath: "\\\\Server\\Share\\WinChocolate")
+    expect(uncURL.absoluteString == "file://Server/Share/WinChocolate", "WinFoundation URL did not format UNC file URL correctly.")
+    expect(uncURL.pathComponents == ["Server", "Share", "WinChocolate"], "WinFoundation URL UNC pathComponents failed.")
+
+    let parsedUNCURL = URL(string: "file://Server/Share/WinChocolate")
+    expect(parsedUNCURL?.path == "\\\\Server\\Share\\WinChocolate", "WinFoundation URL did not parse UNC file URL correctly.")
+
+    let driveRoot = URL(fileURLWithPath: "C:\\")
+    expect(driveRoot.deletingLastPathComponent().path == "C:\\", "WinFoundation URL should preserve Windows drive root when deleting last component.")
 
     let data = Data([1, 2, 3])
     expect(data.count == 3, "WinFoundation Data count failed.")
     expect(Array(data) == [1, 2, 3], "WinFoundation Data iteration failed.")
+
+    var mutableData = Data(repeating: 7, count: 3)
+    expect(Array(mutableData) == [7, 7, 7], "WinFoundation Data repeating initializer failed.")
+    mutableData[1] = 9
+    expect(mutableData[1] == 9, "WinFoundation Data mutable subscript failed.")
+    mutableData.append(10)
+    mutableData.append(contentsOf: [11, 12])
+    mutableData.append(Data([13, 14]))
+    expect(Array(mutableData) == [7, 9, 7, 10, 11, 12, 13, 14], "WinFoundation Data append failed.")
+    mutableData.replaceSubrange(1..<3, with: [21, 22, 23])
+    expect(Array(mutableData) == [7, 21, 22, 23, 10, 11, 12, 13, 14], "WinFoundation Data replaceSubrange failed.")
+    expect(Array(mutableData.subdata(in: 1..<4)) == [21, 22, 23], "WinFoundation Data subdata failed.")
+    let unsafeSum = mutableData.withUnsafeBytes { rawBuffer in
+        rawBuffer.reduce(0) { partial, byte in partial + Int(byte) }
+    }
+    expect(unsafeSum == Array(mutableData).reduce(0) { $0 + Int($1) }, "WinFoundation Data withUnsafeBytes failed.")
+    mutableData.withUnsafeMutableBytes { rawBuffer in
+        rawBuffer[0] = 99
+    }
+    expect(mutableData.first == 99, "WinFoundation Data withUnsafeMutableBytes failed.")
+    mutableData.removeAll(keepingCapacity: true)
+    expect(mutableData.isEmpty, "WinFoundation Data removeAll failed.")
+
+    let packageDataURL = URL(fileURLWithPath: "C:\\AIResearch\\WinChocolate\\Code\\WinChocolate\\Package.swift")
+    let packageData = try? Data(contentsOf: packageDataURL)
+    expect(packageData?.count ?? 0 > 0, "WinFoundation Data(contentsOf:) failed to read a package file.")
+    expect(String(decoding: packageData ?? Data(), as: UTF8.self).contains("WinChocolate"), "WinFoundation Data(contentsOf:) did not preserve file bytes.")
+
+    let writeDataURL = URL(fileURLWithPath: "C:\\AIResearch\\WinChocolate\\Code\\WinChocolate\\.build\\winfoundation-data-write.txt")
+    let writtenData = Data([87, 105, 110, 67, 104, 111, 99, 111, 108, 97, 116, 101])
+    do {
+        try writtenData.write(to: writeDataURL)
+        let roundTripData = try Data(contentsOf: writeDataURL)
+        expect(roundTripData == writtenData, "WinFoundation Data write/read round trip failed.")
+    } catch {
+        fatalError("WinFoundation Data file I/O threw unexpectedly: \(error)")
+    }
 
     var indexes = IndexSet(integer: 2)
     indexes.insert(1)
     indexes.insert(3)
     indexes.remove(2)
     expect(Array(indexes) == [1, 3], "WinFoundation IndexSet ordering or mutation failed.")
+    expect(indexes.first == 1, "WinFoundation IndexSet first failed.")
+    expect(indexes.last == 3, "WinFoundation IndexSet last failed.")
+
+    var rangeIndexes = IndexSet(integersIn: 4..<7)
+    rangeIndexes.insert(integersIn: 8...9)
+    rangeIndexes.remove(integersIn: 5..<6)
+    expect(Array(rangeIndexes) == [4, 6, 8, 9], "WinFoundation IndexSet range mutation failed.")
+    expect(rangeIndexes.contains(integersIn: 8...9), "WinFoundation IndexSet closed range contains failed.")
+    expect(!rangeIndexes.contains(integersIn: 4...6), "WinFoundation IndexSet range contains should require all indexes.")
+    expect(rangeIndexes.intersects(integersIn: 5...6), "WinFoundation IndexSet range intersects failed.")
+    expect(rangeIndexes.integerGreaterThan(6) == 8, "WinFoundation IndexSet integerGreaterThan failed.")
+    expect(rangeIndexes.integerGreaterThanOrEqualTo(6) == 6, "WinFoundation IndexSet integerGreaterThanOrEqualTo failed.")
+    expect(rangeIndexes.integerLessThan(8) == 6, "WinFoundation IndexSet integerLessThan failed.")
+    expect(rangeIndexes.integerLessThanOrEqualTo(8) == 8, "WinFoundation IndexSet integerLessThanOrEqualTo failed.")
+
+    let unionIndexes = indexes.union(rangeIndexes)
+    expect(Array(unionIndexes) == [1, 3, 4, 6, 8, 9], "WinFoundation IndexSet union failed.")
+    expect(Array(unionIndexes.intersection(IndexSet(integersIn: 3...8))) == [3, 4, 6, 8], "WinFoundation IndexSet intersection failed.")
+    expect(Array(unionIndexes.subtracting(IndexSet(integersIn: 4...8))) == [1, 3, 9], "WinFoundation IndexSet subtracting failed.")
 
     let early = Date(timeIntervalSinceReferenceDate: 1)
     let later = Date(timeIntervalSinceReferenceDate: 2)
     expect(early < later, "WinFoundation Date comparison failed.")
+    expect(Date(timeIntervalSince1970: 978_307_201).timeIntervalSinceReferenceDate == 1, "WinFoundation Date Unix epoch initializer failed.")
+    expect(early.timeIntervalSince1970 == 978_307_201, "WinFoundation Date timeIntervalSince1970 failed.")
+    expect(later.timeIntervalSince(early) == 1, "WinFoundation Date timeIntervalSince failed.")
+    expect(early.addingTimeInterval(10).timeIntervalSinceReferenceDate == 11, "WinFoundation Date addingTimeInterval failed.")
+    expect(early.distance(to: later) == 1, "WinFoundation Date distance(to:) failed.")
+    expect(early.advanced(by: 4).timeIntervalSinceReferenceDate == 5, "WinFoundation Date advanced(by:) failed.")
+
+    let now = Date()
+    expect(now.timeIntervalSince1970 > 1_700_000_000, "WinFoundation Date() did not use a real current clock.")
+    let future = Date(timeIntervalSinceNow: 5)
+    expect(future.timeIntervalSince(now) > 0, "WinFoundation Date(timeIntervalSinceNow:) failed.")
+    expect(Date.now.timeIntervalSince1970 > 1_700_000_000, "WinFoundation Date.now did not use a real current clock.")
+
+    let knownUUID = UUID(uuidString: "00112233-4455-6677-8899-AABBCCDDEEFF")
+    expect(knownUUID?.uuidString == "00112233-4455-6677-8899-AABBCCDDEEFF", "WinFoundation UUID uuidString failed.")
+    expect(UUID(uuidString: "00112233445566778899aabbccddeeff")?.uuidString == "00112233-4455-6677-8899-AABBCCDDEEFF", "WinFoundation UUID compact/lowercase parser failed.")
+    expect(UUID(uuidString: "not-a-uuid") == nil, "WinFoundation UUID should reject invalid strings.")
+    let tupleUUID = UUID(uuid: (
+        0x00, 0x11, 0x22, 0x33,
+        0x44, 0x55, 0x66, 0x77,
+        0x88, 0x99, 0xAA, 0xBB,
+        0xCC, 0xDD, 0xEE, 0xFF
+    ))
+    expect(tupleUUID == knownUUID, "WinFoundation UUID raw tuple initializer failed.")
+    expect(tupleUUID.description == tupleUUID.uuidString, "WinFoundation UUID description failed.")
+    expect(UUID().uuidString != UUID().uuidString, "WinFoundation UUID() should create distinct values.")
+
+    let interval: TimeInterval = 2.5
+    expect(Date(timeInterval: interval, since: early).timeIntervalSinceReferenceDate == 3.5, "WinFoundation TimeInterval alias failed.")
+
+    guard let packageBundle = Bundle(path: "C:\\AIResearch\\WinChocolate\\Code\\WinChocolate") else {
+        fatalError("WinFoundation Bundle(path:) failed.")
+    }
+    expect(packageBundle.bundleURL.isFileURL, "WinFoundation Bundle bundleURL should be a file URL.")
+    expect(packageBundle.bundlePath.hasSuffix("Code\\WinChocolate"), "WinFoundation Bundle bundlePath failed.")
+    expect(packageBundle.path(forResource: "Package", ofType: "swift")?.hasSuffix("Package.swift") == true, "WinFoundation Bundle resource path lookup failed.")
+    expect(packageBundle.url(forResource: "Package", withExtension: "swift")?.lastPathComponent == "Package.swift", "WinFoundation Bundle resource URL lookup failed.")
+    expect(packageBundle.path(forResource: "Missing", ofType: "swift") == nil, "WinFoundation Bundle should return nil for missing resources.")
+    expect(Bundle(path: ".")?.path(forResource: "WinChocolateArtwork", ofType: "bmp", inDirectory: "Demo\\DemoApplication\\Resources") != nil, "WinFoundation Bundle should find demo resources from the package working directory.")
+    expect(Bundle(url: packageBundle.bundleURL)?.bundlePath == packageBundle.bundlePath, "WinFoundation Bundle(url:) failed.")
+    expect(Bundle.main.bundleURL.isFileURL, "WinFoundation Bundle.main should expose a file URL.")
+    expect(Bundle.main.executableURL?.pathExtension == "exe", "WinFoundation Bundle.main executableURL failed.")
+
+    let center = NotificationCenter()
+    let notificationName = Notification.Name("WinFoundationNotification")
+    let sender = NSButton(title: "Sender", frame: NSMakeRect(0, 0, 80, 24))
+    var deliveredNames: [String] = []
+    var deliveredUserInfoValue = ""
+    let token = center.addObserver(forName: notificationName, object: sender, queue: nil) { notification in
+        deliveredNames.append(notification.name.rawValue)
+        deliveredUserInfoValue = notification.userInfo?["value"] as? String ?? ""
+    }
+    center.post(name: notificationName, object: NSButton(title: "Other", frame: NSMakeRect(0, 0, 80, 24)))
+    expect(deliveredNames.isEmpty, "WinFoundation NotificationCenter should filter nonmatching objects.")
+    center.post(name: notificationName, object: sender, userInfo: ["value": "delivered"])
+    expect(deliveredNames == ["WinFoundationNotification"], "WinFoundation NotificationCenter did not deliver matching notification.")
+    expect(deliveredUserInfoValue == "delivered", "WinFoundation NotificationCenter did not preserve userInfo.")
+    center.removeObserver(token)
+    center.post(name: notificationName, object: sender)
+    expect(deliveredNames.count == 1, "WinFoundation NotificationCenter removeObserver failed.")
+
+    var wildcardCount = 0
+    let wildcardToken = center.addObserver(forName: nil, object: nil, queue: OperationQueue.main) { _ in
+        wildcardCount += 1
+    }
+    center.post(Notification(name: "WildcardOne"))
+    center.post(name: "WildcardTwo")
+    expect(wildcardCount == 2, "WinFoundation NotificationCenter wildcard observer failed.")
+    center.removeObserver(wildcardToken)
 }
 
 func testImageViewStoresImageAndUsesNativePeer() {
     let backend = InMemoryNativeControlBackend()
     let imageView = NSImageView(frame: NSMakeRect(0, 0, 64, 64))
+    let packageURL = URL(fileURLWithPath: "C:\\AIResearch\\WinChocolate\\Code\\WinChocolate\\Package.swift")
+    let urlImage = NSImage(contentsOf: packageURL)
+    let dataImage = NSImage(data: Data([1, 2, 3, 4]))
+
+    expect(urlImage?.filePath == packageURL.path, "NSImage(contentsOf:) did not preserve file URL path.")
+    expect((urlImage?.data?.count ?? 0) > 0, "NSImage(contentsOf:) did not load file data.")
+    expect(dataImage?.data == Data([1, 2, 3, 4]), "NSImage(data:) did not preserve image data.")
+    expect(NSImage(data: Data()) == nil, "NSImage(data:) should reject empty data.")
+
     imageView.image = NSImage(contentsOfFile: "Resources/Icon.bmp")
     imageView.imageScaling = .scaleNone
     imageView.imageAlignment = .alignTopLeft
