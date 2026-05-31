@@ -1804,6 +1804,50 @@ func testComboBoxNativeTextChangeAndActionUpdateState() {
     expect(actionCount == 1, "Combo box action callback did not fire.")
 }
 
+func testTokenFieldStoresTokensAndTokenizesNativeText() {
+    let backend = InMemoryNativeControlBackend()
+    let tokenField = NSTokenField(tokens: ["Cocoa", "AppKit"], frame: NSMakeRect(0, 0, 220, 28))
+    var changedTokens: [String] = []
+
+    tokenField.onTextChanged = { field in
+        changedTokens = (field as? NSTokenField)?.tokens ?? []
+    }
+
+    let handle = tokenField.realizeNativePeer(in: backend, parent: nil)
+    backend.textChangeActions[handle]?("NSWindow, NSView, NSButton")
+
+    expect(backend.records[handle]?.kind == "editableTextField", "Token field did not use editable text-field peer.")
+    expect(tokenField.tokens == ["NSWindow", "NSView", "NSButton"], "Token field did not tokenize edited text.")
+    expect((tokenField.objectValue as? [String]) == tokenField.tokens, "Token field objectValue did not mirror tokens.")
+    expect(changedTokens == tokenField.tokens, "Token field text-change callback did not observe tokens.")
+
+    tokenField.tokenizingCharacter = ";"
+    tokenField.stringValue = "One; Two"
+    tokenField.setTokens(["Cocoa", "WinChocolate"])
+
+    expect(tokenField.tokens == ["Cocoa", "WinChocolate"], "Token field setTokens did not replace tokens.")
+    expect(tokenField.stringValue == "Cocoa; WinChocolate", "Token field setTokens did not honor tokenizing character.")
+}
+
+func testPathControlStoresURLAndPathComponentCells() {
+    let backend = InMemoryNativeControlBackend()
+    let pathControl = NSPathControl(
+        url: URL(fileURLWithPath: "C:\\AIResearch\\WinChocolate"),
+        frame: NSMakeRect(0, 0, 260, 28)
+    )
+
+    let handle = pathControl.realizeNativePeer(in: backend, parent: nil)
+
+    expect(backend.records[handle]?.kind == "textField", "Path control did not use text-field peer.")
+    expect(pathControl.stringValue.contains("WinChocolate"), "Path control did not display URL path.")
+    expect(pathControl.pathComponentCells.contains { $0.title == "WinChocolate" }, "Path control did not build component cells.")
+
+    pathControl.setURL(URL(fileURLWithPath: "C:\\AIResearch\\WinChocolate\\Code"))
+
+    expect(pathControl.stringValue.hasSuffix("Code"), "Path control setURL did not update visible path.")
+    expect(pathControl.pathComponentCells.contains { $0.title == "Code" }, "Path control setURL did not refresh component cells.")
+}
+
 func testImageViewStoresImageAndUsesNativePeer() {
     let backend = InMemoryNativeControlBackend()
     let imageView = NSImageView(frame: NSMakeRect(0, 0, 64, 64))
@@ -2279,6 +2323,8 @@ testPopUpButtonNativeActionUpdatesSelection()
 testPopUpButtonItemLookupAndRemoval()
 testComboBoxStoresItemsTextAndUsesNativePeer()
 testComboBoxNativeTextChangeAndActionUpdateState()
+testTokenFieldStoresTokensAndTokenizesNativeText()
+testPathControlStoresURLAndPathComponentCells()
 testImageViewStoresImageAndUsesNativePeer()
 testTabViewStoresItemsSelectionAndUsesNativePeer()
 testTabViewNativeSelectionDispatchesAction()

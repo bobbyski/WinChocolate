@@ -33,7 +33,7 @@ References used for this map:
 | `NSTextField` editable | Single-line `EDIT` | `TextBox` | Editing and change notifications exist. | Done | Planned |
 | `NSSecureTextField` | `EDIT` with password style | `PasswordBox` | Basic password-style native edit peer exists; deeper secure paste/autofill/privacy behavior is future work. | Partial | Planned |
 | `NSSearchField` | `EDIT` plus search/cancel adornments | `AutoSuggestBox` / `TextBox` with buttons | Basic editable search text and immediate action dispatch exist; adornments/recent-search UI are future work. | Partial | Planned |
-| `NSTokenField` | Owner-drawn/composed edit/list | Tokenizing text box pattern | No direct Win32 peer; needs custom/composed control. | Planned | Planned |
+| `NSTokenField` | Owner-drawn/composed edit/list | Tokenizing text box pattern | First tokenizing text-field slice exists over an editable text peer; visual token chips and completion UI are future work. | Partial | Planned |
 | `NSTextView` | Multiline `EDIT` or RichEdit | `TextBox` multiline / `RichEditBox` | Basic multiline edit exists; rich text and selection APIs are missing. | Partial | Planned |
 | `NSImageView` | `STATIC` bitmap/icon or custom paint | `Image` | File-backed BMP loading plus image/name model and scaling/alignment/frame-style state exists; richer formats and true custom scaling are future work. | Partial | Planned |
 | `NSColorWell` | Custom button/color swatch plus color dialog | `ColorPicker` | Basic clickable swatch and color state exist; shared color panel is future work. | Partial | Planned |
@@ -43,7 +43,7 @@ References used for this map:
 | `NSProgressIndicator` spinning | Custom animation | `ProgressRing` | Spinning/indeterminate behavior not implemented. | Planned | Planned |
 | `NSLevelIndicator` | Progress bar/custom owner-drawn meter | Rating/value indicator pattern | Basic value/range state exists over a progress-style peer; discrete/rating visuals are future work. | Partial | Planned |
 | `NSDatePicker` | `SysDateTimePick32` / `SysMonthCal32` | `DatePicker`, `TimePicker`, `CalendarDatePicker` | Good native peers exist, but AppKit styles differ. | Planned | Planned |
-| `NSPathControl` | Breadcrumb/custom toolbar/edit composition | Breadcrumb bar pattern | No direct classic peer; likely composed. | Planned | Planned |
+| `NSPathControl` | Breadcrumb/custom toolbar/edit composition | Breadcrumb bar pattern | First URL/path display slice exists over a text peer with component-cell metadata; true breadcrumb interaction is future work. | Partial | Planned |
 | `NSSegmentedControl` | Composed `BUTTON` peers/custom owner draw | `Segmented` style via `RadioButtons`/custom | First composed segment state/action slice exists; unified drawing and keyboard behavior are future work. | Partial | Planned |
 | `NSMatrix` | Group of child controls | ItemsControl/custom panel | Deprecated AppKit API; low priority but useful for old ports. | Planned | Planned |
 | `NSForm` | Group of labels/edit controls | Form layout pattern | Deprecated AppKit API; likely composed from text fields. | Planned | Planned |

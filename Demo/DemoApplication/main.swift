@@ -136,6 +136,8 @@ let contentView = DemoContentView(frame: NSMakeRect(0, 0, 1120, 760))
 let controlsPage = DemoPageView(frame: NSMakeRect(0, 144, 1120, 560))
 let valuesPage = DemoPageView(frame: NSMakeRect(0, 144, 1120, 560))
 let tablesPage = DemoPageView(frame: NSMakeRect(0, 144, 1120, 560))
+valuesPage.isHidden = true
+tablesPage.isHidden = true
 let counterLabel = NSTextField(string: "Clicks: 0", frame: NSMakeRect(32, 36, 300, 24))
 let statusLabel = NSTextField(string: "Ready", frame: NSMakeRect(32, 74, 640, 24))
 let focusLabel = NSTextField(string: "Focus: none", frame: NSMakeRect(744, 74, 300, 24))
@@ -157,6 +159,8 @@ let warningRadio = NSButton(title: "Warning", frame: NSMakeRect(136, 234, 116, 2
 let criticalRadio = NSButton(title: "Critical", frame: NSMakeRect(268, 234, 116, 24))
 let notesLabel = NSTextField(string: "Notes:", frame: NSMakeRect(32, 286, 104, 24))
 let notesTextView = NSTextView(frame: NSMakeRect(152, 286, 360, 96))
+let tokenLabel = NSTextField(string: "Tokens:", frame: NSMakeRect(32, 410, 104, 24))
+let tokenField = NSTokenField(tokens: ["Cocoa", "AppKit", "WinChocolate"], frame: NSMakeRect(152, 408, 360, 28))
 let sliderLabel = NSTextField(string: "Slider:", frame: NSMakeRect(32, 28, 72, 24))
 let slider = NSSlider(value: 50, minValue: 0, maxValue: 100, target: nil, action: "sliderChanged:")
 let sliderValueLabel = NSTextField(string: "50", frame: NSMakeRect(312, 28, 48, 24))
@@ -182,8 +186,25 @@ let tabLabel = NSTextField(string: "Groups:", frame: NSMakeRect(32, 114, 104, 24
 let tabView = NSTabView(frame: NSMakeRect(152, 112, 360, 32))
 let imageLabel = NSTextField(string: "Image view:", frame: NSMakeRect(32, 28, 104, 24))
 let imageView = NSImageView(frame: NSMakeRect(152, 28, 300, 190))
-let splitLabel = NSTextField(string: "Split view:", frame: NSMakeRect(496, 28, 104, 24))
-let splitView = NSSplitView(frame: NSMakeRect(616, 28, 240, 96))
+let clipLabel = NSTextField(string: "Clip view:", frame: NSMakeRect(496, 28, 104, 24))
+let clipView = NSClipView(frame: NSMakeRect(616, 28, 220, 110))
+let clipDocumentView = NSView(frame: NSMakeRect(0, 0, 420, 220))
+let clipTopLeftPane = NSView(frame: NSMakeRect(0, 0, 210, 110))
+let clipTopRightPane = NSView(frame: NSMakeRect(210, 0, 210, 110))
+let clipBottomLeftPane = NSView(frame: NSMakeRect(0, 110, 210, 110))
+let clipBottomRightPane = NSView(frame: NSMakeRect(210, 110, 210, 110))
+let clipTopLeftLabel = NSTextField(string: "0,0", frame: NSMakeRect(12, 12, 72, 24))
+let clipTopRightLabel = NSTextField(string: "right", frame: NSMakeRect(222, 12, 72, 24))
+let clipBottomLeftLabel = NSTextField(string: "down", frame: NSMakeRect(12, 122, 72, 24))
+let clipBottomRightLabel = NSTextField(string: "far corner", frame: NSMakeRect(222, 122, 100, 24))
+let clipOriginLabel = NSTextField(string: "origin 0,0", frame: NSMakeRect(848, 28, 96, 24))
+let clipHomeButton = NSButton(title: "Home", frame: NSMakeRect(848, 60, 72, 28))
+let clipCenterButton = NSButton(title: "Center", frame: NSMakeRect(928, 60, 72, 28))
+let clipCornerButton = NSButton(title: "Corner", frame: NSMakeRect(1008, 60, 72, 28))
+let pathLabel = NSTextField(string: "Path:", frame: NSMakeRect(496, 286, 104, 24))
+let pathControl = NSPathControl(url: URL(fileURLWithPath: "C:\\AIResearch\\WinChocolate\\Code\\WinChocolate"), frame: NSMakeRect(616, 284, 360, 28))
+let splitLabel = NSTextField(string: "Split view:", frame: NSMakeRect(496, 160, 104, 24))
+let splitView = NSSplitView(frame: NSMakeRect(616, 160, 240, 96))
 let splitLeftPane = NSView(frame: NSZeroRect)
 let splitRightPane = NSView(frame: NSZeroRect)
 let tableLabel = NSTextField(string: "Table view:", frame: NSMakeRect(32, 246, 120, 24))
@@ -380,6 +401,9 @@ func focusName() -> String {
     if responder === notesTextView {
         return "notes"
     }
+    if responder === tokenField {
+        return "token field"
+    }
     if responder === slider {
         return "slider"
     }
@@ -400,6 +424,18 @@ func focusName() -> String {
     }
     if responder === segmentedControl {
         return "segments"
+    }
+    if responder === clipHomeButton {
+        return "clip home"
+    }
+    if responder === clipCenterButton {
+        return "clip center"
+    }
+    if responder === clipCornerButton {
+        return "clip corner"
+    }
+    if responder === pathControl {
+        return "path control"
     }
     if responder === tabView {
         return "tab view"
@@ -422,6 +458,12 @@ func updateFocusDisplay() {
         ? controlFocusColor
         : normalTextFieldColor
     searchField.backgroundColor = name == "search field"
+        ? controlFocusColor
+        : normalTextFieldColor
+    tokenField.backgroundColor = name == "token field"
+        ? controlFocusColor
+        : normalTextFieldColor
+    pathControl.backgroundColor = name == "path control"
         ? controlFocusColor
         : normalTextFieldColor
 }
@@ -480,6 +522,23 @@ tabView.addTabViewItem(thirdTab)
 imageLabel.font = NSFont.boldSystemFont(ofSize: 12)
 imageView.image = NSImage(contentsOfFile: demoArtworkPath) ?? NSImage(named: "WinChocolate artwork")
 imageView.imageFrameStyle = .grayBezel
+clipLabel.font = NSFont.boldSystemFont(ofSize: 12)
+clipOriginLabel.textColor = .blue
+clipView.backgroundColor = .white
+clipDocumentView.backgroundColor = NSColor(calibratedRed: 0.97, green: 0.97, blue: 0.97, alpha: 1.0)
+clipTopLeftPane.backgroundColor = NSColor(calibratedRed: 0.84, green: 0.92, blue: 1.0, alpha: 1.0)
+clipTopRightPane.backgroundColor = NSColor(calibratedRed: 1.0, green: 0.94, blue: 0.72, alpha: 1.0)
+clipBottomLeftPane.backgroundColor = NSColor(calibratedRed: 0.86, green: 1.0, blue: 0.86, alpha: 1.0)
+clipBottomRightPane.backgroundColor = NSColor(calibratedRed: 1.0, green: 0.86, blue: 0.88, alpha: 1.0)
+clipDocumentView.addSubview(clipTopLeftPane)
+clipDocumentView.addSubview(clipTopRightPane)
+clipDocumentView.addSubview(clipBottomLeftPane)
+clipDocumentView.addSubview(clipBottomRightPane)
+clipDocumentView.addSubview(clipTopLeftLabel)
+clipDocumentView.addSubview(clipTopRightLabel)
+clipDocumentView.addSubview(clipBottomLeftLabel)
+clipDocumentView.addSubview(clipBottomRightLabel)
+clipView.documentView = clipDocumentView
 splitLabel.font = NSFont.boldSystemFont(ofSize: 12)
 splitLeftPane.backgroundColor = NSColor(calibratedRed: 0.86, green: 0.93, blue: 1.0, alpha: 1.0)
 splitRightPane.backgroundColor = NSColor(calibratedRed: 1.0, green: 0.92, blue: 0.84, alpha: 1.0)
@@ -489,6 +548,8 @@ splitView.setPosition(70, ofDividerAt: 0)
 notesLabel.font = NSFont.boldSystemFont(ofSize: 12)
 secureLabel.font = NSFont.boldSystemFont(ofSize: 12)
 notesTextView.string = "Multiline NSTextView"
+tokenLabel.font = NSFont.boldSystemFont(ofSize: 12)
+pathLabel.font = NSFont.boldSystemFont(ofSize: 12)
 contentView.onBlankAreaMouseDown = { event in
     updateFocusDisplay()
 }
@@ -567,7 +628,8 @@ alertStylePopup.nextKeyView = infoRadio
 infoRadio.nextKeyView = warningRadio
 warningRadio.nextKeyView = criticalRadio
 criticalRadio.nextKeyView = notesTextView
-notesTextView.nextKeyView = slider
+notesTextView.nextKeyView = tokenField
+tokenField.nextKeyView = slider
 slider.nextKeyView = stepper
 stepper.nextKeyView = comboBox
 comboBox.nextKeyView = searchField
@@ -575,11 +637,19 @@ searchField.nextKeyView = levelIndicator
 levelIndicator.nextKeyView = colorWell
 colorWell.nextKeyView = segmentedControl
 segmentedControl.nextKeyView = tabView
-tabView.nextKeyView = tableView
+tabView.nextKeyView = clipHomeButton
+clipHomeButton.nextKeyView = clipCenterButton
+clipCenterButton.nextKeyView = clipCornerButton
+clipCornerButton.nextKeyView = pathControl
+pathControl.nextKeyView = tableView
 tableView.nextKeyView = contentView
 
 contentView.previousKeyView = tableView
-tableView.previousKeyView = tabView
+tableView.previousKeyView = pathControl
+pathControl.previousKeyView = clipCornerButton
+clipCornerButton.previousKeyView = clipCenterButton
+clipCenterButton.previousKeyView = clipHomeButton
+clipHomeButton.previousKeyView = tabView
 tabView.previousKeyView = segmentedControl
 segmentedControl.previousKeyView = colorWell
 colorWell.previousKeyView = levelIndicator
@@ -587,7 +657,8 @@ levelIndicator.previousKeyView = searchField
 searchField.previousKeyView = comboBox
 comboBox.previousKeyView = stepper
 stepper.previousKeyView = slider
-slider.previousKeyView = notesTextView
+slider.previousKeyView = tokenField
+tokenField.previousKeyView = notesTextView
 notesTextView.previousKeyView = criticalRadio
 criticalRadio.previousKeyView = warningRadio
 warningRadio.previousKeyView = infoRadio
@@ -693,9 +764,39 @@ imageView.onAction = { _ in
     statusLabel.stringValue = "Image mode: \(mode.3)"
 }
 
+@MainActor
+func scrollClipDemo(to origin: NSPoint, name: String) {
+    clipView.scroll(to: origin)
+    let visible = clipView.documentVisibleRect
+    clipOriginLabel.stringValue = "origin \(Int(visible.origin.x)),\(Int(visible.origin.y))"
+    updateFocusDisplay()
+    statusLabel.stringValue = "Clip view: \(name) visible \(Int(visible.origin.x)),\(Int(visible.origin.y))"
+}
+
+clipHomeButton.onAction = { _ in
+    scrollClipDemo(to: NSMakePoint(0, 0), name: "home")
+}
+
+clipCenterButton.onAction = { _ in
+    scrollClipDemo(to: NSMakePoint(100, 55), name: "center")
+}
+
+clipCornerButton.onAction = { _ in
+    scrollClipDemo(to: NSMakePoint(220, 110), name: "corner")
+}
+
 notesTextView.onTextChanged = { textView in
     updateFocusDisplay()
     statusLabel.stringValue = "Notes length: \(textView.string.count)"
+}
+
+tokenField.onTextChanged = { field in
+    guard let tokenField = field as? NSTokenField else {
+        return
+    }
+
+    updateFocusDisplay()
+    statusLabel.stringValue = "Tokens: \(tokenField.tokens.joined(separator: " | "))"
 }
 
 button.onAction = { _ in
@@ -877,6 +978,8 @@ controlsPage.addSubview(warningRadio)
 controlsPage.addSubview(criticalRadio)
 controlsPage.addSubview(notesLabel)
 controlsPage.addSubview(notesTextView)
+controlsPage.addSubview(tokenLabel)
+controlsPage.addSubview(tokenField)
 
 valuesPage.addSubview(sliderLabel)
 valuesPage.addSubview(slider)
@@ -902,6 +1005,14 @@ valuesPage.addSubview(scrollerValueLabel)
 
 tablesPage.addSubview(imageLabel)
 tablesPage.addSubview(imageView)
+tablesPage.addSubview(clipLabel)
+tablesPage.addSubview(clipView)
+tablesPage.addSubview(clipOriginLabel)
+tablesPage.addSubview(clipHomeButton)
+tablesPage.addSubview(clipCenterButton)
+tablesPage.addSubview(clipCornerButton)
+tablesPage.addSubview(pathLabel)
+tablesPage.addSubview(pathControl)
 tablesPage.addSubview(splitLabel)
 tablesPage.addSubview(splitView)
 tablesPage.addSubview(tableLabel)

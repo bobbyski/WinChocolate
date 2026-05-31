@@ -35,7 +35,7 @@ WinChocolate is early and intentionally incomplete. The current milestone proves
 - Secure text entry through `NSSecureTextField`
 - Multiline `NSTextView`
 - Editable `NSComboBox`
-- Initial `NSSearchField`, `NSLevelIndicator`, and `NSColorWell`
+- Initial `NSSearchField`, `NSTokenField`, `NSPathControl`, `NSLevelIndicator`, and `NSColorWell`
 - Initial composed `NSSegmentedControl`
 - Initial bitmap-backed `NSImageView` with scaling/alignment state and `NSTabView`
 - `NSSlider`, `NSProgressIndicator`, and `NSStepper` value controls
@@ -53,9 +53,11 @@ WinChocolate is early and intentionally incomplete. The current milestone proves
 - Native mouse-down/up/move dispatch into `NSView` responder methods
 - Native key-down/up dispatch with key code, basic characters, and modifier flags
 - Experimental editable text-field Tab interception for key-view traversal
-- SwiftPM demo app with a click counter, editable/secure/combo text, multiline notes, tabs, segmented controls, bitmap image tests, split view panes, value controls, a standalone scroller, and a larger table-selection/action exercise
+- SwiftPM demo app with a click counter, editable/secure/combo/token text, path display, multiline notes, tabs, segmented controls, bitmap image tests, clip-view scrolling, split view panes, value controls, a standalone scroller, and a larger table-selection/action exercise
 
 The Win32 backend currently uses a narrow manual User32/Gdi32 FFI layer because this local ARM64 Swift toolchain cannot import `WinSDK` cleanly.
+
+Foundation imports are also avoided in the core package for now because this same Windows ARM64 toolchain currently fails while building the UCRT shim modules. WinChocolate includes a tiny file-path `URL` value so AppKit-shaped APIs such as `NSPathControl.url` can keep moving until Foundation is usable here.
 
 The current visual style is the classic Win32 look on purpose. That should remain available for apps that want a retro or very small native-tool feel. The roadmap now tracks a separate modern Windows appearance layer as the eventual default, with backend or appearance selection so app code can keep the same AppKit-shaped API.
 

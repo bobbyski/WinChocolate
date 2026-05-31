@@ -223,6 +223,9 @@ private func winGetClientRect(_ hwnd: HWND?, _ rectangle: UnsafeMutablePointer<R
 @_silgen_name("GetMessageW")
 private func winGetMessageW(_ message: UnsafeMutablePointer<MSG>, _ hwnd: HWND?, _ minimumMessage: UINT, _ maximumMessage: UINT) -> Int32
 
+@_silgen_name("GetParent")
+private func winGetParent(_ hwnd: HWND?) -> HWND?
+
 @_silgen_name("GetModuleHandleW")
 private func winGetModuleHandleW(_ moduleName: UnsafePointer<UInt16>?) -> HINSTANCE?
 
@@ -997,6 +1000,12 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         }
 
         _ = winShowWindow(hwnd, isHidden ? swHide : swShow)
+        _ = winInvalidateRect(hwnd, nil, 1)
+        _ = winUpdateWindow(hwnd)
+        if let parent = winGetParent(hwnd) {
+            _ = winInvalidateRect(parent, nil, 1)
+            _ = winUpdateWindow(parent)
+        }
     }
 
     /// Updates whether a native control is enabled.

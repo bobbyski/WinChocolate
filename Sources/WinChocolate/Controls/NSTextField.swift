@@ -123,6 +123,9 @@ open class NSTextField: NSControl {
         isUpdatingFromNative = true
         stringValue = text
         isUpdatingFromNative = false
+        nativeStringValueDidChange()
         onTextChanged?(self)
     }
+
+    func nativeStringValueDidChange() {}
 }
