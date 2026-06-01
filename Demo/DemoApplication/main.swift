@@ -65,6 +65,7 @@ final class DemoTableDataSource: NSTableViewDataSource {
         ["NSWindow", "Key/Main"],
         ["NSButton", "Actions"],
         ["NSTextField", "Editing"],
+        ["NSForm", "Composed rows"],
         ["NSSecureTextField", "Password"],
         ["NSSearchField", "Immediate search"],
         ["NSComboBox", "Editable list"],
@@ -162,6 +163,8 @@ let notesLabel = NSTextField(string: "Notes:", frame: NSMakeRect(32, 286, 104, 2
 let notesTextView = NSTextView(frame: NSMakeRect(152, 286, 360, 96))
 let tokenLabel = NSTextField(string: "Tokens:", frame: NSMakeRect(32, 410, 104, 24))
 let tokenField = NSTokenField(tokens: ["Cocoa", "AppKit", "WinChocolate"], frame: NSMakeRect(152, 408, 360, 28))
+let formLabel = NSTextField(string: "Form:", frame: NSMakeRect(744, 120, 80, 24))
+let form = NSForm(frame: NSMakeRect(824, 120, 256, 92))
 let sliderLabel = NSTextField(string: "Slider:", frame: NSMakeRect(32, 28, 72, 24))
 let slider = NSSlider(value: 50, minValue: 0, maxValue: 100, target: nil, action: "sliderChanged:")
 let sliderValueLabel = NSTextField(string: "50", frame: NSMakeRect(312, 28, 48, 24))
@@ -441,6 +444,12 @@ func focusName() -> String {
     if responder === tokenField {
         return "token field"
     }
+    if responder === form.textField(at: 0) {
+        return "form name"
+    }
+    if responder === form.textField(at: 1) {
+        return "form status"
+    }
     if responder === slider {
         return "slider"
     }
@@ -597,6 +606,14 @@ notesLabel.font = NSFont.boldSystemFont(ofSize: 12)
 secureLabel.font = NSFont.boldSystemFont(ofSize: 12)
 notesTextView.string = "Multiline NSTextView"
 tokenLabel.font = NSFont.boldSystemFont(ofSize: 12)
+formLabel.font = NSFont.boldSystemFont(ofSize: 12)
+form.titleWidth = 72
+let formNameCell = form.addEntry("Name:")
+let formStatusCell = form.addEntry("Status:")
+formNameCell.stringValue = "WinChocolate"
+formStatusCell.stringValue = "Native"
+form.setStringValue(formNameCell.stringValue, at: 0)
+form.setStringValue(formStatusCell.stringValue, at: 1)
 pathLabel.font = NSFont.boldSystemFont(ofSize: 12)
 contentView.onBlankAreaMouseDown = { event in
     updateFocusDisplay()
@@ -677,7 +694,9 @@ infoRadio.nextKeyView = warningRadio
 warningRadio.nextKeyView = criticalRadio
 criticalRadio.nextKeyView = notesTextView
 notesTextView.nextKeyView = tokenField
-tokenField.nextKeyView = slider
+tokenField.nextKeyView = form.textField(at: 0)
+form.textField(at: 0)?.nextKeyView = form.textField(at: 1)
+form.textField(at: 1)?.nextKeyView = slider
 slider.nextKeyView = stepper
 stepper.nextKeyView = comboBox
 comboBox.nextKeyView = searchField
@@ -709,7 +728,9 @@ levelIndicator.previousKeyView = searchField
 searchField.previousKeyView = comboBox
 comboBox.previousKeyView = stepper
 stepper.previousKeyView = slider
-slider.previousKeyView = tokenField
+slider.previousKeyView = form.textField(at: 1)
+form.textField(at: 1)?.previousKeyView = form.textField(at: 0)
+form.textField(at: 0)?.previousKeyView = tokenField
 tokenField.previousKeyView = notesTextView
 notesTextView.previousKeyView = criticalRadio
 criticalRadio.previousKeyView = warningRadio
@@ -859,6 +880,18 @@ tokenField.onTextChanged = { field in
 
     updateFocusDisplay()
     statusLabel.stringValue = "Tokens: \(tokenField.tokens.joined(separator: " | "))"
+}
+
+form.textField(at: 0)?.onTextChanged = { field in
+    formNameCell.stringValue = field.stringValue
+    updateFocusDisplay()
+    statusLabel.stringValue = "Form name: \(field.stringValue)"
+}
+
+form.textField(at: 1)?.onTextChanged = { field in
+    formStatusCell.stringValue = field.stringValue
+    updateFocusDisplay()
+    statusLabel.stringValue = "Form status: \(field.stringValue)"
 }
 
 button.onAction = { _ in
@@ -1046,6 +1079,8 @@ controlsPage.addSubview(notesLabel)
 controlsPage.addSubview(notesTextView)
 controlsPage.addSubview(tokenLabel)
 controlsPage.addSubview(tokenField)
+controlsPage.addSubview(formLabel)
+controlsPage.addSubview(form)
 
 valuesPage.addSubview(sliderLabel)
 valuesPage.addSubview(slider)

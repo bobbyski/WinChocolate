@@ -1712,6 +1712,45 @@ func testTextFieldFactoryConstructorsAndCompatibilityProperties() {
     expect(secureField.drawsBackground, "Secure text field factory did not draw background.")
 }
 
+func testFormComposesTextFieldsAndStoresCells() {
+    let backend = InMemoryNativeControlBackend()
+    let form = NSForm(frame: NSMakeRect(0, 0, 260, 90))
+    form.titleWidth = 80
+
+    let name = form.addEntry("Name:")
+    let status = form.insertEntry("Status:", at: 1)
+    form.setStringValue("WinChocolate", at: 0)
+    form.setStringValue("Native", at: 1)
+
+    expect(form.numberOfRows == 2, "Form row count was not stored.")
+    expect(form.cell(at: 0) === name, "Form did not return first cell.")
+    expect(form.cell(at: 1) === status, "Form did not return inserted cell.")
+    expect(form.index(of: status) == 1, "Form did not find cell index.")
+    expect(form.textField(at: 0)?.stringValue == "WinChocolate", "Form did not sync first text field value.")
+    expect(form.textField(at: 1)?.stringValue == "Native", "Form did not sync second text field value.")
+    expect(form.textField(at: 0)?.frame == NSMakeRect(88, 0, 172, 28), "Form did not lay out first text field.")
+    expect(!form.acceptsFirstResponder, "Form container should not accept first responder.")
+
+    let handle = form.realizeNativePeer(in: backend, parent: nil)
+    expect(backend.records[handle]?.kind == "view", "Form did not request a native container view.")
+    guard form.subviews.count == 4,
+          let firstLabelHandle = form.subviews[0].nativeHandle,
+          let firstFieldHandle = form.subviews[1].nativeHandle else {
+        expect(false, "Form subviews were not realized.")
+        return
+    }
+
+    expect(backend.records[firstLabelHandle]?.kind == "textField", "Form label did not use label text field peer.")
+    expect(backend.records[firstFieldHandle]?.kind == "editableTextField", "Form entry did not use editable text field peer.")
+
+    backend.textChangeActions[firstFieldHandle]?("Updated")
+    expect(name.stringValue == "Updated", "Form cell did not track native text changes.")
+
+    form.removeEntry(at: 0)
+    expect(form.numberOfRows == 1, "Form did not remove entry.")
+    expect(form.cell(at: 0) === status, "Form did not preserve remaining cell after removal.")
+}
+
 func testSwitchButtonUsesCheckboxNativePeer() {
     let backend = InMemoryNativeControlBackend()
     let checkbox = NSButton(title: "Check", frame: NSMakeRect(0, 0, 120, 24))
@@ -2572,6 +2611,7 @@ testEditableTextFieldUsesEditableNativePeer()
 testSecureTextFieldUsesSecureNativePeer()
 testTextViewUsesMultilineNativePeerAndStoresText()
 testTextFieldFactoryConstructorsAndCompatibilityProperties()
+testFormComposesTextFieldsAndStoresCells()
 testSwitchButtonUsesCheckboxNativePeer()
 testRadioButtonUsesRadioNativePeer()
 testPopUpButtonUsesNativePeerAndSelection()
