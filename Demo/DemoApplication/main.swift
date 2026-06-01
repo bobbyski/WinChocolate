@@ -228,8 +228,8 @@ func demoResourcePath(named name: String) -> String {
         ?? "Demo\\DemoApplication\\Resources\\\(name).bmp"
 }
 
-let demoArtworkPath = demoResourcePath(named: "WinChocolateArtwork")
-let demoScreenArtworkPath = demoResourcePath(named: "WinChocolateScreenArtwork")
+let demoArtworkPath = demoResourcePath(named: "WinChocolateArtworkDemo")
+let demoScreenArtworkPath = demoResourcePath(named: "WinChocolateScreenArtworkDemo")
 var imageModeIndex = 0
 let imageModes: [(NSImageView.ImageScaling, NSImageView.ImageAlignment, String, String)] = [
     (.scaleProportionallyDown, .alignCenter, demoArtworkPath, "bird center/down"),
@@ -357,6 +357,33 @@ func tableColumnSummary(_ table: NSTableView) -> String? {
     }
 
     return "Table column: \(tableColumn.title)"
+}
+
+func selectedTableRowValues(_ table: NSTableView) -> [String]? {
+    guard table.selectedRow >= 0 else {
+        return nil
+    }
+
+    let values = (0..<table.numberOfColumns).map { column in
+        table.value(atColumn: column, row: table.selectedRow) ?? ""
+    }
+    return values.isEmpty ? nil : values
+}
+
+@discardableResult
+func selectTableRow(matching values: [String], in table: NSTableView) -> Bool {
+    for row in 0..<table.numberOfRows {
+        let rowValues = (0..<table.numberOfColumns).map { column in
+            table.value(atColumn: column, row: row) ?? ""
+        }
+        if rowValues == values {
+            table.selectRowIndexes([row], byExtendingSelection: false)
+            table.scrollRowToVisible(row)
+            return true
+        }
+    }
+
+    return false
 }
 
 @MainActor
@@ -938,9 +965,13 @@ tableView.onAction = { control in
     suppressNextTableSelectionStatus = true
     if let columnSummary = tableColumnSummary(table) {
         if let sortDescriptor = table.sortUsingDescriptorPrototype(forColumn: table.clickedColumn) {
+            let selectedValues = selectedTableRowValues(table)
             tableDataSource.sort(using: sortDescriptor)
             NSApp.nativeBackend.dispatchAsync {
                 table.reloadData()
+                if let selectedValues {
+                    suppressNextTableSelectionStatus = selectTableRow(matching: selectedValues, in: table)
+                }
             }
             statusLabel.stringValue = "\(columnSummary), sorted \(sortDescriptor.ascending ? "ascending" : "descending")"
         } else {
@@ -1036,6 +1067,8 @@ if CommandLine.arguments.contains("--diagnose") {
     print("App windows: \(NSApp.windows.count)")
     print("Is key window: \(window.isKeyWindow)")
     print("Is main window: \(window.isMainWindow)")
+    print("Demo artwork path: \(demoArtworkPath)")
+    print("Demo screen artwork path: \(demoScreenArtworkPath)")
 } else {
     app.run()
 }

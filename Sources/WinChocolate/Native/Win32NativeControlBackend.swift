@@ -490,6 +490,7 @@ private let sbTop: UInt = 6
 private let sbBottom: UInt = 7
 private let imageBitmap: UINT = 0
 private let lrLoadFromFile: UINT = 0x00000010
+private let lrCreatedDIBSection: UINT = 0x00002000
 
 /// Win32 implementation of WinChocolate's native backend.
 ///
@@ -1106,6 +1107,7 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         }
 
         if let bitmap = bitmaps.removeValue(forKey: handle.rawValue) {
+            _ = winSendMessageW(hwnd, stmSetImage, WPARAM(imageBitmap), 0)
             _ = winDeleteObject(bitmap)
         }
 
@@ -1114,19 +1116,8 @@ public final class Win32NativeControlBackend: NativeControlBackend {
             return
         }
 
-        var rectangle = RECT()
-        let width: Int32
-        let height: Int32
-        if winGetClientRect(hwnd, &rectangle) != 0 {
-            width = max(1, rectangle.right - rectangle.left)
-            height = max(1, rectangle.bottom - rectangle.top)
-        } else {
-            width = 0
-            height = 0
-        }
-
         let bitmap = withWideString(imagePath) { path in
-            winLoadImageW(nil, path, imageBitmap, width, height, lrLoadFromFile)
+            winLoadImageW(nil, path, imageBitmap, 0, 0, lrLoadFromFile | lrCreatedDIBSection)
         }
 
         guard let bitmap else {
@@ -2307,6 +2298,9 @@ public final class Win32NativeControlBackend: NativeControlBackend {
             _ = winDeleteObject(font)
         }
         if let bitmap = bitmaps.removeValue(forKey: handle.rawValue) {
+            if let hwnd = hwnd(from: handle) {
+                _ = winSendMessageW(hwnd, stmSetImage, WPARAM(imageBitmap), 0)
+            }
             _ = winDeleteObject(bitmap)
         }
     }
