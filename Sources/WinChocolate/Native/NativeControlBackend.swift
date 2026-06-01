@@ -76,6 +76,9 @@ public protocol NativeControlBackend: AnyObject {
     /// Creates a native stepper child.
     func createStepper(value: Double, minValue: Double, maxValue: Double, increment: Double, frame: NSRect, parent: NativeHandle?) -> NativeHandle
 
+    /// Creates a native date-picker child.
+    func createDatePicker(date: Date, minDate: Date?, maxDate: Date?, frame: NSRect, parent: NativeHandle?) -> NativeHandle
+
     /// Creates a native scroll-view child.
     func createScrollView(frame: NSRect, parent: NativeHandle?, hasVerticalScroller: Bool, hasHorizontalScroller: Bool) -> NativeHandle
 
@@ -171,6 +174,12 @@ public protocol NativeControlBackend: AnyObject {
 
     /// Reads native stepper value.
     func stepperValue(for handle: NativeHandle) -> Double
+
+    /// Updates native date-picker state.
+    func setDatePickerDate(_ date: Date, minDate: Date?, maxDate: Date?, for handle: NativeHandle)
+
+    /// Reads native date-picker value.
+    func datePickerDate(for handle: NativeHandle) -> Date?
 
     /// Replaces native table rows.
     func setTableRows(_ rows: [[String]], selectedRow: Int, for handle: NativeHandle)

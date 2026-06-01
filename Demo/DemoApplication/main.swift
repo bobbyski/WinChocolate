@@ -69,6 +69,7 @@ final class DemoTableDataSource: NSTableViewDataSource {
         ["NSSearchField", "Immediate search"],
         ["NSComboBox", "Editable list"],
         ["NSLevelIndicator", "Value meter"],
+        ["NSDatePicker", "Date/time"],
         ["NSColorWell", "Color swatch"],
         ["NSSegmentedControl", "Composed segments"],
         ["NSTabView", "Native tabs"],
@@ -182,6 +183,9 @@ let segmentedControl = NSSegmentedControl(labels: ["One", "Two", "Three"], frame
 let scrollerLabel = NSTextField(string: "Scroller:", frame: NSMakeRect(32, 334, 88, 24))
 let scroller = NSScroller(frame: NSMakeRect(128, 340, 240, 18))
 let scrollerValueLabel = NSTextField(string: "0", frame: NSMakeRect(384, 334, 48, 24))
+let dateLabel = NSTextField(string: "Date:", frame: NSMakeRect(32, 382, 88, 24))
+let datePicker = NSDatePicker(date: Date(timeIntervalSince1970: 1_780_272_000), frame: NSMakeRect(128, 378, 184, 28))
+let dateValueLabel = NSTextField(string: "2026-06-01", frame: NSMakeRect(328, 382, 120, 24))
 let tabLabel = NSTextField(string: "Groups:", frame: NSMakeRect(32, 114, 104, 24))
 let tabView = NSTabView(frame: NSMakeRect(152, 112, 360, 32))
 let imageLabel = NSTextField(string: "Image view:", frame: NSMakeRect(32, 28, 104, 24))
@@ -458,6 +462,12 @@ func focusName() -> String {
     if responder === segmentedControl {
         return "segments"
     }
+    if responder === scroller {
+        return "scroller"
+    }
+    if responder === datePicker {
+        return "date picker"
+    }
     if responder === clipHomeButton {
         return "clip home"
     }
@@ -542,6 +552,11 @@ scrollerLabel.font = NSFont.boldSystemFont(ofSize: 12)
 scroller.doubleValue = 0
 scroller.knobProportion = 0.25
 scrollerValueLabel.textColor = .blue
+dateLabel.font = NSFont.boldSystemFont(ofSize: 12)
+datePicker.minDate = Date(timeIntervalSince1970: 1_735_689_600)
+datePicker.maxDate = Date(timeIntervalSince1970: 1_893_456_000)
+dateValueLabel.textColor = .blue
+dateValueLabel.stringValue = datePicker.stringValue
 tabLabel.font = NSFont.boldSystemFont(ofSize: 12)
 let firstTab = NSTabViewItem(identifier: "controls")
 firstTab.label = "Controls"
@@ -669,7 +684,9 @@ comboBox.nextKeyView = searchField
 searchField.nextKeyView = levelIndicator
 levelIndicator.nextKeyView = colorWell
 colorWell.nextKeyView = segmentedControl
-segmentedControl.nextKeyView = tabView
+segmentedControl.nextKeyView = scroller
+scroller.nextKeyView = datePicker
+datePicker.nextKeyView = tabView
 tabView.nextKeyView = clipHomeButton
 clipHomeButton.nextKeyView = clipCenterButton
 clipCenterButton.nextKeyView = clipCornerButton
@@ -683,7 +700,9 @@ pathControl.previousKeyView = clipCornerButton
 clipCornerButton.previousKeyView = clipCenterButton
 clipCenterButton.previousKeyView = clipHomeButton
 clipHomeButton.previousKeyView = tabView
-tabView.previousKeyView = segmentedControl
+tabView.previousKeyView = datePicker
+datePicker.previousKeyView = scroller
+scroller.previousKeyView = segmentedControl
 segmentedControl.previousKeyView = colorWell
 colorWell.previousKeyView = levelIndicator
 levelIndicator.previousKeyView = searchField
@@ -779,6 +798,16 @@ scroller.onAction = { control in
     let percent = Int((scroller.doubleValue * 100).rounded())
     scrollerValueLabel.stringValue = "\(percent)"
     statusLabel.stringValue = "Scroller value: \(percent)%"
+}
+
+datePicker.onAction = { control in
+    guard let picker = control as? NSDatePicker else {
+        return
+    }
+
+    updateFocusDisplay()
+    dateValueLabel.stringValue = picker.stringValue
+    statusLabel.stringValue = "Date picked: \(picker.stringValue)"
 }
 
 tabView.onSelectionChanged = { tabs in
@@ -1039,6 +1068,9 @@ valuesPage.addSubview(segmentedControl)
 valuesPage.addSubview(scrollerLabel)
 valuesPage.addSubview(scroller)
 valuesPage.addSubview(scrollerValueLabel)
+valuesPage.addSubview(dateLabel)
+valuesPage.addSubview(datePicker)
+valuesPage.addSubview(dateValueLabel)
 
 tablesPage.addSubview(imageLabel)
 tablesPage.addSubview(imageView)

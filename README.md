@@ -40,6 +40,7 @@ WinChocolate is early and intentionally incomplete. The current milestone proves
 - Initial bitmap-backed `NSImageView` with scaling/alignment state and `NSTabView`
 - `NSSlider`, `NSProgressIndicator`, and `NSStepper` value controls
 - Initial standalone `NSScroller`
+- Initial `NSDatePicker`
 - Initial `NSSplitView` pane layout and programmatic divider positioning
 - First `NSClipView`, `NSScrollView`, `NSTableColumn`, `NSTableView`, table cell/view, row/column selection, action/double-action, and sort-descriptor compatibility slice
 - Native text, frame, hidden, and enabled updates

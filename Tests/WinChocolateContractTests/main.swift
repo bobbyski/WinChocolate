@@ -884,6 +884,42 @@ func testScrollerNativeActionUpdatesValue() {
     expect(actionCount == 1, "Scroller native action was not dispatched.")
 }
 
+func testDatePickerStoresDateRangeAndSyncsNativePeer() {
+    let backend = InMemoryNativeControlBackend()
+    let initialDate = Date(timeIntervalSince1970: 1_780_272_000)
+    let minDate = Date(timeIntervalSince1970: 1_735_689_600)
+    let maxDate = Date(timeIntervalSince1970: 1_893_456_000)
+    let picker = NSDatePicker(date: initialDate, frame: NSMakeRect(0, 0, 180, 28))
+    var actionCount = 0
+
+    picker.minDate = minDate
+    picker.maxDate = maxDate
+    picker.onAction = { control in
+        expect(control === picker, "Date picker action sender was not picker.")
+        actionCount += 1
+    }
+
+    expect(picker.dateValue == initialDate, "Date picker dateValue was not stored.")
+    expect(picker.minDate == minDate, "Date picker minDate was not stored.")
+    expect(picker.maxDate == maxDate, "Date picker maxDate was not stored.")
+    expect(picker.stringValue == "2026-06-01", "Date picker stringValue did not format date.")
+    expect(picker.acceptsFirstResponder, "Date picker should accept first responder.")
+
+    let handle = picker.realizeNativePeer(in: backend, parent: nil)
+
+    expect(backend.records[handle]?.kind == "datePicker", "Date picker did not request native date picker peer.")
+    expect(backend.records[handle]?.datePickerDate == initialDate, "Date picker did not sync initial date.")
+    expect(backend.records[handle]?.datePickerMinDate == minDate, "Date picker did not sync min date.")
+    expect(backend.records[handle]?.datePickerMaxDate == maxDate, "Date picker did not sync max date.")
+
+    let nextDate = Date(timeIntervalSince1970: 1_783_036_800)
+    picker.dateValue = nextDate
+    expect(backend.records[handle]?.datePickerDate == nextDate, "Date picker date changes did not sync.")
+
+    backend.actions[handle]?()
+    expect(actionCount == 1, "Date picker native action did not fire.")
+}
+
 func testSegmentedControlStoresSegmentsAndComposesButtons() {
     let backend = InMemoryNativeControlBackend()
     let segmented = NSSegmentedControl(labels: ["One", "Two"], frame: NSMakeRect(0, 0, 160, 28))
@@ -2496,6 +2532,7 @@ testProgressIndicatorStoresRangeValueAndSyncsNativePeer()
 testLevelIndicatorStoresRangeValueAndUsesProgressPeer()
 testScrollerStoresValueAndSyncsNativePeer()
 testScrollerNativeActionUpdatesValue()
+testDatePickerStoresDateRangeAndSyncsNativePeer()
 testSegmentedControlStoresSegmentsAndComposesButtons()
 testSegmentedControlActionSelectsSegment()
 testStepperStoresRangeIncrementAndSyncsNativePeer()
