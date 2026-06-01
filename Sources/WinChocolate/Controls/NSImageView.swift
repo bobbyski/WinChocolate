@@ -24,7 +24,7 @@ open class NSImage: NSObject {
     public init?(contentsOfFile filePath: String) {
         self.name = filePath
         self.filePath = filePath
-        self.data = try? Data(contentsOf: URL(fileURLWithPath: filePath))
+        self.data = nil
         super.init()
     }
 

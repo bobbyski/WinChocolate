@@ -169,7 +169,7 @@ public struct Data: Equatable, Hashable, Sendable, RandomAccessCollection, Mutab
         }
 
         var size: Int64 = 0
-        guard WinFoundationGetFileSizeEx(handle, &size), size >= 0 else {
+        guard WinFoundationGetFileSizeEx(handle, &size) != 0, size >= 0 else {
             throw DataFileError.sizeFailed(path)
         }
 
@@ -182,7 +182,7 @@ public struct Data: Equatable, Hashable, Sendable, RandomAccessCollection, Mutab
         let readSucceeded = buffer.withUnsafeMutableBufferPointer { pointer in
             WinFoundationReadFile(handle, pointer.baseAddress, UInt32(pointer.count), &bytesRead, nil)
         }
-        guard readSucceeded, Int(bytesRead) == buffer.count else {
+        guard readSucceeded != 0, Int(bytesRead) == buffer.count else {
             throw DataFileError.readFailed(path)
         }
         return buffer
@@ -205,7 +205,7 @@ public struct Data: Equatable, Hashable, Sendable, RandomAccessCollection, Mutab
         let writeSucceeded = bytes.withUnsafeBufferPointer { pointer in
             WinFoundationWriteFile(handle, pointer.baseAddress, UInt32(pointer.count), &bytesWritten, nil)
         }
-        guard writeSucceeded, Int(bytesWritten) == bytes.count else {
+        guard writeSucceeded != 0, Int(bytesWritten) == bytes.count else {
             throw DataFileError.writeFailed(path)
         }
         #else
@@ -268,7 +268,7 @@ private func WinFoundationCreateFileW(
 ) -> UnsafeMutableRawPointer?
 
 @_silgen_name("GetFileSizeEx")
-private func WinFoundationGetFileSizeEx(_ file: UnsafeMutableRawPointer?, _ fileSize: UnsafeMutablePointer<Int64>) -> Bool
+private func WinFoundationGetFileSizeEx(_ file: UnsafeMutableRawPointer?, _ fileSize: UnsafeMutablePointer<Int64>) -> Int32
 
 @_silgen_name("ReadFile")
 private func WinFoundationReadFile(
@@ -277,7 +277,7 @@ private func WinFoundationReadFile(
     _ numberOfBytesToRead: UInt32,
     _ numberOfBytesRead: UnsafeMutablePointer<UInt32>?,
     _ overlapped: UnsafeRawPointer?
-) -> Bool
+) -> Int32
 
 @_silgen_name("WriteFile")
 private func WinFoundationWriteFile(
@@ -286,9 +286,9 @@ private func WinFoundationWriteFile(
     _ numberOfBytesToWrite: UInt32,
     _ numberOfBytesWritten: UnsafeMutablePointer<UInt32>?,
     _ overlapped: UnsafeRawPointer?
-) -> Bool
+) -> Int32
 
 @_silgen_name("CloseHandle")
 @discardableResult
-private func WinFoundationCloseHandle(_ object: UnsafeMutableRawPointer?) -> Bool
+private func WinFoundationCloseHandle(_ object: UnsafeMutableRawPointer?) -> Int32
 #endif
