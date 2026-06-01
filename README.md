@@ -40,6 +40,7 @@ WinChocolate is early and intentionally incomplete. The current milestone proves
 - Initial bitmap-backed `NSImageView` with scaling/alignment state and `NSTabView`
 - `NSSlider`, `NSProgressIndicator`, and `NSStepper` value controls
 - Initial standalone `NSScroller`
+- Initial `NSDatePicker`
 - Initial `NSSplitView` pane layout and programmatic divider positioning
 - First `NSClipView`, `NSScrollView`, `NSTableColumn`, `NSTableView`, table cell/view, row/column selection, action/double-action, and sort-descriptor compatibility slice
 - Native text, frame, hidden, and enabled updates
@@ -57,7 +58,11 @@ WinChocolate is early and intentionally incomplete. The current milestone proves
 
 The Win32 backend currently uses a narrow manual User32/Gdi32 FFI layer because this local ARM64 Swift toolchain cannot import `WinSDK` cleanly.
 
-Foundation imports are also avoided in the core package for now because this same Windows ARM64 toolchain currently fails while building the UCRT shim modules. WinChocolate includes a tiny file-path `URL` value so AppKit-shaped APIs such as `NSPathControl.url` can keep moving until Foundation is usable here.
+Foundation is the intended default for Foundation-shaped API. The current local Windows ARM64 toolchain cannot compile `import Foundation`, so Windows builds define `USE_WIN_FOUNDATION` and use the small repo-local `WinFoundation` target as a temporary bridge. Pass `-Xswiftc -DUSE_REAL_FOUNDATION` to force real Foundation when testing a newer toolchain.
+
+`WinFoundation.URL` is the first compatibility priority because file URLs will underpin `NSPathControl`, open/save panels, resource lookup, image loading, and document APIs. The bridge should stay small and source-compatible, with real Foundation kept as the default path whenever the toolchain supports it.
+
+See [FOUNDATION_SHIMS.md](FOUNDATION_SHIMS.md) for the active shim surface, maintenance rules, and the canary commands for deciding when a newer Swift/Foundation release makes the shim unnecessary.
 
 The current visual style is the classic Win32 look on purpose. That should remain available for apps that want a retro or very small native-tool feel. The roadmap now tracks a separate modern Windows appearance layer as the eventual default, with backend or appearance selection so app code can keep the same AppKit-shaped API.
 
@@ -79,6 +84,7 @@ The script builds the Swift package, runs the contract tests, checks native demo
 
 ```text
 Package.swift
+Sources/WinFoundation
 Sources/WinChocolate
 Tests/WinChocolateContractTests
 Demo/DemoApplication

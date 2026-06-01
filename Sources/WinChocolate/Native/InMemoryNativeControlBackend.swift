@@ -81,6 +81,15 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
         /// Native stepper value.
         public var stepperValue: Double
 
+        /// Native date picker value.
+        public var datePickerDate: Date?
+
+        /// Native date picker minimum date.
+        public var datePickerMinDate: Date?
+
+        /// Native date picker maximum date.
+        public var datePickerMaxDate: Date?
+
         /// Native table column titles.
         public var tableColumns: [String]
 
@@ -306,6 +315,15 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
         records[handle]?.stepperMaxValue = maxValue
         records[handle]?.stepperIncrement = increment
         records[handle]?.stepperValue = value
+        return handle
+    }
+
+    /// Records a date picker creation request.
+    public func createDatePicker(date: Date, minDate: Date?, maxDate: Date?, frame: NSRect, parent: NativeHandle?) -> NativeHandle {
+        let handle = makeHandle(kind: "datePicker", text: "", frame: frame, parent: parent)
+        records[handle]?.datePickerDate = date
+        records[handle]?.datePickerMinDate = minDate
+        records[handle]?.datePickerMaxDate = maxDate
         return handle
     }
 
@@ -594,6 +612,23 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
         records[handle]?.stepperValue ?? 0
     }
 
+    /// Updates recorded date picker state.
+    public func setDatePickerDate(_ date: Date, minDate: Date?, maxDate: Date?, for handle: NativeHandle) {
+        guard var record = records[handle] else {
+            return
+        }
+
+        record.datePickerDate = date
+        record.datePickerMinDate = minDate
+        record.datePickerMaxDate = maxDate
+        records[handle] = record
+    }
+
+    /// Reads recorded date picker value.
+    public func datePickerDate(for handle: NativeHandle) -> Date? {
+        records[handle]?.datePickerDate
+    }
+
     /// Replaces recorded table rows.
     public func setTableRows(_ rows: [[String]], selectedRow: Int, for handle: NativeHandle) {
         guard var record = records[handle] else {
@@ -699,6 +734,9 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
             stepperMaxValue: 1,
             stepperIncrement: 1,
             stepperValue: 0,
+            datePickerDate: nil,
+            datePickerMinDate: nil,
+            datePickerMaxDate: nil,
             tableColumns: [],
             tableColumnWidths: [],
             tableRows: [],

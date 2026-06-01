@@ -55,6 +55,17 @@ private struct INITCOMMONCONTROLSEX {
     var dwICC: DWORD = 0
 }
 
+private struct SYSTEMTIME {
+    var wYear: UInt16 = 0
+    var wMonth: UInt16 = 0
+    var wDayOfWeek: UInt16 = 0
+    var wDay: UInt16 = 0
+    var wHour: UInt16 = 0
+    var wMinute: UInt16 = 0
+    var wSecond: UInt16 = 0
+    var wMilliseconds: UInt16 = 0
+}
+
 private struct NMHDR {
     var hwndFrom: HWND?
     var idFrom: UInt = 0
@@ -401,6 +412,7 @@ private let hdnItemClickA: UINT = 0xfffffed2
 private let hdnItemClickW: UINT = 0xfffffebe
 private let udnDeltapos: UINT = 0xfffffd2e
 private let tcnSelChange: UINT = 0xffffffc9
+private let dtnDateTimeChange: UINT = 0xfffffd09
 private let bnClicked: UInt = 0
 private let cbnSelChange: UInt = 1
 private let cbnEditChange: UInt = 5
@@ -408,6 +420,11 @@ private let iccListViewClasses: DWORD = 0x00000001
 private let iccTabClasses: DWORD = 0x00000008
 private let iccUpDownClass: DWORD = 0x00000010
 private let iccProgressClass: DWORD = 0x00000020
+private let iccDateClasses: DWORD = 0x00000100
+private let dtmFirst: UINT = 0x1000
+private let dtmGetSystemTime: UINT = dtmFirst + 1
+private let dtmSetSystemTime: UINT = dtmFirst + 2
+private let gdtValid: WPARAM = 0
 private let bstUnchecked: WPARAM = 0
 private let bstChecked: WPARAM = 1
 private let bstIndeterminate: WPARAM = 2
@@ -490,6 +507,7 @@ private let sbTop: UInt = 6
 private let sbBottom: UInt = 7
 private let imageBitmap: UINT = 0
 private let lrLoadFromFile: UINT = 0x00000010
+private let lrCreatedDIBSection: UINT = 0x00002000
 
 /// Win32 implementation of WinChocolate's native backend.
 ///
@@ -914,6 +932,22 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         return handle
     }
 
+    /// Creates a native date-picker child.
+    public func createDatePicker(date: Date, minDate: Date?, maxDate: Date?, frame: NSRect, parent: NativeHandle?) -> NativeHandle {
+        initializeDateControls()
+        let handle = createChildWindow(
+            className: "SysDateTimePick32",
+            text: "",
+            frame: frame,
+            parent: parent,
+            commandIdentifier: nil,
+            style: wsChild | wsVisible | wsTabStop
+        )
+        subclassControlForTabKey(handle)
+        setDatePickerDate(date, minDate: minDate, maxDate: maxDate, for: handle)
+        return handle
+    }
+
     /// Creates a native scroll-view child.
     public func createScrollView(frame: NSRect, parent: NativeHandle?, hasVerticalScroller: Bool, hasHorizontalScroller: Bool) -> NativeHandle {
         registerViewClassIfNeeded()
@@ -1106,6 +1140,7 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         }
 
         if let bitmap = bitmaps.removeValue(forKey: handle.rawValue) {
+            _ = winSendMessageW(hwnd, stmSetImage, WPARAM(imageBitmap), 0)
             _ = winDeleteObject(bitmap)
         }
 
@@ -1114,19 +1149,8 @@ public final class Win32NativeControlBackend: NativeControlBackend {
             return
         }
 
-        var rectangle = RECT()
-        let width: Int32
-        let height: Int32
-        if winGetClientRect(hwnd, &rectangle) != 0 {
-            width = max(1, rectangle.right - rectangle.left)
-            height = max(1, rectangle.bottom - rectangle.top)
-        } else {
-            width = 0
-            height = 0
-        }
-
         let bitmap = withWideString(imagePath) { path in
-            winLoadImageW(nil, path, imageBitmap, width, height, lrLoadFromFile)
+            winLoadImageW(nil, path, imageBitmap, 0, 0, lrLoadFromFile | lrCreatedDIBSection)
         }
 
         guard let bitmap else {
@@ -1366,6 +1390,35 @@ public final class Win32NativeControlBackend: NativeControlBackend {
     /// Reads native stepper value.
     public func stepperValue(for handle: NativeHandle) -> Double {
         stepperRanges[handle.rawValue]?.value ?? 0
+    }
+
+    /// Updates native date-picker state.
+    public func setDatePickerDate(_ date: Date, minDate: Date?, maxDate: Date?, for handle: NativeHandle) {
+        guard let hwnd = hwnd(from: handle) else {
+            return
+        }
+
+        var systemTime = systemTime(from: date)
+        withUnsafePointer(to: &systemTime) { pointer in
+            _ = winSendMessageW(hwnd, dtmSetSystemTime, gdtValid, LPARAM(bitPattern: pointer))
+        }
+    }
+
+    /// Reads native date-picker value.
+    public func datePickerDate(for handle: NativeHandle) -> Date? {
+        guard let hwnd = hwnd(from: handle) else {
+            return nil
+        }
+
+        var systemTime = SYSTEMTIME()
+        let result = withUnsafeMutablePointer(to: &systemTime) { pointer in
+            winSendMessageW(hwnd, dtmGetSystemTime, 0, LPARAM(bitPattern: pointer))
+        }
+        guard WPARAM(result) == gdtValid else {
+            return nil
+        }
+
+        return date(from: systemTime)
     }
 
     private func updateSliderPosition(from scrollParameter: WPARAM, for handle: NativeHandle) {
@@ -1738,6 +1791,20 @@ public final class Win32NativeControlBackend: NativeControlBackend {
                 return 0
             }
 
+            if header.code == dtnDateTimeChange {
+                guard let source = header.hwndFrom else {
+                    return nil
+                }
+
+                let handle = nativeHandle(from: source)
+                guard let action = controlActions[handle.rawValue] else {
+                    return nil
+                }
+
+                action()
+                return 0
+            }
+
             let notification = UnsafeRawPointer(bitPattern: lParam)?.assumingMemoryBound(to: NMLISTVIEW.self).pointee
             guard let notification,
                   let source = header.hwndFrom else {
@@ -2009,6 +2076,15 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         var initControls = INITCOMMONCONTROLSEX()
         initControls.dwSize = DWORD(MemoryLayout<INITCOMMONCONTROLSEX>.size)
         initControls.dwICC = iccProgressClass
+        withUnsafePointer(to: initControls) { pointer in
+            _ = winInitCommonControlsEx(pointer)
+        }
+    }
+
+    private func initializeDateControls() {
+        var initControls = INITCOMMONCONTROLSEX()
+        initControls.dwSize = DWORD(MemoryLayout<INITCOMMONCONTROLSEX>.size)
+        initControls.dwICC = iccDateClasses
         withUnsafePointer(to: initControls) { pointer in
             _ = winInitCommonControlsEx(pointer)
         }
@@ -2289,6 +2365,56 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         return red | (green << 8) | (blue << 16)
     }
 
+    private func systemTime(from date: Date) -> SYSTEMTIME {
+        let components = dateComponents(from: date)
+        return SYSTEMTIME(
+            wYear: UInt16(components.year),
+            wMonth: UInt16(components.month),
+            wDayOfWeek: 0,
+            wDay: UInt16(components.day),
+            wHour: 0,
+            wMinute: 0,
+            wSecond: 0,
+            wMilliseconds: 0
+        )
+    }
+
+    private func date(from systemTime: SYSTEMTIME) -> Date {
+        let days = daysFromCivil(
+            year: Int(systemTime.wYear),
+            month: Int(systemTime.wMonth),
+            day: Int(systemTime.wDay)
+        )
+        let seconds = Double(days) * 86_400.0
+        return Date(timeIntervalSince1970: seconds)
+    }
+
+    private func dateComponents(from date: Date) -> (year: Int, month: Int, day: Int) {
+        let days = Int((date.timeIntervalSince1970 / 86_400.0).rounded(.down))
+        let z = days + 719_468
+        let era = (z >= 0 ? z : z - 146_096) / 146_097
+        let doe = z - era * 146_097
+        let yoe = (doe - doe / 1_460 + doe / 36_524 - doe / 146_096) / 365
+        var year = yoe + era * 400
+        let doy = doe - (365 * yoe + yoe / 4 - yoe / 100)
+        let mp = (5 * doy + 2) / 153
+        let day = doy - (153 * mp + 2) / 5 + 1
+        let month = mp + (mp < 10 ? 3 : -9)
+        year += month <= 2 ? 1 : 0
+        return (year, month, day)
+    }
+
+    private func daysFromCivil(year: Int, month: Int, day: Int) -> Int {
+        var adjustedYear = year
+        adjustedYear -= month <= 2 ? 1 : 0
+        let era = (adjustedYear >= 0 ? adjustedYear : adjustedYear - 399) / 400
+        let yoe = adjustedYear - era * 400
+        let adjustedMonth = month + (month > 2 ? -3 : 9)
+        let doy = (153 * adjustedMonth + 2) / 5 + day - 1
+        let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy
+        return era * 146_097 + doe - 719_468
+    }
+
     private func invalidate(_ handle: NativeHandle) {
         guard let hwnd = hwnd(from: handle) else {
             return
@@ -2307,6 +2433,9 @@ public final class Win32NativeControlBackend: NativeControlBackend {
             _ = winDeleteObject(font)
         }
         if let bitmap = bitmaps.removeValue(forKey: handle.rawValue) {
+            if let hwnd = hwnd(from: handle) {
+                _ = winSendMessageW(hwnd, stmSetImage, WPARAM(imageBitmap), 0)
+            }
             _ = winDeleteObject(bitmap)
         }
     }

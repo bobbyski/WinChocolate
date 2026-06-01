@@ -9,10 +9,14 @@ open class NSImage: NSObject {
     /// Filesystem path for file-backed images.
     open var filePath: String?
 
+    /// Raw image data when the image was loaded from data or a file URL.
+    open var data: Data?
+
     /// Creates an image with an optional name.
     public init(named name: String? = nil) {
         self.name = name
         self.filePath = nil
+        self.data = nil
         super.init()
     }
 
@@ -20,6 +24,29 @@ open class NSImage: NSObject {
     public init?(contentsOfFile filePath: String) {
         self.name = filePath
         self.filePath = filePath
+        self.data = nil
+        super.init()
+    }
+
+    /// Creates an image from a file URL.
+    public init?(contentsOf url: URL) {
+        guard url.isFileURL else {
+            return nil
+        }
+        self.name = url.lastPathComponent
+        self.filePath = url.path
+        self.data = try? Data(contentsOf: url)
+        super.init()
+    }
+
+    /// Creates an image from raw data.
+    public init?(data: Data) {
+        guard !data.isEmpty else {
+            return nil
+        }
+        self.name = nil
+        self.filePath = nil
+        self.data = data
         super.init()
     }
 }

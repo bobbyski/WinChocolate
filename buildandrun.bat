@@ -43,11 +43,19 @@ if errorlevel 1 (
 echo.
 echo Launching WinChocolate demo window...
 if not exist "%RUN_DIR%" mkdir "%RUN_DIR%"
+if not exist "%RUN_DIR%\Resources" mkdir "%RUN_DIR%\Resources"
 set "RUN_DEMO_EXE=%RUN_DIR%\WinChocolateDemo-%RANDOM%-%RANDOM%.exe"
 copy /y "%DEMO_EXE%" "%RUN_DEMO_EXE%" >nul
 if errorlevel 1 (
     echo.
     echo Demo staging failed.
+    popd >nul
+    exit /b 1
+)
+copy /y "%SCRIPT_DIR%Demo\DemoApplication\Resources\*.bmp" "%RUN_DIR%\Resources\" >nul
+if errorlevel 1 (
+    echo.
+    echo Demo resource staging failed.
     popd >nul
     exit /b 1
 )

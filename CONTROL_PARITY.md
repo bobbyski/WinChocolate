@@ -42,7 +42,7 @@ References used for this map:
 | `NSProgressIndicator` bar | `msctls_progress32` | `ProgressBar` | Determinate bar exists. | Done | Planned |
 | `NSProgressIndicator` spinning | Custom animation | `ProgressRing` | Spinning/indeterminate behavior not implemented. | Planned | Planned |
 | `NSLevelIndicator` | Progress bar/custom owner-drawn meter | Rating/value indicator pattern | Basic value/range state exists over a progress-style peer; discrete/rating visuals are future work. | Partial | Planned |
-| `NSDatePicker` | `SysDateTimePick32` / `SysMonthCal32` | `DatePicker`, `TimePicker`, `CalendarDatePicker` | Good native peers exist, but AppKit styles differ. | Planned | Planned |
+| `NSDatePicker` | `SysDateTimePick32` / `SysMonthCal32` | `DatePicker`, `TimePicker`, `CalendarDatePicker` | First date-value/min/max/action slice exists over the classic date-time picker; calendar/time styles are future work. | Partial | Planned |
 | `NSPathControl` | Breadcrumb/custom toolbar/edit composition | Breadcrumb bar pattern | First URL/path display slice exists over a text peer with component-cell metadata; true breadcrumb interaction is future work. | Partial | Planned |
 | `NSSegmentedControl` | Composed `BUTTON` peers/custom owner draw | `Segmented` style via `RadioButtons`/custom | First composed segment state/action slice exists; unified drawing and keyboard behavior are future work. | Partial | Planned |
 | `NSMatrix` | Group of child controls | ItemsControl/custom panel | Deprecated AppKit API; low priority but useful for old ports. | Planned | Planned |
