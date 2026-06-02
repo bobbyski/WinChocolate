@@ -82,6 +82,15 @@ public protocol NativeControlBackend: AnyObject {
     /// Creates a native scroll-view child.
     func createScrollView(frame: NSRect, parent: NativeHandle?, hasVerticalScroller: Bool, hasHorizontalScroller: Bool) -> NativeHandle
 
+    /// Updates native scroll-view document and viewport geometry.
+    func setScrollViewContentSize(_ contentSize: NSSize, viewportSize: NSSize, hasVerticalScroller: Bool, hasHorizontalScroller: Bool, for handle: NativeHandle)
+
+    /// Updates the native scroll-view visible document origin.
+    func setScrollViewContentOffset(_ offset: NSPoint, for handle: NativeHandle)
+
+    /// Reads the native scroll-view visible document origin.
+    func scrollViewContentOffset(for handle: NativeHandle) -> NSPoint
+
     /// Creates a native table-view child.
     func createTableView(columns: [String], rows: [[String]], selectedRow: Int, frame: NSRect, parent: NativeHandle?) -> NativeHandle
 
@@ -186,6 +195,9 @@ public protocol NativeControlBackend: AnyObject {
 
     /// Updates native table selection.
     func setTableSelectedRow(_ selectedRow: Int, for handle: NativeHandle)
+
+    /// Scrolls a native table row into view when possible.
+    func scrollTableRowToVisible(_ row: Int, for handle: NativeHandle)
 
     /// Reads native table selection.
     func tableSelectedRow(for handle: NativeHandle) -> Int

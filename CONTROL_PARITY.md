@@ -48,14 +48,14 @@ References used for this map:
 | `NSMatrix` | Group of child controls | ItemsControl/custom panel | Deprecated AppKit API; first composed button-grid slice exists for old ports. | Partial | Planned |
 | `NSForm` | Group of labels/edit controls | Form layout pattern | Deprecated AppKit API; first composed label/edit-row slice exists. | Partial | Planned |
 | `NSBox` | `BUTTON` group-box style | `GroupBox` | Basic title/frame peer exists. | Done | Planned |
-| `NSScrollView` | Custom child `HWND` with scrollbars | `ScrollViewer` | Owns an `NSClipView` content view and document-view host; native scrolling behavior needs depth. | Partial | Planned |
+| `NSScrollView` | Custom child `HWND` with scrollbars | `ScrollViewer` | Owns an `NSClipView` content view and document-view host; native scrollbar events now update the clip origin. | Partial | Planned |
 | `NSScroller` | `SCROLLBAR` | `ScrollBar` | Standalone normalized value/knob-proportion slice exists; detailed parts, overlay behavior, and custom styling are future work. | Partial | Planned |
 | `NSTableView` | `SysListView32` report mode | `ListView` / `DataGrid` pattern | Columns, rows, selection, sorting slice exists; editing/reuse/accessibility incomplete. | Partial | Planned |
 | `NSTableColumn` | List-view column/header metadata | Grid/list column metadata | Swift-side column model exists. | Partial | Planned |
 | `NSTableCellView` | List-view subitem/custom view | Data template cell | Placeholder API exists; no real cell-view hosting. | Partial | Planned |
 | `NSTableRowView` | List-view row/custom draw | Item container | Placeholder API exists; no custom row rendering. | Partial | Planned |
 | `NSOutlineView` | `SysTreeView32` or custom tree/list hybrid | `TreeView` / `TreeView` plus columns | First AppKit-shaped flattening slice exists over the table backend; disclosure UI and native tree-table rendering are future work. | Partial | Planned |
-| `NSBrowser` | Multi-column list/tree composition | Multi-pane navigation pattern | AppKit-specific; no direct Windows peer. | Planned | Planned |
+| `NSBrowser` | Multi-column list/tree composition | Multi-pane navigation pattern | First AppKit-shaped composed column browser slice exists over table/scroll-view columns. | Partial | Planned |
 | `NSCollectionView` | `SysListView32` icon mode or custom item grid | `GridView` / `ItemsRepeater` | Needs item reuse and layout engine. | Planned | Planned |
 | `NSRuleEditor` | Custom composed rows | Custom composed control | No native Windows peer. | Planned | Planned |
 | `NSPredicateEditor` | Custom composed rows | Custom composed control | No native Windows peer. | Planned | Planned |

@@ -4,6 +4,8 @@
 /// slice keeps document hosting and bounds-origin state in Swift while native
 /// backends continue to provide a simple child view peer.
 open class NSClipView: NSView {
+    internal var onScroll: ((NSPoint) -> Void)?
+
     /// The view shown inside the clip view.
     open var documentView: NSView? {
         didSet {
@@ -43,6 +45,7 @@ open class NSClipView: NSView {
     /// Scrolls the document to a document-space point.
     open func scroll(to newOrigin: NSPoint) {
         boundsOrigin = constrainBoundsRect(NSRect(origin: newOrigin, size: bounds.size)).origin
+        onScroll?(boundsOrigin)
     }
 
     /// Constrains a proposed visible rectangle to the current document extent.

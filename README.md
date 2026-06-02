@@ -42,7 +42,7 @@ WinChocolate is early and intentionally incomplete. The current milestone proves
 - Initial standalone `NSScroller`
 - Initial `NSDatePicker`
 - Initial `NSSplitView` pane layout and programmatic divider positioning
-- First `NSClipView`, `NSScrollView`, `NSTableColumn`, `NSTableView`, `NSOutlineView`, table cell/view, row/column selection, action/double-action, and sort-descriptor compatibility slice
+- First `NSClipView`, `NSScrollView`, `NSTableColumn`, `NSTableView`, `NSOutlineView`, `NSBrowser`, table cell/view, row/column selection, action/double-action, and sort-descriptor compatibility slice
 - Native text, frame, hidden, and enabled updates
 - Native modal `NSAlert` through `MessageBoxW`
 - Initial `NSColor` support for view backgrounds and text field text color

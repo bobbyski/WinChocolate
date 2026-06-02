@@ -76,6 +76,7 @@ final class DemoTableDataSource: NSTableViewDataSource {
         ["NSSegmentedControl", "Composed segments"],
         ["NSTabView", "Native tabs"],
         ["NSImageView", "Bitmap artwork"],
+        ["NSBrowser", "Column browser"],
         ["NSOutlineView", "Tree table"],
         ["NSTableView", "First slice"],
         ["NSTableColumn", "Identifiers"],
@@ -178,6 +179,39 @@ final class DemoOutlineDataSource: NSOutlineViewDataSource {
     }
 }
 
+final class DemoBrowserDataSource: NSBrowserDelegate {
+    let roots = ["Application", "Controls", "Tables"]
+    let children: [String: [String]] = [
+        "Application": ["NSApplication", "NSWindow", "NSMenu", "NSAlert"],
+        "Controls": ["NSButton", "NSTextField", "NSComboBox", "NSBrowser"],
+        "Tables": ["NSTableView", "NSOutlineView", "NSTableColumn", "NSScrollView"]
+    ]
+
+    func browser(_ browser: NSBrowser, numberOfChildrenOfItem item: Any?) -> Int {
+        guard let item else {
+            return roots.count
+        }
+
+        return children[String(describing: item)]?.count ?? 0
+    }
+
+    func browser(_ browser: NSBrowser, child index: Int, ofItem item: Any?) -> Any {
+        if let item {
+            return children[String(describing: item)]?[index] ?? ""
+        }
+
+        return roots[index]
+    }
+
+    func browser(_ browser: NSBrowser, isLeafItem item: Any?) -> Bool {
+        guard let item else {
+            return false
+        }
+
+        return children[String(describing: item)] == nil
+    }
+}
+
 let contentView = DemoContentView(frame: NSMakeRect(0, 0, 1120, 760))
 let controlsPage = DemoPageView(frame: NSMakeRect(0, 144, 1120, 560))
 let valuesPage = DemoPageView(frame: NSMakeRect(0, 144, 1120, 560))
@@ -274,6 +308,9 @@ let outlineLabel = NSTextField(string: "Outline view:", frame: NSMakeRect(704, 3
 let outlineScrollView = NSScrollView(frame: NSMakeRect(824, 336, 256, 176))
 let outlineView = NSOutlineView(frame: NSMakeRect(0, 0, 256, 176))
 let outlineDataSource = DemoOutlineDataSource()
+let browserLabel = NSTextField(string: "Browser:", frame: NSMakeRect(32, 216, 120, 24))
+let browser = NSBrowser(frame: NSMakeRect(152, 216, 360, 104))
+let browserDataSource = DemoBrowserDataSource()
 let contentFocusColor = NSColor(calibratedRed: 0.92, green: 0.97, blue: 1.0, alpha: 1.0)
 let normalContentColor = NSColor.windowBackgroundColor
 let controlFocusColor = NSColor(calibratedRed: 1.0, green: 0.96, blue: 0.72, alpha: 1.0)
@@ -770,7 +807,6 @@ outlineView.reloadData()
 outlineView.selectRowIndexes([0], byExtendingSelection: false)
 outlineScrollView.hasVerticalScroller = true
 outlineScrollView.documentView = outlineView
-
 contentView.nextKeyView = button
 editableTextField.nextKeyView = secureTextField
 secureTextField.nextKeyView = alertButton
@@ -1195,7 +1231,6 @@ outlineView.onSelectionChanged = { table in
     let item = outline.item(atRow: outline.selectedRow).map { String(describing: $0) } ?? "none"
     statusLabel.stringValue = "Outline selected: \(item)"
 }
-
 contentView.addSubview(counterLabel)
 contentView.addSubview(statusLabel)
 contentView.addSubview(focusLabel)

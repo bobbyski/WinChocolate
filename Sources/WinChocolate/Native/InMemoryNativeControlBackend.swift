@@ -68,6 +68,12 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
 
         /// Whether the native scroller is vertical.
         public var scrollerIsVertical: Bool
+        /// Native scroll-view document size.
+        public var scrollViewContentSize: NSSize
+        /// Native scroll-view viewport size.
+        public var scrollViewViewportSize: NSSize
+        /// Native scroll-view visible origin.
+        public var scrollViewContentOffset: NSPoint
 
         /// Native stepper minimum value.
         public var stepperMinValue: Double
@@ -101,6 +107,9 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
 
         /// Native table selected row.
         public var tableSelectedRow: Int
+
+        /// Last native table row requested visible.
+        public var tableVisibleRow: Int
 
         /// Native table clicked row.
         public var tableClickedRow: Int
@@ -330,6 +339,37 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     /// Records a scroll view creation request.
     public func createScrollView(frame: NSRect, parent: NativeHandle?, hasVerticalScroller: Bool, hasHorizontalScroller: Bool) -> NativeHandle {
         makeHandle(kind: "scrollView", text: "", frame: frame, parent: parent)
+    }
+
+    /// Records scroll-view document and viewport geometry.
+    public func setScrollViewContentSize(_ contentSize: NSSize, viewportSize: NSSize, hasVerticalScroller: Bool, hasHorizontalScroller: Bool, for handle: NativeHandle) {
+        guard var record = records[handle] else {
+            return
+        }
+
+        record.scrollViewContentSize = contentSize
+        record.scrollViewViewportSize = viewportSize
+        records[handle] = record
+    }
+
+    /// Records a scroll-view visible origin.
+    public func setScrollViewContentOffset(_ offset: NSPoint, for handle: NativeHandle) {
+        guard var record = records[handle] else {
+            return
+        }
+
+        let maxX = max(0, record.scrollViewContentSize.width - record.scrollViewViewportSize.width)
+        let maxY = max(0, record.scrollViewContentSize.height - record.scrollViewViewportSize.height)
+        record.scrollViewContentOffset = NSPoint(
+            x: min(max(offset.x, 0), maxX),
+            y: min(max(offset.y, 0), maxY)
+        )
+        records[handle] = record
+    }
+
+    /// Reads a scroll-view visible origin.
+    public func scrollViewContentOffset(for handle: NativeHandle) -> NSPoint {
+        records[handle]?.scrollViewContentOffset ?? NSZeroPoint
     }
 
     /// Records a table view creation request.
@@ -650,6 +690,16 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
         records[handle] = record
     }
 
+    /// Records a table row visibility request.
+    public func scrollTableRowToVisible(_ row: Int, for handle: NativeHandle) {
+        guard var record = records[handle] else {
+            return
+        }
+
+        record.tableVisibleRow = row
+        records[handle] = record
+    }
+
     /// Reads recorded table selection.
     public func tableSelectedRow(for handle: NativeHandle) -> Int {
         records[handle]?.tableSelectedRow ?? -1
@@ -730,6 +780,9 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
             progressValue: 0,
             scrollerKnobProportion: 0,
             scrollerIsVertical: false,
+            scrollViewContentSize: NSZeroSize,
+            scrollViewViewportSize: NSZeroSize,
+            scrollViewContentOffset: NSZeroPoint,
             stepperMinValue: 0,
             stepperMaxValue: 1,
             stepperIncrement: 1,
@@ -741,6 +794,7 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
             tableColumnWidths: [],
             tableRows: [],
             tableSelectedRow: -1,
+            tableVisibleRow: -1,
             tableClickedRow: -1,
             tableClickedColumn: -1,
             textColor: nil,

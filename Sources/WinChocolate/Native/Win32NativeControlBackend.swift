@@ -66,6 +66,16 @@ private struct SYSTEMTIME {
     var wMilliseconds: UInt16 = 0
 }
 
+private struct SCROLLINFO {
+    var cbSize: UINT = UINT(MemoryLayout<SCROLLINFO>.size)
+    var fMask: UINT = 0
+    var nMin: Int32 = 0
+    var nMax: Int32 = 0
+    var nPage: UINT = 0
+    var nPos: Int32 = 0
+    var nTrackPos: Int32 = 0
+}
+
 private struct NMHDR {
     var hwndFrom: HWND?
     var idFrom: UInt = 0
@@ -206,6 +216,12 @@ private func winCallWindowProcW(_ previousProcedure: WNDPROC?, _ hwnd: HWND?, _ 
 
 @_silgen_name("SendMessageW")
 private func winSendMessageW(_ hwnd: HWND?, _ message: UINT, _ wParam: WPARAM, _ lParam: LPARAM) -> LRESULT
+
+@_silgen_name("SetScrollInfo")
+private func winSetScrollInfo(_ hwnd: HWND?, _ bar: Int32, _ scrollInfo: UnsafePointer<SCROLLINFO>, _ redraw: Int32) -> Int32
+
+@_silgen_name("GetScrollInfo")
+private func winGetScrollInfo(_ hwnd: HWND?, _ bar: Int32, _ scrollInfo: UnsafeMutablePointer<SCROLLINFO>) -> Int32
 
 @_silgen_name("DefWindowProcW")
 private func winDefWindowProcW(_ hwnd: HWND?, _ message: UINT, _ wParam: WPARAM, _ lParam: LPARAM) -> LRESULT
@@ -378,6 +394,8 @@ private let cbShowDropDown: UINT = 0x014f
 private let sbmSetPos: UINT = 0x00e0
 private let sbmGetPos: UINT = 0x00e1
 private let sbmSetRange: UINT = 0x00e2
+private let sbmSetScrollInfo: UINT = 0x00e9
+private let sbmGetScrollInfo: UINT = 0x00ea
 private let pbmSetRange32: UINT = 0x0406
 private let pbmSetPos: UINT = 0x0402
 private let udmSetRange32: UINT = 0x046f
@@ -391,6 +409,7 @@ private let hdmHitTest: UINT = hdmFirst + 6
 private let lvmFirst: UINT = 0x1000
 private let lvmDeleteAllItems: UINT = lvmFirst + 9
 private let lvmGetNextItem: UINT = lvmFirst + 12
+private let lvmEnsureVisible: UINT = lvmFirst + 19
 private let lvmGetHeader: UINT = lvmFirst + 31
 private let lvmSetItemState: UINT = lvmFirst + 43
 private let lvmSubItemHitTest: UINT = lvmFirst + 57
@@ -496,6 +515,13 @@ private let cbsDropdownList: DWORD = 0x0003
 private let tciText: UINT = 0x0001
 private let sbsHorz: DWORD = 0x0000
 private let sbsVert: DWORD = 0x0001
+private let sbHorz: Int32 = 0
+private let sbVert: Int32 = 1
+private let sifRange: UINT = 0x0001
+private let sifPage: UINT = 0x0002
+private let sifPos: UINT = 0x0004
+private let sifTrackPos: UINT = 0x0010
+private let sifAll: UINT = sifRange | sifPage | sifPos | sifTrackPos
 private let udsArrowKeys: DWORD = 0x0020
 private let sbLineLeft: UInt = 0
 private let sbLineRight: UInt = 1
@@ -537,6 +563,7 @@ public final class Win32NativeControlBackend: NativeControlBackend {
     private var tableClickedRows: [UInt: Int] = [:]
     private var tableClickedColumns: [UInt: Int] = [:]
     private var sliderRanges: [UInt: (minValue: Double, maxValue: Double)] = [:]
+    private var scrollViewMetrics: [UInt: (contentSize: NSSize, viewportSize: NSSize, hasVerticalScroller: Bool, hasHorizontalScroller: Bool, offset: NSPoint)] = [:]
     private var stepperRanges: [UInt: (minValue: Double, maxValue: Double, increment: Double, value: Double)] = [:]
     private var textColors: [UInt: DWORD] = [:]
     private var backgroundColors: [UInt: DWORD] = [:]
@@ -653,6 +680,7 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         tableClickedRows.removeValue(forKey: handle.rawValue)
         tableClickedColumns.removeValue(forKey: handle.rawValue)
         sliderRanges.removeValue(forKey: handle.rawValue)
+        scrollViewMetrics.removeValue(forKey: handle.rawValue)
         stepperRanges.removeValue(forKey: handle.rawValue)
         clearAppearance(for: handle)
     }
@@ -679,6 +707,7 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         tableClickedRows.removeValue(forKey: handle.rawValue)
         tableClickedColumns.removeValue(forKey: handle.rawValue)
         sliderRanges.removeValue(forKey: handle.rawValue)
+        scrollViewMetrics.removeValue(forKey: handle.rawValue)
         stepperRanges.removeValue(forKey: handle.rawValue)
         clearAppearance(for: handle)
     }
@@ -967,6 +996,39 @@ public final class Win32NativeControlBackend: NativeControlBackend {
             commandIdentifier: nil,
             style: style
         )
+    }
+
+    /// Updates native scroll-view document and viewport geometry.
+    public func setScrollViewContentSize(_ contentSize: NSSize, viewportSize: NSSize, hasVerticalScroller: Bool, hasHorizontalScroller: Bool, for handle: NativeHandle) {
+        scrollViewMetrics[handle.rawValue] = (
+            contentSize,
+            viewportSize,
+            hasVerticalScroller,
+            hasHorizontalScroller,
+            scrollViewMetrics[handle.rawValue]?.offset ?? NSZeroPoint
+        )
+        updateScrollViewBars(for: handle)
+    }
+
+    /// Updates the native scroll-view visible document origin.
+    public func setScrollViewContentOffset(_ offset: NSPoint, for handle: NativeHandle) {
+        guard var metrics = scrollViewMetrics[handle.rawValue] else {
+            return
+        }
+
+        let maxX = max(0, metrics.contentSize.width - metrics.viewportSize.width)
+        let maxY = max(0, metrics.contentSize.height - metrics.viewportSize.height)
+        metrics.offset = NSPoint(
+            x: min(max(offset.x, 0), maxX),
+            y: min(max(offset.y, 0), maxY)
+        )
+        scrollViewMetrics[handle.rawValue] = metrics
+        updateScrollViewBars(for: handle)
+    }
+
+    /// Reads the native scroll-view visible document origin.
+    public func scrollViewContentOffset(for handle: NativeHandle) -> NSPoint {
+        scrollViewMetrics[handle.rawValue]?.offset ?? NSZeroPoint
     }
 
     /// Creates a native table-view child.
@@ -1349,12 +1411,42 @@ public final class Win32NativeControlBackend: NativeControlBackend {
 
     /// Updates native scroller state.
     public func setScrollerValue(_ value: Double, knobProportion: Double, for handle: NativeHandle) {
-        setSliderValue(min(max(value, 0), 1) * 100, for: handle)
+        guard let hwnd = hwnd(from: handle) else {
+            return
+        }
+
+        let clampedValue = min(max(value, 0), 1)
+        let clampedProportion = min(max(knobProportion, 0), 1)
+        sliderRanges[handle.rawValue] = (0, 100)
+        var scrollInfo = SCROLLINFO(
+            cbSize: UINT(MemoryLayout<SCROLLINFO>.size),
+            fMask: sifRange | sifPage | sifPos,
+            nMin: 0,
+            nMax: 100,
+            nPage: UINT(max(1, Int32((clampedProportion * 100).rounded()))),
+            nPos: Int32((clampedValue * 100).rounded()),
+            nTrackPos: 0
+        )
+        withUnsafePointer(to: &scrollInfo) { pointer in
+            _ = winSendMessageW(hwnd, sbmSetScrollInfo, 1, LPARAM(bitPattern: pointer))
+        }
     }
 
     /// Reads native scroller value.
     public func scrollerValue(for handle: NativeHandle) -> Double {
-        min(max(sliderValue(for: handle) / 100, 0), 1)
+        guard let hwnd = hwnd(from: handle) else {
+            return 0
+        }
+
+        var scrollInfo = SCROLLINFO(cbSize: UINT(MemoryLayout<SCROLLINFO>.size), fMask: sifAll)
+        let result = withUnsafeMutablePointer(to: &scrollInfo) { pointer in
+            winSendMessageW(hwnd, sbmGetScrollInfo, 0, LPARAM(bitPattern: pointer))
+        }
+        guard result != 0 else {
+            return min(max(sliderValue(for: handle) / 100, 0), 1)
+        }
+
+        return min(max(Double(scrollInfo.nPos) / 100, 0), 1)
     }
 
     /// Updates native stepper range.
@@ -1453,6 +1545,99 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         }
 
         setSliderValue(nextValue, for: handle)
+    }
+
+    private func updateScrollViewBars(for handle: NativeHandle) {
+        guard let hwnd = hwnd(from: handle), let metrics = scrollViewMetrics[handle.rawValue] else {
+            return
+        }
+
+        if metrics.hasHorizontalScroller {
+            setWindowScrollInfo(
+                hwnd: hwnd,
+                bar: sbHorz,
+                contentLength: metrics.contentSize.width,
+                viewportLength: metrics.viewportSize.width,
+                position: metrics.offset.x
+            )
+        }
+
+        if metrics.hasVerticalScroller {
+            setWindowScrollInfo(
+                hwnd: hwnd,
+                bar: sbVert,
+                contentLength: metrics.contentSize.height,
+                viewportLength: metrics.viewportSize.height,
+                position: metrics.offset.y
+            )
+        }
+    }
+
+    private func setWindowScrollInfo(hwnd: HWND?, bar: Int32, contentLength: Double, viewportLength: Double, position: Double) {
+        let content = max(0, Int32(contentLength.rounded()))
+        let viewport = max(1, Int32(viewportLength.rounded()))
+        let maximum = max(0, content - 1)
+        let maxPosition = max(0, content - viewport)
+        var scrollInfo = SCROLLINFO(
+            cbSize: UINT(MemoryLayout<SCROLLINFO>.size),
+            fMask: sifRange | sifPage | sifPos,
+            nMin: 0,
+            nMax: maximum,
+            nPage: UINT(viewport),
+            nPos: min(max(Int32(position.rounded()), 0), maxPosition),
+            nTrackPos: 0
+        )
+        withUnsafePointer(to: &scrollInfo) { pointer in
+            _ = winSetScrollInfo(hwnd, bar, pointer, 1)
+        }
+    }
+
+    private func updateScrollViewPosition(from scrollParameter: WPARAM, message: UINT, for handle: NativeHandle) {
+        guard let hwnd = hwnd(from: handle), var metrics = scrollViewMetrics[handle.rawValue] else {
+            return
+        }
+
+        let isVertical = message == wmVScroll
+        let bar = isVertical ? sbVert : sbHorz
+        var scrollInfo = SCROLLINFO(cbSize: UINT(MemoryLayout<SCROLLINFO>.size), fMask: sifAll)
+        guard withUnsafeMutablePointer(to: &scrollInfo, { pointer in winGetScrollInfo(hwnd, bar, pointer) }) != 0 else {
+            return
+        }
+
+        let code = scrollParameter & 0xffff
+        let current = Double(scrollInfo.nPos)
+        let page = max(1, Double(scrollInfo.nPage))
+        let line = max(1, page / 10)
+        let maximum = max(0, Double(scrollInfo.nMax) - page + 1)
+        let nextPosition: Double
+
+        switch code {
+        case sbLineLeft:
+            nextPosition = current - line
+        case sbLineRight:
+            nextPosition = current + line
+        case sbPageLeft:
+            nextPosition = current - page
+        case sbPageRight:
+            nextPosition = current + page
+        case sbThumbPosition, sbThumbTrack:
+            nextPosition = Double(scrollInfo.nTrackPos)
+        case sbTop:
+            nextPosition = 0
+        case sbBottom:
+            nextPosition = maximum
+        default:
+            nextPosition = current
+        }
+
+        let clampedPosition = min(max(nextPosition, 0), maximum)
+        if isVertical {
+            metrics.offset = NSPoint(x: metrics.offset.x, y: clampedPosition)
+        } else {
+            metrics.offset = NSPoint(x: clampedPosition, y: metrics.offset.y)
+        }
+        scrollViewMetrics[handle.rawValue] = metrics
+        updateScrollViewBars(for: handle)
     }
 
     private func updateStepperPosition(from scrollParameter: WPARAM, for handle: NativeHandle) {
@@ -1572,6 +1757,16 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         }
     }
 
+    /// Scrolls a native table row into view.
+    public func scrollTableRowToVisible(_ row: Int, for handle: NativeHandle) {
+        guard row >= 0,
+              let hwnd = hwnd(from: handle) else {
+            return
+        }
+
+        _ = winSendMessageW(hwnd, lvmEnsureVisible, WPARAM(row), 0)
+    }
+
     /// Reads native table selection.
     public func tableSelectedRow(for handle: NativeHandle) -> Int {
         guard let hwnd = hwnd(from: handle) else {
@@ -1666,7 +1861,18 @@ public final class Win32NativeControlBackend: NativeControlBackend {
             return 0
         case wmHScroll, wmVScroll:
             guard lParam != 0, let scrollHwnd = HWND(bitPattern: lParam) else {
-                return nil
+                guard let hwnd else {
+                    return nil
+                }
+
+                let handle = nativeHandle(from: hwnd)
+                guard scrollViewMetrics[handle.rawValue] != nil else {
+                    return nil
+                }
+
+                updateScrollViewPosition(from: wParam, message: message, for: handle)
+                controlActions[handle.rawValue]?()
+                return 0
             }
 
             let handle = nativeHandle(from: scrollHwnd)

@@ -157,9 +157,10 @@ func testScrollViewHostsDocumentView() {
 func testScrollViewUsesNativePeerAndRealizesDocumentView() {
     let backend = InMemoryNativeControlBackend()
     let scrollView = NSScrollView(frame: NSMakeRect(0, 0, 200, 120))
-    let documentView = NSView(frame: NSMakeRect(0, 0, 180, 240))
+    let documentView = NSView(frame: NSMakeRect(0, 0, 300, 240))
 
     scrollView.hasVerticalScroller = true
+    scrollView.hasHorizontalScroller = true
     scrollView.documentView = documentView
 
     let handle = scrollView.realizeNativePeer(in: backend, parent: nil)
@@ -169,6 +170,25 @@ func testScrollViewUsesNativePeerAndRealizesDocumentView() {
     expect(documentView.nativeHandle != nil, "Scroll view did not realize document view.")
     expect(backend.records[scrollView.contentView.nativeHandle!]?.parent == handle, "Clip view native parent was not scroll view.")
     expect(backend.records[documentView.nativeHandle!]?.parent == scrollView.contentView.nativeHandle, "Document view native parent was not clip view.")
+    expect(backend.records[handle]?.scrollViewContentSize == NSMakeSize(300, 240), "Scroll view did not sync document size.")
+    expect(backend.records[handle]?.scrollViewViewportSize == NSMakeSize(200, 120), "Scroll view did not sync viewport size.")
+}
+
+func testScrollViewNativeScrollbarActionUpdatesClipOrigin() {
+    let backend = InMemoryNativeControlBackend()
+    let scrollView = NSScrollView(frame: NSMakeRect(0, 0, 200, 120))
+    let documentView = NSView(frame: NSMakeRect(0, 0, 300, 240))
+
+    scrollView.hasVerticalScroller = true
+    scrollView.hasHorizontalScroller = true
+    scrollView.documentView = documentView
+
+    let handle = scrollView.realizeNativePeer(in: backend, parent: nil)
+    backend.setScrollViewContentOffset(NSMakePoint(40, 70), for: handle)
+    backend.actions[handle]?()
+
+    expect(scrollView.contentView.boundsOrigin == NSMakePoint(40, 70), "Native scroll-view action did not update clip-view origin.")
+    expect(documentView.frame.origin == NSMakePoint(-40, -70), "Native scroll-view action did not move the document view.")
 }
 
 func testClipViewScrollsDocumentView() {
@@ -323,6 +343,38 @@ final class RecordingOutlineDataSource: NSOutlineViewDataSource {
         }
 
         return value
+    }
+}
+
+final class RecordingBrowserDelegate: NSBrowserDelegate {
+    let roots = ["Application", "Controls"]
+    let children: [String: [String]] = [
+        "Application": ["NSApplication", "NSWindow"],
+        "Controls": ["NSButton", "NSMatrix"]
+    ]
+
+    func browser(_ browser: NSBrowser, numberOfChildrenOfItem item: Any?) -> Int {
+        guard let item else {
+            return roots.count
+        }
+
+        return children[String(describing: item)]?.count ?? 0
+    }
+
+    func browser(_ browser: NSBrowser, child index: Int, ofItem item: Any?) -> Any {
+        if let item {
+            return children[String(describing: item)]?[index] ?? ""
+        }
+
+        return roots[index]
+    }
+
+    func browser(_ browser: NSBrowser, isLeafItem item: Any?) -> Bool {
+        guard let item else {
+            return false
+        }
+
+        return children[String(describing: item)] == nil
     }
 }
 
@@ -827,6 +879,41 @@ func testOutlineViewFlattensExpandableItems() {
 
     expect(backend.records[handle]?.kind == "tableView", "Outline view did not use the table backend.")
     expect(backend.records[handle]?.tableRows.count == 2, "Outline native rows were not synced.")
+}
+
+func testBrowserLoadsColumnsAndTracksSelection() {
+    let backend = InMemoryNativeControlBackend()
+    let browser = NSBrowser(frame: NSMakeRect(0, 0, 320, 120))
+    let delegate = RecordingBrowserDelegate()
+    var actionCount = 0
+
+    browser.delegate = delegate
+    browser.columnWidth = 150
+    browser.onAction = { control in
+        expect(control === browser, "Browser action sender was not browser.")
+        actionCount += 1
+    }
+
+    expect(browser.items(inColumn: 0).map { String(describing: $0) } == ["Application", "Controls"], "Browser did not load root items.")
+    expect(browser.numberOfVisibleColumns == 1, "Browser should start with one visible column.")
+
+    browser.selectRow(0, inColumn: 0)
+
+    expect(browser.selectedRow(inColumn: 0) == 0, "Browser did not store selected root row.")
+    expect(browser.selectedItem(inColumn: 0) as? String == "Application", "Browser selected root item was wrong.")
+    expect(browser.numberOfVisibleColumns == 2, "Browser did not add a child column for a branch.")
+    expect(browser.items(inColumn: 1).map { String(describing: $0) } == ["NSApplication", "NSWindow"], "Browser child column items were wrong.")
+
+    browser.selectRow(1, inColumn: 1)
+
+    expect(browser.selectedItem(inColumn: 1) as? String == "NSWindow", "Browser selected leaf item was wrong.")
+    expect(browser.numberOfVisibleColumns == 2, "Browser leaf selection should keep loaded columns through the leaf.")
+    expect(actionCount == 2, "Browser action count was wrong.")
+
+    let handle = browser.realizeNativePeer(in: backend, parent: nil)
+
+    expect(backend.records[handle]?.kind == "view", "Browser did not create a native host view.")
+    expect(browser.subviews.count == 2, "Browser did not compose visible scroll-view columns.")
 }
 
 func testSliderStoresRangeValueAndSyncsNativePeer() {
@@ -2706,6 +2793,7 @@ testGeometryConvenienceFunctions()
 testViewCoordinateConversionAndHitTesting()
 testScrollViewHostsDocumentView()
 testScrollViewUsesNativePeerAndRealizesDocumentView()
+testScrollViewNativeScrollbarActionUpdatesClipOrigin()
 testClipViewScrollsDocumentView()
 testCellStoresStringAndObjectValues()
 testSortDescriptorStoresKeyDirectionAndReverse()
@@ -2723,6 +2811,7 @@ testTableViewKeyboardExtendedSelection()
 testTableViewColumnSelectionAndDoubleActionSurface()
 testTableViewSortDescriptorPrototypeToggle()
 testOutlineViewFlattensExpandableItems()
+testBrowserLoadsColumnsAndTracksSelection()
 testSliderStoresRangeValueAndSyncsNativePeer()
 testSliderNativeActionUpdatesValue()
 testProgressIndicatorStoresRangeValueAndSyncsNativePeer()
