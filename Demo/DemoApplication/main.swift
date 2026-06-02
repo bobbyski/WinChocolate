@@ -66,6 +66,7 @@ final class DemoTableDataSource: NSTableViewDataSource {
         ["NSButton", "Actions"],
         ["NSTextField", "Editing"],
         ["NSForm", "Composed rows"],
+        ["NSMatrix", "Legacy grid"],
         ["NSSecureTextField", "Password"],
         ["NSSearchField", "Immediate search"],
         ["NSComboBox", "Editable list"],
@@ -75,6 +76,7 @@ final class DemoTableDataSource: NSTableViewDataSource {
         ["NSSegmentedControl", "Composed segments"],
         ["NSTabView", "Native tabs"],
         ["NSImageView", "Bitmap artwork"],
+        ["NSOutlineView", "Tree table"],
         ["NSTableView", "First slice"],
         ["NSTableColumn", "Identifiers"],
         ["NSTableCellView", "View based"],
@@ -134,6 +136,48 @@ final class DemoTableDataSource: NSTableViewDataSource {
     }
 }
 
+final class DemoOutlineDataSource: NSOutlineViewDataSource {
+    let roots = ["Application", "Controls", "Tables"]
+    let children: [String: [String]] = [
+        "Application": ["NSApplication", "NSWindow", "NSMenu"],
+        "Controls": ["NSButton", "NSTextField", "NSMatrix"],
+        "Tables": ["NSTableView", "NSOutlineView", "NSTableColumn"]
+    ]
+
+    func outlineView(_ outlineView: NSOutlineView, numberOfChildrenOfItem item: Any?) -> Int {
+        guard let item else {
+            return roots.count
+        }
+
+        return children[String(describing: item)]?.count ?? 0
+    }
+
+    func outlineView(_ outlineView: NSOutlineView, child index: Int, ofItem item: Any?) -> Any {
+        if let item {
+            return children[String(describing: item)]?[index] ?? ""
+        }
+
+        return roots[index]
+    }
+
+    func outlineView(_ outlineView: NSOutlineView, isItemExpandable item: Any) -> Bool {
+        !(children[String(describing: item)] ?? []).isEmpty
+    }
+
+    func outlineView(_ outlineView: NSOutlineView, objectValueFor tableColumn: NSTableColumn?, byItem item: Any?) -> Any? {
+        guard let item else {
+            return nil
+        }
+
+        let value = String(describing: item)
+        if tableColumn?.identifier.rawValue == "outlineStatus" {
+            return children[value] == nil ? "Leaf" : "Group"
+        }
+
+        return value
+    }
+}
+
 let contentView = DemoContentView(frame: NSMakeRect(0, 0, 1120, 760))
 let controlsPage = DemoPageView(frame: NSMakeRect(0, 144, 1120, 560))
 let valuesPage = DemoPageView(frame: NSMakeRect(0, 144, 1120, 560))
@@ -165,6 +209,14 @@ let tokenLabel = NSTextField(string: "Tokens:", frame: NSMakeRect(32, 410, 104, 
 let tokenField = NSTokenField(tokens: ["Cocoa", "AppKit", "WinChocolate"], frame: NSMakeRect(152, 408, 360, 28))
 let formLabel = NSTextField(string: "Form:", frame: NSMakeRect(744, 120, 80, 24))
 let form = NSForm(frame: NSMakeRect(824, 120, 256, 92))
+let matrixLabel = NSTextField(string: "Matrix:", frame: NSMakeRect(744, 240, 80, 24))
+let matrix = NSMatrix(
+    frame: NSMakeRect(824, 240, 240, 72),
+    mode: .trackModeMatrix,
+    prototype: NSButtonCell(title: "Choice"),
+    numberOfRows: 2,
+    numberOfColumns: 2
+)
 let sliderLabel = NSTextField(string: "Slider:", frame: NSMakeRect(32, 28, 72, 24))
 let slider = NSSlider(value: 50, minValue: 0, maxValue: 100, target: nil, action: "sliderChanged:")
 let sliderValueLabel = NSTextField(string: "50", frame: NSMakeRect(312, 28, 48, 24))
@@ -218,6 +270,10 @@ let tableLabel = NSTextField(string: "Table view:", frame: NSMakeRect(32, 336, 1
 let tableScrollView = NSScrollView(frame: NSMakeRect(152, 336, 520, 176))
 let tableView = NSTableView(frame: NSMakeRect(0, 0, 520, 176))
 let tableDataSource = DemoTableDataSource()
+let outlineLabel = NSTextField(string: "Outline view:", frame: NSMakeRect(704, 336, 120, 24))
+let outlineScrollView = NSScrollView(frame: NSMakeRect(824, 336, 256, 176))
+let outlineView = NSOutlineView(frame: NSMakeRect(0, 0, 256, 176))
+let outlineDataSource = DemoOutlineDataSource()
 let contentFocusColor = NSColor(calibratedRed: 0.92, green: 0.97, blue: 1.0, alpha: 1.0)
 let normalContentColor = NSColor.windowBackgroundColor
 let controlFocusColor = NSColor(calibratedRed: 1.0, green: 0.96, blue: 0.72, alpha: 1.0)
@@ -450,6 +506,18 @@ func focusName() -> String {
     if responder === form.textField(at: 1) {
         return "form status"
     }
+    if responder === matrix.button(atRow: 0, column: 0) {
+        return "matrix 1,1"
+    }
+    if responder === matrix.button(atRow: 0, column: 1) {
+        return "matrix 1,2"
+    }
+    if responder === matrix.button(atRow: 1, column: 0) {
+        return "matrix 2,1"
+    }
+    if responder === matrix.button(atRow: 1, column: 1) {
+        return "matrix 2,2"
+    }
     if responder === slider {
         return "slider"
     }
@@ -494,6 +562,9 @@ func focusName() -> String {
     }
     if responder === tableView {
         return "table view"
+    }
+    if responder === outlineView {
+        return "outline view"
     }
     return "view"
 }
@@ -614,6 +685,10 @@ formNameCell.stringValue = "WinChocolate"
 formStatusCell.stringValue = "Native"
 form.setStringValue(formNameCell.stringValue, at: 0)
 form.setStringValue(formStatusCell.stringValue, at: 1)
+matrixLabel.font = NSFont.boldSystemFont(ofSize: 12)
+matrix.cellSize = NSMakeSize(104, 28)
+matrix.intercellSpacing = NSMakeSize(8, 8)
+matrix.selectCell(atRow: 0, column: 0)
 pathLabel.font = NSFont.boldSystemFont(ofSize: 12)
 contentView.onBlankAreaMouseDown = { event in
     updateFocusDisplay()
@@ -679,6 +754,22 @@ tableView.selectRowIndexes([0], byExtendingSelection: false)
 tableView.selectColumnIndexes([0], byExtendingSelection: false)
 tableScrollView.hasVerticalScroller = true
 tableScrollView.documentView = tableView
+outlineLabel.font = NSFont.boldSystemFont(ofSize: 12)
+let outlineNameColumn = NSTableColumn(identifier: "outlineName")
+let outlineStatusColumn = NSTableColumn(identifier: "outlineStatus")
+outlineNameColumn.title = "Item"
+outlineStatusColumn.title = "Kind"
+outlineNameColumn.width = 160
+outlineStatusColumn.width = 88
+outlineView.addTableColumn(outlineNameColumn)
+outlineView.addTableColumn(outlineStatusColumn)
+outlineView.outlineDataSource = outlineDataSource
+outlineView.expandItem("Application")
+outlineView.expandItem("Controls")
+outlineView.reloadData()
+outlineView.selectRowIndexes([0], byExtendingSelection: false)
+outlineScrollView.hasVerticalScroller = true
+outlineScrollView.documentView = outlineView
 
 contentView.nextKeyView = button
 editableTextField.nextKeyView = secureTextField
@@ -696,7 +787,11 @@ criticalRadio.nextKeyView = notesTextView
 notesTextView.nextKeyView = tokenField
 tokenField.nextKeyView = form.textField(at: 0)
 form.textField(at: 0)?.nextKeyView = form.textField(at: 1)
-form.textField(at: 1)?.nextKeyView = slider
+form.textField(at: 1)?.nextKeyView = matrix.button(atRow: 0, column: 0)
+matrix.button(atRow: 0, column: 0)?.nextKeyView = matrix.button(atRow: 0, column: 1)
+matrix.button(atRow: 0, column: 1)?.nextKeyView = matrix.button(atRow: 1, column: 0)
+matrix.button(atRow: 1, column: 0)?.nextKeyView = matrix.button(atRow: 1, column: 1)
+matrix.button(atRow: 1, column: 1)?.nextKeyView = slider
 slider.nextKeyView = stepper
 stepper.nextKeyView = comboBox
 comboBox.nextKeyView = searchField
@@ -711,9 +806,11 @@ clipHomeButton.nextKeyView = clipCenterButton
 clipCenterButton.nextKeyView = clipCornerButton
 clipCornerButton.nextKeyView = pathControl
 pathControl.nextKeyView = tableView
-tableView.nextKeyView = contentView
+tableView.nextKeyView = outlineView
+outlineView.nextKeyView = contentView
 
-contentView.previousKeyView = tableView
+contentView.previousKeyView = outlineView
+outlineView.previousKeyView = tableView
 tableView.previousKeyView = pathControl
 pathControl.previousKeyView = clipCornerButton
 clipCornerButton.previousKeyView = clipCenterButton
@@ -728,7 +825,11 @@ levelIndicator.previousKeyView = searchField
 searchField.previousKeyView = comboBox
 comboBox.previousKeyView = stepper
 stepper.previousKeyView = slider
-slider.previousKeyView = form.textField(at: 1)
+slider.previousKeyView = matrix.button(atRow: 1, column: 1)
+matrix.button(atRow: 1, column: 1)?.previousKeyView = matrix.button(atRow: 1, column: 0)
+matrix.button(atRow: 1, column: 0)?.previousKeyView = matrix.button(atRow: 0, column: 1)
+matrix.button(atRow: 0, column: 1)?.previousKeyView = matrix.button(atRow: 0, column: 0)
+matrix.button(atRow: 0, column: 0)?.previousKeyView = form.textField(at: 1)
 form.textField(at: 1)?.previousKeyView = form.textField(at: 0)
 form.textField(at: 0)?.previousKeyView = tokenField
 tokenField.previousKeyView = notesTextView
@@ -894,6 +995,15 @@ form.textField(at: 1)?.onTextChanged = { field in
     statusLabel.stringValue = "Form status: \(field.stringValue)"
 }
 
+matrix.onAction = { control in
+    guard let matrix = control as? NSMatrix else {
+        return
+    }
+
+    updateFocusDisplay()
+    statusLabel.stringValue = "Matrix selected: row \(matrix.selectedRow + 1), column \(matrix.selectedColumn + 1)"
+}
+
 button.onAction = { _ in
     updateFocusDisplay()
     clickCount += 1
@@ -1050,6 +1160,42 @@ tableView.onDoubleAction = { table in
     statusLabel.stringValue = tableRowSummary(table, prefix: "Table double action")
 }
 
+outlineView.onAction = { control in
+    guard let outline = control as? NSOutlineView else {
+        return
+    }
+
+    updateFocusDisplay()
+    let actionRow = outline.selectedRow
+    guard let item = outline.item(atRow: actionRow) else {
+        statusLabel.stringValue = "Outline action: none"
+        return
+    }
+
+    let itemText = String(describing: item)
+    let shouldExpand = outline.isItemExpandable(item)
+    outline.toggleItem(item)
+    if shouldExpand {
+        let row = outline.row(forItem: item)
+        if row >= 0 {
+            outline.selectRowIndexes([row], byExtendingSelection: false)
+        }
+    }
+
+    statusLabel.stringValue = shouldExpand
+        ? "Outline \(outline.isItemExpanded(item) ? "expanded" : "collapsed"): \(itemText)"
+        : "Outline action: \(itemText), level \(outline.level(forItem: item))"
+}
+outlineView.onSelectionChanged = { table in
+    guard let outline = table as? NSOutlineView else {
+        return
+    }
+
+    updateFocusDisplay()
+    let item = outline.item(atRow: outline.selectedRow).map { String(describing: $0) } ?? "none"
+    statusLabel.stringValue = "Outline selected: \(item)"
+}
+
 contentView.addSubview(counterLabel)
 contentView.addSubview(statusLabel)
 contentView.addSubview(focusLabel)
@@ -1081,6 +1227,8 @@ controlsPage.addSubview(tokenLabel)
 controlsPage.addSubview(tokenField)
 controlsPage.addSubview(formLabel)
 controlsPage.addSubview(form)
+controlsPage.addSubview(matrixLabel)
+controlsPage.addSubview(matrix)
 
 valuesPage.addSubview(sliderLabel)
 valuesPage.addSubview(slider)
@@ -1121,6 +1269,8 @@ tablesPage.addSubview(splitLabel)
 tablesPage.addSubview(splitView)
 tablesPage.addSubview(tableLabel)
 tablesPage.addSubview(tableScrollView)
+tablesPage.addSubview(outlineLabel)
+tablesPage.addSubview(outlineScrollView)
 window.contentView = contentView
 window.makeKeyAndOrderFront(nil)
 showDemoPage(0)

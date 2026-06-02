@@ -35,14 +35,14 @@ WinChocolate is early and intentionally incomplete. The current milestone proves
 - Secure text entry through `NSSecureTextField`
 - Multiline `NSTextView`
 - Editable `NSComboBox`
-- Initial `NSSearchField`, `NSTokenField`, `NSForm`, `NSPathControl`, `NSLevelIndicator`, and `NSColorWell`
+- Initial `NSSearchField`, `NSTokenField`, `NSForm`, `NSMatrix`, `NSPathControl`, `NSLevelIndicator`, and `NSColorWell`
 - Initial composed `NSSegmentedControl`
 - Initial bitmap-backed `NSImageView` with scaling/alignment state and `NSTabView`
 - `NSSlider`, `NSProgressIndicator`, and `NSStepper` value controls
 - Initial standalone `NSScroller`
 - Initial `NSDatePicker`
 - Initial `NSSplitView` pane layout and programmatic divider positioning
-- First `NSClipView`, `NSScrollView`, `NSTableColumn`, `NSTableView`, table cell/view, row/column selection, action/double-action, and sort-descriptor compatibility slice
+- First `NSClipView`, `NSScrollView`, `NSTableColumn`, `NSTableView`, `NSOutlineView`, table cell/view, row/column selection, action/double-action, and sort-descriptor compatibility slice
 - Native text, frame, hidden, and enabled updates
 - Native modal `NSAlert` through `MessageBoxW`
 - Initial `NSColor` support for view backgrounds and text field text color
@@ -54,7 +54,7 @@ WinChocolate is early and intentionally incomplete. The current milestone proves
 - Native mouse-down/up/move dispatch into `NSView` responder methods
 - Native key-down/up dispatch with key code, basic characters, and modifier flags
 - Experimental editable text-field Tab interception for key-view traversal
-- SwiftPM demo app with a click counter, editable/secure/combo/token text, path display, multiline notes, tabs, segmented controls, bitmap image tests, clip-view scrolling, split view panes, value controls, a standalone scroller, and a larger table-selection/action exercise
+- SwiftPM demo app with a click counter, editable/secure/combo/token text, path display, multiline notes, tabs, segmented controls, bitmap image tests, clip-view scrolling, split view panes, value controls, a standalone scroller, and larger table/outline selection exercises
 
 The Win32 backend currently uses a narrow manual User32/Gdi32 FFI layer because this local ARM64 Swift toolchain cannot import `WinSDK` cleanly.
 

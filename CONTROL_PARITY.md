@@ -45,7 +45,7 @@ References used for this map:
 | `NSDatePicker` | `SysDateTimePick32` / `SysMonthCal32` | `DatePicker`, `TimePicker`, `CalendarDatePicker` | First date-value/min/max/action slice exists over the classic date-time picker; calendar/time styles are future work. | Partial | Planned |
 | `NSPathControl` | Breadcrumb/custom toolbar/edit composition | Breadcrumb bar pattern | First URL/path display slice exists over a text peer with component-cell metadata; true breadcrumb interaction is future work. | Partial | Planned |
 | `NSSegmentedControl` | Composed `BUTTON` peers/custom owner draw | `Segmented` style via `RadioButtons`/custom | First composed segment state/action slice exists; unified drawing and keyboard behavior are future work. | Partial | Planned |
-| `NSMatrix` | Group of child controls | ItemsControl/custom panel | Deprecated AppKit API; low priority but useful for old ports. | Planned | Planned |
+| `NSMatrix` | Group of child controls | ItemsControl/custom panel | Deprecated AppKit API; first composed button-grid slice exists for old ports. | Partial | Planned |
 | `NSForm` | Group of labels/edit controls | Form layout pattern | Deprecated AppKit API; first composed label/edit-row slice exists. | Partial | Planned |
 | `NSBox` | `BUTTON` group-box style | `GroupBox` | Basic title/frame peer exists. | Done | Planned |
 | `NSScrollView` | Custom child `HWND` with scrollbars | `ScrollViewer` | Owns an `NSClipView` content view and document-view host; native scrolling behavior needs depth. | Partial | Planned |
@@ -54,7 +54,7 @@ References used for this map:
 | `NSTableColumn` | List-view column/header metadata | Grid/list column metadata | Swift-side column model exists. | Partial | Planned |
 | `NSTableCellView` | List-view subitem/custom view | Data template cell | Placeholder API exists; no real cell-view hosting. | Partial | Planned |
 | `NSTableRowView` | List-view row/custom draw | Item container | Placeholder API exists; no custom row rendering. | Partial | Planned |
-| `NSOutlineView` | `SysTreeView32` or custom tree/list hybrid | `TreeView` / `TreeView` plus columns | Tree-table mismatch; likely custom or composed. | Planned | Planned |
+| `NSOutlineView` | `SysTreeView32` or custom tree/list hybrid | `TreeView` / `TreeView` plus columns | First AppKit-shaped flattening slice exists over the table backend; disclosure UI and native tree-table rendering are future work. | Partial | Planned |
 | `NSBrowser` | Multi-column list/tree composition | Multi-pane navigation pattern | AppKit-specific; no direct Windows peer. | Planned | Planned |
 | `NSCollectionView` | `SysListView32` icon mode or custom item grid | `GridView` / `ItemsRepeater` | Needs item reuse and layout engine. | Planned | Planned |
 | `NSRuleEditor` | Custom composed rows | Custom composed control | No native Windows peer. | Planned | Planned |

@@ -285,6 +285,47 @@ final class RecordingTableDataSource: NSTableViewDataSource {
     }
 }
 
+final class RecordingOutlineDataSource: NSOutlineViewDataSource {
+    let roots = ["Application", "Controls"]
+    let children: [String: [String]] = [
+        "Application": ["NSApplication", "NSWindow"],
+        "Controls": ["NSButton", "NSMatrix"]
+    ]
+
+    func outlineView(_ outlineView: NSOutlineView, numberOfChildrenOfItem item: Any?) -> Int {
+        guard let item else {
+            return roots.count
+        }
+
+        return children[String(describing: item)]?.count ?? 0
+    }
+
+    func outlineView(_ outlineView: NSOutlineView, child index: Int, ofItem item: Any?) -> Any {
+        if let item {
+            return children[String(describing: item)]?[index] ?? ""
+        }
+
+        return roots[index]
+    }
+
+    func outlineView(_ outlineView: NSOutlineView, isItemExpandable item: Any) -> Bool {
+        children[String(describing: item)] != nil
+    }
+
+    func outlineView(_ outlineView: NSOutlineView, objectValueFor tableColumn: NSTableColumn?, byItem item: Any?) -> Any? {
+        guard let item else {
+            return nil
+        }
+
+        let value = String(describing: item)
+        if tableColumn?.identifier.rawValue == "kind" {
+            return children[value] == nil ? "Leaf" : "Group"
+        }
+
+        return value
+    }
+}
+
 final class RecordingTableDelegate: NSTableViewDelegate {
     var selectionChangeCount = 0
     var lastObject: AnyObject?
@@ -730,6 +771,62 @@ func testTableViewSortDescriptorPrototypeToggle() {
     expect(secondSort?.ascending == false, "Table did not toggle an already-active sort descriptor.")
     expect(thirdSort === noteSort, "Table did not switch to another column's sort descriptor prototype.")
     expect(missingSort == nil, "Table returned a sort descriptor for a missing column.")
+}
+
+func testOutlineViewFlattensExpandableItems() {
+    let backend = InMemoryNativeControlBackend()
+    let outlineView = NSOutlineView(frame: NSMakeRect(0, 0, 300, 160))
+    let dataSource = RecordingOutlineDataSource()
+    let name = NSTableColumn(identifier: "name")
+    let kind = NSTableColumn(identifier: "kind")
+
+    name.title = "Name"
+    kind.title = "Kind"
+    outlineView.addTableColumn(name)
+    outlineView.addTableColumn(kind)
+    outlineView.outlineDataSource = dataSource
+    outlineView.reloadData()
+
+    expect(outlineView.numberOfRows == 2, "Outline view should start with root rows only.")
+    expect(outlineView.item(atRow: 0) as? String == "Application", "Outline root item was wrong.")
+    expect(outlineView.level(forRow: 0) == 0, "Outline root level was wrong.")
+    expect(outlineView.row(forItem: "Controls") == 1, "Outline did not find root item row.")
+    expect(outlineView.value(atColumn: 0, row: 0) == "+ Application", "Outline did not mark collapsed group.")
+    expect(outlineView.value(atColumn: 1, row: 0) == "Group", "Outline did not load secondary column value.")
+    expect(outlineView.isItemExpandable("Application"), "Outline did not report expandable group.")
+    expect(!outlineView.isItemExpandable("NSApplication"), "Outline reported leaf as expandable.")
+
+    outlineView.expandItem("Application")
+
+    expect(outlineView.isItemExpanded("Application"), "Outline did not store expanded state.")
+    expect(outlineView.numberOfRows == 4, "Outline did not add expanded children.")
+    expect(outlineView.item(atRow: 1) as? String == "NSApplication", "Outline first child was wrong.")
+    expect(outlineView.level(forItem: "NSApplication") == 1, "Outline child level was wrong.")
+    expect(outlineView.value(atColumn: 0, row: 0) == "- Application", "Outline did not mark expanded group.")
+    expect(outlineView.value(atColumn: 0, row: 1) == "    NSApplication", "Outline child indentation text was wrong.")
+
+    outlineView.collapseItem("Application")
+
+    expect(!outlineView.isItemExpanded("Application"), "Outline did not clear expanded state.")
+    expect(outlineView.numberOfRows == 2, "Outline did not remove collapsed children.")
+
+    outlineView.toggleItem("Controls")
+
+    expect(outlineView.isItemExpanded("Controls"), "Outline toggle did not expand collapsed item.")
+    expect(outlineView.numberOfRows == 4, "Outline toggle did not reveal child rows.")
+
+    outlineView.toggleItem("NSButton")
+
+    expect(outlineView.isItemExpanded("Controls"), "Outline toggle changed state for leaf item.")
+
+    outlineView.toggleItem("Controls")
+
+    expect(!outlineView.isItemExpanded("Controls"), "Outline toggle did not collapse expanded item.")
+
+    let handle = outlineView.realizeNativePeer(in: backend, parent: nil)
+
+    expect(backend.records[handle]?.kind == "tableView", "Outline view did not use the table backend.")
+    expect(backend.records[handle]?.tableRows.count == 2, "Outline native rows were not synced.")
 }
 
 func testSliderStoresRangeValueAndSyncsNativePeer() {
@@ -1751,6 +1848,66 @@ func testFormComposesTextFieldsAndStoresCells() {
     expect(form.cell(at: 0) === status, "Form did not preserve remaining cell after removal.")
 }
 
+func testMatrixComposesButtonsAndTracksSelection() {
+    let backend = InMemoryNativeControlBackend()
+    let matrix = NSMatrix(
+        frame: NSMakeRect(0, 0, 240, 80),
+        mode: .radioModeMatrix,
+        prototype: NSButtonCell(title: "Choice"),
+        numberOfRows: 2,
+        numberOfColumns: 2
+    )
+    var actionCount = 0
+
+    matrix.cellSize = NSMakeSize(100, 28)
+    matrix.intercellSpacing = NSMakeSize(8, 6)
+    matrix.onAction = { control in
+        expect(control === matrix, "Matrix action sender was not matrix.")
+        actionCount += 1
+    }
+
+    expect(matrix.numberOfRows == 2, "Matrix row count was not stored.")
+    expect(matrix.numberOfColumns == 2, "Matrix column count was not stored.")
+    expect(matrix.cell(atRow: 0, column: 0)?.stringValue == "Choice 1,1", "Matrix did not create prototype-based cells.")
+    expect(matrix.button(atRow: 0, column: 0)?.frame == NSMakeRect(0, 0, 100, 28), "Matrix did not lay out first button.")
+    expect(matrix.button(atRow: 1, column: 1)?.frame == NSMakeRect(108, 34, 100, 28), "Matrix did not lay out last button.")
+    expect(!matrix.acceptsFirstResponder, "Matrix container should not accept first responder.")
+
+    matrix.selectCell(atRow: 1, column: 0)
+
+    expect(matrix.selectedRow == 1, "Matrix selected row was not stored.")
+    expect(matrix.selectedColumn == 0, "Matrix selected column was not stored.")
+    expect(matrix.selectedCell()?.stringValue == "Choice 2,1", "Matrix selected cell was not returned.")
+    expect(matrix.button(atRow: 1, column: 0)?.state == .on, "Matrix did not sync button state for selected cell.")
+
+    let replacement = NSButtonCell(title: "Custom")
+    matrix.putCell(replacement, atRow: 0, column: 1)
+
+    expect(matrix.cell(atRow: 0, column: 1) === replacement, "Matrix did not store replacement cell.")
+    expect(matrix.button(atRow: 0, column: 1)?.title == "Custom", "Matrix did not sync replacement title.")
+
+    let handle = matrix.realizeNativePeer(in: backend, parent: nil)
+
+    expect(backend.records[handle]?.kind == "view", "Matrix did not request a native container view.")
+    guard let customHandle = matrix.button(atRow: 0, column: 1)?.nativeHandle else {
+        expect(false, "Matrix button was not realized.")
+        return
+    }
+
+    expect(backend.records[customHandle]?.kind == "radioButton", "Radio-mode matrix did not realize radio button peers.")
+
+    matrix.button(atRow: 0, column: 1)?.performClick(nil)
+
+    expect(matrix.selectedRow == 0, "Matrix button click did not update selected row.")
+    expect(matrix.selectedColumn == 1, "Matrix button click did not update selected column.")
+    expect(actionCount == 1, "Matrix button click did not dispatch matrix action.")
+
+    matrix.deselectSelectedCell()
+
+    expect(matrix.selectedRow == -1, "Matrix deselect did not clear selected row.")
+    expect(matrix.selectedCell() == nil, "Matrix deselect did not clear selected cell.")
+}
+
 func testSwitchButtonUsesCheckboxNativePeer() {
     let backend = InMemoryNativeControlBackend()
     let checkbox = NSButton(title: "Check", frame: NSMakeRect(0, 0, 120, 24))
@@ -2565,6 +2722,7 @@ testTableViewKeyboardNavigationUpdatesSelection()
 testTableViewKeyboardExtendedSelection()
 testTableViewColumnSelectionAndDoubleActionSurface()
 testTableViewSortDescriptorPrototypeToggle()
+testOutlineViewFlattensExpandableItems()
 testSliderStoresRangeValueAndSyncsNativePeer()
 testSliderNativeActionUpdatesValue()
 testProgressIndicatorStoresRangeValueAndSyncsNativePeer()
@@ -2612,6 +2770,7 @@ testSecureTextFieldUsesSecureNativePeer()
 testTextViewUsesMultilineNativePeerAndStoresText()
 testTextFieldFactoryConstructorsAndCompatibilityProperties()
 testFormComposesTextFieldsAndStoresCells()
+testMatrixComposesButtonsAndTracksSelection()
 testSwitchButtonUsesCheckboxNativePeer()
 testRadioButtonUsesRadioNativePeer()
 testPopUpButtonUsesNativePeerAndSelection()
