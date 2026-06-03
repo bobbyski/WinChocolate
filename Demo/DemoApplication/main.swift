@@ -301,6 +301,7 @@ let splitView = NSSplitView(frame: NSMakeRect(616, 160, 240, 96))
 let splitLeftPane = NSView(frame: NSZeroRect)
 let splitRightPane = NSView(frame: NSZeroRect)
 let tableLabel = NSTextField(string: "Table view:", frame: NSMakeRect(32, 336, 120, 24))
+let scrollSelectedButton = NSButton(title: "Scroll Selected", frame: NSMakeRect(32, 368, 120, 30))
 let tableScrollView = NSScrollView(frame: NSMakeRect(152, 336, 520, 176))
 let tableView = NSTableView(frame: NSMakeRect(0, 0, 520, 176))
 let tableDataSource = DemoTableDataSource()
@@ -594,6 +595,9 @@ func focusName() -> String {
     if responder === pathControl {
         return "path control"
     }
+    if responder === scrollSelectedButton {
+        return "scroll selected"
+    }
     if responder === tabView {
         return "tab view"
     }
@@ -841,13 +845,15 @@ tabView.nextKeyView = clipHomeButton
 clipHomeButton.nextKeyView = clipCenterButton
 clipCenterButton.nextKeyView = clipCornerButton
 clipCornerButton.nextKeyView = pathControl
-pathControl.nextKeyView = tableView
+pathControl.nextKeyView = scrollSelectedButton
+scrollSelectedButton.nextKeyView = tableView
 tableView.nextKeyView = outlineView
 outlineView.nextKeyView = contentView
 
 contentView.previousKeyView = outlineView
 outlineView.previousKeyView = tableView
-tableView.previousKeyView = pathControl
+tableView.previousKeyView = scrollSelectedButton
+scrollSelectedButton.previousKeyView = pathControl
 pathControl.previousKeyView = clipCornerButton
 clipCornerButton.previousKeyView = clipCenterButton
 clipCenterButton.previousKeyView = clipHomeButton
@@ -1164,6 +1170,15 @@ tableView.onSelectionChanged = { table in
 
     statusLabel.stringValue = tableRowSummary(table, prefix: "Table selected")
 }
+scrollSelectedButton.onAction = { _ in
+    updateFocusDisplay()
+    let targetRow = max(0, tableView.numberOfRows - 1)
+    tableView.selectRowIndexes([targetRow], byExtendingSelection: false)
+    if let nativeHandle = tableView.nativeHandle {
+        NSApp.nativeBackend.scrollTableRowToVisible(targetRow, for: nativeHandle)
+    }
+    statusLabel.stringValue = tableRowSummary(tableView, prefix: "Scrolled to selected")
+}
 tableView.onAction = { control in
     guard let table = control as? NSTableView else {
         return
@@ -1303,6 +1318,7 @@ tablesPage.addSubview(pathControl)
 tablesPage.addSubview(splitLabel)
 tablesPage.addSubview(splitView)
 tablesPage.addSubview(tableLabel)
+tablesPage.addSubview(scrollSelectedButton)
 tablesPage.addSubview(tableScrollView)
 tablesPage.addSubview(outlineLabel)
 tablesPage.addSubview(outlineScrollView)

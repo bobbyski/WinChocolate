@@ -1286,6 +1286,9 @@ func testTableViewNativePeerReceivesColumnsRowsAndSelection() {
     expect(backend.records[handle]?.tableRows == [["Ada", "Compiler"], ["Grace", "Navy"], ["Katherine", "Orbit"]], "Table rows were not synced to backend.")
     expect(backend.records[handle]?.tableSelectedRow == 1, "Table selection was not synced to backend.")
     expect(tableView.selectedRowIndexes == [1], "Table selectedRowIndexes was not updated.")
+
+    backend.scrollTableRowToVisible(2, for: handle)
+    expect(backend.records[handle]?.tableVisibleRow == 2, "Table visible-row request was not recorded.")
 }
 
 func testTableViewNativeSelectionNotifiesDelegateAndAction() {
