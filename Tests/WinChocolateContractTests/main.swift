@@ -378,6 +378,42 @@ final class RecordingBrowserDelegate: NSBrowserDelegate {
     }
 }
 
+final class RecordingCollectionDataSource: NSCollectionViewDataSource {
+    let values = [
+        ["NSButton", "NSTextField", "NSTableView"],
+        ["NSBrowser", "NSOutlineView"]
+    ]
+
+    func numberOfSections(in collectionView: NSCollectionView) -> Int {
+        values.count
+    }
+
+    func collectionView(_ collectionView: NSCollectionView, numberOfItemsInSection section: Int) -> Int {
+        values[section].count
+    }
+
+    func collectionView(_ collectionView: NSCollectionView, itemForRepresentedObjectAt indexPath: IndexPath) -> NSCollectionViewItem {
+        let item = NSCollectionViewItem()
+        let title = values[indexPath.section][indexPath.item]
+        item.representedObject = title
+        item.view = NSButton(title: title, frame: NSMakeRect(0, 0, 112, 34))
+        return item
+    }
+}
+
+final class RecordingCollectionDelegate: NSCollectionViewDelegate {
+    var selected: Set<IndexPath> = []
+    var deselected: Set<IndexPath> = []
+
+    func collectionView(_ collectionView: NSCollectionView, didSelectItemsAt indexPaths: Set<IndexPath>) {
+        selected.formUnion(indexPaths)
+    }
+
+    func collectionView(_ collectionView: NSCollectionView, didDeselectItemsAt indexPaths: Set<IndexPath>) {
+        deselected.formUnion(indexPaths)
+    }
+}
+
 final class RecordingTableDelegate: NSTableViewDelegate {
     var selectionChangeCount = 0
     var lastObject: AnyObject?
@@ -914,6 +950,82 @@ func testBrowserLoadsColumnsAndTracksSelection() {
 
     expect(backend.records[handle]?.kind == "view", "Browser did not create a native host view.")
     expect(browser.subviews.count == 2, "Browser did not compose visible scroll-view columns.")
+}
+
+func testIndexPathStoresCollectionComponents() {
+    let indexPath = IndexPath(item: 3, section: 2)
+    let appended = IndexPath(indexes: [1, 4]).appending(9)
+
+    expect(indexPath.section == 2, "IndexPath section component was wrong.")
+    expect(indexPath.item == 3, "IndexPath item component was wrong.")
+    expect(indexPath.count == 2, "IndexPath count was wrong.")
+    expect(indexPath[0] == 2 && indexPath[1] == 3, "IndexPath subscript returned wrong components.")
+    expect(appended.count == 3 && appended[2] == 9, "IndexPath appending did not add a component.")
+}
+
+func testCollectionViewReloadsItemsAndTracksSelection() {
+    let backend = InMemoryNativeControlBackend()
+    let collectionView = NSCollectionView(frame: NSMakeRect(0, 0, 260, 96))
+    let dataSource = RecordingCollectionDataSource()
+    let delegate = RecordingCollectionDelegate()
+    var actionCount = 0
+
+    collectionView.dataSource = dataSource
+    collectionView.delegate = delegate
+    collectionView.itemSize = NSMakeSize(112, 28)
+    collectionView.minimumInteritemSpacing = 8
+    collectionView.minimumLineSpacing = 6
+    collectionView.onAction = { control in
+        expect(control === collectionView, "Collection view action sender was not collection view.")
+        actionCount += 1
+    }
+
+    collectionView.reloadData()
+
+    let first = IndexPath(item: 0, section: 0)
+    let secondSection = IndexPath(item: 1, section: 1)
+    expect(collectionView.subviews.count == 5, "Collection view did not compose item views.")
+    expect(collectionView.item(at: first)?.representedObject as? String == "NSButton", "Collection item lookup returned wrong represented object.")
+    expect(collectionView.indexPath(for: collectionView.item(at: secondSection)!) == secondSection, "Collection reverse item lookup failed.")
+
+    let handle = collectionView.realizeNativePeer(in: backend, parent: nil)
+
+    expect(backend.records[handle]?.kind == "view", "Collection view did not create a native host view.")
+    expect(collectionView.subviews.allSatisfy { $0.nativeHandle != nil }, "Collection item views were not realized.")
+
+    collectionView.selectItems(at: [secondSection])
+
+    expect(collectionView.selectionIndexPaths == [secondSection], "Collection view did not store selection.")
+    expect(collectionView.item(at: secondSection)?.isSelected == true, "Collection item did not mark selected state.")
+    expect(delegate.selected.contains(secondSection), "Collection delegate did not receive selection.")
+    expect(actionCount == 1, "Collection view action was not sent for selection.")
+
+    collectionView.deselectItems(at: [secondSection])
+
+    expect(collectionView.selectionIndexPaths.isEmpty, "Collection view did not deselect item.")
+    expect(delegate.deselected.contains(secondSection), "Collection delegate did not receive deselection.")
+}
+
+func testCollectionViewButtonItemClickSelectsItem() {
+    let collectionView = NSCollectionView(frame: NSMakeRect(0, 0, 260, 96))
+    let dataSource = RecordingCollectionDataSource()
+    let target = IndexPath(item: 2, section: 0)
+    var actionCount = 0
+
+    collectionView.dataSource = dataSource
+    collectionView.onAction = { _ in
+        actionCount += 1
+    }
+    collectionView.reloadData()
+
+    guard let button = collectionView.item(at: target)?.view as? NSButton else {
+        fatalError("Collection data source did not create a button item.")
+    }
+
+    button.performClick(nil)
+
+    expect(collectionView.selectionIndexPaths == [target], "Collection button item click did not select its index path.")
+    expect(actionCount == 1, "Collection button item click did not send collection action.")
 }
 
 func testSliderStoresRangeValueAndSyncsNativePeer() {
@@ -1798,6 +1910,7 @@ func testWindowTitleAndFramePropagateToBackend() {
     window.title = "Updated"
     window.setFrame(NSMakeRect(10, 20, 300, 200), display: true)
 
+    expect(backend.records[handle]?.usesMainMenu == true, "Normal windows should request the application main menu.")
     expect(backend.records[handle]?.text == "Updated", "Window title update did not reach backend.")
     expect(backend.records[handle]?.frame == NSMakeRect(10, 20, 300, 200), "Window frame update did not reach backend.")
 }
@@ -1826,6 +1939,290 @@ func testWindowContentSizeAndCenterUpdateFrame() {
 
     expect(window.frame == NSMakeRect(392, 304, 240, 160), "center did not use the expected default screen frame.")
     expect(backend.records[handle]?.frame == NSMakeRect(392, 304, 240, 160), "center did not reach backend.")
+}
+
+func testPanelStoresPanelStateAndOrdersFront() {
+    clearApplicationWindows()
+
+    let backend = InMemoryNativeControlBackend()
+    let panel = NSPanel(
+        contentRect: NSMakeRect(20, 30, 240, 120),
+        styleMask: [.titled, .closable],
+        backing: .buffered,
+        defer: false,
+        nativeBackend: backend
+    )
+
+    panel.title = "Inspector"
+    panel.isFloatingPanel = true
+    panel.hidesOnDeactivate = true
+    panel.becomesKeyOnlyIfNeeded = true
+    panel.worksWhenModal = true
+    panel.orderFrontRegardless()
+
+    guard let handle = panel.nativeHandle else {
+        fatalError("Panel did not realize native peer.")
+    }
+
+    expect(panel.isFloatingPanel, "Panel floating flag was not stored.")
+    expect(panel.hidesOnDeactivate, "Panel deactivate-hiding flag was not stored.")
+    expect(panel.becomesKeyOnlyIfNeeded, "Panel key-only-if-needed flag was not stored.")
+    expect(panel.worksWhenModal, "Panel modal interaction flag was not stored.")
+    expect(backend.records[handle]?.kind == "window", "Panel did not use the window backend peer.")
+    expect(backend.records[handle]?.text == "Inspector", "Panel title was not synced.")
+    expect(backend.records[handle]?.usesMainMenu == false, "Panel should not request the application main menu.")
+    expect(NSApplication.shared.windows.contains { $0 === panel }, "Panel was not tracked in application windows.")
+    expect(NSApplication.shared.keyWindow !== panel, "orderFrontRegardless should not force key window in this slice.")
+
+    guard let closeAction = backend.windowCloseActions[handle] else {
+        fatalError("Panel did not register native close cleanup.")
+    }
+
+    closeAction()
+
+    expect(panel.nativeHandle == nil, "Native panel close did not clear panel handle.")
+    expect(!NSApplication.shared.windows.contains { $0 === panel }, "Native panel close did not remove panel from application windows.")
+    expect(!backend.didTerminateApplication, "Native panel close should not terminate the application.")
+
+    panel.orderFrontRegardless()
+
+    expect(panel.nativeHandle != nil, "Panel did not reopen after native close.")
+
+    clearApplicationWindows()
+}
+
+func testPopoverShowsClosesAndReopensFromAnchorView() {
+    clearApplicationWindows()
+
+    let previousBackend = NSApplication.shared.nativeBackend
+    let backend = InMemoryNativeControlBackend()
+    NSApplication.shared.nativeBackend = backend
+    defer {
+        NSApplication.shared.nativeBackend = previousBackend
+        clearApplicationWindows()
+    }
+
+    let window = NSWindow(
+        contentRect: NSMakeRect(100, 120, 400, 300),
+        styleMask: [.titled],
+        backing: .buffered,
+        defer: false
+    )
+    let contentView = NSView(frame: NSMakeRect(0, 0, 400, 300))
+    let anchor = NSButton(title: "Anchor", frame: NSMakeRect(24, 32, 80, 30))
+    contentView.addSubview(anchor)
+    window.contentView = contentView
+    window.makeKeyAndOrderFront(nil)
+
+    let popoverContent = NSView(frame: NSMakeRect(0, 0, 160, 90))
+    let popover = NSPopover()
+    popover.animates = false
+    popover.behavior = .transient
+    popover.contentSize = NSMakeSize(160, 90)
+    popover.contentViewController = NSViewController(view: popoverContent)
+    popover.show(relativeTo: NSMakeRect(4, 6, 20, 18), of: anchor, preferredEdge: .maxY)
+
+    guard let panel = NSApplication.shared.windows.compactMap({ $0 as? NSPanel }).last,
+          let panelHandle = panel.nativeHandle else {
+        fatalError("Popover did not create a panel host.")
+    }
+
+    expect(popover.isShown, "Popover did not report shown state.")
+    expect(panel.contentView === popoverContent, "Popover did not install controller view as panel content.")
+    expect(panel.styleMask == .borderless, "Popover host should use a borderless panel style.")
+    expect(backend.records[panelHandle]?.usesMainMenu == false, "Popover host should not request the application main menu.")
+    expect(backend.records[panelHandle]?.frame == NSMakeRect(128, 184, 160, 90), "Popover did not position relative to anchor view.")
+
+    popover.performClose(nil)
+
+    expect(!popover.isShown, "Popover did not report closed state.")
+    expect(panel.nativeHandle == nil, "Popover close did not close the host panel.")
+    expect(!NSApplication.shared.windows.contains { $0 === panel }, "Popover close did not remove the host panel from application windows.")
+
+    popover.show(relativeTo: NSMakeRect(4, 6, 20, 18), of: anchor, preferredEdge: .maxX)
+
+    expect(popover.isShown, "Popover did not report shown state after reopening.")
+    expect(panel.nativeHandle != nil, "Popover host panel did not reopen.")
+}
+
+func testToolbarStoresItemsAndAttachesToWindow() {
+    let window = NSWindow(
+        contentRect: NSMakeRect(0, 0, 320, 200),
+        styleMask: [.titled],
+        backing: .buffered,
+        defer: false,
+        nativeBackend: InMemoryNativeControlBackend()
+    )
+    let toolbar = NSToolbar(identifier: "main")
+    let openItem = NSToolbarItem(itemIdentifier: "open")
+    let flexibleItem = NSToolbarItem(itemIdentifier: .flexibleSpace)
+    let saveItem = NSToolbarItem(itemIdentifier: "save")
+
+    openItem.label = "Open"
+    openItem.paletteLabel = "Open File"
+    openItem.toolTip = "Open a document"
+    toolbar.addItem(openItem)
+    toolbar.addItem(saveItem)
+    toolbar.insertItem(flexibleItem, at: 1)
+    toolbar.displayMode = .iconAndLabel
+    toolbar.sizeMode = .small
+    toolbar.allowsUserCustomization = true
+
+    window.toolbar = toolbar
+
+    expect(window.toolbar === toolbar, "Window did not store toolbar.")
+    expect(toolbar.window === window, "Toolbar did not attach back to window.")
+    expect(toolbar.items.map(\.itemIdentifier) == ["open", .flexibleSpace, "save"], "Toolbar item ordering was not preserved.")
+    expect(toolbar.item(withIdentifier: "open") === openItem, "Toolbar did not find item by identifier.")
+    expect(openItem.toolbar === toolbar, "Toolbar item did not retain toolbar back-reference.")
+    expect(openItem.label == "Open", "Toolbar item label was not stored.")
+    expect(openItem.paletteLabel == "Open File", "Toolbar item palette label was not stored.")
+    expect(openItem.toolTip == "Open a document", "Toolbar item tooltip was not stored.")
+    expect(toolbar.displayMode == .iconAndLabel, "Toolbar display mode was not stored.")
+    expect(toolbar.sizeMode == .small, "Toolbar size mode was not stored.")
+    expect(toolbar.allowsUserCustomization, "Toolbar customization flag was not stored.")
+
+    let removed = toolbar.removeItem(at: 1)
+
+    expect(removed === flexibleItem, "Toolbar did not remove the expected item.")
+    expect(flexibleItem.toolbar == nil, "Removed toolbar item still referenced its toolbar.")
+    expect(toolbar.items.map(\.itemIdentifier) == ["open", "save"], "Toolbar removal did not update ordering.")
+
+    let replacement = NSToolbar(identifier: "secondary")
+    window.toolbar = replacement
+
+    expect(toolbar.window == nil, "Replacing window toolbar did not detach old toolbar.")
+    expect(replacement.window === window, "Replacing window toolbar did not attach new toolbar.")
+}
+
+func testToolbarVisibilityAndItemActions() {
+    let toolbar = NSToolbar(identifier: "actions")
+    let item = NSToolbarItem(itemIdentifier: "click")
+    let button = NSButton(title: "Click", frame: NSMakeRect(0, 0, 80, 28))
+    var visibilityStates: [Bool] = []
+    var toolbarActionCount = 0
+    var buttonActionCount = 0
+
+    toolbar.visibilityDidChange = { isVisible in
+        visibilityStates.append(isVisible)
+    }
+    item.onAction = { _ in
+        toolbarActionCount += 1
+    }
+    button.onAction = { _ in
+        buttonActionCount += 1
+    }
+
+    item.view = button
+    item.isEnabled = false
+    item.performAction()
+
+    expect(!button.isEnabled, "Toolbar item enabled state did not sync to its control view.")
+    expect(buttonActionCount == 0, "Disabled toolbar item should not activate its control view.")
+    expect(toolbarActionCount == 0, "Disabled toolbar item should not invoke closure action.")
+
+    item.isEnabled = true
+    item.performAction()
+
+    expect(button.isEnabled, "Toolbar item did not re-enable its control view.")
+    expect(buttonActionCount == 1, "Toolbar item did not activate its custom control view.")
+    expect(toolbarActionCount == 0, "Toolbar item with a control view should prefer the control action.")
+
+    item.view = nil
+    item.performAction()
+
+    expect(toolbarActionCount == 1, "Toolbar item did not invoke its closure action.")
+
+    toolbar.isVisible = false
+    toolbar.isVisible = true
+
+    expect(visibilityStates == [false, true], "Toolbar visibility change callback did not receive expected states.")
+}
+
+func testToolbarViewUsesNativeToolbarPeerAndDispatchesItems() {
+    let backend = InMemoryNativeControlBackend()
+    let toolbar = NSToolbar(identifier: "native")
+    let openItem = NSToolbarItem(itemIdentifier: "open")
+    let separator = NSToolbarItem(itemIdentifier: .separator)
+    let flexibleSpace = NSToolbarItem(itemIdentifier: .flexibleSpace)
+    let saveItem = NSToolbarItem(itemIdentifier: "save")
+    let toolbarView = NSToolbarView(frame: NSMakeRect(0, 0, 280, 36))
+    var firedIdentifiers: [String] = []
+
+    openItem.label = "Open"
+    openItem.image = NSImage(systemSymbolName: "folder", accessibilityDescription: "Open")
+    saveItem.label = "Save"
+    saveItem.isEnabled = false
+    openItem.onAction = { item in
+        firedIdentifiers.append(item.itemIdentifier.rawValue)
+    }
+    saveItem.onAction = { item in
+        firedIdentifiers.append(item.itemIdentifier.rawValue)
+    }
+    toolbar.addItem(openItem)
+    toolbar.addItem(separator)
+    toolbar.addItem(flexibleSpace)
+    toolbar.addItem(saveItem)
+    toolbarView.toolbar = toolbar
+
+    let handle = toolbarView.realizeNativePeer(in: backend, parent: nil)
+
+    expect(backend.records[handle]?.kind == "toolbar", "Toolbar view did not request a native toolbar peer.")
+    expect(backend.records[handle]?.toolbarItems == [
+        NativeToolbarItem(identifier: "open", label: "Open", imageName: "folder", isSeparator: false, isEnabled: true),
+        NativeToolbarItem(identifier: NSToolbarItem.Identifier.separator.rawValue, label: "", isSeparator: true, isEnabled: false),
+        NativeToolbarItem(identifier: NSToolbarItem.Identifier.flexibleSpace.rawValue, label: "", isSeparator: true, isFlexibleSpace: true, isEnabled: false),
+        NativeToolbarItem(identifier: "save", label: "Save", isSeparator: false, isEnabled: false)
+    ], "Toolbar view did not pass expected native toolbar item descriptors.")
+
+    backend.toolbarActions[handle]?("open")
+    backend.toolbarActions[handle]?("save")
+
+    expect(firedIdentifiers == ["open"], "Native toolbar dispatch did not honor enabled item actions.")
+
+    saveItem.isEnabled = true
+    toolbarView.reloadItems()
+
+    expect(backend.records[handle]?.toolbarItems.last?.isEnabled == true, "Toolbar reload did not update enabled state.")
+}
+
+func testWindowToolbarCreatesDockedNativePeerAndReservesContent() {
+    let backend = InMemoryNativeControlBackend()
+    let window = NSWindow(
+        contentRect: NSMakeRect(20, 30, 320, 220),
+        styleMask: [.titled],
+        backing: .buffered,
+        defer: false,
+        nativeBackend: backend
+    )
+    let contentView = NSView(frame: NSMakeRect(0, 0, 320, 220))
+    let toolbar = NSToolbar(identifier: "windowToolbar")
+    let item = NSToolbarItem(itemIdentifier: "open")
+
+    item.label = "Open"
+    toolbar.addItem(item)
+    window.toolbar = toolbar
+    window.contentView = contentView
+
+    let windowHandle = window.realizeNativePeer()
+    let toolbarRecords = backend.records.filter { $0.value.kind == "toolbar" }
+
+    expect(toolbarRecords.count == 1, "Window toolbar did not create exactly one native toolbar peer.")
+    guard let toolbarRecord = toolbarRecords.first else {
+        return
+    }
+
+    expect(toolbarRecord.value.parent == windowHandle, "Window toolbar native peer was not parented to the native window.")
+    expect(toolbarRecord.value.frame == NSMakeRect(0, 0, 320, 40), "Window toolbar did not dock to the top strip.")
+    expect(toolbarRecord.value.toolbarItems == [
+        NativeToolbarItem(identifier: "open", label: "Open", isSeparator: false, isEnabled: true)
+    ], "Window toolbar did not pass item descriptors to native peer.")
+    expect(window.contentLayoutRect == NSMakeRect(0, 40, 320, 180), "Window toolbar did not reserve layout space.")
+    expect(contentView.frame == NSMakeRect(0, 40, 320, 180), "Content view did not move below the toolbar strip.")
+
+    item.label = "Open File"
+
+    expect(backend.records[toolbarRecord.key]?.toolbarItems.first?.label == "Open File", "Toolbar item label changes did not refresh the window-owned toolbar.")
 }
 
 func testEditableTextFieldUsesEditableNativePeer() {
@@ -2386,11 +2783,14 @@ func testImageViewStoresImageAndUsesNativePeer() {
     let packageURL = URL(fileURLWithPath: "C:\\AIResearch\\WinChocolate\\Code\\WinChocolate\\Package.swift")
     let urlImage = NSImage(contentsOf: packageURL)
     let dataImage = NSImage(data: Data([1, 2, 3, 4]))
+    let symbolImage = NSImage(systemSymbolName: "folder", accessibilityDescription: "Open folder")
 
     expect(urlImage?.filePath == packageURL.path, "NSImage(contentsOf:) did not preserve file URL path.")
     expect((urlImage?.data?.count ?? 0) > 0, "NSImage(contentsOf:) did not load file data.")
     expect(dataImage?.data == Data([1, 2, 3, 4]), "NSImage(data:) did not preserve image data.")
     expect(NSImage(data: Data()) == nil, "NSImage(data:) should reject empty data.")
+    expect(symbolImage?.name == "folder", "NSImage(systemSymbolName:) did not preserve the symbol name.")
+    expect(symbolImage?.accessibilityDescription == "Open folder", "NSImage(systemSymbolName:) did not preserve accessibility description.")
 
     imageView.image = NSImage(contentsOfFile: "Resources/Icon.bmp")
     imageView.imageScaling = .scaleNone
@@ -2643,6 +3043,27 @@ func testViewAndTextFieldColorsSyncToBackend() {
     expect(backend.records[textHandle]?.backgroundColor == NSColor(calibratedRed: 0.9, green: 0.95, blue: 1, alpha: 1), "Text field background color was not synced.")
 }
 
+func testVisualEffectViewStoresMaterialAndUsesFallbackBackground() {
+    let backend = InMemoryNativeControlBackend()
+    let effectView = NSVisualEffectView(frame: NSMakeRect(0, 0, 180, 80))
+
+    effectView.material = .sidebar
+    effectView.blendingMode = .withinWindow
+    effectView.state = .active
+
+    let handle = effectView.realizeNativePeer(in: backend, parent: nil)
+
+    expect(effectView.material == .sidebar, "Visual effect material was not stored.")
+    expect(effectView.blendingMode == .withinWindow, "Visual effect blending mode was not stored.")
+    expect(effectView.state == .active, "Visual effect state was not stored.")
+    expect(!effectView.acceptsFirstResponder, "Visual effect view should skip key-view traversal.")
+    expect(backend.records[handle]?.kind == "view", "Visual effect view did not use a view peer.")
+    expect(backend.records[handle]?.backgroundColor == effectView.backgroundColor, "Visual effect fallback background was not synced.")
+
+    effectView.material = .hudWindow
+    expect(backend.records[handle]?.backgroundColor == effectView.backgroundColor, "Visual effect material change did not update fallback background.")
+}
+
 func testFontValuesClampSizeAndSyncToBackend() {
     let backend = InMemoryNativeControlBackend()
     let textField = NSTextField(string: "Font", frame: NSMakeRect(0, 0, 120, 24))
@@ -2815,6 +3236,9 @@ testTableViewColumnSelectionAndDoubleActionSurface()
 testTableViewSortDescriptorPrototypeToggle()
 testOutlineViewFlattensExpandableItems()
 testBrowserLoadsColumnsAndTracksSelection()
+testIndexPathStoresCollectionComponents()
+testCollectionViewReloadsItemsAndTracksSelection()
+testCollectionViewButtonItemClickSelectsItem()
 testSliderStoresRangeValueAndSyncsNativePeer()
 testSliderNativeActionUpdatesValue()
 testProgressIndicatorStoresRangeValueAndSyncsNativePeer()
@@ -2857,6 +3281,12 @@ testRadioButtonClearsSiblingRadioButtons()
 testRealizedViewStatePropagatesToBackend()
 testWindowTitleAndFramePropagateToBackend()
 testWindowContentSizeAndCenterUpdateFrame()
+testPanelStoresPanelStateAndOrdersFront()
+testPopoverShowsClosesAndReopensFromAnchorView()
+testToolbarStoresItemsAndAttachesToWindow()
+testToolbarVisibilityAndItemActions()
+testToolbarViewUsesNativeToolbarPeerAndDispatchesItems()
+testWindowToolbarCreatesDockedNativePeerAndReservesContent()
 testEditableTextFieldUsesEditableNativePeer()
 testSecureTextFieldUsesSecureNativePeer()
 testTextViewUsesMultilineNativePeerAndStoresText()
@@ -2884,6 +3314,7 @@ testNativeTextChangeMakesTextViewFirstResponder()
 testBoxUsesNativePeerAndSyncsTitle()
 testColorValuesClampComponents()
 testViewAndTextFieldColorsSyncToBackend()
+testVisualEffectViewStoresMaterialAndUsesFallbackBackground()
 testFontValuesClampSizeAndSyncToBackend()
 testRemovingRealizedSubviewDestroysNativePeer()
 testMainMenuQuitItemTerminatesApplication()

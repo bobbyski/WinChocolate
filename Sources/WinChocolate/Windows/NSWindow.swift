@@ -17,6 +17,9 @@ open class NSWindow: NSResponder {
         /// Titled window style.
         public static let titled = StyleMask(rawValue: 1 << 0)
 
+        /// Borderless window style.
+        public static var borderless: StyleMask { [] }
+
         /// Closable window style.
         public static let closable = StyleMask(rawValue: 1 << 1)
 
@@ -72,6 +75,24 @@ open class NSWindow: NSResponder {
     open var contentView: NSView? {
         didSet {
             contentView?.nextResponder = self
+            layoutToolbarAndContent()
+        }
+    }
+
+    /// The toolbar attached to this window.
+    open var toolbar: NSToolbar? {
+        didSet {
+            oldValue?.attach(to: nil)
+            toolbar?.attach(to: self)
+            installToolbarHost()
+            layoutToolbarAndContent()
+        }
+    }
+
+    /// Height reserved for the window-owned toolbar strip.
+    open var toolbarHeight: CGFloat = 40 {
+        didSet {
+            layoutToolbarAndContent()
         }
     }
 
@@ -83,6 +104,8 @@ open class NSWindow: NSResponder {
 
     /// Backend used for native work.
     public let nativeBackend: NativeControlBackend
+
+    private var toolbarHostView: NSToolbarView?
 
     /// Whether this window is the application's key window.
     open var isKeyWindow: Bool {
@@ -96,7 +119,18 @@ open class NSWindow: NSResponder {
 
     /// The rectangle available for content in window coordinates.
     open var contentLayoutRect: NSRect {
-        NSRect(origin: NSZeroPoint, size: frame.size)
+        let reservedHeight = toolbar?.isVisible == true ? toolbarHeight : 0
+        return NSRect(
+            x: 0,
+            y: reservedHeight,
+            width: frame.size.width,
+            height: max(0, frame.size.height - reservedHeight)
+        )
+    }
+
+    /// Whether this top-level window should receive the application's menu bar.
+    open var usesMainMenu: Bool {
+        true
     }
 
     /// Creates a window using AppKit's designated initializer shape.
@@ -202,6 +236,8 @@ open class NSWindow: NSResponder {
         }
 
         nativeBackend.closeWindow(nativeHandle)
+        toolbarHostView?.destroyNativePeer()
+        toolbarHostView = nil
         self.nativeHandle = nil
         NSApplication.shared.removeWindowsItem(self)
     }
@@ -215,12 +251,14 @@ open class NSWindow: NSResponder {
         }
 
         nativeBackend.setFrame(frameRect, for: nativeHandle)
+        layoutToolbarAndContent()
     }
 
     /// Sets the window content size while preserving its origin.
     open func setContentSize(_ size: NSSize) {
-        setFrame(NSRect(origin: frame.origin, size: size), display: true)
-        contentView?.frame = NSRect(origin: NSZeroPoint, size: size)
+        let reservedHeight = toolbar?.isVisible == true ? toolbarHeight : 0
+        setFrame(NSRect(origin: frame.origin, size: NSSize(width: size.width, height: size.height + reservedHeight)), display: true)
+        layoutToolbarAndContent()
     }
 
     /// Centers the window in a conservative default desktop area.
@@ -240,11 +278,62 @@ open class NSWindow: NSResponder {
             return nativeHandle
         }
 
-        let handle = nativeBackend.createWindow(title: title, frame: frame, styleMask: styleMask)
+        let handle = nativeBackend.createWindow(title: title, frame: frame, styleMask: styleMask, usesMainMenu: usesMainMenu)
         nativeHandle = handle
+        nativeBackend.registerWindowCloseAction(for: handle) { [weak self] in
+            self?.nativeWindowDidClose()
+        }
         NSApplication.shared.addWindowsItem(self)
+        installToolbarHost()
+        layoutToolbarAndContent()
         contentView?.realizeNativePeer(in: nativeBackend, parent: handle)
         return handle
+    }
+
+    private func nativeWindowDidClose() {
+        toolbarHostView?.destroyNativePeer()
+        toolbarHostView = nil
+        nativeHandle = nil
+        NSApplication.shared.removeWindowsItem(self)
+    }
+
+    private func installToolbarHost() {
+        guard let toolbar else {
+            toolbarHostView?.destroyNativePeer()
+            toolbarHostView = nil
+            return
+        }
+
+        let host = toolbarHostView ?? NSToolbarView(frame: NSMakeRect(0, 0, frame.size.width, toolbarHeight))
+        toolbarHostView = host
+        host.nextResponder = self
+        host.toolbar = toolbar
+        host.visibilityChanged = { [weak self] _ in
+            self?.layoutToolbarAndContent()
+        }
+
+        if let nativeHandle, host.nativeHandle == nil {
+            host.realizeNativePeer(in: nativeBackend, parent: nativeHandle)
+        }
+    }
+
+    private func layoutToolbarAndContent() {
+        if let toolbarHostView {
+            toolbarHostView.frame = NSMakeRect(0, 0, frame.size.width, toolbarHeight)
+            if let handle = toolbarHostView.nativeHandle {
+                nativeBackend.setFrame(toolbarHostView.frame, for: handle)
+                toolbarHostView.reloadItems()
+            }
+        }
+
+        guard let contentView else {
+            return
+        }
+
+        contentView.frame = contentLayoutRect
+        if let handle = contentView.nativeHandle {
+            nativeBackend.setFrame(contentView.frame, for: handle)
+        }
     }
 
     private func nextKeyView(after responder: NSResponder?) -> NSView? {

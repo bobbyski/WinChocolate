@@ -148,3 +148,18 @@ public func NSInsetRect(_ rect: NSRect, _ deltaX: CGFloat, _ deltaY: CGFloat) ->
         height: rect.size.height - deltaY * 2
     )
 }
+
+/// Rectangle edge constants used by AppKit positioning APIs.
+public enum NSRectEdge: UInt, Sendable {
+    /// The minimum x edge.
+    case minX = 0
+
+    /// The minimum y edge.
+    case minY = 1
+
+    /// The maximum x edge.
+    case maxX = 2
+
+    /// The maximum y edge.
+    case maxY = 3
+}

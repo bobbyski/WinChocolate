@@ -45,6 +45,9 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
         /// Native tab-view selected index.
         public var tabViewSelectedIndex: Int
 
+        /// Native toolbar items.
+        public var toolbarItems: [NativeToolbarItem]
+
         /// Native slider minimum value.
         public var sliderMinValue: Double
 
@@ -125,6 +128,9 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
 
         /// Recorded font.
         public var font: NSFont?
+
+        /// Whether a top-level window requested the application menu bar.
+        public var usesMainMenu: Bool
     }
 
     private var nextRawHandle: UInt = 1
@@ -152,6 +158,12 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
 
     /// Registered key-up actions by handle.
     public private(set) var keyUpActions: [NativeHandle: (NSEvent) -> Void] = [:]
+
+    /// Registered native window close actions by handle.
+    public private(set) var windowCloseActions: [NativeHandle: () -> Void] = [:]
+
+    /// Registered toolbar item actions by handle.
+    public private(set) var toolbarActions: [NativeHandle: (String) -> Void] = [:]
 
     /// The handle most recently asked to take keyboard focus.
     public private(set) var focusedHandle: NativeHandle?
@@ -189,8 +201,10 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     }
 
     /// Records a top-level window creation request.
-    public func createWindow(title: String, frame: NSRect, styleMask: NSWindow.StyleMask) -> NativeHandle {
-        makeHandle(kind: "window", text: title, frame: frame, parent: nil)
+    public func createWindow(title: String, frame: NSRect, styleMask: NSWindow.StyleMask, usesMainMenu: Bool) -> NativeHandle {
+        let handle = makeHandle(kind: "window", text: title, frame: frame, parent: nil)
+        records[handle]?.usesMainMenu = usesMainMenu
+        return handle
     }
 
     /// Records that a window should be shown.
@@ -205,6 +219,13 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
         mouseMovedActions.removeValue(forKey: handle)
         keyDownActions.removeValue(forKey: handle)
         keyUpActions.removeValue(forKey: handle)
+        toolbarActions.removeValue(forKey: handle)
+        windowCloseActions.removeValue(forKey: handle)?()
+    }
+
+    /// Records a native window close action.
+    public func registerWindowCloseAction(for handle: NativeHandle, action: @escaping () -> Void) {
+        windowCloseActions[handle] = action
     }
 
     /// Removes a recorded native child object.
@@ -216,6 +237,7 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
         mouseMovedActions.removeValue(forKey: handle)
         keyDownActions.removeValue(forKey: handle)
         keyUpActions.removeValue(forKey: handle)
+        toolbarActions.removeValue(forKey: handle)
     }
 
     /// Records a view creation request.
@@ -224,7 +246,7 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     }
 
     /// Records a button creation request.
-    public func createButton(title: String, frame: NSRect, parent: NativeHandle?) -> NativeHandle {
+    public func createButton(title: String, frame: NSRect, parent: NativeHandle?, isBordered: Bool) -> NativeHandle {
         makeHandle(kind: "button", text: title, frame: frame, parent: parent)
     }
 
@@ -286,6 +308,28 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
         records[handle]?.tabViewItems = items
         records[handle]?.tabViewSelectedIndex = selectedIndex
         return handle
+    }
+
+    /// Records a toolbar creation request.
+    public func createToolbar(items: [NativeToolbarItem], frame: NSRect, parent: NativeHandle?) -> NativeHandle {
+        let handle = makeHandle(kind: "toolbar", text: "", frame: frame, parent: parent)
+        records[handle]?.toolbarItems = items
+        return handle
+    }
+
+    /// Replaces recorded toolbar items.
+    public func setToolbarItems(_ items: [NativeToolbarItem], for handle: NativeHandle) {
+        guard var record = records[handle] else {
+            return
+        }
+
+        record.toolbarItems = items
+        records[handle] = record
+    }
+
+    /// Records a toolbar action.
+    public func registerToolbarAction(for handle: NativeHandle, action: @escaping (String) -> Void) {
+        toolbarActions[handle] = action
     }
 
     /// Records a slider creation request.
@@ -772,6 +816,7 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
             imagePath: nil,
             tabViewItems: [],
             tabViewSelectedIndex: -1,
+            toolbarItems: [],
             sliderMinValue: 0,
             sliderMaxValue: 1,
             sliderValue: 0,
@@ -799,7 +844,8 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
             tableClickedColumn: -1,
             textColor: nil,
             backgroundColor: nil,
-            font: nil
+            font: nil,
+            usesMainMenu: false
         )
         return handle
     }

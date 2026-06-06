@@ -1,3 +1,41 @@
+/// Native toolbar item descriptor used by backend toolbar renderers.
+public struct NativeToolbarItem: Equatable, Sendable {
+    /// Stable item identifier.
+    public var identifier: String
+
+    /// Visible toolbar label.
+    public var label: String
+
+    /// Optional named image or symbol.
+    public var imageName: String?
+
+    /// Whether this item is a separator.
+    public var isSeparator: Bool
+
+    /// Whether this item consumes flexible toolbar space.
+    public var isFlexibleSpace: Bool
+
+    /// Whether this item is enabled.
+    public var isEnabled: Bool
+
+    /// Creates a native toolbar item descriptor.
+    public init(
+        identifier: String,
+        label: String,
+        imageName: String? = nil,
+        isSeparator: Bool = false,
+        isFlexibleSpace: Bool = false,
+        isEnabled: Bool = true
+    ) {
+        self.identifier = identifier
+        self.label = label
+        self.imageName = imageName
+        self.isSeparator = isSeparator
+        self.isFlexibleSpace = isFlexibleSpace
+        self.isEnabled = isEnabled
+    }
+}
+
 /// Native control creation and lifetime boundary.
 ///
 /// `NSWindow`, `NSView`, and controls ask this backend for HWND-backed peers.
@@ -17,13 +55,16 @@ public protocol NativeControlBackend: AnyObject {
     func installMainMenu(_ menu: NSMenu?)
 
     /// Creates a native top-level window.
-    func createWindow(title: String, frame: NSRect, styleMask: NSWindow.StyleMask) -> NativeHandle
+    func createWindow(title: String, frame: NSRect, styleMask: NSWindow.StyleMask, usesMainMenu: Bool) -> NativeHandle
 
     /// Shows a previously created native window.
     func showWindow(_ handle: NativeHandle)
 
     /// Closes a previously created native window.
     func closeWindow(_ handle: NativeHandle)
+
+    /// Registers the action to perform when a native top-level window closes.
+    func registerWindowCloseAction(for handle: NativeHandle, action: @escaping () -> Void)
 
     /// Destroys a previously created native child control.
     func destroyControl(_ handle: NativeHandle)
@@ -32,7 +73,7 @@ public protocol NativeControlBackend: AnyObject {
     func createView(frame: NSRect, parent: NativeHandle?) -> NativeHandle
 
     /// Creates a native push button child.
-    func createButton(title: String, frame: NSRect, parent: NativeHandle?) -> NativeHandle
+    func createButton(title: String, frame: NSRect, parent: NativeHandle?, isBordered: Bool) -> NativeHandle
 
     /// Creates a native checkbox child.
     func createCheckbox(title: String, frame: NSRect, parent: NativeHandle?) -> NativeHandle
@@ -63,6 +104,15 @@ public protocol NativeControlBackend: AnyObject {
 
     /// Creates a native tab-view child.
     func createTabView(items: [String], selectedIndex: Int, frame: NSRect, parent: NativeHandle?) -> NativeHandle
+
+    /// Creates a native toolbar child.
+    func createToolbar(items: [NativeToolbarItem], frame: NSRect, parent: NativeHandle?) -> NativeHandle
+
+    /// Replaces native toolbar items.
+    func setToolbarItems(_ items: [NativeToolbarItem], for handle: NativeHandle)
+
+    /// Registers the action to perform when a native toolbar item is activated.
+    func registerToolbarAction(for handle: NativeHandle, action: @escaping (String) -> Void)
 
     /// Creates a native slider child.
     func createSlider(value: Double, minValue: Double, maxValue: Double, frame: NSRect, parent: NativeHandle?) -> NativeHandle

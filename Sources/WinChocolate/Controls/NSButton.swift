@@ -73,7 +73,7 @@ open class NSButton: NSControl {
     open override func createNativePeer(in backend: NativeControlBackend, parent: NativeHandle?) -> NativeHandle {
         switch buttonType {
         case .momentaryPushIn:
-            return backend.createButton(title: title, frame: frame, parent: parent)
+            return backend.createButton(title: title, frame: frame, parent: parent, isBordered: isBordered)
         case .switchButton:
             return backend.createCheckbox(title: title, frame: frame, parent: parent)
         case .radioButton:

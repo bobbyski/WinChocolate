@@ -162,6 +162,30 @@ private struct TCITEMW {
     var lParam: LPARAM = 0
 }
 
+private struct TBBUTTON {
+    var iBitmap: Int32 = 0
+    var idCommand: Int32 = 0
+    var fsState: UInt8 = 0
+    var fsStyle: UInt8 = 0
+    var bReserved0: UInt8 = 0
+    var bReserved1: UInt8 = 0
+    var dwData: UInt = 0
+    var iString: Int = 0
+}
+
+private struct TBBUTTONINFOW {
+    var cbSize: UINT = 0
+    var dwMask: DWORD = 0
+    var idCommand: Int32 = 0
+    var iImage: Int32 = 0
+    var fsState: UInt8 = 0
+    var fsStyle: UInt8 = 0
+    var cx: UInt16 = 0
+    var lParam: LPARAM = 0
+    var pszText: UnsafeMutablePointer<UInt16>?
+    var cchText: Int32 = 0
+}
+
 @_silgen_name("InitCommonControlsEx")
 private func winInitCommonControlsEx(_ initControls: UnsafePointer<INITCOMMONCONTROLSEX>) -> Int32
 
@@ -335,6 +359,17 @@ private func winSetFocus(_ hwnd: HWND?) -> HWND?
 @_silgen_name("SetWindowLongPtrW")
 private func winSetWindowLongPtrW(_ hwnd: HWND?, _ index: Int32, _ newLong: LONG_PTR) -> LONG_PTR
 
+@_silgen_name("SetWindowPos")
+private func winSetWindowPos(
+    _ hwnd: HWND?,
+    _ insertAfter: HWND?,
+    _ x: Int32,
+    _ y: Int32,
+    _ width: Int32,
+    _ height: Int32,
+    _ flags: UINT
+) -> Int32
+
 @_silgen_name("SetWindowTextW")
 private func winSetWindowTextW(_ hwnd: HWND?, _ text: UnsafePointer<UInt16>?) -> Int32
 
@@ -364,11 +399,14 @@ private let mbIconWarning: UINT = 0x00000030
 private let mbIconError: UINT = 0x00000010
 private let swShow: Int32 = 5
 private let swHide: Int32 = 0
+private let swpNoActivate: UINT = 0x0010
+private let swpShowWindow: UINT = 0x0040
 private let wmDestroy: UINT = 0x0002
 private let wmNotify: UINT = 0x004e
 private let wmEraseBackground: UINT = 0x0014
 private let wmSetFont: UINT = 0x0030
 private let wmCommand: UINT = 0x0111
+private let wmUser: UINT = 0x0400
 private let stmSetImage: UINT = 0x0172
 private let wmHScroll: UINT = 0x0114
 private let wmVScroll: UINT = 0x0115
@@ -422,6 +460,15 @@ private let tcmGetCurSel: UINT = tcmFirst + 11
 private let tcmSetCurSel: UINT = tcmFirst + 12
 private let tcmDeleteAllItems: UINT = tcmFirst + 9
 private let tcmInsertItemW: UINT = tcmFirst + 62
+private let tbAddButtonsW: UINT = wmUser + 68
+private let tbAddStringW: UINT = wmUser + 77
+private let tbAutosize: UINT = wmUser + 33
+private let tbButtonCount: UINT = wmUser + 24
+private let tbButtonStructSize: UINT = wmUser + 30
+private let tbDeleteButton: UINT = wmUser + 22
+private let tbGetItemRect: UINT = wmUser + 29
+private let tbLoadImages: UINT = wmUser + 50
+private let tbSetButtonInfoW: UINT = wmUser + 64
 private let enChange: UInt = 0x0300
 private let lbnSelChange: UInt = 1
 private let nmClick: UINT = 0xfffffffe
@@ -436,6 +483,7 @@ private let bnClicked: UInt = 0
 private let cbnSelChange: UInt = 1
 private let cbnEditChange: UInt = 5
 private let iccListViewClasses: DWORD = 0x00000001
+private let iccBarClasses: DWORD = 0x00000004
 private let iccTabClasses: DWORD = 0x00000008
 private let iccUpDownClass: DWORD = 0x00000010
 private let iccProgressClass: DWORD = 0x00000020
@@ -507,6 +555,30 @@ private let lvniSelected: WPARAM = 0x0002
 private let bsAutoCheckBox: DWORD = 0x00000003
 private let bsAutoRadioButton: DWORD = 0x00000009
 private let bsGroupBox: DWORD = 0x00000007
+private let bsFlat: DWORD = 0x00008000
+private let ssWhiteRect: DWORD = 0x00000006
+private let tbStateEnabled: UInt8 = 0x04
+private let tbStyleButton: UInt8 = 0x00
+private let tbStyleSep: UInt8 = 0x01
+private let tbifSize: DWORD = 0x00000040
+private let btnsAutosize: UInt8 = 0x10
+private let btnsShowText: UInt8 = 0x40
+private let iImageNone: Int32 = -2
+private let iStringNone: Int = -1
+private let idbStdSmallColor: WPARAM = 0
+private let hinstCommctrl: LPARAM = -1
+private let stdFileNew: Int32 = 0
+private let stdFileOpen: Int32 = 1
+private let stdFileSave: Int32 = 2
+private let stdPrint: Int32 = 6
+private let stdProperties: Int32 = 10
+private let stdHelp: Int32 = 11
+private let toolbarClassName = "ToolbarWindow32"
+private let tbStyleFlat: DWORD = 0x00000800
+private let tbStyleList: DWORD = 0x00001000
+private let tbStyleTooltips: DWORD = 0x00000100
+private let ccsNoResize: DWORD = 0x00000004
+private let ccsNoDivider: DWORD = 0x00000040
 private let ssNotify: DWORD = 0x00000100
 private let ssBitmap: DWORD = 0x0000000e
 private let ssCenterImage: DWORD = 0x00000200
@@ -546,6 +618,7 @@ public final class Win32NativeControlBackend: NativeControlBackend {
     private var isViewClassRegistered = false
     private var mainMenu: NSMenu?
     private var windowHandles: Set<NativeHandle> = []
+    private var mainMenuWindowHandles: Set<NativeHandle> = []
     private var controlActions: [UInt: () -> Void] = [:]
     private var textChangeActions: [UInt: (String) -> Void] = [:]
     private var mouseDownActions: [UInt: (NSEvent) -> Void] = [:]
@@ -553,10 +626,14 @@ public final class Win32NativeControlBackend: NativeControlBackend {
     private var mouseMovedActions: [UInt: (NSEvent) -> Void] = [:]
     private var keyDownActions: [UInt: (NSEvent) -> Void] = [:]
     private var keyUpActions: [UInt: (NSEvent) -> Void] = [:]
+    private var windowCloseActions: [UInt: () -> Void] = [:]
     private var originalControlProcedures: [UInt: WNDPROC] = [:]
     private var controlHandleAliases: [UInt: NativeHandle] = [:]
     private var commandActions: [UInt: () -> Void] = [:]
     private var asyncActions: [() -> Void] = []
+    private var toolbarActions: [UInt: (String) -> Void] = [:]
+    private var toolbarCommandIdentifiers: [UInt: [UInt]] = [:]
+    private var toolbarFlexibleCoverHandles: [UInt: [NativeHandle]] = [:]
     private var tableColumnTitles: [UInt: [String]] = [:]
     private var tableHeaderOwners: [UInt: NativeHandle] = [:]
     private var tableSuppressedColumnClicks: [UInt: Int] = [:]
@@ -604,7 +681,7 @@ public final class Win32NativeControlBackend: NativeControlBackend {
     public func installMainMenu(_ menu: NSMenu?) {
         mainMenu = menu
 
-        for windowHandle in windowHandles {
+        for windowHandle in mainMenuWindowHandles {
             guard let hwnd = hwnd(from: windowHandle) else {
                 continue
             }
@@ -615,7 +692,7 @@ public final class Win32NativeControlBackend: NativeControlBackend {
     }
 
     /// Creates a native top-level window.
-    public func createWindow(title: String, frame: NSRect, styleMask: NSWindow.StyleMask) -> NativeHandle {
+    public func createWindow(title: String, frame: NSRect, styleMask: NSWindow.StyleMask, usesMainMenu: Bool) -> NativeHandle {
         registerWindowClassIfNeeded()
 
         let hwnd = withWideString(winChocolateWindowClassName) { className in
@@ -630,7 +707,7 @@ public final class Win32NativeControlBackend: NativeControlBackend {
                     Int32(frame.size.width),
                     Int32(frame.size.height),
                     nil,
-                    createNativeMenu(from: mainMenu),
+                    usesMainMenu ? createNativeMenu(from: mainMenu) : nil,
                     winGetModuleHandleW(nil),
                     nil
                 )
@@ -644,6 +721,9 @@ public final class Win32NativeControlBackend: NativeControlBackend {
 
         let handle = nativeHandle(from: hwnd)
         windowHandles.insert(handle)
+        if usesMainMenu {
+            mainMenuWindowHandles.insert(handle)
+        }
         return handle
     }
 
@@ -665,6 +745,7 @@ public final class Win32NativeControlBackend: NativeControlBackend {
 
         _ = winDestroyWindow(hwnd)
         windowHandles.remove(handle)
+        mainMenuWindowHandles.remove(handle)
         controlActions.removeValue(forKey: handle.rawValue)
         textChangeActions.removeValue(forKey: handle.rawValue)
         mouseDownActions.removeValue(forKey: handle.rawValue)
@@ -672,6 +753,10 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         mouseMovedActions.removeValue(forKey: handle.rawValue)
         keyDownActions.removeValue(forKey: handle.rawValue)
         keyUpActions.removeValue(forKey: handle.rawValue)
+        windowCloseActions.removeValue(forKey: handle.rawValue)
+        clearToolbarCommands(for: handle)
+        clearToolbarFlexibleCovers(for: handle)
+        toolbarActions.removeValue(forKey: handle.rawValue)
         originalControlProcedures.removeValue(forKey: handle.rawValue)
         controlHandleAliases = controlHandleAliases.filter { $0.value != handle }
         tableColumnTitles.removeValue(forKey: handle.rawValue)
@@ -683,6 +768,11 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         scrollViewMetrics.removeValue(forKey: handle.rawValue)
         stepperRanges.removeValue(forKey: handle.rawValue)
         clearAppearance(for: handle)
+    }
+
+    /// Registers a native window close action.
+    public func registerWindowCloseAction(for handle: NativeHandle, action: @escaping () -> Void) {
+        windowCloseActions[handle.rawValue] = action
     }
 
     /// Destroys a native child control.
@@ -699,6 +789,9 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         mouseMovedActions.removeValue(forKey: handle.rawValue)
         keyDownActions.removeValue(forKey: handle.rawValue)
         keyUpActions.removeValue(forKey: handle.rawValue)
+        clearToolbarCommands(for: handle)
+        clearToolbarFlexibleCovers(for: handle)
+        toolbarActions.removeValue(forKey: handle.rawValue)
         originalControlProcedures.removeValue(forKey: handle.rawValue)
         controlHandleAliases = controlHandleAliases.filter { $0.value != handle }
         tableColumnTitles.removeValue(forKey: handle.rawValue)
@@ -726,14 +819,14 @@ public final class Win32NativeControlBackend: NativeControlBackend {
     }
 
     /// Creates a native push button child.
-    public func createButton(title: String, frame: NSRect, parent: NativeHandle?) -> NativeHandle {
+    public func createButton(title: String, frame: NSRect, parent: NativeHandle?, isBordered: Bool) -> NativeHandle {
         let handle = createChildWindow(
             className: "BUTTON",
             text: title,
             frame: frame,
             parent: parent,
             commandIdentifier: nextCommandID(),
-            style: wsChild | wsVisible | wsTabStop
+            style: wsChild | wsVisible | wsTabStop | (isBordered ? 0 : bsFlat)
         )
         subclassControlForTabKey(handle)
         return handle
@@ -895,6 +988,46 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         subclassControlForTabKey(handle)
         setTabViewItems(items, selectedIndex: selectedIndex, for: handle)
         return handle
+    }
+
+    /// Creates a native toolbar child.
+    public func createToolbar(items: [NativeToolbarItem], frame: NSRect, parent: NativeHandle?) -> NativeHandle {
+        initializeToolbarControls()
+        let handle = createChildWindow(
+            className: toolbarClassName,
+            text: "",
+            frame: frame,
+            parent: parent,
+            commandIdentifier: nil,
+            style: wsChild | wsVisible | wsTabStop | tbStyleFlat | tbStyleTooltips | ccsNoResize | ccsNoDivider
+        )
+        guard let hwnd = hwnd(from: handle) else {
+            return handle
+        }
+
+        _ = winSendMessageW(hwnd, tbButtonStructSize, WPARAM(MemoryLayout<TBBUTTON>.size), 0)
+        _ = winSendMessageW(hwnd, tbLoadImages, idbStdSmallColor, hinstCommctrl)
+        setToolbarItems(items, for: handle)
+        return handle
+    }
+
+    /// Replaces native toolbar items.
+    public func setToolbarItems(_ items: [NativeToolbarItem], for handle: NativeHandle) {
+        guard let hwnd = hwnd(from: handle) else {
+            return
+        }
+
+        clearToolbarButtons(hwnd: hwnd)
+        clearToolbarCommands(for: handle)
+        clearToolbarFlexibleCovers(for: handle)
+        let flexibleButtonIndexes = installToolbarItems(items, hwnd: hwnd, handle: handle)
+        _ = winSendMessageW(hwnd, tbAutosize, 0, 0)
+        installToolbarFlexibleCovers(at: flexibleButtonIndexes, hwnd: hwnd, handle: handle)
+    }
+
+    /// Registers a native toolbar action.
+    public func registerToolbarAction(for handle: NativeHandle, action: @escaping (String) -> Void) {
+        toolbarActions[handle.rawValue] = action
     }
 
     /// Creates a native slider child.
@@ -2127,8 +2260,20 @@ public final class Win32NativeControlBackend: NativeControlBackend {
             }
             return nil
         case wmDestroy:
-            if let hwnd, windowHandles.contains(nativeHandle(from: hwnd)) {
-                winPostQuitMessage(0)
+            if let hwnd {
+                let handle = nativeHandle(from: hwnd)
+                guard windowHandles.contains(handle) else {
+                    return 0
+                }
+
+                let shouldTerminate = mainMenuWindowHandles.contains(handle)
+                windowHandles.remove(handle)
+                mainMenuWindowHandles.remove(handle)
+                windowCloseActions.removeValue(forKey: handle.rawValue)?()
+
+                if shouldTerminate {
+                    winPostQuitMessage(0)
+                }
             }
             return 0
         default:
@@ -2260,6 +2405,15 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         }
     }
 
+    private func initializeToolbarControls() {
+        var initControls = INITCOMMONCONTROLSEX()
+        initControls.dwSize = DWORD(MemoryLayout<INITCOMMONCONTROLSEX>.size)
+        initControls.dwICC = iccBarClasses
+        withUnsafePointer(to: initControls) { pointer in
+            _ = winInitCommonControlsEx(pointer)
+        }
+    }
+
     private func initializeTabControls() {
         var initControls = INITCOMMONCONTROLSEX()
         initControls.dwSize = DWORD(MemoryLayout<INITCOMMONCONTROLSEX>.size)
@@ -2361,6 +2515,222 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         }
 
         return Int(hitTest.iItem)
+    }
+
+    private func clearToolbarButtons(hwnd: HWND?) {
+        guard let hwnd else {
+            return
+        }
+
+        while winSendMessageW(hwnd, tbButtonCount, 0, 0) > 0 {
+            _ = winSendMessageW(hwnd, tbDeleteButton, 0, 0)
+        }
+    }
+
+    private func clearToolbarCommands(for handle: NativeHandle) {
+        guard let commandIdentifiers = toolbarCommandIdentifiers.removeValue(forKey: handle.rawValue) else {
+            return
+        }
+
+        for commandIdentifier in commandIdentifiers {
+            commandActions.removeValue(forKey: commandIdentifier)
+        }
+    }
+
+    private func clearToolbarFlexibleCovers(for handle: NativeHandle) {
+        guard let coverHandles = toolbarFlexibleCoverHandles.removeValue(forKey: handle.rawValue) else {
+            return
+        }
+
+        for coverHandle in coverHandles {
+            if let coverHwnd = hwnd(from: coverHandle) {
+                _ = winDestroyWindow(coverHwnd)
+            }
+            clearAppearance(for: coverHandle)
+        }
+    }
+
+    private func installToolbarItems(_ items: [NativeToolbarItem], hwnd: HWND?, handle: NativeHandle) -> [Int] {
+        guard let hwnd else {
+            return []
+        }
+
+        var buttons: [TBBUTTON] = []
+        var commandIdentifiers: [UInt] = []
+        var flexibleButtonIndexes: [Int] = []
+        let flexibleSpaceWidth = toolbarFlexibleSpaceWidth(for: items, handle: handle)
+
+        for item in items {
+            if item.isFlexibleSpace {
+                flexibleButtonIndexes.append(buttons.count)
+                buttons.append(TBBUTTON(
+                    iBitmap: flexibleSpaceWidth,
+                    idCommand: 0,
+                    fsState: 0,
+                    fsStyle: tbStyleSep,
+                    bReserved0: 0,
+                    bReserved1: 0,
+                    dwData: 0,
+                    iString: 0
+                ))
+                continue
+            }
+
+            if item.isSeparator {
+                buttons.append(TBBUTTON(
+                    iBitmap: 8,
+                    idCommand: 0,
+                    fsState: 0,
+                    fsStyle: tbStyleSep,
+                    bReserved0: 0,
+                    bReserved1: 0,
+                    dwData: 0,
+                    iString: 0
+                ))
+                continue
+            }
+
+            let labelIndex = toolbarStringIndex(for: item.label, hwnd: hwnd)
+            let imageIndex = toolbarImageIndex(for: item.imageName)
+            let commandIdentifier = nextCommandID()
+            commandIdentifiers.append(commandIdentifier)
+            commandActions[commandIdentifier] = { [weak self] in
+                self?.toolbarActions[handle.rawValue]?(item.identifier)
+            }
+
+            buttons.append(TBBUTTON(
+                iBitmap: imageIndex,
+                idCommand: Int32(commandIdentifier),
+                fsState: item.isEnabled ? tbStateEnabled : 0,
+                fsStyle: tbStyleButton | btnsAutosize | btnsShowText,
+                bReserved0: 0,
+                bReserved1: 0,
+                dwData: 0,
+                iString: labelIndex
+            ))
+        }
+
+        toolbarCommandIdentifiers[handle.rawValue] = commandIdentifiers
+
+        guard !buttons.isEmpty else {
+            return flexibleButtonIndexes
+        }
+
+        buttons.withUnsafeBufferPointer { buttonPointer in
+            _ = winSendMessageW(hwnd, tbAddButtonsW, WPARAM(buttons.count), Int(bitPattern: buttonPointer.baseAddress))
+        }
+
+        return flexibleButtonIndexes
+    }
+
+    private func installToolbarFlexibleCovers(at indexes: [Int], hwnd toolbarHwnd: HWND?, handle: NativeHandle) {
+        guard let toolbarHwnd, !indexes.isEmpty else {
+            return
+        }
+
+        var coverHandles: [NativeHandle] = []
+        for index in indexes {
+            var rectangle = RECT()
+            let result = withUnsafeMutablePointer(to: &rectangle) { rectanglePointer in
+                winSendMessageW(toolbarHwnd, tbGetItemRect, WPARAM(index), Int(bitPattern: rectanglePointer))
+            }
+            guard result != 0 else {
+                continue
+            }
+
+            let centerX = rectangle.left + ((rectangle.right - rectangle.left) / 2)
+            let coverWidth: Int32 = 24
+            let coverFrame = NSMakeRect(Double(centerX - (coverWidth / 2)), 0, Double(coverWidth), Double(max(1, rectangle.bottom - rectangle.top)))
+            let coverHandle = createChildWindow(
+                className: "STATIC",
+                text: "",
+                frame: coverFrame,
+                parent: handle,
+                commandIdentifier: nil,
+                style: wsChild | wsVisible | ssWhiteRect
+            )
+            if let coverHwnd = hwnd(from: coverHandle) {
+                _ = winSetWindowPos(
+                    coverHwnd,
+                    nil,
+                    centerX - (coverWidth / 2),
+                    0,
+                    coverWidth,
+                    max(1, rectangle.bottom - rectangle.top),
+                    swpNoActivate | swpShowWindow
+                )
+                _ = winInvalidateRect(coverHwnd, nil, 1)
+                _ = winUpdateWindow(coverHwnd)
+            }
+            coverHandles.append(coverHandle)
+        }
+
+        if !coverHandles.isEmpty {
+            toolbarFlexibleCoverHandles[handle.rawValue] = coverHandles
+        }
+    }
+
+    private func toolbarFlexibleSpaceWidth(for items: [NativeToolbarItem], handle: NativeHandle) -> Int32 {
+        let flexibleCount = items.filter(\.isFlexibleSpace).count
+        guard flexibleCount > 0 else {
+            return 8
+        }
+
+        let fixedWidth = items.reduce(CGFloat(0)) { width, item in
+            if item.isFlexibleSpace {
+                return width
+            }
+
+            if item.isSeparator {
+                return width + 8
+            }
+
+            let iconWidth: CGFloat = item.imageName == nil ? 0 : 24
+            let labelWidth = CGFloat(max(28, item.label.count * 6))
+            return width + max(iconWidth, labelWidth) + 20
+        }
+        let availableWidth = frameWidth(for: handle) - fixedWidth - 8
+        let perSpaceWidth = availableWidth / CGFloat(flexibleCount)
+        return Int32(max(16, perSpaceWidth.rounded(.down)))
+    }
+
+    private func toolbarStringIndex(for label: String, hwnd: HWND?) -> Int {
+        guard !label.isEmpty else {
+            return 0
+        }
+
+        let result = withWideString(label) { title in
+            winSendMessageW(hwnd, tbAddStringW, 0, Int(bitPattern: title))
+        }
+
+        guard result >= 0 else {
+            return 0
+        }
+
+        return result
+    }
+
+    private func toolbarImageIndex(for imageName: String?) -> Int32 {
+        guard let imageName else {
+            return iImageNone
+        }
+
+        switch imageName.lowercased() {
+        case "new", "document", "doc", "filenew", "square.and.pencil":
+            return stdFileNew
+        case "open", "folder", "folder.open", "fileopen":
+            return stdFileOpen
+        case "save", "filesave", "square.and.arrow.down", "tray.and.arrow.down":
+            return stdFileSave
+        case "print", "printer":
+            return stdPrint
+        case "properties", "info", "info.circle", "gear", "gearshape":
+            return stdProperties
+        case "help", "questionmark", "questionmark.circle":
+            return stdHelp
+        default:
+            return iImageNone
+        }
     }
 
     private func frameWidth(for handle: NativeHandle) -> CGFloat {

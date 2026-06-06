@@ -12,11 +12,32 @@ open class NSImage: NSObject {
     /// Raw image data when the image was loaded from data or a file URL.
     open var data: Data?
 
+    /// Accessibility description associated with a named system image.
+    open var accessibilityDescription: String?
+
     /// Creates an image with an optional name.
     public init(named name: String? = nil) {
         self.name = name
         self.filePath = nil
         self.data = nil
+        self.accessibilityDescription = nil
+        super.init()
+    }
+
+    /// Creates an image from a system symbol name.
+    ///
+    /// WinChocolate records the symbol name for API compatibility. Apple SF
+    /// Symbols are not bundled on Windows; native backends may map known names
+    /// to local glyphs or platform stock images.
+    public init?(systemSymbolName: String, accessibilityDescription: String?) {
+        guard !systemSymbolName.isEmpty else {
+            return nil
+        }
+
+        self.name = systemSymbolName
+        self.filePath = nil
+        self.data = nil
+        self.accessibilityDescription = accessibilityDescription
         super.init()
     }
 
@@ -25,6 +46,7 @@ open class NSImage: NSObject {
         self.name = filePath
         self.filePath = filePath
         self.data = nil
+        self.accessibilityDescription = nil
         super.init()
     }
 
@@ -36,6 +58,7 @@ open class NSImage: NSObject {
         self.name = url.lastPathComponent
         self.filePath = url.path
         self.data = try? Data(contentsOf: url)
+        self.accessibilityDescription = nil
         super.init()
     }
 
@@ -47,6 +70,7 @@ open class NSImage: NSObject {
         self.name = nil
         self.filePath = nil
         self.data = data
+        self.accessibilityDescription = nil
         super.init()
     }
 }

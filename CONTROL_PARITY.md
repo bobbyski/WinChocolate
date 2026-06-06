@@ -56,26 +56,26 @@ References used for this map:
 | `NSTableRowView` | List-view row/custom draw | Item container | Placeholder API exists; no custom row rendering. | Partial | Planned |
 | `NSOutlineView` | `SysTreeView32` or custom tree/list hybrid | `TreeView` / `TreeView` plus columns | First AppKit-shaped flattening slice exists over the table backend; disclosure UI and native tree-table rendering are future work. | Partial | Planned |
 | `NSBrowser` | Multi-column list/tree composition | Multi-pane navigation pattern | First AppKit-shaped composed column browser slice exists over table/scroll-view columns. | Partial | Planned |
-| `NSCollectionView` | `SysListView32` icon mode or custom item grid | `GridView` / `ItemsRepeater` | Needs item reuse and layout engine. | Planned | Planned |
+| `NSCollectionView` | `SysListView32` icon mode or custom item grid | `GridView` / `ItemsRepeater` | First composed item-grid slice exists with data source, item objects, selection, and fixed layout; reuse/layout engines are future work. | Partial | Planned |
 | `NSRuleEditor` | Custom composed rows | Custom composed control | No native Windows peer. | Planned | Planned |
 | `NSPredicateEditor` | Custom composed rows | Custom composed control | No native Windows peer. | Planned | Planned |
 | `NSScrubber` | Custom horizontal item strip | Custom item strip | Touch Bar-era AppKit control; low priority. | Planned | Planned |
 | `NSTabView` | `SysTabControl32` | `TabView` | Basic item labels and selection bridge exist; hosted per-tab content is future work. | Partial | Planned |
 | `NSSplitView` | Custom child-window splitter | `GridSplitter` / `SplitView` pattern | Basic pane arrangement and programmatic divider positioning exist; drag tracking and delegate callbacks are future work. | Partial | Planned |
-| `NSToolbar` | `ToolbarWindow32` / rebar | `CommandBar` / `AppBar` | AppKit toolbar item model differs from Win32. | Planned | Planned |
+| `NSToolbar` | `ToolbarWindow32` / rebar | `CommandBar` / `AppBar` | First AppKit-compatible toolbar/item model exists with a classic `ToolbarWindow32` renderer docked through `NSWindow.toolbar`; `NSToolbarItem.image`, `NSImage(systemSymbolName:)` name capture, and flexible-space descriptors exist. Full display modes, resize overflow, user customization palette, and drag-reordered default sets are future work. | Partial | Planned |
 | `NSStatusBar` / `NSStatusItem` | Shell notification icon / tray menu | App notification area integration | Not a normal child control; likely later app-shell work. | Planned | Planned |
 | `NSMenu` | `HMENU` | `MenuBar` / `MenuFlyout` | Menu model and Quit dispatch exist. | Partial | Planned |
 | `NSMenuItem` | `MENUITEMINFO` / command ID | Menu item | Basic item/action/submenu/separator state exists. | Partial | Planned |
-| `NSPopover` | Popup window/custom transient `HWND` | `TeachingTip` / `Flyout` | No direct classic peer. | Planned | Planned |
+| `NSPopover` | Popup window/custom transient `HWND` | `TeachingTip` / `Flyout` | First transient popover API slice exists over a menu-less borderless `NSPanel`; arrow/chrome/outside-click behavior is future work. | Partial | Planned |
 | `NSAlert` | `MessageBoxW`, later custom dialog | `ContentDialog` | Basic modal alert exists; custom buttons need custom dialog. | Partial | Planned |
-| `NSPanel` | Tool/top-level `HWND` variants | Secondary window/dialog | Needs window-style variants. | Planned | Planned |
+| `NSPanel` | Tool/top-level `HWND` variants | Secondary window/dialog | First subclass slice exists with common panel flags and top-level window backend behavior; true tool-window styling is future work. | Partial | Planned |
 | `NSSavePanel` | Common Item Dialog save | `FileSavePicker` / file dialog | Not a child control; important AppKit surface. | Planned | Planned |
 | `NSOpenPanel` | Common Item Dialog open | `FileOpenPicker` / file dialog | Not a child control; important AppKit surface. | Planned | Planned |
 | `NSFontPanel` | Common font dialog/custom | Custom font picker | Classic font dialog exists, but AppKit panel model differs. | Planned | Planned |
 | `NSColorPanel` | ChooseColor dialog/custom | `ColorPicker` dialog | Needs shared color-panel behavior. | Planned | Planned |
 | `NSRulerView` | Custom drawing | Custom drawing | Text/document companion view; no direct Windows peer. | Planned | Planned |
 | `NSClipView` | Child clipping `HWND`/viewport | `ScrollViewer` viewport | First viewport/document-host slice exists with bounds origin and visible-rect state. | Partial | Planned |
-| `NSVisualEffectView` | DWM/acrylic/custom composition | Acrylic/Mica/Backdrop | Modern appearance feature; not a classic Win32 peer. | Planned | Planned |
+| `NSVisualEffectView` | DWM/acrylic/custom composition | Acrylic/Mica/Backdrop | First material/blending/state API slice exists with a classic fallback background; true acrylic/Mica rendering is future modern-backend work. | Partial | Planned |
 
 ## Windows Controls With No Direct AppKit Counterpart
 

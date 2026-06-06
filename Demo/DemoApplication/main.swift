@@ -212,6 +212,22 @@ final class DemoBrowserDataSource: NSBrowserDelegate {
     }
 }
 
+final class DemoCollectionDataSource: NSCollectionViewDataSource {
+    let values = ["NSButton", "NSTextField", "NSTableView", "NSImageView", "NSBrowser", "NSOutlineView"]
+
+    func collectionView(_ collectionView: NSCollectionView, numberOfItemsInSection section: Int) -> Int {
+        values.count
+    }
+
+    func collectionView(_ collectionView: NSCollectionView, itemForRepresentedObjectAt indexPath: IndexPath) -> NSCollectionViewItem {
+        let item = NSCollectionViewItem()
+        let title = values[indexPath.item]
+        item.representedObject = title
+        item.view = NSButton(title: title, frame: NSMakeRect(0, 0, 112, 28))
+        return item
+    }
+}
+
 let contentView = DemoContentView(frame: NSMakeRect(0, 0, 1120, 760))
 let controlsPage = DemoPageView(frame: NSMakeRect(0, 144, 1120, 560))
 let valuesPage = DemoPageView(frame: NSMakeRect(0, 144, 1120, 560))
@@ -225,6 +241,8 @@ let button = NSButton(title: "Click", frame: NSMakeRect(32, 24, 100, 34))
 let enableButton = NSButton(title: "Disable Click", frame: NSMakeRect(152, 24, 144, 34))
 let hideButton = NSButton(title: "Hide Counter", frame: NSMakeRect(316, 24, 144, 34))
 let moveButton = NSButton(title: "Move Click", frame: NSMakeRect(480, 24, 128, 34))
+let panelButton = NSButton(title: "Panel", frame: NSMakeRect(632, 24, 100, 34))
+let popoverButton = NSButton(title: "Popover", frame: NSMakeRect(752, 24, 112, 34))
 let editableLabel = NSTextField(string: "Type here:", frame: NSMakeRect(32, 88, 104, 24))
 let editableTextField = NSTextField(string: "", frame: NSMakeRect(152, 86, 360, 28))
 let secureLabel = NSTextField(string: "Password:", frame: NSMakeRect(32, 122, 104, 24))
@@ -312,6 +330,19 @@ let outlineDataSource = DemoOutlineDataSource()
 let browserLabel = NSTextField(string: "Browser:", frame: NSMakeRect(32, 216, 120, 24))
 let browser = NSBrowser(frame: NSMakeRect(152, 216, 360, 104))
 let browserDataSource = DemoBrowserDataSource()
+let collectionLabel = NSTextField(string: "Collection:", frame: NSMakeRect(32, 230, 120, 24))
+let collectionView = NSCollectionView(frame: NSMakeRect(152, 226, 392, 96))
+let collectionDataSource = DemoCollectionDataSource()
+let visualEffectLabel = NSTextField(string: "Visual effect:", frame: NSMakeRect(880, 116, 120, 24))
+let visualEffectView = NSVisualEffectView(frame: NSMakeRect(880, 146, 200, 86))
+let visualEffectTitle = NSTextField(string: "material: sidebar", frame: NSMakeRect(12, 12, 160, 24))
+let visualEffectButton = NSButton(title: "Cycle", frame: NSMakeRect(12, 50, 80, 28))
+let demoToolbar = NSToolbar(identifier: "WinChocolateDemoToolbar")
+let openToolbarItem = NSToolbarItem(itemIdentifier: "open")
+let saveToolbarItem = NSToolbarItem(itemIdentifier: "save")
+let toolbarSeparatorItem = NSToolbarItem(itemIdentifier: .separator)
+let toolbarFlexibleSpaceItem = NSToolbarItem(itemIdentifier: .flexibleSpace)
+let toggleToolbarItem = NSToolbarItem(itemIdentifier: "toggleToolbar")
 let contentFocusColor = NSColor(calibratedRed: 0.92, green: 0.97, blue: 1.0, alpha: 1.0)
 let normalContentColor = NSColor.windowBackgroundColor
 let controlFocusColor = NSColor(calibratedRed: 1.0, green: 0.96, blue: 0.72, alpha: 1.0)
@@ -322,7 +353,16 @@ var isCounterHidden = false
 var movedRight = false
 var suppressNextTableSelectionStatus = false
 var colorIndex = 0
+var inspectorPanel: NSPanel?
+let popover = NSPopover()
 let demoColors: [NSColor] = [.red, .green, .blue, .white]
+var visualEffectIndex = 0
+let visualEffectMaterials: [(NSVisualEffectView.Material, String)] = [
+    (.sidebar, "sidebar"),
+    (.selection, "selection"),
+    (.menu, "menu"),
+    (.hudWindow, "hud")
+]
 func demoResourcePath(named name: String) -> String {
     Bundle.main.path(forResource: name, ofType: "bmp", inDirectory: "Resources")
         ?? Bundle(path: ".")?.path(forResource: name, ofType: "bmp", inDirectory: "Demo\\DemoApplication\\Resources")
@@ -488,6 +528,12 @@ func selectTableRow(matching values: [String], in table: NSTableView) -> Bool {
 }
 
 @MainActor
+func configureToolbarKeyLoop() {
+    popoverButton.nextKeyView = editableTextField
+    editableTextField.previousKeyView = popoverButton
+}
+
+@MainActor
 func focusName() -> String {
     guard let responder = window.firstResponder else {
         return "none"
@@ -513,6 +559,12 @@ func focusName() -> String {
     }
     if responder === moveButton {
         return "move button"
+    }
+    if responder === panelButton {
+        return "panel button"
+    }
+    if responder === popoverButton {
+        return "popover button"
     }
     if responder === alertButton {
         return "alert button"
@@ -594,6 +646,12 @@ func focusName() -> String {
     }
     if responder === pathControl {
         return "path control"
+    }
+    if responder === collectionView {
+        return "collection view"
+    }
+    if responder === visualEffectButton {
+        return "visual effect button"
     }
     if responder === scrollSelectedButton {
         return "scroll selected"
@@ -731,6 +789,44 @@ matrix.cellSize = NSMakeSize(104, 28)
 matrix.intercellSpacing = NSMakeSize(8, 8)
 matrix.selectCell(atRow: 0, column: 0)
 pathLabel.font = NSFont.boldSystemFont(ofSize: 12)
+collectionLabel.font = NSFont.boldSystemFont(ofSize: 12)
+collectionView.dataSource = collectionDataSource
+collectionView.itemSize = NSMakeSize(116, 28)
+collectionView.minimumInteritemSpacing = 8
+collectionView.minimumLineSpacing = 8
+collectionView.reloadData()
+visualEffectLabel.font = NSFont.boldSystemFont(ofSize: 12)
+visualEffectView.material = visualEffectMaterials[visualEffectIndex].0
+visualEffectView.blendingMode = .withinWindow
+visualEffectView.state = .active
+visualEffectView.addSubview(visualEffectTitle)
+visualEffectView.addSubview(visualEffectButton)
+openToolbarItem.label = "Open"
+openToolbarItem.paletteLabel = "Open"
+openToolbarItem.toolTip = "Toolbar open item"
+openToolbarItem.image = NSImage(systemSymbolName: "folder", accessibilityDescription: "Open")
+openToolbarItem.minSize = NSMakeSize(58, 30)
+openToolbarItem.maxSize = NSMakeSize(58, 30)
+saveToolbarItem.label = "Save"
+saveToolbarItem.paletteLabel = "Save"
+saveToolbarItem.toolTip = "Toolbar save item"
+saveToolbarItem.image = NSImage(systemSymbolName: "square.and.arrow.down", accessibilityDescription: "Save")
+saveToolbarItem.minSize = NSMakeSize(58, 30)
+saveToolbarItem.maxSize = NSMakeSize(58, 30)
+toggleToolbarItem.label = "Disable Save"
+toggleToolbarItem.paletteLabel = "Toggle Toolbar"
+toggleToolbarItem.toolTip = "Enable or disable the Save toolbar item"
+toggleToolbarItem.image = NSImage(systemSymbolName: "gearshape", accessibilityDescription: "Toggle Save")
+toggleToolbarItem.minSize = NSMakeSize(96, 30)
+toggleToolbarItem.maxSize = NSMakeSize(112, 30)
+demoToolbar.displayMode = .iconAndLabel
+demoToolbar.allowsUserCustomization = true
+demoToolbar.addItem(openToolbarItem)
+demoToolbar.addItem(saveToolbarItem)
+demoToolbar.addItem(toolbarSeparatorItem)
+demoToolbar.addItem(toolbarFlexibleSpaceItem)
+demoToolbar.addItem(toggleToolbarItem)
+window.toolbar = demoToolbar
 contentView.onBlankAreaMouseDown = { event in
     updateFocusDisplay()
 }
@@ -817,7 +913,9 @@ secureTextField.nextKeyView = alertButton
 button.nextKeyView = enableButton
 enableButton.nextKeyView = hideButton
 hideButton.nextKeyView = moveButton
-moveButton.nextKeyView = editableTextField
+moveButton.nextKeyView = panelButton
+panelButton.nextKeyView = popoverButton
+popoverButton.nextKeyView = editableTextField
 alertButton.nextKeyView = titleCheckbox
 titleCheckbox.nextKeyView = alertStylePopup
 alertStylePopup.nextKeyView = infoRadio
@@ -845,7 +943,8 @@ tabView.nextKeyView = clipHomeButton
 clipHomeButton.nextKeyView = clipCenterButton
 clipCenterButton.nextKeyView = clipCornerButton
 clipCornerButton.nextKeyView = pathControl
-pathControl.nextKeyView = scrollSelectedButton
+pathControl.nextKeyView = collectionView
+collectionView.nextKeyView = scrollSelectedButton
 scrollSelectedButton.nextKeyView = tableView
 tableView.nextKeyView = outlineView
 outlineView.nextKeyView = contentView
@@ -853,7 +952,8 @@ outlineView.nextKeyView = contentView
 contentView.previousKeyView = outlineView
 outlineView.previousKeyView = tableView
 tableView.previousKeyView = scrollSelectedButton
-scrollSelectedButton.previousKeyView = pathControl
+scrollSelectedButton.previousKeyView = collectionView
+collectionView.previousKeyView = pathControl
 pathControl.previousKeyView = clipCornerButton
 clipCornerButton.previousKeyView = clipCenterButton
 clipCenterButton.previousKeyView = clipHomeButton
@@ -887,7 +987,10 @@ hideButton.previousKeyView = enableButton
 enableButton.previousKeyView = button
 button.previousKeyView = contentView
 secureTextField.previousKeyView = editableTextField
-editableTextField.previousKeyView = moveButton
+editableTextField.previousKeyView = popoverButton
+popoverButton.previousKeyView = panelButton
+panelButton.previousKeyView = moveButton
+configureToolbarKeyLoop()
 
 editableTextField.isEditable = true
 editableTextField.onTextChanged = { field in
@@ -1081,6 +1184,81 @@ moveButton.onAction = { _ in
     statusLabel.stringValue = movedRight ? "Click button moved down" : "Click button moved back"
 }
 
+panelButton.onAction = { _ in
+    updateFocusDisplay()
+    let panel: NSPanel
+    if let existing = inspectorPanel {
+        panel = existing
+    } else {
+        let newPanel = NSPanel(
+            contentRect: NSMakeRect(180, 160, 280, 140),
+            styleMask: [.titled, .closable],
+            backing: .buffered,
+            defer: false
+        )
+        newPanel.title = "WinChocolate Panel"
+        newPanel.isFloatingPanel = true
+        newPanel.hidesOnDeactivate = true
+        let panelContent = NSView(frame: NSMakeRect(0, 0, 280, 140))
+        let panelTitle = NSTextField(string: "NSPanel", frame: NSMakeRect(24, 24, 120, 24))
+        let panelInfo = NSTextField(string: "Floating inspector slice", frame: NSMakeRect(24, 58, 200, 24))
+        panelTitle.font = NSFont.boldSystemFont(ofSize: 14)
+        panelContent.addSubview(panelTitle)
+        panelContent.addSubview(panelInfo)
+        newPanel.contentView = panelContent
+        inspectorPanel = newPanel
+        panel = newPanel
+    }
+
+    panel.orderFrontRegardless()
+    statusLabel.stringValue = "Panel ordered front"
+}
+
+let popoverContent = NSView(frame: NSMakeRect(0, 0, 260, 120))
+let popoverTitle = NSTextField(string: "NSPopover", frame: NSMakeRect(20, 16, 120, 24))
+let popoverInfo = NSTextField(string: "Borderless transient host", frame: NSMakeRect(20, 46, 200, 24))
+let popoverCloseButton = NSButton(title: "Close", frame: NSMakeRect(20, 82, 80, 28))
+popoverTitle.font = NSFont.boldSystemFont(ofSize: 14)
+popoverContent.backgroundColor = NSColor(calibratedRed: 1.0, green: 0.94, blue: 0.84, alpha: 1.0)
+popoverContent.addSubview(popoverTitle)
+popoverContent.addSubview(popoverInfo)
+popoverContent.addSubview(popoverCloseButton)
+popover.contentSize = NSMakeSize(260, 120)
+popover.behavior = .transient
+popover.contentViewController = NSViewController(view: popoverContent)
+
+popoverButton.onAction = { _ in
+    updateFocusDisplay()
+    if popover.isShown {
+        popover.performClose(nil)
+        statusLabel.stringValue = "Popover closed"
+    } else {
+        popover.show(relativeTo: popoverButton.bounds, of: popoverButton, preferredEdge: .maxY)
+        statusLabel.stringValue = "Popover shown"
+    }
+}
+
+popoverCloseButton.onAction = { _ in
+    popover.performClose(nil)
+    statusLabel.stringValue = "Popover close button"
+}
+
+openToolbarItem.onAction = { item in
+    updateFocusDisplay()
+    statusLabel.stringValue = "Toolbar item: \(item.label)"
+}
+saveToolbarItem.onAction = { item in
+    updateFocusDisplay()
+    statusLabel.stringValue = "Toolbar item: \(item.label)"
+}
+toggleToolbarItem.onAction = { _ in
+    updateFocusDisplay()
+    saveToolbarItem.isEnabled.toggle()
+    toggleToolbarItem.label = saveToolbarItem.isEnabled ? "Disable Save" : "Enable Save"
+    demoToolbar.validateVisibleItems()
+    statusLabel.stringValue = saveToolbarItem.isEnabled ? "Toolbar Save enabled" : "Toolbar Save disabled"
+}
+
 alertButton.onAction = { _ in
     updateFocusDisplay()
     let alert = NSAlert()
@@ -1179,6 +1357,29 @@ scrollSelectedButton.onAction = { _ in
     }
     statusLabel.stringValue = tableRowSummary(tableView, prefix: "Scrolled to selected")
 }
+collectionView.onAction = { control in
+    guard let collectionView = control as? NSCollectionView,
+          let indexPath = collectionView.selectionIndexPaths.sorted(by: { left, right in
+              if left.section == right.section {
+                  return left.item < right.item
+              }
+              return left.section < right.section
+          }).first,
+          let value = collectionView.item(at: indexPath)?.representedObject else {
+        return
+    }
+
+    updateFocusDisplay()
+    statusLabel.stringValue = "Collection selected: \(value)"
+}
+visualEffectButton.onAction = { _ in
+    updateFocusDisplay()
+    visualEffectIndex = (visualEffectIndex + 1) % visualEffectMaterials.count
+    let material = visualEffectMaterials[visualEffectIndex]
+    visualEffectView.material = material.0
+    visualEffectTitle.stringValue = "material: \(material.1)"
+    statusLabel.stringValue = "Visual effect material: \(material.1)"
+}
 tableView.onAction = { control in
     guard let table = control as? NSTableView else {
         return
@@ -1263,6 +1464,8 @@ controlsPage.addSubview(button)
 controlsPage.addSubview(enableButton)
 controlsPage.addSubview(hideButton)
 controlsPage.addSubview(moveButton)
+controlsPage.addSubview(panelButton)
+controlsPage.addSubview(popoverButton)
 controlsPage.addSubview(alertButton)
 controlsPage.addSubview(titleCheckbox)
 controlsPage.addSubview(alertStyleBox)
@@ -1315,6 +1518,10 @@ tablesPage.addSubview(clipCenterButton)
 tablesPage.addSubview(clipCornerButton)
 tablesPage.addSubview(pathLabel)
 tablesPage.addSubview(pathControl)
+tablesPage.addSubview(collectionLabel)
+tablesPage.addSubview(collectionView)
+tablesPage.addSubview(visualEffectLabel)
+tablesPage.addSubview(visualEffectView)
 tablesPage.addSubview(splitLabel)
 tablesPage.addSubview(splitView)
 tablesPage.addSubview(tableLabel)
@@ -1337,6 +1544,7 @@ if CommandLine.arguments.contains("--diagnose") {
     print("Is main window: \(window.isMainWindow)")
     print("Demo artwork path: \(demoArtworkPath)")
     print("Demo screen artwork path: \(demoScreenArtworkPath)")
+    window.close()
 } else {
     app.run()
 }

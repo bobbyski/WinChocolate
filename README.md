@@ -1,6 +1,6 @@
 # WinChocolate
 
-WinChocolate is an AppKit-shaped Swift framework for Windows. The goal is to let simple Cocoa/AppKit-style Swift apps move toward Windows by replacing:
+WinChocolate is an AppKit-compatible Swift framework for Windows. The goal is to let simple Cocoa/AppKit Swift apps move toward Windows by replacing:
 
 ```swift
 import Cocoa
@@ -42,7 +42,11 @@ WinChocolate is early and intentionally incomplete. The current milestone proves
 - Initial standalone `NSScroller`
 - Initial `NSDatePicker`
 - Initial `NSSplitView` pane layout and programmatic divider positioning
-- First `NSClipView`, `NSScrollView`, `NSTableColumn`, `NSTableView`, `NSOutlineView`, `NSBrowser`, table cell/view, row/column selection, action/double-action, and sort-descriptor compatibility slice
+- Initial `NSVisualEffectView` material/blending/state surface with a classic fallback background
+- First `NSPanel` subclass slice with common panel flags
+- First `NSPopover` slice hosted by a menu-less borderless panel
+- First `NSToolbar` / `NSToolbarItem` model slice docked through `NSWindow.toolbar` with classic `ToolbarWindow32` rendering
+- First `NSClipView`, `NSScrollView`, `NSTableColumn`, `NSTableView`, `NSOutlineView`, `NSBrowser`, `NSCollectionView`, table cell/view, row/column selection, action/double-action, and sort-descriptor compatibility slice
 - Native text, frame, hidden, and enabled updates
 - Native modal `NSAlert` through `MessageBoxW`
 - Initial `NSColor` support for view backgrounds and text field text color
@@ -54,7 +58,8 @@ WinChocolate is early and intentionally incomplete. The current milestone proves
 - Native mouse-down/up/move dispatch into `NSView` responder methods
 - Native key-down/up dispatch with key code, basic characters, and modifier flags
 - Experimental editable text-field Tab interception for key-view traversal
-- SwiftPM demo app with a click counter, editable/secure/combo/token text, path display, multiline notes, tabs, segmented controls, bitmap image tests, clip-view scrolling, split view panes, value controls, a standalone scroller, and larger table/outline selection exercises
+- Tab-order/focus visibility is now tracked as a dedicated late-stage deep dive instead of an ad hoc smoke test
+- SwiftPM demo app with a click counter, editable/secure/combo/token text, path display, multiline notes, tabs, segmented controls, bitmap image tests, clip-view scrolling, split view panes, value controls, a standalone scroller, and larger table/outline/collection selection exercises
 
 The Win32 backend currently uses a narrow manual User32/Gdi32 FFI layer because this local ARM64 Swift toolchain cannot import `WinSDK` cleanly.
 
