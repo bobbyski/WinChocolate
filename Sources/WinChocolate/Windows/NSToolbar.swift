@@ -208,13 +208,15 @@ open class NSToolbar: NSObject {
         let moveLeftButton = NSButton(title: "Move Left", frame: NSMakeRect(214, 322, 86, 28))
         let moveRightButton = NSButton(title: "Move Right", frame: NSMakeRect(308, 322, 92, 28))
         let removeButton = NSButton(title: "Remove", frame: NSMakeRect(408, 322, 76, 28))
+        let dragPreview = NSToolbarCustomizationTile(title: "", frame: NSMakeRect(-10_000, -10_000, 1, 1))
         var selectedIndex: Int?
         var dragSource: CustomizationDragSource?
-        var dragPreview: NSToolbarCustomizationTile?
         var toolbarTileViews: [NSView] = []
 
         paletteView.backgroundColor = NSColor(calibratedRed: 0.94, green: 0.94, blue: 0.94, alpha: 1.0)
         defaultStrip.backgroundColor = NSColor(calibratedRed: 0.97, green: 0.97, blue: 0.97, alpha: 1.0)
+        dragPreview.isEnabled = false
+        dragPreview.isHidden = true
         content.tag = 1_100
         displayModePopup.addItems(withTitles: ["Icon & Label", "Icon Only", "Label Only"])
         switch displayMode {
@@ -386,26 +388,20 @@ open class NSToolbar: NSObject {
         }
 
         func updateDragPreview(for tile: NSToolbarCustomizationTile, frame: NSRect) -> Bool {
-            if dragPreview == nil {
-                let origin = content.convert(NSZeroPoint, from: tile)
-                let preview = NSToolbarCustomizationTile(title: tile.title, frame: NSMakeRect(origin.x, origin.y, tile.frame.size.width, tile.frame.size.height))
-                preview.isEnabled = false
-                content.addSubview(preview)
-                dragPreview = preview
-            }
-
-            guard let parent = tile.superview, let preview = dragPreview else {
+            guard let parent = tile.superview else {
                 return false
             }
 
             let origin = content.convert(frame.origin, from: parent)
-            preview.frame = NSMakeRect(origin.x, origin.y, frame.size.width, frame.size.height)
+            dragPreview.title = tile.title
+            dragPreview.frame = NSMakeRect(origin.x, origin.y, frame.size.width, frame.size.height)
+            dragPreview.isHidden = false
             return true
         }
 
         func clearDragPreview() {
-            dragPreview?.removeFromSuperview()
-            dragPreview = nil
+            dragPreview.isHidden = true
+            dragPreview.frame = NSMakeRect(-10_000, -10_000, 1, 1)
         }
 
         func rebuildToolbarStrip() {
@@ -520,6 +516,7 @@ open class NSToolbar: NSObject {
         panel.contentView = content
         customizationPanel = panel
         rebuildToolbarStrip()
+        content.addSubview(dragPreview)
         panel.makeKeyAndOrderFront(sender)
     }
 
