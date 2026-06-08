@@ -272,6 +272,9 @@ open class NSView: NSResponder {
         backend.registerMouseMovedAction(for: handle) { [weak self] event in
             self?.mouseMoved(with: event)
         }
+        backend.registerMouseDraggedAction(for: handle) { [weak self] event in
+            self?.mouseDragged(with: event)
+        }
         backend.registerKeyDownAction(for: handle) { [weak self] event in
             self?.keyDown(with: event)
         }

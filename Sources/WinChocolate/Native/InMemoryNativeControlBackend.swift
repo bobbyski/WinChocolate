@@ -153,6 +153,9 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     /// Registered mouse-moved actions by handle.
     public private(set) var mouseMovedActions: [NativeHandle: (NSEvent) -> Void] = [:]
 
+    /// Registered mouse-dragged actions by handle.
+    public private(set) var mouseDraggedActions: [NativeHandle: (NSEvent) -> Void] = [:]
+
     /// Registered key-down actions by handle.
     public private(set) var keyDownActions: [NativeHandle: (NSEvent) -> Void] = [:]
 
@@ -217,6 +220,7 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
         mouseDownActions.removeValue(forKey: handle)
         mouseUpActions.removeValue(forKey: handle)
         mouseMovedActions.removeValue(forKey: handle)
+        mouseDraggedActions.removeValue(forKey: handle)
         keyDownActions.removeValue(forKey: handle)
         keyUpActions.removeValue(forKey: handle)
         toolbarActions.removeValue(forKey: handle)
@@ -235,6 +239,7 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
         mouseDownActions.removeValue(forKey: handle)
         mouseUpActions.removeValue(forKey: handle)
         mouseMovedActions.removeValue(forKey: handle)
+        mouseDraggedActions.removeValue(forKey: handle)
         keyDownActions.removeValue(forKey: handle)
         keyUpActions.removeValue(forKey: handle)
         toolbarActions.removeValue(forKey: handle)
@@ -782,6 +787,11 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     /// Records a mouse-moved action.
     public func registerMouseMovedAction(for handle: NativeHandle, action: @escaping (NSEvent) -> Void) {
         mouseMovedActions[handle] = action
+    }
+
+    /// Records a mouse-dragged action.
+    public func registerMouseDraggedAction(for handle: NativeHandle, action: @escaping (NSEvent) -> Void) {
+        mouseDraggedActions[handle] = action
     }
 
     /// Records a key-down action.

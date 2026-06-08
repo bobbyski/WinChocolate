@@ -343,6 +343,7 @@ let saveToolbarItem = NSToolbarItem(itemIdentifier: "save")
 let toolbarSeparatorItem = NSToolbarItem(itemIdentifier: .separator)
 let toolbarFlexibleSpaceItem = NSToolbarItem(itemIdentifier: .flexibleSpace)
 let toggleToolbarItem = NSToolbarItem(itemIdentifier: "toggleToolbar")
+let customizeToolbarItem = NSToolbarItem(itemIdentifier: "customizeToolbar")
 let contentFocusColor = NSColor(calibratedRed: 0.92, green: 0.97, blue: 1.0, alpha: 1.0)
 let normalContentColor = NSColor.windowBackgroundColor
 let controlFocusColor = NSColor(calibratedRed: 1.0, green: 0.96, blue: 0.72, alpha: 1.0)
@@ -378,6 +379,38 @@ let imageModes: [(NSImageView.ImageScaling, NSImageView.ImageAlignment, String, 
     (.scaleAxesIndependently, .alignBottomRight, demoArtworkPath, "bird bottom-right/axes"),
     (.scaleNone, .alignRight, demoScreenArtworkPath, "screen right/none")
 ]
+
+final class DemoToolbarDelegate: NSToolbarDelegate {
+    let allowedIdentifiers: [NSToolbarItem.Identifier]
+    let defaultIdentifiers: [NSToolbarItem.Identifier]
+    let itemProvider: (NSToolbarItem.Identifier) -> NSToolbarItem?
+
+    init(
+        allowedIdentifiers: [NSToolbarItem.Identifier],
+        defaultIdentifiers: [NSToolbarItem.Identifier],
+        itemProvider: @escaping (NSToolbarItem.Identifier) -> NSToolbarItem?
+    ) {
+        self.allowedIdentifiers = allowedIdentifiers
+        self.defaultIdentifiers = defaultIdentifiers
+        self.itemProvider = itemProvider
+    }
+
+    func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
+        allowedIdentifiers
+    }
+
+    func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
+        defaultIdentifiers
+    }
+
+    func toolbar(
+        _ toolbar: NSToolbar,
+        itemForItemIdentifier itemIdentifier: NSToolbarItem.Identifier,
+        willBeInsertedIntoToolbar flag: Bool
+    ) -> NSToolbarItem? {
+        itemProvider(itemIdentifier)
+    }
+}
 
 func modifierText(for event: NSEvent) -> String {
     var names: [String] = []
@@ -819,13 +852,57 @@ toggleToolbarItem.toolTip = "Enable or disable the Save toolbar item"
 toggleToolbarItem.image = NSImage(systemSymbolName: "gearshape", accessibilityDescription: "Toggle Save")
 toggleToolbarItem.minSize = NSMakeSize(96, 30)
 toggleToolbarItem.maxSize = NSMakeSize(112, 30)
+customizeToolbarItem.label = "Customize"
+customizeToolbarItem.paletteLabel = "Customize Toolbar"
+customizeToolbarItem.toolTip = "Customize the toolbar"
+customizeToolbarItem.image = NSImage(systemSymbolName: "slider.horizontal.3", accessibilityDescription: "Customize Toolbar")
+customizeToolbarItem.minSize = NSMakeSize(86, 30)
+customizeToolbarItem.maxSize = NSMakeSize(96, 30)
+let demoToolbarDelegate = DemoToolbarDelegate(
+    allowedIdentifiers: [
+        "open",
+        "save",
+        .separator,
+        .flexibleSpace,
+        "toggleToolbar",
+        "customizeToolbar"
+    ],
+    defaultIdentifiers: [
+        "open",
+        "save",
+        .separator,
+        .flexibleSpace,
+        "toggleToolbar",
+        "customizeToolbar"
+    ],
+    itemProvider: { identifier in
+        switch identifier.rawValue {
+        case "open":
+            return openToolbarItem
+        case "save":
+            return saveToolbarItem
+        case NSToolbarItem.Identifier.separator.rawValue:
+            return toolbarSeparatorItem
+        case NSToolbarItem.Identifier.flexibleSpace.rawValue:
+            return toolbarFlexibleSpaceItem
+        case "toggleToolbar":
+            return toggleToolbarItem
+        case "customizeToolbar":
+            return customizeToolbarItem
+        default:
+            return nil
+        }
+    }
+)
 demoToolbar.displayMode = .iconAndLabel
 demoToolbar.allowsUserCustomization = true
+demoToolbar.delegate = demoToolbarDelegate
 demoToolbar.addItem(openToolbarItem)
 demoToolbar.addItem(saveToolbarItem)
 demoToolbar.addItem(toolbarSeparatorItem)
 demoToolbar.addItem(toolbarFlexibleSpaceItem)
 demoToolbar.addItem(toggleToolbarItem)
+demoToolbar.addItem(customizeToolbarItem)
 window.toolbar = demoToolbar
 contentView.onBlankAreaMouseDown = { event in
     updateFocusDisplay()
@@ -1257,6 +1334,11 @@ toggleToolbarItem.onAction = { _ in
     toggleToolbarItem.label = saveToolbarItem.isEnabled ? "Disable Save" : "Enable Save"
     demoToolbar.validateVisibleItems()
     statusLabel.stringValue = saveToolbarItem.isEnabled ? "Toolbar Save enabled" : "Toolbar Save disabled"
+}
+customizeToolbarItem.onAction = { _ in
+    updateFocusDisplay()
+    demoToolbar.runCustomizationPalette(nil)
+    statusLabel.stringValue = "Toolbar customization opened"
 }
 
 alertButton.onAction = { _ in

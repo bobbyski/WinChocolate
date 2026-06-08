@@ -273,6 +273,9 @@ public protocol NativeControlBackend: AnyObject {
     /// Registers the action to perform when a native view receives a mouse-moved event.
     func registerMouseMovedAction(for handle: NativeHandle, action: @escaping (NSEvent) -> Void)
 
+    /// Registers the action to perform when a native view receives a mouse-dragged event.
+    func registerMouseDraggedAction(for handle: NativeHandle, action: @escaping (NSEvent) -> Void)
+
     /// Registers the action to perform when a native view receives a key-down event.
     func registerKeyDownAction(for handle: NativeHandle, action: @escaping (NSEvent) -> Void)
 

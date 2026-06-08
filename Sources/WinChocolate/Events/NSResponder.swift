@@ -37,6 +37,11 @@ open class NSResponder: NSObject {
         nextResponder?.mouseMoved(with: event)
     }
 
+    /// Handles mouse dragging with the left button down.
+    open func mouseDragged(with event: NSEvent) {
+        nextResponder?.mouseDragged(with: event)
+    }
+
     /// Handles a key press.
     open func keyDown(with event: NSEvent) {
         nextResponder?.keyDown(with: event)

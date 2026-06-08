@@ -12,6 +12,35 @@ func clearApplicationWindows() {
     }
 }
 
+final class RecordingToolbarDelegate: NSToolbarDelegate {
+    var allowedIdentifiers: [NSToolbarItem.Identifier] = ["open", "save", "customize"]
+    var defaultIdentifiers: [NSToolbarItem.Identifier] = ["open", "save"]
+    var requestedIdentifiers: [NSToolbarItem.Identifier] = []
+    var insertionFlags: [Bool] = []
+
+    func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
+        allowedIdentifiers
+    }
+
+    func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
+        defaultIdentifiers
+    }
+
+    func toolbar(
+        _ toolbar: NSToolbar,
+        itemForItemIdentifier itemIdentifier: NSToolbarItem.Identifier,
+        willBeInsertedIntoToolbar flag: Bool
+    ) -> NSToolbarItem? {
+        requestedIdentifiers.append(itemIdentifier)
+        insertionFlags.append(flag)
+
+        let item = NSToolbarItem(itemIdentifier: itemIdentifier)
+        item.label = itemIdentifier.rawValue == "customize" ? "Customize" : "Save"
+        item.paletteLabel = item.label
+        return item
+    }
+}
+
 func testWindowRealizationCreatesNativeHierarchy() {
     let backend = InMemoryNativeControlBackend()
     let window = NSWindow(
@@ -208,10 +237,15 @@ func testClipViewScrollsDocumentView() {
 
 final class RecordingResponder: NSResponder {
     var mouseDownCount = 0
+    var mouseDraggedCount = 0
     var keyDownCount = 0
 
     override func mouseDown(with event: NSEvent) {
         mouseDownCount += 1
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        mouseDraggedCount += 1
     }
 
     override func keyDown(with event: NSEvent) {
@@ -233,6 +267,7 @@ final class RecordingView: NSView {
     var mouseDownCount = 0
     var mouseUpCount = 0
     var mouseMovedCount = 0
+    var mouseDraggedCount = 0
     var keyDownCount = 0
     var keyUpCount = 0
     var lastEvent: NSEvent?
@@ -249,6 +284,11 @@ final class RecordingView: NSView {
 
     override func mouseMoved(with event: NSEvent) {
         mouseMovedCount += 1
+        lastEvent = event
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        mouseDraggedCount += 1
         lastEvent = event
     }
 
@@ -1521,13 +1561,16 @@ func testResponderForwardsUnhandledEvents() {
     let child = NSResponder()
     let parent = RecordingResponder()
     let mouseEvent = NSEvent(type: .leftMouseDown, locationInWindow: NSMakePoint(4, 5))
+    let dragEvent = NSEvent(type: .leftMouseDragged, locationInWindow: NSMakePoint(8, 9))
     let keyEvent = NSEvent(type: .keyDown, locationInWindow: NSMakePoint(0, 0))
 
     child.nextResponder = parent
     child.mouseDown(with: mouseEvent)
+    child.mouseDragged(with: dragEvent)
     child.keyDown(with: keyEvent)
 
     expect(parent.mouseDownCount == 1, "Mouse event did not forward to next responder.")
+    expect(parent.mouseDraggedCount == 1, "Mouse-dragged event did not forward to next responder.")
     expect(parent.keyDownCount == 1, "Key event did not forward to next responder.")
 }
 
@@ -1774,6 +1817,18 @@ func testNativeMouseMovedDispatchesToView() {
 
     expect(view.mouseMovedCount == 1, "Native mouse-moved action did not reach view.")
     expect(view.lastEvent == event, "Native mouse-moved event was not forwarded intact.")
+}
+
+func testNativeMouseDraggedDispatchesToView() {
+    let backend = InMemoryNativeControlBackend()
+    let view = RecordingView(frame: NSMakeRect(0, 0, 100, 100))
+    let handle = view.realizeNativePeer(in: backend, parent: nil)
+    let event = NSEvent(type: .leftMouseDragged, locationInWindow: NSMakePoint(11, 13), modifierFlags: [.option])
+
+    backend.mouseDraggedActions[handle]?(event)
+
+    expect(view.mouseDraggedCount == 1, "Native mouse-dragged action did not reach view.")
+    expect(view.lastEvent == event, "Native mouse-dragged event was not forwarded intact.")
 }
 
 func testNativeKeyDownDispatchesToView() {
@@ -2139,6 +2194,75 @@ func testToolbarVisibilityAndItemActions() {
     expect(visibilityStates == [false, true], "Toolbar visibility change callback did not receive expected states.")
 }
 
+func testToolbarCustomizationDelegateAndDefaultItems() {
+    let toolbar = NSToolbar(identifier: "customizable")
+    let delegate = RecordingToolbarDelegate()
+    let openItem = NSToolbarItem(itemIdentifier: "open")
+
+    openItem.label = "Open"
+    toolbar.delegate = delegate
+    toolbar.addItem(openItem)
+
+    toolbar.setVisibleItemIdentifiers(["open", "customize"])
+
+    expect(toolbar.items.map(\.itemIdentifier) == ["open", "customize"], "Toolbar did not apply visible customization identifiers.")
+    expect(toolbar.item(withIdentifier: "customize")?.label == "Customize", "Toolbar did not retain delegate-created customization item.")
+    expect(delegate.requestedIdentifiers == ["customize"], "Toolbar did not ask delegate for missing customization item.")
+    expect(delegate.insertionFlags == [true], "Toolbar did not pass insertion flag when creating visible item.")
+    expect(openItem.toolbar === toolbar, "Existing toolbar item lost its toolbar back-reference.")
+
+    toolbar.resetVisibleItemsToDefault()
+
+    expect(toolbar.items.map(\.itemIdentifier) == ["open", "save"], "Toolbar did not restore delegate default item identifiers.")
+    expect(toolbar.item(withIdentifier: "save")?.label == "Save", "Toolbar did not create default item through delegate.")
+    expect(toolbar.item(withIdentifier: "customize")?.label == "Customize", "Toolbar item store did not preserve hidden customization item.")
+}
+
+func testToolbarCustomizationAllowsDuplicateStructuralItems() {
+    let toolbar = NSToolbar(identifier: "customizable")
+
+    toolbar.setVisibleItemIdentifiers([.separator, .separator, .flexibleSpace, .flexibleSpace])
+
+    expect(toolbar.items.map(\.itemIdentifier) == [.separator, .separator, .flexibleSpace, .flexibleSpace], "Toolbar did not keep duplicate structural customization items.")
+    expect(toolbar.items[0] !== toolbar.items[1], "Duplicate separators should be distinct toolbar item instances.")
+    expect(toolbar.items[2] !== toolbar.items[3], "Duplicate flexible spaces should be distinct toolbar item instances.")
+}
+
+func testToolbarCustomizationPaletteShowsToolbarDropTargetAtTop() {
+    clearApplicationWindows()
+
+    let toolbar = NSToolbar(identifier: "customizable")
+    let delegate = RecordingToolbarDelegate()
+    let openItem = NSToolbarItem(itemIdentifier: "open")
+    let saveItem = NSToolbarItem(itemIdentifier: "save")
+
+    openItem.label = "Open"
+    saveItem.label = "Save"
+    toolbar.delegate = delegate
+    toolbar.allowsUserCustomization = true
+    toolbar.addItem(openItem)
+    toolbar.addItem(saveItem)
+
+    toolbar.runCustomizationPalette(nil)
+
+    guard let panel = NSApplication.shared.windows.compactMap({ $0 as? NSPanel }).last,
+          let contentView = panel.contentView else {
+        expect(false, "Toolbar customization palette did not create a panel.")
+        return
+    }
+
+    let toolbarButtons = contentView.subviews
+        .compactMap { $0 as? NSButton }
+        .filter { $0.frame.origin.y == 7 }
+
+    expect(contentView.tag == 1_100, "Toolbar customization palette did not mark the content as the toolbar drop surface.")
+    expect(toolbarButtons.map(\.title) == ["Open", "Save"], "Toolbar customization top row did not mirror visible toolbar items.")
+    expect(toolbarButtons.allSatisfy { $0.frame.origin.y < 42 }, "Toolbar customization top row was not docked at the top.")
+    expect(!contentView.subviews.compactMap { ($0 as? NSTextField)?.stringValue }.contains("Mock toolbar drop target:"), "Toolbar customization palette still labels the drop target as a mock toolbar.")
+
+    clearApplicationWindows()
+}
+
 func testToolbarViewUsesNativeToolbarPeerAndDispatchesItems() {
     let backend = InMemoryNativeControlBackend()
     let toolbar = NSToolbar(identifier: "native")
@@ -2184,6 +2308,16 @@ func testToolbarViewUsesNativeToolbarPeerAndDispatchesItems() {
     toolbarView.reloadItems()
 
     expect(backend.records[handle]?.toolbarItems.last?.isEnabled == true, "Toolbar reload did not update enabled state.")
+
+    toolbar.displayMode = .iconOnly
+
+    expect(backend.records[handle]?.toolbarItems.first?.label == "", "Toolbar icon-only mode did not hide item labels.")
+    expect(backend.records[handle]?.toolbarItems.first?.imageName == "folder", "Toolbar icon-only mode should preserve item images.")
+
+    toolbar.displayMode = .labelOnly
+
+    expect(backend.records[handle]?.toolbarItems.first?.label == "Open", "Toolbar label-only mode should preserve item labels.")
+    expect(backend.records[handle]?.toolbarItems.first?.imageName == nil, "Toolbar label-only mode did not hide item images.")
 }
 
 func testWindowToolbarCreatesDockedNativePeerAndReservesContent() {
@@ -3270,6 +3404,7 @@ testNativeMouseDownDispatchesToView()
 testNativeMouseDownOnControlMakesControlFirstResponder()
 testNativeMouseUpDispatchesToView()
 testNativeMouseMovedDispatchesToView()
+testNativeMouseDraggedDispatchesToView()
 testNativeKeyDownDispatchesToView()
 testNativeKeyUpDispatchesToView()
 testControlClosureActionIsInvoked()
@@ -3285,6 +3420,9 @@ testPanelStoresPanelStateAndOrdersFront()
 testPopoverShowsClosesAndReopensFromAnchorView()
 testToolbarStoresItemsAndAttachesToWindow()
 testToolbarVisibilityAndItemActions()
+testToolbarCustomizationDelegateAndDefaultItems()
+testToolbarCustomizationAllowsDuplicateStructuralItems()
+testToolbarCustomizationPaletteShowsToolbarDropTargetAtTop()
 testToolbarViewUsesNativeToolbarPeerAndDispatchesItems()
 testWindowToolbarCreatesDockedNativePeerAndReservesContent()
 testEditableTextFieldUsesEditableNativePeer()

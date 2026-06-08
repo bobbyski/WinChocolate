@@ -350,6 +350,12 @@ private func winSetBkColor(_ deviceContext: HDC?, _ color: DWORD) -> DWORD
 @_silgen_name("ScreenToClient")
 private func winScreenToClient(_ hwnd: HWND?, _ point: UnsafeMutablePointer<POINT>?) -> Int32
 
+@_silgen_name("SetCapture")
+private func winSetCapture(_ hwnd: HWND?) -> HWND?
+
+@_silgen_name("ReleaseCapture")
+private func winReleaseCapture() -> Int32
+
 @_silgen_name("SetTextColor")
 private func winSetTextColor(_ deviceContext: HDC?, _ color: DWORD) -> DWORD
 
@@ -420,6 +426,7 @@ private let wmGetDlgCode: UINT = 0x0087
 private let wmMouseMove: UINT = 0x0200
 private let wmLButtonDown: UINT = 0x0201
 private let wmLButtonUp: UINT = 0x0202
+private let mkLButton: WPARAM = 0x0001
 private let wmApp: UINT = 0x8000
 private let wmWinChocolateAsync: UINT = wmApp + 1
 private let bmGetCheck: UINT = 0x00f0
@@ -624,6 +631,7 @@ public final class Win32NativeControlBackend: NativeControlBackend {
     private var mouseDownActions: [UInt: (NSEvent) -> Void] = [:]
     private var mouseUpActions: [UInt: (NSEvent) -> Void] = [:]
     private var mouseMovedActions: [UInt: (NSEvent) -> Void] = [:]
+    private var mouseDraggedActions: [UInt: (NSEvent) -> Void] = [:]
     private var keyDownActions: [UInt: (NSEvent) -> Void] = [:]
     private var keyUpActions: [UInt: (NSEvent) -> Void] = [:]
     private var windowCloseActions: [UInt: () -> Void] = [:]
@@ -751,6 +759,7 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         mouseDownActions.removeValue(forKey: handle.rawValue)
         mouseUpActions.removeValue(forKey: handle.rawValue)
         mouseMovedActions.removeValue(forKey: handle.rawValue)
+        mouseDraggedActions.removeValue(forKey: handle.rawValue)
         keyDownActions.removeValue(forKey: handle.rawValue)
         keyUpActions.removeValue(forKey: handle.rawValue)
         windowCloseActions.removeValue(forKey: handle.rawValue)
@@ -787,6 +796,7 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         mouseDownActions.removeValue(forKey: handle.rawValue)
         mouseUpActions.removeValue(forKey: handle.rawValue)
         mouseMovedActions.removeValue(forKey: handle.rawValue)
+        mouseDraggedActions.removeValue(forKey: handle.rawValue)
         keyDownActions.removeValue(forKey: handle.rawValue)
         keyUpActions.removeValue(forKey: handle.rawValue)
         clearToolbarCommands(for: handle)
@@ -1944,6 +1954,11 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         mouseMovedActions[handle.rawValue] = action
     }
 
+    /// Registers the action to perform when a native view receives a mouse-dragged event.
+    public func registerMouseDraggedAction(for handle: NativeHandle, action: @escaping (NSEvent) -> Void) {
+        mouseDraggedActions[handle.rawValue] = action
+    }
+
     /// Registers the action to perform when a native view receives a key-down event.
     public func registerKeyDownAction(for handle: NativeHandle, action: @escaping (NSEvent) -> Void) {
         keyDownActions[handle.rawValue] = action
@@ -2035,7 +2050,17 @@ public final class Win32NativeControlBackend: NativeControlBackend {
             action(keyEvent(type: .keyUp, wParam: wParam))
             return 0
         case wmMouseMove:
-            guard let hwnd, let action = mouseMovedActions[nativeHandle(from: hwnd).rawValue] else {
+            guard let hwnd else {
+                return nil
+            }
+
+            let handle = nativeHandle(from: hwnd)
+            if (wParam & mkLButton) != 0, let action = mouseDraggedActions[handle.rawValue] {
+                action(NSEvent(type: .leftMouseDragged, locationInWindow: point(from: lParam), modifierFlags: currentModifierFlags()))
+                return 0
+            }
+
+            guard let action = mouseMovedActions[handle.rawValue] else {
                 return nil
             }
 
@@ -2046,6 +2071,7 @@ public final class Win32NativeControlBackend: NativeControlBackend {
                 return nil
             }
 
+            _ = winSetCapture(hwnd)
             _ = winSetFocus(hwnd)
             action(NSEvent(type: .leftMouseDown, locationInWindow: point(from: lParam), modifierFlags: currentModifierFlags()))
             return 0
@@ -2055,6 +2081,7 @@ public final class Win32NativeControlBackend: NativeControlBackend {
             }
 
             action(NSEvent(type: .leftMouseUp, locationInWindow: point(from: lParam), modifierFlags: currentModifierFlags()))
+            _ = winReleaseCapture()
             return 0
         case wmEraseBackground:
             guard let hwnd else {
@@ -2291,6 +2318,23 @@ public final class Win32NativeControlBackend: NativeControlBackend {
 
     private func dispatchControlMessage(hwnd: HWND?, message: UINT, wParam: WPARAM, lParam: LPARAM) -> LRESULT? {
         switch message {
+        case wmMouseMove:
+            guard let hwnd else {
+                return nil
+            }
+
+            let handle = actionHandle(from: hwnd)
+            if (wParam & mkLButton) != 0, let action = mouseDraggedActions[handle.rawValue] {
+                action(NSEvent(type: .leftMouseDragged, locationInWindow: point(from: lParam), modifierFlags: currentModifierFlags()))
+                return nil
+            }
+
+            guard let action = mouseMovedActions[handle.rawValue] else {
+                return nil
+            }
+
+            action(NSEvent(type: .mouseMoved, locationInWindow: point(from: lParam), modifierFlags: currentModifierFlags()))
+            return nil
         case wmGetDlgCode:
             let original = callOriginalControlProcedure(hwnd: hwnd, message: message, wParam: wParam, lParam: lParam)
             return original | dlgcWantTab
@@ -2321,6 +2365,7 @@ public final class Win32NativeControlBackend: NativeControlBackend {
             if stepperRanges[handle.rawValue] != nil,
                let action = controlActions[handle.rawValue] {
                 updateStepperPosition(fromClickAt: point(from: lParam), hwnd: hwnd, for: handle)
+                _ = winSetCapture(hwnd)
                 _ = winSetFocus(hwnd)
                 action()
                 return 0
@@ -2330,6 +2375,7 @@ public final class Win32NativeControlBackend: NativeControlBackend {
                 return nil
             }
 
+            _ = winSetCapture(hwnd)
             _ = winSetFocus(hwnd)
             action(NSEvent(type: .leftMouseDown, locationInWindow: point(from: lParam), modifierFlags: currentModifierFlags()))
             return nil
@@ -2340,6 +2386,7 @@ public final class Win32NativeControlBackend: NativeControlBackend {
             }
 
             action(NSEvent(type: .leftMouseUp, locationInWindow: point(from: lParam), modifierFlags: currentModifierFlags()))
+            _ = winReleaseCapture()
             return nil
         default:
             return nil

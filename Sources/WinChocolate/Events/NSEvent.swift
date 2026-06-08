@@ -14,6 +14,9 @@ public struct NSEvent: Equatable, Sendable {
         /// Mouse movement.
         case mouseMoved
 
+        /// Mouse movement while the left mouse button is down.
+        case leftMouseDragged
+
         /// A key press.
         case keyDown
 
