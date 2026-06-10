@@ -278,8 +278,8 @@ open class NSToolbar: NSObject {
             return max(48, (rowWidth - (horizontalInset * 2) - ((itemCount - 1) * spacing)) / itemCount)
         }
 
-        func contentPoint(from event: NSEvent, source: NSView) -> NSPoint {
-            content.convert(event.locationInWindow, from: source)
+        func contentPoint(from event: NSEvent, source _: NSView) -> NSPoint {
+            content.convert(event.locationInWindow, from: nil)
         }
 
         func toolbarInsertionIndex(for event: NSEvent, source: NSView) -> Int? {
