@@ -360,10 +360,11 @@ open class NSToolbar: NSObject {
             }
 
             let movedIdentifier = identifiers.remove(at: currentIndex)
-            var destination = min(max(insertionIndex, 0), identifiers.count)
+            var destination = insertionIndex
             if currentIndex < insertionIndex {
                 destination = max(destination - 1, 0)
             }
+            destination = min(max(destination, 0), identifiers.count)
             identifiers.insert(movedIdentifier, at: destination)
             setVisibleItemIdentifiers(identifiers)
             selectedIndex = destination

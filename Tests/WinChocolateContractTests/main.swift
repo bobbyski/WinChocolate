@@ -2263,6 +2263,52 @@ func testToolbarCustomizationPaletteShowsToolbarDropTargetAtTop() {
     clearApplicationWindows()
 }
 
+func testToolbarCustomizationMovesExistingItemToEnd() {
+    clearApplicationWindows()
+
+    let toolbar = NSToolbar(identifier: "customizable")
+    let openItem = NSToolbarItem(itemIdentifier: "open")
+    let saveItem = NSToolbarItem(itemIdentifier: "save")
+    let printItem = NSToolbarItem(itemIdentifier: "print")
+
+    openItem.label = "Open"
+    saveItem.label = "Save"
+    printItem.label = "Print"
+    toolbar.allowsUserCustomization = true
+    toolbar.addItem(openItem)
+    toolbar.addItem(saveItem)
+    toolbar.addItem(printItem)
+
+    toolbar.runCustomizationPalette(nil)
+
+    guard let panel = NSApplication.shared.windows.compactMap({ $0 as? NSPanel }).last,
+          let contentView = panel.contentView else {
+        expect(false, "Toolbar customization palette did not create a panel.")
+        return
+    }
+
+    let toolbarButtons = contentView.subviews
+        .compactMap { $0 as? NSButton }
+        .filter { $0.frame.origin.y == 7 }
+        .sorted { $0.frame.origin.x < $1.frame.origin.x }
+
+    guard let openButton = toolbarButtons.first else {
+        expect(false, "Toolbar customization top row did not create toolbar item buttons.")
+        return
+    }
+
+    let start = openButton.convert(NSMakePoint(openButton.bounds.size.width / 2, openButton.bounds.size.height / 2), to: nil)
+    let end = contentView.convert(NSMakePoint(610, 20), to: nil)
+
+    openButton.mouseDown(with: NSEvent(type: .leftMouseDown, locationInWindow: start))
+    openButton.mouseDragged(with: NSEvent(type: .leftMouseDragged, locationInWindow: end))
+    openButton.mouseUp(with: NSEvent(type: .leftMouseUp, locationInWindow: end))
+
+    expect(toolbar.items.map(\.itemIdentifier) == ["save", "print", "open"], "Dragging an existing toolbar item to the far end did not move it to the end.")
+
+    clearApplicationWindows()
+}
+
 func testToolbarViewUsesNativeToolbarPeerAndDispatchesItems() {
     let backend = InMemoryNativeControlBackend()
     let toolbar = NSToolbar(identifier: "native")
@@ -3423,6 +3469,7 @@ testToolbarVisibilityAndItemActions()
 testToolbarCustomizationDelegateAndDefaultItems()
 testToolbarCustomizationAllowsDuplicateStructuralItems()
 testToolbarCustomizationPaletteShowsToolbarDropTargetAtTop()
+testToolbarCustomizationMovesExistingItemToEnd()
 testToolbarViewUsesNativeToolbarPeerAndDispatchesItems()
 testWindowToolbarCreatesDockedNativePeerAndReservesContent()
 testEditableTextFieldUsesEditableNativePeer()
