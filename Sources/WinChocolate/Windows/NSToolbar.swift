@@ -433,6 +433,12 @@ open class NSToolbar: NSObject {
                     }
                     dragSource = nil
                 }
+                button.onDragFrameChanged = { tile, frame in
+                    updateDragPreview(for: tile, frame: frame)
+                }
+                button.onEndDrag = {
+                    clearDragPreview()
+                }
                 content.addSubview(button)
                 toolbarTileViews.append(button)
                 x += width + 6
