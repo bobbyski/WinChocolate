@@ -2251,13 +2251,13 @@ func testToolbarCustomizationPaletteShowsToolbarDropTargetAtTop() {
         return
     }
 
-    let toolbarButtons = contentView.subviews
-        .compactMap { $0 as? NSButton }
-        .filter { $0.frame.origin.y == 7 }
+    let toolbarTiles = contentView.subviews
+        .filter { $0.toolTip == "Drag to reorder or drag out to remove." && $0.frame.origin.y == 8 }
 
     expect(contentView.tag == 1_100, "Toolbar customization palette did not mark the content as the toolbar drop surface.")
-    expect(toolbarButtons.map(\.title) == ["Open", "Save"], "Toolbar customization top row did not mirror visible toolbar items.")
-    expect(toolbarButtons.allSatisfy { $0.frame.origin.y < 42 }, "Toolbar customization top row was not docked at the top.")
+    expect(toolbarTiles.count == 2, "Toolbar customization top row did not mirror visible toolbar item count.")
+    expect(toolbar.items.map(\.label) == ["Open", "Save"], "Toolbar customization top row did not mirror visible toolbar items.")
+    expect(toolbarTiles.allSatisfy { $0.frame.origin.y < 42 }, "Toolbar customization top row was not docked at the top.")
     expect(!contentView.subviews.compactMap { ($0 as? NSTextField)?.stringValue }.contains("Mock toolbar drop target:"), "Toolbar customization palette still labels the drop target as a mock toolbar.")
 
     clearApplicationWindows()
@@ -2287,22 +2287,21 @@ func testToolbarCustomizationMovesExistingItemToEnd() {
         return
     }
 
-    let toolbarButtons = contentView.subviews
-        .compactMap { $0 as? NSButton }
-        .filter { $0.frame.origin.y == 7 }
+    let toolbarTiles = contentView.subviews
+        .filter { $0.toolTip == "Drag to reorder or drag out to remove." && $0.frame.origin.y == 8 }
         .sorted { $0.frame.origin.x < $1.frame.origin.x }
 
-    guard let openButton = toolbarButtons.first else {
-        expect(false, "Toolbar customization top row did not create toolbar item buttons.")
+    guard let openTile = toolbarTiles.first else {
+        expect(false, "Toolbar customization top row did not create toolbar item tiles.")
         return
     }
 
-    let start = openButton.convert(NSMakePoint(openButton.bounds.size.width / 2, openButton.bounds.size.height / 2), to: nil)
+    let start = openTile.convert(NSMakePoint(openTile.bounds.size.width / 2, openTile.bounds.size.height / 2), to: nil)
     let end = contentView.convert(NSMakePoint(610, 20), to: nil)
 
-    openButton.mouseDown(with: NSEvent(type: .leftMouseDown, locationInWindow: start))
-    openButton.mouseDragged(with: NSEvent(type: .leftMouseDragged, locationInWindow: end))
-    openButton.mouseUp(with: NSEvent(type: .leftMouseUp, locationInWindow: end))
+    openTile.mouseDown(with: NSEvent(type: .leftMouseDown, locationInWindow: start))
+    openTile.mouseDragged(with: NSEvent(type: .leftMouseDragged, locationInWindow: end))
+    openTile.mouseUp(with: NSEvent(type: .leftMouseUp, locationInWindow: end))
 
     expect(toolbar.items.map(\.itemIdentifier) == ["save", "print", "open"], "Dragging an existing toolbar item to the far end did not move it to the end.")
 

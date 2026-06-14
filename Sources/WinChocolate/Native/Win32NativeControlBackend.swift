@@ -50,6 +50,25 @@ private struct RECT {
     var bottom: Int32 = 0
 }
 
+private struct PAINTSTRUCT {
+    var hdc: HDC?
+    var fErase: Int32 = 0
+    var rcPaint: RECT = RECT()
+    var fRestore: Int32 = 0
+    var fIncUpdate: Int32 = 0
+    var rgbReserved: (
+        UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8,
+        UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8,
+        UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8,
+        UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8
+    ) = (
+        0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0
+    )
+}
+
 private struct INITCOMMONCONTROLSEX {
     var dwSize: DWORD = 0
     var dwICC: DWORD = 0
@@ -268,6 +287,15 @@ private func winDrawMenuBar(_ hwnd: HWND?) -> Int32
 @_silgen_name("ClientToScreen")
 private func winClientToScreen(_ hwnd: HWND?, _ point: UnsafeMutablePointer<POINT>?) -> Int32
 
+@_silgen_name("BeginPaint")
+private func winBeginPaint(_ hwnd: HWND?, _ paint: UnsafeMutablePointer<PAINTSTRUCT>?) -> HDC?
+
+@_silgen_name("EndPaint")
+private func winEndPaint(_ hwnd: HWND?, _ paint: UnsafePointer<PAINTSTRUCT>?) -> Int32
+
+@_silgen_name("DrawTextW")
+private func winDrawTextW(_ deviceContext: HDC?, _ text: UnsafePointer<UInt16>?, _ count: Int32, _ rectangle: UnsafeMutablePointer<RECT>?, _ format: UINT) -> Int32
+
 @_silgen_name("FillRect")
 private func winFillRect(_ deviceContext: HDC?, _ rectangle: UnsafePointer<RECT>?, _ brush: HBRUSH?) -> Int32
 
@@ -350,6 +378,9 @@ private func winSetMenu(_ hwnd: HWND?, _ menu: HMENU?) -> Int32
 @_silgen_name("SetBkColor")
 private func winSetBkColor(_ deviceContext: HDC?, _ color: DWORD) -> DWORD
 
+@_silgen_name("SetBkMode")
+private func winSetBkMode(_ deviceContext: HDC?, _ backgroundMode: Int32) -> Int32
+
 @_silgen_name("ScreenToClient")
 private func winScreenToClient(_ hwnd: HWND?, _ point: UnsafeMutablePointer<POINT>?) -> Int32
 
@@ -412,6 +443,7 @@ private let swpNoActivate: UINT = 0x0010
 private let swpShowWindow: UINT = 0x0040
 private let wmDestroy: UINT = 0x0002
 private let wmNotify: UINT = 0x004e
+private let wmPaint: UINT = 0x000f
 private let wmEraseBackground: UINT = 0x0014
 private let wmSetFont: UINT = 0x0030
 private let wmCommand: UINT = 0x0111
@@ -430,6 +462,11 @@ private let wmMouseMove: UINT = 0x0200
 private let wmLButtonDown: UINT = 0x0201
 private let wmLButtonUp: UINT = 0x0202
 private let mkLButton: WPARAM = 0x0001
+private let transparentBkMode: Int32 = 1
+private let dtCenter: UINT = 0x00000001
+private let dtVCenter: UINT = 0x00000004
+private let dtSingleLine: UINT = 0x00000020
+private let dtEndEllipsis: UINT = 0x00008000
 private let wmApp: UINT = 0x8000
 private let wmWinChocolateAsync: UINT = wmApp + 1
 private let bmGetCheck: UINT = 0x00f0
@@ -653,6 +690,7 @@ public final class Win32NativeControlBackend: NativeControlBackend {
     private var sliderRanges: [UInt: (minValue: Double, maxValue: Double)] = [:]
     private var scrollViewMetrics: [UInt: (contentSize: NSSize, viewportSize: NSSize, hasVerticalScroller: Bool, hasHorizontalScroller: Bool, offset: NSPoint)] = [:]
     private var stepperRanges: [UInt: (minValue: Double, maxValue: Double, increment: Double, value: Double)] = [:]
+    private var customViewHandles: Set<UInt> = []
     private var textColors: [UInt: DWORD] = [:]
     private var backgroundColors: [UInt: DWORD] = [:]
     private var backgroundBrushes: [UInt: HBRUSH] = [:]
@@ -779,6 +817,7 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         sliderRanges.removeValue(forKey: handle.rawValue)
         scrollViewMetrics.removeValue(forKey: handle.rawValue)
         stepperRanges.removeValue(forKey: handle.rawValue)
+        customViewHandles.remove(handle.rawValue)
         clearAppearance(for: handle)
     }
 
@@ -815,13 +854,14 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         sliderRanges.removeValue(forKey: handle.rawValue)
         scrollViewMetrics.removeValue(forKey: handle.rawValue)
         stepperRanges.removeValue(forKey: handle.rawValue)
+        customViewHandles.remove(handle.rawValue)
         clearAppearance(for: handle)
     }
 
     /// Creates a native view child.
     public func createView(frame: NSRect, parent: NativeHandle?) -> NativeHandle {
         registerViewClassIfNeeded()
-        return createChildWindow(
+        let handle = createChildWindow(
             className: winChocolateViewClassName,
             text: "",
             frame: frame,
@@ -829,6 +869,8 @@ public final class Win32NativeControlBackend: NativeControlBackend {
             commandIdentifier: nil,
             style: wsChild | wsVisible | wsClipChildren
         )
+        customViewHandles.insert(handle.rawValue)
+        return handle
     }
 
     /// Creates a native push button child.
@@ -1217,6 +1259,7 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         withWideString(text) { value in
             _ = winSetWindowTextW(hwnd, value)
         }
+        invalidate(handle)
     }
 
     /// Updates the native frame for a window or control.
@@ -2085,6 +2128,18 @@ public final class Win32NativeControlBackend: NativeControlBackend {
 
             action(NSEvent(type: .leftMouseUp, locationInWindow: mouseLocation(from: lParam, in: hwnd), modifierFlags: currentModifierFlags()))
             _ = winReleaseCapture()
+            return 0
+        case wmPaint:
+            guard let hwnd else {
+                return nil
+            }
+
+            let handle = nativeHandle(from: hwnd)
+            guard customViewHandles.contains(handle.rawValue) else {
+                return nil
+            }
+
+            drawCustomView(hwnd: hwnd, handle: handle)
             return 0
         case wmEraseBackground:
             guard let hwnd else {
@@ -2984,10 +3039,125 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         return String(decoding: buffer.prefix(Int(copiedCount)), as: UTF16.self)
     }
 
+    private func drawCustomView(hwnd: HWND?, handle: NativeHandle) {
+        var paint = PAINTSTRUCT()
+        guard let deviceContext = winBeginPaint(hwnd, &paint) else {
+            return
+        }
+        defer {
+            withUnsafePointer(to: paint) { paintPointer in
+                _ = winEndPaint(hwnd, paintPointer)
+            }
+        }
+
+        var rectangle = RECT()
+        _ = winGetClientRect(hwnd, &rectangle)
+        if let brush = backgroundBrushes[handle.rawValue] {
+            withUnsafePointer(to: rectangle) { rectanglePointer in
+                _ = winFillRect(deviceContext, rectanglePointer, brush)
+            }
+        }
+
+        let label = text(from: hwnd)
+        guard !label.isEmpty else {
+            return
+        }
+
+        if let textColor = textColors[handle.rawValue] {
+            _ = winSetTextColor(deviceContext, textColor)
+        }
+        let backgroundColor = backgroundColors[handle.rawValue] ?? colorRef(red: 0.94, green: 0.94, blue: 0.94)
+        _ = winSetBkColor(deviceContext, backgroundColor)
+        _ = winSetBkMode(deviceContext, transparentBkMode)
+
+        drawToolbarItemGlyph(label: label, in: rectangle, deviceContext: deviceContext)
+
+        let height = rectangle.bottom - rectangle.top
+        var textRectangle = rectangle
+        textRectangle.left += 2
+        textRectangle.top = max(rectangle.top + 18, height - 13)
+        textRectangle.right -= 2
+        withWideString(label) { textPointer in
+            withUnsafeMutablePointer(to: &textRectangle) { rectanglePointer in
+                _ = winDrawTextW(deviceContext, textPointer, -1, rectanglePointer, dtCenter | dtVCenter | dtSingleLine | dtEndEllipsis)
+            }
+        }
+    }
+
+    private func drawToolbarItemGlyph(label: String, in rectangle: RECT, deviceContext: HDC?) {
+        let width = rectangle.right - rectangle.left
+        let height = rectangle.bottom - rectangle.top
+        let glyphSize = max(12, min(18, height - 14))
+        let glyphLeft = rectangle.left + max((width - glyphSize) / 2, 2)
+        let glyphTop = rectangle.top + 3
+        let accent = toolbarGlyphColor(for: label)
+        let shadow = colorRef(red: 0.50, green: 0.52, blue: 0.55)
+        let paper = colorRef(red: 0.98, green: 0.98, blue: 0.96)
+        let shine = colorRef(red: 1.0, green: 1.0, blue: 1.0)
+
+        fillRect(
+            RECT(left: glyphLeft + 1, top: glyphTop + 1, right: glyphLeft + glyphSize + 1, bottom: glyphTop + glyphSize + 1),
+            color: shadow,
+            deviceContext: deviceContext
+        )
+        fillRect(
+            RECT(left: glyphLeft, top: glyphTop, right: glyphLeft + glyphSize, bottom: glyphTop + glyphSize),
+            color: paper,
+            deviceContext: deviceContext
+        )
+        fillRect(
+            RECT(left: glyphLeft + 3, top: glyphTop + 4, right: glyphLeft + glyphSize - 3, bottom: glyphTop + glyphSize - 2),
+            color: accent,
+            deviceContext: deviceContext
+        )
+        fillRect(
+            RECT(left: glyphLeft + 4, top: glyphTop + 5, right: glyphLeft + glyphSize - 4, bottom: glyphTop + 7),
+            color: shine,
+            deviceContext: deviceContext
+        )
+        fillRect(
+            RECT(left: glyphLeft + glyphSize - 5, top: glyphTop, right: glyphLeft + glyphSize, bottom: glyphTop + 5),
+            color: colorRef(red: 0.88, green: 0.90, blue: 0.92),
+            deviceContext: deviceContext
+        )
+    }
+
+    private func fillRect(_ rectangle: RECT, color: DWORD, deviceContext: HDC?) {
+        guard let brush = winCreateSolidBrush(color) else {
+            return
+        }
+        defer {
+            _ = winDeleteObject(brush)
+        }
+
+        withUnsafePointer(to: rectangle) { rectanglePointer in
+            _ = winFillRect(deviceContext, rectanglePointer, brush)
+        }
+    }
+
+    private func toolbarGlyphColor(for label: String) -> DWORD {
+        let palette: [DWORD] = [
+            colorRef(red: 0.24, green: 0.48, blue: 0.82),
+            colorRef(red: 0.25, green: 0.58, blue: 0.43),
+            colorRef(red: 0.68, green: 0.39, blue: 0.22),
+            colorRef(red: 0.54, green: 0.42, blue: 0.72),
+            colorRef(red: 0.63, green: 0.47, blue: 0.20),
+            colorRef(red: 0.30, green: 0.55, blue: 0.64)
+        ]
+        let value = label.unicodeScalars.reduce(0) { partial, scalar in
+            partial &+ Int(scalar.value)
+        }
+        return palette[value % palette.count]
+    }
+
     private func colorRef(from color: NSColor) -> DWORD {
-        let red = DWORD(color.redComponent * 255) & 0xff
-        let green = DWORD(color.greenComponent * 255) & 0xff
-        let blue = DWORD(color.blueComponent * 255) & 0xff
+        colorRef(red: color.redComponent, green: color.greenComponent, blue: color.blueComponent)
+    }
+
+    private func colorRef(red redComponent: CGFloat, green greenComponent: CGFloat, blue blueComponent: CGFloat) -> DWORD {
+        let red = DWORD((min(max(redComponent, 0), 1) * 255).rounded()) & 0xff
+        let green = DWORD((min(max(greenComponent, 0), 1) * 255).rounded()) & 0xff
+        let blue = DWORD((min(max(blueComponent, 0), 1) * 255).rounded()) & 0xff
         return red | (green << 8) | (blue << 16)
     }
 

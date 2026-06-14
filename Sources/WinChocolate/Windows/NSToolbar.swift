@@ -196,28 +196,34 @@ open class NSToolbar: NSObject {
         }
 
         let content = NSView(frame: NSMakeRect(0, 0, 620, 440))
-        let toolbarFrame = NSMakeRect(0, 0, 620, 42)
-        let showLabel = NSTextField(string: "Show:", frame: NSMakeRect(24, 54, 64, 24))
-        let displayModePopup = NSPopUpButton(frame: NSMakeRect(90, 52, 172, 26), pullsDown: false)
-        let doneButton = NSButton(title: "Done", frame: NSMakeRect(520, 52, 76, 28))
-        let instructionLabel = NSTextField(string: "Drag your favorite items into the toolbar:", frame: NSMakeRect(24, 90, 360, 24))
-        let paletteView = NSView(frame: NSMakeRect(24, 122, 572, 100))
-        let defaultInstructionLabel = NSTextField(string: "or drag the default set into the toolbar:", frame: NSMakeRect(24, 234, 420, 24))
-        let defaultStrip = NSView(frame: NSMakeRect(24, 264, 572, 38))
-        let selectionLabel = NSTextField(string: "Selected: none", frame: NSMakeRect(24, 324, 180, 24))
-        let moveLeftButton = NSButton(title: "Move Left", frame: NSMakeRect(214, 322, 86, 28))
-        let moveRightButton = NSButton(title: "Move Right", frame: NSMakeRect(308, 322, 92, 28))
-        let removeButton = NSButton(title: "Remove", frame: NSMakeRect(408, 322, 76, 28))
+        let toolbarFrame = NSMakeRect(0, 0, 620, 46)
+        let showLabel = NSTextField(string: "Show:", frame: NSMakeRect(24, 58, 64, 24))
+        let displayModePopup = NSPopUpButton(frame: NSMakeRect(90, 56, 172, 26), pullsDown: false)
+        let doneButton = NSButton(title: "Done", frame: NSMakeRect(520, 56, 76, 28))
+        let instructionLabel = NSTextField(string: "Drag your favorite items into the toolbar:", frame: NSMakeRect(24, 96, 360, 24))
+        let paletteView = NSView(frame: NSMakeRect(24, 126, 572, 106))
+        let defaultInstructionLabel = NSTextField(string: "or drag the default set into the toolbar:", frame: NSMakeRect(24, 246, 420, 24))
+        let defaultStrip = NSView(frame: NSMakeRect(24, 276, 572, 42))
+        let selectionLabel = NSTextField(string: "Selected: none", frame: NSMakeRect(24, 334, 180, 24))
+        let moveLeftButton = NSButton(title: "Move Left", frame: NSMakeRect(214, 332, 86, 28))
+        let moveRightButton = NSButton(title: "Move Right", frame: NSMakeRect(308, 332, 92, 28))
+        let removeButton = NSButton(title: "Remove", frame: NSMakeRect(408, 332, 76, 28))
         let dragPreview = NSToolbarCustomizationTile(title: "", frame: NSMakeRect(-10_000, -10_000, 1, 1))
         var selectedIndex: Int?
         var dragSource: CustomizationDragSource?
         var toolbarTileViews: [NSView] = []
 
-        paletteView.backgroundColor = NSColor(calibratedRed: 0.94, green: 0.94, blue: 0.94, alpha: 1.0)
-        defaultStrip.backgroundColor = NSColor(calibratedRed: 0.97, green: 0.97, blue: 0.97, alpha: 1.0)
-        dragPreview.isEnabled = false
+        content.backgroundColor = NSColor(calibratedRed: 0.89, green: 0.91, blue: 0.93, alpha: 1.0)
+        paletteView.backgroundColor = NSColor(calibratedRed: 0.98, green: 0.98, blue: 0.97, alpha: 1.0)
+        defaultStrip.backgroundColor = NSColor(calibratedRed: 0.95, green: 0.96, blue: 0.98, alpha: 1.0)
+        dragPreview.style = .preview
         dragPreview.isHidden = true
         content.tag = 1_100
+        for label in [showLabel, instructionLabel, defaultInstructionLabel, selectionLabel] {
+            label.isBordered = false
+            label.drawsBackground = false
+        }
+        selectionLabel.textColor = NSColor(calibratedRed: 0.20, green: 0.24, blue: 0.28, alpha: 1.0)
         displayModePopup.addItems(withTitles: ["Icon & Label", "Icon Only", "Label Only"])
         switch displayMode {
         case .default, .iconAndLabel:
@@ -259,8 +265,8 @@ open class NSToolbar: NSObject {
 
         func customizationItemWidth(for identifier: NSToolbarItem.Identifier, selected: Bool = false, availableWidth: CGFloat? = nil) -> CGFloat {
             let baseTitle = title(for: identifier)
-            let buttonTitle = selected ? "[\(baseTitle)]" : baseTitle
-            let naturalWidth = max(56, min(104, CGFloat(buttonTitle.count * 7 + 20)))
+            let buttonTitle = baseTitle
+            let naturalWidth = max(64, min(112, CGFloat(buttonTitle.count * 7 + 24)))
             guard let availableWidth else {
                 return naturalWidth
             }
@@ -411,20 +417,22 @@ open class NSToolbar: NSObject {
             }
             toolbarTileViews.removeAll()
 
-            var x: CGFloat = 8
+            var x: CGFloat = 10
             for (index, identifier) in items.map(\.itemIdentifier).enumerated() {
                 let selected = index == selectedIndex
-                let buttonTitle = selected ? "[\(title(for: identifier))]" : title(for: identifier)
                 let width = toolbarItemWidth(for: identifier, selected: selected)
-                let button = NSToolbarCustomizationTile(title: buttonTitle, frame: NSMakeRect(x, 7, width, 28))
-                button.onBeginDrag = {
+                let tile = NSToolbarCustomizationTile(title: title(for: identifier), frame: NSMakeRect(x, 8, width, 30))
+                tile.style = .toolbar
+                tile.isSelected = selected
+                tile.toolTip = "Drag to reorder or drag out to remove."
+                tile.onBeginDrag = {
                     dragSource = .toolbar(index: index, identifier: identifier)
                 }
-                button.onClick = {
+                tile.onClick = {
                     selectedIndex = index
                     rebuildToolbarStrip()
                 }
-                button.onDrop = { tile, event in
+                tile.onDrop = { tile, event in
                     selectedIndex = index
                     if toolbarInsertionIndex(for: event, source: tile) != nil {
                         finishDrop(onToolbarFrom: dragSource ?? .toolbar(index: index, identifier: identifier), event: event, sourceView: tile)
@@ -433,15 +441,15 @@ open class NSToolbar: NSObject {
                     }
                     dragSource = nil
                 }
-                button.onDragFrameChanged = { tile, frame in
+                tile.onDragFrameChanged = { tile, frame in
                     updateDragPreview(for: tile, frame: frame)
                 }
-                button.onEndDrag = {
+                tile.onEndDrag = {
                     clearDragPreview()
                 }
-                content.addSubview(button)
-                toolbarTileViews.append(button)
-                x += width + 6
+                content.addSubview(tile)
+                toolbarTileViews.append(tile)
+                x += width + 8
             }
 
             if let selectedIndex, items.indices.contains(selectedIndex) {
@@ -454,43 +462,47 @@ open class NSToolbar: NSObject {
         for (index, identifier) in allowedIdentifiers.enumerated() {
             let column = index % 4
             let row = index / 4
-            let button = NSToolbarCustomizationTile(title: title(for: identifier), frame: NSMakeRect(Double(column * 138 + 8), Double(58 - (row * 34)), 126, 28))
-            button.onBeginDrag = {
+            let tile = NSToolbarCustomizationTile(title: title(for: identifier), frame: NSMakeRect(Double(column * 138 + 10), Double(64 - (row * 36)), 124, 30))
+            tile.style = .palette
+            tile.toolTip = "Drag into the toolbar."
+            tile.onBeginDrag = {
                 dragSource = .palette(identifier)
             }
-            button.onDrop = { tile, event in
+            tile.onDrop = { tile, event in
                 finishDrop(onToolbarFrom: dragSource ?? .palette(identifier), event: event, sourceView: tile)
                 dragSource = nil
             }
-            button.onDragFrameChanged = { tile, frame in
+            tile.onDragFrameChanged = { tile, frame in
                 updateDragPreview(for: tile, frame: frame)
             }
-            button.onEndDrag = {
+            tile.onEndDrag = {
                 clearDragPreview()
             }
-            paletteView.addSubview(button)
+            paletteView.addSubview(tile)
         }
 
         let defaultIdentifiers = delegate?.toolbarDefaultItemIdentifiers(self) ?? itemStore.keys.map { $0 }
-        var defaultX: CGFloat = 8
-        let defaultWidth = rowItemWidth(count: defaultIdentifiers.count, rowWidth: defaultStrip.frame.size.width, spacing: 6, horizontalInset: 8)
+        var defaultX: CGFloat = 10
+        let defaultWidth = rowItemWidth(count: defaultIdentifiers.count, rowWidth: defaultStrip.frame.size.width, spacing: 8, horizontalInset: 10)
         for identifier in defaultIdentifiers {
-            let button = NSToolbarCustomizationTile(title: title(for: identifier), frame: NSMakeRect(defaultX, 7, defaultWidth, 26))
-            button.onBeginDrag = {
+            let tile = NSToolbarCustomizationTile(title: title(for: identifier), frame: NSMakeRect(defaultX, 7, defaultWidth, 28))
+            tile.style = .defaultSet
+            tile.toolTip = "Drag to restore the default toolbar."
+            tile.onBeginDrag = {
                 dragSource = .defaultSet
             }
-            button.onDrop = { tile, event in
+            tile.onDrop = { tile, event in
                 finishDrop(onToolbarFrom: dragSource ?? .defaultSet, event: event, sourceView: tile)
                 dragSource = nil
             }
-            button.onDragFrameChanged = { tile, frame in
+            tile.onDragFrameChanged = { tile, frame in
                 updateDragPreview(for: tile, frame: frame)
             }
-            button.onEndDrag = {
+            tile.onEndDrag = {
                 clearDragPreview()
             }
-            defaultStrip.addSubview(button)
-            defaultX += defaultWidth + 6
+            defaultStrip.addSubview(tile)
+            defaultX += defaultWidth + 8
         }
 
         displayModePopup.onAction = { _ in
@@ -577,7 +589,36 @@ private extension NSToolbarItem.Identifier {
     }
 }
 
-private final class NSToolbarCustomizationTile: NSButton {
+private final class NSToolbarCustomizationTile: NSView {
+    enum Style {
+        case toolbar
+        case palette
+        case defaultSet
+        case preview
+    }
+
+    var title: String {
+        didSet {
+            guard let nativeHandle else {
+                return
+            }
+
+            realizedBackend?.setText(title, for: nativeHandle)
+        }
+    }
+
+    var style: Style = .palette {
+        didSet {
+            updateAppearance()
+        }
+    }
+
+    var isSelected = false {
+        didSet {
+            updateAppearance()
+        }
+    }
+
     var onBeginDrag: (() -> Void)?
     var onClick: (() -> Void)?
     var onDrop: ((NSToolbarCustomizationTile, NSEvent) -> Void)?
@@ -588,13 +629,21 @@ private final class NSToolbarCustomizationTile: NSButton {
     private var dragAnchor: NSPoint?
     private var originalFrame: NSRect?
 
-    override init(title: String, frame frameRect: NSRect) {
-        super.init(title: title, frame: frameRect)
-        isBordered = true
+    init(title: String, frame frameRect: NSRect) {
+        self.title = title
+        super.init(frame: frameRect)
+        updateAppearance()
     }
 
     override var acceptsFirstResponder: Bool {
         false
+    }
+
+    override func createNativePeer(in backend: NativeControlBackend, parent: NativeHandle?) -> NativeHandle {
+        let handle = backend.createView(frame: frame, parent: parent)
+        backend.setText(title, for: handle)
+        backend.setTextColor(NSColor(calibratedRed: 0.08, green: 0.10, blue: 0.12, alpha: 1.0), for: handle)
+        return handle
     }
 
     override func mouseDown(with event: NSEvent) {
@@ -645,6 +694,24 @@ private final class NSToolbarCustomizationTile: NSButton {
             frame = originalFrame
         }
         originalFrame = nil
+    }
+
+    private func updateAppearance() {
+        if isSelected {
+            backgroundColor = NSColor(calibratedRed: 0.70, green: 0.80, blue: 0.94, alpha: 1.0)
+            return
+        }
+
+        switch style {
+        case .toolbar:
+            backgroundColor = NSColor(calibratedRed: 0.89, green: 0.91, blue: 0.93, alpha: 1.0)
+        case .palette:
+            backgroundColor = NSColor(calibratedRed: 0.98, green: 0.98, blue: 0.97, alpha: 1.0)
+        case .defaultSet:
+            backgroundColor = NSColor(calibratedRed: 0.95, green: 0.96, blue: 0.98, alpha: 1.0)
+        case .preview:
+            backgroundColor = NSColor(calibratedRed: 0.84, green: 0.89, blue: 0.96, alpha: 1.0)
+        }
     }
 }
 
