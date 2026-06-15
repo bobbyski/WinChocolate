@@ -66,6 +66,9 @@ public protocol NativeControlBackend: AnyObject {
     /// Registers the action to perform when a native top-level window closes.
     func registerWindowCloseAction(for handle: NativeHandle, action: @escaping () -> Void)
 
+    /// Registers the action to perform when a native top-level window resizes.
+    func registerWindowResizeAction(for handle: NativeHandle, action: @escaping (NSSize) -> Void)
+
     /// Destroys a previously created native child control.
     func destroyControl(_ handle: NativeHandle)
 

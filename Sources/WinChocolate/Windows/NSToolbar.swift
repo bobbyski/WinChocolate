@@ -183,7 +183,7 @@ open class NSToolbar: NSObject {
         let allowedIdentifiers = delegate?.toolbarAllowedItemIdentifiers(self) ?? itemStore.keys.map { $0 }
         let panel = NSPanel(
             contentRect: NSMakeRect(180, 180, 620, 440),
-            styleMask: [.titled, .closable],
+            styleMask: [.titled, .closable, .resizable],
             backing: .buffered,
             defer: false
         )
@@ -196,7 +196,6 @@ open class NSToolbar: NSObject {
         }
 
         let content = NSView(frame: NSMakeRect(0, 0, 620, 440))
-        let toolbarFrame = NSMakeRect(0, 0, 620, 46)
         let showLabel = NSTextField(string: "Show:", frame: NSMakeRect(24, 58, 64, 24))
         let displayModePopup = NSPopUpButton(frame: NSMakeRect(90, 56, 172, 26), pullsDown: false)
         let doneButton = NSButton(title: "Done", frame: NSMakeRect(520, 56, 76, 28))
@@ -216,6 +215,14 @@ open class NSToolbar: NSObject {
         content.backgroundColor = NSColor(calibratedRed: 0.89, green: 0.91, blue: 0.93, alpha: 1.0)
         paletteView.backgroundColor = NSColor(calibratedRed: 0.98, green: 0.98, blue: 0.97, alpha: 1.0)
         defaultStrip.backgroundColor = NSColor(calibratedRed: 0.95, green: 0.96, blue: 0.98, alpha: 1.0)
+        paletteView.autoresizingMask = [.width]
+        defaultInstructionLabel.autoresizingMask = [.width, .minYMargin]
+        defaultStrip.autoresizingMask = [.width, .minYMargin]
+        selectionLabel.autoresizingMask = [.minYMargin]
+        moveLeftButton.autoresizingMask = [.minYMargin]
+        moveRightButton.autoresizingMask = [.minYMargin]
+        removeButton.autoresizingMask = [.minYMargin]
+        doneButton.autoresizingMask = [.minXMargin]
         dragPreview.style = .preview
         dragPreview.isHidden = true
         content.tag = 1_100
@@ -234,7 +241,7 @@ open class NSToolbar: NSObject {
             displayModePopup.selectItem(at: 2)
         }
 
-        func title(for identifier: NSToolbarItem.Identifier) -> String {
+        func title(for identifier: NSToolbarItem.Identifier, prefersPaletteLabel: Bool = true) -> String {
             if identifier == .flexibleSpace {
                 return "Flexible Space"
             }
@@ -246,10 +253,55 @@ open class NSToolbar: NSObject {
             }
 
             let item = itemForCustomizationIdentifier(identifier, willBeInsertedIntoToolbar: false)
-            if let item, item.paletteLabel != identifier.rawValue {
+            if prefersPaletteLabel, let item, item.paletteLabel != identifier.rawValue {
                 return item.paletteLabel
             }
             return item?.label ?? identifier.rawValue
+        }
+
+        func imageName(for identifier: NSToolbarItem.Identifier) -> String {
+            switch identifier {
+            case .separator:
+                return "separator"
+            case .space:
+                return "space"
+            case .flexibleSpace:
+                return "flexibleSpace"
+            default:
+                break
+            }
+
+            let item = itemForCustomizationIdentifier(identifier, willBeInsertedIntoToolbar: false)
+            if let imageName = item?.image?.name, !imageName.isEmpty {
+                return imageName
+            }
+
+            let key = "\(identifier.rawValue) \(item?.label ?? "") \(item?.paletteLabel ?? "")".lowercased()
+            if key.contains("open") || key.contains("folder") {
+                return "folder"
+            }
+            if key.contains("disable") && key.contains("save") {
+                return "properties"
+            }
+            if key.contains("save") {
+                return "save"
+            }
+            if key.contains("print") {
+                return "print"
+            }
+            if key.contains("custom") || key.contains("setting") || key.contains("gear") {
+                return "properties"
+            }
+            if key.contains("delete") || key.contains("remove") || key.contains("trash") {
+                return "trash"
+            }
+            if key.contains("search") || key.contains("find") {
+                return "search"
+            }
+            if key.contains("new") || key.contains("add") {
+                return "plus"
+            }
+            return "document"
         }
 
         func setDisplayModeFromPopup() {
@@ -275,7 +327,8 @@ open class NSToolbar: NSObject {
 
         func toolbarItemWidth(for identifier: NSToolbarItem.Identifier, selected: Bool = false) -> CGFloat {
             let itemCount = max(CGFloat(items.count), 1)
-            let availableWidth = max(48, (toolbarFrame.size.width - 16 - ((itemCount - 1) * 6)) / itemCount)
+            let toolbarWidth = max(48, content.frame.size.width)
+            let availableWidth = max(48, (toolbarWidth - 16 - ((itemCount - 1) * 6)) / itemCount)
             return customizationItemWidth(for: identifier, selected: selected, availableWidth: availableWidth)
         }
 
@@ -290,6 +343,7 @@ open class NSToolbar: NSObject {
 
         func toolbarInsertionIndex(for event: NSEvent, source: NSView) -> Int? {
             let point = contentPoint(from: event, source: source)
+            let toolbarFrame = NSMakeRect(0, 0, content.frame.size.width, 46)
             guard NSPointInRect(point, toolbarFrame) else {
                 return nil
             }
@@ -401,6 +455,7 @@ open class NSToolbar: NSObject {
 
             let origin = content.convert(frame.origin, from: parent)
             dragPreview.title = tile.title
+            dragPreview.imageName = tile.imageName
             dragPreview.frame = NSMakeRect(origin.x, origin.y, frame.size.width, frame.size.height)
             dragPreview.isHidden = false
             return true
@@ -421,7 +476,7 @@ open class NSToolbar: NSObject {
             for (index, identifier) in items.map(\.itemIdentifier).enumerated() {
                 let selected = index == selectedIndex
                 let width = toolbarItemWidth(for: identifier, selected: selected)
-                let tile = NSToolbarCustomizationTile(title: title(for: identifier), frame: NSMakeRect(x, 8, width, 30))
+                let tile = NSToolbarCustomizationTile(title: title(for: identifier, prefersPaletteLabel: false), imageName: imageName(for: identifier), frame: NSMakeRect(x, 8, width, 30))
                 tile.style = .toolbar
                 tile.isSelected = selected
                 tile.toolTip = "Drag to reorder or drag out to remove."
@@ -462,7 +517,7 @@ open class NSToolbar: NSObject {
         for (index, identifier) in allowedIdentifiers.enumerated() {
             let column = index % 4
             let row = index / 4
-            let tile = NSToolbarCustomizationTile(title: title(for: identifier), frame: NSMakeRect(Double(column * 138 + 10), Double(64 - (row * 36)), 124, 30))
+            let tile = NSToolbarCustomizationTile(title: title(for: identifier), imageName: imageName(for: identifier), frame: NSMakeRect(Double(column * 138 + 10), Double(64 - (row * 36)), 124, 30))
             tile.style = .palette
             tile.toolTip = "Drag into the toolbar."
             tile.onBeginDrag = {
@@ -485,7 +540,7 @@ open class NSToolbar: NSObject {
         var defaultX: CGFloat = 10
         let defaultWidth = rowItemWidth(count: defaultIdentifiers.count, rowWidth: defaultStrip.frame.size.width, spacing: 8, horizontalInset: 10)
         for identifier in defaultIdentifiers {
-            let tile = NSToolbarCustomizationTile(title: title(for: identifier), frame: NSMakeRect(defaultX, 7, defaultWidth, 28))
+            let tile = NSToolbarCustomizationTile(title: title(for: identifier), imageName: imageName(for: identifier), frame: NSMakeRect(defaultX, 7, defaultWidth, 28))
             tile.style = .defaultSet
             tile.toolTip = "Drag to restore the default toolbar."
             tile.onBeginDrag = {
@@ -599,11 +654,13 @@ private final class NSToolbarCustomizationTile: NSView {
 
     var title: String {
         didSet {
-            guard let nativeHandle else {
-                return
-            }
+            updateNativeText()
+        }
+    }
 
-            realizedBackend?.setText(title, for: nativeHandle)
+    var imageName: String {
+        didSet {
+            updateNativeText()
         }
     }
 
@@ -629,8 +686,13 @@ private final class NSToolbarCustomizationTile: NSView {
     private var dragAnchor: NSPoint?
     private var originalFrame: NSRect?
 
-    init(title: String, frame frameRect: NSRect) {
+    convenience init(title: String, frame frameRect: NSRect) {
+        self.init(title: title, imageName: "document", frame: frameRect)
+    }
+
+    init(title: String, imageName: String, frame frameRect: NSRect) {
         self.title = title
+        self.imageName = imageName
         super.init(frame: frameRect)
         updateAppearance()
     }
@@ -641,7 +703,7 @@ private final class NSToolbarCustomizationTile: NSView {
 
     override func createNativePeer(in backend: NativeControlBackend, parent: NativeHandle?) -> NativeHandle {
         let handle = backend.createView(frame: frame, parent: parent)
-        backend.setText(title, for: handle)
+        backend.setText(nativeText, for: handle)
         backend.setTextColor(NSColor(calibratedRed: 0.08, green: 0.10, blue: 0.12, alpha: 1.0), for: handle)
         return handle
     }
@@ -712,6 +774,18 @@ private final class NSToolbarCustomizationTile: NSView {
         case .preview:
             backgroundColor = NSColor(calibratedRed: 0.84, green: 0.89, blue: 0.96, alpha: 1.0)
         }
+    }
+
+    private var nativeText: String {
+        "\(title)\n\(imageName)"
+    }
+
+    private func updateNativeText() {
+        guard let nativeHandle else {
+            return
+        }
+
+        realizedBackend?.setText(nativeText, for: nativeHandle)
     }
 }
 

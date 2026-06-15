@@ -165,6 +165,9 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     /// Registered native window close actions by handle.
     public private(set) var windowCloseActions: [NativeHandle: () -> Void] = [:]
 
+    /// Registered native window resize actions by handle.
+    public private(set) var windowResizeActions: [NativeHandle: (NSSize) -> Void] = [:]
+
     /// Registered toolbar item actions by handle.
     public private(set) var toolbarActions: [NativeHandle: (String) -> Void] = [:]
 
@@ -224,12 +227,18 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
         keyDownActions.removeValue(forKey: handle)
         keyUpActions.removeValue(forKey: handle)
         toolbarActions.removeValue(forKey: handle)
+        windowResizeActions.removeValue(forKey: handle)
         windowCloseActions.removeValue(forKey: handle)?()
     }
 
     /// Records a native window close action.
     public func registerWindowCloseAction(for handle: NativeHandle, action: @escaping () -> Void) {
         windowCloseActions[handle] = action
+    }
+
+    /// Records a native window resize action.
+    public func registerWindowResizeAction(for handle: NativeHandle, action: @escaping (NSSize) -> Void) {
+        windowResizeActions[handle] = action
     }
 
     /// Removes a recorded native child object.
@@ -243,6 +252,7 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
         keyDownActions.removeValue(forKey: handle)
         keyUpActions.removeValue(forKey: handle)
         toolbarActions.removeValue(forKey: handle)
+        windowResizeActions.removeValue(forKey: handle)
     }
 
     /// Records a view creation request.

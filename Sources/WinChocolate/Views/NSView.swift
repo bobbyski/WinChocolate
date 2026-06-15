@@ -36,6 +36,8 @@ open class NSView: NSResponder {
     /// The view frame in its parent coordinate space.
     open var frame: NSRect {
         didSet {
+            autoresizeSubviews(from: oldValue.size, to: frame.size)
+
             guard let nativeHandle else {
                 return
             }
@@ -183,6 +185,41 @@ open class NSView: NSResponder {
     /// Marks the view as needing display.
     open func setNeedsDisplay(_ needsDisplay: Bool) {
         self.needsDisplay = needsDisplay
+    }
+
+    private func autoresizeSubviews(from oldSize: NSSize, to newSize: NSSize) {
+        guard autoresizesSubviews, oldSize != newSize else {
+            return
+        }
+
+        let deltaWidth = newSize.width - oldSize.width
+        let deltaHeight = newSize.height - oldSize.height
+        guard deltaWidth != 0 || deltaHeight != 0 else {
+            return
+        }
+
+        for subview in subviews {
+            var newFrame = subview.frame
+            let mask = subview.autoresizingMask
+
+            if mask.contains(.width) {
+                newFrame.size.width = max(0, newFrame.size.width + deltaWidth)
+            } else if mask.contains(.minXMargin), !mask.contains(.maxXMargin) {
+                newFrame.origin.x += deltaWidth
+            } else if mask.contains(.minXMargin), mask.contains(.maxXMargin) {
+                newFrame.origin.x += deltaWidth / 2
+            }
+
+            if mask.contains(.height) {
+                newFrame.size.height = max(0, newFrame.size.height + deltaHeight)
+            } else if mask.contains(.minYMargin), !mask.contains(.maxYMargin) {
+                newFrame.origin.y += deltaHeight
+            } else if mask.contains(.minYMargin), mask.contains(.maxYMargin) {
+                newFrame.origin.y += deltaHeight / 2
+            }
+
+            subview.frame = newFrame
+        }
     }
 
     /// Returns true when this view is contained by the given ancestor.

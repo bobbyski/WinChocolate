@@ -8,6 +8,7 @@ private typealias HDC = UnsafeMutableRawPointer
 private typealias HFONT = UnsafeMutableRawPointer
 private typealias HGDIOBJ = UnsafeMutableRawPointer
 private typealias HBITMAP = UnsafeMutableRawPointer
+private typealias HIMAGELIST = UnsafeMutableRawPointer
 private typealias UINT = UInt32
 private typealias DWORD = UInt32
 private typealias WPARAM = UInt
@@ -296,6 +297,9 @@ private func winEndPaint(_ hwnd: HWND?, _ paint: UnsafePointer<PAINTSTRUCT>?) ->
 @_silgen_name("DrawTextW")
 private func winDrawTextW(_ deviceContext: HDC?, _ text: UnsafePointer<UInt16>?, _ count: Int32, _ rectangle: UnsafeMutablePointer<RECT>?, _ format: UINT) -> Int32
 
+@_silgen_name("ImageList_Draw")
+private func winImageListDraw(_ imageList: HIMAGELIST?, _ index: Int32, _ deviceContext: HDC?, _ x: Int32, _ y: Int32, _ style: UINT) -> Int32
+
 @_silgen_name("FillRect")
 private func winFillRect(_ deviceContext: HDC?, _ rectangle: UnsafePointer<RECT>?, _ brush: HBRUSH?) -> Int32
 
@@ -328,6 +332,9 @@ private func winGetWindowTextW(_ hwnd: HWND?, _ text: UnsafeMutablePointer<UInt1
 
 @_silgen_name("GetWindow")
 private func winGetWindow(_ hwnd: HWND?, _ command: UINT) -> HWND?
+
+@_silgen_name("IsWindow")
+private func winIsWindow(_ hwnd: HWND?) -> Int32
 
 @_silgen_name("InvalidateRect")
 private func winInvalidateRect(_ hwnd: HWND?, _ rectangle: UnsafePointer<RECT>?, _ erase: Int32) -> Int32
@@ -442,6 +449,7 @@ private let swHide: Int32 = 0
 private let swpNoActivate: UINT = 0x0010
 private let swpShowWindow: UINT = 0x0040
 private let wmDestroy: UINT = 0x0002
+private let wmSize: UINT = 0x0005
 private let wmNotify: UINT = 0x004e
 private let wmPaint: UINT = 0x000f
 private let wmEraseBackground: UINT = 0x0014
@@ -513,6 +521,7 @@ private let tbAutosize: UINT = wmUser + 33
 private let tbButtonCount: UINT = wmUser + 24
 private let tbButtonStructSize: UINT = wmUser + 30
 private let tbDeleteButton: UINT = wmUser + 22
+private let tbGetImageList: UINT = wmUser + 49
 private let tbGetItemRect: UINT = wmUser + 29
 private let tbLoadImages: UINT = wmUser + 50
 private let tbSetButtonInfoW: UINT = wmUser + 64
@@ -620,6 +629,7 @@ private let stdFileSave: Int32 = 2
 private let stdPrint: Int32 = 6
 private let stdProperties: Int32 = 10
 private let stdHelp: Int32 = 11
+private let ildNormal: UINT = 0x00000000
 private let toolbarClassName = "ToolbarWindow32"
 private let tbStyleFlat: DWORD = 0x00000800
 private let tbStyleList: DWORD = 0x00001000
@@ -675,6 +685,7 @@ public final class Win32NativeControlBackend: NativeControlBackend {
     private var keyDownActions: [UInt: (NSEvent) -> Void] = [:]
     private var keyUpActions: [UInt: (NSEvent) -> Void] = [:]
     private var windowCloseActions: [UInt: () -> Void] = [:]
+    private var windowResizeActions: [UInt: (NSSize) -> Void] = [:]
     private var originalControlProcedures: [UInt: WNDPROC] = [:]
     private var controlHandleAliases: [UInt: NativeHandle] = [:]
     private var commandActions: [UInt: () -> Void] = [:]
@@ -696,6 +707,8 @@ public final class Win32NativeControlBackend: NativeControlBackend {
     private var backgroundBrushes: [UInt: HBRUSH] = [:]
     private var fonts: [UInt: HFONT] = [:]
     private var bitmaps: [UInt: HBITMAP] = [:]
+    private var standardToolbarImageOwner: HWND?
+    private var standardToolbarImageList: HIMAGELIST?
     private var nextCommandIdentifier: UInt = 1_000
 
     /// Creates a Win32 backend.
@@ -804,6 +817,7 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         keyDownActions.removeValue(forKey: handle.rawValue)
         keyUpActions.removeValue(forKey: handle.rawValue)
         windowCloseActions.removeValue(forKey: handle.rawValue)
+        windowResizeActions.removeValue(forKey: handle.rawValue)
         clearToolbarCommands(for: handle)
         clearToolbarFlexibleCovers(for: handle)
         toolbarActions.removeValue(forKey: handle.rawValue)
@@ -824,6 +838,11 @@ public final class Win32NativeControlBackend: NativeControlBackend {
     /// Registers a native window close action.
     public func registerWindowCloseAction(for handle: NativeHandle, action: @escaping () -> Void) {
         windowCloseActions[handle.rawValue] = action
+    }
+
+    /// Registers the action to perform when a native top-level window resizes.
+    public func registerWindowResizeAction(for handle: NativeHandle, action: @escaping (NSSize) -> Void) {
+        windowResizeActions[handle.rawValue] = action
     }
 
     /// Destroys a native child control.
@@ -2053,6 +2072,23 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         case wmWinChocolateAsync:
             runAsyncActions()
             return 0
+        case wmSize:
+            guard let hwnd else {
+                return nil
+            }
+
+            let handle = nativeHandle(from: hwnd)
+            guard windowHandles.contains(handle), let action = windowResizeActions[handle.rawValue] else {
+                return nil
+            }
+
+            var rectangle = RECT()
+            guard winGetClientRect(hwnd, &rectangle) != 0 else {
+                return nil
+            }
+
+            action(NSSize(width: CGFloat(max(0, rectangle.right - rectangle.left)), height: CGFloat(max(0, rectangle.bottom - rectangle.top))))
+            return 0
         case wmHScroll, wmVScroll:
             guard lParam != 0, let scrollHwnd = HWND(bitPattern: lParam) else {
                 guard let hwnd else {
@@ -2354,6 +2390,7 @@ public final class Win32NativeControlBackend: NativeControlBackend {
                 let shouldTerminate = mainMenuWindowHandles.contains(handle)
                 windowHandles.remove(handle)
                 mainMenuWindowHandles.remove(handle)
+                windowResizeActions.removeValue(forKey: handle.rawValue)
                 windowCloseActions.removeValue(forKey: handle.rawValue)?()
 
                 if shouldTerminate {
@@ -3058,8 +3095,8 @@ public final class Win32NativeControlBackend: NativeControlBackend {
             }
         }
 
-        let label = text(from: hwnd)
-        guard !label.isEmpty else {
+        let preview = toolbarPreview(from: text(from: hwnd))
+        guard !preview.label.isEmpty else {
             return
         }
 
@@ -3070,27 +3107,95 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         _ = winSetBkColor(deviceContext, backgroundColor)
         _ = winSetBkMode(deviceContext, transparentBkMode)
 
-        drawToolbarItemGlyph(label: label, in: rectangle, deviceContext: deviceContext)
+        drawToolbarItemGlyph(preview: preview, in: rectangle, deviceContext: deviceContext, parentWindow: hwnd)
 
-        let height = rectangle.bottom - rectangle.top
         var textRectangle = rectangle
         textRectangle.left += 2
-        textRectangle.top = max(rectangle.top + 18, height - 13)
+        textRectangle.top = max(rectangle.top + 18, rectangle.bottom - 13)
         textRectangle.right -= 2
-        withWideString(label) { textPointer in
+        withWideString(preview.label) { textPointer in
             withUnsafeMutablePointer(to: &textRectangle) { rectanglePointer in
                 _ = winDrawTextW(deviceContext, textPointer, -1, rectanglePointer, dtCenter | dtVCenter | dtSingleLine | dtEndEllipsis)
             }
         }
     }
 
-    private func drawToolbarItemGlyph(label: String, in rectangle: RECT, deviceContext: HDC?) {
+    private func toolbarPreview(from text: String) -> (label: String, imageName: String) {
+        let parts = text.split(separator: "\n", maxSplits: 1, omittingEmptySubsequences: false)
+        let label = parts.first.map(String.init) ?? text
+        let imageName = parts.count > 1 ? String(parts[1]) : label
+        return (label, imageName)
+    }
+
+    private func drawToolbarItemGlyph(preview: (label: String, imageName: String), in rectangle: RECT, deviceContext: HDC?, parentWindow: HWND?) {
         let width = rectangle.right - rectangle.left
         let height = rectangle.bottom - rectangle.top
         let glyphSize = max(12, min(18, height - 14))
         let glyphLeft = rectangle.left + max((width - glyphSize) / 2, 2)
         let glyphTop = rectangle.top + 3
-        let accent = toolbarGlyphColor(for: label)
+        let kind = preview.imageName.lowercased()
+
+        if kind.contains("separator") {
+            drawSeparatorGlyph(left: glyphLeft, top: glyphTop, size: glyphSize, deviceContext: deviceContext)
+            return
+        }
+        if kind.contains("flexiblespace") {
+            drawFlexibleSpaceGlyph(left: glyphLeft, top: glyphTop, size: glyphSize, deviceContext: deviceContext)
+            return
+        }
+        if kind == "space" || kind.contains("fixedspace") {
+            drawSpaceGlyph(left: glyphLeft, top: glyphTop, size: glyphSize, deviceContext: deviceContext)
+            return
+        }
+
+        let imageIndex = toolbarImageIndex(for: preview.imageName)
+        if imageIndex != iImageNone, let imageList = standardToolbarImages(parentWindow: parentWindow) {
+            let imageLeft = rectangle.left + max((width - 16) / 2, 2)
+            _ = winImageListDraw(imageList, imageIndex, deviceContext, imageLeft, glyphTop, ildNormal)
+            return
+        }
+
+        drawDocumentGlyph(left: glyphLeft, top: glyphTop, size: glyphSize, accent: toolbarGlyphColor(for: preview.imageName), deviceContext: deviceContext)
+    }
+
+    private func standardToolbarImages(parentWindow: HWND?) -> HIMAGELIST? {
+        if let standardToolbarImageList, winIsWindow(standardToolbarImageOwner) != 0 {
+            return standardToolbarImageList
+        }
+        standardToolbarImageOwner = nil
+        standardToolbarImageList = nil
+
+        let toolbarHwnd = withWideString(toolbarClassName) { className in
+            withWideString("") { title in
+                winCreateWindowExW(
+                    0,
+                    className,
+                    title,
+                    wsChild,
+                    -32_000,
+                    -32_000,
+                    1,
+                    1,
+                    parentWindow,
+                    nil,
+                    winGetModuleHandleW(nil),
+                    nil
+                )
+            }
+        }
+        guard let toolbarHwnd else {
+            return nil
+        }
+
+        _ = winSendMessageW(toolbarHwnd, tbButtonStructSize, WPARAM(MemoryLayout<TBBUTTON>.size), 0)
+        _ = winSendMessageW(toolbarHwnd, tbLoadImages, idbStdSmallColor, hinstCommctrl)
+        let imageList = HIMAGELIST(bitPattern: winSendMessageW(toolbarHwnd, tbGetImageList, 0, 0))
+        standardToolbarImageOwner = toolbarHwnd
+        standardToolbarImageList = imageList
+        return imageList
+    }
+
+    private func drawDocumentGlyph(left glyphLeft: Int32, top glyphTop: Int32, size glyphSize: Int32, accent: DWORD, deviceContext: HDC?) {
         let shadow = colorRef(red: 0.50, green: 0.52, blue: 0.55)
         let paper = colorRef(red: 0.98, green: 0.98, blue: 0.96)
         let shine = colorRef(red: 1.0, green: 1.0, blue: 1.0)
@@ -3120,6 +3225,93 @@ public final class Win32NativeControlBackend: NativeControlBackend {
             color: colorRef(red: 0.88, green: 0.90, blue: 0.92),
             deviceContext: deviceContext
         )
+    }
+
+    private func drawFolderGlyph(left glyphLeft: Int32, top glyphTop: Int32, size glyphSize: Int32, deviceContext: HDC?) {
+        let edge = colorRef(red: 0.61, green: 0.43, blue: 0.16)
+        let tab = colorRef(red: 0.94, green: 0.68, blue: 0.22)
+        let body = colorRef(red: 0.98, green: 0.78, blue: 0.30)
+        let shine = colorRef(red: 1.0, green: 0.90, blue: 0.48)
+        fillRect(RECT(left: glyphLeft + 1, top: glyphTop + 5, right: glyphLeft + glyphSize, bottom: glyphTop + glyphSize - 1), color: edge, deviceContext: deviceContext)
+        fillRect(RECT(left: glyphLeft + 2, top: glyphTop + 3, right: glyphLeft + glyphSize / 2 + 2, bottom: glyphTop + 7), color: tab, deviceContext: deviceContext)
+        fillRect(RECT(left: glyphLeft + 2, top: glyphTop + 7, right: glyphLeft + glyphSize - 1, bottom: glyphTop + glyphSize - 2), color: body, deviceContext: deviceContext)
+        fillRect(RECT(left: glyphLeft + 4, top: glyphTop + 8, right: glyphLeft + glyphSize - 3, bottom: glyphTop + 10), color: shine, deviceContext: deviceContext)
+    }
+
+    private func drawSaveGlyph(left glyphLeft: Int32, top glyphTop: Int32, size glyphSize: Int32, deviceContext: HDC?) {
+        let body = colorRef(red: 0.11, green: 0.28, blue: 0.58)
+        let edge = colorRef(red: 0.05, green: 0.12, blue: 0.30)
+        let label = colorRef(red: 0.94, green: 0.94, blue: 0.90)
+        let metal = colorRef(red: 0.78, green: 0.81, blue: 0.84)
+        fillRect(RECT(left: glyphLeft + 1, top: glyphTop + 1, right: glyphLeft + glyphSize, bottom: glyphTop + glyphSize), color: edge, deviceContext: deviceContext)
+        fillRect(RECT(left: glyphLeft + 2, top: glyphTop + 2, right: glyphLeft + glyphSize - 1, bottom: glyphTop + glyphSize - 1), color: body, deviceContext: deviceContext)
+        fillRect(RECT(left: glyphLeft + 4, top: glyphTop + 3, right: glyphLeft + glyphSize - 4, bottom: glyphTop + 7), color: metal, deviceContext: deviceContext)
+        fillRect(RECT(left: glyphLeft + glyphSize - 6, top: glyphTop + 4, right: glyphLeft + glyphSize - 4, bottom: glyphTop + 6), color: edge, deviceContext: deviceContext)
+        fillRect(RECT(left: glyphLeft + 4, top: glyphTop + glyphSize - 7, right: glyphLeft + glyphSize - 4, bottom: glyphTop + glyphSize - 2), color: label, deviceContext: deviceContext)
+    }
+
+    private func drawPrintGlyph(left glyphLeft: Int32, top glyphTop: Int32, size glyphSize: Int32, deviceContext: HDC?) {
+        fillRect(RECT(left: glyphLeft + 4, top: glyphTop + 1, right: glyphLeft + glyphSize - 4, bottom: glyphTop + 6), color: colorRef(red: 0.95, green: 0.95, blue: 0.92), deviceContext: deviceContext)
+        fillRect(RECT(left: glyphLeft + 2, top: glyphTop + 6, right: glyphLeft + glyphSize - 2, bottom: glyphTop + glyphSize - 4), color: colorRef(red: 0.30, green: 0.32, blue: 0.35), deviceContext: deviceContext)
+        fillRect(RECT(left: glyphLeft + 4, top: glyphTop + glyphSize - 8, right: glyphLeft + glyphSize - 4, bottom: glyphTop + glyphSize - 1), color: colorRef(red: 0.97, green: 0.97, blue: 0.94), deviceContext: deviceContext)
+        fillRect(RECT(left: glyphLeft + glyphSize - 5, top: glyphTop + 8, right: glyphLeft + glyphSize - 3, bottom: glyphTop + 10), color: colorRef(red: 0.30, green: 0.62, blue: 0.86), deviceContext: deviceContext)
+    }
+
+    private func drawPropertiesGlyph(left glyphLeft: Int32, top glyphTop: Int32, size glyphSize: Int32, deviceContext: HDC?) {
+        let edge = colorRef(red: 0.35, green: 0.40, blue: 0.48)
+        let sheet = colorRef(red: 0.91, green: 0.94, blue: 0.97)
+        let header = colorRef(red: 0.36, green: 0.55, blue: 0.75)
+        let line = colorRef(red: 0.50, green: 0.56, blue: 0.62)
+        fillRect(RECT(left: glyphLeft + 3, top: glyphTop + 1, right: glyphLeft + glyphSize - 3, bottom: glyphTop + glyphSize), color: edge, deviceContext: deviceContext)
+        fillRect(RECT(left: glyphLeft + 4, top: glyphTop + 2, right: glyphLeft + glyphSize - 4, bottom: glyphTop + glyphSize - 1), color: sheet, deviceContext: deviceContext)
+        fillRect(RECT(left: glyphLeft + 5, top: glyphTop + 4, right: glyphLeft + glyphSize - 5, bottom: glyphTop + 7), color: header, deviceContext: deviceContext)
+        fillRect(RECT(left: glyphLeft + 6, top: glyphTop + 9, right: glyphLeft + glyphSize - 6, bottom: glyphTop + 10), color: line, deviceContext: deviceContext)
+        fillRect(RECT(left: glyphLeft + 6, top: glyphTop + 12, right: glyphLeft + glyphSize - 8, bottom: glyphTop + 13), color: line, deviceContext: deviceContext)
+    }
+
+    private func drawTrashGlyph(left glyphLeft: Int32, top glyphTop: Int32, size glyphSize: Int32, deviceContext: HDC?) {
+        fillRect(RECT(left: glyphLeft + 5, top: glyphTop + 2, right: glyphLeft + glyphSize - 5, bottom: glyphTop + 4), color: colorRef(red: 0.35, green: 0.37, blue: 0.40), deviceContext: deviceContext)
+        fillRect(RECT(left: glyphLeft + 3, top: glyphTop + 5, right: glyphLeft + glyphSize - 3, bottom: glyphTop + 7), color: colorRef(red: 0.45, green: 0.47, blue: 0.50), deviceContext: deviceContext)
+        fillRect(RECT(left: glyphLeft + 4, top: glyphTop + 7, right: glyphLeft + glyphSize - 4, bottom: glyphTop + glyphSize - 1), color: colorRef(red: 0.76, green: 0.78, blue: 0.80), deviceContext: deviceContext)
+        fillRect(RECT(left: glyphLeft + 7, top: glyphTop + 8, right: glyphLeft + 8, bottom: glyphTop + glyphSize - 2), color: colorRef(red: 0.50, green: 0.52, blue: 0.55), deviceContext: deviceContext)
+        fillRect(RECT(left: glyphLeft + glyphSize - 8, top: glyphTop + 8, right: glyphLeft + glyphSize - 7, bottom: glyphTop + glyphSize - 2), color: colorRef(red: 0.50, green: 0.52, blue: 0.55), deviceContext: deviceContext)
+    }
+
+    private func drawSearchGlyph(left glyphLeft: Int32, top glyphTop: Int32, size glyphSize: Int32, deviceContext: HDC?) {
+        let glass = colorRef(red: 0.45, green: 0.68, blue: 0.88)
+        let rim = colorRef(red: 0.18, green: 0.32, blue: 0.48)
+        fillRect(RECT(left: glyphLeft + 3, top: glyphTop + 3, right: glyphLeft + glyphSize - 6, bottom: glyphTop + glyphSize - 6), color: rim, deviceContext: deviceContext)
+        fillRect(RECT(left: glyphLeft + 5, top: glyphTop + 5, right: glyphLeft + glyphSize - 8, bottom: glyphTop + glyphSize - 8), color: glass, deviceContext: deviceContext)
+        fillRect(RECT(left: glyphLeft + glyphSize - 7, top: glyphTop + glyphSize - 7, right: glyphLeft + glyphSize - 2, bottom: glyphTop + glyphSize - 4), color: rim, deviceContext: deviceContext)
+        fillRect(RECT(left: glyphLeft + glyphSize - 5, top: glyphTop + glyphSize - 5, right: glyphLeft + glyphSize - 2, bottom: glyphTop + glyphSize - 2), color: rim, deviceContext: deviceContext)
+    }
+
+    private func drawPlusGlyph(left glyphLeft: Int32, top glyphTop: Int32, size glyphSize: Int32, deviceContext: HDC?) {
+        drawDocumentGlyph(left: glyphLeft, top: glyphTop, size: glyphSize, accent: colorRef(red: 0.31, green: 0.62, blue: 0.36), deviceContext: deviceContext)
+        fillRect(RECT(left: glyphLeft + glyphSize - 7, top: glyphTop + glyphSize - 10, right: glyphLeft + glyphSize - 4, bottom: glyphTop + glyphSize - 3), color: colorRef(red: 0.16, green: 0.56, blue: 0.20), deviceContext: deviceContext)
+        fillRect(RECT(left: glyphLeft + glyphSize - 9, top: glyphTop + glyphSize - 8, right: glyphLeft + glyphSize - 2, bottom: glyphTop + glyphSize - 5), color: colorRef(red: 0.16, green: 0.56, blue: 0.20), deviceContext: deviceContext)
+    }
+
+    private func drawSeparatorGlyph(left glyphLeft: Int32, top glyphTop: Int32, size glyphSize: Int32, deviceContext: HDC?) {
+        let center = glyphLeft + glyphSize / 2
+        fillRect(RECT(left: center - 1, top: glyphTop + 1, right: center, bottom: glyphTop + glyphSize - 1), color: colorRef(red: 0.52, green: 0.55, blue: 0.58), deviceContext: deviceContext)
+        fillRect(RECT(left: center, top: glyphTop + 1, right: center + 1, bottom: glyphTop + glyphSize - 1), color: colorRef(red: 1.0, green: 1.0, blue: 1.0), deviceContext: deviceContext)
+    }
+
+    private func drawSpaceGlyph(left glyphLeft: Int32, top glyphTop: Int32, size glyphSize: Int32, deviceContext: HDC?) {
+        let y = glyphTop + glyphSize / 2
+        fillRect(RECT(left: glyphLeft + 3, top: y, right: glyphLeft + glyphSize - 3, bottom: y + 1), color: colorRef(red: 0.62, green: 0.65, blue: 0.68), deviceContext: deviceContext)
+        fillRect(RECT(left: glyphLeft + 3, top: y - 3, right: glyphLeft + 4, bottom: y + 4), color: colorRef(red: 0.62, green: 0.65, blue: 0.68), deviceContext: deviceContext)
+        fillRect(RECT(left: glyphLeft + glyphSize - 4, top: y - 3, right: glyphLeft + glyphSize - 3, bottom: y + 4), color: colorRef(red: 0.62, green: 0.65, blue: 0.68), deviceContext: deviceContext)
+    }
+
+    private func drawFlexibleSpaceGlyph(left glyphLeft: Int32, top glyphTop: Int32, size glyphSize: Int32, deviceContext: HDC?) {
+        let y = glyphTop + glyphSize / 2
+        fillRect(RECT(left: glyphLeft + 2, top: y, right: glyphLeft + glyphSize - 2, bottom: y + 1), color: colorRef(red: 0.35, green: 0.45, blue: 0.58), deviceContext: deviceContext)
+        fillRect(RECT(left: glyphLeft + 2, top: y - 2, right: glyphLeft + 5, bottom: y + 3), color: colorRef(red: 0.35, green: 0.45, blue: 0.58), deviceContext: deviceContext)
+        fillRect(RECT(left: glyphLeft + glyphSize - 5, top: y - 2, right: glyphLeft + glyphSize - 2, bottom: y + 3), color: colorRef(red: 0.35, green: 0.45, blue: 0.58), deviceContext: deviceContext)
+        fillRect(RECT(left: glyphLeft + 6, top: y - 1, right: glyphLeft + 8, bottom: y + 2), color: colorRef(red: 0.82, green: 0.87, blue: 0.94), deviceContext: deviceContext)
+        fillRect(RECT(left: glyphLeft + glyphSize - 8, top: y - 1, right: glyphLeft + glyphSize - 6, bottom: y + 2), color: colorRef(red: 0.82, green: 0.87, blue: 0.94), deviceContext: deviceContext)
     }
 
     private func fillRect(_ rectangle: RECT, color: DWORD, deviceContext: HDC?) {

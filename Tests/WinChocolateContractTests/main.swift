@@ -1996,6 +1996,38 @@ func testWindowContentSizeAndCenterUpdateFrame() {
     expect(backend.records[handle]?.frame == NSMakeRect(392, 304, 240, 160), "center did not reach backend.")
 }
 
+func testNativeWindowResizeUpdatesContentAndAutoresizesSubviews() {
+    let backend = InMemoryNativeControlBackend()
+    let window = NSWindow(
+        contentRect: NSMakeRect(10, 20, 200, 120),
+        styleMask: [.titled, .resizable],
+        backing: .buffered,
+        defer: false,
+        nativeBackend: backend
+    )
+    let contentView = NSView(frame: NSMakeRect(0, 0, 200, 120))
+    let stretchView = NSView(frame: NSMakeRect(10, 10, 80, 30))
+    let trailingView = NSView(frame: NSMakeRect(150, 80, 30, 20))
+    stretchView.autoresizingMask = [.width]
+    trailingView.autoresizingMask = [.minXMargin, .minYMargin]
+    contentView.addSubview(stretchView)
+    contentView.addSubview(trailingView)
+    window.contentView = contentView
+    let handle = window.realizeNativePeer()
+
+    guard let resizeAction = backend.windowResizeActions[handle] else {
+        fatalError("Window did not register native resize action.")
+    }
+
+    resizeAction(NSMakeSize(260, 180))
+
+    expect(window.frame.size == NSMakeSize(260, 180), "Native resize did not update window frame size.")
+    expect(contentView.frame == NSMakeRect(0, 0, 260, 180), "Native resize did not update content view frame.")
+    expect(backend.records[contentView.nativeHandle!]?.frame == contentView.frame, "Native resize did not sync content view frame to backend.")
+    expect(stretchView.frame == NSMakeRect(10, 10, 140, 30), "Autoresizing width mask did not stretch subview.")
+    expect(trailingView.frame == NSMakeRect(210, 140, 30, 20), "Autoresizing margins did not move trailing subview.")
+}
+
 func testPanelStoresPanelStateAndOrdersFront() {
     clearApplicationWindows()
 
@@ -2254,11 +2286,17 @@ func testToolbarCustomizationPaletteShowsToolbarDropTargetAtTop() {
     let toolbarTiles = contentView.subviews
         .filter { $0.toolTip == "Drag to reorder or drag out to remove." && $0.frame.origin.y == 8 }
 
+    expect(panel.styleMask.contains(.resizable), "Toolbar customization palette should be resizable.")
     expect(contentView.tag == 1_100, "Toolbar customization palette did not mark the content as the toolbar drop surface.")
     expect(toolbarTiles.count == 2, "Toolbar customization top row did not mirror visible toolbar item count.")
     expect(toolbar.items.map(\.label) == ["Open", "Save"], "Toolbar customization top row did not mirror visible toolbar items.")
     expect(toolbarTiles.allSatisfy { $0.frame.origin.y < 42 }, "Toolbar customization top row was not docked at the top.")
     expect(!contentView.subviews.compactMap { ($0 as? NSTextField)?.stringValue }.contains("Mock toolbar drop target:"), "Toolbar customization palette still labels the drop target as a mock toolbar.")
+
+    let paletteWidth = contentView.subviews.first { $0.frame.origin == NSPoint(x: 24, y: 126) }?.frame.size.width ?? 0
+    panel.setContentSize(NSMakeSize(740, 500))
+    let resizedPaletteWidth = contentView.subviews.first { $0.frame.origin == NSPoint(x: 24, y: 126) }?.frame.size.width ?? 0
+    expect(resizedPaletteWidth > paletteWidth, "Toolbar customization palette contents did not autoresize horizontally.")
 
     clearApplicationWindows()
 }
@@ -3461,6 +3499,7 @@ testRadioButtonClearsSiblingRadioButtons()
 testRealizedViewStatePropagatesToBackend()
 testWindowTitleAndFramePropagateToBackend()
 testWindowContentSizeAndCenterUpdateFrame()
+testNativeWindowResizeUpdatesContentAndAutoresizesSubviews()
 testPanelStoresPanelStateAndOrdersFront()
 testPopoverShowsClosesAndReopensFromAnchorView()
 testToolbarStoresItemsAndAttachesToWindow()

@@ -283,6 +283,9 @@ open class NSWindow: NSResponder {
         nativeBackend.registerWindowCloseAction(for: handle) { [weak self] in
             self?.nativeWindowDidClose()
         }
+        nativeBackend.registerWindowResizeAction(for: handle) { [weak self] size in
+            self?.nativeWindowDidResize(to: size)
+        }
         NSApplication.shared.addWindowsItem(self)
         installToolbarHost()
         layoutToolbarAndContent()
@@ -295,6 +298,11 @@ open class NSWindow: NSResponder {
         toolbarHostView = nil
         nativeHandle = nil
         NSApplication.shared.removeWindowsItem(self)
+    }
+
+    private func nativeWindowDidResize(to size: NSSize) {
+        frame = NSRect(origin: frame.origin, size: size)
+        layoutToolbarAndContent()
     }
 
     private func installToolbarHost() {
