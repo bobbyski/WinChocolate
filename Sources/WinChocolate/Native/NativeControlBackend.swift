@@ -15,6 +15,9 @@ public struct NativeToolbarItem: Equatable, Sendable {
     /// Whether this item consumes flexible toolbar space.
     public var isFlexibleSpace: Bool
 
+    /// Width reserved for an overlaid custom toolbar view, when any.
+    public var customViewWidth: CGFloat?
+
     /// Whether this item is enabled.
     public var isEnabled: Bool
 
@@ -25,6 +28,7 @@ public struct NativeToolbarItem: Equatable, Sendable {
         imageName: String? = nil,
         isSeparator: Bool = false,
         isFlexibleSpace: Bool = false,
+        customViewWidth: CGFloat? = nil,
         isEnabled: Bool = true
     ) {
         self.identifier = identifier
@@ -32,6 +36,7 @@ public struct NativeToolbarItem: Equatable, Sendable {
         self.imageName = imageName
         self.isSeparator = isSeparator
         self.isFlexibleSpace = isFlexibleSpace
+        self.customViewWidth = customViewWidth
         self.isEnabled = isEnabled
     }
 }

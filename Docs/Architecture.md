@@ -6,6 +6,8 @@ WinChocolate is an AppKit-compatible SwiftPM framework for Windows. The goal is 
 
 Overall planned-code progress: `######....` 62%
 
+For the current dashboard-style project tracker, see [ProjectPlan.md](ProjectPlan.md).
+
 Note: real Foundation remains the intended default for Foundation-shaped APIs. The local ARM64 Windows Swift toolchain currently fails while building UCRT/Swift overlay shim modules, so Windows builds define `USE_WIN_FOUNDATION` and use the repo-local `WinFoundation` target as a temporary bridge. Pass `-Xswiftc -DUSE_REAL_FOUNDATION` to test newer Windows toolchains against real Foundation.
 
 ## First Milestone

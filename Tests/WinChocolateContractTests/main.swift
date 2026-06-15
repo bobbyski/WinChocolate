@@ -2403,6 +2403,31 @@ func testToolbarViewUsesNativeToolbarPeerAndDispatchesItems() {
     expect(backend.records[handle]?.toolbarItems.first?.imageName == nil, "Toolbar label-only mode did not hide item images.")
 }
 
+func testToolbarViewHostsCustomItemView() {
+    let backend = InMemoryNativeControlBackend()
+    let toolbar = NSToolbar(identifier: "customView")
+    let selector = NSPopUpButton(frame: NSMakeRect(0, 0, 140, 28), pullsDown: false)
+    let item = NSToolbarItem(itemIdentifier: "selector")
+    let toolbarView = NSToolbarView(frame: NSMakeRect(0, 0, 300, 40))
+
+    selector.addItems(withTitles: ["One", "Two"])
+    item.label = "Selector"
+    item.view = selector
+    item.minSize = NSMakeSize(140, 28)
+    item.maxSize = NSMakeSize(140, 28)
+    toolbar.addItem(item)
+    toolbarView.toolbar = toolbar
+
+    let handle = toolbarView.realizeNativePeer(in: backend, parent: nil)
+
+    expect(selector.superview === toolbarView, "Toolbar custom item view was not hosted by toolbar view.")
+    expect(selector.nativeHandle != nil, "Toolbar custom item view did not realize a native peer.")
+    expect(selector.frame == NSMakeRect(8, 6, 140, 28), "Toolbar custom item view was not positioned in the toolbar strip.")
+    expect(backend.records[handle]?.toolbarItems == [
+        NativeToolbarItem(identifier: "selector", label: "", isSeparator: true, customViewWidth: 140, isEnabled: false)
+    ], "Toolbar custom item did not reserve native toolbar space.")
+}
+
 func testWindowToolbarCreatesDockedNativePeerAndReservesContent() {
     let backend = InMemoryNativeControlBackend()
     let window = NSWindow(
@@ -3509,6 +3534,7 @@ testToolbarCustomizationAllowsDuplicateStructuralItems()
 testToolbarCustomizationPaletteShowsToolbarDropTargetAtTop()
 testToolbarCustomizationMovesExistingItemToEnd()
 testToolbarViewUsesNativeToolbarPeerAndDispatchesItems()
+testToolbarViewHostsCustomItemView()
 testWindowToolbarCreatesDockedNativePeerAndReservesContent()
 testEditableTextFieldUsesEditableNativePeer()
 testSecureTextFieldUsesSecureNativePeer()

@@ -824,6 +824,8 @@ open class NSToolbarView: NSView {
     /// Called after the hosted toolbar visibility changes.
     public var visibilityChanged: ((Bool) -> Void)?
 
+    private var hostedItemViews: [NSView] = []
+
     /// Creates a toolbar view.
     public override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -842,6 +844,7 @@ open class NSToolbarView: NSView {
         }
 
         realizedBackend.setToolbarItems(nativeItems(from: toolbar), for: nativeHandle)
+        layoutCustomItemViews(for: toolbar)
     }
 
     /// Creates the native toolbar peer.
@@ -861,7 +864,50 @@ open class NSToolbarView: NSView {
             item.performAction()
         }
         backend.setToolbarItems(toolbar.map(nativeItems(from:)) ?? [], for: handle)
+        if let toolbar {
+            layoutCustomItemViews(for: toolbar)
+        }
         return handle
+    }
+
+    private func layoutCustomItemViews(for toolbar: NSToolbar) {
+        let currentViews = toolbar.items.compactMap(\.view)
+        for hostedView in hostedItemViews where !currentViews.contains(where: { $0 === hostedView }) {
+            hostedView.removeFromSuperview()
+        }
+        hostedItemViews = currentViews
+
+        var x = leadingPadding
+        for item in toolbar.items {
+            let itemWidth = displayWidth(for: item, in: toolbar)
+            if let view = item.view {
+                let height = min(itemHeight, max(20, item.maxSize.height))
+                let y = max((frame.size.height - height) / 2, 0)
+                view.frame = NSMakeRect(x, y, itemWidth, height)
+                if view.superview !== self {
+                    addSubview(view)
+                }
+            }
+            x += itemWidth + itemSpacing
+        }
+    }
+
+    private func displayWidth(for item: NSToolbarItem, in toolbar: NSToolbar) -> CGFloat {
+        if item.itemIdentifier == .flexibleSpace {
+            return 24
+        }
+        if item.itemIdentifier == .separator || item.itemIdentifier == .space {
+            return 8
+        }
+        if item.view != nil {
+            return max(item.minSize.width, min(item.maxSize.width, item.maxSize.width))
+        }
+
+        let showsLabel = toolbar.displayMode != .iconOnly
+        let showsImage = toolbar.displayMode != .labelOnly
+        let iconWidth: CGFloat = showsImage && item.image != nil ? 24 : 0
+        let labelWidth = showsLabel ? CGFloat(max(28, item.label.count * 6)) : 0
+        return max(iconWidth, labelWidth) + 20
     }
 
     private func nativeItems(from toolbar: NSToolbar) -> [NativeToolbarItem] {
@@ -878,6 +924,16 @@ open class NSToolbarView: NSView {
             case .separator, .space:
                 return NativeToolbarItem(identifier: item.itemIdentifier.rawValue, label: "", isSeparator: true, isEnabled: false)
             default:
+                if item.view != nil {
+                    return NativeToolbarItem(
+                        identifier: item.itemIdentifier.rawValue,
+                        label: "",
+                        isSeparator: true,
+                        customViewWidth: displayWidth(for: item, in: toolbar),
+                        isEnabled: false
+                    )
+                }
+
                 let showsLabel = toolbar.displayMode != .iconOnly
                 let showsImage = toolbar.displayMode != .labelOnly
                 return NativeToolbarItem(

@@ -69,6 +69,8 @@ Foundation is the intended default for Foundation-shaped API. The current local 
 
 See [FOUNDATION_SHIMS.md](FOUNDATION_SHIMS.md) for the active shim surface, maintenance rules, and the canary commands for deciding when a newer Swift/Foundation release makes the shim unnecessary.
 
+See [Docs/ProjectPlan.md](Docs/ProjectPlan.md) for the dashboard-style build plan and active project tracker.
+
 The current visual style is the classic Win32 look on purpose. That should remain available for apps that want a retro or very small native-tool feel. The roadmap now tracks a separate modern Windows appearance layer as the eventual default, with backend or appearance selection so app code can keep the same AppKit-shaped API.
 
 The table plan is Mac-first: application code should use AppKit-shaped `NSTableView`, `NSTableColumn`, data source, delegate, sort descriptors, cell/view helpers, and `NSScrollView.documentView` patterns. The current classic backend renderer is temporary and deliberately hidden behind the same native backend boundary as the other controls.

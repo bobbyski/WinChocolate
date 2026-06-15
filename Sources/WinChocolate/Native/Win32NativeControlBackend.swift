@@ -2703,6 +2703,20 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         let flexibleSpaceWidth = toolbarFlexibleSpaceWidth(for: items, handle: handle)
 
         for item in items {
+            if let customViewWidth = item.customViewWidth {
+                buttons.append(TBBUTTON(
+                    iBitmap: Int32(max(1, customViewWidth.rounded())),
+                    idCommand: 0,
+                    fsState: 0,
+                    fsStyle: tbStyleSep,
+                    bReserved0: 0,
+                    bReserved1: 0,
+                    dwData: 0,
+                    iString: 0
+                ))
+                continue
+            }
+
             if item.isFlexibleSpace {
                 flexibleButtonIndexes.append(buttons.count)
                 buttons.append(TBBUTTON(
@@ -2824,6 +2838,9 @@ public final class Win32NativeControlBackend: NativeControlBackend {
             }
 
             if item.isSeparator {
+                if let customViewWidth = item.customViewWidth {
+                    return width + customViewWidth
+                }
                 return width + 8
             }
 

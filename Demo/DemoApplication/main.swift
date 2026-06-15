@@ -293,8 +293,7 @@ let scrollerValueLabel = NSTextField(string: "0", frame: NSMakeRect(384, 334, 48
 let dateLabel = NSTextField(string: "Date:", frame: NSMakeRect(32, 382, 88, 24))
 let datePicker = NSDatePicker(date: Date(timeIntervalSince1970: 1_780_272_000), frame: NSMakeRect(128, 378, 184, 28))
 let dateValueLabel = NSTextField(string: "2026-06-01", frame: NSMakeRect(328, 382, 120, 24))
-let tabLabel = NSTextField(string: "Groups:", frame: NSMakeRect(32, 114, 104, 24))
-let tabView = NSTabView(frame: NSMakeRect(152, 112, 360, 32))
+let pageSelector = NSPopUpButton(frame: NSMakeRect(0, 0, 168, 28), pullsDown: false)
 let imageLabel = NSTextField(string: "Image view:", frame: NSMakeRect(32, 28, 104, 24))
 let imageView = NSImageView(frame: NSMakeRect(152, 28, 300, 190))
 let clipLabel = NSTextField(string: "Clip view:", frame: NSMakeRect(496, 28, 104, 24))
@@ -342,6 +341,7 @@ let openToolbarItem = NSToolbarItem(itemIdentifier: "open")
 let saveToolbarItem = NSToolbarItem(itemIdentifier: "save")
 let toolbarSeparatorItem = NSToolbarItem(itemIdentifier: .separator)
 let toolbarFlexibleSpaceItem = NSToolbarItem(itemIdentifier: .flexibleSpace)
+let pageToolbarItem = NSToolbarItem(itemIdentifier: "pageSelector")
 let toggleToolbarItem = NSToolbarItem(itemIdentifier: "toggleToolbar")
 let customizeToolbarItem = NSToolbarItem(itemIdentifier: "customizeToolbar")
 let contentFocusColor = NSColor(calibratedRed: 0.92, green: 0.97, blue: 1.0, alpha: 1.0)
@@ -689,8 +689,8 @@ func focusName() -> String {
     if responder === scrollSelectedButton {
         return "scroll selected"
     }
-    if responder === tabView {
-        return "tab view"
+    if responder === pageSelector {
+        return "page selector"
     }
     if responder === tableView {
         return "table view"
@@ -769,16 +769,7 @@ datePicker.minDate = Date(timeIntervalSince1970: 1_735_689_600)
 datePicker.maxDate = Date(timeIntervalSince1970: 1_893_456_000)
 dateValueLabel.textColor = .blue
 dateValueLabel.stringValue = datePicker.stringValue
-tabLabel.font = NSFont.boldSystemFont(ofSize: 12)
-let firstTab = NSTabViewItem(identifier: "controls")
-firstTab.label = "Controls"
-let secondTab = NSTabViewItem(identifier: "values")
-secondTab.label = "Values"
-let thirdTab = NSTabViewItem(identifier: "tables")
-thirdTab.label = "Tables/Media"
-tabView.addTabViewItem(firstTab)
-tabView.addTabViewItem(secondTab)
-tabView.addTabViewItem(thirdTab)
+pageSelector.addItems(withTitles: ["Controls", "Values", "Tables/Media"])
 imageLabel.font = NSFont.boldSystemFont(ofSize: 12)
 imageView.image = NSImage(contentsOfFile: demoArtworkPath) ?? NSImage(named: "WinChocolate artwork")
 imageView.imageFrameStyle = .grayBezel
@@ -858,10 +849,17 @@ customizeToolbarItem.toolTip = "Customize the toolbar"
 customizeToolbarItem.image = NSImage(systemSymbolName: "slider.horizontal.3", accessibilityDescription: "Customize Toolbar")
 customizeToolbarItem.minSize = NSMakeSize(86, 30)
 customizeToolbarItem.maxSize = NSMakeSize(96, 30)
+pageToolbarItem.label = "Page"
+pageToolbarItem.paletteLabel = "Page Selector"
+pageToolbarItem.toolTip = "Choose the demo page"
+pageToolbarItem.view = pageSelector
+pageToolbarItem.minSize = NSMakeSize(168, 28)
+pageToolbarItem.maxSize = NSMakeSize(168, 28)
 let demoToolbarDelegate = DemoToolbarDelegate(
     allowedIdentifiers: [
         "open",
         "save",
+        "pageSelector",
         .separator,
         .flexibleSpace,
         "toggleToolbar",
@@ -870,6 +868,7 @@ let demoToolbarDelegate = DemoToolbarDelegate(
     defaultIdentifiers: [
         "open",
         "save",
+        "pageSelector",
         .separator,
         .flexibleSpace,
         "toggleToolbar",
@@ -881,6 +880,8 @@ let demoToolbarDelegate = DemoToolbarDelegate(
             return openToolbarItem
         case "save":
             return saveToolbarItem
+        case "pageSelector":
+            return pageToolbarItem
         case NSToolbarItem.Identifier.separator.rawValue:
             return toolbarSeparatorItem
         case NSToolbarItem.Identifier.flexibleSpace.rawValue:
@@ -899,6 +900,7 @@ demoToolbar.allowsUserCustomization = true
 demoToolbar.delegate = demoToolbarDelegate
 demoToolbar.addItem(openToolbarItem)
 demoToolbar.addItem(saveToolbarItem)
+demoToolbar.addItem(pageToolbarItem)
 demoToolbar.addItem(toolbarSeparatorItem)
 demoToolbar.addItem(toolbarFlexibleSpaceItem)
 demoToolbar.addItem(toggleToolbarItem)
@@ -1015,8 +1017,8 @@ levelIndicator.nextKeyView = colorWell
 colorWell.nextKeyView = segmentedControl
 segmentedControl.nextKeyView = scroller
 scroller.nextKeyView = datePicker
-datePicker.nextKeyView = tabView
-tabView.nextKeyView = clipHomeButton
+datePicker.nextKeyView = pageSelector
+pageSelector.nextKeyView = clipHomeButton
 clipHomeButton.nextKeyView = clipCenterButton
 clipCenterButton.nextKeyView = clipCornerButton
 clipCornerButton.nextKeyView = pathControl
@@ -1034,8 +1036,8 @@ collectionView.previousKeyView = pathControl
 pathControl.previousKeyView = clipCornerButton
 clipCornerButton.previousKeyView = clipCenterButton
 clipCenterButton.previousKeyView = clipHomeButton
-clipHomeButton.previousKeyView = tabView
-tabView.previousKeyView = datePicker
+clipHomeButton.previousKeyView = pageSelector
+pageSelector.previousKeyView = datePicker
 datePicker.previousKeyView = scroller
 scroller.previousKeyView = segmentedControl
 segmentedControl.previousKeyView = colorWell
@@ -1154,10 +1156,14 @@ datePicker.onAction = { control in
     statusLabel.stringValue = "Date picked: \(picker.stringValue)"
 }
 
-tabView.onSelectionChanged = { tabs in
-    showDemoPage(tabs.indexOfTabViewItem(tabs.selectedTabViewItem ?? firstTab))
+pageSelector.onAction = { control in
+    guard let selector = control as? NSPopUpButton else {
+        return
+    }
+
+    showDemoPage(selector.indexOfSelectedItem)
     updateFocusDisplay()
-    statusLabel.stringValue = "Tab selected: \(tabs.selectedTabViewItem?.label ?? "none")"
+    statusLabel.stringValue = "Page selected: \(selector.titleOfSelectedItem ?? "none")"
 }
 
 imageView.onAction = { _ in
@@ -1532,8 +1538,6 @@ outlineView.onSelectionChanged = { table in
 contentView.addSubview(counterLabel)
 contentView.addSubview(statusLabel)
 contentView.addSubview(focusLabel)
-contentView.addSubview(tabLabel)
-contentView.addSubview(tabView)
 contentView.addSubview(controlsPage)
 contentView.addSubview(valuesPage)
 contentView.addSubview(tablesPage)
