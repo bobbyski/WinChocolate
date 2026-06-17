@@ -641,6 +641,8 @@ private let ssBitmap: DWORD = 0x0000000e
 private let ssCenterImage: DWORD = 0x00000200
 private let cbsDropdown: DWORD = 0x0002
 private let cbsDropdownList: DWORD = 0x0003
+private let swpNoMove: UINT = 0x0002
+private let swpNoSize: UINT = 0x0001
 private let tciText: UINT = 0x0001
 private let sbsHorz: DWORD = 0x0000
 private let sbsVert: DWORD = 0x0001
@@ -701,6 +703,8 @@ public final class Win32NativeControlBackend: NativeControlBackend {
     private var sliderRanges: [UInt: (minValue: Double, maxValue: Double)] = [:]
     private var scrollViewMetrics: [UInt: (contentSize: NSSize, viewportSize: NSSize, hasVerticalScroller: Bool, hasHorizontalScroller: Bool, offset: NSPoint)] = [:]
     private var stepperRanges: [UInt: (minValue: Double, maxValue: Double, increment: Double, value: Double)] = [:]
+    private var comboBoxHandles: Set<UInt> = []
+    private var comboBoxDropdownHeights: [UInt: CGFloat] = [:]
     private var customViewHandles: Set<UInt> = []
     private var textColors: [UInt: DWORD] = [:]
     private var backgroundColors: [UInt: DWORD] = [:]
@@ -831,6 +835,8 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         sliderRanges.removeValue(forKey: handle.rawValue)
         scrollViewMetrics.removeValue(forKey: handle.rawValue)
         stepperRanges.removeValue(forKey: handle.rawValue)
+        comboBoxHandles.remove(handle.rawValue)
+        comboBoxDropdownHeights.removeValue(forKey: handle.rawValue)
         customViewHandles.remove(handle.rawValue)
         clearAppearance(for: handle)
     }
@@ -998,15 +1004,23 @@ public final class Win32NativeControlBackend: NativeControlBackend {
 
     /// Creates a native pop-up button child.
     public func createPopUpButton(items: [String], selectedIndex: Int, frame: NSRect, parent: NativeHandle?) -> NativeHandle {
+        let nativeFrame = NSRect(
+            x: frame.origin.x,
+            y: frame.origin.y,
+            width: frame.size.width,
+            height: max(frame.size.height, 160)
+        )
         let handle = createChildWindow(
             className: "COMBOBOX",
             text: "",
-            frame: frame,
+            frame: nativeFrame,
             parent: parent,
             commandIdentifier: nextCommandID(),
             style: wsChild | wsVisible | wsTabStop | wsVScroll | cbsDropdownList
         )
         subclassControlForTabKey(handle)
+        comboBoxHandles.insert(handle.rawValue)
+        comboBoxDropdownHeights[handle.rawValue] = 160
         setPopUpButtonItems(items, selectedIndex: selectedIndex, for: handle)
         return handle
     }
@@ -1029,6 +1043,8 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         )
         subclassControlForTabKey(handle)
         subclassFirstChildControlForTabKey(handle)
+        comboBoxHandles.insert(handle.rawValue)
+        comboBoxDropdownHeights[handle.rawValue] = 128
         setComboBoxItems(items, text: text, for: handle)
         return handle
     }
@@ -1292,9 +1308,18 @@ public final class Win32NativeControlBackend: NativeControlBackend {
             Int32(frame.origin.x),
             Int32(frame.origin.y),
             Int32(frame.size.width),
-            Int32(frame.size.height),
+            Int32(max(frame.size.height, comboBoxDropdownHeights[handle.rawValue] ?? frame.size.height)),
             1
         )
+    }
+
+    /// Raises a native child control above sibling controls.
+    public func raiseControl(_ handle: NativeHandle) {
+        guard let hwnd = hwnd(from: handle) else {
+            return
+        }
+
+        _ = winSetWindowPos(hwnd, nil, 0, 0, 0, 0, swpNoMove | swpNoSize | swpNoActivate)
     }
 
     /// Updates whether a native control is hidden.
@@ -1356,6 +1381,12 @@ public final class Win32NativeControlBackend: NativeControlBackend {
             backgroundColors.removeValue(forKey: handle.rawValue)
         }
         invalidate(handle)
+    }
+
+    /// Updates native tooltip text.
+    public func setToolTip(_ toolTip: String?, for handle: NativeHandle) {
+        // Stored at the backend boundary for now; native tooltips will be backed
+        // by tooltips_class32 when the control wrapper is added.
     }
 
     /// Updates a native control's font.
@@ -2419,6 +2450,10 @@ public final class Win32NativeControlBackend: NativeControlBackend {
             }
 
             let handle = actionHandle(from: hwnd)
+            guard !comboBoxHandles.contains(handle.rawValue) else {
+                return nil
+            }
+
             if (wParam & mkLButton) != 0, let action = mouseDraggedActions[handle.rawValue] {
                 action(NSEvent(type: .leftMouseDragged, locationInWindow: mouseLocation(from: lParam, in: hwnd), modifierFlags: currentModifierFlags()))
                 return nil
@@ -2457,6 +2492,10 @@ public final class Win32NativeControlBackend: NativeControlBackend {
             }
 
             let handle = actionHandle(from: hwnd)
+            guard !comboBoxHandles.contains(handle.rawValue) else {
+                return nil
+            }
+
             if stepperRanges[handle.rawValue] != nil,
                let action = controlActions[handle.rawValue] {
                 updateStepperPosition(fromClickAt: point(from: lParam), hwnd: hwnd, for: handle)
@@ -2475,8 +2514,13 @@ public final class Win32NativeControlBackend: NativeControlBackend {
             action(NSEvent(type: .leftMouseDown, locationInWindow: mouseLocation(from: lParam, in: hwnd), modifierFlags: currentModifierFlags()))
             return nil
         case wmLButtonUp:
-            guard let hwnd,
-                  let action = mouseUpActions[actionHandle(from: hwnd).rawValue] else {
+            guard let hwnd else {
+                return nil
+            }
+
+            let handle = actionHandle(from: hwnd)
+            guard !comboBoxHandles.contains(handle.rawValue),
+                  let action = mouseUpActions[handle.rawValue] else {
                 return nil
             }
 

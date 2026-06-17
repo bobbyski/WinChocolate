@@ -64,7 +64,15 @@ open class NSView: NSResponder {
     open var wantsLayer: Bool = false
 
     /// Informational tooltip text.
-    open var toolTip: String?
+    open var toolTip: String? {
+        didSet {
+            guard let nativeHandle else {
+                return
+            }
+
+            realizedBackend?.setToolTip(toolTip, for: nativeHandle)
+        }
+    }
 
     /// The view's parent view.
     public private(set) weak var superview: NSView?
@@ -299,6 +307,7 @@ open class NSView: NSResponder {
         realizedBackend = backend
         backend.setHidden(isHidden, for: handle)
         backend.setBackgroundColor(backgroundColor, for: handle)
+        backend.setToolTip(toolTip, for: handle)
         backend.registerMouseDownAction(for: handle) { [weak self] event in
             _ = self?.window?.makeFirstResponder(self)
             self?.mouseDown(with: event)

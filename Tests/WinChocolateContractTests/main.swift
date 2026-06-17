@@ -128,6 +128,24 @@ func testViewCompatibilityMetadataStoresValues() {
     expect(view.toolTip == "Hello", "toolTip was not stored.")
 }
 
+func testViewTooltipSyncsToNativePeer() {
+    let backend = InMemoryNativeControlBackend()
+    let view = NSView(frame: NSMakeRect(0, 0, 100, 100))
+    view.toolTip = "Before"
+
+    let handle = view.realizeNativePeer(in: backend, parent: nil)
+
+    expect(backend.records[handle]?.toolTip == "Before", "Initial tooltip was not sent to native peer.")
+
+    view.toolTip = "After"
+
+    expect(backend.records[handle]?.toolTip == "After", "Updated tooltip was not sent to native peer.")
+
+    view.toolTip = nil
+
+    expect(backend.records[handle]?.toolTip == nil, "Cleared tooltip was not sent to native peer.")
+}
+
 func testGeometryConvenienceFunctions() {
     let rect = NSMakeRect(10, 20, 100, 50)
 
@@ -3449,12 +3467,14 @@ func testAlertRestoresKeyWindowAndFirstResponder() {
     expect(backend.focusedHandle == button.nativeHandle, "Alert did not restore native focus.")
 
     clearApplicationWindows()
+    NSApplication.shared.nativeBackend = InMemoryNativeControlBackend()
 }
 
 testWindowRealizationCreatesNativeHierarchy()
 testViewHierarchyMaintainsSuperviewOwnership()
 testViewInsertionReplacementTagsAndDescendants()
 testViewCompatibilityMetadataStoresValues()
+testViewTooltipSyncsToNativePeer()
 testGeometryConvenienceFunctions()
 testViewCoordinateConversionAndHitTesting()
 testScrollViewHostsDocumentView()

@@ -342,6 +342,8 @@ let saveToolbarItem = NSToolbarItem(itemIdentifier: "save")
 let toolbarSeparatorItem = NSToolbarItem(itemIdentifier: .separator)
 let toolbarFlexibleSpaceItem = NSToolbarItem(itemIdentifier: .flexibleSpace)
 let pageToolbarItem = NSToolbarItem(itemIdentifier: "pageSelector")
+let toolbarSearchField = NSSearchField(frame: NSMakeRect(0, 0, 180, 28))
+let searchToolbarItem = NSToolbarItem(itemIdentifier: "toolbarSearch")
 let toggleToolbarItem = NSToolbarItem(itemIdentifier: "toggleToolbar")
 let customizeToolbarItem = NSToolbarItem(itemIdentifier: "customizeToolbar")
 let contentFocusColor = NSColor(calibratedRed: 0.92, green: 0.97, blue: 1.0, alpha: 1.0)
@@ -653,6 +655,9 @@ func focusName() -> String {
     if responder === searchField {
         return "search field"
     }
+    if responder === toolbarSearchField {
+        return "toolbar search"
+    }
     if responder === levelIndicator {
         return "level indicator"
     }
@@ -855,11 +860,19 @@ pageToolbarItem.toolTip = "Choose the demo page"
 pageToolbarItem.view = pageSelector
 pageToolbarItem.minSize = NSMakeSize(168, 28)
 pageToolbarItem.maxSize = NSMakeSize(168, 28)
+toolbarSearchField.sendsSearchStringImmediately = true
+searchToolbarItem.label = "Search"
+searchToolbarItem.paletteLabel = "Search"
+searchToolbarItem.toolTip = "Search from the toolbar"
+searchToolbarItem.view = toolbarSearchField
+searchToolbarItem.minSize = NSMakeSize(180, 28)
+searchToolbarItem.maxSize = NSMakeSize(180, 28)
 let demoToolbarDelegate = DemoToolbarDelegate(
     allowedIdentifiers: [
         "open",
         "save",
         "pageSelector",
+        "toolbarSearch",
         .separator,
         .flexibleSpace,
         "toggleToolbar",
@@ -869,6 +882,7 @@ let demoToolbarDelegate = DemoToolbarDelegate(
         "open",
         "save",
         "pageSelector",
+        "toolbarSearch",
         .separator,
         .flexibleSpace,
         "toggleToolbar",
@@ -882,6 +896,8 @@ let demoToolbarDelegate = DemoToolbarDelegate(
             return saveToolbarItem
         case "pageSelector":
             return pageToolbarItem
+        case "toolbarSearch":
+            return searchToolbarItem
         case NSToolbarItem.Identifier.separator.rawValue:
             return toolbarSeparatorItem
         case NSToolbarItem.Identifier.flexibleSpace.rawValue:
@@ -901,6 +917,7 @@ demoToolbar.delegate = demoToolbarDelegate
 demoToolbar.addItem(openToolbarItem)
 demoToolbar.addItem(saveToolbarItem)
 demoToolbar.addItem(pageToolbarItem)
+demoToolbar.addItem(searchToolbarItem)
 demoToolbar.addItem(toolbarSeparatorItem)
 demoToolbar.addItem(toolbarFlexibleSpaceItem)
 demoToolbar.addItem(toggleToolbarItem)
@@ -1018,7 +1035,8 @@ colorWell.nextKeyView = segmentedControl
 segmentedControl.nextKeyView = scroller
 scroller.nextKeyView = datePicker
 datePicker.nextKeyView = pageSelector
-pageSelector.nextKeyView = clipHomeButton
+pageSelector.nextKeyView = toolbarSearchField
+toolbarSearchField.nextKeyView = clipHomeButton
 clipHomeButton.nextKeyView = clipCenterButton
 clipCenterButton.nextKeyView = clipCornerButton
 clipCornerButton.nextKeyView = pathControl
@@ -1036,7 +1054,8 @@ collectionView.previousKeyView = pathControl
 pathControl.previousKeyView = clipCornerButton
 clipCornerButton.previousKeyView = clipCenterButton
 clipCenterButton.previousKeyView = clipHomeButton
-clipHomeButton.previousKeyView = pageSelector
+clipHomeButton.previousKeyView = toolbarSearchField
+toolbarSearchField.previousKeyView = pageSelector
 pageSelector.previousKeyView = datePicker
 datePicker.previousKeyView = scroller
 scroller.previousKeyView = segmentedControl
@@ -1164,6 +1183,17 @@ pageSelector.onAction = { control in
     showDemoPage(selector.indexOfSelectedItem)
     updateFocusDisplay()
     statusLabel.stringValue = "Page selected: \(selector.titleOfSelectedItem ?? "none")"
+}
+
+toolbarSearchField.onAction = { control in
+    guard let searchField = control as? NSSearchField else {
+        return
+    }
+
+    updateFocusDisplay()
+    statusLabel.stringValue = searchField.stringValue.isEmpty
+        ? "Toolbar search cleared"
+        : "Toolbar search: \(searchField.stringValue)"
 }
 
 imageView.onAction = { _ in

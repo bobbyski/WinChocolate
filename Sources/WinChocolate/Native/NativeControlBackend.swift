@@ -161,6 +161,9 @@ public protocol NativeControlBackend: AnyObject {
     /// Updates the native frame for a window or control.
     func setFrame(_ frame: NSRect, for handle: NativeHandle)
 
+    /// Raises a native child control above sibling child controls.
+    func raiseControl(_ handle: NativeHandle)
+
     /// Updates whether a native control is hidden.
     func setHidden(_ isHidden: Bool, for handle: NativeHandle)
 
@@ -175,6 +178,9 @@ public protocol NativeControlBackend: AnyObject {
 
     /// Updates a native control's background color.
     func setBackgroundColor(_ color: NSColor?, for handle: NativeHandle)
+
+    /// Updates a native control's tooltip text.
+    func setToolTip(_ toolTip: String?, for handle: NativeHandle)
 
     /// Updates a native control's font.
     func setFont(_ font: NSFont?, for handle: NativeHandle)

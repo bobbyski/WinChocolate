@@ -126,6 +126,9 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
         /// Recorded background color.
         public var backgroundColor: NSColor?
 
+        /// Recorded tooltip text.
+        public var toolTip: String?
+
         /// Recorded font.
         public var font: NSFont?
 
@@ -173,6 +176,9 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
 
     /// The handle most recently asked to take keyboard focus.
     public private(set) var focusedHandle: NativeHandle?
+
+    /// Handles most recently raised above siblings.
+    public private(set) var raisedHandles: [NativeHandle] = []
 
     /// Whether the application run loop has been requested.
     public private(set) var didRunApplication = false
@@ -468,6 +474,11 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
         records[handle] = record
     }
 
+    /// Records that a control should be raised above siblings.
+    public func raiseControl(_ handle: NativeHandle) {
+        raisedHandles.append(handle)
+    }
+
     /// Updates a recorded hidden state.
     public func setHidden(_ isHidden: Bool, for handle: NativeHandle) {
         guard var record = records[handle] else {
@@ -510,6 +521,16 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
         }
 
         record.backgroundColor = color
+        records[handle] = record
+    }
+
+    /// Updates recorded tooltip text.
+    public func setToolTip(_ toolTip: String?, for handle: NativeHandle) {
+        guard var record = records[handle] else {
+            return
+        }
+
+        record.toolTip = toolTip
         records[handle] = record
     }
 
@@ -864,6 +885,7 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
             tableClickedColumn: -1,
             textColor: nil,
             backgroundColor: nil,
+            toolTip: nil,
             font: nil,
             usesMainMenu: false
         )
