@@ -41,6 +41,83 @@ public struct NativeToolbarItem: Equatable, Sendable {
     }
 }
 
+/// Native file dialog descriptor used by backend save/open panel renderers.
+public struct NativeFileDialogOptions: Equatable, Sendable {
+    /// File dialog interaction style.
+    public enum Kind: Sendable {
+        /// Choose one or more existing files or directories.
+        case open
+
+        /// Choose a destination file name for saving.
+        case save
+    }
+
+    /// Whether this is an open or save dialog.
+    public var kind: Kind
+
+    /// Dialog title text.
+    public var title: String
+
+    /// Custom accept-button label, when the platform dialog supports one.
+    public var prompt: String
+
+    /// Initial directory path, when any.
+    public var directoryPath: String?
+
+    /// Initial file name, when any.
+    public var fileName: String
+
+    /// Allowed file-name extensions without dots, such as `["png", "jpg"]`.
+    public var fileTypes: [String]
+
+    /// Whether file names outside `fileTypes` are allowed.
+    public var allowsOtherFileTypes: Bool
+
+    /// Whether existing files can be chosen.
+    public var canChooseFiles: Bool
+
+    /// Whether directories can be chosen.
+    public var canChooseDirectories: Bool
+
+    /// Whether multiple entries can be chosen.
+    public var allowsMultipleSelection: Bool
+
+    /// Whether the dialog should offer directory creation.
+    public var canCreateDirectories: Bool
+
+    /// Whether hidden files should be shown.
+    public var showsHiddenFiles: Bool
+
+    /// Creates a native file dialog descriptor.
+    public init(
+        kind: Kind,
+        title: String = "",
+        prompt: String = "",
+        directoryPath: String? = nil,
+        fileName: String = "",
+        fileTypes: [String] = [],
+        allowsOtherFileTypes: Bool = true,
+        canChooseFiles: Bool = true,
+        canChooseDirectories: Bool = false,
+        allowsMultipleSelection: Bool = false,
+        canCreateDirectories: Bool = true,
+        showsHiddenFiles: Bool = false
+    ) {
+        self.kind = kind
+        self.title = title
+        self.prompt = prompt
+        self.directoryPath = directoryPath
+        self.fileName = fileName
+        self.fileTypes = fileTypes
+        self.allowsOtherFileTypes = allowsOtherFileTypes
+        self.canChooseFiles = canChooseFiles
+        self.canChooseDirectories = canChooseDirectories
+        self.allowsMultipleSelection = allowsMultipleSelection
+        self.canCreateDirectories = canCreateDirectories
+        self.showsHiddenFiles = showsHiddenFiles
+    }
+}
+
 /// Native control creation and lifetime boundary.
 ///
 /// `NSWindow`, `NSView`, and controls ask this backend for HWND-backed peers.
@@ -304,4 +381,7 @@ public protocol NativeControlBackend: AnyObject {
 
     /// Runs a native modal alert.
     func runAlert(_ alert: NSAlert) -> NSApplication.ModalResponse
+
+    /// Runs a native modal file dialog, returning chosen paths or `nil` on cancel.
+    func runFileDialog(_ options: NativeFileDialogOptions) -> [String]?
 }

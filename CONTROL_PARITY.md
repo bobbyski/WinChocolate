@@ -69,8 +69,8 @@ References used for this map:
 | `NSPopover` | Popup window/custom transient `HWND` | `TeachingTip` / `Flyout` | First transient popover API slice exists over a menu-less borderless `NSPanel`; arrow/chrome/outside-click behavior is future work. | Partial | Planned |
 | `NSAlert` | `MessageBoxW`, later custom dialog | `ContentDialog` | Basic modal alert exists; custom buttons need custom dialog. | Partial | Planned |
 | `NSPanel` | Tool/top-level `HWND` variants | Secondary window/dialog | First subclass slice exists with common panel flags and top-level window backend behavior; true tool-window styling is future work. | Partial | Planned |
-| `NSSavePanel` | Common Item Dialog save | `FileSavePicker` / file dialog | Not a child control; important AppKit surface. | Planned | Planned |
-| `NSOpenPanel` | Common Item Dialog open | `FileOpenPicker` / file dialog | Not a child control; important AppKit surface. | Planned | Planned |
+| `NSSavePanel` | `GetSaveFileNameW` classic dialog | `FileSavePicker` / file dialog | First modal slice exists over the classic comdlg32 save dialog: title, name field, allowed-file-type filter, initial directory, overwrite prompt, and `url` result. Sheet presentation, accessory views, and `allowedContentTypes` are future work. | Partial | Planned |
+| `NSOpenPanel` | `GetOpenFileNameW` / `SHBrowseForFolderW` | `FileOpenPicker` / file dialog | First modal slice exists with multi-select and directory choosing (folder browser when `canChooseDirectories` without files). Mixed file+directory choosing in one dialog and accessory views are future work. | Partial | Planned |
 | `NSFontPanel` | Common font dialog/custom | Custom font picker | Classic font dialog exists, but AppKit panel model differs. | Planned | Planned |
 | `NSColorPanel` | ChooseColor dialog/custom | `ColorPicker` dialog | Needs shared color-panel behavior. | Planned | Planned |
 | `NSRulerView` | Custom drawing | Custom drawing | Text/document companion view; no direct Windows peer. | Planned | Planned |

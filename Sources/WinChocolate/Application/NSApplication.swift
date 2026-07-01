@@ -13,6 +13,21 @@ public final class NSApplication: NSObject {
             self.rawValue = rawValue
         }
 
+        /// The dialog was accepted.
+        public static let OK = ModalResponse(rawValue: 1)
+
+        /// The dialog was cancelled.
+        public static let cancel = ModalResponse(rawValue: 0)
+
+        /// A modal session should stop.
+        public static let stop = ModalResponse(rawValue: -1_000)
+
+        /// A modal session was aborted.
+        public static let abort = ModalResponse(rawValue: -1_001)
+
+        /// A modal session should continue running.
+        public static let `continue` = ModalResponse(rawValue: -1_002)
+
         /// The first alert button was chosen.
         public static let alertFirstButtonReturn = ModalResponse(rawValue: 1_000)
 

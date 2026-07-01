@@ -1533,13 +1533,30 @@ popoverCloseButton.onAction = { _ in
     statusLabel.stringValue = "Popover close button"
 }
 
-openToolbarItem.onAction = { item in
+openToolbarItem.onAction = { _ in
     updateFocusDisplay()
-    statusLabel.stringValue = "Toolbar item: \(item.label)"
+    let panel = NSOpenPanel.openPanel()
+    panel.title = "Open Demo File"
+    panel.allowsMultipleSelection = true
+    if panel.runModal() == .OK {
+        let names = panel.urls.map(\.lastPathComponent).joined(separator: ", ")
+        statusLabel.stringValue = "Open: \(names)"
+    } else {
+        statusLabel.stringValue = "Open cancelled"
+    }
 }
-saveToolbarItem.onAction = { item in
+saveToolbarItem.onAction = { _ in
     updateFocusDisplay()
-    statusLabel.stringValue = "Toolbar item: \(item.label)"
+    let panel = NSSavePanel.savePanel()
+    panel.title = "Save Demo File"
+    panel.nameFieldStringValue = "Untitled.txt"
+    panel.allowedFileTypes = ["txt"]
+    panel.allowsOtherFileTypes = true
+    if panel.runModal() == .OK, let url = panel.url {
+        statusLabel.stringValue = "Save: \(url.lastPathComponent)"
+    } else {
+        statusLabel.stringValue = "Save cancelled"
+    }
 }
 toggleToolbarItem.onAction = { _ in
     updateFocusDisplay()

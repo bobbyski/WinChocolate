@@ -31,6 +31,43 @@ private struct MSG {
     var pt: POINT = POINT()
 }
 
+private struct OPENFILENAMEW {
+    var lStructSize: DWORD = 0
+    var hwndOwner: HWND? = nil
+    var hInstance: HINSTANCE? = nil
+    var lpstrFilter: UnsafePointer<UInt16>? = nil
+    var lpstrCustomFilter: UnsafeMutablePointer<UInt16>? = nil
+    var nMaxCustFilter: DWORD = 0
+    var nFilterIndex: DWORD = 0
+    var lpstrFile: UnsafeMutablePointer<UInt16>? = nil
+    var nMaxFile: DWORD = 0
+    var lpstrFileTitle: UnsafeMutablePointer<UInt16>? = nil
+    var nMaxFileTitle: DWORD = 0
+    var lpstrInitialDir: UnsafePointer<UInt16>? = nil
+    var lpstrTitle: UnsafePointer<UInt16>? = nil
+    var flags: DWORD = 0
+    var nFileOffset: UInt16 = 0
+    var nFileExtension: UInt16 = 0
+    var lpstrDefExt: UnsafePointer<UInt16>? = nil
+    var lCustData: LPARAM = 0
+    var lpfnHook: UnsafeMutableRawPointer? = nil
+    var lpTemplateName: UnsafePointer<UInt16>? = nil
+    var pvReserved: UnsafeMutableRawPointer? = nil
+    var dwReserved: DWORD = 0
+    var flagsEx: DWORD = 0
+}
+
+private struct BROWSEINFOW {
+    var hwndOwner: HWND? = nil
+    var pidlRoot: UnsafeMutableRawPointer? = nil
+    var pszDisplayName: UnsafeMutablePointer<UInt16>? = nil
+    var lpszTitle: UnsafePointer<UInt16>? = nil
+    var ulFlags: UINT = 0
+    var lpfn: UnsafeMutableRawPointer? = nil
+    var lParam: LPARAM = 0
+    var iImage: Int32 = 0
+}
+
 private struct WNDCLASSW {
     var style: UINT = 0
     var lpfnWndProc: WNDPROC?
@@ -376,6 +413,27 @@ private func winMessageBoxW(
     _ type: UINT
 ) -> Int32
 
+@_silgen_name("GetOpenFileNameW")
+private func winGetOpenFileNameW(_ descriptor: UnsafeMutablePointer<OPENFILENAMEW>) -> Int32
+
+@_silgen_name("GetSaveFileNameW")
+private func winGetSaveFileNameW(_ descriptor: UnsafeMutablePointer<OPENFILENAMEW>) -> Int32
+
+@_silgen_name("SHBrowseForFolderW")
+private func winSHBrowseForFolderW(_ browseInfo: UnsafeMutablePointer<BROWSEINFOW>) -> UnsafeMutableRawPointer?
+
+@_silgen_name("SHGetPathFromIDListW")
+private func winSHGetPathFromIDListW(
+    _ itemIDList: UnsafeMutableRawPointer?,
+    _ path: UnsafeMutablePointer<UInt16>?
+) -> Int32
+
+@_silgen_name("CoTaskMemFree")
+private func winCoTaskMemFree(_ pointer: UnsafeMutableRawPointer?)
+
+@_silgen_name("CoInitializeEx")
+private func winCoInitializeEx(_ reserved: UnsafeMutableRawPointer?, _ concurrencyModel: DWORD) -> Int32
+
 @_silgen_name("PostQuitMessage")
 private func winPostQuitMessage(_ exitCode: Int32)
 
@@ -598,6 +656,17 @@ private let wsHScroll: DWORD = 0x00100000
 private let wsChild: DWORD = 0x40000000
 private let wsClipChildren: DWORD = 0x02000000
 private let wsBorder: DWORD = 0x00800000
+private let ofnExplorer: DWORD = 0x00080000
+private let ofnAllowMultiSelect: DWORD = 0x00000200
+private let ofnFileMustExist: DWORD = 0x00001000
+private let ofnPathMustExist: DWORD = 0x00000800
+private let ofnOverwritePrompt: DWORD = 0x00000002
+private let ofnHideReadOnly: DWORD = 0x00000004
+private let ofnNoChangeDir: DWORD = 0x00000008
+private let ofnForceShowHidden: DWORD = 0x10000000
+private let bifReturnOnlyFSDirs: UINT = 0x0001
+private let bifNewDialogStyle: UINT = 0x0040
+private let coinitApartmentThreaded: DWORD = 0x2
 private let esMultiline: DWORD = 0x0004
 private let esPassword: DWORD = 0x0020
 private let esAutoVScroll: DWORD = 0x0040
@@ -720,6 +789,7 @@ public final class Win32NativeControlBackend: NativeControlBackend {
     private var backgroundColors: [UInt: DWORD] = [:]
     private var backgroundBrushes: [UInt: HBRUSH] = [:]
     private var transparentBackgroundHandles: Set<UInt> = []
+    private var isComInitialized = false
     private var defaultControlBackgroundBrush: HBRUSH?
     private var fonts: [UInt: HFONT] = [:]
     private var bitmaps: [UInt: HBITMAP] = [:]
@@ -2141,6 +2211,171 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         return .alertSecondButtonReturn
     }
 
+    /// Runs a native modal file dialog.
+    public func runFileDialog(_ options: NativeFileDialogOptions) -> [String]? {
+        let owner = NSApplication.shared.keyWindow?.nativeHandle.flatMap { hwnd(from: $0) }
+        if options.kind == .open && options.canChooseDirectories && !options.canChooseFiles {
+            return runFolderDialog(options, owner: owner)
+        }
+
+        return runOpenSaveDialog(options, owner: owner)
+    }
+
+    private func runOpenSaveDialog(_ options: NativeFileDialogOptions, owner: HWND?) -> [String]? {
+        let bufferLength = 32_768
+        var fileBuffer = Array(repeating: UInt16(0), count: bufferLength)
+        for (index, unit) in options.fileName.utf16.prefix(1_024).enumerated() {
+            fileBuffer[index] = unit
+        }
+
+        var flags: DWORD = ofnExplorer | ofnHideReadOnly | ofnNoChangeDir | ofnPathMustExist
+        switch options.kind {
+        case .open:
+            flags |= ofnFileMustExist
+            if options.allowsMultipleSelection {
+                flags |= ofnAllowMultiSelect
+            }
+        case .save:
+            flags |= ofnOverwritePrompt
+        }
+        if options.showsHiddenFiles {
+            flags |= ofnForceShowHidden
+        }
+
+        let filter = fileDialogFilter(for: options)
+        let defaultExtension = options.kind == .save ? options.fileTypes.first : nil
+
+        var succeeded = false
+        fileBuffer.withUnsafeMutableBufferPointer { filePointer in
+            withOptionalWideString(filter) { filterPointer in
+                withOptionalWideString(options.title.isEmpty ? nil : options.title) { titlePointer in
+                    withOptionalWideString(options.directoryPath) { directoryPointer in
+                        withOptionalWideString(defaultExtension) { extensionPointer in
+                            var descriptor = OPENFILENAMEW()
+                            descriptor.lStructSize = DWORD(MemoryLayout<OPENFILENAMEW>.size)
+                            descriptor.hwndOwner = owner
+                            descriptor.lpstrFilter = filterPointer
+                            descriptor.nFilterIndex = filterPointer == nil ? 0 : 1
+                            descriptor.lpstrFile = filePointer.baseAddress
+                            descriptor.nMaxFile = DWORD(bufferLength)
+                            descriptor.lpstrInitialDir = directoryPointer
+                            descriptor.lpstrTitle = titlePointer
+                            descriptor.flags = flags
+                            descriptor.lpstrDefExt = extensionPointer
+                            let result = options.kind == .save
+                                ? winGetSaveFileNameW(&descriptor)
+                                : winGetOpenFileNameW(&descriptor)
+                            succeeded = result != 0
+                        }
+                    }
+                }
+            }
+        }
+
+        guard succeeded else {
+            return nil
+        }
+
+        return parseFileDialogBuffer(
+            fileBuffer,
+            allowsMultipleSelection: options.kind == .open && options.allowsMultipleSelection
+        )
+    }
+
+    private func runFolderDialog(_ options: NativeFileDialogOptions, owner: HWND?) -> [String]? {
+        ensureComInitialized()
+
+        let title = options.title.isEmpty ? options.prompt : options.title
+        var displayName = Array(repeating: UInt16(0), count: 1_024)
+        var itemIDList: UnsafeMutableRawPointer?
+        displayName.withUnsafeMutableBufferPointer { displayPointer in
+            withOptionalWideString(title.isEmpty ? nil : title) { titlePointer in
+                var browseInfo = BROWSEINFOW()
+                browseInfo.hwndOwner = owner
+                browseInfo.pszDisplayName = displayPointer.baseAddress
+                browseInfo.lpszTitle = titlePointer
+                browseInfo.ulFlags = bifReturnOnlyFSDirs | bifNewDialogStyle
+                itemIDList = winSHBrowseForFolderW(&browseInfo)
+            }
+        }
+
+        guard let itemIDList else {
+            return nil
+        }
+        defer {
+            winCoTaskMemFree(itemIDList)
+        }
+
+        var pathBuffer = Array(repeating: UInt16(0), count: 1_024)
+        let copied = pathBuffer.withUnsafeMutableBufferPointer { pathPointer in
+            winSHGetPathFromIDListW(itemIDList, pathPointer.baseAddress)
+        }
+        guard copied != 0 else {
+            return nil
+        }
+
+        let length = pathBuffer.firstIndex(of: 0) ?? pathBuffer.count
+        return [String(decoding: pathBuffer.prefix(length), as: UTF16.self)]
+    }
+
+    private func fileDialogFilter(for options: NativeFileDialogOptions) -> String? {
+        var entries: [String] = []
+        if !options.fileTypes.isEmpty {
+            let patterns = options.fileTypes.map { "*.\($0)" }.joined(separator: ";")
+            let names = options.fileTypes.map { $0.uppercased() }.joined(separator: ", ")
+            entries.append("\(names) Files (\(patterns))\0\(patterns)")
+        }
+        if options.fileTypes.isEmpty || options.allowsOtherFileTypes {
+            entries.append("All Files (*.*)\0*.*")
+        }
+
+        guard !entries.isEmpty else {
+            return nil
+        }
+
+        // Win32 filter strings are NUL-delimited pairs ending in a double NUL;
+        // `withWideString` appends the final terminator.
+        return entries.joined(separator: "\0") + "\0"
+    }
+
+    private func parseFileDialogBuffer(_ buffer: [UInt16], allowsMultipleSelection: Bool) -> [String]? {
+        var segments: [String] = []
+        var current: [UInt16] = []
+        for unit in buffer {
+            if unit == 0 {
+                if current.isEmpty {
+                    break
+                }
+                segments.append(String(decoding: current, as: UTF16.self))
+                current.removeAll()
+            } else {
+                current.append(unit)
+            }
+        }
+
+        guard let first = segments.first else {
+            return nil
+        }
+
+        // Multi-select buffers hold the directory followed by bare file names;
+        // a single selection is one full path.
+        guard allowsMultipleSelection, segments.count > 1 else {
+            return [first]
+        }
+
+        let directory = first.hasSuffix("\\") ? String(first.dropLast()) : first
+        return segments.dropFirst().map { "\(directory)\\\($0)" }
+    }
+
+    private func ensureComInitialized() {
+        guard !isComInitialized else {
+            return
+        }
+
+        _ = winCoInitializeEx(nil, coinitApartmentThreaded)
+        isComInitialized = true
+    }
+
     fileprivate static func dispatchMessage(hwnd: HWND?, message: UINT, wParam: WPARAM, lParam: LPARAM) -> LRESULT? {
         activeBackend?.dispatchMessage(hwnd: hwnd, message: message, wParam: wParam, lParam: lParam)
     }
@@ -3237,6 +3472,11 @@ public final class Win32NativeControlBackend: NativeControlBackend {
             withUnsafePointer(to: rectangle) { rectanglePointer in
                 _ = winFillRect(deviceContext, rectanglePointer, brush)
             }
+        } else if transparentBackgroundHandles.contains(handle.rawValue) {
+            // Win32 child windows are never truly transparent: skipping the erase
+            // leaves stale pixels behind, so simulate transparency by painting the
+            // nearest ancestor's background color.
+            fillRect(rectangle, color: inheritedBackgroundColor(behind: hwnd), deviceContext: deviceContext)
         }
 
         let preview = toolbarPreview(from: text(from: hwnd))
@@ -3273,6 +3513,19 @@ public final class Win32NativeControlBackend: NativeControlBackend {
                 }
             }
         }
+    }
+
+    private func inheritedBackgroundColor(behind hwnd: HWND?) -> DWORD {
+        var ancestor = winGetParent(hwnd)
+        while let current = ancestor {
+            let rawAncestor = UInt(bitPattern: current)
+            if !transparentBackgroundHandles.contains(rawAncestor),
+               let color = backgroundColors[rawAncestor] {
+                return color
+            }
+            ancestor = winGetParent(current)
+        }
+        return colorRef(from: .windowBackgroundColor)
     }
 
     private struct ToolbarPreview {
@@ -3815,6 +4068,14 @@ public final class Win32NativeControlBackend: NativeControlBackend {
 
         return HWND(bitPattern: handle.rawValue)
     }
+}
+
+private func withOptionalWideString<Result>(_ string: String?, _ body: (UnsafePointer<UInt16>?) -> Result) -> Result {
+    guard let string else {
+        return body(nil)
+    }
+
+    return withWideString(string, body)
 }
 
 private func withWideString<Result>(_ string: String, _ body: (UnsafePointer<UInt16>?) -> Result) -> Result {

@@ -876,6 +876,25 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
         .alertFirstButtonReturn
     }
 
+    /// File dialog descriptors received through `runFileDialog`, oldest first.
+    public private(set) var fileDialogRequests: [NativeFileDialogOptions] = []
+
+    /// Paths returned by the next `runFileDialog` calls, consumed in order.
+    ///
+    /// Each element scripts one dialog run; `nil` scripts a user cancel. When
+    /// the queue is empty, dialogs report cancel.
+    public var scriptedFileDialogPaths: [[String]?] = []
+
+    /// Records the request and returns the next scripted dialog result.
+    public func runFileDialog(_ options: NativeFileDialogOptions) -> [String]? {
+        fileDialogRequests.append(options)
+        guard !scriptedFileDialogPaths.isEmpty else {
+            return nil
+        }
+
+        return scriptedFileDialogPaths.removeFirst()
+    }
+
     private func makeHandle(kind: String, text: String, frame: NSRect, parent: NativeHandle?) -> NativeHandle {
         let handle = NativeHandle(rawValue: nextRawHandle)
         nextRawHandle += 1

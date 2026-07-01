@@ -6,21 +6,27 @@ WinChocolate is an AppKit-shaped Swift framework for Windows. The near-term goal
 
 This plan is the high-level project tracker. `CONTROL_PARITY.md` remains the detailed control-by-control map, and `Architecture.md` remains the design overview.
 
+## Project Goals
+
+1. **AppKit source compatibility.** Almost all Mac AppKit programs should build on Windows by swapping `import AppKit` for `import WinChocolate`, keeping AppKit names, types, and behavior.
+2. **Selectable presentation.** Applications should eventually be able to select either the current classic Win32 look or the more modern Windows look through one switch, with no other application code changes. The classic look stays fully supported; the modern look becomes the default later in the plan once Phase 8 reaches parity.
+3. **Real native backing.** AppKit-shaped API in front, honest Windows implementation behind a narrow backend boundary, kept testable through the in-memory backend and contract tests.
+
 ## Dashboard
 
 ```text
-Overall Progress  ####################------------  64%   (current estimate)
+Overall Progress   █████████████████████░░░░░░░░░░░  65%   (current estimate)
 
-Phase 1 - Package, Core Names, App Shell      ############################## 100%  Done
-Phase 2 - Classic Win32 Backend               ############################--  94%  In Progress
-Phase 3 - AppKit Surface Expansion            ########################------  82%  In Progress
-Phase 4 - Demo Harness                        #############################-  98%  In Progress
-Phase 5 - Tables, Lists, Collections          ############------------------  39%  In Progress
-Phase 6 - Toolbar API Parity                  ######------------------------  20%  In Progress
-Phase 7 - WinFoundation Bridge                #############-----------------  44%  In Progress
-Phase 8 - Modern Windows Appearance           ------------------------------   0%  Pending
-Phase 9 - Auto Layout                         ------------------------------   0%  Pending
-Phase 10 - Focus, Accessibility, Polish       ###---------------------------  10%  Pending
+Phase 1  ─ Package, Core Names, App Shell    ██████████████████████████████ 100%  Done
+Phase 2  ─ Classic Win32 Backend             ████████████████████████████░░  94%  In Progress
+Phase 3  ─ AppKit Surface Expansion          █████████████████████████░░░░░  84%  In Progress
+Phase 4  ─ Demo Harness                      █████████████████████████████░  98%  In Progress
+Phase 5  ─ Tables, Lists, Collections        ████████████░░░░░░░░░░░░░░░░░░  39%  In Progress
+Phase 6  ─ Toolbar API Parity                ██████░░░░░░░░░░░░░░░░░░░░░░░░  20%  In Progress
+Phase 7  ─ WinFoundation Bridge              █████████████░░░░░░░░░░░░░░░░░  44%  In Progress
+Phase 8  ─ Modern Windows Appearance         ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░   0%  Pending
+Phase 9  ─ Auto Layout                       ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░   0%  Pending
+Phase 10 ─ Focus, Accessibility, Polish      ███░░░░░░░░░░░░░░░░░░░░░░░░░░░  10%  Pending
 ```
 
 Status key: `Done`, `In Progress`, `Deferred`, `Pending`, `Blocked`
@@ -29,8 +35,8 @@ Status key: `Done`, `In Progress`, `Deferred`, `Pending`, `Blocked`
 
 | Priority | Area | Task | Status | Notes |
 |---:|---|---|---|---|
-| 1 | Demo and controls | Keep moving through the next control surface after parking toolbar work. | In Progress | Toolbar follow-up is tracked below, but not the active lane. |
-| 2 | Contracts | Add focused tests whenever a framework behavior becomes real, especially for controls that demos depend on. | In Progress | Recent examples: toolbar custom views, resize propagation. |
+| 1 | Demo and controls | Keep moving through the next control surface after parking toolbar work. | In Progress | Toolbar follow-up is tracked below, but not the active lane. Latest surface: `NSSavePanel`/`NSOpenPanel`. |
+| 2 | Contracts | Add focused tests whenever a framework behavior becomes real, especially for controls that demos depend on. | In Progress | Recent examples: save/open panels, toolbar custom views, resize propagation. |
 | 3 | Documentation | Keep `CONTROL_PARITY.md` and this plan synchronized when a surface moves from placeholder to working. | In Progress | Update progress estimates after meaningful feature batches. |
 
 ## Phase 1 - Package, Core Names, App Shell - 100%
@@ -46,7 +52,7 @@ Initial project shape and runnable application shell.
 
 ## Phase 2 - Classic Win32 Backend - 94%
 
-Keep the classic backend real, testable, and available as a stable presentation option.
+Keep the classic backend real, testable, and available as a stable presentation option. Even after the modern appearance lands, the classic Win32 look remains a selectable presentation.
 
 | # | Item | Status | Notes |
 |---|---|---|---|
@@ -56,14 +62,14 @@ Keep the classic backend real, testable, and available as a stable presentation 
 | 2.4 | Toolbar backend | In Progress | Classic `ToolbarWindow32`, flexible space, custom view slot support. |
 | 2.5 | Visual polish | Pending | Classic look is acceptable for now; modern appearance is separate. |
 
-## Phase 3 - AppKit Surface Expansion - 82%
+## Phase 3 - AppKit Surface Expansion - 84%
 
 Broaden source-compatible AppKit-style APIs while keeping mechanics hidden behind the framework.
 
 | # | Item | Status | Notes |
 |---|---|---|---|
 | 3.1 | Common controls | In Progress | Buttons, text, popup/combo, sliders, steppers, date picker, color well, etc. |
-| 3.2 | Windows, panels, popovers, alerts | In Progress | First slices exist; richer chrome/dialog behavior remains. |
+| 3.2 | Windows, panels, popovers, alerts | In Progress | First slices exist; `NSSavePanel`/`NSOpenPanel` now run native comdlg32/shell dialogs with modal-response, file-type, multi-select, and folder-choose support. Richer chrome/dialog behavior remains. |
 | 3.3 | View composition | In Progress | Scroll/clip/split/visual-effect slices exist. |
 | 3.4 | Source compatibility gaps | Pending | Continue filling AppKit names as demo and ports need them. |
 
@@ -123,11 +129,14 @@ Bridge enough Foundation-shaped API to keep WinChocolate source-compatible while
 
 Add a modern Windows presentation while keeping the classic backend available.
 
+Goal: one appearance switch selects either the current classic Win32 look or the modern Windows look, with no other application code changes. The modern look becomes the WinChocolate default once it reaches parity, and the classic look remains selectable indefinitely.
+
 | # | Item | Status | Notes |
 |---|---|---|---|
 | 8.1 | Appearance strategy | Pending | Decide modern backend versus themed wrappers versus hybrid. |
-| 8.2 | Backend/appearance selection API | Pending | App code should not change when switching presentation style. |
+| 8.2 | Backend/appearance selection API | Pending | Public switch to select classic Win32 or modern presentation; app code should not change when switching presentation style. |
 | 8.3 | Modern control visuals | Pending | Fluent/WinUI-like look is future work. |
+| 8.4 | Modern look becomes the default | Pending | After modern visuals reach control parity, new apps default to the modern look with classic still selectable. |
 
 ## Phase 9 - Auto Layout - 0%
 

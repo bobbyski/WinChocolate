@@ -2360,7 +2360,9 @@ func testToolbarCustomizationMovesExistingItemToEnd() {
     }
 
     let start = openTile.convert(NSMakePoint(openTile.bounds.size.width / 2, openTile.bounds.size.height / 2), to: nil)
-    let end = contentView.convert(NSMakePoint(610, 20), to: nil)
+    // Drop just inside the trailing edge of the toolbar strip; the content view
+    // is resized to the native client area, so the width cannot be hard-coded.
+    let end = contentView.convert(NSMakePoint(contentView.frame.size.width - 10, 20), to: nil)
 
     openTile.mouseDown(with: NSEvent(type: .leftMouseDown, locationInWindow: start))
     openTile.mouseDragged(with: NSEvent(type: .leftMouseDragged, locationInWindow: end))
@@ -2422,8 +2424,14 @@ func testToolbarViewComposesItemsAndDispatchesActions() {
     }
 
     let realizedItemTexts = backend.records.values.compactMap(\.text)
-    expect(realizedItemTexts.contains("Open\nfolder"), "Composed toolbar did not render the open item label and image.")
-    expect(realizedItemTexts.contains("Save\nsave"), "Composed toolbar did not render the save item label and image.")
+    expect(
+        realizedItemTexts.contains("__WinChocolateToolbarItem\tOpen\tfolder\t1\t1\tbelow"),
+        "Composed toolbar did not render the open item label and image."
+    )
+    expect(
+        realizedItemTexts.contains("__WinChocolateToolbarItem\tSave\tsave\t1\t1\tbelow"),
+        "Composed toolbar did not render the save item label and image."
+    )
 
     let firstPoint = toolbarView.subviews[0].convert(NSMakePoint(4, 4), to: nil)
     let lastPoint = toolbarView.subviews[3].convert(NSMakePoint(4, 4), to: nil)
@@ -2445,12 +2453,18 @@ func testToolbarViewComposesItemsAndDispatchesActions() {
     toolbar.displayMode = .iconOnly
 
     let iconOnlyTexts = backend.records.values.compactMap(\.text)
-    expect(iconOnlyTexts.contains { $0.hasPrefix("folder") }, "Toolbar icon-only mode did not preserve the item image.")
+    expect(
+        iconOnlyTexts.contains("__WinChocolateToolbarItem\tOpen\tfolder\t1\t0\tbelow"),
+        "Toolbar icon-only mode did not preserve the item image."
+    )
 
     toolbar.displayMode = .labelOnly
 
     let labelOnlyTexts = backend.records.values.compactMap(\.text)
-    expect(labelOnlyTexts.contains("Open"), "Toolbar label-only mode should preserve item labels.")
+    expect(
+        labelOnlyTexts.contains("__WinChocolateToolbarItem\tOpen\tfolder\t0\t1\tbelow"),
+        "Toolbar label-only mode should preserve item labels."
+    )
 }
 
 func testToolbarViewHostsCustomItemView() {
@@ -2493,7 +2507,10 @@ func testToolbarItemCreatesCompositeImageLabelView() {
     expect(view.backgroundColor == nil, "Toolbar composite view should have a transparent background.")
     expect(view.subviews.isEmpty, "Toolbar composite view should render as one self-contained native view.")
     expect(view.frame.size.height <= 40, "Toolbar composite view did not fit within the toolbar height.")
-    expect(backend.records[handle]?.text == "Open\nfolder", "Toolbar composite view did not carry the label and image key.")
+    expect(
+        backend.records[handle]?.text == "__WinChocolateToolbarItem\tOpen\tfolder\t1\t1\tbelow",
+        "Toolbar composite view did not carry the label and image key."
+    )
     expect(backend.records[handle]?.drawsBackground == false, "Toolbar composite view should request a clear native background.")
 
     let separator = NSToolbarItem(itemIdentifier: .separator)
@@ -2533,13 +2550,19 @@ func testWindowToolbarCreatesDockedComposedHostAndReservesContent() {
     }
 
     expect(toolbarRecord.value.toolbarItems.isEmpty, "Composed toolbar host should not pass item descriptors to a native toolbar peer.")
-    expect(backend.records.contains { $0.value.text.hasPrefix("Open") }, "Window toolbar did not compose a label for the toolbar item.")
+    expect(
+        backend.records.contains { $0.value.text.hasPrefix("__WinChocolateToolbarItem\tOpen") },
+        "Window toolbar did not compose a label for the toolbar item."
+    )
     expect(window.contentLayoutRect == NSMakeRect(0, 40, 320, 180), "Window toolbar did not reserve layout space.")
     expect(contentView.frame == NSMakeRect(0, 40, 320, 180), "Content view did not move below the toolbar strip.")
 
     item.label = "Open File"
 
-    expect(backend.records.contains { $0.value.text.hasPrefix("Open File") }, "Toolbar item label changes did not refresh the window-owned toolbar.")
+    expect(
+        backend.records.contains { $0.value.text.hasPrefix("__WinChocolateToolbarItem\tOpen File") },
+        "Toolbar item label changes did not refresh the window-owned toolbar."
+    )
 }
 
 func testWindowToolbarHeightFollowsDisplayMode() {
@@ -3568,6 +3591,104 @@ func testAlertRestoresKeyWindowAndFirstResponder() {
     NSApplication.shared.nativeBackend = InMemoryNativeControlBackend()
 }
 
+func testSavePanelMapsOptionsAndReturnsChosenURL() {
+    let backend = InMemoryNativeControlBackend()
+    let previousBackend = NSApplication.shared.nativeBackend
+    NSApplication.shared.nativeBackend = backend
+    defer {
+        NSApplication.shared.nativeBackend = previousBackend
+    }
+
+    let panel = NSSavePanel.savePanel()
+    panel.title = "Save Document"
+    panel.prompt = "Save"
+    panel.nameFieldStringValue = "Report.txt"
+    panel.allowedFileTypes = ["txt", "md"]
+    panel.allowsOtherFileTypes = true
+    panel.directoryURL = URL(fileURLWithPath: "C:\\Projects")
+    backend.scriptedFileDialogPaths = [["C:\\Projects\\Report.txt"]]
+
+    let response = panel.runModal()
+
+    expect(response == .OK, "Save panel did not return OK for a chosen path.")
+    expect(panel.url?.path == "C:\\Projects\\Report.txt", "Save panel did not expose the chosen URL.")
+    expect(backend.fileDialogRequests.count == 1, "Save panel did not run exactly one native dialog.")
+
+    let options = backend.fileDialogRequests[0]
+    expect(options.kind == .save, "Save panel did not request a save dialog.")
+    expect(options.title == "Save Document", "Save panel did not forward its title.")
+    expect(options.fileName == "Report.txt", "Save panel did not forward the name field value.")
+    expect(options.fileTypes == ["txt", "md"], "Save panel did not forward allowed file types.")
+    expect(options.allowsOtherFileTypes, "Save panel did not forward allowsOtherFileTypes.")
+    expect(options.directoryPath == "C:\\Projects", "Save panel did not forward the initial directory.")
+    expect(!options.allowsMultipleSelection, "Save panel must not request multiple selection.")
+}
+
+func testSavePanelCancelReturnsCancelAndClearsURL() {
+    let backend = InMemoryNativeControlBackend()
+    let previousBackend = NSApplication.shared.nativeBackend
+    NSApplication.shared.nativeBackend = backend
+    defer {
+        NSApplication.shared.nativeBackend = previousBackend
+    }
+
+    let panel = NSSavePanel()
+    backend.scriptedFileDialogPaths = [nil]
+
+    let response = panel.runModal()
+
+    expect(response == .cancel, "Cancelled save panel did not return cancel.")
+    expect(panel.url == nil, "Cancelled save panel should not expose a URL.")
+}
+
+func testOpenPanelSupportsMultipleSelectionAndDirectories() {
+    let backend = InMemoryNativeControlBackend()
+    let previousBackend = NSApplication.shared.nativeBackend
+    NSApplication.shared.nativeBackend = backend
+    defer {
+        NSApplication.shared.nativeBackend = previousBackend
+    }
+
+    let panel = NSOpenPanel.openPanel()
+    panel.allowsMultipleSelection = true
+    panel.canChooseDirectories = true
+    panel.canChooseFiles = true
+    backend.scriptedFileDialogPaths = [["C:\\A\\one.txt", "C:\\A\\two.txt"]]
+
+    let response = panel.runModal()
+
+    expect(response == .OK, "Open panel did not return OK for chosen paths.")
+    expect(panel.urls.count == 2, "Open panel did not expose all chosen URLs.")
+    expect(panel.urls.first?.lastPathComponent == "one.txt", "Open panel did not order chosen URLs.")
+    expect(panel.url == panel.urls.first, "Open panel url should be the first chosen URL.")
+
+    let options = backend.fileDialogRequests[0]
+    expect(options.kind == .open, "Open panel did not request an open dialog.")
+    expect(options.allowsMultipleSelection, "Open panel did not forward multiple selection.")
+    expect(options.canChooseDirectories, "Open panel did not forward directory choosing.")
+    expect(options.canChooseFiles, "Open panel did not forward file choosing.")
+}
+
+func testOpenPanelBeginInvokesCompletionHandler() {
+    let backend = InMemoryNativeControlBackend()
+    let previousBackend = NSApplication.shared.nativeBackend
+    NSApplication.shared.nativeBackend = backend
+    defer {
+        NSApplication.shared.nativeBackend = previousBackend
+    }
+
+    let panel = NSOpenPanel()
+    backend.scriptedFileDialogPaths = [["C:\\A\\picked.txt"]]
+
+    var receivedResponse: NSApplication.ModalResponse?
+    panel.begin { response in
+        receivedResponse = response
+    }
+
+    expect(receivedResponse == .OK, "Open panel begin did not deliver the modal response.")
+    expect(panel.url?.lastPathComponent == "picked.txt", "Open panel begin did not populate url.")
+}
+
 testWindowRealizationCreatesNativeHierarchy()
 testViewHierarchyMaintainsSuperviewOwnership()
 testViewInsertionReplacementTagsAndDescendants()
@@ -3690,5 +3811,9 @@ testMenuItemInsertionLookupAndRemoval()
 testMenuItemStateAndSeparatorContracts()
 testAlertReturnsFirstButtonInMemory()
 testAlertRestoresKeyWindowAndFirstResponder()
+testSavePanelMapsOptionsAndReturnsChosenURL()
+testSavePanelCancelReturnsCancelAndClearsURL()
+testOpenPanelSupportsMultipleSelectionAndDirectories()
+testOpenPanelBeginInvokesCompletionHandler()
 
 print("WinChocolate contract tests passed.")
