@@ -93,7 +93,7 @@ public protocol NativeControlBackend: AnyObject {
     func createBox(title: String, frame: NSRect, parent: NativeHandle?) -> NativeHandle
 
     /// Creates a native text field child.
-    func createTextField(text: String, frame: NSRect, parent: NativeHandle?, isEditable: Bool) -> NativeHandle
+    func createTextField(text: String, frame: NSRect, parent: NativeHandle?, isEditable: Bool, isBordered: Bool) -> NativeHandle
 
     /// Creates a native secure text field child.
     func createSecureTextField(text: String, frame: NSRect, parent: NativeHandle?) -> NativeHandle
@@ -118,6 +118,9 @@ public protocol NativeControlBackend: AnyObject {
 
     /// Replaces native toolbar items.
     func setToolbarItems(_ items: [NativeToolbarItem], for handle: NativeHandle)
+
+    /// Returns the native frame for a toolbar item after platform layout.
+    func toolbarItemFrame(at index: Int, for handle: NativeHandle) -> NSRect?
 
     /// Registers the action to perform when a native toolbar item is activated.
     func registerToolbarAction(for handle: NativeHandle, action: @escaping (String) -> Void)
@@ -178,6 +181,9 @@ public protocol NativeControlBackend: AnyObject {
 
     /// Updates a native control's background color.
     func setBackgroundColor(_ color: NSColor?, for handle: NativeHandle)
+
+    /// Updates whether a native control paints its own background.
+    func setDrawsBackground(_ drawsBackground: Bool, for handle: NativeHandle)
 
     /// Updates a native control's tooltip text.
     func setToolTip(_ toolTip: String?, for handle: NativeHandle)

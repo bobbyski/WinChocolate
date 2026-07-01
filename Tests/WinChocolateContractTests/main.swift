@@ -61,10 +61,17 @@ func testWindowRealizationCreatesNativeHierarchy() {
 
     expect(backend.records[windowHandle]?.kind == "window", "Window native record was not created.")
     expect(backend.records[windowHandle]?.text == "Chocolate", "Window title was not recorded.")
+    expect(backend.records[windowHandle]?.isHidden == true, "Realized window should stay hidden until ordered front.")
     expect(contentView.nativeHandle != nil, "Content view was not realized.")
     expect(button.nativeHandle != nil, "Button was not realized.")
     expect(backend.records[button.nativeHandle!]?.kind == "button", "Button native record was not created.")
     expect(backend.records[button.nativeHandle!]?.parent == contentView.nativeHandle, "Button parent was not content view.")
+
+    window.makeKeyAndOrderFront(nil)
+
+    expect(backend.records[windowHandle]?.isHidden == false, "makeKeyAndOrderFront did not show the realized window.")
+
+    clearApplicationWindows()
 }
 
 func testViewHierarchyMaintainsSuperviewOwnership() {
@@ -2364,7 +2371,7 @@ func testToolbarCustomizationMovesExistingItemToEnd() {
     clearApplicationWindows()
 }
 
-func testToolbarViewUsesNativeToolbarPeerAndDispatchesItems() {
+func testToolbarViewComposesItemsAndDispatchesActions() {
     let backend = InMemoryNativeControlBackend()
     let toolbar = NSToolbar(identifier: "native")
     let openItem = NSToolbarItem(itemIdentifier: "open")
@@ -2392,33 +2399,58 @@ func testToolbarViewUsesNativeToolbarPeerAndDispatchesItems() {
 
     let handle = toolbarView.realizeNativePeer(in: backend, parent: nil)
 
-    expect(backend.records[handle]?.kind == "toolbar", "Toolbar view did not request a native toolbar peer.")
-    expect(backend.records[handle]?.toolbarItems == [
-        NativeToolbarItem(identifier: "open", label: "Open", imageName: "folder", isSeparator: false, isEnabled: true),
-        NativeToolbarItem(identifier: NSToolbarItem.Identifier.separator.rawValue, label: "", isSeparator: true, isEnabled: false),
-        NativeToolbarItem(identifier: NSToolbarItem.Identifier.flexibleSpace.rawValue, label: "", isSeparator: true, isFlexibleSpace: true, isEnabled: false),
-        NativeToolbarItem(identifier: "save", label: "Save", isSeparator: false, isEnabled: false)
-    ], "Toolbar view did not pass expected native toolbar item descriptors.")
+    expect(backend.records[handle]?.kind == "view", "Toolbar view did not request a composed native host view.")
+    expect(backend.records[handle]?.toolbarItems.isEmpty == true, "Composed toolbar host should not install native toolbar item descriptors.")
 
-    backend.toolbarActions[handle]?("open")
-    backend.toolbarActions[handle]?("save")
+    expect(toolbarView.subviews.count == 4, "Composed toolbar did not create one top-level view per toolbar item.")
+    expect(toolbarView.subviews[0].subviews.isEmpty, "Composed toolbar open item should be one self-contained view.")
+    expect(toolbarView.subviews[0].backgroundColor == nil, "Composed toolbar item should let the toolbar background show through.")
+    if let openHandle = toolbarView.subviews[0].nativeHandle {
+        expect(backend.records[openHandle]?.drawsBackground == false, "Composed toolbar item should request a clear native background.")
+    }
+    expect(toolbarView.subviews[1] is NSToolbarSeparatorView, "Composed toolbar separator did not render as a simple separator view.")
+    if let separatorHandle = toolbarView.subviews[1].nativeHandle {
+        expect(backend.records[separatorHandle]?.drawsBackground == false, "Composed toolbar separator should request a clear native background.")
+    }
+    if let flexibleSpaceHandle = toolbarView.subviews[2].nativeHandle {
+        expect(backend.records[flexibleSpaceHandle]?.drawsBackground == false, "Composed toolbar space should request a clear native background.")
+    }
+    expect(toolbarView.subviews[3].subviews.isEmpty, "Composed toolbar save item should be one self-contained view.")
+    expect(toolbarView.subviews[3].backgroundColor == nil, "Composed toolbar item should not draw its own background.")
+    if let saveHandle = toolbarView.subviews[3].nativeHandle {
+        expect(backend.records[saveHandle]?.drawsBackground == false, "Composed toolbar item should keep its native background clear.")
+    }
 
-    expect(firedIdentifiers == ["open"], "Native toolbar dispatch did not honor enabled item actions.")
+    let realizedItemTexts = backend.records.values.compactMap(\.text)
+    expect(realizedItemTexts.contains("Open\nfolder"), "Composed toolbar did not render the open item label and image.")
+    expect(realizedItemTexts.contains("Save\nsave"), "Composed toolbar did not render the save item label and image.")
+
+    let firstPoint = toolbarView.subviews[0].convert(NSMakePoint(4, 4), to: nil)
+    let lastPoint = toolbarView.subviews[3].convert(NSMakePoint(4, 4), to: nil)
+    toolbarView.subviews[0].mouseDown(with: NSEvent(type: .leftMouseDown, locationInWindow: firstPoint))
+    toolbarView.subviews[0].mouseUp(with: NSEvent(type: .leftMouseUp, locationInWindow: firstPoint))
+    toolbarView.subviews[3].mouseDown(with: NSEvent(type: .leftMouseDown, locationInWindow: lastPoint))
+    toolbarView.subviews[3].mouseUp(with: NSEvent(type: .leftMouseUp, locationInWindow: lastPoint))
+
+    expect(firedIdentifiers == ["open"], "Composed toolbar dispatch did not honor enabled item actions.")
 
     saveItem.isEnabled = true
     toolbarView.reloadItems()
 
-    expect(backend.records[handle]?.toolbarItems.last?.isEnabled == true, "Toolbar reload did not update enabled state.")
+    let enabledPoint = toolbarView.subviews[3].convert(NSMakePoint(4, 4), to: nil)
+    toolbarView.subviews[3].mouseDown(with: NSEvent(type: .leftMouseDown, locationInWindow: enabledPoint))
+    toolbarView.subviews[3].mouseUp(with: NSEvent(type: .leftMouseUp, locationInWindow: enabledPoint))
+    expect(firedIdentifiers == ["open", "save"], "Toolbar reload did not update enabled state.")
 
     toolbar.displayMode = .iconOnly
 
-    expect(backend.records[handle]?.toolbarItems.first?.label == "", "Toolbar icon-only mode did not hide item labels.")
-    expect(backend.records[handle]?.toolbarItems.first?.imageName == "folder", "Toolbar icon-only mode should preserve item images.")
+    let iconOnlyTexts = backend.records.values.compactMap(\.text)
+    expect(iconOnlyTexts.contains { $0.hasPrefix("folder") }, "Toolbar icon-only mode did not preserve the item image.")
 
     toolbar.displayMode = .labelOnly
 
-    expect(backend.records[handle]?.toolbarItems.first?.label == "Open", "Toolbar label-only mode should preserve item labels.")
-    expect(backend.records[handle]?.toolbarItems.first?.imageName == nil, "Toolbar label-only mode did not hide item images.")
+    let labelOnlyTexts = backend.records.values.compactMap(\.text)
+    expect(labelOnlyTexts.contains("Open"), "Toolbar label-only mode should preserve item labels.")
 }
 
 func testToolbarViewHostsCustomItemView() {
@@ -2441,12 +2473,40 @@ func testToolbarViewHostsCustomItemView() {
     expect(selector.superview === toolbarView, "Toolbar custom item view was not hosted by toolbar view.")
     expect(selector.nativeHandle != nil, "Toolbar custom item view did not realize a native peer.")
     expect(selector.frame == NSMakeRect(8, 6, 140, 28), "Toolbar custom item view was not positioned in the toolbar strip.")
-    expect(backend.records[handle]?.toolbarItems == [
-        NativeToolbarItem(identifier: "selector", label: "", isSeparator: true, customViewWidth: 140, isEnabled: false)
-    ], "Toolbar custom item did not reserve native toolbar space.")
+    expect(selector.backgroundColor == nil, "Toolbar custom item view should let the toolbar background show through.")
+    if let selectorHandle = selector.nativeHandle {
+        expect(backend.records[selectorHandle]?.drawsBackground == false, "Toolbar custom control should request a clear native background.")
+    }
+    expect(backend.records[handle]?.kind == "view", "Toolbar custom item view should be hosted by a composed native view.")
+    expect(backend.records[handle]?.toolbarItems.isEmpty == true, "Composed toolbar custom item should not reserve native toolbar separator space.")
 }
 
-func testWindowToolbarCreatesDockedNativePeerAndReservesContent() {
+func testToolbarItemCreatesCompositeImageLabelView() {
+    let backend = InMemoryNativeControlBackend()
+    let item = NSToolbarItem(itemIdentifier: "open")
+    item.label = "Open"
+    item.image = NSImage(named: "folder")
+
+    let view = item.winCompositeView(showItem: true, showLabel: true, toolbarHeight: 40)
+    let handle = view.realizeNativePeer(in: backend, parent: nil)
+
+    expect(view.backgroundColor == nil, "Toolbar composite view should have a transparent background.")
+    expect(view.subviews.isEmpty, "Toolbar composite view should render as one self-contained native view.")
+    expect(view.frame.size.height <= 40, "Toolbar composite view did not fit within the toolbar height.")
+    expect(backend.records[handle]?.text == "Open\nfolder", "Toolbar composite view did not carry the label and image key.")
+    expect(backend.records[handle]?.drawsBackground == false, "Toolbar composite view should request a clear native background.")
+
+    let separator = NSToolbarItem(itemIdentifier: .separator)
+    let separatorView = separator.winCompositeView(showItem: true, showLabel: false, toolbarHeight: 40)
+    let separatorHandle = separatorView.realizeNativePeer(in: backend, parent: nil)
+
+    expect(separatorView is NSToolbarSeparatorView, "Toolbar separator composite should be a simple separator view.")
+    expect(separatorView.backgroundColor == nil, "Toolbar separator view should have a transparent background.")
+    expect(backend.records[separatorHandle]?.text.contains("separator") == true, "Toolbar separator view did not carry a separator image key.")
+    expect(backend.records[separatorHandle]?.drawsBackground == false, "Toolbar separator view should request a clear native background.")
+}
+
+func testWindowToolbarCreatesDockedComposedHostAndReservesContent() {
     let backend = InMemoryNativeControlBackend()
     let window = NSWindow(
         contentRect: NSMakeRect(20, 30, 320, 220),
@@ -2465,24 +2525,62 @@ func testWindowToolbarCreatesDockedNativePeerAndReservesContent() {
     window.contentView = contentView
 
     let windowHandle = window.realizeNativePeer()
-    let toolbarRecords = backend.records.filter { $0.value.kind == "toolbar" }
+    let toolbarRecords = backend.records.filter { $0.value.kind == "view" && $0.value.parent == windowHandle && $0.value.frame == NSMakeRect(0, 0, 320, 40) }
 
-    expect(toolbarRecords.count == 1, "Window toolbar did not create exactly one native toolbar peer.")
+    expect(toolbarRecords.count == 1, "Window toolbar did not create exactly one composed toolbar host view.")
     guard let toolbarRecord = toolbarRecords.first else {
         return
     }
 
-    expect(toolbarRecord.value.parent == windowHandle, "Window toolbar native peer was not parented to the native window.")
-    expect(toolbarRecord.value.frame == NSMakeRect(0, 0, 320, 40), "Window toolbar did not dock to the top strip.")
-    expect(toolbarRecord.value.toolbarItems == [
-        NativeToolbarItem(identifier: "open", label: "Open", isSeparator: false, isEnabled: true)
-    ], "Window toolbar did not pass item descriptors to native peer.")
+    expect(toolbarRecord.value.toolbarItems.isEmpty, "Composed toolbar host should not pass item descriptors to a native toolbar peer.")
+    expect(backend.records.contains { $0.value.text.hasPrefix("Open") }, "Window toolbar did not compose a label for the toolbar item.")
     expect(window.contentLayoutRect == NSMakeRect(0, 40, 320, 180), "Window toolbar did not reserve layout space.")
     expect(contentView.frame == NSMakeRect(0, 40, 320, 180), "Content view did not move below the toolbar strip.")
 
     item.label = "Open File"
 
-    expect(backend.records[toolbarRecord.key]?.toolbarItems.first?.label == "Open File", "Toolbar item label changes did not refresh the window-owned toolbar.")
+    expect(backend.records.contains { $0.value.text.hasPrefix("Open File") }, "Toolbar item label changes did not refresh the window-owned toolbar.")
+}
+
+func testWindowToolbarHeightFollowsDisplayMode() {
+    let backend = InMemoryNativeControlBackend()
+    let window = NSWindow(
+        contentRect: NSMakeRect(20, 30, 320, 220),
+        styleMask: [.titled],
+        backing: .buffered,
+        defer: false,
+        nativeBackend: backend
+    )
+    let contentView = NSView(frame: NSMakeRect(0, 0, 320, 220))
+    let toolbar = NSToolbar(identifier: "windowToolbarHeight")
+    let item = NSToolbarItem(itemIdentifier: "open")
+
+    item.label = "Open"
+    item.image = NSImage(systemSymbolName: "folder", accessibilityDescription: "Open")
+    toolbar.addItem(item)
+    window.toolbar = toolbar
+    window.contentView = contentView
+
+    _ = window.realizeNativePeer()
+
+    expect(window.toolbarHeight == 40, "Default toolbar height should fit icon and label display.")
+    expect(contentView.frame == NSMakeRect(0, 40, 320, 180), "Default toolbar height did not reserve icon-and-label space.")
+
+    toolbar.displayMode = .iconOnly
+
+    expect(window.toolbarHeight == 30, "Icon-only toolbar mode should reduce toolbar height.")
+    expect(contentView.frame == NSMakeRect(0, 30, 320, 190), "Icon-only toolbar mode did not reduce reserved content space.")
+
+    toolbar.displayMode = .labelOnly
+
+    expect(window.toolbarHeight == 26, "Label-only toolbar mode should reduce toolbar height.")
+    expect(contentView.frame == NSMakeRect(0, 26, 320, 194), "Label-only toolbar mode did not reduce reserved content space.")
+
+    toolbar.displayMode = .iconAndLabel
+    toolbar.sizeMode = .small
+
+    expect(window.toolbarHeight == 34, "Small icon-and-label toolbar mode should use compact toolbar height.")
+    expect(contentView.frame == NSMakeRect(0, 34, 320, 186), "Small toolbar mode did not update reserved content space.")
 }
 
 func testEditableTextFieldUsesEditableNativePeer() {
@@ -3553,9 +3651,10 @@ testToolbarCustomizationDelegateAndDefaultItems()
 testToolbarCustomizationAllowsDuplicateStructuralItems()
 testToolbarCustomizationPaletteShowsToolbarDropTargetAtTop()
 testToolbarCustomizationMovesExistingItemToEnd()
-testToolbarViewUsesNativeToolbarPeerAndDispatchesItems()
+testToolbarViewComposesItemsAndDispatchesActions()
 testToolbarViewHostsCustomItemView()
-testWindowToolbarCreatesDockedNativePeerAndReservesContent()
+testToolbarItemCreatesCompositeImageLabelView()
+testWindowToolbarCreatesDockedComposedHostAndReservesContent()
 testEditableTextFieldUsesEditableNativePeer()
 testSecureTextFieldUsesSecureNativePeer()
 testTextViewUsesMultilineNativePeerAndStoresText()

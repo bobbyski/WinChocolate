@@ -90,8 +90,11 @@ open class NSWindow: NSResponder {
     }
 
     /// Height reserved for the window-owned toolbar strip.
-    open var toolbarHeight: CGFloat = 40 {
+    open var toolbarHeight: CGFloat = NSToolbarView.preferredHeight(for: nil) {
         didSet {
+            if !isUpdatingToolbarHeight {
+                usesAutomaticToolbarHeight = false
+            }
             layoutToolbarAndContent()
         }
     }
@@ -106,6 +109,8 @@ open class NSWindow: NSResponder {
     public let nativeBackend: NativeControlBackend
 
     private var toolbarHostView: NSToolbarView?
+    private var usesAutomaticToolbarHeight = true
+    private var isUpdatingToolbarHeight = false
 
     /// Whether this window is the application's key window.
     open var isKeyWindow: Bool {
@@ -119,7 +124,7 @@ open class NSWindow: NSResponder {
 
     /// The rectangle available for content in window coordinates.
     open var contentLayoutRect: NSRect {
-        let reservedHeight = toolbar?.isVisible == true ? toolbarHeight : 0
+        let reservedHeight = toolbar?.isVisible == true ? resolvedToolbarHeight : 0
         return NSRect(
             x: 0,
             y: reservedHeight,
@@ -256,7 +261,7 @@ open class NSWindow: NSResponder {
 
     /// Sets the window content size while preserving its origin.
     open func setContentSize(_ size: NSSize) {
-        let reservedHeight = toolbar?.isVisible == true ? toolbarHeight : 0
+        let reservedHeight = toolbar?.isVisible == true ? resolvedToolbarHeight : 0
         setFrame(NSRect(origin: frame.origin, size: NSSize(width: size.width, height: size.height + reservedHeight)), display: true)
         layoutToolbarAndContent()
     }
@@ -312,11 +317,17 @@ open class NSWindow: NSResponder {
             return
         }
 
-        let host = toolbarHostView ?? NSToolbarView(frame: NSMakeRect(0, 0, frame.size.width, toolbarHeight))
+        syncAutomaticToolbarHeight()
+
+        let host = toolbarHostView ?? NSToolbarView(frame: NSMakeRect(0, 0, frame.size.width, resolvedToolbarHeight))
         toolbarHostView = host
         host.nextResponder = self
         host.toolbar = toolbar
         host.visibilityChanged = { [weak self] _ in
+            self?.layoutToolbarAndContent()
+        }
+        host.preferredHeightChanged = { [weak self] _ in
+            self?.syncAutomaticToolbarHeight()
             self?.layoutToolbarAndContent()
         }
 
@@ -326,8 +337,10 @@ open class NSWindow: NSResponder {
     }
 
     private func layoutToolbarAndContent() {
+        syncAutomaticToolbarHeight()
+
         if let toolbarHostView {
-            toolbarHostView.frame = NSMakeRect(0, 0, frame.size.width, toolbarHeight)
+            toolbarHostView.frame = NSMakeRect(0, 0, frame.size.width, resolvedToolbarHeight)
             if let handle = toolbarHostView.nativeHandle {
                 nativeBackend.setFrame(toolbarHostView.frame, for: handle)
                 toolbarHostView.reloadItems()
@@ -342,6 +355,29 @@ open class NSWindow: NSResponder {
         if let handle = contentView.nativeHandle {
             nativeBackend.setFrame(contentView.frame, for: handle)
         }
+    }
+
+    private var resolvedToolbarHeight: CGFloat {
+        if usesAutomaticToolbarHeight {
+            return NSToolbarView.preferredHeight(for: toolbar)
+        }
+
+        return toolbarHeight
+    }
+
+    private func syncAutomaticToolbarHeight() {
+        guard usesAutomaticToolbarHeight else {
+            return
+        }
+
+        let preferredHeight = NSToolbarView.preferredHeight(for: toolbar)
+        guard toolbarHeight != preferredHeight else {
+            return
+        }
+
+        isUpdatingToolbarHeight = true
+        toolbarHeight = preferredHeight
+        isUpdatingToolbarHeight = false
     }
 
     private func nextKeyView(after responder: NSResponder?) -> NSView? {

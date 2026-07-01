@@ -126,6 +126,9 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
         /// Recorded background color.
         public var backgroundColor: NSColor?
 
+        /// Whether the native control should paint its own background.
+        public var drawsBackground: Bool
+
         /// Recorded tooltip text.
         public var toolTip: String?
 
@@ -216,11 +219,19 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     public func createWindow(title: String, frame: NSRect, styleMask: NSWindow.StyleMask, usesMainMenu: Bool) -> NativeHandle {
         let handle = makeHandle(kind: "window", text: title, frame: frame, parent: nil)
         records[handle]?.usesMainMenu = usesMainMenu
+        records[handle]?.isHidden = true
         return handle
     }
 
     /// Records that a window should be shown.
-    public func showWindow(_ handle: NativeHandle) {}
+    public func showWindow(_ handle: NativeHandle) {
+        guard var record = records[handle] else {
+            return
+        }
+
+        record.isHidden = false
+        records[handle] = record
+    }
 
     /// Removes a recorded native object.
     public func closeWindow(_ handle: NativeHandle) {
@@ -287,7 +298,7 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     }
 
     /// Records a text field creation request.
-    public func createTextField(text: String, frame: NSRect, parent: NativeHandle?, isEditable: Bool) -> NativeHandle {
+    public func createTextField(text: String, frame: NSRect, parent: NativeHandle?, isEditable: Bool, isBordered: Bool) -> NativeHandle {
         makeHandle(kind: isEditable ? "editableTextField" : "textField", text: text, frame: frame, parent: parent)
     }
 
@@ -346,6 +357,21 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
 
         record.toolbarItems = items
         records[handle] = record
+    }
+
+    /// Returns the recorded toolbar item frame using the same simple sizing model as the in-memory toolbar.
+    public func toolbarItemFrame(at index: Int, for handle: NativeHandle) -> NSRect? {
+        guard let record = records[handle], record.toolbarItems.indices.contains(index) else {
+            return nil
+        }
+
+        var x: CGFloat = 8
+        for itemIndex in 0..<index {
+            x += toolbarItemWidth(record.toolbarItems[itemIndex], toolbarWidth: record.frame.size.width)
+        }
+
+        let width = toolbarItemWidth(record.toolbarItems[index], toolbarWidth: record.frame.size.width)
+        return NSMakeRect(x, 0, width, record.frame.size.height)
     }
 
     /// Records a toolbar action.
@@ -521,6 +547,16 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
         }
 
         record.backgroundColor = color
+        records[handle] = record
+    }
+
+    /// Updates whether a recorded control draws its own background.
+    public func setDrawsBackground(_ drawsBackground: Bool, for handle: NativeHandle) {
+        guard var record = records[handle] else {
+            return
+        }
+
+        record.drawsBackground = drawsBackground
         records[handle] = record
     }
 
@@ -885,10 +921,27 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
             tableClickedColumn: -1,
             textColor: nil,
             backgroundColor: nil,
+            drawsBackground: true,
             toolTip: nil,
             font: nil,
             usesMainMenu: false
         )
         return handle
+    }
+
+    private func toolbarItemWidth(_ item: NativeToolbarItem, toolbarWidth: CGFloat) -> CGFloat {
+        if item.isFlexibleSpace {
+            return max(24, toolbarWidth / 4)
+        }
+        if let customViewWidth = item.customViewWidth {
+            return customViewWidth
+        }
+        if item.isSeparator {
+            return 8
+        }
+
+        let iconWidth: CGFloat = item.imageName == nil ? 0 : 24
+        let labelWidth = CGFloat(max(28, item.label.count * 6))
+        return max(iconWidth, labelWidth) + 20
     }
 }

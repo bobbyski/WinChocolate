@@ -30,7 +30,15 @@ open class NSTextField: NSControl {
     open var isBordered: Bool = true
 
     /// Whether the text field draws its background.
-    open var drawsBackground: Bool = true
+    open var drawsBackground: Bool = true {
+        didSet {
+            guard let nativeHandle else {
+                return
+            }
+
+            realizedBackend?.setDrawsBackground(drawsBackground, for: nativeHandle)
+        }
+    }
 
     /// Placeholder text for editable fields.
     open var placeholderString: String?
@@ -99,13 +107,14 @@ open class NSTextField: NSControl {
 
     /// Creates the native Windows text field peer.
     open override func createNativePeer(in backend: NativeControlBackend, parent: NativeHandle?) -> NativeHandle {
-        backend.createTextField(text: stringValue, frame: frame, parent: parent, isEditable: isEditable)
+        backend.createTextField(text: stringValue, frame: frame, parent: parent, isEditable: isEditable, isBordered: isBordered)
     }
 
     /// Ensures the text field has a native peer and registers text change dispatch.
     @discardableResult
     open override func realizeNativePeer(in backend: NativeControlBackend, parent: NativeHandle?) -> NativeHandle {
         let handle = super.realizeNativePeer(in: backend, parent: parent)
+        backend.setDrawsBackground(drawsBackground, for: handle)
         backend.setTextColor(textColor, for: handle)
         backend.setFont(font, for: handle)
         backend.registerTextChangeAction(for: handle) { [weak self] text in

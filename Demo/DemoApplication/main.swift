@@ -342,7 +342,7 @@ let saveToolbarItem = NSToolbarItem(itemIdentifier: "save")
 let toolbarSeparatorItem = NSToolbarItem(itemIdentifier: .separator)
 let toolbarFlexibleSpaceItem = NSToolbarItem(itemIdentifier: .flexibleSpace)
 let pageToolbarItem = NSToolbarItem(itemIdentifier: "pageSelector")
-let toolbarSearchField = NSSearchField(frame: NSMakeRect(0, 0, 180, 28))
+let toolbarSearchField = NSSearchField(frame: NSMakeRect(0, 0, 160, 24))
 let searchToolbarItem = NSToolbarItem(itemIdentifier: "toolbarSearch")
 let toggleToolbarItem = NSToolbarItem(itemIdentifier: "toggleToolbar")
 let customizeToolbarItem = NSToolbarItem(itemIdentifier: "customizeToolbar")
@@ -372,8 +372,185 @@ func demoResourcePath(named name: String) -> String {
         ?? "Demo\\DemoApplication\\Resources\\\(name).bmp"
 }
 
+func demoToolbarBitmapPath(named name: String, width: Int, kind: String) -> String {
+    let height = 34
+    var pixels = Array(repeating: UInt8(240), count: width * height * 3)
+
+    func setPixel(_ x: Int, _ y: Int, _ r: UInt8, _ g: UInt8, _ b: UInt8) {
+        guard x >= 0, x < width, y >= 0, y < height else {
+            return
+        }
+        let offset = (y * width + x) * 3
+        pixels[offset] = b
+        pixels[offset + 1] = g
+        pixels[offset + 2] = r
+    }
+
+    func fillRect(_ x: Int, _ y: Int, _ w: Int, _ h: Int, _ r: UInt8, _ g: UInt8, _ b: UInt8) {
+        for yy in y..<(y + h) {
+            for xx in x..<(x + w) {
+                setPixel(xx, yy, r, g, b)
+            }
+        }
+    }
+
+    func strokeRect(_ x: Int, _ y: Int, _ w: Int, _ h: Int, _ r: UInt8 = 72, _ g: UInt8 = 78, _ b: UInt8 = 84) {
+        for xx in x..<(x + w) {
+            setPixel(xx, y, r, g, b)
+            setPixel(xx, y + h - 1, r, g, b)
+        }
+        for yy in y..<(y + h) {
+            setPixel(x, yy, r, g, b)
+            setPixel(x + w - 1, yy, r, g, b)
+        }
+    }
+
+    func fillCircle(_ cx: Int, _ cy: Int, _ radius: Int, _ r: UInt8, _ g: UInt8, _ b: UInt8) {
+        for yy in (cy - radius)...(cy + radius) {
+            for xx in (cx - radius)...(cx + radius) where ((xx - cx) * (xx - cx) + (yy - cy) * (yy - cy)) <= radius * radius {
+                setPixel(xx, yy, r, g, b)
+            }
+        }
+    }
+
+    func characterRows(_ character: Character) -> [String] {
+        switch character {
+        case "A": return ["111", "101", "111", "101", "101"]
+        case "B": return ["110", "101", "110", "101", "110"]
+        case "C": return ["111", "100", "100", "100", "111"]
+        case "D": return ["110", "101", "101", "101", "110"]
+        case "E": return ["111", "100", "110", "100", "111"]
+        case "I": return ["111", "010", "010", "010", "111"]
+        case "L": return ["100", "100", "100", "100", "111"]
+        case "M": return ["101", "111", "111", "101", "101"]
+        case "N": return ["101", "111", "111", "111", "101"]
+        case "O": return ["111", "101", "101", "101", "111"]
+        case "P": return ["111", "101", "111", "100", "100"]
+        case "R": return ["110", "101", "110", "101", "101"]
+        case "S": return ["111", "100", "111", "001", "111"]
+        case "T": return ["111", "010", "010", "010", "010"]
+        case "U": return ["101", "101", "101", "101", "111"]
+        case "V": return ["101", "101", "101", "101", "010"]
+        case "Z": return ["111", "001", "010", "100", "111"]
+        default: return ["000", "000", "000", "000", "000"]
+        }
+    }
+
+    func drawText(_ text: String, y: Int) {
+        let characters = Array(text)
+        let textWidth = max(0, characters.count * 4 - 1)
+        var x = max((width - textWidth) / 2, 1)
+        for character in characters {
+            if character == " " {
+                x += 4
+                continue
+            }
+
+            let rows = characterRows(character)
+            for (rowIndex, row) in rows.enumerated() {
+                for (columnIndex, pixel) in row.enumerated() where pixel == "1" {
+                    fillRect(x + columnIndex, y + rowIndex, 1, 1, 28, 34, 42)
+                }
+            }
+            x += 4
+        }
+    }
+
+    let centerX = width / 2
+    let label: String
+    switch kind {
+    case "open":
+        label = "OPEN"
+        fillRect(centerX - 12, 4, 24, 13, 246, 174, 58)
+        fillRect(centerX - 10, 2, 11, 5, 255, 205, 92)
+        strokeRect(centerX - 12, 4, 24, 13)
+        strokeRect(centerX - 10, 2, 11, 5)
+    case "save":
+        label = "SAVE"
+        fillRect(centerX - 9, 3, 18, 18, 128, 96, 172)
+        strokeRect(centerX - 9, 3, 18, 18)
+        fillRect(centerX - 5, 6, 10, 5, 245, 245, 245)
+        fillRect(centerX - 5, 15, 10, 5, 205, 190, 226)
+    case "toggle":
+        label = "DISABLE"
+        fillCircle(centerX, 11, 9, 120, 130, 142)
+        fillCircle(centerX, 11, 4, 245, 245, 245)
+        fillRect(centerX - 1, 1, 2, 5, 72, 78, 84)
+        fillRect(centerX - 1, 17, 2, 5, 72, 78, 84)
+        fillRect(centerX - 13, 10, 6, 2, 72, 78, 84)
+        fillRect(centerX + 7, 10, 6, 2, 72, 78, 84)
+    default:
+        label = "CUSTOMIZE"
+        fillRect(centerX - 13, 5, 26, 2, 72, 78, 84)
+        fillRect(centerX - 13, 11, 26, 2, 72, 78, 84)
+        fillRect(centerX - 13, 17, 26, 2, 72, 78, 84)
+        fillCircle(centerX - 6, 6, 4, 58, 126, 206)
+        fillCircle(centerX + 4, 12, 4, 58, 126, 206)
+        fillCircle(centerX - 1, 18, 4, 58, 126, 206)
+    }
+    drawText(label, y: 27)
+
+    let rowSize = ((24 * width + 31) / 32) * 4
+    let pixelSize = rowSize * height
+    let fileSize = 54 + pixelSize
+    var bytes = Array(repeating: UInt8(0), count: fileSize)
+
+    func writeInt32(_ value: Int, at offset: Int) {
+        bytes[offset] = UInt8(value & 0xff)
+        bytes[offset + 1] = UInt8((value >> 8) & 0xff)
+        bytes[offset + 2] = UInt8((value >> 16) & 0xff)
+        bytes[offset + 3] = UInt8((value >> 24) & 0xff)
+    }
+
+    bytes[0] = 0x42
+    bytes[1] = 0x4d
+    writeInt32(fileSize, at: 2)
+    writeInt32(54, at: 10)
+    writeInt32(40, at: 14)
+    writeInt32(width, at: 18)
+    writeInt32(height, at: 22)
+    bytes[26] = 1
+    bytes[28] = 24
+    writeInt32(pixelSize, at: 34)
+
+    for y in 0..<height {
+        let sourceY = height - 1 - y
+        for x in 0..<width {
+            let source = (sourceY * width + x) * 3
+            let destination = 54 + (y * rowSize) + (x * 3)
+            bytes[destination] = pixels[source]
+            bytes[destination + 1] = pixels[source + 1]
+            bytes[destination + 2] = pixels[source + 2]
+        }
+    }
+
+    let candidates = [
+        URL(fileURLWithPath: Bundle.main.bundlePath).appendingPathComponent("\(name).bmp").path,
+        "C:\\AIResearch\\WinChocolate\\Code\\WinChocolate\\.build\\aarch64-unknown-windows-msvc\\debug\\\(name).bmp",
+        "C:\\Users\\bobby\\AppData\\Local\\Temp\\\(name).bmp"
+    ]
+
+    for path in candidates {
+        let url = URL(fileURLWithPath: path)
+        do {
+            try Data(bytes).write(to: url)
+            if (try? Data(contentsOf: url))?.isEmpty == false {
+                return path
+            }
+        } catch {
+            continue
+        }
+    }
+
+    return candidates[0]
+}
+
 let demoArtworkPath = demoResourcePath(named: "WinChocolateArtworkDemo")
 let demoScreenArtworkPath = demoResourcePath(named: "WinChocolateScreenArtworkDemo")
+let toolbarOpenImagePath = demoToolbarBitmapPath(named: "ToolbarOpen", width: 58, kind: "open")
+let toolbarSaveImagePath = demoToolbarBitmapPath(named: "ToolbarSave", width: 58, kind: "save")
+let toolbarToggleImagePath = demoToolbarBitmapPath(named: "ToolbarToggle", width: 96, kind: "toggle")
+let toolbarCustomizeImagePath = demoToolbarBitmapPath(named: "ToolbarCustomize", width: 86, kind: "customize")
 var imageModeIndex = 0
 let imageModes: [(NSImageView.ImageScaling, NSImageView.ImageAlignment, String, String)] = [
     (.scaleProportionallyDown, .alignCenter, demoArtworkPath, "bird center/down"),
@@ -833,27 +1010,27 @@ visualEffectView.addSubview(visualEffectButton)
 openToolbarItem.label = "Open"
 openToolbarItem.paletteLabel = "Open"
 openToolbarItem.toolTip = "Toolbar open item"
-openToolbarItem.image = NSImage(systemSymbolName: "folder", accessibilityDescription: "Open")
-openToolbarItem.minSize = NSMakeSize(58, 30)
-openToolbarItem.maxSize = NSMakeSize(58, 30)
+openToolbarItem.image = NSImage(contentsOfFile: toolbarOpenImagePath) ?? NSImage(systemSymbolName: "folder", accessibilityDescription: "Open")
+openToolbarItem.minSize = NSMakeSize(58, 34)
+openToolbarItem.maxSize = NSMakeSize(58, 34)
 saveToolbarItem.label = "Save"
 saveToolbarItem.paletteLabel = "Save"
 saveToolbarItem.toolTip = "Toolbar save item"
-saveToolbarItem.image = NSImage(systemSymbolName: "square.and.arrow.down", accessibilityDescription: "Save")
-saveToolbarItem.minSize = NSMakeSize(58, 30)
-saveToolbarItem.maxSize = NSMakeSize(58, 30)
+saveToolbarItem.image = NSImage(contentsOfFile: toolbarSaveImagePath) ?? NSImage(systemSymbolName: "square.and.arrow.down", accessibilityDescription: "Save")
+saveToolbarItem.minSize = NSMakeSize(58, 34)
+saveToolbarItem.maxSize = NSMakeSize(58, 34)
 toggleToolbarItem.label = "Disable Save"
 toggleToolbarItem.paletteLabel = "Toggle Toolbar"
 toggleToolbarItem.toolTip = "Enable or disable the Save toolbar item"
-toggleToolbarItem.image = NSImage(systemSymbolName: "gearshape", accessibilityDescription: "Toggle Save")
-toggleToolbarItem.minSize = NSMakeSize(96, 30)
-toggleToolbarItem.maxSize = NSMakeSize(112, 30)
+toggleToolbarItem.image = NSImage(contentsOfFile: toolbarToggleImagePath) ?? NSImage(systemSymbolName: "gearshape", accessibilityDescription: "Toggle Save")
+toggleToolbarItem.minSize = NSMakeSize(96, 34)
+toggleToolbarItem.maxSize = NSMakeSize(96, 34)
 customizeToolbarItem.label = "Customize"
 customizeToolbarItem.paletteLabel = "Customize Toolbar"
 customizeToolbarItem.toolTip = "Customize the toolbar"
-customizeToolbarItem.image = NSImage(systemSymbolName: "slider.horizontal.3", accessibilityDescription: "Customize Toolbar")
-customizeToolbarItem.minSize = NSMakeSize(86, 30)
-customizeToolbarItem.maxSize = NSMakeSize(96, 30)
+customizeToolbarItem.image = NSImage(contentsOfFile: toolbarCustomizeImagePath) ?? NSImage(systemSymbolName: "slider.horizontal.3", accessibilityDescription: "Customize Toolbar")
+customizeToolbarItem.minSize = NSMakeSize(86, 34)
+customizeToolbarItem.maxSize = NSMakeSize(86, 34)
 pageToolbarItem.label = "Page"
 pageToolbarItem.paletteLabel = "Page Selector"
 pageToolbarItem.toolTip = "Choose the demo page"
@@ -865,8 +1042,8 @@ searchToolbarItem.label = "Search"
 searchToolbarItem.paletteLabel = "Search"
 searchToolbarItem.toolTip = "Search from the toolbar"
 searchToolbarItem.view = toolbarSearchField
-searchToolbarItem.minSize = NSMakeSize(180, 28)
-searchToolbarItem.maxSize = NSMakeSize(180, 28)
+searchToolbarItem.minSize = NSMakeSize(160, 24)
+searchToolbarItem.maxSize = NSMakeSize(160, 24)
 let demoToolbarDelegate = DemoToolbarDelegate(
     allowedIdentifiers: [
         "open",
@@ -1646,9 +1823,10 @@ tablesPage.addSubview(tableScrollView)
 tablesPage.addSubview(outlineLabel)
 tablesPage.addSubview(outlineScrollView)
 window.contentView = contentView
-window.makeKeyAndOrderFront(nil)
 showDemoPage(0)
 updateFocusDisplay()
+statusLabel.stringValue = "Ready - window shown"
+window.makeKeyAndOrderFront(nil)
 statusLabel.stringValue = window.isKeyWindow && window.isMainWindow
     ? "Ready - key/main window"
     : "Ready - window shown"

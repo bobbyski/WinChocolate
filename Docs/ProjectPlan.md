@@ -16,7 +16,7 @@ Phase 2 - Classic Win32 Backend               ############################--  94
 Phase 3 - AppKit Surface Expansion            ########################------  82%  In Progress
 Phase 4 - Demo Harness                        #############################-  98%  In Progress
 Phase 5 - Tables, Lists, Collections          ############------------------  39%  In Progress
-Phase 6 - Toolbar Completion                  ##################------------  60%  Deferred
+Phase 6 - Toolbar API Parity                  ######------------------------  20%  In Progress
 Phase 7 - WinFoundation Bridge                #############-----------------  44%  In Progress
 Phase 8 - Modern Windows Appearance           ------------------------------   0%  Pending
 Phase 9 - Auto Layout                         ------------------------------   0%  Pending
@@ -89,18 +89,24 @@ Move table-like controls from first slices toward practical AppKit behavior.
 | 5.3 | `NSBrowser` | In Progress | First composed column browser slice exists. |
 | 5.4 | `NSCollectionView` | In Progress | First fixed item-grid slice exists; layout engines and reuse remain. |
 
-## Phase 6 - Toolbar Completion - 60%
+## Phase 6 - Toolbar API Parity - 20%
 
-Toolbar work is intentionally deferred after the current batch. Return here later instead of continuing to churn on it now.
+Define and implement the AppKit toolbar contract before making more Windows rendering decisions. The source-of-truth API definition is `Docs/AppKitToolbarAPI.md`.
 
 | # | Item | Status | Notes |
 |---|---|---|---|
-| 6.1 | Docked toolbar model/rendering | Done | `NSWindow.toolbar` reserves content space and renders native toolbar items. |
-| 6.2 | Toolbar custom views | Done | Custom item view slots can host controls such as the demo page popup. |
-| 6.3 | Customization mechanics | In Progress | Drag/reorder/add/remove work, but edge cases and polish remain. |
-| 6.4 | Customization visual polish | Deferred | Make customization dialog match real toolbar more closely. |
-| 6.5 | Overflow/autosave/reset parity | Deferred | Finish AppKit-like overflow, autosave, reset-to-default behavior. |
-| 6.6 | SF Symbols strategy | Deferred | Define legal/technical mapping from SF-symbol names to Windows-native or bundled assets. |
+| 6.1 | AppKit toolbar API inventory | In Progress | Document the Apple-defined `NSToolbar`, `NSToolbarItem`, delegate, validation, customization, and autosave contract before further implementation work. |
+| 6.2 | `NSWindow.toolbar` contract | Pending | A window has an optional toolbar object; attaching, replacing, showing, hiding, and removing it should follow AppKit semantics independent of renderer. |
+| 6.3 | `NSToolbar` model contract | Pending | Cover `identifier`, visible item ordering, delegate ownership, selected item identifier, display mode, size mode, customization flags, visibility, and autosave name. |
+| 6.4 | `NSToolbarItem` model contract | Pending | Cover identifier, label, palette label, tool tip, tag, image, view, target/action, menu form representation, enabled/selected state, visibility priority, min/max size, and validation. |
+| 6.5 | Delegate and item creation contract | Pending | Mirror AppKit delegate responsibilities for allowed/default/selectable identifiers and item creation by identifier. |
+| 6.6 | Standard item identifiers | Pending | Define behavior for separator, space, flexible space, show-colors, show-fonts, print, customize toolbar, and any version-appropriate standard identifiers WinChocolate chooses to expose. |
+| 6.7 | Customization contract | Pending | Define AppKit-style palette behavior, drag/reorder/add/remove, default set restoration, allowed item filtering, duplicate rules, and user-visible labels. |
+| 6.8 | Autosave and restoration contract | Pending | Define `autosavesConfiguration`, configuration identifiers, persistence shape, reset behavior, and migration/versioning expectations. |
+| 6.9 | Overflow and item visibility contract | Pending | Define what happens when the toolbar is too narrow, including flexible space, overflow menu behavior, visibility priority, and custom view constraints. |
+| 6.10 | Toolbar rendering implementation | Deferred | Choose the Windows renderer only after the API contract is settled. Current composed renderer is provisional. |
+| 6.11 | Customization visual polish | Deferred | Make customization dialog match AppKit behavior and appearance after mechanics and API are aligned. |
+| 6.12 | SF Symbols strategy | Deferred | Define legal/technical mapping from SF-symbol names to Windows-native or bundled assets. |
 
 ## Phase 7 - WinFoundation Bridge - 44%
 

@@ -261,6 +261,9 @@ private func winCallWindowProcW(_ previousProcedure: WNDPROC?, _ hwnd: HWND?, _ 
 @_silgen_name("SendMessageW")
 private func winSendMessageW(_ hwnd: HWND?, _ message: UINT, _ wParam: WPARAM, _ lParam: LPARAM) -> LRESULT
 
+@_silgen_name("SelectObject")
+private func winSelectObject(_ deviceContext: HDC?, _ object: HGDIOBJ?) -> HGDIOBJ?
+
 @_silgen_name("SetScrollInfo")
 private func winSetScrollInfo(_ hwnd: HWND?, _ bar: Int32, _ scrollInfo: UnsafePointer<SCROLLINFO>, _ redraw: Int32) -> Int32
 
@@ -311,6 +314,9 @@ private func winGetMessageW(_ message: UnsafeMutablePointer<MSG>, _ hwnd: HWND?,
 
 @_silgen_name("GetParent")
 private func winGetParent(_ hwnd: HWND?) -> HWND?
+
+@_silgen_name("GetStockObject")
+private func winGetStockObject(_ object: Int32) -> HGDIOBJ?
 
 @_silgen_name("GetModuleHandleW")
 private func winGetModuleHandleW(_ moduleName: UnsafePointer<UInt16>?) -> HINSTANCE?
@@ -460,6 +466,8 @@ private let stmSetImage: UINT = 0x0172
 private let wmHScroll: UINT = 0x0114
 private let wmVScroll: UINT = 0x0115
 private let wmCtlColorEdit: UINT = 0x0133
+private let wmCtlColorListBox: UINT = 0x0134
+private let wmCtlColorBtn: UINT = 0x0135
 private let wmCtlColorStatic: UINT = 0x0138
 private let wmKeyDown: UINT = 0x0100
 private let wmKeyUp: UINT = 0x0101
@@ -555,6 +563,7 @@ private let defaultCharset: DWORD = 1
 private let defaultPrecision: DWORD = 0
 private let defaultQuality: DWORD = 0
 private let defaultPitchAndFamily: DWORD = 0
+private let nullBrush: Int32 = 5
 private let vkBack: Int32 = 0x08
 private let vkTab: Int32 = 0x09
 private let vkReturn: Int32 = 0x0d
@@ -705,10 +714,13 @@ public final class Win32NativeControlBackend: NativeControlBackend {
     private var stepperRanges: [UInt: (minValue: Double, maxValue: Double, increment: Double, value: Double)] = [:]
     private var comboBoxHandles: Set<UInt> = []
     private var comboBoxDropdownHeights: [UInt: CGFloat] = [:]
+    private var groupBoxHandles: Set<UInt> = []
     private var customViewHandles: Set<UInt> = []
     private var textColors: [UInt: DWORD] = [:]
     private var backgroundColors: [UInt: DWORD] = [:]
     private var backgroundBrushes: [UInt: HBRUSH] = [:]
+    private var transparentBackgroundHandles: Set<UInt> = []
+    private var defaultControlBackgroundBrush: HBRUSH?
     private var fonts: [UInt: HFONT] = [:]
     private var bitmaps: [UInt: HBITMAP] = [:]
     private var standardToolbarImageOwner: HWND?
@@ -837,7 +849,9 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         stepperRanges.removeValue(forKey: handle.rawValue)
         comboBoxHandles.remove(handle.rawValue)
         comboBoxDropdownHeights.removeValue(forKey: handle.rawValue)
+        groupBoxHandles.remove(handle.rawValue)
         customViewHandles.remove(handle.rawValue)
+        transparentBackgroundHandles.remove(handle.rawValue)
         clearAppearance(for: handle)
     }
 
@@ -879,7 +893,9 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         sliderRanges.removeValue(forKey: handle.rawValue)
         scrollViewMetrics.removeValue(forKey: handle.rawValue)
         stepperRanges.removeValue(forKey: handle.rawValue)
+        groupBoxHandles.remove(handle.rawValue)
         customViewHandles.remove(handle.rawValue)
+        transparentBackgroundHandles.remove(handle.rawValue)
         clearAppearance(for: handle)
     }
 
@@ -942,7 +958,7 @@ public final class Win32NativeControlBackend: NativeControlBackend {
 
     /// Creates a native box child.
     public func createBox(title: String, frame: NSRect, parent: NativeHandle?) -> NativeHandle {
-        createChildWindow(
+        let handle = createChildWindow(
             className: "BUTTON",
             text: title,
             frame: frame,
@@ -950,10 +966,12 @@ public final class Win32NativeControlBackend: NativeControlBackend {
             commandIdentifier: nil,
             style: wsChild | wsVisible | bsGroupBox
         )
+        groupBoxHandles.insert(handle.rawValue)
+        return handle
     }
 
     /// Creates a native static text field child.
-    public func createTextField(text: String, frame: NSRect, parent: NativeHandle?, isEditable: Bool) -> NativeHandle {
+    public func createTextField(text: String, frame: NSRect, parent: NativeHandle?, isEditable: Bool, isBordered: Bool) -> NativeHandle {
         let handle = createChildWindow(
             className: isEditable ? "EDIT" : "STATIC",
             text: text,
@@ -961,7 +979,7 @@ public final class Win32NativeControlBackend: NativeControlBackend {
             parent: parent,
             commandIdentifier: nil,
             style: isEditable
-                ? wsChild | wsVisible | wsTabStop | wsBorder | esAutoHScroll
+                ? wsChild | wsVisible | wsTabStop | (isBordered ? wsBorder : 0) | esAutoHScroll
                 : wsChild | wsVisible
         )
         if isEditable {
@@ -1089,7 +1107,7 @@ public final class Win32NativeControlBackend: NativeControlBackend {
             frame: frame,
             parent: parent,
             commandIdentifier: nil,
-            style: wsChild | wsVisible | wsTabStop | tbStyleFlat | tbStyleTooltips | ccsNoResize | ccsNoDivider
+            style: wsChild | wsVisible | wsClipChildren | wsTabStop | tbStyleFlat | tbStyleTooltips | ccsNoResize | ccsNoDivider
         )
         guard let hwnd = hwnd(from: handle) else {
             return handle
@@ -1110,9 +1128,31 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         clearToolbarButtons(hwnd: hwnd)
         clearToolbarCommands(for: handle)
         clearToolbarFlexibleCovers(for: handle)
-        let flexibleButtonIndexes = installToolbarItems(items, hwnd: hwnd, handle: handle)
+        let spacerIndexes = installToolbarItems(items, hwnd: hwnd, handle: handle)
         _ = winSendMessageW(hwnd, tbAutosize, 0, 0)
-        installToolbarFlexibleCovers(at: flexibleButtonIndexes, hwnd: hwnd, handle: handle)
+        installToolbarCovers(at: spacerIndexes.flexibleSpace, hwnd: hwnd, handle: handle, coversFullItem: false)
+    }
+
+    /// Returns the native toolbar item frame after Windows has laid out toolbar slots.
+    public func toolbarItemFrame(at index: Int, for handle: NativeHandle) -> NSRect? {
+        guard index >= 0, let hwnd = hwnd(from: handle) else {
+            return nil
+        }
+
+        var rectangle = RECT()
+        let result = withUnsafeMutablePointer(to: &rectangle) { rectanglePointer in
+            winSendMessageW(hwnd, tbGetItemRect, WPARAM(index), Int(bitPattern: rectanglePointer))
+        }
+        guard result != 0 else {
+            return nil
+        }
+
+        return NSMakeRect(
+            Double(rectangle.left),
+            Double(rectangle.top),
+            Double(max(1, rectangle.right - rectangle.left)),
+            Double(max(1, rectangle.bottom - rectangle.top))
+        )
     }
 
     /// Registers a native toolbar action.
@@ -1319,7 +1359,13 @@ public final class Win32NativeControlBackend: NativeControlBackend {
             return
         }
 
-        _ = winSetWindowPos(hwnd, nil, 0, 0, 0, 0, swpNoMove | swpNoSize | swpNoActivate)
+        _ = winSetWindowPos(hwnd, nil, 0, 0, 0, 0, swpNoMove | swpNoSize | swpNoActivate | swpShowWindow)
+        _ = winInvalidateRect(hwnd, nil, 1)
+        _ = winUpdateWindow(hwnd)
+        if let parent = winGetParent(hwnd) {
+            _ = winInvalidateRect(parent, nil, 0)
+            _ = winUpdateWindow(parent)
+        }
     }
 
     /// Updates whether a native control is hidden.
@@ -1379,6 +1425,16 @@ public final class Win32NativeControlBackend: NativeControlBackend {
             }
         } else {
             backgroundColors.removeValue(forKey: handle.rawValue)
+        }
+        invalidate(handle)
+    }
+
+    /// Updates whether a native control paints its own background.
+    public func setDrawsBackground(_ drawsBackground: Bool, for handle: NativeHandle) {
+        if drawsBackground {
+            transparentBackgroundHandles.remove(handle.rawValue)
+        } else {
+            transparentBackgroundHandles.insert(handle.rawValue)
         }
         invalidate(handle)
     }
@@ -2214,6 +2270,9 @@ public final class Win32NativeControlBackend: NativeControlBackend {
             }
 
             let handle = nativeHandle(from: hwnd)
+            if transparentBackgroundHandles.contains(handle.rawValue) {
+                return 1
+            }
             guard let brush = backgroundBrushes[handle.rawValue] else {
                 return nil
             }
@@ -2221,7 +2280,7 @@ public final class Win32NativeControlBackend: NativeControlBackend {
             var rectangle = RECT()
             _ = winGetClientRect(hwnd, &rectangle)
             withUnsafePointer(to: rectangle) { rectanglePointer in
-                _ = winFillRect(HDC(bitPattern: Int(wParam)), rectanglePointer, brush)
+                _ = winFillRect(HDC(bitPattern: wParam), rectanglePointer, brush)
             }
             return 1
         case wmNotify:
@@ -2394,13 +2453,34 @@ public final class Win32NativeControlBackend: NativeControlBackend {
             }
 
             return nil
-        case wmCtlColorEdit, wmCtlColorStatic:
+        case wmCtlColorEdit, wmCtlColorListBox, wmCtlColorStatic, wmCtlColorBtn:
             guard lParam != 0 else {
                 return nil
             }
 
             let rawHandle = UInt(bitPattern: lParam)
-            let deviceContext = HDC(bitPattern: Int(wParam))
+            let deviceContext = HDC(bitPattern: wParam)
+            if transparentBackgroundHandles.contains(rawHandle) {
+                if let textColor = textColors[rawHandle] {
+                    _ = winSetTextColor(deviceContext, textColor)
+                }
+                _ = winSetBkMode(deviceContext, transparentBkMode)
+                if let brush = winGetStockObject(nullBrush) {
+                    return Int(bitPattern: brush)
+                }
+                return 1
+            }
+
+            if groupBoxHandles.contains(rawHandle) {
+                let backgroundColor = colorRef(from: .windowBackgroundColor)
+                _ = winSetBkColor(deviceContext, backgroundColor)
+                _ = winSetBkMode(deviceContext, transparentBkMode)
+                if let brush = controlBackgroundBrush() {
+                    return Int(bitPattern: brush)
+                }
+                return nil
+            }
+
             if let textColor = textColors[rawHandle] {
                 _ = winSetTextColor(deviceContext, textColor)
             }
@@ -2543,7 +2623,7 @@ public final class Win32NativeControlBackend: NativeControlBackend {
             windowClass.lpfnWndProc = winChocolateWindowProcedure
             windowClass.hInstance = winGetModuleHandleW(nil)
             windowClass.hCursor = winLoadCursorW(nil, systemResourcePointer(32_512))
-            windowClass.hbrBackground = HBRUSH(bitPattern: 6)
+            windowClass.hbrBackground = nil
             windowClass.lpszClassName = className
 
             withUnsafePointer(to: windowClass) { windowClassPointer in
@@ -2736,18 +2816,20 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         }
     }
 
-    private func installToolbarItems(_ items: [NativeToolbarItem], hwnd: HWND?, handle: NativeHandle) -> [Int] {
+    private func installToolbarItems(_ items: [NativeToolbarItem], hwnd: HWND?, handle: NativeHandle) -> (flexibleSpace: [Int], customView: [Int]) {
         guard let hwnd else {
-            return []
+            return ([], [])
         }
 
         var buttons: [TBBUTTON] = []
         var commandIdentifiers: [UInt] = []
         var flexibleButtonIndexes: [Int] = []
+        var customViewButtonIndexes: [Int] = []
         let flexibleSpaceWidth = toolbarFlexibleSpaceWidth(for: items, handle: handle)
 
         for item in items {
             if let customViewWidth = item.customViewWidth {
+                customViewButtonIndexes.append(buttons.count)
                 buttons.append(TBBUTTON(
                     iBitmap: Int32(max(1, customViewWidth.rounded())),
                     idCommand: 0,
@@ -2813,17 +2895,17 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         toolbarCommandIdentifiers[handle.rawValue] = commandIdentifiers
 
         guard !buttons.isEmpty else {
-            return flexibleButtonIndexes
+            return (flexibleButtonIndexes, customViewButtonIndexes)
         }
 
         buttons.withUnsafeBufferPointer { buttonPointer in
             _ = winSendMessageW(hwnd, tbAddButtonsW, WPARAM(buttons.count), Int(bitPattern: buttonPointer.baseAddress))
         }
 
-        return flexibleButtonIndexes
+        return (flexibleButtonIndexes, customViewButtonIndexes)
     }
 
-    private func installToolbarFlexibleCovers(at indexes: [Int], hwnd toolbarHwnd: HWND?, handle: NativeHandle) {
+    private func installToolbarCovers(at indexes: [Int], hwnd toolbarHwnd: HWND?, handle: NativeHandle, coversFullItem: Bool) {
         guard let toolbarHwnd, !indexes.isEmpty else {
             return
         }
@@ -2839,8 +2921,9 @@ public final class Win32NativeControlBackend: NativeControlBackend {
             }
 
             let centerX = rectangle.left + ((rectangle.right - rectangle.left) / 2)
-            let coverWidth: Int32 = 24
-            let coverFrame = NSMakeRect(Double(centerX - (coverWidth / 2)), 0, Double(coverWidth), Double(max(1, rectangle.bottom - rectangle.top)))
+            let coverWidth = coversFullItem ? max(1, rectangle.right - rectangle.left) : 24
+            let coverLeft = coversFullItem ? rectangle.left : centerX - (coverWidth / 2)
+            let coverFrame = NSMakeRect(Double(coverLeft), 0, Double(coverWidth), Double(max(1, rectangle.bottom - rectangle.top)))
             let coverHandle = createChildWindow(
                 className: "STATIC",
                 text: "",
@@ -2853,7 +2936,7 @@ public final class Win32NativeControlBackend: NativeControlBackend {
                 _ = winSetWindowPos(
                     coverHwnd,
                     nil,
-                    centerX - (coverWidth / 2),
+                    coverLeft,
                     0,
                     coverWidth,
                     max(1, rectangle.bottom - rectangle.top),
@@ -3100,7 +3183,7 @@ public final class Win32NativeControlBackend: NativeControlBackend {
             style |= wsThickFrame | wsMaximizeBox
         }
 
-        return style | wsVisible
+        return style | wsClipChildren
     }
 
     private func messageBoxFlags(for alert: NSAlert) -> UINT {
@@ -3157,7 +3240,7 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         }
 
         let preview = toolbarPreview(from: text(from: hwnd))
-        guard !preview.label.isEmpty else {
+        guard preview.showItem || preview.showLabel else {
             return
         }
 
@@ -3168,32 +3251,127 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         _ = winSetBkColor(deviceContext, backgroundColor)
         _ = winSetBkMode(deviceContext, transparentBkMode)
 
-        drawToolbarItemGlyph(preview: preview, in: rectangle, deviceContext: deviceContext, parentWindow: hwnd)
+        let parts = toolbarPreviewRects(for: preview, in: rectangle)
+        if preview.showItem {
+            drawToolbarItemGlyph(preview: preview, in: parts.image, deviceContext: deviceContext, parentWindow: hwnd)
+        }
 
-        var textRectangle = rectangle
-        textRectangle.left += 2
-        textRectangle.top = max(rectangle.top + 18, rectangle.bottom - 13)
-        textRectangle.right -= 2
-        withWideString(preview.label) { textPointer in
-            withUnsafeMutablePointer(to: &textRectangle) { rectanglePointer in
-                _ = winDrawTextW(deviceContext, textPointer, -1, rectanglePointer, dtCenter | dtVCenter | dtSingleLine | dtEndEllipsis)
+        let toolbarFont = toolbarPreviewFont()
+        let oldFont = toolbarFont.map { winSelectObject(deviceContext, $0) }
+        defer {
+            if let toolbarFont {
+                _ = winSelectObject(deviceContext, oldFont ?? nil)
+                _ = winDeleteObject(toolbarFont)
+            }
+        }
+
+        if preview.showLabel, !preview.label.isEmpty {
+            var textRectangle = parts.label
+            withWideString(preview.label) { textPointer in
+                withUnsafeMutablePointer(to: &textRectangle) { rectanglePointer in
+                    _ = winDrawTextW(deviceContext, textPointer, -1, rectanglePointer, dtCenter | dtVCenter | dtSingleLine | dtEndEllipsis)
+                }
             }
         }
     }
 
-    private func toolbarPreview(from text: String) -> (label: String, imageName: String) {
+    private struct ToolbarPreview {
+        var label: String
+        var imageName: String
+        var showItem: Bool
+        var showLabel: Bool
+        var labelPosition: String
+    }
+
+    private func toolbarPreview(from text: String) -> ToolbarPreview {
+        let fields = text.split(separator: "\t", omittingEmptySubsequences: false).map(String.init)
+        if fields.first == "__WinChocolateToolbarItem" {
+            let label = fields.count > 1 ? fields[1] : ""
+            let imageName = fields.count > 2 ? fields[2] : label
+            let showItem = fields.count > 3 ? fields[3] == "1" : true
+            let showLabel = fields.count > 4 ? fields[4] == "1" : true
+            let labelPosition = fields.count > 5 ? fields[5] : "below"
+            return ToolbarPreview(
+                label: label,
+                imageName: imageName,
+                showItem: showItem,
+                showLabel: showLabel,
+                labelPosition: labelPosition
+            )
+        }
+
         let parts = text.split(separator: "\n", maxSplits: 1, omittingEmptySubsequences: false)
         let label = parts.first.map(String.init) ?? text
         let imageName = parts.count > 1 ? String(parts[1]) : label
-        return (label, imageName)
+        return ToolbarPreview(label: label, imageName: imageName, showItem: true, showLabel: true, labelPosition: "below")
     }
 
-    private func drawToolbarItemGlyph(preview: (label: String, imageName: String), in rectangle: RECT, deviceContext: HDC?, parentWindow: HWND?) {
+    private func toolbarPreviewRects(for preview: ToolbarPreview, in rectangle: RECT) -> (image: RECT, label: RECT) {
         let width = rectangle.right - rectangle.left
         let height = rectangle.bottom - rectangle.top
-        let glyphSize = max(12, min(18, height - 14))
+        let glyphSize = max(Int32(12), min(Int32(18), height - 16))
+        let labelHeight: Int32 = preview.showLabel ? 14 : 0
+        let gap: Int32 = preview.showItem && preview.showLabel ? 2 : 0
+
+        switch preview.labelPosition {
+        case "above":
+            let totalHeight = glyphSize + labelHeight + gap
+            let top = rectangle.top + max((height - totalHeight) / 2, 0)
+            let labelRect = RECT(left: rectangle.left + 1, top: top, right: rectangle.right - 1, bottom: top + labelHeight)
+            let imageTop = top + labelHeight + gap
+            let imageLeft = rectangle.left + max((width - glyphSize) / 2, 2)
+            let imageRect = RECT(left: imageLeft, top: imageTop, right: imageLeft + glyphSize, bottom: imageTop + glyphSize)
+            return (imageRect, labelRect)
+        case "left":
+            let imageLeft = rectangle.right - glyphSize - 4
+            let imageTop = rectangle.top + max((height - glyphSize) / 2, 0)
+            let imageRect = RECT(left: imageLeft, top: imageTop, right: imageLeft + glyphSize, bottom: imageTop + glyphSize)
+            let labelRect = RECT(left: rectangle.left + 1, top: rectangle.top + 1, right: max(rectangle.left + 1, imageLeft - gap), bottom: rectangle.bottom - 1)
+            return (imageRect, labelRect)
+        case "right":
+            let imageLeft = rectangle.left + 4
+            let imageTop = rectangle.top + max((height - glyphSize) / 2, 0)
+            let imageRect = RECT(left: imageLeft, top: imageTop, right: imageLeft + glyphSize, bottom: imageTop + glyphSize)
+            let labelRect = RECT(left: imageLeft + glyphSize + gap, top: rectangle.top + 1, right: rectangle.right - 1, bottom: rectangle.bottom - 1)
+            return (imageRect, labelRect)
+        default:
+            let totalHeight = glyphSize + labelHeight + gap
+            let top = rectangle.top + max((height - totalHeight) / 2, 0)
+            let imageLeft = rectangle.left + max((width - glyphSize) / 2, 2)
+            let imageRect = RECT(left: imageLeft, top: top, right: imageLeft + glyphSize, bottom: top + glyphSize)
+            let labelTop = top + glyphSize + gap
+            let labelRect = RECT(left: rectangle.left + 1, top: labelTop, right: rectangle.right - 1, bottom: labelTop + labelHeight)
+            return (imageRect, labelRect)
+        }
+    }
+
+    private func toolbarPreviewFont() -> HFONT? {
+        withWideString("Segoe UI") { faceName in
+            winCreateFontW(
+                -11,
+                0,
+                0,
+                0,
+                600,
+                0,
+                0,
+                0,
+                defaultCharset,
+                defaultPrecision,
+                defaultPrecision,
+                defaultQuality,
+                defaultPitchAndFamily,
+                faceName
+            )
+        }
+    }
+
+    private func drawToolbarItemGlyph(preview: ToolbarPreview, in rectangle: RECT, deviceContext: HDC?, parentWindow: HWND?) {
+        let width = rectangle.right - rectangle.left
+        let height = rectangle.bottom - rectangle.top
+        let glyphSize = max(12, min(18, height))
         let glyphLeft = rectangle.left + max((width - glyphSize) / 2, 2)
-        let glyphTop = rectangle.top + 3
+        let glyphTop = rectangle.top + max((height - glyphSize) / 2, 0)
         let kind = preview.imageName.lowercased()
 
         if kind.contains("separator") {
@@ -3403,6 +3581,16 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         return palette[value % palette.count]
     }
 
+    private func controlBackgroundBrush() -> HBRUSH? {
+        if let defaultControlBackgroundBrush {
+            return defaultControlBackgroundBrush
+        }
+
+        let brush = winCreateSolidBrush(colorRef(from: .windowBackgroundColor))
+        defaultControlBackgroundBrush = brush
+        return brush
+    }
+
     private func colorRef(from color: NSColor) -> DWORD {
         colorRef(red: color.redComponent, green: color.greenComponent, blue: color.blueComponent)
     }
@@ -3475,6 +3663,7 @@ public final class Win32NativeControlBackend: NativeControlBackend {
     private func clearAppearance(for handle: NativeHandle) {
         textColors.removeValue(forKey: handle.rawValue)
         backgroundColors.removeValue(forKey: handle.rawValue)
+        transparentBackgroundHandles.remove(handle.rawValue)
         if let brush = backgroundBrushes.removeValue(forKey: handle.rawValue) {
             _ = winDeleteObject(brush)
         }
@@ -3624,7 +3813,7 @@ public final class Win32NativeControlBackend: NativeControlBackend {
             return nil
         }
 
-        return HWND(bitPattern: Int(handle.rawValue))
+        return HWND(bitPattern: handle.rawValue)
     }
 }
 

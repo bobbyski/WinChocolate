@@ -84,7 +84,11 @@ open class NSToolbar: NSObject {
     }
 
     /// Preferred toolbar size mode.
-    open var sizeMode: SizeMode = .default
+    open var sizeMode: SizeMode = .default {
+        didSet {
+            itemsDidChange?()
+        }
+    }
 
     /// The window this toolbar is attached to.
     public private(set) weak var window: NSWindow?
@@ -676,6 +680,13 @@ private final class NSToolbarCustomizationTile: NSView {
         }
     }
 
+    var isEnabled = true {
+        didSet {
+            updateAppearance()
+            updateNativeTextColor()
+        }
+    }
+
     var onBeginDrag: (() -> Void)?
     var onClick: (() -> Void)?
     var onDrop: ((NSToolbarCustomizationTile, NSEvent) -> Void)?
@@ -704,11 +715,14 @@ private final class NSToolbarCustomizationTile: NSView {
     override func createNativePeer(in backend: NativeControlBackend, parent: NativeHandle?) -> NativeHandle {
         let handle = backend.createView(frame: frame, parent: parent)
         backend.setText(nativeText, for: handle)
-        backend.setTextColor(NSColor(calibratedRed: 0.08, green: 0.10, blue: 0.12, alpha: 1.0), for: handle)
+        updateNativeTextColor(for: handle, backend: backend)
         return handle
     }
 
     override func mouseDown(with event: NSEvent) {
+        guard isEnabled else {
+            return
+        }
         hasDragged = false
         didBeginDrag = false
         dragAnchor = event.locationInWindow
@@ -716,6 +730,9 @@ private final class NSToolbarCustomizationTile: NSView {
     }
 
     override func mouseDragged(with event: NSEvent) {
+        guard isEnabled else {
+            return
+        }
         hasDragged = true
         if !didBeginDrag {
             didBeginDrag = true
@@ -743,6 +760,9 @@ private final class NSToolbarCustomizationTile: NSView {
     }
 
     override func mouseUp(with event: NSEvent) {
+        guard isEnabled else {
+            return
+        }
         if hasDragged {
             onDrop?(self, event)
             onEndDrag?()
@@ -766,7 +786,7 @@ private final class NSToolbarCustomizationTile: NSView {
 
         switch style {
         case .toolbar:
-            backgroundColor = NSColor(calibratedRed: 0.89, green: 0.91, blue: 0.93, alpha: 1.0)
+            backgroundColor = nil
         case .palette:
             backgroundColor = NSColor(calibratedRed: 0.98, green: 0.98, blue: 0.97, alpha: 1.0)
         case .defaultSet:
@@ -787,13 +807,29 @@ private final class NSToolbarCustomizationTile: NSView {
 
         realizedBackend?.setText(nativeText, for: nativeHandle)
     }
+
+    private func updateNativeTextColor() {
+        guard let nativeHandle, let realizedBackend else {
+            return
+        }
+
+        updateNativeTextColor(for: nativeHandle, backend: realizedBackend)
+    }
+
+    private func updateNativeTextColor(for handle: NativeHandle, backend: NativeControlBackend) {
+        let color = isEnabled
+            ? NSColor(calibratedRed: 0.08, green: 0.10, blue: 0.12, alpha: 1.0)
+            : NSColor(calibratedRed: 0.42, green: 0.44, blue: 0.46, alpha: 1.0)
+        backend.setTextColor(color, for: handle)
+    }
 }
 
-/// A classic native toolbar renderer.
+/// A composed AppKit-style toolbar renderer.
 ///
 /// AppKit's `NSToolbar` is normally window chrome, not a regular content view.
-/// This view hosts the current classic `ToolbarWindow32` peer from the same
-/// `NSToolbarItem` model and is owned by `NSWindow` when `window.toolbar` is set.
+/// This view renders `NSToolbarItem` values as ordinary WinChocolate child
+/// views so custom items, separators, and standard controls share one layout
+/// model instead of overlaying native toolbar placeholders.
 open class NSToolbarView: NSView {
     /// Toolbar model rendered by this view.
     open var toolbar: NSToolbar? {
@@ -813,7 +849,12 @@ open class NSToolbarView: NSView {
     }
 
     /// Item height inside the strip.
-    open var itemHeight: CGFloat = 30
+    open var itemHeight: CGFloat = 34
+
+    /// Preferred strip height for the current toolbar display settings.
+    open var preferredHeight: CGFloat {
+        Self.preferredHeight(for: toolbar)
+    }
 
     /// Horizontal padding before the first item.
     open var leadingPadding: CGFloat = 8
@@ -824,7 +865,11 @@ open class NSToolbarView: NSView {
     /// Called after the hosted toolbar visibility changes.
     public var visibilityChanged: ((Bool) -> Void)?
 
-    private var hostedItemViews: [NSView] = []
+    /// Called when display settings imply a different natural toolbar height.
+    public var preferredHeightChanged: ((CGFloat) -> Void)?
+
+    private var renderedItemViews: [NSView] = []
+    private var lastPreferredHeight: CGFloat?
 
     /// Creates a toolbar view.
     public override init(frame frameRect: NSRect) {
@@ -837,59 +882,218 @@ open class NSToolbarView: NSView {
         false
     }
 
-    /// Rebuilds the native toolbar items from the toolbar model.
+    /// Rebuilds composed toolbar child views from the toolbar model.
     open func reloadItems() {
-        guard let toolbar, let nativeHandle, let realizedBackend else {
+        guard let toolbar else {
             return
         }
 
-        realizedBackend.setToolbarItems(nativeItems(from: toolbar), for: nativeHandle)
-        layoutCustomItemViews(for: toolbar)
+        notifyPreferredHeightIfNeeded()
+        rebuildItemViews(for: toolbar)
     }
 
-    /// Creates the native toolbar peer.
+    /// Returns the natural toolbar strip height for AppKit-style display settings.
+    public static func preferredHeight(for toolbar: NSToolbar?) -> CGFloat {
+        guard let toolbar else {
+            return 40
+        }
+
+        let displayMode: NSToolbar.DisplayMode
+        switch toolbar.displayMode {
+        case .default:
+            displayMode = .iconAndLabel
+        case .iconAndLabel, .iconOnly, .labelOnly:
+            displayMode = toolbar.displayMode
+        }
+        let hasCustomView = toolbar.items.contains { $0.view != nil }
+        let customHeight = toolbar.items.reduce(CGFloat(0)) { height, item in
+            guard item.view != nil else {
+                return height
+            }
+
+            return max(height, min(max(item.minSize.height, item.maxSize.height), item.maxSize.height))
+        }
+
+        let baseHeight: CGFloat
+        switch displayMode {
+        case .default, .iconAndLabel:
+            switch toolbar.sizeMode {
+            case .small:
+                baseHeight = 34
+            case .default, .regular:
+                baseHeight = 40
+            }
+        case .iconOnly:
+            switch toolbar.sizeMode {
+            case .small:
+                baseHeight = 26
+            case .default, .regular:
+                baseHeight = 30
+            }
+        case .labelOnly:
+            switch toolbar.sizeMode {
+            case .small:
+                baseHeight = 24
+            case .default, .regular:
+                baseHeight = 26
+            }
+        }
+
+        guard hasCustomView else {
+            return baseHeight
+        }
+
+        return max(baseHeight, customHeight + 8)
+    }
+
+    /// Creates the native host peer for the composed toolbar.
     open override func createNativePeer(in backend: NativeControlBackend, parent: NativeHandle?) -> NativeHandle {
-        backend.createToolbar(items: toolbar.map(nativeItems(from:)) ?? [], frame: frame, parent: parent)
+        backend.createView(frame: frame, parent: parent)
     }
 
-    /// Ensures the toolbar has a native peer and registers item dispatch.
+    /// Ensures the toolbar host has a native peer and realizes composed children.
     @discardableResult
     open override func realizeNativePeer(in backend: NativeControlBackend, parent: NativeHandle?) -> NativeHandle {
         let handle = super.realizeNativePeer(in: backend, parent: parent)
-        backend.registerToolbarAction(for: handle) { [weak self] identifier in
-            guard let item = self?.toolbar?.item(withIdentifier: NSToolbarItem.Identifier(rawValue: identifier)) else {
-                return
-            }
-
-            item.performAction()
-        }
-        backend.setToolbarItems(toolbar.map(nativeItems(from:)) ?? [], for: handle)
         if let toolbar {
-            layoutCustomItemViews(for: toolbar)
+            rebuildItemViews(for: toolbar)
         }
         return handle
     }
 
-    private func layoutCustomItemViews(for toolbar: NSToolbar) {
-        let currentViews = toolbar.items.compactMap(\.view)
-        for hostedView in hostedItemViews where !currentViews.contains(where: { $0 === hostedView }) {
-            hostedView.removeFromSuperview()
+    private func rebuildItemViews(for toolbar: NSToolbar) {
+        for renderedView in renderedItemViews {
+            renderedView.removeFromSuperview()
         }
-        hostedItemViews = currentViews
+        renderedItemViews.removeAll()
 
-        var x = leadingPadding
-        for item in toolbar.items {
-            let itemWidth = displayWidth(for: item, in: toolbar)
-            if let view = item.view {
-                let height = min(itemHeight, max(20, item.maxSize.height))
-                let y = max((frame.size.height - height) / 2, 0)
-                view.frame = NSMakeRect(x, y, itemWidth, height)
-                if view.superview !== self {
-                    addSubview(view)
+        let layout = itemLayout(for: toolbar)
+        for entry in layout {
+            switch entry.kind {
+            case .standard(let item):
+                let compositeView = item.winCompositeView(
+                    showItem: toolbar.displayMode != .labelOnly,
+                    showLabel: toolbar.displayMode != .iconOnly,
+                    toolbarHeight: frame.size.height
+                )
+                compositeView.frame = entry.frame
+                addRenderedSubview(compositeView)
+            case .custom(let item, let view):
+                applyToolbarControlAppearance(to: view)
+                view.frame = entry.frame
+                view.toolTip = item.toolTip ?? view.toolTip
+                if let control = view as? NSControl {
+                    control.isEnabled = item.isEnabled
                 }
+                addRenderedSubview(view)
+                applyRealizedToolbarControlAppearance(to: view)
+            case .separator:
+                let separatorItem = NSToolbarItem(itemIdentifier: .separator)
+                let separatorView = separatorItem.winCompositeView(
+                    showItem: true,
+                    showLabel: false,
+                    toolbarHeight: frame.size.height
+                )
+                separatorView.frame = entry.frame
+                addRenderedSubview(separatorView)
+            case .space:
+                let spaceView = NSView(frame: entry.frame)
+                addRenderedSubview(spaceView)
             }
-            x += itemWidth + itemSpacing
         }
+    }
+
+    private func addRenderedSubview(_ view: NSView) {
+        addSubview(view)
+        applyRealizedTransparentBackground(to: view)
+        renderedItemViews.append(view)
+    }
+
+    private func applyToolbarControlAppearance(to view: NSView) {
+        view.backgroundColor = nil
+
+        if let textField = view as? NSTextField {
+            textField.isBordered = false
+            textField.drawsBackground = false
+        }
+    }
+
+    private func applyRealizedToolbarControlAppearance(to view: NSView) {
+        guard let nativeHandle = view.nativeHandle, let backend = view.realizedBackend else {
+            return
+        }
+
+        if view is NSTextField || view is NSPopUpButton {
+            backend.setBackgroundColor(nil, for: nativeHandle)
+            backend.setDrawsBackground(false, for: nativeHandle)
+        }
+    }
+
+    private func applyRealizedTransparentBackground(to view: NSView) {
+        guard let nativeHandle = view.nativeHandle, let backend = view.realizedBackend else {
+            return
+        }
+
+        backend.setBackgroundColor(nil, for: nativeHandle)
+        backend.setDrawsBackground(false, for: nativeHandle)
+    }
+
+    private enum RenderedItemKind {
+        case standard(NSToolbarItem)
+        case custom(NSToolbarItem, NSView)
+        case separator
+        case space
+    }
+
+    private struct RenderedItemLayout {
+        var kind: RenderedItemKind
+        var frame: NSRect
+    }
+
+    private func itemLayout(for toolbar: NSToolbar) -> [RenderedItemLayout] {
+        let flexibleCount = toolbar.items.filter { $0.itemIdentifier == .flexibleSpace }.count
+        let fixedWidth = toolbar.items.reduce(CGFloat(0)) { width, item in
+            if item.itemIdentifier == .flexibleSpace {
+                return width
+            }
+            return width + displayWidth(for: item, in: toolbar)
+        }
+        let fixedSpacing = max(CGFloat(toolbar.items.count - 1), 0) * itemSpacing
+        let availableFlexibleWidth = max(24, frame.size.width - (leadingPadding * 2) - fixedWidth - fixedSpacing)
+        let flexibleWidth = flexibleCount > 0 ? max(24, availableFlexibleWidth / CGFloat(flexibleCount)) : 24
+        var x = leadingPadding
+        var layout: [RenderedItemLayout] = []
+
+        for item in toolbar.items {
+            let width = item.itemIdentifier == .flexibleSpace ? flexibleWidth : displayWidth(for: item, in: toolbar)
+            let height = displayHeight(for: item)
+            let y = max((frame.size.height - height) / 2, 0)
+            let itemFrame = NSMakeRect(x, y, width, height)
+
+            if let view = item.view {
+                layout.append(RenderedItemLayout(kind: .custom(item, view), frame: itemFrame))
+            } else if item.itemIdentifier == .separator {
+                layout.append(RenderedItemLayout(kind: .separator, frame: NSMakeRect(x + ((width - 2) / 2), 8, 2, max(frame.size.height - 16, 8))))
+            } else if item.itemIdentifier == .space || item.itemIdentifier == .flexibleSpace {
+                layout.append(RenderedItemLayout(kind: .space, frame: itemFrame))
+            } else {
+                layout.append(RenderedItemLayout(kind: .standard(item), frame: itemFrame))
+            }
+
+            x += width + itemSpacing
+        }
+
+        return layout
+    }
+
+    private func notifyPreferredHeightIfNeeded() {
+        let height = preferredHeight
+        guard lastPreferredHeight != height else {
+            return
+        }
+
+        lastPreferredHeight = height
+        preferredHeightChanged?(height)
     }
 
     private func displayWidth(for item: NSToolbarItem, in toolbar: NSToolbar) -> CGFloat {
@@ -903,49 +1107,34 @@ open class NSToolbarView: NSView {
             return max(item.minSize.width, min(item.maxSize.width, item.maxSize.width))
         }
 
-        let showsLabel = toolbar.displayMode != .iconOnly
-        let showsImage = toolbar.displayMode != .labelOnly
+        let mode: NSToolbar.DisplayMode
+        switch toolbar.displayMode {
+        case .default:
+            mode = .iconAndLabel
+        case .iconAndLabel, .iconOnly, .labelOnly:
+            mode = toolbar.displayMode
+        }
+        let showsLabel = mode != .iconOnly
+        let showsImage = mode != .labelOnly
         let iconWidth: CGFloat = showsImage && item.image != nil ? 24 : 0
         let labelWidth = showsLabel ? CGFloat(max(28, item.label.count * 6)) : 0
-        return max(iconWidth, labelWidth) + 20
+        let naturalWidth = max(iconWidth, labelWidth) + 16
+        return max(item.minSize.width, min(item.maxSize.width, naturalWidth))
     }
 
-    private func nativeItems(from toolbar: NSToolbar) -> [NativeToolbarItem] {
-        toolbar.items.map { item in
-            switch item.itemIdentifier {
-            case .flexibleSpace:
-                return NativeToolbarItem(
-                    identifier: item.itemIdentifier.rawValue,
-                    label: "",
-                    isSeparator: true,
-                    isFlexibleSpace: true,
-                    isEnabled: false
-                )
-            case .separator, .space:
-                return NativeToolbarItem(identifier: item.itemIdentifier.rawValue, label: "", isSeparator: true, isEnabled: false)
-            default:
-                if item.view != nil {
-                    return NativeToolbarItem(
-                        identifier: item.itemIdentifier.rawValue,
-                        label: "",
-                        isSeparator: true,
-                        customViewWidth: displayWidth(for: item, in: toolbar),
-                        isEnabled: false
-                    )
-                }
-
-                let showsLabel = toolbar.displayMode != .iconOnly
-                let showsImage = toolbar.displayMode != .labelOnly
-                return NativeToolbarItem(
-                    identifier: item.itemIdentifier.rawValue,
-                    label: showsLabel ? item.label : "",
-                    imageName: showsImage ? item.image?.name : nil,
-                    isSeparator: false,
-                    isEnabled: item.isEnabled
-                )
-            }
+    private func displayHeight(for item: NSToolbarItem) -> CGFloat {
+        if item.itemIdentifier == .separator {
+            return max(frame.size.height - 16, 8)
         }
+        if item.itemIdentifier == .space || item.itemIdentifier == .flexibleSpace {
+            return max(frame.size.height - 8, 8)
+        }
+        if item.view == nil {
+            return max(frame.size.height - 6, 8)
+        }
+        return min(max(frame.size.height - 6, 20), max(20, item.maxSize.height))
     }
+
 }
 
 /// Separator line used by composed toolbar rendering.
@@ -953,12 +1142,163 @@ open class NSToolbarSeparatorView: NSView {
     /// Creates a separator view.
     public override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
-        backgroundColor = NSColor(calibratedRed: 0.52, green: 0.52, blue: 0.48, alpha: 1.0)
+        backgroundColor = nil
     }
 
     /// Separators are display-only.
     open override var acceptsFirstResponder: Bool {
         false
+    }
+
+    open override func createNativePeer(in backend: NativeControlBackend, parent: NativeHandle?) -> NativeHandle {
+        let handle = backend.createView(frame: frame, parent: parent)
+        backend.setText(" \nseparator", for: handle)
+        backend.setDrawsBackground(false, for: handle)
+        return handle
+    }
+}
+
+/// Position of a toolbar item's label relative to its item image or view.
+public enum WinToolbarLabelPosition: Sendable {
+    /// Place the label below the item image or view.
+    case below
+
+    /// Place the label above the item image or view.
+    case above
+
+    /// Place the label to the left of the item image or view.
+    case left
+
+    /// Place the label to the right of the item image or view.
+    case right
+}
+
+/// WinChocolate-specific representation used while dragging a toolbar item.
+public enum WinToolbarDragRepresentation {
+    /// Use an image as the drag representation.
+    case image(NSImage)
+
+    /// Use a view as the drag representation.
+    case view(NSView)
+}
+
+private final class NSToolbarCompositeItemView: NSView {
+    weak var item: NSToolbarItem?
+    var title: String {
+        didSet {
+            updateNativeText()
+        }
+    }
+    var imageName: String {
+        didSet {
+            updateNativeText()
+        }
+    }
+    var showItem: Bool {
+        didSet {
+            updateNativeText()
+        }
+    }
+    var showLabel: Bool {
+        didSet {
+            updateNativeText()
+        }
+    }
+    var labelLocation: WinToolbarLabelPosition {
+        didSet {
+            updateNativeText()
+        }
+    }
+    var isEnabled: Bool {
+        didSet {
+            updateNativeTextColor()
+        }
+    }
+
+    init(
+        item: NSToolbarItem,
+        title: String,
+        imageName: String,
+        showItem: Bool,
+        showLabel: Bool,
+        labelLocation: WinToolbarLabelPosition,
+        frame frameRect: NSRect
+    ) {
+        self.item = item
+        self.title = title
+        self.imageName = imageName
+        self.showItem = showItem
+        self.showLabel = showLabel
+        self.labelLocation = labelLocation
+        self.isEnabled = item.isEnabled
+        super.init(frame: frameRect)
+        toolTip = item.toolTip
+        backgroundColor = nil
+    }
+
+    override var acceptsFirstResponder: Bool {
+        false
+    }
+
+    override func createNativePeer(in backend: NativeControlBackend, parent: NativeHandle?) -> NativeHandle {
+        let handle = backend.createView(frame: frame, parent: parent)
+        backend.setText(nativeText, for: handle)
+        backend.setDrawsBackground(false, for: handle)
+        updateNativeTextColor(for: handle, backend: backend)
+        return handle
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        item?.performAction()
+    }
+
+    private var nativeText: String {
+        [
+            "__WinChocolateToolbarItem",
+            title,
+            imageName,
+            showItem ? "1" : "0",
+            showLabel ? "1" : "0",
+            labelLocation.nativeName
+        ].joined(separator: "\t")
+    }
+
+    private func updateNativeText() {
+        guard let nativeHandle else {
+            return
+        }
+
+        realizedBackend?.setText(nativeText, for: nativeHandle)
+    }
+
+    private func updateNativeTextColor() {
+        guard let nativeHandle, let realizedBackend else {
+            return
+        }
+
+        updateNativeTextColor(for: nativeHandle, backend: realizedBackend)
+    }
+
+    private func updateNativeTextColor(for handle: NativeHandle, backend: NativeControlBackend) {
+        let color = isEnabled
+            ? NSColor(calibratedRed: 0.08, green: 0.10, blue: 0.12, alpha: 1.0)
+            : NSColor(calibratedRed: 0.42, green: 0.44, blue: 0.46, alpha: 1.0)
+        backend.setTextColor(color, for: handle)
+    }
+}
+
+private extension WinToolbarLabelPosition {
+    var nativeName: String {
+        switch self {
+        case .below:
+            return "below"
+        case .above:
+            return "above"
+        case .left:
+            return "left"
+        case .right:
+            return "right"
+        }
     }
 }
 
@@ -1029,6 +1369,12 @@ open class NSToolbarItem: NSObject {
         }
     }
 
+    /// WinChocolate-specific image shown for this item in the customization palette.
+    open var winImageForPallate: NSImage?
+
+    /// WinChocolate-specific image or view used as this item's drag representation.
+    open var winRenderForDrag: WinToolbarDragRepresentation?
+
     /// Minimum item size.
     open var minSize: NSSize = NSMakeSize(32, 28)
 
@@ -1078,6 +1424,50 @@ open class NSToolbarItem: NSObject {
         }
 
         onAction?(self)
+    }
+
+    /// Creates a transparent composite view for this item in a toolbar.
+    open func winCompositeView(
+        showItem: Bool,
+        showLabel: Bool,
+        winLabelLocation: WinToolbarLabelPosition = .below,
+        toolbarHeight: CGFloat
+    ) -> NSView {
+        if itemIdentifier == .separator {
+            let separatorView = NSToolbarSeparatorView(frame: NSMakeRect(0, 0, 8, max(toolbarHeight - 12, 8)))
+            separatorView.toolTip = toolTip
+            return separatorView
+        }
+
+        let imageSize = NSMakeSize(24, 20)
+        let labelSize = showLabel ? NSMakeSize(max(28, CGFloat(label.count * 6)), 13) : NSMakeSize(0, 0)
+        let gap: CGFloat = showItem && showLabel ? 2 : 0
+        let itemSize = showItem ? imageSize : NSMakeSize(0, 0)
+        let horizontal = winLabelLocation == .left || winLabelLocation == .right
+        let width = horizontal
+            ? itemSize.width + labelSize.width + gap + 8
+            : max(itemSize.width, labelSize.width) + 8
+        let contentHeight = horizontal
+            ? max(itemSize.height, labelSize.height)
+            : itemSize.height + labelSize.height + gap
+        let height = min(max(contentHeight + 4, 20), max(toolbarHeight, 20))
+        return NSToolbarCompositeItemView(
+            item: self,
+            title: label,
+            imageName: winToolbarImageName,
+            showItem: showItem,
+            showLabel: showLabel,
+            labelLocation: winLabelLocation,
+            frame: NSMakeRect(0, 0, width, height)
+        )
+    }
+
+    private var winToolbarImageName: String {
+        if let name = (image ?? winImageForPallate)?.name, !name.isEmpty {
+            return name
+        }
+
+        return itemIdentifier.rawValue
     }
 }
 
