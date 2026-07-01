@@ -487,6 +487,22 @@ private func winSetWindowTextW(_ hwnd: HWND?, _ text: UnsafePointer<UInt16>?) ->
 @_silgen_name("ShowWindow")
 private func winShowWindow(_ hwnd: HWND?, _ commandShow: Int32) -> Int32
 
+@_silgen_name("AdjustWindowRectEx")
+private func winAdjustWindowRectEx(
+    _ rect: UnsafeMutablePointer<RECT>,
+    _ style: DWORD,
+    _ hasMenu: Int32,
+    _ extendedStyle: DWORD
+) -> Int32
+
+@_silgen_name("RedrawWindow")
+private func winRedrawWindow(
+    _ hwnd: HWND?,
+    _ rect: UnsafePointer<RECT>?,
+    _ region: UnsafeMutableRawPointer?,
+    _ flags: UINT
+) -> Int32
+
 @_silgen_name("TranslateMessage")
 private func winTranslateMessage(_ message: UnsafePointer<MSG>) -> Int32
 
@@ -510,6 +526,10 @@ private let mbIconWarning: UINT = 0x00000030
 private let mbIconError: UINT = 0x00000010
 private let swShow: Int32 = 5
 private let swHide: Int32 = 0
+private let rdwInvalidate: UINT = 0x0001
+private let rdwErase: UINT = 0x0004
+private let rdwAllChildren: UINT = 0x0080
+private let rdwUpdateNow: UINT = 0x0100
 private let swpNoActivate: UINT = 0x0010
 private let swpShowWindow: UINT = 0x0040
 private let wmDestroy: UINT = 0x0002
@@ -790,6 +810,8 @@ public final class Win32NativeControlBackend: NativeControlBackend {
     private var backgroundBrushes: [UInt: HBRUSH] = [:]
     private var transparentBackgroundHandles: Set<UInt> = []
     private var isComInitialized = false
+    private var windowStyles: [UInt: DWORD] = [:]
+    private var windowMenuFlags: [UInt: Bool] = [:]
     private var defaultControlBackgroundBrush: HBRUSH?
     private var fonts: [UInt: HFONT] = [:]
     private var bitmaps: [UInt: HBITMAP] = [:]
@@ -843,17 +865,21 @@ public final class Win32NativeControlBackend: NativeControlBackend {
     public func createWindow(title: String, frame: NSRect, styleMask: NSWindow.StyleMask, usesMainMenu: Bool) -> NativeHandle {
         registerWindowClassIfNeeded()
 
+        // AppKit's contentRect describes the content area; grow the native
+        // rect so the client area matches the requested size exactly.
+        let style = windowStyle(from: styleMask)
+        let outerSize = outerWindowSize(forContentSize: frame.size, style: style, hasMenu: usesMainMenu)
         let hwnd = withWideString(winChocolateWindowClassName) { className in
             withWideString(title) { windowTitle in
                 winCreateWindowExW(
                     0,
                     className,
                     windowTitle,
-                    windowStyle(from: styleMask),
+                    style,
                     Int32(frame.origin.x),
                     Int32(frame.origin.y),
-                    Int32(frame.size.width),
-                    Int32(frame.size.height),
+                    outerSize.width,
+                    outerSize.height,
                     nil,
                     usesMainMenu ? createNativeMenu(from: mainMenu) : nil,
                     winGetModuleHandleW(nil),
@@ -869,10 +895,21 @@ public final class Win32NativeControlBackend: NativeControlBackend {
 
         let handle = nativeHandle(from: hwnd)
         windowHandles.insert(handle)
+        windowStyles[handle.rawValue] = style
+        windowMenuFlags[handle.rawValue] = usesMainMenu
         if usesMainMenu {
             mainMenuWindowHandles.insert(handle)
         }
         return handle
+    }
+
+    private func outerWindowSize(forContentSize size: NSSize, style: DWORD, hasMenu: Bool) -> (width: Int32, height: Int32) {
+        var rectangle = RECT(left: 0, top: 0, right: Int32(size.width), bottom: Int32(size.height))
+        guard winAdjustWindowRectEx(&rectangle, style, hasMenu ? 1 : 0, 0) != 0 else {
+            return (Int32(size.width), Int32(size.height))
+        }
+
+        return (rectangle.right - rectangle.left, rectangle.bottom - rectangle.top)
     }
 
     /// Shows a native window.
@@ -893,6 +930,8 @@ public final class Win32NativeControlBackend: NativeControlBackend {
 
         _ = winDestroyWindow(hwnd)
         windowHandles.remove(handle)
+        windowStyles.removeValue(forKey: handle.rawValue)
+        windowMenuFlags.removeValue(forKey: handle.rawValue)
         mainMenuWindowHandles.remove(handle)
         controlActions.removeValue(forKey: handle.rawValue)
         textChangeActions.removeValue(forKey: handle.rawValue)
@@ -1413,6 +1452,18 @@ public final class Win32NativeControlBackend: NativeControlBackend {
             return
         }
 
+        // Top-level frames are content-area sizes; grow to the outer rect so
+        // the client area matches, mirroring the creation path.
+        if windowHandles.contains(handle), let style = windowStyles[handle.rawValue] {
+            let outerSize = outerWindowSize(
+                forContentSize: frame.size,
+                style: style,
+                hasMenu: windowMenuFlags[handle.rawValue] ?? false
+            )
+            _ = winMoveWindow(hwnd, Int32(frame.origin.x), Int32(frame.origin.y), outerSize.width, outerSize.height, 1)
+            return
+        }
+
         _ = winMoveWindow(
             hwnd,
             Int32(frame.origin.x),
@@ -1421,6 +1472,12 @@ public final class Win32NativeControlBackend: NativeControlBackend {
             Int32(max(frame.size.height, comboBoxDropdownHeights[handle.rawValue] ?? frame.size.height)),
             1
         )
+
+        // Custom views can overlap sibling children (drag previews); moving
+        // them must repaint the trail they leave across those siblings.
+        if customViewHandles.contains(handle.rawValue), let parent = winGetParent(hwnd) {
+            _ = winRedrawWindow(parent, nil, nil, rdwInvalidate | rdwErase | rdwAllChildren)
+        }
     }
 
     /// Raises a native child control above sibling controls.
@@ -1448,8 +1505,9 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         _ = winInvalidateRect(hwnd, nil, 1)
         _ = winUpdateWindow(hwnd)
         if let parent = winGetParent(hwnd) {
-            _ = winInvalidateRect(parent, nil, 1)
-            _ = winUpdateWindow(parent)
+            // Redraw sibling children too: hiding an overlapping child (such
+            // as a drag preview) otherwise leaves stale pixels on them.
+            _ = winRedrawWindow(parent, nil, nil, rdwInvalidate | rdwErase | rdwAllChildren | rdwUpdateNow)
         }
     }
 
@@ -2700,7 +2758,12 @@ public final class Win32NativeControlBackend: NativeControlBackend {
                     _ = winSetTextColor(deviceContext, textColor)
                 }
                 _ = winSetBkMode(deviceContext, transparentBkMode)
-                if let brush = winGetStockObject(nullBrush) {
+                // Erase with the effective parent color instead of skipping the
+                // erase: a NULL brush leaves stale pixels behind when sibling
+                // views (such as drag previews) move across the control.
+                let background = inheritedBackgroundColor(behind: HWND(bitPattern: rawHandle))
+                _ = winSetBkColor(deviceContext, background)
+                if let brush = solidBrush(for: background) {
                     return Int(bitPattern: brush)
                 }
                 return 1
@@ -2735,6 +2798,8 @@ public final class Win32NativeControlBackend: NativeControlBackend {
 
                 let shouldTerminate = mainMenuWindowHandles.contains(handle)
                 windowHandles.remove(handle)
+                windowStyles.removeValue(forKey: handle.rawValue)
+                windowMenuFlags.removeValue(forKey: handle.rawValue)
                 mainMenuWindowHandles.remove(handle)
                 windowResizeActions.removeValue(forKey: handle.rawValue)
                 windowCloseActions.removeValue(forKey: handle.rawValue)?()
@@ -2824,7 +2889,10 @@ public final class Win32NativeControlBackend: NativeControlBackend {
                 return nil
             }
 
-            _ = winSetCapture(hwnd)
+            // Subclassed native controls own their mouse capture. Taking or
+            // releasing capture here cancels the control's own click tracking
+            // (a released capture sends WM_CAPTURECHANGED, which makes BUTTON
+            // drop its pressed state and never send BN_CLICKED).
             _ = winSetFocus(hwnd)
             action(NSEvent(type: .leftMouseDown, locationInWindow: mouseLocation(from: lParam, in: hwnd), modifierFlags: currentModifierFlags()))
             return nil
@@ -2840,7 +2908,6 @@ public final class Win32NativeControlBackend: NativeControlBackend {
             }
 
             action(NSEvent(type: .leftMouseUp, locationInWindow: mouseLocation(from: lParam, in: hwnd), modifierFlags: currentModifierFlags()))
-            _ = winReleaseCapture()
             return nil
         default:
             return nil
@@ -3513,6 +3580,21 @@ public final class Win32NativeControlBackend: NativeControlBackend {
                 }
             }
         }
+    }
+
+    private var solidBrushCache: [DWORD: HBRUSH] = [:]
+
+    private func solidBrush(for color: DWORD) -> HBRUSH? {
+        if let brush = solidBrushCache[color] {
+            return brush
+        }
+
+        guard let brush = winCreateSolidBrush(color) else {
+            return nil
+        }
+
+        solidBrushCache[color] = brush
+        return brush
     }
 
     private func inheritedBackgroundColor(behind hwnd: HWND?) -> DWORD {

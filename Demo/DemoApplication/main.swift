@@ -1842,13 +1842,13 @@ tablesPage.addSubview(outlineScrollView)
 window.contentView = contentView
 showDemoPage(0)
 updateFocusDisplay()
-statusLabel.stringValue = "Ready - window shown"
-window.makeKeyAndOrderFront(nil)
-statusLabel.stringValue = window.isKeyWindow && window.isMainWindow
-    ? "Ready - key/main window"
-    : "Ready - window shown"
 
 if CommandLine.arguments.contains("--diagnose") {
+    // Validate native window creation without ordering the window front so
+    // build scripts do not flash a full demo window on screen.
+    _ = window.realizeNativePeer()
+    window.makeMain()
+    window.makeKey()
     print("Window native handle: \(window.nativeHandle?.rawValue ?? 0)")
     print("App windows: \(NSApp.windows.count)")
     print("Is key window: \(window.isKeyWindow)")
@@ -1857,5 +1857,10 @@ if CommandLine.arguments.contains("--diagnose") {
     print("Demo screen artwork path: \(demoScreenArtworkPath)")
     window.close()
 } else {
+    statusLabel.stringValue = "Ready - window shown"
+    window.makeKeyAndOrderFront(nil)
+    statusLabel.stringValue = window.isKeyWindow && window.isMainWindow
+        ? "Ready - key/main window"
+        : "Ready - window shown"
     app.run()
 }

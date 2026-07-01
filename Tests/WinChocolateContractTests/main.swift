@@ -2308,19 +2308,22 @@ func testToolbarCustomizationPaletteShowsToolbarDropTargetAtTop() {
         return
     }
 
-    let toolbarTiles = contentView.subviews
+    let strip = contentView.subviews.first { $0.tag == 1_103 }
+    let toolbarTiles = (strip?.subviews ?? [])
         .filter { $0.toolTip == "Drag to reorder or drag out to remove." && $0.frame.origin.y == 8 }
 
     expect(panel.styleMask.contains(.resizable), "Toolbar customization palette should be resizable.")
     expect(contentView.tag == 1_100, "Toolbar customization palette did not mark the content as the toolbar drop surface.")
+    expect(strip?.frame.origin.y == 0, "Toolbar customization strip was not docked at the top.")
     expect(toolbarTiles.count == 2, "Toolbar customization top row did not mirror visible toolbar item count.")
     expect(toolbar.items.map(\.label) == ["Open", "Save"], "Toolbar customization top row did not mirror visible toolbar items.")
     expect(toolbarTiles.allSatisfy { $0.frame.origin.y < 42 }, "Toolbar customization top row was not docked at the top.")
     expect(!contentView.subviews.compactMap { ($0 as? NSTextField)?.stringValue }.contains("Mock toolbar drop target:"), "Toolbar customization palette still labels the drop target as a mock toolbar.")
 
-    let paletteWidth = contentView.subviews.first { $0.frame.origin == NSPoint(x: 24, y: 126) }?.frame.size.width ?? 0
-    panel.setContentSize(NSMakeSize(740, 500))
-    let resizedPaletteWidth = contentView.subviews.first { $0.frame.origin == NSPoint(x: 24, y: 126) }?.frame.size.width ?? 0
+    let paletteWidth = contentView.subviews.first { $0.tag == 1_101 }?.frame.size.width ?? 0
+    expect(paletteWidth > 0, "Toolbar customization palette container was not tagged for lookup.")
+    panel.setContentSize(NSMakeSize(900, 560))
+    let resizedPaletteWidth = contentView.subviews.first { $0.tag == 1_101 }?.frame.size.width ?? 0
     expect(resizedPaletteWidth > paletteWidth, "Toolbar customization palette contents did not autoresize horizontally.")
 
     clearApplicationWindows()
@@ -2350,7 +2353,8 @@ func testToolbarCustomizationMovesExistingItemToEnd() {
         return
     }
 
-    let toolbarTiles = contentView.subviews
+    let strip = contentView.subviews.first { $0.tag == 1_103 }
+    let toolbarTiles = (strip?.subviews ?? [])
         .filter { $0.toolTip == "Drag to reorder or drag out to remove." && $0.frame.origin.y == 8 }
         .sorted { $0.frame.origin.x < $1.frame.origin.x }
 
@@ -3688,6 +3692,12 @@ func testOpenPanelBeginInvokesCompletionHandler() {
     expect(receivedResponse == .OK, "Open panel begin did not deliver the modal response.")
     expect(panel.url?.lastPathComponent == "picked.txt", "Open panel begin did not populate url.")
 }
+
+// The suite runs inside build scripts on a real desktop. Windows and panels
+// created without an explicit backend capture the application default, which
+// on Windows is the live Win32 backend — every ordered-front test window would
+// flash on screen. Route the default through the in-memory backend first.
+NSApplication.shared.nativeBackend = InMemoryNativeControlBackend()
 
 testWindowRealizationCreatesNativeHierarchy()
 testViewHierarchyMaintainsSuperviewOwnership()
