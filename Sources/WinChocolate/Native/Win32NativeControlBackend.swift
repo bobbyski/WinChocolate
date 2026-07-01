@@ -3551,6 +3551,12 @@ public final class Win32NativeControlBackend: NativeControlBackend {
             return
         }
 
+        // Plain container views have no text at all; drawing the fallback
+        // glyph for them scatters phantom icons across spaces and panels.
+        guard !preview.label.isEmpty || !preview.imageName.isEmpty else {
+            return
+        }
+
         if let textColor = textColors[handle.rawValue] {
             _ = winSetTextColor(deviceContext, textColor)
         }

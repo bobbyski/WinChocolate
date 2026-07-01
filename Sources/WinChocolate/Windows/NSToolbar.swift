@@ -90,6 +90,18 @@ open class NSToolbar: NSObject {
         }
     }
 
+    /// WinChocolate-specific separator rendering override.
+    ///
+    /// Apple has varied separator appearance across macOS releases, so prefer
+    /// `.automatic`, which follows the active presentation: the classic Win32
+    /// look renders a vertical bar and the future modern look will render a
+    /// blank gap. Overriding this in application code is discouraged.
+    open var winSeparatorStyle: WinToolbarSeparatorStyle = .automatic {
+        didSet {
+            itemsDidChange?()
+        }
+    }
+
     /// The window this toolbar is attached to.
     public private(set) weak var window: NSWindow?
 
@@ -300,7 +312,22 @@ open class NSToolbarView: NSView {
     /// Creates a toolbar view.
     public override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
-        backgroundColor = NSColor(calibratedRed: 0.84, green: 0.84, blue: 0.80, alpha: 1.0)
+        // Blend with the window chrome the way AppKit toolbars extend the
+        // title bar; a bottom hairline separates the strip from content.
+        backgroundColor = .windowBackgroundColor
+    }
+
+    /// The separator style after resolving `.automatic` for this presentation.
+    private var resolvedSeparatorStyle: WinToolbarSeparatorStyle {
+        switch toolbar?.winSeparatorStyle ?? .automatic {
+        case .bar:
+            return .bar
+        case .space:
+            return .space
+        case .automatic:
+            // Classic Win32 presentation; the modern look will resolve to `.space`.
+            return .bar
+        }
     }
 
     /// Toolbar strips do not take focus; their items do.
@@ -427,18 +454,33 @@ open class NSToolbarView: NSView {
                 addRenderedSubview(spaceView)
             }
         }
+
+        // Chrome hairline separating the toolbar strip from window content.
+        // Added after the item views so item indices stay stable for callers.
+        let bottomEdge = NSView(frame: NSMakeRect(0, max(frame.size.height - 1, 0), frame.size.width, 1))
+        bottomEdge.backgroundColor = NSColor(calibratedRed: 0.85, green: 0.85, blue: 0.85, alpha: 1.0)
+        bottomEdge.autoresizingMask = [.width]
+        addSubview(bottomEdge)
+        renderedItemViews.append(bottomEdge)
     }
 
     private func addRenderedSubview(_ view: NSView) {
         addSubview(view)
-        applyRealizedTransparentBackground(to: view)
+        // Separator bars and editable fields draw their own backgrounds.
+        let keepsOwnBackground = view is NSToolbarSeparatorView || ((view as? NSTextField)?.isEditable ?? false)
+        if !keepsOwnBackground {
+            applyRealizedTransparentBackground(to: view)
+        }
         renderedItemViews.append(view)
     }
 
     private func applyToolbarControlAppearance(to view: NSView) {
         view.backgroundColor = nil
 
-        if let textField = view as? NSTextField {
+        // Label-style text fields blend into the toolbar strip; editable
+        // fields (search fields, text entries) keep their border and
+        // background the way AppKit toolbar search fields do.
+        if let textField = view as? NSTextField, !textField.isEditable {
             textField.isBordered = false
             textField.drawsBackground = false
         }
@@ -446,6 +488,10 @@ open class NSToolbarView: NSView {
 
     private func applyRealizedToolbarControlAppearance(to view: NSView) {
         guard let nativeHandle = view.nativeHandle, let backend = view.realizedBackend else {
+            return
+        }
+
+        if let textField = view as? NSTextField, textField.isEditable {
             return
         }
 
@@ -499,7 +545,11 @@ open class NSToolbarView: NSView {
             if let view = item.view {
                 layout.append(RenderedItemLayout(kind: .custom(item, view), frame: itemFrame))
             } else if item.itemIdentifier == .separator {
-                layout.append(RenderedItemLayout(kind: .separator, frame: NSMakeRect(x + ((width - 2) / 2), 8, 2, max(frame.size.height - 16, 8))))
+                if resolvedSeparatorStyle == .space {
+                    layout.append(RenderedItemLayout(kind: .space, frame: itemFrame))
+                } else {
+                    layout.append(RenderedItemLayout(kind: .separator, frame: NSMakeRect(x + ((width - 2) / 2), 6, 2, max(frame.size.height - 12, 8))))
+                }
             } else if item.itemIdentifier == .space || item.itemIdentifier == .flexibleSpace {
                 layout.append(RenderedItemLayout(kind: .space, frame: itemFrame))
             } else {
@@ -526,7 +576,12 @@ open class NSToolbarView: NSView {
         if item.itemIdentifier == .flexibleSpace {
             return 24
         }
-        if item.itemIdentifier == .separator || item.itemIdentifier == .space {
+        if item.itemIdentifier == .separator {
+            // A bar keeps a little whitespace on either side; a space is a
+            // wider blank gap, matching Apple's varied separator treatments.
+            return resolvedSeparatorStyle == .space ? 24 : 16
+        }
+        if item.itemIdentifier == .space {
             return 8
         }
         if item.view != nil {
@@ -568,7 +623,9 @@ open class NSToolbarSeparatorView: NSView {
     /// Creates a separator view.
     public override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
-        backgroundColor = nil
+        // The view itself is the thin vertical bar; layout centers it inside
+        // a wider separator slot so whitespace frames it on either side.
+        backgroundColor = NSColor(calibratedRed: 0.66, green: 0.66, blue: 0.66, alpha: 1.0)
     }
 
     /// Separators are display-only.
@@ -582,6 +639,19 @@ open class NSToolbarSeparatorView: NSView {
         backend.setDrawsBackground(false, for: handle)
         return handle
     }
+}
+
+/// WinChocolate-specific rendering style for toolbar separator items.
+public enum WinToolbarSeparatorStyle: Sendable {
+    /// Follow the active presentation: classic Win32 renders a bar, the
+    /// future modern look renders a blank gap.
+    case automatic
+
+    /// A vertical bar with a little whitespace on either side.
+    case bar
+
+    /// A blank gap.
+    case space
 }
 
 /// Position of a toolbar item's label relative to its item image or view.

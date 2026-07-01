@@ -93,7 +93,8 @@ internal final class NSToolbarCustomizationPanel: NSPanel {
         content.backgroundColor = NSColor(calibratedRed: 0.93, green: 0.93, blue: 0.93, alpha: 1.0)
 
         strip.tag = Self.stripTag
-        strip.backgroundColor = NSColor(calibratedRed: 0.84, green: 0.84, blue: 0.80, alpha: 1.0)
+        // Match the live toolbar, which blends with the window chrome.
+        strip.backgroundColor = .windowBackgroundColor
         strip.autoresizingMask = [.width]
         content.addSubview(strip)
 

@@ -2408,7 +2408,7 @@ func testToolbarViewComposesItemsAndDispatchesActions() {
     expect(backend.records[handle]?.kind == "view", "Toolbar view did not request a composed native host view.")
     expect(backend.records[handle]?.toolbarItems.isEmpty == true, "Composed toolbar host should not install native toolbar item descriptors.")
 
-    expect(toolbarView.subviews.count == 4, "Composed toolbar did not create one top-level view per toolbar item.")
+    expect(toolbarView.subviews.count == 5, "Composed toolbar did not create one top-level view per toolbar item plus the chrome hairline.")
     expect(toolbarView.subviews[0].subviews.isEmpty, "Composed toolbar open item should be one self-contained view.")
     expect(toolbarView.subviews[0].backgroundColor == nil, "Composed toolbar item should let the toolbar background show through.")
     if let openHandle = toolbarView.subviews[0].nativeHandle {
@@ -2522,7 +2522,7 @@ func testToolbarItemCreatesCompositeImageLabelView() {
     let separatorHandle = separatorView.realizeNativePeer(in: backend, parent: nil)
 
     expect(separatorView is NSToolbarSeparatorView, "Toolbar separator composite should be a simple separator view.")
-    expect(separatorView.backgroundColor == nil, "Toolbar separator view should have a transparent background.")
+    expect(separatorView.backgroundColor != nil, "Toolbar separator view should draw its own bar color.")
     expect(backend.records[separatorHandle]?.text.contains("separator") == true, "Toolbar separator view did not carry a separator image key.")
     expect(backend.records[separatorHandle]?.drawsBackground == false, "Toolbar separator view should request a clear native background.")
 }
