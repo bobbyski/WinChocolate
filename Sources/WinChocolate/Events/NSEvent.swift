@@ -23,6 +23,12 @@ public struct NSEvent: Equatable, Sendable {
         /// A right mouse button release.
         case rightMouseUp
 
+        /// A tertiary (middle) mouse button press.
+        case otherMouseDown
+
+        /// A tertiary (middle) mouse button release.
+        case otherMouseUp
+
         /// A scroll wheel movement.
         case scrollWheel
 

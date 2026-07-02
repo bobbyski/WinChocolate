@@ -21,11 +21,47 @@ public final class RecordingDrawingContext: NativeDrawingContext {
         public let lineWidth: CGFloat
     }
 
+    /// A recorded text command.
+    public struct Text: Equatable {
+        /// The drawn string.
+        public let text: String
+
+        /// The top-left origin of the text run.
+        public let point: NSPoint
+
+        /// The text color.
+        public let color: NSColor
+
+        /// The requested font family name.
+        public let fontName: String
+
+        /// The requested font point size.
+        public let fontSize: CGFloat
+
+        /// Whether the text was drawn bold.
+        public let bold: Bool
+    }
+
+    /// A recorded image command.
+    public struct Image: Equatable {
+        /// The source image file path.
+        public let path: String
+
+        /// The destination rectangle.
+        public let rect: NSRect
+    }
+
     /// Fill commands in draw order.
     public private(set) var fills: [Fill] = []
 
     /// Stroke commands in draw order.
     public private(set) var strokes: [Stroke] = []
+
+    /// Text commands in draw order.
+    public private(set) var texts: [Text] = []
+
+    /// Image commands in draw order.
+    public private(set) var images: [Image] = []
 
     /// Creates an empty recording context.
     public init() {
@@ -39,6 +75,16 @@ public final class RecordingDrawingContext: NativeDrawingContext {
     /// Records a stroke command.
     public func strokePath(_ segments: [NativePathSegment], color: NSColor, lineWidth: CGFloat) {
         strokes.append(Stroke(segments: segments, color: color, lineWidth: lineWidth))
+    }
+
+    /// Records a text command.
+    public func drawText(_ text: String, at point: NSPoint, color: NSColor, fontName: String, fontSize: CGFloat, bold: Bool) {
+        texts.append(Text(text: text, point: point, color: color, fontName: fontName, fontSize: fontSize, bold: bold))
+    }
+
+    /// Records an image command.
+    public func drawImage(atPath path: String, in rect: NSRect) {
+        images.append(Image(path: path, rect: rect))
     }
 }
 
@@ -163,6 +209,15 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
 
         /// Native table clicked column.
         public var tableClickedColumn: Int
+
+        /// Recorded text selection start, in UTF-16 units.
+        public var textSelectionLocation: Int
+
+        /// Recorded text selection length, in UTF-16 units.
+        public var textSelectionLength: Int
+
+        /// Whether the recorded edit control accepts keyboard editing.
+        public var isTextEditable: Bool
 
         /// Recorded text color.
         public var textColor: NSColor?
@@ -353,7 +408,9 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
 
     /// Records a text view creation request.
     public func createTextView(text: String, frame: NSRect, parent: NativeHandle?, isEditable: Bool) -> NativeHandle {
-        makeHandle(kind: isEditable ? "editableTextView" : "textView", text: text, frame: frame, parent: parent)
+        let handle = makeHandle(kind: isEditable ? "editableTextView" : "textView", text: text, frame: frame, parent: parent)
+        records[handle]?.isTextEditable = isEditable
+        return handle
     }
 
     /// Records a pop-up button creation request.
@@ -531,6 +588,56 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
         }
 
         record.text = text
+        records[handle] = record
+    }
+
+    /// Reads a recorded text selection.
+    public func textSelection(for handle: NativeHandle) -> (location: Int, length: Int) {
+        guard let record = records[handle] else {
+            return (0, 0)
+        }
+
+        return (record.textSelectionLocation, record.textSelectionLength)
+    }
+
+    /// Records a text selection, clamped to the stored text like a native edit control.
+    public func setTextSelection(location: Int, length: Int, for handle: NativeHandle) {
+        guard var record = records[handle] else {
+            return
+        }
+
+        let textLength = record.text.utf16.count
+        let clampedLocation = min(max(0, location), textLength)
+        record.textSelectionLocation = clampedLocation
+        record.textSelectionLength = min(max(0, length), textLength - clampedLocation)
+        records[handle] = record
+    }
+
+    /// Replaces the recorded selection in the stored text and moves the
+    /// selection to the end of the inserted text, mirroring `EM_REPLACESEL`.
+    public func replaceSelectedText(_ text: String, for handle: NativeHandle) {
+        guard var record = records[handle] else {
+            return
+        }
+
+        var units = Array(record.text.utf16)
+        let location = min(max(0, record.textSelectionLocation), units.count)
+        let length = min(max(0, record.textSelectionLength), units.count - location)
+        let replacement = Array(text.utf16)
+        units.replaceSubrange(location..<(location + length), with: replacement)
+        record.text = String(decoding: units, as: UTF16.self)
+        record.textSelectionLocation = location + replacement.count
+        record.textSelectionLength = 0
+        records[handle] = record
+    }
+
+    /// Records whether an edit control accepts keyboard editing.
+    public func setTextEditable(_ isEditable: Bool, for handle: NativeHandle) {
+        guard var record = records[handle] else {
+            return
+        }
+
+        record.isTextEditable = isEditable
         records[handle] = record
     }
 
@@ -911,6 +1018,12 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     /// Registered right mouse-up actions by handle.
     public private(set) var rightMouseUpActions: [NativeHandle: (NSEvent) -> Void] = [:]
 
+    /// Registered tertiary mouse-down actions by handle.
+    public private(set) var otherMouseDownActions: [NativeHandle: (NSEvent) -> Void] = [:]
+
+    /// Registered tertiary mouse-up actions by handle.
+    public private(set) var otherMouseUpActions: [NativeHandle: (NSEvent) -> Void] = [:]
+
     /// Registered scroll-wheel actions by handle.
     public private(set) var scrollWheelActions: [NativeHandle: (NSEvent) -> Void] = [:]
 
@@ -928,6 +1041,16 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     /// Records a right mouse-up action.
     public func registerRightMouseUpAction(for handle: NativeHandle, action: @escaping (NSEvent) -> Void) {
         rightMouseUpActions[handle] = action
+    }
+
+    /// Records a tertiary mouse-down action.
+    public func registerOtherMouseDownAction(for handle: NativeHandle, action: @escaping (NSEvent) -> Void) {
+        otherMouseDownActions[handle] = action
+    }
+
+    /// Records a tertiary mouse-up action.
+    public func registerOtherMouseUpAction(for handle: NativeHandle, action: @escaping (NSEvent) -> Void) {
+        otherMouseUpActions[handle] = action
     }
 
     /// Records a scroll-wheel action.
@@ -987,6 +1110,32 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
         return scriptedFileDialogPaths.removeFirst()
     }
 
+    /// Initial colors received through `runColorChooser`, oldest first.
+    public private(set) var colorChooserRequests: [NSColor] = []
+
+    /// The color returned by the next `runColorChooser` call; `nil` scripts a
+    /// user cancel.
+    public var nextColorChooserResult: NSColor?
+
+    /// Records the request and returns the scripted color chooser result.
+    public func runColorChooser(initialColor: NSColor) -> NSColor? {
+        colorChooserRequests.append(initialColor)
+        return nextColorChooserResult
+    }
+
+    /// Initial fonts received through `runFontChooser`, oldest first.
+    public private(set) var fontChooserRequests: [NSFont?] = []
+
+    /// The font returned by the next `runFontChooser` call; `nil` scripts a
+    /// user cancel.
+    public var nextFontChooserResult: NSFont?
+
+    /// Records the request and returns the scripted font chooser result.
+    public func runFontChooser(initialFont: NSFont?) -> NSFont? {
+        fontChooserRequests.append(initialFont)
+        return nextFontChooserResult
+    }
+
     /// Windows that ran modal sessions, oldest first.
     public private(set) var modalSessions: [NativeHandle] = []
 
@@ -1013,6 +1162,53 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     /// Records native progress indeterminate state.
     public func setProgressIndicatorIndeterminate(_ isIndeterminate: Bool, animating: Bool, for handle: NativeHandle) {
         progressIndeterminateStates[handle] = (isIndeterminate, animating)
+    }
+
+    /// Cursor names requested through `setCursor(named:)`, oldest first.
+    public private(set) var cursorNames: [String] = []
+
+    /// Records a cursor request.
+    public func setCursor(named name: String) {
+        cursorNames.append(name)
+    }
+
+    /// The most recently registered key-equivalent handler.
+    public private(set) var keyEquivalentHandler: ((NSEvent) -> Bool)?
+
+    /// Records the key-equivalent handler.
+    public func registerKeyEquivalentHandler(_ handler: @escaping (NSEvent) -> Bool) {
+        keyEquivalentHandler = handler
+    }
+
+    /// Menus popped through `runContextMenu`, oldest first.
+    public private(set) var poppedContextMenus: [NSMenu] = []
+
+    /// Index into the popped menu's depth-first flattened items selected by the
+    /// next `runContextMenu` call; `-1` scripts a user cancel.
+    public var nextContextMenuSelection: Int = -1
+
+    /// Records the pop request and performs the scripted flat-item selection.
+    public func runContextMenu(_ menu: NSMenu, atScreenPoint point: NSPoint) -> NSMenuItem? {
+        poppedContextMenus.append(menu)
+        let items = flattenedItems(of: menu)
+        guard items.indices.contains(nextContextMenuSelection) else {
+            return nil
+        }
+
+        let item = items[nextContextMenuSelection]
+        _ = item.performAction()
+        return item
+    }
+
+    private func flattenedItems(of menu: NSMenu) -> [NSMenuItem] {
+        var flattened: [NSMenuItem] = []
+        for item in menu.items {
+            flattened.append(item)
+            if let submenu = item.submenu {
+                flattened.append(contentsOf: flattenedItems(of: submenu))
+            }
+        }
+        return flattened
     }
 
     private func makeHandle(kind: String, text: String, frame: NSRect, parent: NativeHandle?) -> NativeHandle {
@@ -1058,6 +1254,9 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
             tableVisibleRow: -1,
             tableClickedRow: -1,
             tableClickedColumn: -1,
+            textSelectionLocation: 0,
+            textSelectionLength: 0,
+            isTextEditable: true,
             textColor: nil,
             backgroundColor: nil,
             drawsBackground: true,

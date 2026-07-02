@@ -32,6 +32,13 @@ open class NSAlert: NSObject {
     /// Whether the alert shows a suppression checkbox.
     open var showsSuppressionButton: Bool = false
 
+    /// A custom view displayed between the informative text and the buttons.
+    ///
+    /// The view keeps its own frame size; the composed panel indents it to the
+    /// text column. Setting an accessory view makes `runModal()` use the
+    /// composed panel, since the native message box cannot host custom views.
+    open var accessoryView: NSView?
+
     private var storedSuppressionButton: NSButton?
 
     /// The suppression checkbox, created lazily like AppKit's.
@@ -71,7 +78,7 @@ open class NSAlert: NSObject {
         let firstResponder = keyWindow?.firstResponder
 
         let response: NSApplication.ModalResponse
-        if buttonTitles.isEmpty && !showsSuppressionButton {
+        if buttonTitles.isEmpty && !showsSuppressionButton && accessoryView == nil {
             response = application.nativeBackend.runAlert(self)
         } else {
             response = runComposedPanel(in: application)
@@ -92,12 +99,16 @@ open class NSAlert: NSObject {
     private func runComposedPanel(in application: NSApplication) -> NSApplication.ModalResponse {
         let width: CGFloat = 420
         let margin: CGFloat = 24
+        let textLeft: CGFloat = 80
         var y: CGFloat = 20
 
         let content = NSView(frame: NSMakeRect(0, 0, width, 200))
         content.backgroundColor = .windowBackgroundColor
 
-        let messageLabel = NSTextField(string: messageText, frame: NSMakeRect(margin, y, width - margin * 2, 24))
+        let iconView = AlertIconView(style: alertStyle, frame: NSMakeRect(24, 20, 40, 40))
+        content.addSubview(iconView)
+
+        let messageLabel = NSTextField(string: messageText, frame: NSMakeRect(textLeft, y, width - textLeft - margin, 24))
         messageLabel.isBordered = false
         messageLabel.drawsBackground = false
         messageLabel.font = NSFont.boldSystemFont(ofSize: 13)
@@ -105,7 +116,7 @@ open class NSAlert: NSObject {
         y += 34
 
         if !informativeText.isEmpty {
-            let informativeLabel = NSTextField(string: informativeText, frame: NSMakeRect(margin, y, width - margin * 2, 40))
+            let informativeLabel = NSTextField(string: informativeText, frame: NSMakeRect(textLeft, y, width - textLeft - margin, 40))
             informativeLabel.isBordered = false
             informativeLabel.drawsBackground = false
             content.addSubview(informativeLabel)
@@ -113,9 +124,17 @@ open class NSAlert: NSObject {
         }
 
         if showsSuppressionButton, let suppressionButton {
-            suppressionButton.frame = NSMakeRect(margin, y, width - margin * 2, 20)
+            suppressionButton.frame = NSMakeRect(textLeft, y, width - textLeft - margin, 20)
             content.addSubview(suppressionButton)
             y += 32
+        }
+
+        if let accessoryView {
+            var accessoryFrame = accessoryView.frame
+            accessoryFrame.origin = NSMakePoint(textLeft, y)
+            accessoryView.frame = accessoryFrame
+            content.addSubview(accessoryView)
+            y += accessoryFrame.size.height + 12
         }
 
         // Buttons flow right to left; the first button is the rightmost
@@ -145,6 +164,52 @@ open class NSAlert: NSObject {
         let response = application.runModal(for: panel)
         panel.close()
         return response
+    }
+}
+
+/// Draws the alert-style badge shown at the left of composed alert panels.
+private final class AlertIconView: NSView {
+    private let style: NSAlert.Style
+
+    init(style: NSAlert.Style, frame frameRect: NSRect) {
+        self.style = style
+        super.init(frame: frameRect)
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        let width = frame.size.width
+        let height = frame.size.height
+
+        let glyph: String
+        switch style {
+        case .informational:
+            NSColor(calibratedRed: 0.18, green: 0.47, blue: 0.84, alpha: 1).setFill()
+            NSBezierPath(ovalIn: NSMakeRect(2, 2, width - 4, height - 4)).fill()
+            glyph = "i"
+        case .warning:
+            NSColor(calibratedRed: 0.95, green: 0.67, blue: 0.12, alpha: 1).setFill()
+            let triangle = NSBezierPath()
+            triangle.move(to: NSMakePoint(width / 2, 1))
+            triangle.line(to: NSMakePoint(width - 1, height - 3))
+            triangle.line(to: NSMakePoint(1, height - 3))
+            triangle.close()
+            triangle.fill()
+            glyph = "!"
+        case .critical:
+            NSColor(calibratedRed: 0.80, green: 0.17, blue: 0.15, alpha: 1).setFill()
+            NSBezierPath(ovalIn: NSMakeRect(2, 2, width - 4, height - 4)).fill()
+            glyph = "!"
+        }
+
+        // The warning triangle's visual center sits lower than the circles'.
+        let glyphTop = style == .warning ? height / 2 - 7 : height / 2 - 11
+        glyph.draw(
+            at: NSMakePoint(width / 2 - 3, glyphTop),
+            withAttributes: [
+                .font: NSFont.boldSystemFont(ofSize: 18),
+                .foregroundColor: NSColor.white
+            ]
+        )
     }
 }
 

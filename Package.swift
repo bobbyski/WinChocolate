@@ -34,6 +34,7 @@ let package = Package(
             linkerSettings: [
                 .linkedLibrary("User32"),
                 .linkedLibrary("Gdi32"),
+                .linkedLibrary("Gdiplus"),
                 .linkedLibrary("Comctl32"),
                 .linkedLibrary("Comdlg32"),
                 .linkedLibrary("Shell32"),

@@ -73,6 +73,18 @@ open class NSImage: NSObject {
         self.accessibilityDescription = nil
         super.init()
     }
+
+    /// Draws the image scaled into a rectangle of the current graphics context.
+    ///
+    /// First slice: only file-backed images draw; named and data-backed images
+    /// are a no-op until in-memory bitmap decoding lands.
+    open func draw(in rect: NSRect) {
+        guard let filePath, let context = NSGraphicsContext.current else {
+            return
+        }
+
+        context.nativeContext.drawImage(atPath: filePath, in: rect)
+    }
 }
 
 /// A view that displays an image.

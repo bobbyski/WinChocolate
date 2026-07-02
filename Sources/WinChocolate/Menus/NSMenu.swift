@@ -102,6 +102,59 @@ open class NSMenu: NSObject {
         items.firstIndex { $0.title == title } ?? -1
     }
 
+    /// Performs the first item whose key equivalent matches a key event.
+    ///
+    /// Items and submenus are walked in order. An item matches when its
+    /// `keyEquivalent` equals the event's characters case-insensitively and the
+    /// event modifiers satisfy the item's `keyEquivalentModifierMask`. Windows
+    /// keyboards map Command shortcuts onto Control, so a `.command`
+    /// requirement is satisfied by either the Control key or the Windows
+    /// (Command) key.
+    @discardableResult
+    open func performKeyEquivalent(with event: NSEvent) -> Bool {
+        for item in items {
+            if !item.keyEquivalent.isEmpty,
+               event.characters?.lowercased() == item.keyEquivalent.lowercased(),
+               modifierFlags(event.modifierFlags, satisfy: item.keyEquivalentModifierMask) {
+                _ = item.performAction()
+                return true
+            }
+
+            if let submenu = item.submenu, submenu.performKeyEquivalent(with: event) {
+                return true
+            }
+        }
+        return false
+    }
+
+    /// Shows the menu as a context menu at a location in a view's coordinates.
+    ///
+    /// The location is converted from the view's coordinate space to the
+    /// screen before the native menu is tracked. The positioning item is
+    /// accepted for AppKit compatibility but does not offset the menu on the
+    /// classic backend. Returns `true` when an item was chosen and performed.
+    @discardableResult
+    open func popUp(positioning item: NSMenuItem?, at location: NSPoint, in view: NSView?) -> Bool {
+        let windowPoint = view?.convert(location, to: nil) ?? location
+        let windowOrigin = view?.window?.frame.origin ?? NSZeroPoint
+        let screenPoint = NSPoint(x: windowOrigin.x + windowPoint.x, y: windowOrigin.y + windowPoint.y)
+        let backend = view?.realizedBackend ?? NSApplication.shared.nativeBackend
+        return backend.runContextMenu(self, atScreenPoint: screenPoint) != nil
+    }
+
+    /// Returns whether event modifiers satisfy a key-equivalent mask, treating
+    /// `.command` as satisfied by Control because Windows maps Cmd to Ctrl.
+    private func modifierFlags(_ flags: NSEvent.ModifierFlags, satisfy mask: NSEvent.ModifierFlags) -> Bool {
+        var required = mask
+        if required.contains(.command) {
+            required.remove(.command)
+            guard flags.contains(.command) || flags.contains(.control) else {
+                return false
+            }
+        }
+        return flags.isSuperset(of: required)
+    }
+
     private func clampedInsertionIndex(_ index: Int) -> Int {
         min(max(index, 0), items.count)
     }

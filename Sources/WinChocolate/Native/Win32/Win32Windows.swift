@@ -85,6 +85,8 @@ extension Win32NativeControlBackend {
         mouseDraggedActions.removeValue(forKey: handle.rawValue)
         rightMouseDownActions.removeValue(forKey: handle.rawValue)
         rightMouseUpActions.removeValue(forKey: handle.rawValue)
+        otherMouseDownActions.removeValue(forKey: handle.rawValue)
+        otherMouseUpActions.removeValue(forKey: handle.rawValue)
         scrollWheelActions.removeValue(forKey: handle.rawValue)
         drawActions.removeValue(forKey: handle.rawValue)
         marqueePositions.removeValue(forKey: handle.rawValue)
@@ -137,6 +139,8 @@ extension Win32NativeControlBackend {
         mouseDraggedActions.removeValue(forKey: handle.rawValue)
         rightMouseDownActions.removeValue(forKey: handle.rawValue)
         rightMouseUpActions.removeValue(forKey: handle.rawValue)
+        otherMouseDownActions.removeValue(forKey: handle.rawValue)
+        otherMouseUpActions.removeValue(forKey: handle.rawValue)
         scrollWheelActions.removeValue(forKey: handle.rawValue)
         drawActions.removeValue(forKey: handle.rawValue)
         marqueePositions.removeValue(forKey: handle.rawValue)
@@ -307,7 +311,73 @@ extension Win32NativeControlBackend {
     }
 
     private func menuStateFlags(for item: NSMenuItem) -> UINT {
-        item.isEnabled ? 0 : mfGrayed
+        var flags: UINT = item.isEnabled ? 0 : mfGrayed
+        if item.state == .on {
+            flags |= mfChecked
+        }
+        return flags
+    }
+
+    /// Runs a native context menu at a screen point, returning the performed item.
+    public func runContextMenu(_ menu: NSMenu, atScreenPoint point: NSPoint) -> NSMenuItem? {
+        // TrackPopupMenu needs an owner window for its message routing; any
+        // framework window works because TPM_RETURNCMD skips WM_COMMAND.
+        guard let owner = (mainMenuWindowHandles.first ?? windowHandles.first).flatMap({ hwnd(from: $0) }),
+              let nativeMenu = winCreatePopupMenu() else {
+            return nil
+        }
+
+        var itemsByCommand: [UInt: NSMenuItem] = [:]
+        appendContextMenuItems(menu.items, to: nativeMenu, itemsByCommand: &itemsByCommand)
+        defer {
+            _ = winDestroyMenu(nativeMenu)
+        }
+
+        let selectedCommand = winTrackPopupMenu(
+            nativeMenu,
+            tpmReturnCmd | tpmLeftAlign,
+            Int32(point.x),
+            Int32(point.y),
+            0,
+            owner,
+            nil
+        )
+        guard selectedCommand > 0, let item = itemsByCommand[UInt(selectedCommand)] else {
+            return nil
+        }
+
+        _ = item.performAction()
+        return item
+    }
+
+    private func appendContextMenuItems(_ items: [NSMenuItem], to nativeMenu: HMENU, itemsByCommand: inout [UInt: NSMenuItem]) {
+        for item in items {
+            guard !item.isHidden else {
+                continue
+            }
+
+            if let submenu = item.submenu, let nativeSubmenu = winCreatePopupMenu() {
+                appendContextMenuItems(submenu.items, to: nativeSubmenu, itemsByCommand: &itemsByCommand)
+                withWideString(item.title) { title in
+                    _ = winAppendMenuW(nativeMenu, mfPopup | menuStateFlags(for: item), UInt(bitPattern: nativeSubmenu), title)
+                }
+                continue
+            }
+
+            if item.isSeparatorItem {
+                _ = winAppendMenuW(nativeMenu, mfSeparator, 0, nil)
+                continue
+            }
+
+            // Context selections come back through TPM_RETURNCMD instead of
+            // WM_COMMAND, so ids map to items locally rather than through
+            // the backend's commandActions table.
+            let commandIdentifier = nextCommandID()
+            itemsByCommand[commandIdentifier] = item
+            withWideString(item.title) { title in
+                _ = winAppendMenuW(nativeMenu, mfString | menuStateFlags(for: item), commandIdentifier, title)
+            }
+        }
     }
 
     private func windowStyle(from styleMask: NSWindow.StyleMask) -> DWORD {

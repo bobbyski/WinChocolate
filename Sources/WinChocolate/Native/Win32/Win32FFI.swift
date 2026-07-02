@@ -65,6 +65,64 @@ struct OPENFILENAMEW {
     var flagsEx: DWORD = 0
 }
 
+struct CHOOSECOLORW {
+    var lStructSize: DWORD = 0
+    var hwndOwner: HWND? = nil
+    var hInstance: UnsafeMutableRawPointer? = nil
+    var rgbResult: DWORD = 0
+    var lpCustColors: UnsafeMutablePointer<DWORD>? = nil
+    var Flags: DWORD = 0
+    var lCustData: LPARAM = 0
+    var lpfnHook: UnsafeMutableRawPointer? = nil
+    var lpTemplateName: UnsafePointer<UInt16>? = nil
+}
+
+struct LOGFONTW {
+    var lfHeight: Int32 = 0
+    var lfWidth: Int32 = 0
+    var lfEscapement: Int32 = 0
+    var lfOrientation: Int32 = 0
+    var lfWeight: Int32 = 0
+    var lfItalic: UInt8 = 0
+    var lfUnderline: UInt8 = 0
+    var lfStrikeOut: UInt8 = 0
+    var lfCharSet: UInt8 = 0
+    var lfOutPrecision: UInt8 = 0
+    var lfClipPrecision: UInt8 = 0
+    var lfQuality: UInt8 = 0
+    var lfPitchAndFamily: UInt8 = 0
+    var lfFaceName: (
+        UInt16, UInt16, UInt16, UInt16, UInt16, UInt16, UInt16, UInt16,
+        UInt16, UInt16, UInt16, UInt16, UInt16, UInt16, UInt16, UInt16,
+        UInt16, UInt16, UInt16, UInt16, UInt16, UInt16, UInt16, UInt16,
+        UInt16, UInt16, UInt16, UInt16, UInt16, UInt16, UInt16, UInt16
+    ) = (
+        0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0
+    )
+}
+
+struct CHOOSEFONTW {
+    var lStructSize: DWORD = 0
+    var hwndOwner: HWND? = nil
+    var hDC: HDC? = nil
+    var lpLogFont: UnsafeMutablePointer<LOGFONTW>? = nil
+    var iPointSize: Int32 = 0
+    var Flags: DWORD = 0
+    var rgbColors: DWORD = 0
+    var lCustData: LPARAM = 0
+    var lpfnHook: UnsafeMutableRawPointer? = nil
+    var lpTemplateName: UnsafePointer<UInt16>? = nil
+    var hInstance: HINSTANCE? = nil
+    var lpszStyle: UnsafeMutablePointer<UInt16>? = nil
+    var nFontType: UInt16 = 0
+    var alignmentPadding: UInt16 = 0
+    var nSizeMin: Int32 = 0
+    var nSizeMax: Int32 = 0
+}
+
 struct BROWSEINFOW {
     var hwndOwner: HWND? = nil
     var pidlRoot: UnsafeMutableRawPointer? = nil
@@ -236,6 +294,15 @@ struct TBBUTTON {
     var bReserved1: UInt8 = 0
     var dwData: UInt = 0
     var iString: Int = 0
+}
+
+struct GdiplusStartupInput {
+    // UINT32 followed by a pointer: Swift inserts the same 4 bytes of padding
+    // the C layout has, so the struct stays ABI-compatible on 64-bit targets.
+    var GdiplusVersion: UInt32 = 1
+    var DebugEventCallback: UnsafeMutableRawPointer? = nil
+    var SuppressBackgroundThread: Int32 = 0
+    var SuppressExternalCodecs: Int32 = 0
 }
 
 struct TBBUTTONINFOW {
@@ -432,6 +499,23 @@ func winInvalidateRect(_ hwnd: HWND?, _ rectangle: UnsafePointer<RECT>?, _ erase
 @_silgen_name("LoadCursorW")
 func winLoadCursorW(_ instance: HINSTANCE?, _ cursorName: UnsafePointer<UInt16>?) -> HCURSOR?
 
+@_silgen_name("SetCursor")
+func winSetCursor(_ cursor: HCURSOR?) -> HCURSOR?
+
+@_silgen_name("TrackPopupMenu")
+func winTrackPopupMenu(
+    _ menu: HMENU?,
+    _ flags: UINT,
+    _ x: Int32,
+    _ y: Int32,
+    _ reserved: Int32,
+    _ hwnd: HWND?,
+    _ rectangle: UnsafePointer<RECT>?
+) -> Int32
+
+@_silgen_name("DestroyMenu")
+func winDestroyMenu(_ menu: HMENU?) -> Int32
+
 @_silgen_name("LoadImageW")
 func winLoadImageW(
     _ instance: HINSTANCE?,
@@ -465,6 +549,12 @@ func winGetOpenFileNameW(_ descriptor: UnsafeMutablePointer<OPENFILENAMEW>) -> I
 
 @_silgen_name("GetSaveFileNameW")
 func winGetSaveFileNameW(_ descriptor: UnsafeMutablePointer<OPENFILENAMEW>) -> Int32
+
+@_silgen_name("ChooseColorW")
+func winChooseColorW(_ descriptor: UnsafeMutablePointer<CHOOSECOLORW>) -> Int32
+
+@_silgen_name("ChooseFontW")
+func winChooseFontW(_ descriptor: UnsafeMutablePointer<CHOOSEFONTW>) -> Int32
 
 @_silgen_name("SHBrowseForFolderW")
 func winSHBrowseForFolderW(_ browseInfo: UnsafeMutablePointer<BROWSEINFOW>) -> UnsafeMutableRawPointer?
@@ -550,6 +640,62 @@ func winRedrawWindow(
     _ flags: UINT
 ) -> Int32
 
+@_silgen_name("TextOutW")
+func winTextOutW(_ deviceContext: HDC?, _ x: Int32, _ y: Int32, _ text: UnsafePointer<UInt16>?, _ count: Int32) -> Int32
+
+@_silgen_name("CreateCompatibleDC")
+func winCreateCompatibleDC(_ deviceContext: HDC?) -> HDC?
+
+@_silgen_name("DeleteDC")
+func winDeleteDC(_ deviceContext: HDC?) -> Int32
+
+@_silgen_name("SetStretchBltMode")
+func winSetStretchBltMode(_ deviceContext: HDC?, _ mode: Int32) -> Int32
+
+@_silgen_name("StretchBlt")
+func winStretchBlt(
+    _ destinationContext: HDC?,
+    _ x: Int32,
+    _ y: Int32,
+    _ width: Int32,
+    _ height: Int32,
+    _ sourceContext: HDC?,
+    _ sourceX: Int32,
+    _ sourceY: Int32,
+    _ sourceWidth: Int32,
+    _ sourceHeight: Int32,
+    _ rasterOperation: DWORD
+) -> Int32
+
+@_silgen_name("GdiplusStartup")
+func winGdiplusStartup(
+    _ token: UnsafeMutablePointer<UInt>?,
+    _ input: UnsafePointer<GdiplusStartupInput>?,
+    _ output: UnsafeMutableRawPointer?
+) -> Int32
+
+@_silgen_name("GdipCreateBitmapFromFile")
+func winGdipCreateBitmapFromFile(
+    _ filename: UnsafePointer<UInt16>?,
+    _ bitmap: UnsafeMutablePointer<UnsafeMutableRawPointer?>?
+) -> Int32
+
+@_silgen_name("GdipCreateHBITMAPFromBitmap")
+func winGdipCreateHBITMAPFromBitmap(
+    _ bitmap: UnsafeMutableRawPointer?,
+    _ hbitmap: UnsafeMutablePointer<HBITMAP?>?,
+    _ background: UInt32
+) -> Int32
+
+@_silgen_name("GdipGetImageWidth")
+func winGdipGetImageWidth(_ image: UnsafeMutableRawPointer?, _ width: UnsafeMutablePointer<UINT>?) -> Int32
+
+@_silgen_name("GdipGetImageHeight")
+func winGdipGetImageHeight(_ image: UnsafeMutableRawPointer?, _ height: UnsafeMutablePointer<UINT>?) -> Int32
+
+@_silgen_name("GdipDisposeImage")
+func winGdipDisposeImage(_ image: UnsafeMutableRawPointer?) -> Int32
+
 @_silgen_name("TranslateMessage")
 func winTranslateMessage(_ message: UnsafePointer<MSG>) -> Int32
 
@@ -563,8 +709,11 @@ let csVRedraw: UINT = 0x0001
 let csHRedraw: UINT = 0x0002
 let mfString: UINT = 0x0000
 let mfGrayed: UINT = 0x0001
+let mfChecked: UINT = 0x0008
 let mfPopup: UINT = 0x0010
 let mfSeparator: UINT = 0x0800
+let tpmLeftAlign: UINT = 0x0000
+let tpmReturnCmd: UINT = 0x0100
 let mbOK: UINT = 0x00000000
 let mbOKCancel: UINT = 0x00000001
 let mbYesNo: UINT = 0x00000004
@@ -605,7 +754,17 @@ let wmLButtonUp: UINT = 0x0202
 let wmLButtonDblClk: UINT = 0x0203
 let wmRButtonDown: UINT = 0x0204
 let wmRButtonUp: UINT = 0x0205
+let wmMButtonDown: UINT = 0x0207
+let wmMButtonUp: UINT = 0x0208
 let wmMouseWheel: UINT = 0x020a
+let wmSetCursor: UINT = 0x0020
+let htClient: LPARAM = 1
+let idcArrow = 32_512
+let idcIBeam = 32_513
+let idcCrosshair = 32_515
+let idcSizeWE = 32_644
+let idcSizeNS = 32_645
+let idcHand = 32_649
 let mkLButton: WPARAM = 0x0001
 let csDblClks: UINT = 0x0008
 let psSolid: Int32 = 0
@@ -743,9 +902,18 @@ let ofnOverwritePrompt: DWORD = 0x00000002
 let ofnHideReadOnly: DWORD = 0x00000004
 let ofnNoChangeDir: DWORD = 0x00000008
 let ofnForceShowHidden: DWORD = 0x10000000
+let ccRGBInit: DWORD = 0x00000001
+let ccFullOpen: DWORD = 0x00000002
+let cfScreenFonts: DWORD = 0x00000001
+let cfInitToLogFontStruct: DWORD = 0x00000040
 let bifReturnOnlyFSDirs: UINT = 0x0001
 let bifNewDialogStyle: UINT = 0x0040
 let coinitApartmentThreaded: DWORD = 0x2
+let emGetSel: UINT = 0x00b0
+let emSetSel: UINT = 0x00b1
+let emScrollCaret: UINT = 0x00b7
+let emReplaceSel: UINT = 0x00c2
+let emSetReadOnly: UINT = 0x00cf
 let esMultiline: DWORD = 0x0004
 let esPassword: DWORD = 0x0020
 let esAutoVScroll: DWORD = 0x0040
@@ -822,6 +990,10 @@ let sbBottom: UInt = 7
 let imageBitmap: UINT = 0
 let lrLoadFromFile: UINT = 0x00000010
 let lrCreatedDIBSection: UINT = 0x00002000
+let halftoneStretchMode: Int32 = 4
+let srcCopyRasterOperation: DWORD = 0x00cc0020
+let gdiplusOkStatus: Int32 = 0
+let gdiplusWhiteBackground: UInt32 = 0xffffffff
 
 func withOptionalWideString<Result>(_ string: String?, _ body: (UnsafePointer<UInt16>?) -> Result) -> Result {
     guard let string else {

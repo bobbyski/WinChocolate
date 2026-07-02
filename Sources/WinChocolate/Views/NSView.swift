@@ -344,6 +344,12 @@ open class NSView: NSResponder {
         backend.registerRightMouseUpAction(for: handle) { [weak self] event in
             self?.rightMouseUp(with: event)
         }
+        backend.registerOtherMouseDownAction(for: handle) { [weak self] event in
+            self?.otherMouseDown(with: event)
+        }
+        backend.registerOtherMouseUpAction(for: handle) { [weak self] event in
+            self?.otherMouseUp(with: event)
+        }
         backend.registerScrollWheelAction(for: handle) { [weak self] event in
             self?.scrollWheel(with: event)
         }

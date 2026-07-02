@@ -1,9 +1,26 @@
+/// The methods a text view delegate uses to respond to editing.
+public protocol NSTextViewDelegate: AnyObject {
+    /// Tells the delegate that editing changed the text view's text.
+    func textDidChange(_ notification: NSNotification)
+}
+
+extension NSTextViewDelegate {
+    /// Default no-op so delegates only implement the callbacks they need.
+    public func textDidChange(_ notification: NSNotification) {}
+}
+
 /// A multiline text editing view.
 ///
 /// This first slice provides the common AppKit `string` surface and maps to a
 /// native multiline Windows edit control.
 open class NSTextView: NSControl {
+    /// Posted to the delegate when editing changes the text.
+    public static let textDidChangeNotification = "NSTextDidChangeNotification"
+
     private var isUpdatingFromNative = false
+
+    /// Selection kept for text views that are not realized yet.
+    private var storedSelectedRange = NSRange(location: 0, length: 0)
 
     /// The text view's current string.
     open var string: String {
@@ -17,10 +34,21 @@ open class NSTextView: NSControl {
     }
 
     /// Whether the text view accepts editing.
-    open var isEditable: Bool
+    open var isEditable: Bool {
+        didSet {
+            guard let nativeHandle else {
+                return
+            }
+
+            realizedBackend?.setTextEditable(isEditable, for: nativeHandle)
+        }
+    }
 
     /// Whether the text view accepts selection.
     open var isSelectable: Bool
+
+    /// The text view delegate, notified when editing changes the text.
+    open weak var delegate: NSTextViewDelegate?
 
     /// The text color, when explicitly set.
     open var textColor: NSColor? {
@@ -47,6 +75,29 @@ open class NSTextView: NSControl {
     /// Swift-native callback invoked when editing changes the text.
     open var onTextChanged: ((NSTextView) -> Void)?
 
+    /// The selected character range, in UTF-16 units.
+    ///
+    /// Realized text views read and write the live native selection; unrealized
+    /// text views keep the range and apply it when the native peer appears.
+    open var selectedRange: NSRange {
+        get {
+            guard let nativeHandle, let realizedBackend else {
+                return storedSelectedRange
+            }
+
+            let selection = realizedBackend.textSelection(for: nativeHandle)
+            return NSRange(location: selection.location, length: selection.length)
+        }
+        set {
+            storedSelectedRange = newValue
+            guard let nativeHandle else {
+                return
+            }
+
+            realizedBackend?.setTextSelection(location: newValue.location, length: newValue.length, for: nativeHandle)
+        }
+    }
+
     /// Creates a text view with a frame.
     public override init(frame frameRect: NSRect) {
         self.string = ""
@@ -60,9 +111,52 @@ open class NSTextView: NSControl {
         self.string = string
     }
 
+    /// Selects a character range, matching AppKit's method form.
+    open func setSelectedRange(_ charRange: NSRange) {
+        selectedRange = charRange
+    }
+
     /// Appends text to the receiver.
     open func insertText(_ text: String) {
-        string += text
+        insertText(text, replacementRange: NSMakeRange(string.utf16.count, 0))
+    }
+
+    /// Inserts text, replacing a character range.
+    ///
+    /// A `replacementRange` location of `NSNotFound` replaces the current
+    /// selection, matching AppKit. The selection collapses to the end of the
+    /// inserted text.
+    open func insertText(_ string: String, replacementRange: NSRange) {
+        let range = replacementRange.location == NSNotFound ? selectedRange : replacementRange
+
+        var units = Array(self.string.utf16)
+        let location = min(max(0, range.location), units.count)
+        let length = min(max(0, range.length), units.count - location)
+        let replacement = Array(string.utf16)
+        units.replaceSubrange(location..<(location + length), with: replacement)
+        let updatedString = String(decoding: units, as: UTF16.self)
+        storedSelectedRange = NSRange(location: location + replacement.count, length: 0)
+
+        guard let nativeHandle, let realizedBackend else {
+            self.string = updatedString
+            return
+        }
+
+        // The native replacement keeps the edit undoable, so update the local
+        // string without pushing a whole-text reset back to the control.
+        realizedBackend.setTextSelection(location: location, length: length, for: nativeHandle)
+        realizedBackend.replaceSelectedText(string, for: nativeHandle)
+        isUpdatingFromNative = true
+        self.string = updatedString
+        isUpdatingFromNative = false
+    }
+
+    /// Scrolls so text in a character range is visible.
+    ///
+    /// The classic edit control scrolls to its caret, so this first slice
+    /// moves the selection to the range, which carries `EM_SCROLLCARET` along.
+    open func scrollRangeToVisible(_ range: NSRange) {
+        selectedRange = range
     }
 
     /// Creates the native multiline text peer.
@@ -76,6 +170,9 @@ open class NSTextView: NSControl {
         let handle = super.realizeNativePeer(in: backend, parent: parent)
         backend.setTextColor(textColor, for: handle)
         backend.setFont(font, for: handle)
+        if storedSelectedRange != NSRange(location: 0, length: 0) {
+            backend.setTextSelection(location: storedSelectedRange.location, length: storedSelectedRange.length, for: handle)
+        }
         backend.registerTextChangeAction(for: handle) { [weak self] text in
             guard let self else {
                 return
@@ -93,5 +190,9 @@ open class NSTextView: NSControl {
         objectValue = text
         isUpdatingFromNative = false
         onTextChanged?(self)
+        delegate?.textDidChange(NSNotification(name: Self.textDidChangeNotification, object: self))
     }
 }
+
+/// AppKit-compatible global constant for the text-change notification name.
+public let NSTextDidChangeNotification = NSTextView.textDidChangeNotification

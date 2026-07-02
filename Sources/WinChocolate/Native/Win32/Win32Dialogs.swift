@@ -176,6 +176,81 @@ extension Win32NativeControlBackend {
         return segments.dropFirst().map { "\(directory)\\\($0)" }
     }
 
+    /// Runs the native `ChooseColorW` modal color chooser.
+    public func runColorChooser(initialColor: NSColor) -> NSColor? {
+        let owner = NSApplication.shared.keyWindow?.nativeHandle.flatMap { hwnd(from: $0) }
+
+        var chosen: DWORD?
+        colorChooserCustomColors.withUnsafeMutableBufferPointer { customColors in
+            var descriptor = CHOOSECOLORW()
+            descriptor.lStructSize = DWORD(MemoryLayout<CHOOSECOLORW>.size)
+            descriptor.hwndOwner = owner
+            descriptor.rgbResult = colorRef(from: initialColor)
+            descriptor.lpCustColors = customColors.baseAddress
+            descriptor.Flags = ccRGBInit | ccFullOpen
+            if winChooseColorW(&descriptor) != 0 {
+                chosen = descriptor.rgbResult
+            }
+        }
+
+        guard let chosen else {
+            return nil
+        }
+
+        return NSColor(
+            calibratedRed: CGFloat(chosen & 0xff) / 255,
+            green: CGFloat((chosen >> 8) & 0xff) / 255,
+            blue: CGFloat((chosen >> 16) & 0xff) / 255,
+            alpha: 1
+        )
+    }
+
+    /// Runs the native `ChooseFontW` modal font chooser.
+    public func runFontChooser(initialFont: NSFont?) -> NSFont? {
+        let owner = NSApplication.shared.keyWindow?.nativeHandle.flatMap { hwnd(from: $0) }
+        let seed = initialFont ?? NSFont.systemFont(ofSize: 13)
+
+        var logFont = LOGFONTW()
+        // Negative heights request character heights in device pixels at the
+        // classic 96 DPI baseline, matching how the backend realizes fonts.
+        logFont.lfHeight = -Int32((seed.pointSize * 96 / 72).rounded())
+        logFont.lfWeight = Int32(seed.weight.rawValue)
+        withUnsafeMutableBytes(of: &logFont.lfFaceName) { raw in
+            let faceName = raw.bindMemory(to: UInt16.self)
+            for (index, unit) in seed.fontName.utf16.prefix(31).enumerated() {
+                faceName[index] = unit
+            }
+        }
+
+        var succeeded = false
+        withUnsafeMutablePointer(to: &logFont) { logFontPointer in
+            var descriptor = CHOOSEFONTW()
+            descriptor.lStructSize = DWORD(MemoryLayout<CHOOSEFONTW>.size)
+            descriptor.hwndOwner = owner
+            descriptor.lpLogFont = logFontPointer
+            descriptor.Flags = cfScreenFonts | cfInitToLogFontStruct
+            succeeded = winChooseFontW(&descriptor) != 0
+        }
+
+        guard succeeded else {
+            return nil
+        }
+
+        var name = ""
+        withUnsafeBytes(of: logFont.lfFaceName) { raw in
+            let faceName = raw.bindMemory(to: UInt16.self)
+            let length = faceName.firstIndex(of: 0) ?? faceName.count
+            name = String(decoding: faceName.prefix(length), as: UTF16.self)
+        }
+        if name.isEmpty {
+            name = seed.fontName
+        }
+
+        let pointSize = CGFloat(abs(logFont.lfHeight)) * 72 / 96
+        let weight: NSFont.Weight = logFont.lfWeight >= 600 ? .bold : .regular
+        return NSFont(name: name, size: pointSize > 0 ? pointSize : seed.pointSize, weight: weight)
+    }
+
     private func messageBoxFlags(for alert: NSAlert) -> UINT {
         let buttonFlags: UINT
         switch alert.buttonTitles.count {

@@ -17,11 +17,11 @@ This plan is the high-level project tracker. `CONTROL_PARITY.md` remains the det
 ## Dashboard
 
 ```text
-Overall Progress                           ████████████░░░░░░░░░░░░░░░░░░░░   36%  (per-item estimate)
+Overall Progress                           █████████████░░░░░░░░░░░░░░░░░░░   39%  (per-item estimate)
 
 Phase 1 · Package, Core Names, App Shell   ██████████████████████████  100%  ✅ Complete
 Phase 2 · Classic Win32 Backend            ██████████████████████████  100%  ✅ Complete
-Phase 3 · AppKit Surface Expansion         ████████████░░░░░░░░░░░░░░   46%  🔄 In Progress
+Phase 3 · AppKit Surface Expansion         ██████████████████░░░░░░░░   69%  🔄 In Progress
 Phase 4 · Demo Harness                     █████████████████████░░░░░   80%  🔄 In Progress
 Phase 5 · Tables, Lists, Collections       █████░░░░░░░░░░░░░░░░░░░░░   21%  🔄 In Progress
 Phase 6 · Toolbar API Parity               █████████░░░░░░░░░░░░░░░░░   34%  🔄 In Progress
@@ -75,7 +75,7 @@ Keep the classic backend real, testable, and available as a stable presentation 
 
 ---
 
-## Phase 3 — AppKit Surface Expansion 🔄 46%
+## Phase 3 — AppKit Surface Expansion 🔄 69%
 
 Broaden source-compatible AppKit-style APIs while keeping mechanics hidden behind the framework. Items 3.5, 3.6, 3.9, and 3.11 are prerequisites for the Phase 11 cross-platform apps.
 
@@ -85,15 +85,15 @@ Broaden source-compatible AppKit-style APIs while keeping mechanics hidden behin
 | 3.2 | Windows, panels, popovers, alerts | 🔄 In Progress | ~65% — `NSSavePanel`/`NSOpenPanel` run native comdlg32/shell dialogs with modal-response, file-type, multi-select, and folder-choose support. Richer chrome, sheets, and modal sessions remain. |
 | 3.3 | View composition | 🔄 In Progress | ~60% — scroll/clip/split/visual-effect slices exist; split-divider dragging and scroll depth remain. |
 | 3.4 | Source compatibility gaps | 🔄 In Progress | ~20% — continue filling AppKit names as demo and ports need them; ongoing by nature. |
-| 3.5 | Custom drawing | 🔄 In Progress | ~70% — `NSView.draw(_:)` runs during native paint with `NSGraphicsContext.current` installed; `NSBezierPath` (move/line/curve/close, rect/oval/rounded conveniences), `NSColor` set/fill/stroke, `NSRectFill`/`NSFrameRect`, and `needsDisplay` render through GDI paths. Missing: `NSImage.draw`, text drawing, gradients, clipping. |
-| 3.6 | Event and responder depth | 🔄 In Progress | ~60% — right mouse down/up, double-click `clickCount` (CS_DBLCLKS), and scroll-wheel events route to responders under the cursor. Missing: middle mouse, `NSCursor`, key equivalents / `performKeyEquivalent`. |
-| 3.7 | `NSAlert` custom dialog | 🔄 In Progress | ~75% — alerts with custom button titles or a suppression checkbox run as a composed modal panel (AppKit button ordering, `alertNthButtonReturn` codes, suppression state) over new `NSApplication.runModal(for:)`/`stopModal` machinery; plain alerts keep the native message box. Missing: accessory views, alert icons, sheets. |
-| 3.8 | Standard panels | ⏳ Pending | `NSFontPanel`, `NSColorPanel`, `NSFontManager` shared instances over the classic font/color dialogs. |
-| 3.9 | `NSDocument` architecture | ⏳ Pending | Document lifecycle, dirty tracking, `NSDocumentController`, recent documents. Required by the text editor and Notes apps (Phase 11). |
-| 3.10 | Menu depth | 🔄 In Progress | ~40% — menu bar, submenus, separators, Quit dispatch exist. Missing: context menus (`NSMenu.popUp`), modifier key equivalents, `validateMenuItem`, check/state marks, dynamic updates. |
-| 3.11 | `NSTextView` depth | 🔄 In Progress | ~25% — multiline editing exists. Missing: selection APIs, fonts/attributes, find/replace hooks, undo integration. |
+| 3.5 | Custom drawing | 🔄 In Progress | ~90% — `NSView.draw(_:)` with `NSGraphicsContext.current`, `NSBezierPath`, `NSColor` set/fill/stroke, `NSRectFill`/`NSFrameRect`, `needsDisplay`, plus `String.draw(at:withAttributes:)` (minimal `NSAttributedString`) and `NSImage.draw(in:)` via GDI+/StretchBlt. Missing: gradients, clipping, real text metrics. |
+| 3.6 | Event and responder depth | 🔄 In Progress | ~85% — right/middle mouse, double-click `clickCount`, scroll wheel under the cursor, `NSCursor` (set/push/pop over WM_SETCURSOR), and menu key equivalents through the wndproc. Missing: view-chain `performKeyEquivalent`, cursor rects. |
+| 3.7 | `NSAlert` custom dialog | 🔄 In Progress | ~90% — composed modal panel with custom buttons, suppression checkbox, style icon badge (drawn via the new drawing APIs), and `accessoryView`; plain alerts keep the native message box. Missing: sheets. |
+| 3.8 | Standard panels | 🔄 In Progress | ~70% — `NSColorPanel`/`NSFontPanel`/`NSFontManager` shared instances run the classic ChooseColorW/ChooseFontW dialogs; color well attaches to the shared panel. Missing: true floating panels, font-panel live apply. |
+| 3.9 | `NSDocument` architecture | 🔄 In Progress | ~60% — `NSDocument` (read/write/data overrides, dirty tracking, save/saveAs through `NSSavePanel`) and `NSDocumentController` (documents, recents, `openDocument`, `winDocumentClass` hook). Missing: window controllers, autosave, document types from metadata. |
+| 3.10 | Menu depth | 🔄 In Progress | ~70% — context menus (`NSMenu.popUp` via TrackPopupMenu), Ctrl-mapped key equivalents (`performKeyEquivalent`), check-state marks, submenus, separators. Missing: `validateMenuItem`, dynamic menu updates while open. |
+| 3.11 | `NSTextView` depth | 🔄 In Progress | ~60% — `selectedRange`/`NSRange`, `insertText(_:replacementRange:)`, `scrollRangeToVisible`, `NSTextViewDelegate.textDidChange`, read-only sync, fonts. Missing: find/replace, undo manager, rich text attributes. |
 | 3.12 | Progress indicator completion | 🔄 In Progress | ~80% — `isIndeterminate`, `.spinning` style, and `startAnimation`/`stopAnimation` animate via a native-timer sweep (the classic theme lacks marquee support). Missing: a true spinner visual in the modern appearance. |
-| 3.13 | `NSImage` formats | 🔄 In Progress | ~25% — file-backed BMP decode exists. Missing: PNG/JPEG/ICO decode (WIC), scaling fidelity, template images. |
+| 3.13 | `NSImage` formats | 🔄 In Progress | ~70% — PNG/JPEG/GIF decode via the GDI+ flat API (BMP keeps the fast LoadImageW path) for both `NSImageView` and `NSImage.draw(in:)`. Missing: ICO, template images, per-path bitmap caching. |
 
 ---
 

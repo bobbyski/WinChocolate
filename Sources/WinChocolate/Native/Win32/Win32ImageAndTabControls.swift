@@ -47,9 +47,11 @@ extension Win32NativeControlBackend {
             return
         }
 
+        // BMP files keep the fast LoadImageW path; other formats (PNG, JPEG,
+        // GIF, ...) fall back to GDI+ decoding into an equivalent HBITMAP.
         let bitmap = withWideString(imagePath) { path in
             winLoadImageW(nil, path, imageBitmap, 0, 0, lrLoadFromFile | lrCreatedDIBSection)
-        }
+        } ?? Win32GdiPlusImageDecoder.decodeBitmap(fromFile: imagePath)?.bitmap
 
         guard let bitmap else {
             setText(description, for: handle)

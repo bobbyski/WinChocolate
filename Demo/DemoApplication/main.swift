@@ -133,8 +133,19 @@ final class DemoCanvasView: NSView {
 }
 
 final class DemoShapesView: NSView {
+    var contextMenu: NSMenu?
+
     override var acceptsFirstResponder: Bool {
         false
+    }
+
+    override func rightMouseDown(with event: NSEvent) {
+        guard let contextMenu else {
+            super.rightMouseDown(with: event)
+            return
+        }
+
+        contextMenu.popUp(positioning: nil, at: convert(event.locationInWindow, from: nil), in: self)
     }
 
     override func draw(_ dirtyRect: NSRect) {
@@ -186,6 +197,18 @@ final class DemoShapesView: NSView {
         let ring = NSBezierPath(ovalIn: NSMakeRect(60, 228, 44, 30))
         NSColor(calibratedRed: 0.86, green: 0.29, blue: 0.25, alpha: 1).setFill()
         ring.fill()
+
+        // Text drawn through the attributed-string drawing API.
+        "WinChocolate".draw(
+            at: NSMakePoint(14, 10),
+            withAttributes: [
+                .font: NSFont.boldSystemFont(ofSize: 16),
+                .foregroundColor: NSColor.red
+            ]
+        )
+
+        // Demo artwork scaled into a corner via NSImage.draw(in:).
+        NSImage(contentsOfFile: demoArtworkPath)?.draw(in: NSMakeRect(330, 16, 72, 54))
     }
 }
 
@@ -390,6 +413,7 @@ let warningRadio = NSButton(title: "Warning", frame: NSMakeRect(136, 234, 116, 2
 let criticalRadio = NSButton(title: "Critical", frame: NSMakeRect(268, 234, 116, 24))
 let notesLabel = NSTextField(string: "Notes:", frame: NSMakeRect(32, 286, 104, 24))
 let notesTextView = NSTextView(frame: NSMakeRect(152, 286, 360, 96))
+let selectWordButton = NSButton(title: "Select Word", frame: NSMakeRect(528, 286, 120, 34))
 let tokenLabel = NSTextField(string: "Tokens:", frame: NSMakeRect(32, 410, 104, 24))
 let tokenField = NSTokenField(tokens: ["Cocoa", "AppKit", "WinChocolate"], frame: NSMakeRect(152, 408, 360, 28))
 let formLabel = NSTextField(string: "Form:", frame: NSMakeRect(744, 120, 80, 24))
@@ -419,6 +443,7 @@ let levelLabel = NSTextField(string: "Level:", frame: NSMakeRect(32, 226, 88, 24
 let levelIndicator = NSLevelIndicator(frame: NSMakeRect(128, 230, 144, 18))
 let colorWellLabel = NSTextField(string: "Color:", frame: NSMakeRect(288, 226, 56, 24))
 let colorWell = NSColorWell(frame: NSMakeRect(348, 224, 32, 28))
+let fontButton = NSButton(title: "Font...", frame: NSMakeRect(396, 222, 92, 30))
 let segmentedLabel = NSTextField(string: "Segments:", frame: NSMakeRect(32, 286, 104, 24))
 let segmentedControl = NSSegmentedControl(labels: ["One", "Two", "Three"], frame: NSMakeRect(152, 284, 240, 28))
 let scrollerLabel = NSTextField(string: "Scroller:", frame: NSMakeRect(32, 334, 88, 24))
@@ -506,10 +531,10 @@ let visualEffectMaterials: [(NSVisualEffectView.Material, String)] = [
     (.menu, "menu"),
     (.hudWindow, "hud")
 ]
-func demoResourcePath(named name: String) -> String {
-    Bundle.main.path(forResource: name, ofType: "bmp", inDirectory: "Resources")
-        ?? Bundle(path: ".")?.path(forResource: name, ofType: "bmp", inDirectory: "Demo\\DemoApplication\\Resources")
-        ?? "Demo\\DemoApplication\\Resources\\\(name).bmp"
+func demoResourcePath(named name: String, ofType type: String = "bmp") -> String {
+    Bundle.main.path(forResource: name, ofType: type, inDirectory: "Resources")
+        ?? Bundle(path: ".")?.path(forResource: name, ofType: type, inDirectory: "Demo\\DemoApplication\\Resources")
+        ?? "Demo\\DemoApplication\\Resources\\\(name).\(type)"
 }
 
 func demoToolbarBitmapPath(named name: String, width: Int, kind: String) -> String {
@@ -687,6 +712,7 @@ func demoToolbarBitmapPath(named name: String, width: Int, kind: String) -> Stri
 
 let demoArtworkPath = demoResourcePath(named: "WinChocolateArtworkDemo")
 let demoScreenArtworkPath = demoResourcePath(named: "WinChocolateScreenArtworkDemo")
+let demoPngPath = demoResourcePath(named: "WinChocolatePngDemo", ofType: "png")
 let toolbarOpenImagePath = demoToolbarBitmapPath(named: "ToolbarOpen", width: 58, kind: "open")
 let toolbarSaveImagePath = demoToolbarBitmapPath(named: "ToolbarSave", width: 58, kind: "save")
 let toolbarToggleImagePath = demoToolbarBitmapPath(named: "ToolbarToggle", width: 96, kind: "toggle")
@@ -696,7 +722,8 @@ let imageModes: [(NSImageView.ImageScaling, NSImageView.ImageAlignment, String, 
     (.scaleProportionallyDown, .alignCenter, demoArtworkPath, "bird center/down"),
     (.scaleProportionallyUpOrDown, .alignTopLeft, demoScreenArtworkPath, "screen top-left/fit"),
     (.scaleAxesIndependently, .alignBottomRight, demoArtworkPath, "bird bottom-right/axes"),
-    (.scaleNone, .alignRight, demoScreenArtworkPath, "screen right/none")
+    (.scaleNone, .alignRight, demoScreenArtworkPath, "screen right/none"),
+    (.scaleProportionallyDown, .alignCenter, demoPngPath, "png center/down")
 ]
 
 final class DemoToolbarDelegate: NSToolbarDelegate {
@@ -1456,9 +1483,24 @@ levelIndicator.onAction = { control in
 
 colorWell.onAction = { _ in
     updateFocusDisplay()
-    colorIndex = (colorIndex + 1) % demoColors.count
-    colorWell.color = demoColors[colorIndex]
-    statusLabel.stringValue = "Color well changed"
+    let panel = NSColorPanel.shared
+    panel.winColorDidChange = { color in
+        let red = Int(color.redComponent * 255)
+        let green = Int(color.greenComponent * 255)
+        let blue = Int(color.blueComponent * 255)
+        statusLabel.stringValue = "Color well changed: RGB \(red), \(green), \(blue)"
+    }
+    panel.makeKeyAndOrderFront(colorWell)
+}
+
+fontButton.onAction = { _ in
+    updateFocusDisplay()
+    let manager = NSFontManager.shared
+    manager.winFontDidChange = { font in
+        let weight = font.weight == .bold ? " bold" : ""
+        statusLabel.stringValue = "Font chosen: \(font.fontName) \(Int(font.pointSize))pt\(weight)"
+    }
+    manager.orderFrontFontPanel(fontButton)
 }
 
 segmentedControl.onAction = { control in
@@ -1548,6 +1590,17 @@ clipCornerButton.onAction = { _ in
 notesTextView.onTextChanged = { textView in
     updateFocusDisplay()
     statusLabel.stringValue = "Notes length: \(textView.string.count)"
+}
+
+selectWordButton.onAction = { _ in
+    if notesTextView.string.isEmpty {
+        notesTextView.insertText("WinChocolate Notes", replacementRange: NSMakeRange(NSNotFound, 0))
+    }
+
+    let firstWordLength = notesTextView.string.utf16.prefix { $0 != 32 }.count
+    notesTextView.setSelectedRange(NSMakeRange(0, firstWordLength))
+    let selection = notesTextView.selectedRange
+    statusLabel.stringValue = "Notes selection: location \(selection.location), length \(selection.length)"
 }
 
 tokenField.onTextChanged = { field in
@@ -1688,6 +1741,11 @@ askToSaveButton.onAction = { _ in
     alert.addButton(withTitle: "Don't Save")
     alert.addButton(withTitle: "Cancel")
     alert.showsSuppressionButton = true
+
+    let accessoryLabel = NSTextField(string: "Accessory views work", frame: NSMakeRect(0, 0, 240, 20))
+    accessoryLabel.isBordered = false
+    accessoryLabel.drawsBackground = false
+    alert.accessoryView = accessoryLabel
 
     let response = alert.runModal()
     let choice: String
@@ -1960,6 +2018,7 @@ controlsPage.addSubview(warningRadio)
 controlsPage.addSubview(criticalRadio)
 controlsPage.addSubview(notesLabel)
 controlsPage.addSubview(notesTextView)
+controlsPage.addSubview(selectWordButton)
 controlsPage.addSubview(tokenLabel)
 controlsPage.addSubview(tokenField)
 controlsPage.addSubview(formLabel)
@@ -1986,6 +2045,7 @@ valuesPage.addSubview(levelLabel)
 valuesPage.addSubview(levelIndicator)
 valuesPage.addSubview(colorWellLabel)
 valuesPage.addSubview(colorWell)
+valuesPage.addSubview(fontButton)
 valuesPage.addSubview(segmentedLabel)
 valuesPage.addSubview(segmentedControl)
 valuesPage.addSubview(scrollerLabel)
@@ -2028,7 +2088,8 @@ tablesPage.addSubview(outlineScrollView)
 let viewMenuItem = NSMenuItem(title: "View", action: nil, keyEquivalent: "")
 let viewMenu = NSMenu(title: "View")
 for (index, pageTitle) in ["Controls Page", "Values Page", "Tables/Media Page", "Drawing Page"].enumerated() {
-    let item = NSMenuItem(title: pageTitle, action: nil, keyEquivalent: "")
+    // Ctrl+1...Ctrl+4 switch pages (the .command mask maps onto Ctrl on Windows).
+    let item = NSMenuItem(title: pageTitle, action: nil, keyEquivalent: "\(index + 1)")
     item.onAction = { _ in
         pageSelector.selectItem(at: index)
         showDemoPage(index)
@@ -2039,6 +2100,18 @@ for (index, pageTitle) in ["Controls Page", "Values Page", "Tables/Media Page", 
 viewMenuItem.submenu = viewMenu
 menuBar.addItem(viewMenuItem)
 app.mainMenu = menuBar
+
+// Right-clicking the paths view opens a checkmark-style context menu.
+let shapesContextMenu = NSMenu(title: "Shapes")
+for shapeTitle in ["Star", "Wave", "Card"] {
+    let shapeItem = NSMenuItem(title: shapeTitle, action: nil, keyEquivalent: "")
+    shapeItem.onAction = { item in
+        item.state = item.state == .on ? .off : .on
+        statusLabel.stringValue = "Shape \(shapeTitle) \(item.state == .on ? "checked" : "unchecked")"
+    }
+    shapesContextMenu.addItem(shapeItem)
+}
+shapesView.contextMenu = shapesContextMenu
 
 window.contentView = contentView
 showDemoPage(0)

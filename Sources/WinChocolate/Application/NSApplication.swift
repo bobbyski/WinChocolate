@@ -60,6 +60,9 @@ public final class NSApplication: NSObject {
     public var mainMenu: NSMenu? {
         didSet {
             nativeBackend.installMainMenu(mainMenu)
+            nativeBackend.registerKeyEquivalentHandler { [weak self] event in
+                self?.mainMenu?.performKeyEquivalent(with: event) ?? false
+            }
         }
     }
 

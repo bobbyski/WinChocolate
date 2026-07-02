@@ -19,7 +19,11 @@ public final class Win32NativeControlBackend: NativeControlBackend {
     var mouseDraggedActions: [UInt: (NSEvent) -> Void] = [:]
     var rightMouseDownActions: [UInt: (NSEvent) -> Void] = [:]
     var rightMouseUpActions: [UInt: (NSEvent) -> Void] = [:]
+    var otherMouseDownActions: [UInt: (NSEvent) -> Void] = [:]
+    var otherMouseUpActions: [UInt: (NSEvent) -> Void] = [:]
     var scrollWheelActions: [UInt: (NSEvent) -> Void] = [:]
+    var activeCursorName: String?
+    var keyEquivalentHandler: ((NSEvent) -> Bool)?
     var drawActions: [UInt: (NativeDrawingContext, NSRect) -> Void] = [:]
     var keyDownActions: [UInt: (NSEvent) -> Void] = [:]
     var keyUpActions: [UInt: (NSEvent) -> Void] = [:]
@@ -55,6 +59,8 @@ public final class Win32NativeControlBackend: NativeControlBackend {
     var bitmaps: [UInt: HBITMAP] = [:]
     var standardToolbarImageOwner: HWND?
     var standardToolbarImageList: HIMAGELIST?
+    /// Custom color slots shared across native color chooser openings.
+    var colorChooserCustomColors: [DWORD] = Array(repeating: 0x00ff_ffff, count: 16)
     private var nextCommandIdentifier: UInt = 1_000
     private var modalStopCode: Int?
     var marqueePositions: [UInt: Int32] = [:]

@@ -59,6 +59,13 @@ if errorlevel 1 (
     popd >nul
     exit /b 1
 )
+copy /y "%SCRIPT_DIR%Demo\DemoApplication\Resources\*.png" "%RUN_DIR%\Resources\" >nul
+if errorlevel 1 (
+    echo.
+    echo Demo resource staging failed.
+    popd >nul
+    exit /b 1
+)
 
 start "" "%RUN_DEMO_EXE%"
 if errorlevel 1 (

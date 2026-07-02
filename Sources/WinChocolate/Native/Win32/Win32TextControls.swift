@@ -55,6 +55,56 @@ extension Win32NativeControlBackend {
         textChangeActions[handle.rawValue] = action
     }
 
+    /// Reads the native edit-control selection with `EM_GETSEL`.
+    public func textSelection(for handle: NativeHandle) -> (location: Int, length: Int) {
+        guard let hwnd = hwnd(from: handle) else {
+            return (0, 0)
+        }
+
+        var start: DWORD = 0
+        var end: DWORD = 0
+        withUnsafeMutablePointer(to: &start) { startPointer in
+            withUnsafeMutablePointer(to: &end) { endPointer in
+                _ = winSendMessageW(hwnd, emGetSel, UInt(bitPattern: startPointer), Int(bitPattern: endPointer))
+            }
+        }
+        return (Int(start), Int(max(end, start) - start))
+    }
+
+    /// Updates the native edit-control selection with `EM_SETSEL` and scrolls
+    /// the caret into view with `EM_SCROLLCARET`.
+    public func setTextSelection(location: Int, length: Int, for handle: NativeHandle) {
+        guard let hwnd = hwnd(from: handle) else {
+            return
+        }
+
+        let start = max(0, location)
+        _ = winSendMessageW(hwnd, emSetSel, WPARAM(start), LPARAM(start + max(0, length)))
+        _ = winSendMessageW(hwnd, emScrollCaret, 0, 0)
+    }
+
+    /// Replaces the selected native edit-control text with `EM_REPLACESEL`.
+    ///
+    /// The replacement participates in the control's undo buffer (wParam 1).
+    public func replaceSelectedText(_ text: String, for handle: NativeHandle) {
+        guard let hwnd = hwnd(from: handle) else {
+            return
+        }
+
+        withWideString(text) { wideText in
+            _ = winSendMessageW(hwnd, emReplaceSel, 1, Int(bitPattern: wideText))
+        }
+    }
+
+    /// Updates the native edit-control read-only style with `EM_SETREADONLY`.
+    public func setTextEditable(_ isEditable: Bool, for handle: NativeHandle) {
+        guard let hwnd = hwnd(from: handle) else {
+            return
+        }
+
+        _ = winSendMessageW(hwnd, emSetReadOnly, isEditable ? 0 : 1, 0)
+    }
+
     /// Updates a native control's text color.
     public func setTextColor(_ color: NSColor?, for handle: NativeHandle) {
         if let color {

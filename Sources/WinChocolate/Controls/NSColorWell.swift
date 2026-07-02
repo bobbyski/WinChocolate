@@ -1,7 +1,9 @@
 /// A color well control.
 ///
-/// This initial implementation provides AppKit-compatible color state and a
-/// clickable native swatch. A shared `NSColorPanel` bridge can layer on later.
+/// This implementation provides AppKit-compatible color state and a clickable
+/// native swatch. Activating the well attaches it to the shared
+/// `NSColorPanel`, so colors confirmed in the panel's chooser flow back into
+/// the well's `color`.
 open class NSColorWell: NSControl {
     /// The selected color.
     open var color: NSColor {
@@ -25,14 +27,20 @@ open class NSColorWell: NSControl {
         self.objectValue = color
     }
 
-    /// Activates the color well.
+    /// Activates the color well and attaches it to the shared color panel.
     open func activate(_ exclusive: Bool) {
         isActive = true
+        let panel = NSColorPanel.shared
+        panel.winActiveColorWell = self
+        panel.color = color
     }
 
-    /// Deactivates the color well.
+    /// Deactivates the color well and detaches it from the shared color panel.
     open func deactivate() {
         isActive = false
+        if NSColorPanel.shared.winActiveColorWell === self {
+            NSColorPanel.shared.winActiveColorWell = nil
+        }
     }
 
     /// Creates the native swatch peer.

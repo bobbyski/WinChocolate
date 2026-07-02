@@ -52,6 +52,16 @@ open class NSResponder: NSObject {
         nextResponder?.rightMouseUp(with: event)
     }
 
+    /// Handles a tertiary (middle) mouse button press.
+    open func otherMouseDown(with event: NSEvent) {
+        nextResponder?.otherMouseDown(with: event)
+    }
+
+    /// Handles a tertiary (middle) mouse button release.
+    open func otherMouseUp(with event: NSEvent) {
+        nextResponder?.otherMouseUp(with: event)
+    }
+
     /// Handles a scroll wheel movement.
     open func scrollWheel(with event: NSEvent) {
         nextResponder?.scrollWheel(with: event)

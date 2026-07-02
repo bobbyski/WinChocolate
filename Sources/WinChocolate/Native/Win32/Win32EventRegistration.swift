@@ -45,6 +45,46 @@ extension Win32NativeControlBackend {
         rightMouseUpActions[handle.rawValue] = action
     }
 
+    /// Registers the action to perform when a native view receives a tertiary mouse-down event.
+    public func registerOtherMouseDownAction(for handle: NativeHandle, action: @escaping (NSEvent) -> Void) {
+        otherMouseDownActions[handle.rawValue] = action
+    }
+
+    /// Registers the action to perform when a native view receives a tertiary mouse-up event.
+    public func registerOtherMouseUpAction(for handle: NativeHandle, action: @escaping (NSEvent) -> Void) {
+        otherMouseUpActions[handle.rawValue] = action
+    }
+
+    /// Registers the handler consulted for menu key equivalents before key-down routing.
+    public func registerKeyEquivalentHandler(_ handler: @escaping (NSEvent) -> Bool) {
+        keyEquivalentHandler = handler
+    }
+
+    /// Makes the named framework cursor the active pointer image.
+    public func setCursor(named name: String) {
+        activeCursorName = name
+        _ = winSetCursor(systemCursor(named: name))
+    }
+
+    func systemCursor(named name: String) -> HCURSOR? {
+        let identifier: Int
+        switch name {
+        case "iBeam":
+            identifier = idcIBeam
+        case "crosshair":
+            identifier = idcCrosshair
+        case "pointingHand":
+            identifier = idcHand
+        case "resizeLeftRight":
+            identifier = idcSizeWE
+        case "resizeUpDown":
+            identifier = idcSizeNS
+        default:
+            identifier = idcArrow
+        }
+        return winLoadCursorW(nil, systemResourcePointer(identifier))
+    }
+
     /// Registers the action to perform when a native view receives a scroll-wheel event.
     public func registerScrollWheelAction(for handle: NativeHandle, action: @escaping (NSEvent) -> Void) {
         scrollWheelActions[handle.rawValue] = action

@@ -3742,6 +3742,69 @@ func testViewDrawDispatchesPathsToBackendContext() {
     expect(NSGraphicsContext.current == nil, "Draw pass did not restore the previous graphics context.")
 }
 
+final class TextAndImageDrawingTestView: NSView {
+    override func draw(_ dirtyRect: NSRect) {
+        "Hello Chocolate".draw(
+            at: NSMakePoint(4, 6),
+            withAttributes: [
+                .font: NSFont.boldSystemFont(ofSize: 15),
+                .foregroundColor: NSColor.red
+            ]
+        )
+        "Plain".draw(at: NSMakePoint(1, 2), withAttributes: nil)
+        NSImage(contentsOfFile: "C:\\Art\\brand.png")?.draw(in: NSMakeRect(10, 20, 30, 40))
+    }
+}
+
+func testViewDrawDispatchesTextAndImagesToBackendContext() {
+    let backend = InMemoryNativeControlBackend()
+    let view = TextAndImageDrawingTestView(frame: NSMakeRect(0, 0, 80, 80))
+    let handle = view.realizeNativePeer(in: backend, parent: nil)
+
+    let recording = backend.performDraw(for: handle, in: NSMakeRect(0, 0, 80, 80))
+
+    expect(recording.texts.count == 2, "Draw pass did not record both text commands.")
+    expect(recording.texts.first?.text == "Hello Chocolate", "Text draw did not carry the string content.")
+    expect(recording.texts.first?.point == NSMakePoint(4, 6), "Text draw did not carry the origin point.")
+    expect(recording.texts.first?.color == .red, "Text draw did not resolve the foreground color attribute.")
+    expect(recording.texts.first?.fontName == "Segoe UI", "Text draw did not resolve the font name attribute.")
+    expect(recording.texts.first?.fontSize == 15, "Text draw did not resolve the font size attribute.")
+    expect(recording.texts.first?.bold == true, "Bold font attribute did not mark the text bold.")
+    expect(recording.texts.last?.color == .black, "Attribute-free text did not default to black.")
+    expect(recording.texts.last?.fontName == "Segoe UI", "Attribute-free text did not default to Segoe UI.")
+    expect(recording.texts.last?.fontSize == 12, "Attribute-free text did not default to 12 points.")
+    expect(recording.texts.last?.bold == false, "Attribute-free text did not default to regular weight.")
+
+    expect(recording.images.count == 1, "Draw pass did not record the image command.")
+    expect(recording.images.first?.path == "C:\\Art\\brand.png", "Image draw did not carry the file path.")
+    expect(recording.images.first?.rect == NSMakeRect(10, 20, 30, 40), "Image draw did not carry the destination rect.")
+}
+
+func testAttributedStringStoresStringAndAttributes() {
+    let plain = NSAttributedString(string: "Plain")
+    expect(plain.string == "Plain", "Attributed string did not store its characters.")
+    expect(plain.attributes.isEmpty, "Attribute-free attributed string did not report empty attributes.")
+
+    let styled = NSAttributedString(
+        string: "Styled",
+        attributes: [
+            .font: NSFont.boldSystemFont(ofSize: 13),
+            .foregroundColor: NSColor.blue
+        ]
+    )
+    expect(styled.string == "Styled", "Attributed string with attributes did not store its characters.")
+    expect((styled.attributes[.font] as? NSFont)?.pointSize == 13, "Attributed string did not round-trip the font attribute.")
+    expect((styled.attributes[.font] as? NSFont)?.weight == .bold, "Attributed string did not round-trip the font weight.")
+    expect(styled.attributes[.foregroundColor] as? NSColor == .blue, "Attributed string did not round-trip the color attribute.")
+
+    let nilAttributes = NSAttributedString(string: "None", attributes: nil)
+    expect(nilAttributes.attributes.isEmpty, "Nil attribute dictionary did not normalize to empty attributes.")
+
+    let estimate = "Styled".size(withAttributes: [.font: NSFont.systemFont(ofSize: 10)])
+    expect(abs(estimate.width - 33) < 0.001, "String size estimate did not scale width by character count and size.")
+    expect(abs(estimate.height - 13.5) < 0.001, "String size estimate did not scale height by font size.")
+}
+
 final class EventRecordingView: NSView {
     var rightDownCount = 0
     var rightUpCount = 0
@@ -3833,6 +3896,127 @@ func testRunModalReturnsScriptedStopCode() {
     expect(backend.modalStopCodes == [NSApplication.ModalResponse.cancel.rawValue], "stopModal did not forward its code to the backend.")
 }
 
+final class OtherMouseRecordingView: NSView {
+    var otherDownCount = 0
+    var otherUpCount = 0
+
+    override func otherMouseDown(with event: NSEvent) {
+        otherDownCount += 1
+    }
+
+    override func otherMouseUp(with event: NSEvent) {
+        otherUpCount += 1
+    }
+}
+
+func testOtherMouseButtonsReachTheView() {
+    let backend = InMemoryNativeControlBackend()
+    let view = OtherMouseRecordingView(frame: NSMakeRect(0, 0, 50, 50))
+    let handle = view.realizeNativePeer(in: backend, parent: nil)
+
+    backend.otherMouseDownActions[handle]?(NSEvent(type: .otherMouseDown, locationInWindow: NSMakePoint(5, 5)))
+    backend.otherMouseUpActions[handle]?(NSEvent(type: .otherMouseUp, locationInWindow: NSMakePoint(5, 5)))
+
+    expect(view.otherDownCount == 1, "Other mouse-down did not reach the view responder.")
+    expect(view.otherUpCount == 1, "Other mouse-up did not reach the view responder.")
+
+    // Unhandled other-mouse events forward along the responder chain.
+    let container = OtherMouseRecordingView(frame: NSMakeRect(0, 0, 100, 100))
+    let child = NSView(frame: NSMakeRect(0, 0, 50, 50))
+    container.addSubview(child)
+    child.otherMouseDown(with: NSEvent(type: .otherMouseDown, locationInWindow: NSMakePoint(5, 5)))
+    expect(container.otherDownCount == 1, "Other mouse-down did not forward to the next responder.")
+}
+
+func testMenuPerformKeyEquivalentMatchesControlAsCommand() {
+    let menu = NSMenu(title: "Main")
+    let fileItem = NSMenuItem(title: "File", action: nil, keyEquivalent: "")
+    let fileMenu = NSMenu(title: "File")
+    var savedCount = 0
+    let saveItem = NSMenuItem(title: "Save", action: nil, keyEquivalent: "s")
+    saveItem.onAction = { _ in
+        savedCount += 1
+    }
+    fileMenu.addItem(saveItem)
+    fileItem.submenu = fileMenu
+    menu.addItem(fileItem)
+
+    let controlS = NSEvent(type: .keyDown, locationInWindow: NSZeroPoint, keyCode: 0x53, characters: "s", modifierFlags: [.control])
+    expect(menu.performKeyEquivalent(with: controlS), "Control-modified key did not match a .command key equivalent.")
+    expect(savedCount == 1, "Matched key equivalent did not perform the item action.")
+
+    let commandS = NSEvent(type: .keyDown, locationInWindow: NSZeroPoint, keyCode: 0x53, characters: "s", modifierFlags: [.command])
+    expect(menu.performKeyEquivalent(with: commandS), "Command-modified key did not match a .command key equivalent.")
+
+    let controlD = NSEvent(type: .keyDown, locationInWindow: NSZeroPoint, keyCode: 0x44, characters: "d", modifierFlags: [.control])
+    expect(!menu.performKeyEquivalent(with: controlD), "Non-matching character should not perform a key equivalent.")
+
+    let bareS = NSEvent(type: .keyDown, locationInWindow: NSZeroPoint, keyCode: 0x53, characters: "s", modifierFlags: [])
+    expect(!menu.performKeyEquivalent(with: bareS), "Unmodified key should not match a .command key equivalent.")
+    expect(savedCount == 2, "Key equivalent fired for a non-matching event.")
+
+    // Installing a main menu registers the backend key-equivalent handler.
+    let backend = InMemoryNativeControlBackend()
+    let previousBackend = NSApplication.shared.nativeBackend
+    NSApplication.shared.nativeBackend = backend
+    defer {
+        NSApplication.shared.mainMenu = nil
+        NSApplication.shared.nativeBackend = previousBackend
+    }
+
+    NSApplication.shared.mainMenu = menu
+    expect(backend.keyEquivalentHandler?(controlS) == true, "Application main menu did not route backend key equivalents.")
+    expect(savedCount == 3, "Backend key-equivalent handler did not perform the menu action.")
+}
+
+func testMenuPopUpPerformsScriptedContextSelection() {
+    let backend = InMemoryNativeControlBackend()
+    let view = NSView(frame: NSMakeRect(0, 0, 100, 100))
+    _ = view.realizeNativePeer(in: backend, parent: nil)
+
+    var chosenTitle = ""
+    let menu = NSMenu(title: "Context")
+    for title in ["Star", "Wave", "Card"] {
+        let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+        item.onAction = { _ in
+            chosenTitle = title
+        }
+        menu.addItem(item)
+    }
+
+    backend.nextContextMenuSelection = 1
+    expect(menu.popUp(positioning: nil, at: NSMakePoint(10, 10), in: view), "Scripted context selection did not report success.")
+    expect(chosenTitle == "Wave", "Context menu did not perform the scripted item's action.")
+    expect(backend.poppedContextMenus.count == 1, "Context menu pop was not recorded.")
+    expect(backend.poppedContextMenus.first === menu, "Recorded context menu was not the popped menu.")
+
+    backend.nextContextMenuSelection = -1
+    expect(!menu.popUp(positioning: nil, at: NSMakePoint(10, 10), in: view), "Cancelled context menu should report no selection.")
+    expect(backend.poppedContextMenus.count == 2, "Cancelled context menu pop was not recorded.")
+}
+
+func testCursorSetPushPopSyncToBackend() {
+    let backend = InMemoryNativeControlBackend()
+    let previousBackend = NSApplication.shared.nativeBackend
+    NSApplication.shared.nativeBackend = backend
+    defer {
+        NSCursor.arrow.set()
+        NSApplication.shared.nativeBackend = previousBackend
+    }
+
+    NSCursor.iBeam.set()
+    expect(backend.cursorNames.last == "iBeam", "Cursor set did not reach the backend.")
+    expect(NSCursor.current === NSCursor.iBeam, "Cursor set did not update the current cursor.")
+
+    NSCursor.crosshair.push()
+    expect(backend.cursorNames.last == "crosshair", "Cursor push did not reach the backend.")
+    expect(NSCursor.current === NSCursor.crosshair, "Cursor push did not update the current cursor.")
+
+    NSCursor.pop()
+    expect(backend.cursorNames.last == "iBeam", "Cursor pop did not restore the previous cursor.")
+    expect(NSCursor.current === NSCursor.iBeam, "Cursor pop did not update the current cursor.")
+}
+
 func testProgressIndicatorIndeterminateSyncsToBackend() {
     let backend = InMemoryNativeControlBackend()
     let indicator = NSProgressIndicator(frame: NSMakeRect(0, 0, 120, 18))
@@ -3851,6 +4035,339 @@ func testProgressIndicatorIndeterminateSyncsToBackend() {
     indicator.isIndeterminate = false
     indicator.style = .spinning
     expect(backend.progressIndeterminateStates[handle]?.isIndeterminate == true, "Spinning style should render indeterminately on the classic backend.")
+}
+
+final class RecordingTextViewDelegate: NSTextViewDelegate {
+    var changeCount = 0
+    var lastNotificationName = ""
+    var lastObject: AnyObject?
+
+    func textDidChange(_ notification: NSNotification) {
+        changeCount += 1
+        lastNotificationName = notification.name
+        lastObject = notification.object
+    }
+}
+
+func testTextViewSelectionInsertionAndDelegate() {
+    let backend = InMemoryNativeControlBackend()
+    let textView = NSTextView(frame: NSMakeRect(0, 0, 240, 100))
+    let delegate = RecordingTextViewDelegate()
+    textView.delegate = delegate
+    textView.string = "Hello Chocolate"
+    let handle = textView.realizeNativePeer(in: backend, parent: nil)
+
+    expect(backend.records[handle]?.text == "Hello Chocolate", "Text view did not push its string to the native peer.")
+
+    textView.selectedRange = NSMakeRange(6, 9)
+    expect(backend.records[handle]?.textSelectionLocation == 6, "setSelectedRange did not record the selection location.")
+    expect(backend.records[handle]?.textSelectionLength == 9, "setSelectedRange did not record the selection length.")
+    expect(textView.selectedRange == NSMakeRange(6, 9), "selectedRange did not read the native selection back.")
+
+    textView.selectedRange = NSMakeRange(4, 999)
+    expect(textView.selectedRange == NSMakeRange(4, 11), "Native selection did not clamp an oversized length.")
+
+    textView.insertText("World", replacementRange: NSMakeRange(6, 9))
+    expect(backend.records[handle]?.text == "Hello World", "insertText did not replace the range in the native text.")
+    expect(textView.string == "Hello World", "insertText did not update the local string.")
+    expect(textView.selectedRange == NSMakeRange(11, 0), "insertText did not collapse the selection to the inserted end.")
+
+    textView.insertText("!", replacementRange: NSMakeRange(NSNotFound, 0))
+    expect(textView.string == "Hello World!", "NSNotFound replacement range did not insert at the current selection.")
+    expect(backend.records[handle]?.text == "Hello World!", "NSNotFound replacement did not reach the native text.")
+
+    textView.scrollRangeToVisible(NSMakeRange(0, 5))
+    expect(backend.records[handle]?.textSelectionLocation == 0, "scrollRangeToVisible did not move the native selection.")
+    expect(backend.records[handle]?.textSelectionLength == 5, "scrollRangeToVisible did not carry the range length.")
+
+    textView.font = NSFont.systemFont(ofSize: 15)
+    expect(backend.records[handle]?.font?.pointSize == 15, "Text view font did not sync to the native peer.")
+
+    expect(backend.records[handle]?.isTextEditable == true, "Editable text view should realize as editable.")
+    textView.isEditable = false
+    expect(backend.records[handle]?.isTextEditable == false, "isEditable did not sync the native read-only style.")
+
+    backend.textChangeActions[handle]?("Typed text")
+    expect(textView.string == "Typed text", "Native text change did not update the string.")
+    expect(delegate.changeCount == 1, "Native text change did not notify the delegate.")
+    expect(delegate.lastNotificationName == NSTextView.textDidChangeNotification, "textDidChange did not carry the AppKit notification name.")
+    expect(delegate.lastObject === textView, "textDidChange did not carry the text view as the notification object.")
+
+    // A selection made before realization applies when the peer appears.
+    let deferred = NSTextView(frame: NSMakeRect(0, 0, 100, 40))
+    deferred.string = "abcdef"
+    deferred.selectedRange = NSMakeRange(2, 3)
+    let deferredHandle = deferred.realizeNativePeer(in: backend, parent: nil)
+    expect(backend.records[deferredHandle]?.textSelectionLocation == 2, "Stored selection location did not apply on realization.")
+    expect(backend.records[deferredHandle]?.textSelectionLength == 3, "Stored selection length did not apply on realization.")
+}
+
+final class TextContractDocument: NSDocument {
+    var content = ""
+
+    override func data(ofType typeName: String) throws -> Data {
+        Data(Array(content.utf8))
+    }
+
+    override func read(from data: Data, ofType typeName: String) throws {
+        content = String(decoding: data, as: UTF8.self)
+    }
+}
+
+func testDocumentChangeCountAndOverridableDefaults() {
+    let document = NSDocument()
+
+    expect(document.displayName == "Untitled", "Unsaved document did not report the Untitled display name.")
+    expect(!document.isDocumentEdited, "New document should not report edits.")
+
+    document.updateChangeCount(.changeDone)
+    expect(document.isDocumentEdited, "changeDone did not mark the document edited.")
+
+    document.updateChangeCount(.changeCleared)
+    expect(!document.isDocumentEdited, "changeCleared did not clear the edited state.")
+
+    var thrownError: Error?
+    do {
+        _ = try document.data(ofType: "txt")
+    } catch {
+        thrownError = error
+    }
+    expect(thrownError as? NSDocumentError == .unimplemented, "Base data(ofType:) did not throw the unimplemented error.")
+
+    document.fileURL = URL(fileURLWithPath: "C:\\Docs\\Report.txt")
+    expect(document.displayName == "Report.txt", "Saved document did not use the file name as display name.")
+}
+
+func testDocumentSavePanelFlowWritesAndReadsBack() {
+    let backend = InMemoryNativeControlBackend()
+    let previousBackend = NSApplication.shared.nativeBackend
+    NSApplication.shared.nativeBackend = backend
+    defer {
+        NSApplication.shared.nativeBackend = previousBackend
+    }
+
+    let savePath = "C:\\Users\\bobby\\AppData\\Local\\Temp\\winchoc-doc-test.txt"
+    let document = TextContractDocument()
+    document.content = "Chocolate document"
+    document.updateChangeCount(.changeDone)
+    backend.scriptedFileDialogPaths = [[savePath]]
+
+    document.save(nil)
+
+    expect(backend.fileDialogRequests.count == 1, "Saving a URL-less document did not run one save panel.")
+    expect(backend.fileDialogRequests.first?.kind == .save, "Saving did not request a save dialog.")
+    expect(backend.fileDialogRequests.first?.fileName == "Untitled", "Save panel did not seed the name field with the display name.")
+    expect(document.fileURL?.path == savePath, "Save did not adopt the chosen destination URL.")
+    expect(document.lastError == nil, "Save reported an unexpected error.")
+    expect(!document.isDocumentEdited, "Save did not clear the change count.")
+
+    let reader = TextContractDocument()
+    var readError: Error?
+    do {
+        try reader.read(from: URL(fileURLWithPath: savePath), ofType: "txt")
+    } catch {
+        readError = error
+    }
+    expect(readError == nil, "Reading the saved document back failed.")
+    expect(reader.content == "Chocolate document", "Round-tripped document content did not match.")
+    expect(reader.fileURL?.path == savePath, "read(from:ofType:) did not record the file URL.")
+    expect(reader.fileType == "txt", "read(from:ofType:) did not record the file type.")
+
+    // A document with a destination saves without presenting a panel.
+    document.content = "Chocolate document v2"
+    document.updateChangeCount(.changeDone)
+    document.save(nil)
+    expect(backend.fileDialogRequests.count == 1, "Saving a titled document should not run another panel.")
+    expect(!document.isDocumentEdited, "Second save did not clear the change count.")
+
+    let secondReader = TextContractDocument()
+    try? secondReader.read(from: URL(fileURLWithPath: savePath), ofType: "txt")
+    expect(secondReader.content == "Chocolate document v2", "In-place save did not rewrite the file.")
+
+    // saveAs always asks for a destination.
+    backend.scriptedFileDialogPaths = [[savePath]]
+    document.saveAs(nil)
+    expect(backend.fileDialogRequests.count == 2, "saveAs did not force a save panel.")
+}
+
+func testDocumentControllerTracksDocumentsRecentsAndOpen() {
+    let backend = InMemoryNativeControlBackend()
+    let previousBackend = NSApplication.shared.nativeBackend
+    NSApplication.shared.nativeBackend = backend
+    defer {
+        NSApplication.shared.nativeBackend = previousBackend
+    }
+
+    let controller = NSDocumentController()
+    let first = NSDocument()
+    let second = NSDocument()
+
+    controller.addDocument(first)
+    controller.addDocument(second)
+    expect(controller.documents.count == 2, "Controller did not track added documents.")
+    expect(controller.currentDocument === second, "Controller did not make the newest document current.")
+
+    controller.removeDocument(second)
+    expect(controller.documents.count == 1, "Controller did not remove a document.")
+    expect(controller.currentDocument === first, "Controller did not fall back to the remaining document.")
+
+    for index in 1...12 {
+        controller.noteNewRecentDocumentURL(URL(fileURLWithPath: "C:\\Docs\\file-\(index).txt"))
+    }
+    expect(controller.recentDocumentURLs.count == 10, "Recent documents list did not cap at ten entries.")
+    expect(controller.recentDocumentURLs.first?.lastPathComponent == "file-12.txt", "Recent documents were not most-recent first.")
+
+    controller.noteNewRecentDocumentURL(URL(fileURLWithPath: "C:\\Docs\\file-7.txt"))
+    expect(controller.recentDocumentURLs.count == 10, "Re-noting a recent URL should not grow the list.")
+    expect(controller.recentDocumentURLs.first?.lastPathComponent == "file-7.txt", "Re-noted URL did not move to the front.")
+    expect(controller.recentDocumentURLs.filter { $0.lastPathComponent == "file-7.txt" }.count == 1, "Recent documents did not dedupe.")
+
+    // openDocument reads each chosen URL into the configured document class.
+    let openPath = "C:\\Users\\bobby\\AppData\\Local\\Temp\\winchoc-doc-test.txt"
+    let seed = TextContractDocument()
+    seed.content = "Opened content"
+    var seedError: Error?
+    do {
+        try seed.write(to: URL(fileURLWithPath: openPath), ofType: "txt")
+    } catch {
+        seedError = error
+    }
+    expect(seedError == nil, "Seeding the open-document file failed.")
+
+    controller.winDocumentClass = TextContractDocument.self
+    backend.scriptedFileDialogPaths = [[openPath]]
+    controller.openDocument(nil)
+
+    expect(backend.fileDialogRequests.first?.kind == .open, "openDocument did not run an open dialog.")
+    expect(controller.documents.count == 2, "openDocument did not add the opened document.")
+    let opened = controller.currentDocument as? TextContractDocument
+    expect(opened?.content == "Opened content", "openDocument did not read the chosen file.")
+    expect(opened?.fileURL?.path == openPath, "openDocument did not record the opened file URL.")
+    expect(controller.recentDocumentURLs.first?.path == openPath, "openDocument did not note the recent document URL.")
+
+    // Closing a document removes it from the shared controller.
+    let shared = NSDocumentController.shared
+    let closing = NSDocument()
+    shared.addDocument(closing)
+    closing.close()
+    expect(!shared.documents.contains { $0 === closing }, "close() did not remove the document from the shared controller.")
+}
+
+func testColorPanelRunsChooserAndUpdatesColor() {
+    let backend = InMemoryNativeControlBackend()
+    let previousBackend = NSApplication.shared.nativeBackend
+    NSApplication.shared.nativeBackend = backend
+    defer {
+        NSApplication.shared.nativeBackend = previousBackend
+        NSColorPanel.shared.winColorDidChange = nil
+    }
+
+    let panel = NSColorPanel.shared
+    panel.color = .red
+    var changedColors: [NSColor] = []
+    panel.winColorDidChange = { changedColors.append($0) }
+
+    backend.nextColorChooserResult = .blue
+    panel.makeKeyAndOrderFront(nil)
+
+    expect(backend.colorChooserRequests == [.red], "Color chooser was not seeded with the panel color.")
+    expect(panel.color == .blue, "Confirmed chooser color did not update the panel color.")
+    expect(changedColors == [.blue], "Confirmed chooser color did not fire the change closure.")
+
+    // A cancelled chooser leaves the panel untouched.
+    backend.nextColorChooserResult = nil
+    panel.makeKeyAndOrderFront(nil)
+
+    expect(backend.colorChooserRequests.count == 2, "Second presentation did not run the chooser again.")
+    expect(panel.color == .blue, "Cancelled chooser changed the panel color.")
+    expect(changedColors.count == 1, "Cancelled chooser fired the change closure.")
+
+    // An active color well is seeded into and updated from the panel.
+    let colorWell = NSColorWell(frame: NSMakeRect(0, 0, 32, 24))
+    colorWell.color = .green
+    colorWell.activate(true)
+    expect(panel.color == .green, "Activating a color well did not seed the panel color.")
+
+    backend.nextColorChooserResult = .white
+    panel.makeKeyAndOrderFront(nil)
+    expect(colorWell.color == .white, "Chooser result did not flow into the active color well.")
+    colorWell.deactivate()
+
+    backend.nextColorChooserResult = .black
+    panel.makeKeyAndOrderFront(nil)
+    expect(colorWell.color == .white, "Deactivated color well still received panel colors.")
+}
+
+func testFontPanelAndManagerRunChooserAndUpdateSelection() {
+    let backend = InMemoryNativeControlBackend()
+    let previousBackend = NSApplication.shared.nativeBackend
+    NSApplication.shared.nativeBackend = backend
+    defer {
+        NSApplication.shared.nativeBackend = previousBackend
+        NSFontManager.shared.winFontDidChange = nil
+        NSFontPanel.shared.winFontDidChange = nil
+    }
+
+    let manager = NSFontManager.shared
+    let seedFont = NSFont(name: "Georgia", size: 14)
+    manager.setSelectedFont(seedFont, isMultiple: false)
+    expect(NSFontPanel.shared.winSelectedFont == seedFont, "setSelectedFont did not seed the shared font panel.")
+
+    var changedFonts: [NSFont] = []
+    manager.winFontDidChange = { changedFonts.append($0) }
+
+    let chosenFont = NSFont(name: "Consolas", size: 11, weight: .bold)
+    backend.nextFontChooserResult = chosenFont
+    manager.orderFrontFontPanel(nil)
+
+    expect(backend.fontChooserRequests == [seedFont], "Font chooser was not seeded with the selected font.")
+    expect(manager.selectedFont == chosenFont, "Confirmed chooser font did not update the manager selection.")
+    expect(NSFontPanel.shared.winSelectedFont == chosenFont, "Confirmed chooser font did not update the panel selection.")
+    expect(changedFonts == [chosenFont], "Confirmed chooser font did not fire the change closure.")
+
+    // A cancelled chooser leaves the selection untouched.
+    backend.nextFontChooserResult = nil
+    manager.orderFrontFontPanel(nil)
+
+    expect(backend.fontChooserRequests.count == 2, "Second presentation did not run the chooser again.")
+    expect(manager.selectedFont == chosenFont, "Cancelled chooser changed the manager selection.")
+    expect(changedFonts.count == 1, "Cancelled chooser fired the change closure.")
+}
+
+final class RealizationRecordingView: NSView {
+    var didRealize = false
+
+    override func realizeNativePeer(in backend: NativeControlBackend, parent: NativeHandle?) -> NativeHandle {
+        didRealize = true
+        return super.realizeNativePeer(in: backend, parent: parent)
+    }
+}
+
+func testAlertAccessoryViewJoinsComposedPanel() {
+    let backend = InMemoryNativeControlBackend()
+    let previousBackend = NSApplication.shared.nativeBackend
+    NSApplication.shared.nativeBackend = backend
+    defer {
+        NSApplication.shared.nativeBackend = previousBackend
+        clearApplicationWindows()
+    }
+
+    let alert = NSAlert()
+    alert.messageText = "Accessory host"
+    alert.addButton(withTitle: "OK")
+    let accessory = RealizationRecordingView(frame: NSMakeRect(0, 0, 200, 30))
+    alert.accessoryView = accessory
+    backend.nextModalResponseCode = NSApplication.ModalResponse.alertFirstButtonReturn.rawValue
+
+    let response = alert.runModal()
+
+    expect(response == .alertFirstButtonReturn, "Accessory alert did not return the scripted button response.")
+    expect(backend.modalSessions.count == 1, "Accessory alert did not run exactly one modal session.")
+    // The panel and its content view deallocate when runModal returns, so the
+    // weak superview link cannot be asserted here; realization proves the
+    // accessory joined the composed panel hierarchy.
+    expect(accessory.didRealize, "Accessory view was never realized into the composed panel.")
+    expect(accessory.frame.origin.x == 80, "Accessory view was not indented to the alert text column.")
 }
 
 testWindowRealizationCreatesNativeHierarchy()
@@ -3980,9 +4497,22 @@ testSavePanelCancelReturnsCancelAndClearsURL()
 testOpenPanelSupportsMultipleSelectionAndDirectories()
 testOpenPanelBeginInvokesCompletionHandler()
 testViewDrawDispatchesPathsToBackendContext()
+testViewDrawDispatchesTextAndImagesToBackendContext()
+testAttributedStringStoresStringAndAttributes()
 testRightMouseScrollAndClickCountReachTheView()
 testAlertCustomButtonsRunComposedModalPanel()
 testRunModalReturnsScriptedStopCode()
 testProgressIndicatorIndeterminateSyncsToBackend()
+testOtherMouseButtonsReachTheView()
+testMenuPerformKeyEquivalentMatchesControlAsCommand()
+testMenuPopUpPerformsScriptedContextSelection()
+testCursorSetPushPopSyncToBackend()
+testTextViewSelectionInsertionAndDelegate()
+testDocumentChangeCountAndOverridableDefaults()
+testDocumentSavePanelFlowWritesAndReadsBack()
+testDocumentControllerTracksDocumentsRecentsAndOpen()
+testColorPanelRunsChooserAndUpdatesColor()
+testFontPanelAndManagerRunChooserAndUpdateSelection()
+testAlertAccessoryViewJoinsComposedPanel()
 
 print("WinChocolate contract tests passed.")

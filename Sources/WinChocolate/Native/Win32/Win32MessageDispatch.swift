@@ -58,6 +58,13 @@ extension Win32NativeControlBackend {
             action()
             return 0
         case wmKeyDown, wmSysKeyDown:
+            // Menu key equivalents win over view key routing, matching the
+            // AppKit ordering where the main menu sees Cmd-key events first.
+            if let keyEquivalentHandler, currentModifierFlags().contains(.control),
+               keyEquivalentHandler(keyEvent(type: .keyDown, wParam: wParam)) {
+                return 0
+            }
+
             guard let hwnd, let action = keyDownActions[nativeHandle(from: hwnd).rawValue] else {
                 return nil
             }
@@ -131,6 +138,32 @@ extension Win32NativeControlBackend {
 
             action(NSEvent(type: .rightMouseUp, locationInWindow: mouseLocation(from: lParam, in: hwnd), modifierFlags: currentModifierFlags()))
             return 0
+        case wmMButtonDown:
+            guard let hwnd, let action = otherMouseDownActions[nativeHandle(from: hwnd).rawValue] else {
+                return nil
+            }
+
+            _ = winSetFocus(hwnd)
+            action(NSEvent(type: .otherMouseDown, locationInWindow: mouseLocation(from: lParam, in: hwnd), modifierFlags: currentModifierFlags()))
+            return 0
+        case wmMButtonUp:
+            guard let hwnd, let action = otherMouseUpActions[nativeHandle(from: hwnd).rawValue] else {
+                return nil
+            }
+
+            action(NSEvent(type: .otherMouseUp, locationInWindow: mouseLocation(from: lParam, in: hwnd), modifierFlags: currentModifierFlags()))
+            return 0
+        case wmSetCursor:
+            // A framework cursor replaces the class arrow inside the client
+            // area only; the non-client frame keeps the system cursor.
+            guard (lParam & 0xffff) == htClient,
+                  let cursorName = activeCursorName,
+                  cursorName != "arrow" else {
+                return nil
+            }
+
+            _ = winSetCursor(systemCursor(named: cursorName))
+            return 1
         case wmMouseWheel:
             // The wheel message goes to the focused window; deliver it to the
             // view under the cursor, matching AppKit's scroll routing.

@@ -144,6 +144,12 @@ public protocol NativeDrawingContext: AnyObject {
 
     /// Strokes a path with a color and line width.
     func strokePath(_ segments: [NativePathSegment], color: NSColor, lineWidth: CGFloat)
+
+    /// Draws a single-line text run with its top-left corner at a point.
+    func drawText(_ text: String, at point: NSPoint, color: NSColor, fontName: String, fontSize: CGFloat, bold: Bool)
+
+    /// Draws an image file scaled to fill a rectangle.
+    func drawImage(atPath path: String, in rect: NSRect)
 }
 
 /// Native control creation and lifetime boundary.
@@ -265,6 +271,20 @@ public protocol NativeControlBackend: AnyObject {
 
     /// Updates the visible text for a native control.
     func setText(_ text: String, for handle: NativeHandle)
+
+    /// Reads the native text selection of an edit control in UTF-16 units.
+    func textSelection(for handle: NativeHandle) -> (location: Int, length: Int)
+
+    /// Updates the native text selection of an edit control and scrolls the
+    /// caret into view.
+    func setTextSelection(location: Int, length: Int, for handle: NativeHandle)
+
+    /// Replaces the selected native text of an edit control as an undoable edit.
+    func replaceSelectedText(_ text: String, for handle: NativeHandle)
+
+    /// Updates whether a native edit control accepts keyboard editing while
+    /// still allowing selection and scrolling.
+    func setTextEditable(_ isEditable: Bool, for handle: NativeHandle)
 
     /// Updates the native frame for a window or control.
     func setFrame(_ frame: NSRect, for handle: NativeHandle)
@@ -404,6 +424,12 @@ public protocol NativeControlBackend: AnyObject {
     /// Registers the action to perform when a native view receives a right mouse-up event.
     func registerRightMouseUpAction(for handle: NativeHandle, action: @escaping (NSEvent) -> Void)
 
+    /// Registers the action to perform when a native view receives a tertiary mouse-down event.
+    func registerOtherMouseDownAction(for handle: NativeHandle, action: @escaping (NSEvent) -> Void)
+
+    /// Registers the action to perform when a native view receives a tertiary mouse-up event.
+    func registerOtherMouseUpAction(for handle: NativeHandle, action: @escaping (NSEvent) -> Void)
+
     /// Registers the action to perform when a native view receives a scroll-wheel event.
     func registerScrollWheelAction(for handle: NativeHandle, action: @escaping (NSEvent) -> Void)
 
@@ -428,6 +454,12 @@ public protocol NativeControlBackend: AnyObject {
     /// Runs a native modal file dialog, returning chosen paths or `nil` on cancel.
     func runFileDialog(_ options: NativeFileDialogOptions) -> [String]?
 
+    /// Runs a native modal color chooser, returning the chosen color or `nil` on cancel.
+    func runColorChooser(initialColor: NSColor) -> NSColor?
+
+    /// Runs a native modal font chooser, returning the chosen font or `nil` on cancel.
+    func runFontChooser(initialFont: NSFont?) -> NSFont?
+
     /// Runs a nested modal event loop for a window, returning the stop code.
     func runModal(for handle: NativeHandle) -> Int
 
@@ -436,4 +468,13 @@ public protocol NativeControlBackend: AnyObject {
 
     /// Updates whether a native progress indicator animates indeterminately.
     func setProgressIndicatorIndeterminate(_ isIndeterminate: Bool, animating: Bool, for handle: NativeHandle)
+
+    /// Makes the named framework cursor the active pointer image.
+    func setCursor(named name: String)
+
+    /// Registers the handler consulted for menu key equivalents before key-down routing.
+    func registerKeyEquivalentHandler(_ handler: @escaping (NSEvent) -> Bool)
+
+    /// Runs a context menu at a screen point, returning the performed item or `nil` on cancel.
+    func runContextMenu(_ menu: NSMenu, atScreenPoint point: NSPoint) -> NSMenuItem?
 }
