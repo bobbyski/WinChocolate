@@ -101,8 +101,19 @@ open class NSView: NSResponder {
     /// Backend that created the native peer, if realized.
     public private(set) weak var realizedBackend: NativeControlBackend?
 
-    /// Indicates whether the view needs display.
-    public private(set) var needsDisplay = false
+    /// Whether the view needs a redraw on the next paint pass.
+    ///
+    /// Setting `true` invalidates the realized native peer; the flag clears
+    /// when the native paint pass calls `draw(_:)`.
+    open var needsDisplay = false {
+        didSet {
+            guard needsDisplay, let nativeHandle else {
+                return
+            }
+
+            realizedBackend?.invalidateControl(nativeHandle)
+        }
+    }
 
     /// Whether the view is hidden from display.
     open var isHidden: Bool = false {
@@ -327,6 +338,25 @@ open class NSView: NSResponder {
         backend.registerKeyUpAction(for: handle) { [weak self] event in
             self?.keyUp(with: event)
         }
+        backend.registerRightMouseDownAction(for: handle) { [weak self] event in
+            self?.rightMouseDown(with: event)
+        }
+        backend.registerRightMouseUpAction(for: handle) { [weak self] event in
+            self?.rightMouseUp(with: event)
+        }
+        backend.registerScrollWheelAction(for: handle) { [weak self] event in
+            self?.scrollWheel(with: event)
+        }
+        backend.registerDrawAction(for: handle) { [weak self] nativeContext, dirtyRect in
+            guard let self else {
+                return
+            }
+
+            self.needsDisplay = false
+            NSGraphicsContext(nativeContext: nativeContext).asCurrent {
+                self.draw(dirtyRect)
+            }
+        }
 
         for subview in subviews {
             subview.realizeNativePeer(in: backend, parent: handle)
@@ -334,6 +364,16 @@ open class NSView: NSResponder {
 
         return handle
     }
+
+    /// Draws the view's custom content.
+    ///
+    /// Called during a native paint pass with `NSGraphicsContext.current`
+    /// installed, after the view's `backgroundColor` has been painted.
+    /// Subclasses override this and draw with `NSBezierPath`, `NSColor`, and
+    /// `NSRectFill`; the base implementation draws nothing.
+    open func draw(_ dirtyRect: NSRect) {
+    }
+
 
     /// Creates the native peer for this specific view type.
     open func createNativePeer(in backend: NativeControlBackend, parent: NativeHandle?) -> NativeHandle {

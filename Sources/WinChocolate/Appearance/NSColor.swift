@@ -68,6 +68,22 @@ public struct NSColor: Equatable, Sendable {
         NSColor(calibratedRed: 0, green: 0, blue: 1, alpha: 1)
     }
 
+    /// Sets this color as both the fill and stroke color of the current context.
+    public func set() {
+        NSGraphicsContext.current?.fillColor = self
+        NSGraphicsContext.current?.strokeColor = self
+    }
+
+    /// Sets this color as the fill color of the current context.
+    public func setFill() {
+        NSGraphicsContext.current?.fillColor = self
+    }
+
+    /// Sets this color as the stroke color of the current context.
+    public func setStroke() {
+        NSGraphicsContext.current?.strokeColor = self
+    }
+
     private static func clamp(_ value: CGFloat) -> CGFloat {
         min(max(value, 0), 1)
     }

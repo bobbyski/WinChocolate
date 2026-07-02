@@ -17,6 +17,10 @@ public final class Win32NativeControlBackend: NativeControlBackend {
     var mouseUpActions: [UInt: (NSEvent) -> Void] = [:]
     var mouseMovedActions: [UInt: (NSEvent) -> Void] = [:]
     var mouseDraggedActions: [UInt: (NSEvent) -> Void] = [:]
+    var rightMouseDownActions: [UInt: (NSEvent) -> Void] = [:]
+    var rightMouseUpActions: [UInt: (NSEvent) -> Void] = [:]
+    var scrollWheelActions: [UInt: (NSEvent) -> Void] = [:]
+    var drawActions: [UInt: (NativeDrawingContext, NSRect) -> Void] = [:]
     var keyDownActions: [UInt: (NSEvent) -> Void] = [:]
     var keyUpActions: [UInt: (NSEvent) -> Void] = [:]
     var windowCloseActions: [UInt: () -> Void] = [:]
@@ -134,7 +138,7 @@ public final class Win32NativeControlBackend: NativeControlBackend {
 
         withWideString(winChocolateWindowClassName) { className in
             var windowClass = WNDCLASSW()
-            windowClass.style = csHRedraw | csVRedraw
+            windowClass.style = csHRedraw | csVRedraw | csDblClks
             windowClass.lpfnWndProc = winChocolateWindowProcedure
             windowClass.hInstance = winGetModuleHandleW(nil)
             windowClass.hCursor = winLoadCursorW(nil, systemResourcePointer(32_512))
@@ -159,7 +163,7 @@ public final class Win32NativeControlBackend: NativeControlBackend {
 
         withWideString(winChocolateViewClassName) { className in
             var windowClass = WNDCLASSW()
-            windowClass.style = csHRedraw | csVRedraw
+            windowClass.style = csHRedraw | csVRedraw | csDblClks
             windowClass.lpfnWndProc = winChocolateWindowProcedure
             windowClass.hInstance = winGetModuleHandleW(nil)
             windowClass.hCursor = winLoadCursorW(nil, systemResourcePointer(32_512))

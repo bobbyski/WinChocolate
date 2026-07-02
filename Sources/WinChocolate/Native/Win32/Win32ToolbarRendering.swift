@@ -72,6 +72,18 @@ extension Win32NativeControlBackend {
             fillRect(rectangle, color: inheritedBackgroundColor(behind: hwnd), deviceContext: deviceContext)
         }
 
+        // Custom content drawn through `NSView.draw(_:)` paints above the
+        // background and below any composed toolbar glyphs.
+        if let drawAction = drawActions[handle.rawValue] {
+            let dirtyRect = NSMakeRect(
+                0,
+                0,
+                CGFloat(max(0, rectangle.right - rectangle.left)),
+                CGFloat(max(0, rectangle.bottom - rectangle.top))
+            )
+            drawAction(Win32DrawingContext(deviceContext: deviceContext), dirtyRect)
+        }
+
         let preview = toolbarPreview(from: text(from: hwnd))
         guard preview.showItem || preview.showLabel else {
             return

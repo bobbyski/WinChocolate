@@ -105,6 +105,53 @@ extension Win32NativeControlBackend {
             action(NSEvent(type: .leftMouseUp, locationInWindow: mouseLocation(from: lParam, in: hwnd), modifierFlags: currentModifierFlags()))
             _ = winReleaseCapture()
             return 0
+        case wmLButtonDblClk:
+            // CS_DBLCLKS turns the second press of a double-click into this
+            // message; deliver it as a mouse-down with a click count of two.
+            guard let hwnd, let action = mouseDownActions[nativeHandle(from: hwnd).rawValue] else {
+                return nil
+            }
+
+            _ = winSetCapture(hwnd)
+            _ = winSetFocus(hwnd)
+            action(NSEvent(type: .leftMouseDown, locationInWindow: mouseLocation(from: lParam, in: hwnd), modifierFlags: currentModifierFlags(), clickCount: 2))
+            return 0
+        case wmRButtonDown:
+            guard let hwnd, let action = rightMouseDownActions[nativeHandle(from: hwnd).rawValue] else {
+                return nil
+            }
+
+            _ = winSetFocus(hwnd)
+            action(NSEvent(type: .rightMouseDown, locationInWindow: mouseLocation(from: lParam, in: hwnd), modifierFlags: currentModifierFlags()))
+            return 0
+        case wmRButtonUp:
+            guard let hwnd, let action = rightMouseUpActions[nativeHandle(from: hwnd).rawValue] else {
+                return nil
+            }
+
+            action(NSEvent(type: .rightMouseUp, locationInWindow: mouseLocation(from: lParam, in: hwnd), modifierFlags: currentModifierFlags()))
+            return 0
+        case wmMouseWheel:
+            // The wheel message goes to the focused window; deliver it to the
+            // view under the cursor, matching AppKit's scroll routing.
+            let screenPoint = POINT(x: Int32(lParam & 0xffff), y: Int32((lParam >> 16) & 0xffff))
+            let wheelDelta = Int16(truncatingIfNeeded: Int32((wParam >> 16) & 0xffff))
+            guard let target = winWindowFromPoint(screenPoint),
+                  let action = scrollWheelActions[nativeHandle(from: target).rawValue] else {
+                return nil
+            }
+
+            var clientPoint = screenPoint
+            if let rootWindow = rootWindow(for: target) {
+                _ = winScreenToClient(rootWindow, &clientPoint)
+            }
+            action(NSEvent(
+                type: .scrollWheel,
+                locationInWindow: NSMakePoint(CGFloat(clientPoint.x), CGFloat(clientPoint.y)),
+                modifierFlags: currentModifierFlags(),
+                scrollingDeltaY: CGFloat(wheelDelta) / 120
+            ))
+            return 0
         case wmPaint:
             guard let hwnd else {
                 return nil

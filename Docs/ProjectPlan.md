@@ -17,12 +17,12 @@ This plan is the high-level project tracker. `CONTROL_PARITY.md` remains the det
 ## Dashboard
 
 ```text
-Overall Progress                           ███████████░░░░░░░░░░░░░░░░░░░░░   33%  (per-item estimate)
+Overall Progress                           ███████████░░░░░░░░░░░░░░░░░░░░░   34%  (per-item estimate)
 
 Phase 1 · Package, Core Names, App Shell   ██████████████████████████  100%  ✅ Complete
 Phase 2 · Classic Win32 Backend            ██████████████████████████  100%  ✅ Complete
-Phase 3 · AppKit Surface Expansion         ████████░░░░░░░░░░░░░░░░░░   30%  🔄 In Progress
-Phase 4 · Demo Harness                     ████████████████████░░░░░░   78%  🔄 In Progress
+Phase 3 · AppKit Surface Expansion         ██████████░░░░░░░░░░░░░░░░   38%  🔄 In Progress
+Phase 4 · Demo Harness                     █████████████████████░░░░░   80%  🔄 In Progress
 Phase 5 · Tables, Lists, Collections       █████░░░░░░░░░░░░░░░░░░░░░   21%  🔄 In Progress
 Phase 6 · Toolbar API Parity               █████████░░░░░░░░░░░░░░░░░   34%  🔄 In Progress
 Phase 7 · WinFoundation Bridge             █████░░░░░░░░░░░░░░░░░░░░░   18%  🔄 In Progress
@@ -42,7 +42,7 @@ Phase 11 · Cross-Platform Test Apps        ░░░░░░░░░░░░
 
 | Priority | Area | Task | Status | Notes |
 |---:|---|---|---|---|
-| 1 | Demo and controls | Keep moving through the next control surface. | 🔄 In Progress | Latest surface: `NSSavePanel`/`NSOpenPanel`. Strong next candidates: custom drawing (3.5) and event depth (3.6), both prerequisites for Phase 11 apps. |
+| 1 | Demo and controls | Keep moving through the next control surface. | 🔄 In Progress | Latest surface: custom drawing (3.5) and event depth (3.6). Strong next candidates: `NSDocument` (3.9), `NSTextView` depth (3.11), and `Timer` (7.6) to unblock the Phase 11 apps. |
 | 2 | Contracts | Add focused tests whenever a framework behavior becomes real, especially for controls that demos depend on. | 🔄 In Progress | Recent examples: save/open panels, toolbar customization, resize propagation. |
 | 3 | Documentation | Keep `CONTROL_PARITY.md` and this plan synchronized when a surface moves from placeholder to working. | 🔄 In Progress | Update item estimates after meaningful feature batches and recompute phase percentages. |
 
@@ -75,7 +75,7 @@ Keep the classic backend real, testable, and available as a stable presentation 
 
 ---
 
-## Phase 3 — AppKit Surface Expansion 🔄 30%
+## Phase 3 — AppKit Surface Expansion 🔄 38%
 
 Broaden source-compatible AppKit-style APIs while keeping mechanics hidden behind the framework. Items 3.5, 3.6, 3.9, and 3.11 are prerequisites for the Phase 11 cross-platform apps.
 
@@ -85,8 +85,8 @@ Broaden source-compatible AppKit-style APIs while keeping mechanics hidden behin
 | 3.2 | Windows, panels, popovers, alerts | 🔄 In Progress | ~65% — `NSSavePanel`/`NSOpenPanel` run native comdlg32/shell dialogs with modal-response, file-type, multi-select, and folder-choose support. Richer chrome, sheets, and modal sessions remain. |
 | 3.3 | View composition | 🔄 In Progress | ~60% — scroll/clip/split/visual-effect slices exist; split-divider dragging and scroll depth remain. |
 | 3.4 | Source compatibility gaps | 🔄 In Progress | ~20% — continue filling AppKit names as demo and ports need them; ongoing by nature. |
-| 3.5 | Custom drawing | ⏳ Pending | `NSView.draw(_:)` override path with a real graphics context, `NSBezierPath`, `NSColor` set/fill/stroke, `NSGraphicsContext`, `NSImage.draw`. Required by Minesweeper and the text editor (Phase 11). |
-| 3.6 | Event and responder depth | 🔄 In Progress | ~30% — left mouse, key, and drag events exist. Missing: right/middle mouse, `clickCount` double-click detection, scroll-wheel events, `NSCursor`, key equivalents / `performKeyEquivalent`. |
+| 3.5 | Custom drawing | 🔄 In Progress | ~70% — `NSView.draw(_:)` runs during native paint with `NSGraphicsContext.current` installed; `NSBezierPath` (move/line/curve/close, rect/oval/rounded conveniences), `NSColor` set/fill/stroke, `NSRectFill`/`NSFrameRect`, and `needsDisplay` render through GDI paths. Missing: `NSImage.draw`, text drawing, gradients, clipping. |
+| 3.6 | Event and responder depth | 🔄 In Progress | ~60% — right mouse down/up, double-click `clickCount` (CS_DBLCLKS), and scroll-wheel events route to responders under the cursor. Missing: middle mouse, `NSCursor`, key equivalents / `performKeyEquivalent`. |
 | 3.7 | `NSAlert` custom dialog | 🔄 In Progress | ~20% — `MessageBoxW` slice honors button count/styles. Custom button titles, suppression checkbox, and accessory views need a real dialog backend (TaskDialogIndirect or composed panel). |
 | 3.8 | Standard panels | ⏳ Pending | `NSFontPanel`, `NSColorPanel`, `NSFontManager` shared instances over the classic font/color dialogs. |
 | 3.9 | `NSDocument` architecture | ⏳ Pending | Document lifecycle, dirty tracking, `NSDocumentController`, recent documents. Required by the text editor and Notes apps (Phase 11). |
@@ -107,7 +107,7 @@ Use the demo as a visual smoke test and workflow exerciser.
 | 4.2 | Page selector | ✅ Done | Moved to toolbar as a custom toolbar item. |
 | 4.3 | Table/media/value pages | 🔄 In Progress | ~70% — good coverage, but should keep evolving with new controls. |
 | 4.4 | Visual QA | 🔄 In Progress | ~70% — manual screenshots remain useful for layout and toolbar work. |
-| 4.5 | Coverage for new surfaces | 🔄 In Progress | ~50% — save/open panels and toolbar customization are wired; add pages/buttons as 3.5-3.13 surfaces land. |
+| 4.5 | Coverage for new surfaces | 🔄 In Progress | ~60% — save/open panels, toolbar customization, and the Drawing page (canvas + paths gallery, View menu entries) are wired; keep adding coverage as 3.7-3.13 surfaces land. |
 
 ---
 

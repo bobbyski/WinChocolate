@@ -266,6 +266,39 @@ func winCreatePopupMenu() -> HMENU?
 @_silgen_name("CreateSolidBrush")
 func winCreateSolidBrush(_ color: DWORD) -> HBRUSH?
 
+@_silgen_name("CreatePen")
+func winCreatePen(_ style: Int32, _ width: Int32, _ color: DWORD) -> HGDIOBJ?
+
+@_silgen_name("BeginPath")
+func winBeginPath(_ deviceContext: HDC?) -> Int32
+
+@_silgen_name("EndPath")
+func winEndPath(_ deviceContext: HDC?) -> Int32
+
+@_silgen_name("FillPath")
+func winFillPath(_ deviceContext: HDC?) -> Int32
+
+@_silgen_name("StrokePath")
+func winStrokePath(_ deviceContext: HDC?) -> Int32
+
+@_silgen_name("CloseFigure")
+func winCloseFigure(_ deviceContext: HDC?) -> Int32
+
+@_silgen_name("MoveToEx")
+func winMoveToEx(_ deviceContext: HDC?, _ x: Int32, _ y: Int32, _ previousPoint: UnsafeMutablePointer<POINT>?) -> Int32
+
+@_silgen_name("LineTo")
+func winLineTo(_ deviceContext: HDC?, _ x: Int32, _ y: Int32) -> Int32
+
+@_silgen_name("PolyBezierTo")
+func winPolyBezierTo(_ deviceContext: HDC?, _ points: UnsafePointer<POINT>?, _ count: DWORD) -> Int32
+
+@_silgen_name("SetPolyFillMode")
+func winSetPolyFillMode(_ deviceContext: HDC?, _ mode: Int32) -> Int32
+
+@_silgen_name("WindowFromPoint")
+func winWindowFromPoint(_ point: POINT) -> HWND?
+
 @_silgen_name("CreateFontW")
 func winCreateFontW(
     _ height: Int32,
@@ -563,7 +596,14 @@ let wmGetDlgCode: UINT = 0x0087
 let wmMouseMove: UINT = 0x0200
 let wmLButtonDown: UINT = 0x0201
 let wmLButtonUp: UINT = 0x0202
+let wmLButtonDblClk: UINT = 0x0203
+let wmRButtonDown: UINT = 0x0204
+let wmRButtonUp: UINT = 0x0205
+let wmMouseWheel: UINT = 0x020a
 let mkLButton: WPARAM = 0x0001
+let csDblClks: UINT = 0x0008
+let psSolid: Int32 = 0
+let windingFillMode: Int32 = 2
 let transparentBkMode: Int32 = 1
 let dtCenter: UINT = 0x00000001
 let dtVCenter: UINT = 0x00000004

@@ -59,6 +59,136 @@ final class DemoPageView: NSView {
     }
 }
 
+final class DemoCanvasView: NSView {
+    static let palette: [NSColor] = [
+        NSColor(calibratedRed: 0.86, green: 0.29, blue: 0.25, alpha: 1),
+        NSColor(calibratedRed: 0.30, green: 0.62, blue: 0.86, alpha: 1),
+        NSColor(calibratedRed: 0.22, green: 0.60, blue: 0.35, alpha: 1),
+        NSColor(calibratedRed: 0.94, green: 0.72, blue: 0.25, alpha: 1)
+    ]
+
+    var fillColorIndex = 0
+    var strokeColorIndex = 1
+    var radius: CGFloat = 36
+    var onEvent: ((String) -> Void)?
+
+    override var acceptsFirstResponder: Bool {
+        false
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        let inset = NSMakeRect(4, 4, frame.size.width - 8, frame.size.height - 8)
+        NSColor(calibratedRed: 0.98, green: 0.98, blue: 0.96, alpha: 1).setFill()
+        let backdrop = NSBezierPath(roundedRect: inset, xRadius: 10, yRadius: 10)
+        backdrop.fill()
+        NSColor(calibratedRed: 0.55, green: 0.55, blue: 0.55, alpha: 1).setStroke()
+        backdrop.stroke()
+
+        Self.palette[strokeColorIndex].setStroke()
+        let cross = NSBezierPath()
+        cross.move(to: NSMakePoint(inset.origin.x + 10, inset.origin.y + 10))
+        cross.line(to: NSMakePoint(NSMaxX(inset) - 10, NSMaxY(inset) - 10))
+        cross.move(to: NSMakePoint(NSMaxX(inset) - 10, inset.origin.y + 10))
+        cross.line(to: NSMakePoint(inset.origin.x + 10, NSMaxY(inset) - 10))
+        cross.lineWidth = 2
+        cross.stroke()
+
+        Self.palette[fillColorIndex].setFill()
+        let circle = NSBezierPath(ovalIn: NSMakeRect(
+            NSMidX(inset) - radius,
+            NSMidY(inset) - radius,
+            radius * 2,
+            radius * 2
+        ))
+        circle.fill()
+        Self.palette[strokeColorIndex].setStroke()
+        circle.lineWidth = 3
+        circle.stroke()
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        if event.clickCount > 1 {
+            fillColorIndex = 0
+            strokeColorIndex = 1
+            radius = 36
+            onEvent?("Canvas reset (double-click)")
+        } else {
+            fillColorIndex = (fillColorIndex + 1) % Self.palette.count
+            onEvent?("Canvas fill color (click)")
+        }
+        needsDisplay = true
+    }
+
+    override func rightMouseDown(with event: NSEvent) {
+        strokeColorIndex = (strokeColorIndex + 1) % Self.palette.count
+        onEvent?("Canvas stroke color (right-click)")
+        needsDisplay = true
+    }
+
+    override func scrollWheel(with event: NSEvent) {
+        radius = min(max(radius + event.scrollingDeltaY * 4, 16), 110)
+        onEvent?("Canvas radius (scroll)")
+        needsDisplay = true
+    }
+}
+
+final class DemoShapesView: NSView {
+    override var acceptsFirstResponder: Bool {
+        false
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        NSColor.white.setFill()
+        NSRectFill(NSMakeRect(0, 0, frame.size.width, frame.size.height))
+        NSColor(calibratedRed: 0.55, green: 0.55, blue: 0.55, alpha: 1).setFill()
+        NSFrameRect(NSMakeRect(0, 0, frame.size.width, frame.size.height))
+
+        // Five-point star built from explicit line segments.
+        let star = NSBezierPath()
+        star.move(to: NSMakePoint(100, 75))
+        star.line(to: NSMakePoint(118.8, 124.1))
+        star.line(to: NSMakePoint(171.3, 126.8))
+        star.line(to: NSMakePoint(130.4, 159.9))
+        star.line(to: NSMakePoint(144.1, 210.7))
+        star.line(to: NSMakePoint(100, 182))
+        star.line(to: NSMakePoint(55.9, 210.7))
+        star.line(to: NSMakePoint(69.6, 159.9))
+        star.line(to: NSMakePoint(28.7, 126.8))
+        star.line(to: NSMakePoint(81.2, 124.1))
+        star.close()
+        NSColor(calibratedRed: 0.94, green: 0.72, blue: 0.25, alpha: 1).setFill()
+        star.fill()
+        NSColor(calibratedRed: 0.61, green: 0.43, blue: 0.16, alpha: 1).setStroke()
+        star.lineWidth = 2
+        star.stroke()
+
+        // S-curve demonstrating cubic Bezier stroking.
+        let wave = NSBezierPath()
+        wave.move(to: NSMakePoint(210, 90))
+        wave.curve(
+            to: NSMakePoint(400, 120),
+            controlPoint1: NSMakePoint(270, 20),
+            controlPoint2: NSMakePoint(340, 200)
+        )
+        wave.lineWidth = 3
+        NSColor(calibratedRed: 0.30, green: 0.62, blue: 0.86, alpha: 1).setStroke()
+        wave.stroke()
+
+        // Rounded rectangle with fill and outline.
+        let card = NSBezierPath(roundedRect: NSMakeRect(230, 150, 160, 90), xRadius: 14, yRadius: 14)
+        NSColor(calibratedRed: 0.22, green: 0.60, blue: 0.35, alpha: 1).setFill()
+        card.fill()
+        NSColor(calibratedRed: 0.10, green: 0.35, blue: 0.18, alpha: 1).setStroke()
+        card.lineWidth = 2
+        card.stroke()
+
+        // Concentric ovals demonstrating curve fills.
+        let ring = NSBezierPath(ovalIn: NSMakeRect(60, 228, 44, 30))
+        NSColor(calibratedRed: 0.86, green: 0.29, blue: 0.25, alpha: 1).setFill()
+        ring.fill()
+    }
+}
+
 final class DemoTableDataSource: NSTableViewDataSource {
     var rows: [[String]] = [
         ["NSApplication", "Running"],
@@ -232,8 +362,10 @@ let contentView = DemoContentView(frame: NSMakeRect(0, 0, 1120, 760))
 let controlsPage = DemoPageView(frame: NSMakeRect(0, 144, 1120, 560))
 let valuesPage = DemoPageView(frame: NSMakeRect(0, 144, 1120, 560))
 let tablesPage = DemoPageView(frame: NSMakeRect(0, 144, 1120, 560))
+let drawingPage = DemoPageView(frame: NSMakeRect(0, 144, 1120, 560))
 valuesPage.isHidden = true
 tablesPage.isHidden = true
+drawingPage.isHidden = true
 let counterLabel = NSTextField(string: "Clicks: 0", frame: NSMakeRect(32, 36, 300, 24))
 let statusLabel = NSTextField(string: "Ready", frame: NSMakeRect(32, 74, 640, 24))
 let focusLabel = NSTextField(string: "Focus: none", frame: NSMakeRect(744, 74, 300, 24))
@@ -293,6 +425,12 @@ let scrollerValueLabel = NSTextField(string: "0", frame: NSMakeRect(384, 334, 48
 let dateLabel = NSTextField(string: "Date:", frame: NSMakeRect(32, 382, 88, 24))
 let datePicker = NSDatePicker(date: Date(timeIntervalSince1970: 1_780_272_000), frame: NSMakeRect(128, 378, 184, 28))
 let dateValueLabel = NSTextField(string: "2026-06-01", frame: NSMakeRect(328, 382, 120, 24))
+let canvasLabel = NSTextField(string: "Canvas:", frame: NSMakeRect(32, 36, 200, 24))
+let canvasView = DemoCanvasView(frame: NSMakeRect(32, 68, 420, 280))
+let canvasHintLabel = NSTextField(string: "Click: fill color   Right-click: outline   Scroll: size   Double-click: reset", frame: NSMakeRect(32, 356, 520, 24))
+let drawingEventLabel = NSTextField(string: "Last canvas event: none", frame: NSMakeRect(32, 388, 520, 24))
+let shapesLabel = NSTextField(string: "Paths:", frame: NSMakeRect(490, 36, 200, 24))
+let shapesView = DemoShapesView(frame: NSMakeRect(490, 68, 420, 280))
 let pageSelector = NSPopUpButton(frame: NSMakeRect(0, 0, 168, 28), pullsDown: false)
 let imageLabel = NSTextField(string: "Image view:", frame: NSMakeRect(32, 28, 104, 24))
 let imageView = NSImageView(frame: NSMakeRect(152, 28, 300, 190))
@@ -951,7 +1089,7 @@ datePicker.minDate = Date(timeIntervalSince1970: 1_735_689_600)
 datePicker.maxDate = Date(timeIntervalSince1970: 1_893_456_000)
 dateValueLabel.textColor = .blue
 dateValueLabel.stringValue = datePicker.stringValue
-pageSelector.addItems(withTitles: ["Controls", "Values", "Tables/Media"])
+pageSelector.addItems(withTitles: ["Controls", "Values", "Tables/Media", "Drawing"])
 imageLabel.font = NSFont.boldSystemFont(ofSize: 12)
 imageView.image = NSImage(contentsOfFile: demoArtworkPath) ?? NSImage(named: "WinChocolate artwork")
 imageView.imageFrameStyle = .grayBezel
@@ -1136,6 +1274,7 @@ func showDemoPage(_ index: Int) {
     controlsPage.isHidden = index != 0
     valuesPage.isHidden = index != 1
     tablesPage.isHidden = index != 2
+    drawingPage.isHidden = index != 3
     updateFocusDisplay()
 }
 
@@ -1533,6 +1672,11 @@ popoverCloseButton.onAction = { _ in
     statusLabel.stringValue = "Popover close button"
 }
 
+canvasView.onEvent = { message in
+    statusLabel.stringValue = message
+    drawingEventLabel.stringValue = "Last canvas event: \(message)"
+}
+
 openToolbarItem.onAction = { _ in
     updateFocusDisplay()
     let panel = NSOpenPanel.openPanel()
@@ -1765,6 +1909,7 @@ contentView.addSubview(focusLabel)
 contentView.addSubview(controlsPage)
 contentView.addSubview(valuesPage)
 contentView.addSubview(tablesPage)
+contentView.addSubview(drawingPage)
 
 controlsPage.addSubview(editableLabel)
 controlsPage.addSubview(editableTextField)
@@ -1818,6 +1963,13 @@ valuesPage.addSubview(dateLabel)
 valuesPage.addSubview(datePicker)
 valuesPage.addSubview(dateValueLabel)
 
+drawingPage.addSubview(canvasLabel)
+drawingPage.addSubview(canvasView)
+drawingPage.addSubview(canvasHintLabel)
+drawingPage.addSubview(drawingEventLabel)
+drawingPage.addSubview(shapesLabel)
+drawingPage.addSubview(shapesView)
+
 tablesPage.addSubview(imageLabel)
 tablesPage.addSubview(imageView)
 tablesPage.addSubview(clipLabel)
@@ -1839,6 +1991,23 @@ tablesPage.addSubview(scrollSelectedButton)
 tablesPage.addSubview(tableScrollView)
 tablesPage.addSubview(outlineLabel)
 tablesPage.addSubview(outlineScrollView)
+// View menu mirrors the toolbar page selector so every demo page also has a
+// menu entry.
+let viewMenuItem = NSMenuItem(title: "View", action: nil, keyEquivalent: "")
+let viewMenu = NSMenu(title: "View")
+for (index, pageTitle) in ["Controls Page", "Values Page", "Tables/Media Page", "Drawing Page"].enumerated() {
+    let item = NSMenuItem(title: pageTitle, action: nil, keyEquivalent: "")
+    item.onAction = { _ in
+        pageSelector.selectItem(at: index)
+        showDemoPage(index)
+        statusLabel.stringValue = "Page selected: \(pageTitle)"
+    }
+    viewMenu.addItem(item)
+}
+viewMenuItem.submenu = viewMenu
+menuBar.addItem(viewMenuItem)
+app.mainMenu = menuBar
+
 window.contentView = contentView
 showDemoPage(0)
 updateFocusDisplay()

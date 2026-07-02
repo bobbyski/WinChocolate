@@ -42,6 +42,21 @@ open class NSResponder: NSObject {
         nextResponder?.mouseDragged(with: event)
     }
 
+    /// Handles a right mouse button press.
+    open func rightMouseDown(with event: NSEvent) {
+        nextResponder?.rightMouseDown(with: event)
+    }
+
+    /// Handles a right mouse button release.
+    open func rightMouseUp(with event: NSEvent) {
+        nextResponder?.rightMouseUp(with: event)
+    }
+
+    /// Handles a scroll wheel movement.
+    open func scrollWheel(with event: NSEvent) {
+        nextResponder?.scrollWheel(with: event)
+    }
+
     /// Handles a key press.
     open func keyDown(with event: NSEvent) {
         nextResponder?.keyDown(with: event)

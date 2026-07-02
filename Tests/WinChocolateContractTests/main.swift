@@ -3699,6 +3699,88 @@ func testOpenPanelBeginInvokesCompletionHandler() {
 // flash on screen. Route the default through the in-memory backend first.
 NSApplication.shared.nativeBackend = InMemoryNativeControlBackend()
 
+final class DrawingTestView: NSView {
+    override func draw(_ dirtyRect: NSRect) {
+        NSColor.red.setFill()
+        NSBezierPath(rect: NSMakeRect(1, 2, 10, 20)).fill()
+
+        NSColor.blue.setStroke()
+        let oval = NSBezierPath(ovalIn: NSMakeRect(0, 0, 40, 40))
+        oval.lineWidth = 3
+        oval.stroke()
+
+        NSRectFill(NSMakeRect(5, 5, 2, 2))
+    }
+}
+
+func testViewDrawDispatchesPathsToBackendContext() {
+    let backend = InMemoryNativeControlBackend()
+    let view = DrawingTestView(frame: NSMakeRect(0, 0, 60, 60))
+    let handle = view.realizeNativePeer(in: backend, parent: nil)
+
+    view.needsDisplay = true
+    expect(backend.invalidatedHandles.contains(handle), "needsDisplay did not invalidate the native peer.")
+
+    let recording = backend.performDraw(for: handle, in: NSMakeRect(0, 0, 60, 60))
+
+    expect(recording.fills.count == 2, "Draw pass did not record both fill commands.")
+    expect(recording.strokes.count == 1, "Draw pass did not record the stroke command.")
+    expect(recording.fills.first?.color == .red, "Fill did not use the color set through NSColor.setFill.")
+    expect(recording.fills.first?.segments.count == 5, "Rectangle path did not build move/line/line/line/close segments.")
+    expect(recording.strokes.first?.color == .blue, "Stroke did not use the color set through NSColor.setStroke.")
+    expect(recording.strokes.first?.lineWidth == 3, "Stroke did not carry the path line width.")
+
+    let ovalSegments = recording.strokes.first?.segments ?? []
+    let curveCount = ovalSegments.filter { segment in
+        if case .curve = segment {
+            return true
+        }
+        return false
+    }.count
+    expect(curveCount == 4, "Oval path did not approximate the circle with four Bezier curves.")
+    expect(view.needsDisplay == false, "Draw pass did not clear needsDisplay.")
+    expect(NSGraphicsContext.current == nil, "Draw pass did not restore the previous graphics context.")
+}
+
+final class EventRecordingView: NSView {
+    var rightDownCount = 0
+    var rightUpCount = 0
+    var lastClickCount = 0
+    var lastScrollDeltaY: CGFloat = 0
+
+    override func mouseDown(with event: NSEvent) {
+        lastClickCount = event.clickCount
+    }
+
+    override func rightMouseDown(with event: NSEvent) {
+        rightDownCount += 1
+    }
+
+    override func rightMouseUp(with event: NSEvent) {
+        rightUpCount += 1
+    }
+
+    override func scrollWheel(with event: NSEvent) {
+        lastScrollDeltaY = event.scrollingDeltaY
+    }
+}
+
+func testRightMouseScrollAndClickCountReachTheView() {
+    let backend = InMemoryNativeControlBackend()
+    let view = EventRecordingView(frame: NSMakeRect(0, 0, 50, 50))
+    let handle = view.realizeNativePeer(in: backend, parent: nil)
+
+    backend.rightMouseDownActions[handle]?(NSEvent(type: .rightMouseDown, locationInWindow: NSMakePoint(5, 5)))
+    backend.rightMouseUpActions[handle]?(NSEvent(type: .rightMouseUp, locationInWindow: NSMakePoint(5, 5)))
+    backend.mouseDownActions[handle]?(NSEvent(type: .leftMouseDown, locationInWindow: NSMakePoint(5, 5), clickCount: 2))
+    backend.scrollWheelActions[handle]?(NSEvent(type: .scrollWheel, locationInWindow: NSMakePoint(5, 5), scrollingDeltaY: -2))
+
+    expect(view.rightDownCount == 1, "Right mouse-down did not reach the view responder.")
+    expect(view.rightUpCount == 1, "Right mouse-up did not reach the view responder.")
+    expect(view.lastClickCount == 2, "Double-click count did not reach mouseDown.")
+    expect(view.lastScrollDeltaY == -2, "Scroll wheel delta did not reach scrollWheel.")
+}
+
 testWindowRealizationCreatesNativeHierarchy()
 testViewHierarchyMaintainsSuperviewOwnership()
 testViewInsertionReplacementTagsAndDescendants()
@@ -3825,5 +3907,7 @@ testSavePanelMapsOptionsAndReturnsChosenURL()
 testSavePanelCancelReturnsCancelAndClearsURL()
 testOpenPanelSupportsMultipleSelectionAndDirectories()
 testOpenPanelBeginInvokesCompletionHandler()
+testViewDrawDispatchesPathsToBackendContext()
+testRightMouseScrollAndClickCountReachTheView()
 
 print("WinChocolate contract tests passed.")

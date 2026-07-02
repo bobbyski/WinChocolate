@@ -17,6 +17,15 @@ public struct NSEvent: Equatable, Sendable {
         /// Mouse movement while the left mouse button is down.
         case leftMouseDragged
 
+        /// A right mouse button press.
+        case rightMouseDown
+
+        /// A right mouse button release.
+        case rightMouseUp
+
+        /// A scroll wheel movement.
+        case scrollWheel
+
         /// A key press.
         case keyDown
 
@@ -38,6 +47,15 @@ public struct NSEvent: Equatable, Sendable {
 
     /// Modifier keys active during the event.
     public var modifierFlags: ModifierFlags
+
+    /// The number of rapid clicks for mouse button events.
+    public var clickCount: Int
+
+    /// Horizontal scroll amount in wheel lines for scroll events.
+    public var scrollingDeltaX: CGFloat
+
+    /// Vertical scroll amount in wheel lines for scroll events.
+    public var scrollingDeltaY: CGFloat
 
     /// Keyboard modifier flags.
     public struct ModifierFlags: OptionSet, Sendable {
@@ -68,12 +86,18 @@ public struct NSEvent: Equatable, Sendable {
         locationInWindow: NSPoint,
         keyCode: UInt16? = nil,
         characters: String? = nil,
-        modifierFlags: ModifierFlags = []
+        modifierFlags: ModifierFlags = [],
+        clickCount: Int = 1,
+        scrollingDeltaX: CGFloat = 0,
+        scrollingDeltaY: CGFloat = 0
     ) {
         self.type = type
         self.locationInWindow = locationInWindow
         self.keyCode = keyCode
         self.characters = characters
         self.modifierFlags = modifierFlags
+        self.clickCount = clickCount
+        self.scrollingDeltaX = scrollingDeltaX
+        self.scrollingDeltaY = scrollingDeltaY
     }
 }

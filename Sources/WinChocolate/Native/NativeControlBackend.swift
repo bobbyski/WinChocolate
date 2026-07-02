@@ -118,6 +118,34 @@ public struct NativeFileDialogOptions: Equatable, Sendable {
     }
 }
 
+/// A path segment in view-local coordinates used by native drawing contexts.
+public enum NativePathSegment: Equatable, Sendable {
+    /// Begins a new subpath at a point.
+    case move(NSPoint)
+
+    /// Adds a straight line to a point.
+    case line(NSPoint)
+
+    /// Adds a cubic Bezier curve to an end point with two control points.
+    case curve(to: NSPoint, control1: NSPoint, control2: NSPoint)
+
+    /// Closes the current subpath.
+    case close
+}
+
+/// Immediate-mode drawing surface handed to views during a native paint pass.
+///
+/// `NSBezierPath` and related AppKit drawing APIs reduce to these primitives
+/// so backends can rasterize with their native graphics stack (GDI paths on
+/// the classic backend, a recording context in tests).
+public protocol NativeDrawingContext: AnyObject {
+    /// Fills a path with a color using the nonzero winding rule.
+    func fillPath(_ segments: [NativePathSegment], color: NSColor)
+
+    /// Strokes a path with a color and line width.
+    func strokePath(_ segments: [NativePathSegment], color: NSColor, lineWidth: CGFloat)
+}
+
 /// Native control creation and lifetime boundary.
 ///
 /// `NSWindow`, `NSView`, and controls ask this backend for HWND-backed peers.
@@ -369,6 +397,21 @@ public protocol NativeControlBackend: AnyObject {
 
     /// Registers the action to perform when a native view receives a mouse-moved event.
     func registerMouseMovedAction(for handle: NativeHandle, action: @escaping (NSEvent) -> Void)
+
+    /// Registers the action to perform when a native view receives a right mouse-down event.
+    func registerRightMouseDownAction(for handle: NativeHandle, action: @escaping (NSEvent) -> Void)
+
+    /// Registers the action to perform when a native view receives a right mouse-up event.
+    func registerRightMouseUpAction(for handle: NativeHandle, action: @escaping (NSEvent) -> Void)
+
+    /// Registers the action to perform when a native view receives a scroll-wheel event.
+    func registerScrollWheelAction(for handle: NativeHandle, action: @escaping (NSEvent) -> Void)
+
+    /// Registers the action that paints custom view content during a native paint pass.
+    func registerDrawAction(for handle: NativeHandle, action: @escaping (NativeDrawingContext, NSRect) -> Void)
+
+    /// Requests a repaint of a native control.
+    func invalidateControl(_ handle: NativeHandle)
 
     /// Registers the action to perform when a native view receives a mouse-dragged event.
     func registerMouseDraggedAction(for handle: NativeHandle, action: @escaping (NSEvent) -> Void)

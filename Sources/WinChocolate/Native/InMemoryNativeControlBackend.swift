@@ -1,3 +1,47 @@
+/// A drawing context that records commands for deterministic tests.
+public final class RecordingDrawingContext: NativeDrawingContext {
+    /// A recorded fill command.
+    public struct Fill: Equatable {
+        /// The filled path segments.
+        public let segments: [NativePathSegment]
+
+        /// The fill color.
+        public let color: NSColor
+    }
+
+    /// A recorded stroke command.
+    public struct Stroke: Equatable {
+        /// The stroked path segments.
+        public let segments: [NativePathSegment]
+
+        /// The stroke color.
+        public let color: NSColor
+
+        /// The stroke line width.
+        public let lineWidth: CGFloat
+    }
+
+    /// Fill commands in draw order.
+    public private(set) var fills: [Fill] = []
+
+    /// Stroke commands in draw order.
+    public private(set) var strokes: [Stroke] = []
+
+    /// Creates an empty recording context.
+    public init() {
+    }
+
+    /// Records a fill command.
+    public func fillPath(_ segments: [NativePathSegment], color: NSColor) {
+        fills.append(Fill(segments: segments, color: color))
+    }
+
+    /// Records a stroke command.
+    public func strokePath(_ segments: [NativePathSegment], color: NSColor, lineWidth: CGFloat) {
+        strokes.append(Stroke(segments: segments, color: color, lineWidth: lineWidth))
+    }
+}
+
 /// In-memory backend used before controls are realized and by tests.
 ///
 /// This backend records requested controls without touching the operating
@@ -859,6 +903,54 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     /// Records a mouse-dragged action.
     public func registerMouseDraggedAction(for handle: NativeHandle, action: @escaping (NSEvent) -> Void) {
         mouseDraggedActions[handle] = action
+    }
+
+    /// Registered right mouse-down actions by handle.
+    public private(set) var rightMouseDownActions: [NativeHandle: (NSEvent) -> Void] = [:]
+
+    /// Registered right mouse-up actions by handle.
+    public private(set) var rightMouseUpActions: [NativeHandle: (NSEvent) -> Void] = [:]
+
+    /// Registered scroll-wheel actions by handle.
+    public private(set) var scrollWheelActions: [NativeHandle: (NSEvent) -> Void] = [:]
+
+    /// Registered draw actions by handle.
+    public private(set) var drawActions: [NativeHandle: (NativeDrawingContext, NSRect) -> Void] = [:]
+
+    /// Handles that requested a repaint, in request order.
+    public private(set) var invalidatedHandles: [NativeHandle] = []
+
+    /// Records a right mouse-down action.
+    public func registerRightMouseDownAction(for handle: NativeHandle, action: @escaping (NSEvent) -> Void) {
+        rightMouseDownActions[handle] = action
+    }
+
+    /// Records a right mouse-up action.
+    public func registerRightMouseUpAction(for handle: NativeHandle, action: @escaping (NSEvent) -> Void) {
+        rightMouseUpActions[handle] = action
+    }
+
+    /// Records a scroll-wheel action.
+    public func registerScrollWheelAction(for handle: NativeHandle, action: @escaping (NSEvent) -> Void) {
+        scrollWheelActions[handle] = action
+    }
+
+    /// Records a draw action.
+    public func registerDrawAction(for handle: NativeHandle, action: @escaping (NativeDrawingContext, NSRect) -> Void) {
+        drawActions[handle] = action
+    }
+
+    /// Records a repaint request.
+    public func invalidateControl(_ handle: NativeHandle) {
+        invalidatedHandles.append(handle)
+    }
+
+    /// Runs a handle's registered draw action and returns the recorded commands.
+    @discardableResult
+    public func performDraw(for handle: NativeHandle, in rect: NSRect) -> RecordingDrawingContext {
+        let context = RecordingDrawingContext()
+        drawActions[handle]?(context, rect)
+        return context
     }
 
     /// Records a key-down action.

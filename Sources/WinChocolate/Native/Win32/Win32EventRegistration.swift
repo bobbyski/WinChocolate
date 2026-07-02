@@ -34,5 +34,34 @@ extension Win32NativeControlBackend {
     public func registerKeyUpAction(for handle: NativeHandle, action: @escaping (NSEvent) -> Void) {
         keyUpActions[handle.rawValue] = action
     }
+
+    /// Registers the action to perform when a native view receives a right mouse-down event.
+    public func registerRightMouseDownAction(for handle: NativeHandle, action: @escaping (NSEvent) -> Void) {
+        rightMouseDownActions[handle.rawValue] = action
+    }
+
+    /// Registers the action to perform when a native view receives a right mouse-up event.
+    public func registerRightMouseUpAction(for handle: NativeHandle, action: @escaping (NSEvent) -> Void) {
+        rightMouseUpActions[handle.rawValue] = action
+    }
+
+    /// Registers the action to perform when a native view receives a scroll-wheel event.
+    public func registerScrollWheelAction(for handle: NativeHandle, action: @escaping (NSEvent) -> Void) {
+        scrollWheelActions[handle.rawValue] = action
+    }
+
+    /// Registers the action that paints custom view content during a native paint pass.
+    public func registerDrawAction(for handle: NativeHandle, action: @escaping (NativeDrawingContext, NSRect) -> Void) {
+        drawActions[handle.rawValue] = action
+    }
+
+    /// Requests a repaint of a native control.
+    public func invalidateControl(_ handle: NativeHandle) {
+        guard let hwnd = hwnd(from: handle) else {
+            return
+        }
+
+        _ = winInvalidateRect(hwnd, nil, 1)
+    }
 }
 #endif
