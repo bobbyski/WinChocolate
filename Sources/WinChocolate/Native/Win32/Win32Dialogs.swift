@@ -23,11 +23,40 @@ extension Win32NativeControlBackend {
     /// Runs a native modal file dialog.
     public func runFileDialog(_ options: NativeFileDialogOptions) -> [String]? {
         let owner = NSApplication.shared.keyWindow?.nativeHandle.flatMap { hwnd(from: $0) }
-        if options.kind == .open && options.canChooseDirectories && !options.canChooseFiles {
-            return runFolderDialog(options, owner: owner)
+        return withSheetPositioning(anchored: options.anchorFrame != nil, owner: owner) {
+            if options.kind == .open && options.canChooseDirectories && !options.canChooseFiles {
+                return runFolderDialog(options, owner: owner)
+            }
+
+            return runOpenSaveDialog(options, owner: owner)
+        }
+    }
+
+    /// Positions the next dialog under the owner's title area like a sheet.
+    ///
+    /// OS-owned common dialogs place themselves, and hosting them through a
+    /// hook template downgrades the modern Explorer style. A thread-local CBT
+    /// hook keeps the modern dialog and moves it on first activation instead.
+    private func withSheetPositioning<Result>(anchored: Bool, owner: HWND?, _ body: () -> Result) -> Result {
+        guard anchored, let owner else {
+            return body()
         }
 
-        return runOpenSaveDialog(options, owner: owner)
+        Self.pendingSheetOwner = owner
+        let hook = winSetWindowsHookExW(whCbt, sheetPositioningHookProcedure, nil, winGetCurrentThreadId())
+        defer {
+            if let hook {
+                _ = winUnhookWindowsHookEx(hook)
+            }
+            Self.pendingSheetOwner = nil
+            if Self.sheetPinTimer != 0 {
+                _ = winKillTimer(nil, Self.sheetPinTimer)
+                Self.sheetPinTimer = 0
+            }
+            Self.sheetDialog = nil
+            Self.sheetDialogOwner = nil
+        }
+        return body()
     }
 
     private func runOpenSaveDialog(_ options: NativeFileDialogOptions, owner: HWND?) -> [String]? {
@@ -276,5 +305,79 @@ extension Win32NativeControlBackend {
 
         return buttonFlags | iconFlags
     }
+}
+
+extension Win32NativeControlBackend {
+    /// Owner window consumed by the CBT hook while a positioned dialog opens.
+    nonisolated(unsafe) static var pendingSheetOwner: HWND?
+    /// Dialog being pinned under its owner while it finishes opening.
+    nonisolated(unsafe) static var sheetDialog: HWND?
+    /// Owner the pinned dialog attaches to.
+    nonisolated(unsafe) static var sheetDialogOwner: HWND?
+    /// Thread timer that re-applies the sheet placement.
+    nonisolated(unsafe) static var sheetPinTimer: UInt = 0
+    /// Remaining timer ticks before the pin is released.
+    nonisolated(unsafe) static var sheetPinTicksRemaining = 0
+}
+
+/// Places a dialog under its owner's title area like a sheet.
+///
+/// Positions come from the owner's on-screen rect rather than the framework
+/// anchor frame, so logical-point versus device-pixel differences cannot skew
+/// the placement.
+private func positionSheetDialog(_ dialog: HWND, under owner: HWND) {
+    var ownerRect = RECT()
+    var dialogRect = RECT()
+    guard winGetWindowRect(owner, &ownerRect) != 0, winGetWindowRect(dialog, &dialogRect) != 0 else {
+        return
+    }
+
+    let ownerWidth = ownerRect.right - ownerRect.left
+    let dialogWidth = dialogRect.right - dialogRect.left
+    var contentOrigin = POINT()
+    _ = winClientToScreen(owner, &contentOrigin)
+    let x = ownerRect.left + max((ownerWidth - dialogWidth) / 2, 0)
+    let y = contentOrigin.y
+    if dialogRect.left != x || dialogRect.top != y {
+        _ = winSetWindowPos(dialog, nil, x, y, 0, 0, swpNoSize | swpNoActivate)
+    }
+}
+
+/// Re-applies sheet placement while the common dialog finishes opening.
+///
+/// The Explorer-style dialog restores its remembered placement after
+/// activation, overriding a single move from the CBT hook. Pinning for a few
+/// ticks lets the sheet position win without a template hook.
+private let sheetPositioningTimerProcedure: @convention(c) (HWND?, UINT, UInt, DWORD) -> Void = { _, _, identifier, _ in
+    typealias Backend = Win32NativeControlBackend
+    if let dialog = Backend.sheetDialog, let owner = Backend.sheetDialogOwner, Backend.sheetPinTicksRemaining > 0 {
+        positionSheetDialog(dialog, under: owner)
+        Backend.sheetPinTicksRemaining -= 1
+    } else {
+        Backend.sheetPinTicksRemaining = 0
+    }
+
+    if Backend.sheetPinTicksRemaining <= 0 {
+        _ = winKillTimer(nil, identifier)
+        Backend.sheetPinTimer = 0
+        Backend.sheetDialog = nil
+        Backend.sheetDialogOwner = nil
+    }
+}
+
+/// Starts pinning the activating common dialog under the pending owner.
+private let sheetPositioningHookProcedure: @convention(c) (Int32, WPARAM, LPARAM) -> LRESULT = { code, wParam, lParam in
+    if code == hcbtActivate,
+       let owner = Win32NativeControlBackend.pendingSheetOwner,
+       let dialog = HWND(bitPattern: wParam),
+       dialog != owner {
+        Win32NativeControlBackend.pendingSheetOwner = nil
+        positionSheetDialog(dialog, under: owner)
+        Win32NativeControlBackend.sheetDialog = dialog
+        Win32NativeControlBackend.sheetDialogOwner = owner
+        Win32NativeControlBackend.sheetPinTicksRemaining = 10
+        Win32NativeControlBackend.sheetPinTimer = winSetTimerWithProcedure(nil, 0, 16, sheetPositioningTimerProcedure)
+    }
+    return winCallNextHookEx(nil, code, wParam, lParam)
 }
 #endif

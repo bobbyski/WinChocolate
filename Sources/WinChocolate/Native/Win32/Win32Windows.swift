@@ -3,6 +3,7 @@ extension Win32NativeControlBackend {
     /// Installs the native application menu bar.
     public func installMainMenu(_ menu: NSMenu?) {
         mainMenu = menu
+        nativeMenuRegistry.removeAll()
 
         for windowHandle in mainMenuWindowHandles {
             guard let hwnd = hwnd(from: windowHandle) else {
@@ -271,18 +272,19 @@ extension Win32NativeControlBackend {
         }
 
         let nativeMenu = winCreateMenu()
-        appendItems(menu.items, to: nativeMenu)
+        appendItems(of: menu, to: nativeMenu)
         return nativeMenu
     }
 
     private func createNativePopupMenu(from menu: NSMenu) -> HMENU? {
         let nativeMenu = winCreatePopupMenu()
-        appendItems(menu.items, to: nativeMenu)
+        appendItems(of: menu, to: nativeMenu)
         return nativeMenu
     }
 
-    private func appendItems(_ items: [NSMenuItem], to nativeMenu: HMENU?) {
-        for item in items {
+    private func appendItems(of menu: NSMenu, to nativeMenu: HMENU?) {
+        var registryEntries: [(identifier: UInt, item: NSMenuItem)] = []
+        for item in menu.items {
             guard !item.isHidden else {
                 continue
             }
@@ -303,10 +305,17 @@ extension Win32NativeControlBackend {
             commandActions[commandIdentifier] = { [weak item] in
                 _ = item?.performAction()
             }
+            registryEntries.append((commandIdentifier, item))
 
             withWideString(item.title) { title in
                 _ = winAppendMenuW(nativeMenu, mfString | menuStateFlags(for: item), commandIdentifier, title)
             }
+        }
+
+        // Registered so WM_INITMENUPOPUP can run AppKit-style validation and
+        // sync enabled/checked state just before this menu displays.
+        if let nativeMenu {
+            nativeMenuRegistry[UInt(bitPattern: nativeMenu)] = (menu, registryEntries)
         }
     }
 
@@ -320,6 +329,7 @@ extension Win32NativeControlBackend {
 
     /// Runs a native context menu at a screen point, returning the performed item.
     public func runContextMenu(_ menu: NSMenu, atScreenPoint point: NSPoint) -> NSMenuItem? {
+        menu.update()
         // TrackPopupMenu needs an owner window for its message routing; any
         // framework window works because TPM_RETURNCMD skips WM_COMMAND.
         guard let owner = (mainMenuWindowHandles.first ?? windowHandles.first).flatMap({ hwnd(from: $0) }),
@@ -381,7 +391,9 @@ extension Win32NativeControlBackend {
     }
 
     private func windowStyle(from styleMask: NSWindow.StyleMask) -> DWORD {
-        var style = wsOverlapped
+        // WS_OVERLAPPED always draws a caption, so borderless windows
+        // (sheets, popovers) need the popup style with a plain border.
+        var style = styleMask.contains(.titled) ? wsOverlapped : wsPopup | wsBorder
 
         if styleMask.contains(.titled) {
             style |= wsCaption | wsSysMenu

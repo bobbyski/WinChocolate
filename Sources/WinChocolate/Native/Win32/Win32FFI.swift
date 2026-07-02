@@ -173,6 +173,11 @@ struct PAINTSTRUCT {
     )
 }
 
+struct SIZE {
+    var cx: Int32 = 0
+    var cy: Int32 = 0
+}
+
 struct INITCOMMONCONTROLSEX {
     var dwSize: DWORD = 0
     var dwICC: DWORD = 0
@@ -318,6 +323,36 @@ struct TBBUTTONINFOW {
     var cchText: Int32 = 0
 }
 
+@_silgen_name("SetWindowsHookExW")
+func winSetWindowsHookExW(_ hookType: Int32, _ hookProcedure: @convention(c) (Int32, WPARAM, LPARAM) -> LRESULT, _ module: HINSTANCE?, _ threadIdentifier: DWORD) -> UnsafeMutableRawPointer?
+
+@_silgen_name("UnhookWindowsHookEx")
+func winUnhookWindowsHookEx(_ hook: UnsafeMutableRawPointer?) -> Int32
+
+@_silgen_name("CallNextHookEx")
+func winCallNextHookEx(_ hook: UnsafeMutableRawPointer?, _ code: Int32, _ wParam: WPARAM, _ lParam: LPARAM) -> LRESULT
+
+@_silgen_name("GetCurrentThreadId")
+func winGetCurrentThreadId() -> DWORD
+
+@_silgen_name("GetWindowRect")
+func winGetWindowRect(_ hwnd: HWND?, _ rect: UnsafeMutablePointer<RECT>) -> Int32
+
+@_silgen_name("EnableMenuItem")
+func winEnableMenuItem(_ menu: HMENU?, _ identifier: UINT, _ flags: UINT) -> Int32
+
+@_silgen_name("CheckMenuItem")
+func winCheckMenuItem(_ menu: HMENU?, _ identifier: UINT, _ flags: UINT) -> DWORD
+
+@_silgen_name("GetDC")
+func winGetDC(_ hwnd: HWND?) -> HDC?
+
+@_silgen_name("ReleaseDC")
+func winReleaseDC(_ hwnd: HWND?, _ deviceContext: HDC?) -> Int32
+
+@_silgen_name("GetTextExtentPoint32W")
+func winGetTextExtentPoint32W(_ deviceContext: HDC?, _ text: UnsafePointer<UInt16>?, _ count: Int32, _ size: UnsafeMutablePointer<SIZE>) -> Int32
+
 @_silgen_name("InitCommonControlsEx")
 func winInitCommonControlsEx(_ initControls: UnsafePointer<INITCOMMONCONTROLSEX>) -> Int32
 
@@ -368,6 +403,9 @@ func winWindowFromPoint(_ point: POINT) -> HWND?
 
 @_silgen_name("SetTimer")
 func winSetTimer(_ hwnd: HWND?, _ identifier: UInt, _ elapseMilliseconds: UINT, _ timerProc: UnsafeMutableRawPointer?) -> UInt
+
+@_silgen_name("SetTimer")
+func winSetTimerWithProcedure(_ hwnd: HWND?, _ identifier: UInt, _ elapseMilliseconds: UINT, _ timerProc: @convention(c) (HWND?, UINT, UInt, DWORD) -> Void) -> UInt
 
 @_silgen_name("KillTimer")
 func winKillTimer(_ hwnd: HWND?, _ identifier: UInt) -> Int32
@@ -770,6 +808,11 @@ let csDblClks: UINT = 0x0008
 let psSolid: Int32 = 0
 let windingFillMode: Int32 = 2
 let wmTimer: UINT = 0x0113
+let wmInitMenuPopup: UINT = 0x0117
+let mfEnabled: UINT = 0x0000
+let mfUnchecked: UINT = 0x0000
+let whCbt: Int32 = 5
+let hcbtActivate: Int32 = 5
 let transparentBkMode: Int32 = 1
 let dtCenter: UINT = 0x00000001
 let dtVCenter: UINT = 0x00000004
@@ -882,6 +925,7 @@ let dlgcWantTab: LRESULT = 0x0002
 let idOK: Int32 = 1
 let idYes: Int32 = 6
 let wsOverlapped: DWORD = 0x00000000
+let wsPopup: DWORD = 0x80000000
 let wsCaption: DWORD = 0x00c00000
 let wsSysMenu: DWORD = 0x00080000
 let wsThickFrame: DWORD = 0x00040000

@@ -3,9 +3,26 @@
 /// `NSMenu` mirrors AppKit's tree-shaped menu model. A top-level menu assigned
 /// to `NSApplication.mainMenu` represents the menu bar; items inside it may own
 /// submenus such as the application menu containing Quit.
+/// Conformed to by menu item targets to control item enablement.
+///
+/// When a menu autoenables its items, each item whose `target` adopts this
+/// protocol asks it whether the item should be enabled before display.
+public protocol NSMenuItemValidation: AnyObject {
+    /// Returns whether the menu item should be enabled.
+    func validateMenuItem(_ menuItem: NSMenuItem) -> Bool
+}
+
 open class NSMenu: NSObject {
     /// The menu title.
     open var title: String
+
+    /// Whether the menu automatically enables and disables its items.
+    ///
+    /// When `true` (the default, matching AppKit), `update()` recomputes each
+    /// item's `isEnabled` before the menu is displayed: targets adopting
+    /// `NSMenuItemValidation` are asked, and items with no action and no
+    /// submenu are disabled.
+    open var autoenablesItems: Bool = true
 
     /// Items contained by this menu.
     public private(set) var items: [NSMenuItem] = []
@@ -24,6 +41,28 @@ open class NSMenu: NSObject {
     public init(title: String) {
         self.title = title
         super.init()
+    }
+
+    /// Refreshes item enablement, running validation like AppKit's update pass.
+    ///
+    /// Called by the backend just before a menu is displayed; apps may also
+    /// call it directly after changing state that validation depends on.
+    open func update() {
+        for item in items {
+            if autoenablesItems, !item.isSeparatorItem, item.submenu == nil {
+                item.isEnabled = validatedEnablement(for: item)
+            }
+            item.submenu?.update()
+        }
+    }
+
+    /// Computes autoenable state for one item.
+    private func validatedEnablement(for item: NSMenuItem) -> Bool {
+        if let validator = item.target as? NSMenuItemValidation {
+            return validator.validateMenuItem(item)
+        }
+
+        return item.onAction != nil || item.action != nil
     }
 
     /// Adds an item to the end of the menu.

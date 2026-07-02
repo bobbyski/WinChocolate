@@ -66,13 +66,17 @@ extension String {
         )
     }
 
-    /// Returns the estimated bounding size of the string with attributes.
+    /// Returns the bounding size of the string with attributes.
     ///
-    /// This is an estimate (character count scaled by the point size) until
-    /// native text metrics land; it keeps layout code compiling with the
-    /// AppKit signature without promising pixel-accurate measurement.
+    /// Measured with the backend's real text metrics (the in-memory test
+    /// backend returns a deterministic estimate).
     public func size(withAttributes attributes: [NSAttributedString.Key: Any]? = nil) -> NSSize {
-        let fontSize = (attributes?[.font] as? NSFont)?.pointSize ?? 12
-        return NSMakeSize(CGFloat(count) * fontSize * 0.55, fontSize * 1.35)
+        let font = attributes?[.font] as? NSFont
+        return NSApplication.shared.nativeBackend.measureText(
+            self,
+            fontName: font?.fontName ?? "Segoe UI",
+            fontSize: font?.pointSize ?? 12,
+            bold: (font?.weight.rawValue ?? NSFont.Weight.regular.rawValue) >= 600
+        )
     }
 }

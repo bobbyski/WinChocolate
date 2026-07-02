@@ -187,5 +187,50 @@ extension Win32NativeControlBackend {
         _ = winSendMessageW(hwnd, wmSetFont, UInt(bitPattern: nativeFont), 1)
         invalidate(handle)
     }
+
+    /// Measures a single-line text run with the real font metrics.
+    public func measureText(_ text: String, fontName: String, fontSize: CGFloat, bold: Bool) -> NSSize {
+        guard let deviceContext = winGetDC(nil) else {
+            return NSMakeSize(0, 0)
+        }
+        defer {
+            _ = winReleaseDC(nil, deviceContext)
+        }
+
+        // Points convert to pixels at 96 DPI, matching setFont rendering.
+        let font = withWideString(fontName) { faceName in
+            winCreateFontW(
+                -Int32(max((fontSize * 96.0 / 72.0).rounded(), 1)),
+                0,
+                0,
+                0,
+                bold ? 700 : 400,
+                0,
+                0,
+                0,
+                defaultCharset,
+                defaultPrecision,
+                defaultPrecision,
+                defaultQuality,
+                defaultPitchAndFamily,
+                faceName
+            )
+        }
+        guard let font else {
+            return NSMakeSize(0, 0)
+        }
+        defer {
+            _ = winDeleteObject(font)
+        }
+
+        let previousFont = winSelectObject(deviceContext, font)
+        var size = SIZE()
+        let characters = Array(text.utf16)
+        characters.withUnsafeBufferPointer { buffer in
+            _ = winGetTextExtentPoint32W(deviceContext, buffer.baseAddress, Int32(buffer.count), &size)
+        }
+        _ = winSelectObject(deviceContext, previousFont ?? nil)
+        return NSMakeSize(CGFloat(size.cx), CGFloat(size.cy))
+    }
 }
 #endif

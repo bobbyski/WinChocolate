@@ -95,11 +95,29 @@ open class NSAlert: NSObject {
         return response
     }
 
+    /// Presents the alert as a sheet for a window and reports the response.
+    ///
+    /// The classic backend runs sheets as application-modal sessions
+    /// positioned under the window's title area; window-modal sheets with
+    /// slide animation arrive with the modern appearance.
+    open func beginSheetModal(for window: NSWindow, completionHandler handler: ((NSApplication.ModalResponse) -> Void)? = nil) {
+        let application = NSApplication.shared
+        let response: NSApplication.ModalResponse
+        if buttonTitles.isEmpty && !showsSuppressionButton && accessoryView == nil {
+            response = application.nativeBackend.runAlert(self)
+        } else {
+            response = runComposedPanel(in: application, attachedTo: window)
+        }
+        handler?(response)
+    }
+
     /// Builds and runs the composed alert panel for custom button layouts.
-    private func runComposedPanel(in application: NSApplication) -> NSApplication.ModalResponse {
-        let width: CGFloat = 420
+    private func runComposedPanel(in application: NSApplication, attachedTo parent: NSWindow? = nil) -> NSApplication.ModalResponse {
         let margin: CGFloat = 24
         let textLeft: CGFloat = 80
+        // Size the panel to the measured message so long prompts never clip.
+        let messageSize = messageText.size(withAttributes: [.font: NSFont.boldSystemFont(ofSize: 13)])
+        let width: CGFloat = min(640, max(420, textLeft + messageSize.width + margin + 8))
         var y: CGFloat = 20
 
         let content = NSView(frame: NSMakeRect(0, 0, width, 200))
@@ -152,9 +170,19 @@ open class NSAlert: NSObject {
 
         let contentHeight = y + 52
         content.frame = NSMakeRect(0, 0, width, contentHeight)
+        var panelOrigin = NSMakePoint(360, 280)
+        if let parent {
+            // Sheet placement: centered under the parent's title area.
+            panelOrigin = NSMakePoint(
+                parent.frame.origin.x + max((parent.frame.size.width - width) / 2, 0),
+                parent.frame.origin.y + 56
+            )
+        }
+        // Sheets attach chromeless under the parent's title area like AppKit;
+        // standalone alerts keep a captioned dialog frame.
         let panel = NSPanel(
-            contentRect: NSMakeRect(360, 280, width, contentHeight),
-            styleMask: [.titled],
+            contentRect: NSRect(origin: panelOrigin, size: NSMakeSize(width, contentHeight)),
+            styleMask: parent == nil ? [.titled] : .borderless,
             backing: .buffered,
             defer: false
         )

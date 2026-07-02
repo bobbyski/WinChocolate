@@ -1159,7 +1159,13 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     /// Recorded indeterminate state by handle.
     public private(set) var progressIndeterminateStates: [NativeHandle: (isIndeterminate: Bool, animating: Bool)] = [:]
 
+    /// Measures text with a deterministic estimate for tests.
+    public func measureText(_ text: String, fontName: String, fontSize: CGFloat, bold: Bool) -> NSSize {
+        NSMakeSize(CGFloat(text.count) * fontSize * 0.55, fontSize * 1.35)
+    }
+
     /// Records native progress indeterminate state.
+
     public func setProgressIndicatorIndeterminate(_ isIndeterminate: Bool, animating: Bool, for handle: NativeHandle) {
         progressIndeterminateStates[handle] = (isIndeterminate, animating)
     }

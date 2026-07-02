@@ -64,6 +64,7 @@ public final class Win32NativeControlBackend: NativeControlBackend {
     private var nextCommandIdentifier: UInt = 1_000
     private var modalStopCode: Int?
     var marqueePositions: [UInt: Int32] = [:]
+    var nativeMenuRegistry: [UInt: (menu: NSMenu, entries: [(identifier: UInt, item: NSMenuItem)])] = [:]
 
     /// Creates a Win32 backend.
     public init() {

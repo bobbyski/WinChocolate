@@ -45,6 +45,9 @@ open class NSSavePanel: NSObject {
     /// The chosen destination after a successful run.
     public internal(set) var url: URL?
 
+    /// Parent window frame while presenting as a sheet.
+    internal var sheetAnchorFrame: NSRect?
+
     /// Creates a save panel.
     public override init() {
         super.init()
@@ -84,10 +87,17 @@ open class NSSavePanel: NSObject {
     }
 
     /// Presents the panel for a window and calls the handler with the response.
+    ///
+    /// The classic backend positions the native dialog under the window's
+    /// title area, standing in for AppKit's window-attached sheet.
     open func beginSheetModal(
         for window: NSWindow,
         completionHandler handler: (NSApplication.ModalResponse) -> Void
     ) {
+        sheetAnchorFrame = window.frame
+        defer {
+            sheetAnchorFrame = nil
+        }
         handler(runModal())
     }
 
@@ -105,7 +115,8 @@ open class NSSavePanel: NSObject {
             canChooseDirectories: false,
             allowsMultipleSelection: false,
             canCreateDirectories: canCreateDirectories,
-            showsHiddenFiles: showsHiddenFiles
+            showsHiddenFiles: showsHiddenFiles,
+            anchorFrame: sheetAnchorFrame
         )
     }
 
@@ -157,7 +168,8 @@ open class NSOpenPanel: NSSavePanel {
             canChooseDirectories: canChooseDirectories,
             allowsMultipleSelection: allowsMultipleSelection,
             canCreateDirectories: canCreateDirectories,
-            showsHiddenFiles: showsHiddenFiles
+            showsHiddenFiles: showsHiddenFiles,
+            anchorFrame: sheetAnchorFrame
         )
     }
 

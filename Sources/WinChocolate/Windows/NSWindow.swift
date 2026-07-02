@@ -177,6 +177,29 @@ open class NSWindow: NSResponder {
         nativeBackend.showWindow(handle)
     }
 
+    /// Presents a window as a sheet attached to this window.
+    ///
+    /// The classic backend runs sheets as application-modal sessions
+    /// positioned under this window's title area; the handler receives the
+    /// code passed to `endSheet(_:returnCode:)`. Window-modal sheets with
+    /// slide animation arrive with the modern appearance.
+    open func beginSheet(_ sheetWindow: NSWindow, completionHandler handler: ((NSApplication.ModalResponse) -> Void)? = nil) {
+        let sheetSize = sheetWindow.frame.size
+        let origin = NSMakePoint(
+            frame.origin.x + max((frame.size.width - sheetSize.width) / 2, 0),
+            frame.origin.y + 56
+        )
+        sheetWindow.setFrame(NSRect(origin: origin, size: sheetSize), display: true)
+        let response = NSApplication.shared.runModal(for: sheetWindow)
+        handler?(response)
+    }
+
+    /// Ends a sheet session presented with `beginSheet(_:completionHandler:)`.
+    open func endSheet(_ sheetWindow: NSWindow, returnCode: NSApplication.ModalResponse = .OK) {
+        NSApplication.shared.stopModal(withCode: returnCode)
+        sheetWindow.close()
+    }
+
     /// Makes the window the key window.
     open func makeKey() {
         NSApplication.shared.makeKeyWindow(self)

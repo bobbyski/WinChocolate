@@ -88,6 +88,12 @@ public struct NativeFileDialogOptions: Equatable, Sendable {
     /// Whether hidden files should be shown.
     public var showsHiddenFiles: Bool
 
+    /// Window frame the dialog should attach to, when presenting as a sheet.
+    ///
+    /// The classic backend positions the native dialog under this frame's
+    /// title area; `nil` lets the platform choose the position.
+    public var anchorFrame: NSRect?
+
     /// Creates a native file dialog descriptor.
     public init(
         kind: Kind,
@@ -101,7 +107,8 @@ public struct NativeFileDialogOptions: Equatable, Sendable {
         canChooseDirectories: Bool = false,
         allowsMultipleSelection: Bool = false,
         canCreateDirectories: Bool = true,
-        showsHiddenFiles: Bool = false
+        showsHiddenFiles: Bool = false,
+        anchorFrame: NSRect? = nil
     ) {
         self.kind = kind
         self.title = title
@@ -115,6 +122,7 @@ public struct NativeFileDialogOptions: Equatable, Sendable {
         self.allowsMultipleSelection = allowsMultipleSelection
         self.canCreateDirectories = canCreateDirectories
         self.showsHiddenFiles = showsHiddenFiles
+        self.anchorFrame = anchorFrame
     }
 }
 
@@ -477,4 +485,7 @@ public protocol NativeControlBackend: AnyObject {
 
     /// Runs a context menu at a screen point, returning the performed item or `nil` on cancel.
     func runContextMenu(_ menu: NSMenu, atScreenPoint point: NSPoint) -> NSMenuItem?
+
+    /// Measures the rendered size of a single-line text run.
+    func measureText(_ text: String, fontName: String, fontSize: CGFloat, bold: Bool) -> NSSize
 }

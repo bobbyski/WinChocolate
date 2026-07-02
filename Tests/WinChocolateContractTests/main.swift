@@ -4370,6 +4370,170 @@ func testAlertAccessoryViewJoinsComposedPanel() {
     expect(accessory.frame.origin.x == 80, "Accessory view was not indented to the alert text column.")
 }
 
+final class RecordingMenuValidator: NSMenuItemValidation {
+    var allowed = false
+    var validatedTitles: [String] = []
+
+    func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        validatedTitles.append(menuItem.title)
+        return allowed
+    }
+}
+
+func testSavePanelSheetPassesAnchorFrame() {
+    clearApplicationWindows()
+
+    let backend = InMemoryNativeControlBackend()
+    let previousBackend = NSApplication.shared.nativeBackend
+    NSApplication.shared.nativeBackend = backend
+    defer {
+        NSApplication.shared.nativeBackend = previousBackend
+        clearApplicationWindows()
+    }
+
+    let parent = NSWindow(
+        contentRect: NSMakeRect(120, 80, 700, 500),
+        styleMask: [.titled],
+        backing: .buffered,
+        defer: false,
+        nativeBackend: backend
+    )
+    let panel = NSSavePanel.savePanel()
+    backend.scriptedFileDialogPaths = [["C:\\Temp\\anchored.txt"]]
+
+    var received: NSApplication.ModalResponse?
+    panel.beginSheetModal(for: parent) { response in
+        received = response
+    }
+
+    expect(received == .OK, "Sheet save panel did not deliver the response.")
+    expect(backend.fileDialogRequests.last?.anchorFrame == parent.frame, "Sheet presentation did not pass the parent frame as the dialog anchor.")
+
+    backend.scriptedFileDialogPaths = [["C:\\Temp\\plain.txt"]]
+    _ = panel.runModal()
+    expect(backend.fileDialogRequests.last?.anchorFrame == nil, "Plain runModal should not anchor the dialog.")
+}
+func testMenuUpdateRunsValidationAndAutoenables() {
+    let menu = NSMenu(title: "Edit")
+    let validator = RecordingMenuValidator()
+
+    let validated = NSMenuItem(title: "Paste", action: nil, keyEquivalent: "")
+    validated.target = validator
+    validated.isEnabled = true
+    menu.addItem(validated)
+
+    let actionless = NSMenuItem(title: "Broken", action: nil, keyEquivalent: "")
+    menu.addItem(actionless)
+
+    let wired = NSMenuItem(title: "Copy", action: nil, keyEquivalent: "")
+    wired.onAction = { _ in }
+    menu.addItem(wired)
+
+    menu.update()
+
+    expect(validator.validatedTitles == ["Paste"], "Menu update did not consult the item's validation target.")
+    expect(validated.isEnabled == false, "Menu update did not apply the validator's refusal.")
+    expect(actionless.isEnabled == false, "Autoenable did not disable an item with no action.")
+    expect(wired.isEnabled == true, "Autoenable disabled an item with an action.")
+
+    validator.allowed = true
+    menu.update()
+    expect(validated.isEnabled == true, "Menu update did not re-enable after validation allowed it.")
+
+    menu.autoenablesItems = false
+    validated.isEnabled = false
+    menu.update()
+    expect(validated.isEnabled == false, "Manual enablement was overridden with autoenablesItems off.")
+}
+
+func testStringSizeUsesBackendTextMetrics() {
+    let backend = InMemoryNativeControlBackend()
+    let previousBackend = NSApplication.shared.nativeBackend
+    NSApplication.shared.nativeBackend = backend
+    defer {
+        NSApplication.shared.nativeBackend = previousBackend
+    }
+
+    let size = "Hello".size(withAttributes: [.font: NSFont.boldSystemFont(ofSize: 20)])
+    expect(size.width == 5 * 20 * 0.55, "String measurement did not route through the backend metrics.")
+    expect(size.height == 20 * 1.35, "String measurement height did not route through the backend metrics.")
+}
+
+func testWindowSheetPositionsRunsModalAndEndsWithCode() {
+    clearApplicationWindows()
+
+    let backend = InMemoryNativeControlBackend()
+    let previousBackend = NSApplication.shared.nativeBackend
+    NSApplication.shared.nativeBackend = backend
+    defer {
+        NSApplication.shared.nativeBackend = previousBackend
+        clearApplicationWindows()
+    }
+
+    let parent = NSWindow(
+        contentRect: NSMakeRect(100, 100, 600, 400),
+        styleMask: [.titled],
+        backing: .buffered,
+        defer: false,
+        nativeBackend: backend
+    )
+    let sheet = NSWindow(
+        contentRect: NSMakeRect(0, 0, 300, 150),
+        styleMask: [.titled],
+        backing: .buffered,
+        defer: false,
+        nativeBackend: backend
+    )
+
+    backend.nextModalResponseCode = NSApplication.ModalResponse.OK.rawValue
+    var received: NSApplication.ModalResponse?
+    parent.beginSheet(sheet) { response in
+        received = response
+    }
+
+    expect(received == .OK, "Sheet completion handler did not receive the modal response.")
+    expect(sheet.frame.origin.x == 250, "Sheet was not centered on the parent window.")
+    expect(sheet.frame.origin.y == 156, "Sheet was not positioned under the parent title area.")
+    expect(backend.modalSessions.contains(sheet.nativeHandle ?? NativeHandle(rawValue: 0)), "Sheet did not run a modal session.")
+
+    parent.endSheet(sheet, returnCode: .cancel)
+    expect(backend.modalStopCodes.last == NSApplication.ModalResponse.cancel.rawValue, "endSheet did not forward its return code.")
+    expect(sheet.nativeHandle == nil, "endSheet did not close the sheet window.")
+}
+
+func testAlertBeginSheetModalDeliversResponse() {
+    clearApplicationWindows()
+
+    let backend = InMemoryNativeControlBackend()
+    let previousBackend = NSApplication.shared.nativeBackend
+    NSApplication.shared.nativeBackend = backend
+    defer {
+        NSApplication.shared.nativeBackend = previousBackend
+        clearApplicationWindows()
+    }
+
+    let parent = NSWindow(
+        contentRect: NSMakeRect(50, 50, 500, 300),
+        styleMask: [.titled],
+        backing: .buffered,
+        defer: false,
+        nativeBackend: backend
+    )
+    let alert = NSAlert()
+    alert.messageText = "Sheet?"
+    alert.addButton(withTitle: "Yes")
+    alert.addButton(withTitle: "No")
+    backend.nextModalResponseCode = NSApplication.ModalResponse.alertSecondButtonReturn.rawValue
+
+    var received: NSApplication.ModalResponse?
+    alert.beginSheetModal(for: parent) { response in
+        received = response
+    }
+
+    expect(received == .alertSecondButtonReturn, "Alert sheet did not deliver the scripted response.")
+    expect(backend.modalSessions.count == 1, "Alert sheet did not run a modal session.")
+}
+
 testWindowRealizationCreatesNativeHierarchy()
 testViewHierarchyMaintainsSuperviewOwnership()
 testViewInsertionReplacementTagsAndDescendants()
@@ -4503,6 +4667,11 @@ testRightMouseScrollAndClickCountReachTheView()
 testAlertCustomButtonsRunComposedModalPanel()
 testRunModalReturnsScriptedStopCode()
 testProgressIndicatorIndeterminateSyncsToBackend()
+testMenuUpdateRunsValidationAndAutoenables()
+testStringSizeUsesBackendTextMetrics()
+testWindowSheetPositionsRunsModalAndEndsWithCode()
+testAlertBeginSheetModalDeliversResponse()
+testSavePanelSheetPassesAnchorFrame()
 testOtherMouseButtonsReachTheView()
 testMenuPerformKeyEquivalentMatchesControlAsCommand()
 testMenuPopUpPerformsScriptedContextSelection()

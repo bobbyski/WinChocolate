@@ -1748,20 +1748,21 @@ askToSaveButton.onAction = { _ in
     accessoryLabel.drawsBackground = false
     alert.accessoryView = accessoryLabel
 
-    let response = alert.runModal()
-    let choice: String
-    switch response {
-    case .alertFirstButtonReturn:
-        choice = "Save"
-    case .alertSecondButtonReturn:
-        choice = "Don't Save"
-    case .alertThirdButtonReturn:
-        choice = "Cancel"
-    default:
-        choice = "Dismissed"
+    alert.beginSheetModal(for: window) { response in
+        let choice: String
+        switch response {
+        case .alertFirstButtonReturn:
+            choice = "Save"
+        case .alertSecondButtonReturn:
+            choice = "Don't Save"
+        case .alertThirdButtonReturn:
+            choice = "Cancel"
+        default:
+            choice = "Dismissed"
+        }
+        let suppressed = alert.suppressionButton?.state == .on ? ", don't ask again" : ""
+        statusLabel.stringValue = "Ask to Save: \(choice)\(suppressed)"
     }
-    let suppressed = alert.suppressionButton?.state == .on ? ", don't ask again" : ""
-    statusLabel.stringValue = "Ask to Save: \(choice)\(suppressed)"
 }
 
 openToolbarItem.onAction = { _ in
@@ -1769,11 +1770,13 @@ openToolbarItem.onAction = { _ in
     let panel = NSOpenPanel.openPanel()
     panel.title = "Open Demo File"
     panel.allowsMultipleSelection = true
-    if panel.runModal() == .OK {
-        let names = panel.urls.map(\.lastPathComponent).joined(separator: ", ")
-        statusLabel.stringValue = "Open: \(names)"
-    } else {
-        statusLabel.stringValue = "Open cancelled"
+    panel.beginSheetModal(for: window) { response in
+        if response == .OK {
+            let names = panel.urls.map(\.lastPathComponent).joined(separator: ", ")
+            statusLabel.stringValue = "Open: \(names)"
+        } else {
+            statusLabel.stringValue = "Open cancelled"
+        }
     }
 }
 saveToolbarItem.onAction = { _ in
@@ -1783,10 +1786,12 @@ saveToolbarItem.onAction = { _ in
     panel.nameFieldStringValue = "Untitled.txt"
     panel.allowedFileTypes = ["txt"]
     panel.allowsOtherFileTypes = true
-    if panel.runModal() == .OK, let url = panel.url {
-        statusLabel.stringValue = "Save: \(url.lastPathComponent)"
-    } else {
-        statusLabel.stringValue = "Save cancelled"
+    panel.beginSheetModal(for: window) { response in
+        if response == .OK, let url = panel.url {
+            statusLabel.stringValue = "Save: \(url.lastPathComponent)"
+        } else {
+            statusLabel.stringValue = "Save cancelled"
+        }
     }
 }
 toggleToolbarItem.onAction = { _ in
