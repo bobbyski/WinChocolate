@@ -362,6 +362,15 @@ func winAppendMenuW(_ menu: HMENU?, _ flags: UINT, _ identifier: UInt, _ title: 
 @_silgen_name("CreateMenu")
 func winCreateMenu() -> HMENU?
 
+@_silgen_name("GetMenuItemCount")
+func winGetMenuItemCount(_ menu: HMENU?) -> Int32
+
+@_silgen_name("GetSubMenu")
+func winGetSubMenu(_ menu: HMENU?, _ position: Int32) -> HMENU?
+
+@_silgen_name("DeleteMenu")
+func winDeleteMenu(_ menu: HMENU?, _ position: UINT, _ flags: UINT) -> Int32
+
 @_silgen_name("CreatePopupMenu")
 func winCreatePopupMenu() -> HMENU?
 
@@ -866,6 +875,7 @@ let wmTimer: UINT = 0x0113
 let wmInitMenuPopup: UINT = 0x0117
 let mfEnabled: UINT = 0x0000
 let mfUnchecked: UINT = 0x0000
+let mfByPosition: UINT = 0x0400
 let whCbt: Int32 = 5
 let hcbtActivate: Int32 = 5
 let transparentBkMode: Int32 = 1

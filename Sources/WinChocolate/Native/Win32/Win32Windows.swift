@@ -309,15 +309,76 @@ extension Win32NativeControlBackend {
             }
             registryEntries.append((commandIdentifier, item))
 
-            withWideString(item.title) { title in
+            withWideString(menuItemDisplayTitle(for: item)) { title in
                 _ = winAppendMenuW(nativeMenu, mfString | menuStateFlags(for: item), commandIdentifier, title)
             }
         }
 
-        // Registered so WM_INITMENUPOPUP can run AppKit-style validation and
-        // sync enabled/checked state just before this menu displays.
+        // Registered so WM_INITMENUPOPUP can rebuild and validate this menu
+        // just before it displays.
         if let nativeMenu {
             nativeMenuRegistry[UInt(bitPattern: nativeMenu)] = (menu, registryEntries)
+        }
+    }
+
+    /// The native item title, including right-aligned accelerator text.
+    private func menuItemDisplayTitle(for item: NSMenuItem) -> String {
+        guard !item.keyEquivalent.isEmpty else {
+            return item.title
+        }
+
+        var accelerator = "Ctrl+"
+        if item.keyEquivalentModifierMask.contains(.shift) {
+            accelerator += "Shift+"
+        }
+        if item.keyEquivalentModifierMask.contains(.option) {
+            accelerator += "Alt+"
+        }
+        accelerator += item.keyEquivalent.uppercased()
+        return "\(item.title)\t\(accelerator)"
+    }
+
+    /// Rebuilds a native popup's items from its menu just before display.
+    ///
+    /// Menus can gain, lose, or retitle items at any time (dynamic titles,
+    /// recent-file lists), so WM_INITMENUPOPUP replaces the native items
+    /// wholesale instead of only syncing enabled/checked state.
+    func rebuildNativeMenu(_ menu: NSMenu, forRegistryKey nativeMenuKey: UInt) {
+        guard let nativeMenu = HMENU(bitPattern: nativeMenuKey) else {
+            return
+        }
+
+        if let previous = nativeMenuRegistry[nativeMenuKey] {
+            for entry in previous.entries {
+                commandActions.removeValue(forKey: entry.identifier)
+            }
+        }
+
+        let count = winGetMenuItemCount(nativeMenu)
+        for index in stride(from: count - 1, through: 0, by: -1) {
+            if let submenu = winGetSubMenu(nativeMenu, index) {
+                purgeMenuRegistry(for: submenu)
+            }
+            _ = winDeleteMenu(nativeMenu, UINT(index), mfByPosition)
+        }
+
+        appendItems(of: menu, to: nativeMenu)
+    }
+
+    /// Forgets registry and command entries for a native submenu tree.
+    private func purgeMenuRegistry(for nativeMenu: HMENU) {
+        let count = winGetMenuItemCount(nativeMenu)
+        for index in 0..<max(count, 0) {
+            if let submenu = winGetSubMenu(nativeMenu, index) {
+                purgeMenuRegistry(for: submenu)
+            }
+        }
+
+        guard let entry = nativeMenuRegistry.removeValue(forKey: UInt(bitPattern: nativeMenu)) else {
+            return
+        }
+        for registered in entry.entries {
+            commandActions.removeValue(forKey: registered.identifier)
         }
     }
 

@@ -354,9 +354,13 @@ final class EditMenuController: NSMenuItemValidation {
             return false
         }
 
+        // Titles refresh live ("Undo Typing") because the native menu
+        // rebuilds from the NSMenu on WM_INITMENUPOPUP.
         if menuItem.keyEquivalentModifierMask.contains(.shift) {
+            menuItem.title = manager.redoMenuItemTitle
             return manager.canRedo
         }
+        menuItem.title = manager.undoMenuItemTitle
         return manager.canUndo
     }
 }

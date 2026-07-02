@@ -6,18 +6,14 @@ extension Win32NativeControlBackend {
             runAsyncActions()
             return 0
         case wmInitMenuPopup:
-            // Run AppKit-style validation just before a menu drops down and
-            // sync the native enabled/checked state in place.
+            // Run AppKit-style validation just before a menu drops down, then
+            // rebuild the native items so mutations and dynamic titles show.
             guard let entry = nativeMenuRegistry[wParam] else {
                 return nil
             }
 
             entry.menu.update()
-            let popup = HMENU(bitPattern: wParam)
-            for (identifier, item) in entry.entries {
-                _ = winEnableMenuItem(popup, UINT(identifier), item.isEnabled ? mfEnabled : mfGrayed)
-                _ = winCheckMenuItem(popup, UINT(identifier), item.state == .on ? mfChecked : mfUnchecked)
-            }
+            rebuildNativeMenu(entry.menu, forRegistryKey: wParam)
             return 0
         case wmSize:
             guard let hwnd else {
