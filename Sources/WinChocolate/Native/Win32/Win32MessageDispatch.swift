@@ -452,6 +452,23 @@ extension Win32NativeControlBackend {
 
             action(NSEvent(type: .mouseMoved, locationInWindow: mouseLocation(from: lParam, in: hwnd), modifierFlags: currentModifierFlags()))
             return nil
+        case wmEraseBackground:
+            guard let hwnd else {
+                return nil
+            }
+
+            let handle = actionHandle(from: hwnd)
+            guard groupBoxHandles.contains(handle.rawValue) else {
+                return nil
+            }
+
+            // Group boxes never paint their interior, and clip-children
+            // parents never paint beneath them, so stale sibling pixels
+            // (for example a hidden page's drawing) would show through.
+            var rectangle = RECT()
+            _ = winGetClientRect(hwnd, &rectangle)
+            fillRect(rectangle, color: inheritedBackgroundColor(behind: hwnd), deviceContext: HDC(bitPattern: wParam))
+            return 1
         case wmTimer:
             // Sweeps subclassed progress bars for indeterminate animation.
             guard let hwnd else {

@@ -53,6 +53,9 @@ extension Win32NativeControlBackend {
             style: wsChild | wsVisible | bsGroupBox
         )
         groupBoxHandles.insert(handle.rawValue)
+        // Subclassed so the box can erase its own interior; see the
+        // WM_ERASEBKGND group-box handling in the control dispatch.
+        subclassControlForTabKey(handle)
         return handle
     }
 

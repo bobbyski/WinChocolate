@@ -404,7 +404,7 @@ extension Win32NativeControlBackend {
         fillRect(RECT(left: glyphLeft + glyphSize - 8, top: y - 1, right: glyphLeft + glyphSize - 6, bottom: y + 2), color: colorRef(red: 0.82, green: 0.87, blue: 0.94), deviceContext: deviceContext)
     }
 
-    private func fillRect(_ rectangle: RECT, color: DWORD, deviceContext: HDC?) {
+    func fillRect(_ rectangle: RECT, color: DWORD, deviceContext: HDC?) {
         guard let brush = winCreateSolidBrush(color) else {
             return
         }
