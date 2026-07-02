@@ -328,6 +328,18 @@ final class DemoNoteDocument: NSDocument {
     }
 }
 
+
+/// Reports split-view divider drags in the status label.
+final class DemoSplitDelegate: NSSplitViewDelegate {
+    var onResize: (() -> Void)?
+
+    func splitViewDidResizeSubviews(_ notification: NSNotification) {
+        onResize?()
+    }
+}
+
+let demoSplitDelegate = DemoSplitDelegate()
+
 /// Enables Edit-menu items from the notes text view's undo stacks.
 final class EditMenuController: NSMenuItemValidation {
     var textView: NSTextView?
@@ -1358,6 +1370,10 @@ splitRightPane.backgroundColor = NSColor(calibratedRed: 1.0, green: 0.92, blue: 
 splitView.addSubview(splitLeftPane)
 splitView.addSubview(splitRightPane)
 splitView.setPosition(70, ofDividerAt: 0)
+splitView.delegate = demoSplitDelegate
+demoSplitDelegate.onResize = {
+    statusLabel.stringValue = "Split resized: left pane \(Int(splitLeftPane.frame.size.width))px"
+}
 notesLabel.font = NSFont.boldSystemFont(ofSize: 12)
 secureLabel.font = NSFont.boldSystemFont(ofSize: 12)
 notesTextView.string = "Multiline NSTextView"

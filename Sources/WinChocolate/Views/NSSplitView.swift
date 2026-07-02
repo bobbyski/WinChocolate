@@ -1,9 +1,19 @@
+/// The methods a split view delegate uses to respond to pane resizing.
+public protocol NSSplitViewDelegate: AnyObject {
+    /// Tells the delegate that pane frames changed.
+    func splitViewDidResizeSubviews(_ notification: NSNotification)
+}
+
+extension NSSplitViewDelegate {
+    /// Default no-op so delegates only implement the callbacks they need.
+    public func splitViewDidResizeSubviews(_ notification: NSNotification) {}
+}
+
 /// A container that divides its bounds between child views.
 ///
-/// This first slice keeps the AppKit name and basic divider model while using
-/// normal child `NSView` peers. Drag tracking and delegate callbacks are future
-/// work, but applications can already compose split layouts and set divider
-/// positions in Mac-shaped code.
+/// Panes are normal child `NSView` peers separated by divider gaps owned by
+/// the split view itself. Dividers track mouse drags, show the resize
+/// cursor, and draw a classic center line; the delegate hears about resizes.
 open class NSSplitView: NSView {
     /// Visual style for dividers between split panes.
     public enum DividerStyle: Sendable {
@@ -30,6 +40,15 @@ open class NSSplitView: NSView {
             adjustSubviews()
         }
     }
+
+    /// Posted to the delegate when pane frames change.
+    public static let didResizeSubviewsNotification = "NSSplitViewDidResizeSubviewsNotification"
+
+    /// The split view delegate, notified when panes resize.
+    open weak var delegate: NSSplitViewDelegate?
+
+    /// The divider currently tracking a mouse drag.
+    private var draggingDividerIndex: Int?
 
     /// Split views are containers and do not accept keyboard focus by default.
     open override var acceptsFirstResponder: Bool {
@@ -66,7 +85,10 @@ open class NSSplitView: NSView {
         adjustSubviews()
     }
 
-    /// Sets the leading edge of the pane after the given divider.
+    /// Sets the leading edge of the divider, resizing its two panes.
+    ///
+    /// The position clamps between the neighboring panes so neither pane
+    /// goes negative. The delegate hears about the resize.
     open func setPosition(_ position: CGFloat, ofDividerAt dividerIndex: Int) {
         guard dividerIndex >= 0,
               dividerIndex + 1 < subviews.count else {
@@ -78,16 +100,19 @@ open class NSSplitView: NSView {
         let thickness = dividerThickness
 
         if isVertical {
-            let clampedPosition = max(0, min(position, bounds.size.width - thickness))
             let secondMaxX = second.frame.origin.x + second.frame.size.width
+            let clampedPosition = max(first.frame.origin.x, min(position, secondMaxX - thickness))
             first.frame = NSMakeRect(first.frame.origin.x, 0, clampedPosition - first.frame.origin.x, bounds.size.height)
             second.frame = NSMakeRect(clampedPosition + thickness, 0, max(0, secondMaxX - clampedPosition - thickness), bounds.size.height)
         } else {
-            let clampedPosition = max(0, min(position, bounds.size.height - thickness))
             let secondMaxY = second.frame.origin.y + second.frame.size.height
+            let clampedPosition = max(first.frame.origin.y, min(position, secondMaxY - thickness))
             first.frame = NSMakeRect(0, first.frame.origin.y, bounds.size.width, clampedPosition - first.frame.origin.y)
             second.frame = NSMakeRect(0, clampedPosition + thickness, bounds.size.width, max(0, secondMaxY - clampedPosition - thickness))
         }
+
+        needsDisplay = true
+        delegate?.splitViewDidResizeSubviews(NSNotification(name: Self.didResizeSubviewsNotification, object: self))
     }
 
     /// Recalculates child pane frames to evenly fill the split view.
@@ -113,6 +138,99 @@ open class NSSplitView: NSView {
                 subview.frame = NSMakeRect(0, y, bounds.size.width, paneHeight)
                 y += paneHeight + dividerThickness
             }
+        }
+
+        needsDisplay = true
+    }
+
+    // MARK: - Divider geometry
+
+    /// The rectangle of the divider following a pane index.
+    private func dividerRect(at index: Int) -> NSRect? {
+        guard index >= 0, index + 1 < subviews.count else {
+            return nil
+        }
+
+        let first = subviews[index]
+        let second = subviews[index + 1]
+        if isVertical {
+            let leading = first.frame.origin.x + first.frame.size.width
+            return NSMakeRect(leading, 0, second.frame.origin.x - leading, bounds.size.height)
+        }
+        let leading = first.frame.origin.y + first.frame.size.height
+        return NSMakeRect(0, leading, bounds.size.width, second.frame.origin.y - leading)
+    }
+
+    /// The index of the divider containing a point, if any.
+    private func dividerIndex(at point: NSPoint) -> Int? {
+        for index in 0..<max(0, subviews.count - 1) {
+            if let rect = dividerRect(at: index), NSPointInRect(point, rect) {
+                return index
+            }
+        }
+        return nil
+    }
+
+    // MARK: - Divider tracking
+
+    /// Starts a divider drag when the press lands in a divider gap.
+    open override func mouseDown(with event: NSEvent) {
+        if let index = dividerIndex(at: convert(event.locationInWindow, from: nil)) {
+            draggingDividerIndex = index
+            return
+        }
+        super.mouseDown(with: event)
+    }
+
+    /// Moves the tracked divider with the drag.
+    open override func mouseDragged(with event: NSEvent) {
+        guard let index = draggingDividerIndex else {
+            super.mouseDragged(with: event)
+            return
+        }
+
+        let location = convert(event.locationInWindow, from: nil)
+        let offset = dividerThickness / 2
+        setPosition((isVertical ? location.x : location.y) - offset, ofDividerAt: index)
+    }
+
+    /// Ends the divider drag.
+    open override func mouseUp(with event: NSEvent) {
+        if draggingDividerIndex != nil {
+            draggingDividerIndex = nil
+            return
+        }
+        super.mouseUp(with: event)
+    }
+
+    /// Shows the resize cursor over divider gaps.
+    open override func mouseMoved(with event: NSEvent) {
+        if dividerIndex(at: convert(event.locationInWindow, from: nil)) != nil {
+            (isVertical ? NSCursor.resizeLeftRight : NSCursor.resizeUpDown).set()
+        } else {
+            NSCursor.arrow.set()
+        }
+        super.mouseMoved(with: event)
+    }
+
+    // MARK: - Divider drawing
+
+    /// Draws all dividers.
+    open override func draw(_ dirtyRect: NSRect) {
+        for index in 0..<max(0, subviews.count - 1) {
+            if let rect = dividerRect(at: index), rect.size.width > 0, rect.size.height > 0 {
+                drawDivider(in: rect)
+            }
+        }
+    }
+
+    /// Draws one divider: a classic center line inside the gap.
+    open func drawDivider(in rect: NSRect) {
+        NSColor(calibratedRed: 0.63, green: 0.63, blue: 0.63, alpha: 1).setFill()
+        if isVertical {
+            NSRectFill(NSMakeRect(rect.origin.x + rect.size.width / 2 - 0.5, rect.origin.y + 2, 1, max(0, rect.size.height - 4)))
+        } else {
+            NSRectFill(NSMakeRect(rect.origin.x + 2, rect.origin.y + rect.size.height / 2 - 0.5, max(0, rect.size.width - 4), 1))
         }
     }
 }

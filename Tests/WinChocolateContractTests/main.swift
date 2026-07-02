@@ -3938,6 +3938,53 @@ func testTextViewUndoRestoresPreviousText() {
     expect(plain.undoManager?.canUndo == false, "allowsUndo == false should not register undo actions.")
 }
 
+final class SplitResizeRecorder: NSSplitViewDelegate {
+    var resizeCount = 0
+
+    func splitViewDidResizeSubviews(_ notification: NSNotification) {
+        resizeCount += 1
+    }
+}
+
+func testSplitViewDividerDragResizesPanes() {
+    let backend = InMemoryNativeControlBackend()
+    let split = NSSplitView(frame: NSMakeRect(0, 0, 208, 100))
+    let left = NSView(frame: NSMakeRect(0, 0, 10, 10))
+    let right = NSView(frame: NSMakeRect(0, 0, 10, 10))
+    split.addSubview(left)
+    split.addSubview(right)
+    _ = split.realizeNativePeer(in: backend, parent: nil)
+
+    // Thick dividers are 8 wide: panes 0..100 and 108..208, divider between.
+    expect(left.frame.size.width == 100, "adjustSubviews did not split panes evenly.")
+    expect(right.frame.origin.x == 108, "adjustSubviews did not offset the second pane past the divider.")
+
+    let recorder = SplitResizeRecorder()
+    split.delegate = recorder
+
+    split.mouseDown(with: NSEvent(type: .leftMouseDown, locationInWindow: NSMakePoint(104, 50)))
+    split.mouseDragged(with: NSEvent(type: .leftMouseDragged, locationInWindow: NSMakePoint(60, 50)))
+    split.mouseUp(with: NSEvent(type: .leftMouseUp, locationInWindow: NSMakePoint(60, 50)))
+
+    expect(left.frame.size.width == 56, "Dragging the divider did not resize the first pane.")
+    expect(right.frame.origin.x == 64, "Dragging the divider did not move the second pane.")
+    expect(right.frame.origin.x + right.frame.size.width == 208, "The second pane's far edge should not move during a drag.")
+    expect(recorder.resizeCount == 1, "The delegate did not hear about the divider drag.")
+
+    // Over-dragging clamps so no pane goes negative.
+    split.mouseDown(with: NSEvent(type: .leftMouseDown, locationInWindow: NSMakePoint(60, 50)))
+    split.mouseDragged(with: NSEvent(type: .leftMouseDragged, locationInWindow: NSMakePoint(-40, 50)))
+    split.mouseUp(with: NSEvent(type: .leftMouseUp, locationInWindow: NSMakePoint(-40, 50)))
+    expect(left.frame.size.width == 0, "Over-dragging left did not clamp the first pane at zero width.")
+    expect(right.frame.origin.x == 8, "Over-dragging left did not park the divider at the leading edge.")
+
+    // A press outside any divider does not start a drag.
+    split.mouseDown(with: NSEvent(type: .leftMouseDown, locationInWindow: NSMakePoint(150, 50)))
+    split.mouseDragged(with: NSEvent(type: .leftMouseDragged, locationInWindow: NSMakePoint(30, 50)))
+    split.mouseUp(with: NSEvent(type: .leftMouseUp, locationInWindow: NSMakePoint(30, 50)))
+    expect(left.frame.size.width == 0 && right.frame.origin.x == 8, "A drag starting outside the divider should not move it.")
+}
+
 final class NoteTestDocument: NSDocument {
     var text = "seed"
     var madeControllers = 0
@@ -4906,6 +4953,7 @@ testUndoManagerRegistersUndoAndRedo()
 testTextViewUndoRestoresPreviousText()
 testDocumentWindowControllersSyncTitles()
 testDocumentControllerNewDocumentMakesAndShowsWindows()
+testSplitViewDividerDragResizesPanes()
 testAttributedStringStoresStringAndAttributes()
 testRightMouseScrollAndClickCountReachTheView()
 testAlertCustomButtonsRunComposedModalPanel()
