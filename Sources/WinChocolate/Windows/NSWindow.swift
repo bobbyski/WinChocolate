@@ -105,6 +105,19 @@ open class NSWindow: NSResponder {
     /// The responder currently receiving keyboard focus in this window.
     public private(set) weak var firstResponder: NSResponder?
 
+    private var storedUndoManager: NSUndoManager?
+
+    /// The undo manager shared by this window's views.
+    ///
+    /// Created lazily on first access, matching how AppKit windows vend an
+    /// undo manager when nothing more specific provides one.
+    open var undoManager: NSUndoManager? {
+        if storedUndoManager == nil {
+            storedUndoManager = NSUndoManager()
+        }
+        return storedUndoManager
+    }
+
     /// Backend used for native work.
     public let nativeBackend: NativeControlBackend
 

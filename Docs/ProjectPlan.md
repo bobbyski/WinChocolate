@@ -21,7 +21,7 @@ Overall Progress                           ████████████�
 
 Phase 1 · Package, Core Names, App Shell   ██████████████████████████  100%  ✅ Complete
 Phase 2 · Classic Win32 Backend            ██████████████████████████  100%  ✅ Complete
-Phase 3 · AppKit Surface Expansion         ███████████████████░░░░░░░   72%  🔄 In Progress
+Phase 3 · AppKit Surface Expansion         ███████████████████░░░░░░░   73%  🔄 In Progress
 Phase 4 · Demo Harness                     █████████████████████░░░░░   80%  🔄 In Progress
 Phase 5 · Tables, Lists, Collections       █████░░░░░░░░░░░░░░░░░░░░░   21%  🔄 In Progress
 Phase 6 · Toolbar API Parity               █████████░░░░░░░░░░░░░░░░░   34%  🔄 In Progress
@@ -34,7 +34,7 @@ Phase 11 · Cross-Platform Test Apps        ░░░░░░░░░░░░
 
 **Status key:** ✅ Done &nbsp;|&nbsp; 🔄 In Progress &nbsp;|&nbsp; ⏳ Pending &nbsp;|&nbsp; ⏸️ Deferred &nbsp;|&nbsp; 🚫 Blocked
 
-**How percentages are computed:** each item carries a completion estimate (✅ = 100%, 🔄 = the `~NN%` shown in its notes, ⏳/⏸️ = 0%); a phase is the average of its items, and Overall is the average across all 79 tracked items (11 ✅). Recomputed 2026-07-01 after enumerating the missing AppKit surfaces — Overall dropped from 64% because tracked scope grew from 55 to 79 items, not because work regressed.
+**How percentages are computed:** each item carries a completion estimate (✅ = 100%, 🔄 = the `~NN%` shown in its notes, ⏳/⏸️ = 0%); a phase is the average of its items, and Overall is the average across all 79 tracked items (12 ✅). Recomputed 2026-07-01 after enumerating the missing AppKit surfaces — Overall dropped from 64% because tracked scope grew from 55 to 79 items, not because work regressed.
 
 ---
 
@@ -42,7 +42,7 @@ Phase 11 · Cross-Platform Test Apps        ░░░░░░░░░░░░
 
 | Priority | Area | Task | Status | Notes |
 |---:|---|---|---|---|
-| 1 | Demo and controls | Keep moving through the next control surface. | 🔄 In Progress | Latest surface: custom drawing (3.5) and event depth (3.6). Strong next candidates: `NSDocument` (3.9), `NSTextView` depth (3.11), and `Timer` (7.6) to unblock the Phase 11 apps. |
+| 1 | Demo and controls | Keep moving through the next control surface. | 🔄 In Progress | Latest surface: gradients and clipping closed out custom drawing (3.5); ICO decode landed (3.13). Strong next candidates: `NSDocument` (3.9), `NSTextView` depth (3.11), and `Timer` (7.6) to unblock the Phase 11 apps. |
 | 2 | Contracts | Add focused tests whenever a framework behavior becomes real, especially for controls that demos depend on. | 🔄 In Progress | Recent examples: save/open panels, toolbar customization, resize propagation. |
 | 3 | Documentation | Keep `CONTROL_PARITY.md` and this plan synchronized when a surface moves from placeholder to working. | 🔄 In Progress | Update item estimates after meaningful feature batches and recompute phase percentages. |
 
@@ -75,7 +75,7 @@ Keep the classic backend real, testable, and available as a stable presentation 
 
 ---
 
-## Phase 3 — AppKit Surface Expansion 🔄 72%
+## Phase 3 — AppKit Surface Expansion 🔄 73%
 
 Broaden source-compatible AppKit-style APIs while keeping mechanics hidden behind the framework. Items 3.5, 3.6, 3.9, and 3.11 are prerequisites for the Phase 11 cross-platform apps.
 
@@ -85,7 +85,7 @@ Broaden source-compatible AppKit-style APIs while keeping mechanics hidden behin
 | 3.2 | Windows, panels, popovers, alerts | 🔄 In Progress | ~80% — save/open panels over comdlg32/shell, modal sessions, and sheets (`NSWindow.beginSheet`/`endSheet`, app-modal positioned under the title area as the classic compromise). `NSSavePanel`/`NSOpenPanel.beginSheetModal(for:)` pins the OS file dialog under the parent's title area via a thread-local CBT hook plus a brief timer pin — keeps the modern Explorer style, which an OFN template hook would downgrade. `NSAlert.beginSheetModal` presents a chromeless (borderless) composed panel attached under the title area; borderless top-level windows now map to `WS_POPUP|WS_BORDER` (fixes popover chrome too). Richer chrome remains. |
 | 3.3 | View composition | 🔄 In Progress | ~60% — scroll/clip/split/visual-effect slices exist; split-divider dragging and scroll depth remain. |
 | 3.4 | Source compatibility gaps | 🔄 In Progress | ~20% — continue filling AppKit names as demo and ports need them; ongoing by nature. |
-| 3.5 | Custom drawing | 🔄 In Progress | ~95% — `NSView.draw(_:)` with `NSGraphicsContext.current`, `NSBezierPath`, `NSColor` set/fill/stroke, `NSRectFill`/`NSFrameRect`, `needsDisplay`, plus `String.draw(at:withAttributes:)` (minimal `NSAttributedString`) and `NSImage.draw(in:)` via GDI+/StretchBlt. Real text metrics via GetTextExtentPoint32W. Missing: gradients, clipping. |
+| 3.5 | Custom drawing | ✅ Done | `NSView.draw(_:)` with `NSGraphicsContext.current`, `NSBezierPath`, `NSColor` set/fill/stroke, `NSRectFill`/`NSFrameRect`, `needsDisplay`, `String.draw(at:withAttributes:)`, `NSImage.draw(in:)` via GDI+/StretchBlt, real text metrics via GetTextExtentPoint32W. `NSGradient` (rect and path fills at any angle over a GDI+ rect-with-angle line brush) plus clipping: `NSBezierPath.addClip()`, `NSRectClip`, `NSGraphicsContext.saveGraphicsState`/`restoreGraphicsState` over SaveDC/SelectClipPath/RestoreDC. |
 | 3.6 | Event and responder depth | 🔄 In Progress | ~85% — right/middle mouse, double-click `clickCount`, scroll wheel under the cursor, `NSCursor` (set/push/pop over WM_SETCURSOR), and menu key equivalents through the wndproc. Missing: view-chain `performKeyEquivalent`, cursor rects. |
 | 3.7 | `NSAlert` custom dialog | 🔄 In Progress | ~95% — composed modal panel with custom buttons, suppression checkbox, style icon badge, `accessoryView`, and `beginSheetModal(for:)`; panels size to measured message text. Plain alerts keep the native message box. |
 | 3.8 | Standard panels | 🔄 In Progress | ~70% — `NSColorPanel`/`NSFontPanel`/`NSFontManager` shared instances run the classic ChooseColorW/ChooseFontW dialogs; color well attaches to the shared panel. Missing: true floating panels, font-panel live apply. |
@@ -93,7 +93,7 @@ Broaden source-compatible AppKit-style APIs while keeping mechanics hidden behin
 | 3.10 | Menu depth | 🔄 In Progress | ~85% — context menus, Ctrl-mapped key equivalents, check-state marks, and live validation: `NSMenuItemValidation`/`autoenablesItems`/`NSMenu.update()` run on WM_INITMENUPOPUP with in-place native state sync. Missing: mutating item lists while a menu is open. |
 | 3.11 | `NSTextView` depth | 🔄 In Progress | ~60% — `selectedRange`/`NSRange`, `insertText(_:replacementRange:)`, `scrollRangeToVisible`, `NSTextViewDelegate.textDidChange`, read-only sync, fonts. Missing: find/replace, undo manager, rich text attributes. |
 | 3.12 | Progress indicator completion | 🔄 In Progress | ~80% — `isIndeterminate`, `.spinning` style, and `startAnimation`/`stopAnimation` animate via a native-timer sweep (the classic theme lacks marquee support). Missing: a true spinner visual in the modern appearance. |
-| 3.13 | `NSImage` formats | 🔄 In Progress | ~70% — PNG/JPEG/GIF decode via the GDI+ flat API (BMP keeps the fast LoadImageW path) for both `NSImageView` and `NSImage.draw(in:)`. Missing: ICO, template images, per-path bitmap caching. |
+| 3.13 | `NSImage` formats | 🔄 In Progress | ~80% — PNG/JPEG/GIF/ICO decode via the GDI+ flat API (BMP keeps the fast LoadImageW path) for both `NSImageView` and `NSImage.draw(in:)`; ICO verified through the demo's generated icon. Missing: template images, per-path bitmap caching. |
 
 ---
 

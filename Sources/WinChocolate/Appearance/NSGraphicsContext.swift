@@ -33,11 +33,36 @@ open class NSGraphicsContext {
         body()
         NSGraphicsContext.current = previous
     }
+
+    /// Saves the current context's graphics state, including the clip region.
+    open class func saveGraphicsState() {
+        current?.nativeContext.saveState()
+    }
+
+    /// Restores the current context's most recently saved graphics state.
+    open class func restoreGraphicsState() {
+        current?.nativeContext.restoreState()
+    }
+
+    /// Saves this context's graphics state, including the clip region.
+    open func saveGraphicsState() {
+        nativeContext.saveState()
+    }
+
+    /// Restores this context's most recently saved graphics state.
+    open func restoreGraphicsState() {
+        nativeContext.restoreState()
+    }
 }
 
 /// Fills a rectangle with the current fill color.
 public func NSRectFill(_ rect: NSRect) {
     NSBezierPath(rect: rect).fill()
+}
+
+/// Intersects the current clip region with a rectangle.
+public func NSRectClip(_ rect: NSRect) {
+    NSBezierPath(rect: rect).addClip()
 }
 
 /// Frames a rectangle with a 1-point border in the current fill color.

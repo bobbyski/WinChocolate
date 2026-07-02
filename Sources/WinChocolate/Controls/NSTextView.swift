@@ -47,6 +47,25 @@ open class NSTextView: NSControl {
     /// Whether the text view accepts selection.
     open var isSelectable: Bool
 
+    /// Whether editing changes register with the undo manager.
+    open var allowsUndo = false
+
+    private var storedUndoManager: NSUndoManager?
+
+    /// The undo manager recording this text view's edits.
+    ///
+    /// The window's shared manager is used when the view is installed in a
+    /// window; standalone text views vend their own.
+    open var undoManager: NSUndoManager? {
+        if let windowManager = window?.undoManager {
+            return windowManager
+        }
+        if storedUndoManager == nil {
+            storedUndoManager = NSUndoManager()
+        }
+        return storedUndoManager
+    }
+
     /// The text view delegate, notified when editing changes the text.
     open weak var delegate: NSTextViewDelegate?
 
@@ -185,10 +204,39 @@ open class NSTextView: NSControl {
     }
 
     private func updateStringFromNative(_ text: String) {
+        let previousText = string
         isUpdatingFromNative = true
         string = text
         objectValue = text
         isUpdatingFromNative = false
+        if allowsUndo && previousText != text {
+            registerUndoReplacingText(with: previousText)
+        }
+        onTextChanged?(self)
+        delegate?.textDidChange(NSNotification(name: Self.textDidChangeNotification, object: self))
+    }
+
+    /// Registers an undo action restoring earlier text.
+    ///
+    /// The handler registers its own inverse before applying, so performing
+    /// an undo records the matching redo (and vice versa) through the undo
+    /// manager's stack routing.
+    private func registerUndoReplacingText(with previousText: String) {
+        guard let manager = undoManager else {
+            return
+        }
+
+        manager.registerUndo(withTarget: self) { target in
+            target.registerUndoReplacingText(with: target.string)
+            target.applyUndoText(previousText)
+        }
+        manager.setActionName("Typing")
+    }
+
+    private func applyUndoText(_ text: String) {
+        string = text
+        objectValue = text
+        selectedRange = NSMakeRange(text.utf16.count, 0)
         onTextChanged?(self)
         delegate?.textDidChange(NSNotification(name: Self.textDidChangeNotification, object: self))
     }

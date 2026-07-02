@@ -152,6 +152,40 @@ open class NSBezierPath {
         close()
     }
 
+    /// The bounding box of the path's points, including curve control points.
+    open var bounds: NSRect {
+        var minX = CGFloat.greatestFiniteMagnitude
+        var minY = CGFloat.greatestFiniteMagnitude
+        var maxX = -CGFloat.greatestFiniteMagnitude
+        var maxY = -CGFloat.greatestFiniteMagnitude
+
+        func include(_ point: NSPoint) {
+            minX = min(minX, point.x)
+            minY = min(minY, point.y)
+            maxX = max(maxX, point.x)
+            maxY = max(maxY, point.y)
+        }
+
+        for segment in nativeSegments {
+            switch segment {
+            case .move(let point), .line(let point):
+                include(point)
+            case .curve(let endPoint, let control1, let control2):
+                include(endPoint)
+                include(control1)
+                include(control2)
+            case .close:
+                break
+            }
+        }
+
+        guard minX <= maxX && minY <= maxY else {
+            return NSZeroRect
+        }
+
+        return NSMakeRect(minX, minY, maxX - minX, maxY - minY)
+    }
+
     // MARK: - Drawing
 
     /// Fills the path with the current fill color.
@@ -170,5 +204,17 @@ open class NSBezierPath {
         }
 
         context.nativeContext.strokePath(nativeSegments, color: context.strokeColor, lineWidth: lineWidth)
+    }
+
+    /// Intersects the current clip region with this path.
+    ///
+    /// Pair with `NSGraphicsContext.saveGraphicsState()` and
+    /// `restoreGraphicsState()` to bound the clip's effect.
+    open func addClip() {
+        guard let context = NSGraphicsContext.current, !nativeSegments.isEmpty else {
+            return
+        }
+
+        context.nativeContext.clip(to: nativeSegments)
     }
 }

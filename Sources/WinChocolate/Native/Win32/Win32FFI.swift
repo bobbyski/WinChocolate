@@ -734,6 +734,61 @@ func winGdipGetImageHeight(_ image: UnsafeMutableRawPointer?, _ height: UnsafeMu
 @_silgen_name("GdipDisposeImage")
 func winGdipDisposeImage(_ image: UnsafeMutableRawPointer?) -> Int32
 
+/// GDI+ REAL rectangle used by line-gradient brushes.
+struct GdipRectF {
+    var x: Float = 0
+    var y: Float = 0
+    var width: Float = 0
+    var height: Float = 0
+}
+
+@_silgen_name("GdipCreateFromHDC")
+func winGdipCreateFromHDC(_ deviceContext: HDC?, _ graphics: UnsafeMutablePointer<UnsafeMutableRawPointer?>?) -> Int32
+
+@_silgen_name("GdipDeleteGraphics")
+func winGdipDeleteGraphics(_ graphics: UnsafeMutableRawPointer?) -> Int32
+
+@_silgen_name("GdipCreateLineBrushFromRectWithAngle")
+func winGdipCreateLineBrushFromRectWithAngle(
+    _ rect: UnsafePointer<GdipRectF>?,
+    _ color1: UInt32,
+    _ color2: UInt32,
+    _ angle: Float,
+    _ isAngleScalable: Int32,
+    _ wrapMode: Int32,
+    _ lineGradient: UnsafeMutablePointer<UnsafeMutableRawPointer?>?
+) -> Int32
+
+@_silgen_name("GdipSetLinePresetBlend")
+func winGdipSetLinePresetBlend(
+    _ brush: UnsafeMutableRawPointer?,
+    _ blend: UnsafePointer<UInt32>?,
+    _ positions: UnsafePointer<Float>?,
+    _ count: Int32
+) -> Int32
+
+@_silgen_name("GdipFillRectangle")
+func winGdipFillRectangle(
+    _ graphics: UnsafeMutableRawPointer?,
+    _ brush: UnsafeMutableRawPointer?,
+    _ x: Float,
+    _ y: Float,
+    _ width: Float,
+    _ height: Float
+) -> Int32
+
+@_silgen_name("GdipDeleteBrush")
+func winGdipDeleteBrush(_ brush: UnsafeMutableRawPointer?) -> Int32
+
+@_silgen_name("SaveDC")
+func winSaveDC(_ deviceContext: HDC?) -> Int32
+
+@_silgen_name("RestoreDC")
+func winRestoreDC(_ deviceContext: HDC?, _ savedState: Int32) -> Int32
+
+@_silgen_name("SelectClipPath")
+func winSelectClipPath(_ deviceContext: HDC?, _ mode: Int32) -> Int32
+
 @_silgen_name("TranslateMessage")
 func winTranslateMessage(_ message: UnsafePointer<MSG>) -> Int32
 
@@ -1039,6 +1094,8 @@ let halftoneStretchMode: Int32 = 4
 let srcCopyRasterOperation: DWORD = 0x00cc0020
 let gdiplusOkStatus: Int32 = 0
 let gdiplusWhiteBackground: UInt32 = 0xffffffff
+let gdiplusWrapModeTileFlipXY: Int32 = 3
+let rgnAnd: Int32 = 1
 
 func withOptionalWideString<Result>(_ string: String?, _ body: (UnsafePointer<UInt16>?) -> Result) -> Result {
     guard let string else {

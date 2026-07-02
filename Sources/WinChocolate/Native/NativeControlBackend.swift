@@ -141,6 +141,21 @@ public enum NativePathSegment: Equatable, Sendable {
     case close
 }
 
+/// One color stop of a linear gradient in backend drawing terms.
+public struct NativeGradientStop: Equatable {
+    /// The stop color.
+    public var color: NSColor
+
+    /// The stop position from 0 (start point) to 1 (end point).
+    public var location: CGFloat
+
+    /// Creates a gradient stop.
+    public init(color: NSColor, location: CGFloat) {
+        self.color = color
+        self.location = location
+    }
+}
+
 /// Immediate-mode drawing surface handed to views during a native paint pass.
 ///
 /// `NSBezierPath` and related AppKit drawing APIs reduce to these primitives
@@ -158,6 +173,23 @@ public protocol NativeDrawingContext: AnyObject {
 
     /// Draws an image file scaled to fill a rectangle.
     func drawImage(atPath path: String, in rect: NSRect)
+
+    /// Fills a rectangle with a linear gradient along an angle in degrees.
+    ///
+    /// Stops are ordered by location within 0...1. Angle 0 runs left to right
+    /// and positive angles rotate toward the top of the view, matching
+    /// AppKit's convention. The gradient respects the current clip, so
+    /// callers clip first to fill non-rectangular shapes.
+    func drawLinearGradient(_ stops: [NativeGradientStop], in rect: NSRect, angle: CGFloat)
+
+    /// Intersects the current clip region with a path for later drawing.
+    func clip(to segments: [NativePathSegment])
+
+    /// Saves the drawing state, including the clip region.
+    func saveState()
+
+    /// Restores the most recently saved drawing state.
+    func restoreState()
 }
 
 /// Native control creation and lifetime boundary.

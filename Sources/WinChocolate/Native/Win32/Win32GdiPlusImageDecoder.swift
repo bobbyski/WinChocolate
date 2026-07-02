@@ -62,7 +62,9 @@ enum Win32GdiPlusImageDecoder {
     }
 
     /// Starts GDI+ once per process, remembering a failed startup.
-    private static func ensureStarted() -> Bool {
+    ///
+    /// Also used by the drawing context before GDI+ rendering calls.
+    static func ensureStarted() -> Bool {
         if startupAttempted {
             return isStarted
         }

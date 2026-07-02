@@ -3780,6 +3780,56 @@ func testViewDrawDispatchesTextAndImagesToBackendContext() {
     expect(recording.images.first?.rect == NSMakeRect(10, 20, 30, 40), "Image draw did not carry the destination rect.")
 }
 
+final class GradientAndClipTestView: NSView {
+    override func draw(_ dirtyRect: NSRect) {
+        NSGradient(starting: .red, ending: .blue)?.draw(in: NSMakeRect(0, 0, 100, 50), angle: 0)
+
+        NSGradient(colorsAndLocations: (.white, 0), (.black, 0.25), (.red, 1))?
+            .draw(in: NSMakeRect(0, 0, 100, 50), angle: 90)
+
+        NSGraphicsContext.saveGraphicsState()
+        NSBezierPath(ovalIn: NSMakeRect(10, 10, 40, 40)).addClip()
+        NSColor.green.setFill()
+        NSRectFill(NSMakeRect(0, 0, 60, 60))
+        NSGraphicsContext.restoreGraphicsState()
+
+        NSRectClip(NSMakeRect(2, 2, 8, 8))
+    }
+}
+
+func testGradientAndClipCommandsReachBackendContext() {
+    let backend = InMemoryNativeControlBackend()
+    let view = GradientAndClipTestView(frame: NSMakeRect(0, 0, 120, 60))
+    let handle = view.realizeNativePeer(in: backend, parent: nil)
+
+    let recording = backend.performDraw(for: handle, in: NSMakeRect(0, 0, 120, 60))
+
+    expect(recording.gradients.count == 2, "Draw pass did not record both gradient commands.")
+    let horizontal = recording.gradients.first
+    expect(horizontal?.stops.count == 2, "Two-color gradient did not carry two stops.")
+    expect(horizontal?.stops.first?.color == .red, "Gradient did not carry the starting color.")
+    expect(horizontal?.stops.last?.location == 1, "Evenly spaced gradient did not end at location 1.")
+    expect(horizontal?.rect == NSMakeRect(0, 0, 100, 50), "Gradient did not carry the target rect.")
+    expect(horizontal?.angle == 0, "Horizontal gradient did not carry angle 0.")
+
+    let vertical = recording.gradients.last
+    expect(vertical?.stops.count == 3, "Located gradient did not carry three stops.")
+    expect(vertical?.stops[1].location == 0.25, "Located gradient did not keep the middle stop location.")
+    expect(vertical?.angle == 90, "Vertical gradient did not carry angle 90.")
+
+    expect(recording.clips.count == 2, "Draw pass did not record both clip commands.")
+    let ovalClipCurves = recording.clips.first?.segments.filter { segment in
+        if case .curve = segment {
+            return true
+        }
+        return false
+    }.count
+    expect(ovalClipCurves == 4, "Oval clip did not carry four curve segments.")
+    expect(recording.stateOperations == [.save, .restore], "Graphics state save/restore did not reach the backend in order.")
+    expect(recording.fills.count == 1, "Clipped fill did not record.")
+    expect(recording.fills.first?.color == .green, "Clipped fill did not carry its color.")
+}
+
 func testAttributedStringStoresStringAndAttributes() {
     let plain = NSAttributedString(string: "Plain")
     expect(plain.string == "Plain", "Attributed string did not store its characters.")
@@ -4662,6 +4712,7 @@ testOpenPanelSupportsMultipleSelectionAndDirectories()
 testOpenPanelBeginInvokesCompletionHandler()
 testViewDrawDispatchesPathsToBackendContext()
 testViewDrawDispatchesTextAndImagesToBackendContext()
+testGradientAndClipCommandsReachBackendContext()
 testAttributedStringStoresStringAndAttributes()
 testRightMouseScrollAndClickCountReachTheView()
 testAlertCustomButtonsRunComposedModalPanel()

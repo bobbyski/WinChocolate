@@ -51,6 +51,33 @@ public final class RecordingDrawingContext: NativeDrawingContext {
         public let rect: NSRect
     }
 
+    /// A recorded linear-gradient command.
+    public struct Gradient: Equatable {
+        /// The gradient color stops in order.
+        public let stops: [NativeGradientStop]
+
+        /// The filled rectangle.
+        public let rect: NSRect
+
+        /// The gradient angle in AppKit degrees.
+        public let angle: CGFloat
+    }
+
+    /// A recorded clip command.
+    public struct Clip: Equatable {
+        /// The clip path segments.
+        public let segments: [NativePathSegment]
+    }
+
+    /// A recorded graphics-state operation.
+    public enum StateOperation: Equatable {
+        /// A state save.
+        case save
+
+        /// A state restore.
+        case restore
+    }
+
     /// Fill commands in draw order.
     public private(set) var fills: [Fill] = []
 
@@ -62,6 +89,15 @@ public final class RecordingDrawingContext: NativeDrawingContext {
 
     /// Image commands in draw order.
     public private(set) var images: [Image] = []
+
+    /// Linear-gradient commands in draw order.
+    public private(set) var gradients: [Gradient] = []
+
+    /// Clip commands in draw order.
+    public private(set) var clips: [Clip] = []
+
+    /// Graphics-state saves and restores in order.
+    public private(set) var stateOperations: [StateOperation] = []
 
     /// Creates an empty recording context.
     public init() {
@@ -85,6 +121,26 @@ public final class RecordingDrawingContext: NativeDrawingContext {
     /// Records an image command.
     public func drawImage(atPath path: String, in rect: NSRect) {
         images.append(Image(path: path, rect: rect))
+    }
+
+    /// Records a linear-gradient command.
+    public func drawLinearGradient(_ stops: [NativeGradientStop], in rect: NSRect, angle: CGFloat) {
+        gradients.append(Gradient(stops: stops, rect: rect, angle: angle))
+    }
+
+    /// Records a clip command.
+    public func clip(to segments: [NativePathSegment]) {
+        clips.append(Clip(segments: segments))
+    }
+
+    /// Records a state save.
+    public func saveState() {
+        stateOperations.append(.save)
+    }
+
+    /// Records a state restore.
+    public func restoreState() {
+        stateOperations.append(.restore)
     }
 }
 

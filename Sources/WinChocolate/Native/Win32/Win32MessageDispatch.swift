@@ -535,6 +535,14 @@ extension Win32NativeControlBackend {
             let original = callOriginalControlProcedure(hwnd: hwnd, message: message, wParam: wParam, lParam: lParam)
             return original | dlgcWantTab
         case wmKeyDown, wmSysKeyDown:
+            // Menu key equivalents fire even when a native control has
+            // focus, matching AppKit's Cmd-key ordering: the main menu sees
+            // the event before the focused view's own key handling.
+            if let keyEquivalentHandler, currentModifierFlags().contains(.control),
+               keyEquivalentHandler(keyEvent(type: .keyDown, wParam: wParam)) {
+                return 0
+            }
+
             guard UInt16(wParam & 0xffff) == UInt16(vkTab),
                   let hwnd,
                   let action = keyDownActions[actionHandle(from: hwnd).rawValue] else {

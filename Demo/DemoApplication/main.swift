@@ -209,6 +209,89 @@ final class DemoShapesView: NSView {
 
         // Demo artwork scaled into a corner via NSImage.draw(in:).
         NSImage(contentsOfFile: demoArtworkPath)?.draw(in: NSMakeRect(330, 16, 72, 54))
+
+        // ICO decoding through the GDI+ fallback.
+        NSImage(contentsOfFile: demoIconPath)?.draw(in: NSMakeRect(350, 80, 32, 32))
+    }
+}
+
+final class DemoGradientsView: NSView {
+    override var acceptsFirstResponder: Bool {
+        false
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        NSColor.white.setFill()
+        NSRectFill(NSMakeRect(0, 0, frame.size.width, frame.size.height))
+        NSColor(calibratedRed: 0.55, green: 0.55, blue: 0.55, alpha: 1).setFill()
+        NSFrameRect(NSMakeRect(0, 0, frame.size.width, frame.size.height))
+
+        let labelAttributes: [NSAttributedString.Key: Any] = [
+            .font: NSFont.systemFont(ofSize: 10),
+            .foregroundColor: NSColor.darkGray
+        ]
+        let sampleY: CGFloat = 30
+        let sampleHeight: CGFloat = 56
+
+        // Two-color horizontal gradient.
+        "angle 0".draw(at: NSMakePoint(12, 10), withAttributes: labelAttributes)
+        let horizontal = NSMakeRect(12, sampleY, 150, sampleHeight)
+        NSGradient(
+            starting: NSColor(calibratedRed: 0.30, green: 0.62, blue: 0.86, alpha: 1),
+            ending: NSColor.white
+        )?.draw(in: horizontal, angle: 0)
+        NSColor.gray.setFill()
+        NSFrameRect(horizontal)
+
+        // Two-color vertical gradient, dark at the bottom per AppKit's angle 90.
+        "angle 90".draw(at: NSMakePoint(184, 10), withAttributes: labelAttributes)
+        let vertical = NSMakeRect(184, sampleY, 150, sampleHeight)
+        NSGradient(
+            starting: NSColor(calibratedRed: 0.13, green: 0.35, blue: 0.22, alpha: 1),
+            ending: NSColor(calibratedRed: 0.66, green: 0.90, blue: 0.72, alpha: 1)
+        )?.draw(in: vertical, angle: 90)
+        NSColor.gray.setFill()
+        NSFrameRect(vertical)
+
+        // Multi-stop diagonal gradient with explicit locations.
+        "multi-stop 45".draw(at: NSMakePoint(356, 10), withAttributes: labelAttributes)
+        let diagonal = NSMakeRect(356, sampleY, 150, sampleHeight)
+        NSGradient(colorsAndLocations:
+            (NSColor(calibratedRed: 0.86, green: 0.29, blue: 0.25, alpha: 1), 0),
+            (NSColor(calibratedRed: 0.94, green: 0.72, blue: 0.25, alpha: 1), 0.3),
+            (NSColor(calibratedRed: 0.22, green: 0.60, blue: 0.35, alpha: 1), 1)
+        )?.draw(in: diagonal, angle: 45)
+        NSColor.gray.setFill()
+        NSFrameRect(diagonal)
+
+        // Gradient filling a rounded-rect path (clips internally).
+        "path fill".draw(at: NSMakePoint(528, 10), withAttributes: labelAttributes)
+        let capsule = NSBezierPath(roundedRect: NSMakeRect(528, sampleY, 150, sampleHeight), xRadius: 28, yRadius: 28)
+        NSGradient(
+            starting: NSColor(calibratedRed: 0.45, green: 0.30, blue: 0.75, alpha: 1),
+            ending: NSColor(calibratedRed: 0.86, green: 0.55, blue: 0.90, alpha: 1)
+        )?.draw(in: capsule, angle: -60)
+        NSColor(calibratedRed: 0.35, green: 0.22, blue: 0.58, alpha: 1).setStroke()
+        capsule.lineWidth = 2
+        capsule.stroke()
+
+        // Explicit clipping: stripes confined to an oval via addClip().
+        "addClip stripes".draw(at: NSMakePoint(700, 10), withAttributes: labelAttributes)
+        let ovalRect = NSMakeRect(700, sampleY, 150, sampleHeight)
+        let oval = NSBezierPath(ovalIn: ovalRect)
+        NSGraphicsContext.saveGraphicsState()
+        oval.addClip()
+        for band in 0..<8 {
+            let color = band % 2 == 0
+                ? NSColor(calibratedRed: 0.94, green: 0.72, blue: 0.25, alpha: 1)
+                : NSColor(calibratedRed: 0.86, green: 0.29, blue: 0.25, alpha: 1)
+            color.setFill()
+            NSRectFill(NSMakeRect(ovalRect.origin.x + CGFloat(band) * 19, ovalRect.origin.y, 19, sampleHeight))
+        }
+        NSGraphicsContext.restoreGraphicsState()
+        NSColor(calibratedRed: 0.61, green: 0.43, blue: 0.16, alpha: 1).setStroke()
+        oval.lineWidth = 2
+        oval.stroke()
     }
 }
 
@@ -458,6 +541,8 @@ let canvasHintLabel = NSTextField(string: "Click: fill color   Right-click: outl
 let drawingEventLabel = NSTextField(string: "Last canvas event: none", frame: NSMakeRect(32, 388, 520, 24))
 let shapesLabel = NSTextField(string: "Paths:", frame: NSMakeRect(490, 36, 200, 24))
 let shapesView = DemoShapesView(frame: NSMakeRect(490, 68, 420, 280))
+let gradientsLabel = NSTextField(string: "Gradients and clipping:", frame: NSMakeRect(32, 420, 300, 24))
+let gradientsView = DemoGradientsView(frame: NSMakeRect(32, 448, 878, 100))
 let pageSelector = NSPopUpButton(frame: NSMakeRect(0, 0, 168, 28), pullsDown: false)
 let imageLabel = NSTextField(string: "Image view:", frame: NSMakeRect(32, 28, 104, 24))
 let imageView = NSImageView(frame: NSMakeRect(152, 28, 300, 190))
@@ -535,6 +620,82 @@ func demoResourcePath(named name: String, ofType type: String = "bmp") -> String
     Bundle.main.path(forResource: name, ofType: type, inDirectory: "Resources")
         ?? Bundle(path: ".")?.path(forResource: name, ofType: type, inDirectory: "Demo\\DemoApplication\\Resources")
         ?? "Demo\\DemoApplication\\Resources\\\(name).\(type)"
+}
+
+/// Writes a 32x32 ICO file at runtime so the demo can exercise icon decoding.
+func demoIconResourcePath() -> String {
+    let side = 32
+    var rows: [UInt8] = []
+
+    // Pixel rows bottom-up in BGRA: a blue disc on a yellow field.
+    for y in stride(from: side - 1, through: 0, by: -1) {
+        for x in 0..<side {
+            let dx = x - side / 2
+            let dy = y - side / 2
+            if dx * dx + dy * dy <= 144 {
+                rows.append(contentsOf: [200, 120, 40, 255])
+            } else {
+                rows.append(contentsOf: [60, 200, 250, 255])
+            }
+        }
+    }
+    let andMask = Array(repeating: UInt8(0), count: side * 4)
+
+    var bytes: [UInt8] = []
+    func appendU16(_ value: UInt16) {
+        bytes.append(UInt8(value & 0xff))
+        bytes.append(UInt8(value >> 8))
+    }
+    func appendU32(_ value: UInt32) {
+        for shift: UInt32 in [0, 8, 16, 24] {
+            bytes.append(UInt8((value >> shift) & 0xff))
+        }
+    }
+
+    // ICONDIR + one ICONDIRENTRY + BITMAPINFOHEADER (double height) + masks.
+    appendU16(0)
+    appendU16(1)
+    appendU16(1)
+    bytes.append(UInt8(side))
+    bytes.append(UInt8(side))
+    bytes.append(0)
+    bytes.append(0)
+    appendU16(1)
+    appendU16(32)
+    appendU32(UInt32(40 + rows.count + andMask.count))
+    appendU32(22)
+    appendU32(40)
+    appendU32(UInt32(side))
+    appendU32(UInt32(side * 2))
+    appendU16(1)
+    appendU16(32)
+    appendU32(0)
+    appendU32(UInt32(rows.count + andMask.count))
+    appendU32(0)
+    appendU32(0)
+    appendU32(0)
+    appendU32(0)
+    bytes.append(contentsOf: rows)
+    bytes.append(contentsOf: andMask)
+
+    let candidates = [
+        URL(fileURLWithPath: Bundle.main.bundlePath).appendingPathComponent("WinChocolateIconDemo.ico").path,
+        "C:\\AIResearch\\WinChocolate\\Code\\WinChocolate\\.build\\aarch64-unknown-windows-msvc\\debug\\WinChocolateIconDemo.ico",
+        "C:\\Users\\bobby\\AppData\\Local\\Temp\\WinChocolateIconDemo.ico"
+    ]
+    for path in candidates {
+        let url = URL(fileURLWithPath: path)
+        do {
+            try Data(bytes).write(to: url)
+            if (try? Data(contentsOf: url))?.isEmpty == false {
+                return path
+            }
+        } catch {
+            continue
+        }
+    }
+
+    return candidates[0]
 }
 
 func demoToolbarBitmapPath(named name: String, width: Int, kind: String) -> String {
@@ -711,6 +872,7 @@ func demoToolbarBitmapPath(named name: String, width: Int, kind: String) -> Stri
 }
 
 let demoArtworkPath = demoResourcePath(named: "WinChocolateArtworkDemo")
+let demoIconPath = demoIconResourcePath()
 let demoScreenArtworkPath = demoResourcePath(named: "WinChocolateScreenArtworkDemo")
 let demoPngPath = demoResourcePath(named: "WinChocolatePngDemo", ofType: "png")
 let toolbarOpenImagePath = demoToolbarBitmapPath(named: "ToolbarOpen", width: 58, kind: "open")
@@ -2067,6 +2229,8 @@ drawingPage.addSubview(canvasHintLabel)
 drawingPage.addSubview(drawingEventLabel)
 drawingPage.addSubview(shapesLabel)
 drawingPage.addSubview(shapesView)
+drawingPage.addSubview(gradientsLabel)
+drawingPage.addSubview(gradientsView)
 
 tablesPage.addSubview(imageLabel)
 tablesPage.addSubview(imageView)
