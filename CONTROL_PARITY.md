@@ -37,8 +37,8 @@ References used for this map:
 | `NSTextView` | Multiline `EDIT` or RichEdit | `TextBox` multiline / `RichEditBox` | Basic multiline edit exists; rich text and selection APIs are missing. | Partial | Planned |
 | `NSImageView` | `STATIC` bitmap/icon or custom paint | `Image` | File-backed BMP loading plus image/name model and scaling/alignment/frame-style state exists; richer formats and true custom scaling are future work. | Partial | Planned |
 | `NSColorWell` | Custom button/color swatch plus color dialog | `ColorPicker` | Basic clickable swatch and color state exist; shared color panel is future work. | Partial | Planned |
-| `NSSlider` | `SCROLLBAR` first slice, later trackbar/custom | `Slider` | Value/range/action works; current classic peer is visually rough. | Partial | Planned |
-| `NSStepper` | `SCROLLBAR` first slice, later `msctls_updown32` or custom | `NumberBox` with spin buttons | Value/range/increment/action works; current classic peer is provisional. | Partial | Planned |
+| `NSSlider` | `msctls_trackbar32` | `Slider` | Native trackbar peer with value/range/action; tick marks and vertical orientation are future work. | Done | Planned |
+| `NSStepper` | `msctls_updown32` | `NumberBox` with spin buttons | Native up-down peer with value/range/increment/action. | Done | Planned |
 | `NSProgressIndicator` bar | `msctls_progress32` | `ProgressBar` | Determinate bar exists. | Done | Planned |
 | `NSProgressIndicator` spinning | Custom animation | `ProgressRing` | Spinning/indeterminate behavior not implemented. | Planned | Planned |
 | `NSLevelIndicator` | Progress bar/custom owner-drawn meter | Rating/value indicator pattern | Basic value/range state exists over a progress-style peer; discrete/rating visuals are future work. | Partial | Planned |
@@ -62,7 +62,7 @@ References used for this map:
 | `NSScrubber` | Custom horizontal item strip | Custom item strip | Touch Bar-era AppKit control; low priority. | Planned | Planned |
 | `NSTabView` | `SysTabControl32` | `TabView` | Basic item labels and selection bridge exist; hosted per-tab content is future work. | Partial | Planned |
 | `NSSplitView` | Custom child-window splitter | `GridSplitter` / `SplitView` pattern | Basic pane arrangement and programmatic divider positioning exist; drag tracking and delegate callbacks are future work. | Partial | Planned |
-| `NSToolbar` | `ToolbarWindow32` / rebar | `CommandBar` / `AppBar` | First AppKit-compatible toolbar/item model exists with a classic `ToolbarWindow32` renderer docked through `NSWindow.toolbar`; `NSToolbarItem.image`, `NSImage(systemSymbolName:)` name capture, flexible-space descriptors, delegate allowed/default identifiers, visible item replacement, and a starter customization palette exist. Drag reordering, overflow, autosave, and the full AppKit customization sheet remain future work. | Partial | Planned |
+| `NSToolbar` | Composed `NSToolbarView` renderer (native `ToolbarWindow32` retired) | `CommandBar` / `AppBar` | AppKit-compatible toolbar/item model rendered by the composed `NSToolbarView` docked through `NSWindow.toolbar`; Apple-style customization sheet (`NSToolbarCustomizationPanel`) with drag insert/reorder/remove/default-restore, display modes, separator styles, and delegate identifiers. Overflow, autosave, and drag-to-the-real-toolbar customization remain future work (plan 6.13). | Partial | Planned |
 | `NSStatusBar` / `NSStatusItem` | Shell notification icon / tray menu | App notification area integration | Not a normal child control; likely later app-shell work. | Planned | Planned |
 | `NSMenu` | `HMENU` | `MenuBar` / `MenuFlyout` | Menu model and Quit dispatch exist. | Partial | Planned |
 | `NSMenuItem` | `MENUITEMINFO` / command ID | Menu item | Basic item/action/submenu/separator state exists. | Partial | Planned |

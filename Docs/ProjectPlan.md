@@ -17,24 +17,24 @@ This plan is the high-level project tracker. `CONTROL_PARITY.md` remains the det
 ## Dashboard
 
 ```text
-Overall Progress                           ████████████████████░░░░░░░░░░░░   62%  (current estimate)
+Overall Progress                           ███████████░░░░░░░░░░░░░░░░░░░░░   33%  (per-item estimate)
 
 Phase 1 · Package, Core Names, App Shell   ██████████████████████████  100%  ✅ Complete
-Phase 2 · Classic Win32 Backend            ████████████████████████░░   94%  🔄 In Progress
-Phase 3 · AppKit Surface Expansion         ██████████████████████░░░░   84%  🔄 In Progress
-Phase 4 · Demo Harness                     █████████████████████████░   98%  🔄 In Progress
-Phase 5 · Tables, Lists, Collections       ██████████░░░░░░░░░░░░░░░░   39%  🔄 In Progress
-Phase 6 · Toolbar API Parity               ████████░░░░░░░░░░░░░░░░░░   30%  🔄 In Progress
-Phase 7 · WinFoundation Bridge             ███████████░░░░░░░░░░░░░░░   44%  🔄 In Progress
+Phase 2 · Classic Win32 Backend            ██████████████████████████  100%  ✅ Complete
+Phase 3 · AppKit Surface Expansion         ████████░░░░░░░░░░░░░░░░░░   30%  🔄 In Progress
+Phase 4 · Demo Harness                     ████████████████████░░░░░░   78%  🔄 In Progress
+Phase 5 · Tables, Lists, Collections       █████░░░░░░░░░░░░░░░░░░░░░   21%  🔄 In Progress
+Phase 6 · Toolbar API Parity               █████████░░░░░░░░░░░░░░░░░   34%  🔄 In Progress
+Phase 7 · WinFoundation Bridge             █████░░░░░░░░░░░░░░░░░░░░░   18%  🔄 In Progress
 Phase 8 · Modern Windows Appearance        ░░░░░░░░░░░░░░░░░░░░░░░░░░    0%  ⏳ Pending
 Phase 9 · Auto Layout                      ░░░░░░░░░░░░░░░░░░░░░░░░░░    0%  ⏳ Pending
-Phase 10 · Focus, Accessibility, Polish    ███░░░░░░░░░░░░░░░░░░░░░░░   10%  ⏳ Pending
+Phase 10 · Focus, Accessibility, Polish    ███████░░░░░░░░░░░░░░░░░░░   25%  ⏳ Pending
 Phase 11 · Cross-Platform Test Apps        ░░░░░░░░░░░░░░░░░░░░░░░░░░    0%  ⏳ Pending
 ```
 
 **Status key:** ✅ Done &nbsp;|&nbsp; 🔄 In Progress &nbsp;|&nbsp; ⏳ Pending &nbsp;|&nbsp; ⏸️ Deferred &nbsp;|&nbsp; 🚫 Blocked
 
-Item tally: 8 ✅ of 55 tracked items. Percentages are effort estimates, not raw item counts — most items are open-ended surfaces that stay 🔄 while they deepen. (Overall dipped from 65% when Phase 11 added new scope.)
+**How percentages are computed:** each item carries a completion estimate (✅ = 100%, 🔄 = the `~NN%` shown in its notes, ⏳/⏸️ = 0%); a phase is the average of its items, and Overall is the average across all 79 tracked items (11 ✅). Recomputed 2026-07-01 after enumerating the missing AppKit surfaces — Overall dropped from 64% because tracked scope grew from 55 to 79 items, not because work regressed.
 
 ---
 
@@ -42,9 +42,9 @@ Item tally: 8 ✅ of 55 tracked items. Percentages are effort estimates, not raw
 
 | Priority | Area | Task | Status | Notes |
 |---:|---|---|---|---|
-| 1 | Demo and controls | Keep moving through the next control surface after parking toolbar work. | 🔄 In Progress | Toolbar follow-up is tracked below, but not the active lane. Latest surface: `NSSavePanel`/`NSOpenPanel`. |
-| 2 | Contracts | Add focused tests whenever a framework behavior becomes real, especially for controls that demos depend on. | 🔄 In Progress | Recent examples: save/open panels, toolbar custom views, resize propagation. |
-| 3 | Documentation | Keep `CONTROL_PARITY.md` and this plan synchronized when a surface moves from placeholder to working. | 🔄 In Progress | Update progress estimates after meaningful feature batches. |
+| 1 | Demo and controls | Keep moving through the next control surface. | 🔄 In Progress | Latest surface: `NSSavePanel`/`NSOpenPanel`. Strong next candidates: custom drawing (3.5) and event depth (3.6), both prerequisites for Phase 11 apps. |
+| 2 | Contracts | Add focused tests whenever a framework behavior becomes real, especially for controls that demos depend on. | 🔄 In Progress | Recent examples: save/open panels, toolbar customization, resize propagation. |
+| 3 | Documentation | Keep `CONTROL_PARITY.md` and this plan synchronized when a surface moves from placeholder to working. | 🔄 In Progress | Update item estimates after meaningful feature batches and recompute phase percentages. |
 
 ---
 
@@ -61,34 +61,43 @@ Initial project shape and runnable application shell.
 
 ---
 
-## Phase 2 — Classic Win32 Backend 🔄 94%
+## Phase 2 — Classic Win32 Backend ✅ 100%
 
-Keep the classic backend real, testable, and available as a stable presentation option. Even after the modern appearance lands, the classic Win32 look remains a selectable presentation.
-
-| # | Item | Status | Notes |
-|---|---|---|---|
-| 2.1 | Window and child HWND creation | ✅ Done | Top-level windows, child controls, cleanup. |
-| 2.2 | Native message dispatch | ✅ Done | Commands, text changes, mouse, keyboard, window close, resize. |
-| 2.3 | Core control peers | 🔄 In Progress | Many controls are native-backed; some are provisional or composed. |
-| 2.4 | Toolbar backend | 🔄 In Progress | Classic `ToolbarWindow32`, flexible space, custom view slot support. |
-| 2.5 | Visual polish | ⏳ Pending | Classic look is acceptable for now; modern appearance is separate. |
-
----
-
-## Phase 3 — AppKit Surface Expansion 🔄 84%
-
-Broaden source-compatible AppKit-style APIs while keeping mechanics hidden behind the framework.
+Keep the classic backend real, testable, and available as a stable presentation option. Even after the modern appearance lands, the classic Win32 look remains a selectable presentation. Deeper AppKit behavior on top of these peers continues in Phases 3, 5, and 6.
 
 | # | Item | Status | Notes |
 |---|---|---|---|
-| 3.1 | Common controls | 🔄 In Progress | Buttons, text, popup/combo, sliders, steppers, date picker, color well, etc. |
-| 3.2 | Windows, panels, popovers, alerts | 🔄 In Progress | First slices exist; `NSSavePanel`/`NSOpenPanel` now run native comdlg32/shell dialogs with modal-response, file-type, multi-select, and folder-choose support. Richer chrome/dialog behavior remains. |
-| 3.3 | View composition | 🔄 In Progress | Scroll/clip/split/visual-effect slices exist. |
-| 3.4 | Source compatibility gaps | ⏳ Pending | Continue filling AppKit names as demo and ports need them. |
+| 2.1 | Window and child HWND creation | ✅ Done | Top-level windows, child controls, cleanup. AppKit `contentRect` semantics honored via `AdjustWindowRectEx`. |
+| 2.2 | Native message dispatch | ✅ Done | Commands, text changes, mouse, keyboard, window close, resize; subclassed controls own their mouse capture. |
+| 2.3 | Core control peers | ✅ Done | Every control with a classic Win32 counterpart uses it natively (slider is `msctls_trackbar32`, stepper is `msctls_updown32`); remaining composed controls (segmented, color well, path control) are composed by design. |
+| 2.4 | Toolbar backend | ✅ Done | The composed `NSToolbarView` renderer is the classic toolbar; the native `ToolbarWindow32` path was retired (see `Docs/ToolbarArchitecture.md`). |
+| 2.5 | Visual polish | ✅ Done | Standard Segoe UI control font, chrome-matched toolbar with hairline, transparent-background fixes, separator styles. Modern appearance remains Phase 8. |
 
 ---
 
-## Phase 4 — Demo Harness 🔄 98%
+## Phase 3 — AppKit Surface Expansion 🔄 30%
+
+Broaden source-compatible AppKit-style APIs while keeping mechanics hidden behind the framework. Items 3.5, 3.6, 3.9, and 3.11 are prerequisites for the Phase 11 cross-platform apps.
+
+| # | Item | Status | Notes |
+|---|---|---|---|
+| 3.1 | Common controls | 🔄 In Progress | ~80% — buttons, text, popup/combo, sliders, steppers, date picker, color well, etc. Remaining: behavioral depth per `CONTROL_PARITY.md`. |
+| 3.2 | Windows, panels, popovers, alerts | 🔄 In Progress | ~65% — `NSSavePanel`/`NSOpenPanel` run native comdlg32/shell dialogs with modal-response, file-type, multi-select, and folder-choose support. Richer chrome, sheets, and modal sessions remain. |
+| 3.3 | View composition | 🔄 In Progress | ~60% — scroll/clip/split/visual-effect slices exist; split-divider dragging and scroll depth remain. |
+| 3.4 | Source compatibility gaps | 🔄 In Progress | ~20% — continue filling AppKit names as demo and ports need them; ongoing by nature. |
+| 3.5 | Custom drawing | ⏳ Pending | `NSView.draw(_:)` override path with a real graphics context, `NSBezierPath`, `NSColor` set/fill/stroke, `NSGraphicsContext`, `NSImage.draw`. Required by Minesweeper and the text editor (Phase 11). |
+| 3.6 | Event and responder depth | 🔄 In Progress | ~30% — left mouse, key, and drag events exist. Missing: right/middle mouse, `clickCount` double-click detection, scroll-wheel events, `NSCursor`, key equivalents / `performKeyEquivalent`. |
+| 3.7 | `NSAlert` custom dialog | 🔄 In Progress | ~20% — `MessageBoxW` slice honors button count/styles. Custom button titles, suppression checkbox, and accessory views need a real dialog backend (TaskDialogIndirect or composed panel). |
+| 3.8 | Standard panels | ⏳ Pending | `NSFontPanel`, `NSColorPanel`, `NSFontManager` shared instances over the classic font/color dialogs. |
+| 3.9 | `NSDocument` architecture | ⏳ Pending | Document lifecycle, dirty tracking, `NSDocumentController`, recent documents. Required by the text editor and Notes apps (Phase 11). |
+| 3.10 | Menu depth | 🔄 In Progress | ~40% — menu bar, submenus, separators, Quit dispatch exist. Missing: context menus (`NSMenu.popUp`), modifier key equivalents, `validateMenuItem`, check/state marks, dynamic updates. |
+| 3.11 | `NSTextView` depth | 🔄 In Progress | ~25% — multiline editing exists. Missing: selection APIs, fonts/attributes, find/replace hooks, undo integration. |
+| 3.12 | Progress indicator completion | 🔄 In Progress | ~30% — determinate bar exists. Missing: spinning/indeterminate style and animation. |
+| 3.13 | `NSImage` formats | 🔄 In Progress | ~25% — file-backed BMP decode exists. Missing: PNG/JPEG/ICO decode (WIC), scaling fidelity, template images. |
+
+---
+
+## Phase 4 — Demo Harness 🔄 78%
 
 Use the demo as a visual smoke test and workflow exerciser.
 
@@ -96,25 +105,30 @@ Use the demo as a visual smoke test and workflow exerciser.
 |---|---|---|---|
 | 4.1 | Main demo window | ✅ Done | Exercises core controls and state updates. |
 | 4.2 | Page selector | ✅ Done | Moved to toolbar as a custom toolbar item. |
-| 4.3 | Table/media/value pages | 🔄 In Progress | Good coverage, but should keep evolving with new controls. |
-| 4.4 | Visual QA | 🔄 In Progress | Manual screenshots remain useful for layout and toolbar work. |
+| 4.3 | Table/media/value pages | 🔄 In Progress | ~70% — good coverage, but should keep evolving with new controls. |
+| 4.4 | Visual QA | 🔄 In Progress | ~70% — manual screenshots remain useful for layout and toolbar work. |
+| 4.5 | Coverage for new surfaces | 🔄 In Progress | ~50% — save/open panels and toolbar customization are wired; add pages/buttons as 3.5-3.13 surfaces land. |
 
 ---
 
-## Phase 5 — Tables, Lists, Collections 🔄 39%
+## Phase 5 — Tables, Lists, Collections 🔄 21%
 
 Move table-like controls from first slices toward practical AppKit behavior.
 
 | # | Item | Status | Notes |
 |---|---|---|---|
-| 5.1 | `NSTableView` | 🔄 In Progress | Columns, rows, selection, sorting, actions exist; editing/reuse/accessibility remain. |
-| 5.2 | `NSOutlineView` | 🔄 In Progress | Flattening over table backend exists; disclosure UI and tree-table rendering remain. |
-| 5.3 | `NSBrowser` | 🔄 In Progress | First composed column browser slice exists. |
-| 5.4 | `NSCollectionView` | 🔄 In Progress | First fixed item-grid slice exists; layout engines and reuse remain. |
+| 5.1 | `NSTableView` | 🔄 In Progress | ~45% — columns, rows, selection, sorting, actions exist; data-source reload depth and accessibility remain. |
+| 5.2 | `NSOutlineView` | 🔄 In Progress | ~35% — flattening over table backend exists; disclosure triangles and tree-table rendering remain. |
+| 5.3 | `NSBrowser` | 🔄 In Progress | ~30% — first composed column browser slice exists. |
+| 5.4 | `NSCollectionView` | 🔄 In Progress | ~25% — first fixed item-grid slice exists; layout engines and reuse remain. |
+| 5.5 | Cell and row view hosting | ⏳ Pending | Real `NSTableCellView`/`NSTableRowView` hosting so custom views render inside cells. |
+| 5.6 | In-place editing | ⏳ Pending | Editable cells with begin/commit/cancel semantics matching AppKit. |
+| 5.7 | Header and sorting depth | 🔄 In Progress | ~30% — header clicks and sort descriptors exist; `NSTableHeaderView` customization and indicators remain. |
+| 5.8 | Selection and drag depth | ⏳ Pending | Multiple selection, extended-selection keyboard behavior, row drag & drop. |
 
 ---
 
-## Phase 6 — Toolbar API Parity 🔄 30%
+## Phase 6 — Toolbar API Parity 🔄 34%
 
 Define and implement the AppKit toolbar contract before making more Windows rendering decisions. The source-of-truth API definition is `Docs/AppKitToolbarAPI.md`.
 
@@ -122,32 +136,37 @@ Design note: toolbars are the rare exception to the "look like Windows" rule —
 
 | # | Item | Status | Notes |
 |---|---|---|---|
-| 6.1 | AppKit toolbar API inventory | 🔄 In Progress | Document the Apple-defined `NSToolbar`, `NSToolbarItem`, delegate, validation, customization, and autosave contract before further implementation work. |
-| 6.2 | `NSWindow.toolbar` contract | ⏳ Pending | A window has an optional toolbar object; attaching, replacing, showing, hiding, and removing it should follow AppKit semantics independent of renderer. |
-| 6.3 | `NSToolbar` model contract | ⏳ Pending | Cover `identifier`, visible item ordering, delegate ownership, selected item identifier, display mode, size mode, customization flags, visibility, and autosave name. |
-| 6.4 | `NSToolbarItem` model contract | ⏳ Pending | Cover identifier, label, palette label, tool tip, tag, image, view, target/action, menu form representation, enabled/selected state, visibility priority, min/max size, and validation. |
-| 6.5 | Delegate and item creation contract | ⏳ Pending | Mirror AppKit delegate responsibilities for allowed/default/selectable identifiers and item creation by identifier. |
-| 6.6 | Standard item identifiers | ⏳ Pending | Define behavior for separator, space, flexible space, show-colors, show-fonts, print, customize toolbar, and any version-appropriate standard identifiers WinChocolate chooses to expose. |
-| 6.7 | Customization contract | 🔄 In Progress | Apple-style sheet layout with drag insert/reorder/remove, default-set restore, duplicate rules for structural items, and display-mode popup now work through `NSToolbarCustomizationPanel`. Remaining: palette filtering rules, selectable-item behavior, richer labels. |
-| 6.8 | Autosave and restoration contract | ⏳ Pending | Define `autosavesConfiguration`, configuration identifiers, persistence shape, reset behavior, and migration/versioning expectations. |
-| 6.9 | Overflow and item visibility contract | ⏳ Pending | Define what happens when the toolbar is too narrow, including flexible space, overflow menu behavior, visibility priority, and custom view constraints. |
-| 6.10 | Toolbar rendering implementation | ⏸️ Deferred | Choose the Windows renderer only after the API contract is settled. Current composed renderer is provisional. |
-| 6.11 | Customization visual polish | ⏸️ Deferred | Make customization dialog match AppKit behavior and appearance after mechanics and API are aligned. |
+| 6.1 | AppKit toolbar API inventory | 🔄 In Progress | ~50% — document the Apple-defined `NSToolbar`, `NSToolbarItem`, delegate, validation, customization, and autosave contract before further implementation work. |
+| 6.2 | `NSWindow.toolbar` contract | 🔄 In Progress | ~60% — attach, replace, show/hide, and content-layout reservation work; sheet attachment and full-screen behavior remain. |
+| 6.3 | `NSToolbar` model contract | 🔄 In Progress | ~50% — identifier, visible ordering, delegate ownership, display/size modes, visibility, separator styles exist; selected item identifier and autosave name remain. |
+| 6.4 | `NSToolbarItem` model contract | 🔄 In Progress | ~50% — identifier, label, palette label, tooltip, image, view, target/action, enabled, min/max size exist; tag, menu form representation, visibility priority behavior, validation remain. |
+| 6.5 | Delegate and item creation contract | 🔄 In Progress | ~60% — allowed/default identifiers and item creation by identifier work; selectable identifiers remain. |
+| 6.6 | Standard item identifiers | 🔄 In Progress | ~40% — separator, space, flexible space work with style-aware rendering; show-colors, show-fonts, print, customize-toolbar identifiers remain. |
+| 6.7 | Customization contract | 🔄 In Progress | ~60% — Apple-style sheet with drag insert/reorder/remove, default-set restore, duplicate rules, and display-mode popup work; palette filtering rules and richer labels remain. |
+| 6.8 | Autosave and restoration contract | ⏳ Pending | `autosavesConfiguration`, configuration identifiers, persistence shape (depends on `UserDefaults`, item 7.7), reset behavior. |
+| 6.9 | Overflow and item visibility contract | ⏳ Pending | Behavior when the toolbar is too narrow: flexible space, overflow menu, visibility priority, custom view constraints. |
+| 6.10 | Toolbar rendering implementation | 🔄 In Progress | ~40% — composed renderer works (chrome background, separators, composite items, custom views); final renderer choice deferred until the API contract is settled. |
+| 6.11 | Customization visual polish | 🔄 In Progress | ~30% — layout matches Apple's sheet; drag previews, drop-position indicators, and final visual matching remain. |
 | 6.12 | SF Symbols strategy | ⏸️ Deferred | Define legal/technical mapping from SF-symbol names to Windows-native or bundled assets. |
 | 6.13 | Apple drag-to-real-toolbar customization | ⏳ Pending | Attempt to replace the mirrored-strip compromise with Apple's real behavior: drag items directly between the customization palette and the live window toolbar, with the sheet attached under the toolbar. |
 
 ---
 
-## Phase 7 — WinFoundation Bridge 🔄 44%
+## Phase 7 — WinFoundation Bridge 🔄 18%
 
-Bridge enough Foundation-shaped API to keep WinChocolate source-compatible while the local Windows Swift toolchain cannot import real Foundation.
+Bridge enough Foundation-shaped API to keep WinChocolate source-compatible while the local Windows Swift toolchain cannot import real Foundation. Items 7.5-7.7 are prerequisites for Phase 11 apps and toolbar autosave.
 
 | # | Item | Status | Notes |
 |---|---|---|---|
-| 7.1 | `URL`, `Data`, `Date`, `IndexSet`, `IndexPath`, `UUID`, `Bundle` | 🔄 In Progress | First useful slices exist with contracts. |
-| 7.2 | Real Foundation canary | 🔄 In Progress | `USE_REAL_FOUNDATION` path remains the eventual target. |
-| 7.3 | Resource and file behavior | 🔄 In Progress | Needed by image loading, panels, documents. |
+| 7.1 | `URL`, `Data`, `Date`, `IndexSet`, `IndexPath`, `UUID`, `Bundle` | 🔄 In Progress | ~55% — first useful slices exist with contracts. |
+| 7.2 | Real Foundation canary | 🔄 In Progress | ~30% — `USE_REAL_FOUNDATION` path remains the eventual target; rerun the canary in `FOUNDATION_SHIMS.md` on new toolchains. |
+| 7.3 | Resource and file behavior | 🔄 In Progress | ~40% — needed by image loading, panels, documents. |
 | 7.4 | Broader Foundation compatibility | ⏳ Pending | Add only when AppKit/API needs justify it. |
+| 7.5 | `FileManager` | ⏳ Pending | Existence checks, directory listing, create/remove/copy/move. Required by Notes and the text editor (Phase 11). |
+| 7.6 | `Timer` and run-loop scheduling | ⏳ Pending | `Timer.scheduledTimer` driven by the native message loop (`SetTimer`). Required by Minesweeper (Phase 11). |
+| 7.7 | `UserDefaults` | ⏳ Pending | Persistent defaults (registry or plist-style file). Required by toolbar autosave (6.8). |
+| 7.8 | `NotificationCenter` | ⏳ Pending | Post/observe with object filtering; several AppKit notifications already have names waiting for a real center. |
+| 7.9 | String and data I/O | 🔄 In Progress | ~40% — `Data` read/write exists; `String(contentsOf:)`/`write(to:)` and encodings remain. |
 
 ---
 
@@ -159,10 +178,11 @@ Goal: one appearance switch selects either the current classic Win32 look or the
 
 | # | Item | Status | Notes |
 |---|---|---|---|
-| 8.1 | Appearance strategy | ⏳ Pending | Decide modern backend versus themed wrappers versus hybrid. |
+| 8.1 | Appearance strategy | ⏳ Pending | Decide modern backend versus themed wrappers (comctl32 v6 manifest + visual styles) versus hybrid. |
 | 8.2 | Backend/appearance selection API | ⏳ Pending | Public switch to select classic Win32 or modern presentation; app code should not change when switching presentation style. |
 | 8.3 | Modern control visuals | ⏳ Pending | Fluent/WinUI-like look is future work. |
 | 8.4 | Modern look becomes the default | ⏳ Pending | After modern visuals reach control parity, new apps default to the modern look with classic still selectable. |
+| 8.5 | `NSAppearance` and dark mode | ⏳ Pending | Map `NSAppearance` names onto Windows light/dark themes; dynamic system colors respond to theme changes. |
 
 ---
 
@@ -175,19 +195,22 @@ Add AppKit-shaped layout APIs after the core frame-based control surface is stab
 | 9.1 | Constraint model | ⏳ Pending | `NSLayoutConstraint`, anchors, priorities. |
 | 9.2 | Intrinsic sizes | ⏳ Pending | Needed for controls, toolbar items, and forms. |
 | 9.3 | Migration path from frames | ⏳ Pending | Demos can stay frame-based until constraints are real. |
+| 9.4 | `NSStackView` | ⏳ Pending | Stack-based layout container; commonly the first layout API real ports reach for. |
 
 ---
 
-## Phase 10 — Focus, Accessibility, Polish ⏳ 10%
+## Phase 10 — Focus, Accessibility, Polish 🔄 22%
 
 Turn first slices into a framework that feels deliberate.
 
 | # | Item | Status | Notes |
 |---|---|---|---|
-| 10.1 | Focus and key loop audit | ⏳ Pending | Dedicated pass for first responder, Tab behavior, and focus indicators. |
-| 10.2 | Accessibility | ⏳ Pending | Native names, roles, keyboard behavior, assistive tech expectations. |
-| 10.3 | Public API docs | 🔄 In Progress | Keep public types and members documented. |
-| 10.4 | Large-file review | ⏳ Pending | Use `NEEDS_HUMAN.md` for files/classes that grow beyond maintainable size. |
+| 10.1 | Focus and key loop audit | 🔄 In Progress | ~30% — Tab routing and first-responder tracking exist; a dedicated pass for focus indicators and edge cases remains. |
+| 10.2 | Accessibility | ⏳ Pending | Native names, roles, keyboard behavior, assistive tech (UIA) expectations. |
+| 10.3 | Public API docs | 🔄 In Progress | ~70% — keep public types and members documented. |
+| 10.4 | Large-file review | 🔄 In Progress | ~50% — the Win32 backend is split into 14 focused files under `Native/Win32/`; `NSToolbar.swift` (~1,050 lines) and the demo main (~1,900 lines) remain on the `NEEDS_HUMAN.md` list. |
+| 10.5 | Native tooltips | ⏳ Pending | `NSView.toolTip` flows through the backend, but a `tooltips_class32` host is needed so users actually see tooltip bubbles. |
+| 10.6 | Cursor and hover polish | ⏳ Pending | I-beam over text, pointer defaults, hover states; pairs with `NSCursor` (3.6). |
 
 ---
 
@@ -203,7 +226,7 @@ import WinChocolate
 #endif
 ```
 
-These apps are consumers, not framework extensions: any helper an app needs to behave correctly is a design signal that the capability belongs in WinChocolate (and any Mac-only API it needs is a parity gap to fill). Each app deliberately stresses a different API surface.
+These apps are consumers, not framework extensions: any helper an app needs to behave correctly is a design signal that the capability belongs in WinChocolate (and any Mac-only API it needs is a parity gap to fill). Each app deliberately stresses a different API surface. Known prerequisites: custom drawing (3.5), event depth (3.6), `NSDocument` (3.9), `NSTextView` depth (3.11), `FileManager` (7.5), `Timer` (7.6).
 
 | # | Item | Status | Notes |
 |---|---|---|---|
@@ -220,6 +243,7 @@ These apps are consumers, not framework extensions: any helper an app needs to b
 ## Maintenance Rules
 
 - Update this dashboard after meaningful feature batches, not every tiny edit.
+- When items are added or their `~NN%` estimates change, recompute the phase and overall percentages with the per-item formula above.
 - Keep `CONTROL_PARITY.md` as the detailed control matrix.
 - Add tests for behavior that becomes framework contract rather than demo-only wiring.
-- Keep toolbar follow-up deferred until the project intentionally returns to that phase.
+- Keep toolbar follow-up focused on the contract items (6.x) rather than ad-hoc rendering changes.
