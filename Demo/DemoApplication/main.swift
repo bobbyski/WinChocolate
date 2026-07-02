@@ -1597,6 +1597,7 @@ selectWordButton.onAction = { _ in
         notesTextView.insertText("WinChocolate Notes", replacementRange: NSMakeRange(NSNotFound, 0))
     }
 
+    _ = window.makeFirstResponder(notesTextView)
     let firstWordLength = notesTextView.string.utf16.prefix { $0 != 32 }.count
     notesTextView.setSelectedRange(NSMakeRange(0, firstWordLength))
     let selection = notesTextView.selectedRange

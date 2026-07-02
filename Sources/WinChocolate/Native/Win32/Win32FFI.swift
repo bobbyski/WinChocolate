@@ -919,6 +919,7 @@ let esPassword: DWORD = 0x0020
 let esAutoVScroll: DWORD = 0x0040
 let esAutoHScroll: DWORD = 0x0080
 let esWantReturn: DWORD = 0x1000
+let esNoHideSel: DWORD = 0x0100
 let lbsNotify: DWORD = 0x0001
 let lvsReport: DWORD = 0x0001
 let lvsSingleSel: DWORD = 0x0004

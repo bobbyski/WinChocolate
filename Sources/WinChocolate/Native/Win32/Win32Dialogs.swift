@@ -225,7 +225,9 @@ extension Win32NativeControlBackend {
         var succeeded = false
         withUnsafeMutablePointer(to: &logFont) { logFontPointer in
             var descriptor = CHOOSEFONTW()
-            descriptor.lStructSize = DWORD(MemoryLayout<CHOOSEFONTW>.size)
+            // Windows validates sizeof(CHOOSEFONTW) == 104, which includes
+            // the trailing alignment padding that `size` (100) excludes.
+            descriptor.lStructSize = DWORD(MemoryLayout<CHOOSEFONTW>.stride)
             descriptor.hwndOwner = owner
             descriptor.lpLogFont = logFontPointer
             descriptor.Flags = cfScreenFonts | cfInitToLogFontStruct

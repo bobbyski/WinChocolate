@@ -41,7 +41,7 @@ extension Win32NativeControlBackend {
             parent: parent,
             commandIdentifier: nil,
             style: isEditable
-                ? wsChild | wsVisible | wsTabStop | wsBorder | wsVScroll | esMultiline | esAutoVScroll | esWantReturn
+                ? wsChild | wsVisible | wsTabStop | wsBorder | wsVScroll | esMultiline | esAutoVScroll | esWantReturn | esNoHideSel
                 : wsChild | wsVisible | wsBorder
         )
         if isEditable {
