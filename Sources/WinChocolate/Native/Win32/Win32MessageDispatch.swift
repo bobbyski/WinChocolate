@@ -452,6 +452,21 @@ extension Win32NativeControlBackend {
 
             action(NSEvent(type: .mouseMoved, locationInWindow: mouseLocation(from: lParam, in: hwnd), modifierFlags: currentModifierFlags()))
             return nil
+        case wmTimer:
+            // Sweeps subclassed progress bars for indeterminate animation.
+            guard let hwnd else {
+                return nil
+            }
+
+            let handle = actionHandle(from: hwnd)
+            guard var position = marqueePositions[handle.rawValue] else {
+                return nil
+            }
+
+            position = (position + 4) % 104
+            marqueePositions[handle.rawValue] = position
+            _ = winSendMessageW(hwnd, pbmSetPos, WPARAM(min(position, 100)), 0)
+            return 0
         case wmGetDlgCode:
             let original = callOriginalControlProcedure(hwnd: hwnd, message: message, wParam: wParam, lParam: lParam)
             return original | dlgcWantTab

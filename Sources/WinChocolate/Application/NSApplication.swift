@@ -85,6 +85,26 @@ public final class NSApplication: NSObject {
         nativeBackend.runApplication()
     }
 
+    /// Runs a modal event loop for a window until `stopModal` is called.
+    @discardableResult
+    public func runModal(for window: NSWindow) -> ModalResponse {
+        let handle = window.realizeNativePeer()
+        window.makeMain()
+        window.makeKey()
+        nativeBackend.showWindow(handle)
+        return ModalResponse(rawValue: nativeBackend.runModal(for: handle))
+    }
+
+    /// Stops the current modal event loop with `.stop`.
+    public func stopModal() {
+        stopModal(withCode: .stop)
+    }
+
+    /// Stops the current modal event loop with a response code.
+    public func stopModal(withCode code: ModalResponse) {
+        nativeBackend.stopModal(withCode: code.rawValue)
+    }
+
     /// Terminates the application.
     public func terminate(_ sender: Any?) {
         delegate?.applicationWillTerminate(notification(named: "NSApplicationWillTerminateNotification"))

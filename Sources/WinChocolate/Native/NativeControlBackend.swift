@@ -427,4 +427,13 @@ public protocol NativeControlBackend: AnyObject {
 
     /// Runs a native modal file dialog, returning chosen paths or `nil` on cancel.
     func runFileDialog(_ options: NativeFileDialogOptions) -> [String]?
+
+    /// Runs a nested modal event loop for a window, returning the stop code.
+    func runModal(for handle: NativeHandle) -> Int
+
+    /// Stops the innermost modal event loop with a response code.
+    func stopModal(withCode code: Int)
+
+    /// Updates whether a native progress indicator animates indeterminately.
+    func setProgressIndicatorIndeterminate(_ isIndeterminate: Bool, animating: Bool, for handle: NativeHandle)
 }

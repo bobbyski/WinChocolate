@@ -3781,6 +3781,78 @@ func testRightMouseScrollAndClickCountReachTheView() {
     expect(view.lastScrollDeltaY == -2, "Scroll wheel delta did not reach scrollWheel.")
 }
 
+func testAlertCustomButtonsRunComposedModalPanel() {
+    let backend = InMemoryNativeControlBackend()
+    let previousBackend = NSApplication.shared.nativeBackend
+    NSApplication.shared.nativeBackend = backend
+    defer {
+        NSApplication.shared.nativeBackend = previousBackend
+        clearApplicationWindows()
+    }
+
+    let alert = NSAlert()
+    alert.messageText = "Save changes?"
+    alert.informativeText = "Your changes will be lost otherwise."
+    alert.addButton(withTitle: "Save")
+    alert.addButton(withTitle: "Don't Save")
+    alert.addButton(withTitle: "Cancel")
+    alert.showsSuppressionButton = true
+    alert.suppressionButton?.state = .on
+    backend.nextModalResponseCode = NSApplication.ModalResponse.alertSecondButtonReturn.rawValue
+
+    let response = alert.runModal()
+
+    expect(response == .alertSecondButtonReturn, "Composed alert did not return the scripted button response.")
+    expect(backend.modalSessions.count == 1, "Composed alert did not run exactly one modal session.")
+    expect(alert.suppressionButton?.state == .on, "Alert suppression button state was not preserved.")
+}
+
+func testRunModalReturnsScriptedStopCode() {
+    let backend = InMemoryNativeControlBackend()
+    let window = NSWindow(
+        contentRect: NSMakeRect(0, 0, 200, 100),
+        styleMask: [.titled],
+        backing: .buffered,
+        defer: false,
+        nativeBackend: backend
+    )
+    backend.nextModalResponseCode = NSApplication.ModalResponse.OK.rawValue
+
+    let previousBackend = NSApplication.shared.nativeBackend
+    NSApplication.shared.nativeBackend = backend
+    defer {
+        NSApplication.shared.nativeBackend = previousBackend
+        clearApplicationWindows()
+    }
+
+    let response = NSApplication.shared.runModal(for: window)
+    NSApplication.shared.stopModal(withCode: .cancel)
+
+    expect(response == .OK, "runModal did not return the backend stop code.")
+    expect(backend.modalSessions.first == window.nativeHandle, "runModal did not run a session for the window.")
+    expect(backend.modalStopCodes == [NSApplication.ModalResponse.cancel.rawValue], "stopModal did not forward its code to the backend.")
+}
+
+func testProgressIndicatorIndeterminateSyncsToBackend() {
+    let backend = InMemoryNativeControlBackend()
+    let indicator = NSProgressIndicator(frame: NSMakeRect(0, 0, 120, 18))
+    let handle = indicator.realizeNativePeer(in: backend, parent: nil)
+
+    expect(backend.progressIndeterminateStates[handle]?.isIndeterminate == false, "Determinate indicator should realize as determinate.")
+
+    indicator.isIndeterminate = true
+    indicator.startAnimation(nil)
+    expect(backend.progressIndeterminateStates[handle]?.isIndeterminate == true, "isIndeterminate did not sync to the backend.")
+    expect(backend.progressIndeterminateStates[handle]?.animating == true, "startAnimation did not sync to the backend.")
+
+    indicator.stopAnimation(nil)
+    expect(backend.progressIndeterminateStates[handle]?.animating == false, "stopAnimation did not sync to the backend.")
+
+    indicator.isIndeterminate = false
+    indicator.style = .spinning
+    expect(backend.progressIndeterminateStates[handle]?.isIndeterminate == true, "Spinning style should render indeterminately on the classic backend.")
+}
+
 testWindowRealizationCreatesNativeHierarchy()
 testViewHierarchyMaintainsSuperviewOwnership()
 testViewInsertionReplacementTagsAndDescendants()
@@ -3909,5 +3981,8 @@ testOpenPanelSupportsMultipleSelectionAndDirectories()
 testOpenPanelBeginInvokesCompletionHandler()
 testViewDrawDispatchesPathsToBackendContext()
 testRightMouseScrollAndClickCountReachTheView()
+testAlertCustomButtonsRunComposedModalPanel()
+testRunModalReturnsScriptedStopCode()
+testProgressIndicatorIndeterminateSyncsToBackend()
 
 print("WinChocolate contract tests passed.")

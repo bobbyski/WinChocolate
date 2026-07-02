@@ -987,6 +987,34 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
         return scriptedFileDialogPaths.removeFirst()
     }
 
+    /// Windows that ran modal sessions, oldest first.
+    public private(set) var modalSessions: [NativeHandle] = []
+
+    /// Stop codes recorded through `stopModal`, oldest first.
+    public private(set) var modalStopCodes: [Int] = []
+
+    /// The code returned by the next `runModal` call.
+    public var nextModalResponseCode: Int = NSApplication.ModalResponse.alertFirstButtonReturn.rawValue
+
+    /// Records the modal session and returns the scripted stop code.
+    public func runModal(for handle: NativeHandle) -> Int {
+        modalSessions.append(handle)
+        return nextModalResponseCode
+    }
+
+    /// Records a modal stop request.
+    public func stopModal(withCode code: Int) {
+        modalStopCodes.append(code)
+    }
+
+    /// Recorded indeterminate state by handle.
+    public private(set) var progressIndeterminateStates: [NativeHandle: (isIndeterminate: Bool, animating: Bool)] = [:]
+
+    /// Records native progress indeterminate state.
+    public func setProgressIndicatorIndeterminate(_ isIndeterminate: Bool, animating: Bool, for handle: NativeHandle) {
+        progressIndeterminateStates[handle] = (isIndeterminate, animating)
+    }
+
     private func makeHandle(kind: String, text: String, frame: NSRect, parent: NativeHandle?) -> NativeHandle {
         let handle = NativeHandle(rawValue: nextRawHandle)
         nextRawHandle += 1

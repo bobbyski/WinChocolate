@@ -48,10 +48,21 @@ open class NSProgressIndicator: NSControl {
     }
 
     /// Whether the indicator is indeterminate.
-    open var isIndeterminate: Bool
+    open var isIndeterminate: Bool {
+        didSet {
+            syncIndeterminateToNative()
+        }
+    }
 
     /// Visual style requested by the app.
-    open var style: Style
+    ///
+    /// The classic backend renders `.spinning` as an indeterminate marquee
+    /// bar; the modern appearance will add a true spinner.
+    open var style: Style {
+        didSet {
+            syncIndeterminateToNative()
+        }
+    }
 
     /// Whether the indicator is currently animating.
     open private(set) var isAnimating: Bool
@@ -71,11 +82,13 @@ open class NSProgressIndicator: NSControl {
     /// Starts the indicator animation.
     open func startAnimation(_ sender: Any?) {
         isAnimating = true
+        syncIndeterminateToNative()
     }
 
     /// Stops the indicator animation.
     open func stopAnimation(_ sender: Any?) {
         isAnimating = false
+        syncIndeterminateToNative()
     }
 
     /// Increments the current value.
@@ -94,7 +107,21 @@ open class NSProgressIndicator: NSControl {
         let handle = super.realizeNativePeer(in: backend, parent: parent)
         backend.setProgressIndicatorRange(minValue: minValue, maxValue: maxValue, for: handle)
         backend.setProgressIndicatorValue(doubleValue, for: handle)
+        backend.setProgressIndicatorIndeterminate(rendersIndeterminate, animating: isAnimating, for: handle)
         return handle
+    }
+
+    /// Whether the native peer should render the indeterminate style.
+    private var rendersIndeterminate: Bool {
+        isIndeterminate || style == .spinning
+    }
+
+    private func syncIndeterminateToNative() {
+        guard let nativeHandle else {
+            return
+        }
+
+        realizedBackend?.setProgressIndicatorIndeterminate(rendersIndeterminate, animating: isAnimating, for: nativeHandle)
     }
 
     private func syncRangeToNative() {

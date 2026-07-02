@@ -147,6 +147,33 @@ extension Win32NativeControlBackend {
         _ = winSendMessageW(hwnd, pbmSetPos, WPARAM(Int32(value.rounded())), 0)
     }
 
+    /// Updates whether a native progress indicator animates indeterminately.
+    ///
+    /// The classic progress control only supports marquee rendering with the
+    /// themed common controls, so the backend animates a sweeping position
+    /// with a native timer instead; the modern appearance will add a true
+    /// spinner.
+    public func setProgressIndicatorIndeterminate(_ isIndeterminate: Bool, animating: Bool, for handle: NativeHandle) {
+        guard let hwnd = hwnd(from: handle) else {
+            return
+        }
+
+        if isIndeterminate && animating {
+            if marqueePositions[handle.rawValue] == nil {
+                subclassControlForTabKey(handle)
+                marqueePositions[handle.rawValue] = 0
+            }
+            _ = winSendMessageW(hwnd, pbmSetRange32, 0, 100)
+            _ = winSetTimer(hwnd, 1, 33, nil)
+            return
+        }
+
+        if marqueePositions.removeValue(forKey: handle.rawValue) != nil {
+            _ = winKillTimer(hwnd, 1)
+        }
+        _ = winSendMessageW(hwnd, pbmSetPos, 0, 0)
+    }
+
     /// Updates native scroller state.
     public func setScrollerValue(_ value: Double, knobProportion: Double, for handle: NativeHandle) {
         guard let hwnd = hwnd(from: handle) else {

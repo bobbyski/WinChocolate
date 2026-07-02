@@ -56,6 +56,8 @@ public final class Win32NativeControlBackend: NativeControlBackend {
     var standardToolbarImageOwner: HWND?
     var standardToolbarImageList: HIMAGELIST?
     private var nextCommandIdentifier: UInt = 1_000
+    private var modalStopCode: Int?
+    var marqueePositions: [UInt: Int32] = [:]
 
     /// Creates a Win32 backend.
     public init() {
@@ -71,6 +73,34 @@ public final class Win32NativeControlBackend: NativeControlBackend {
                 _ = winDispatchMessageW(messagePointer)
             }
         }
+    }
+
+    /// Runs a nested modal event loop until `stopModal` or the window closes.
+    public func runModal(for handle: NativeHandle) -> Int {
+        guard let modalHwnd = hwnd(from: handle) else {
+            return NSApplication.ModalResponse.cancel.rawValue
+        }
+
+        // Save any outer modal state so modal sessions can nest.
+        let outerStopCode = modalStopCode
+        modalStopCode = nil
+
+        var message = MSG()
+        while modalStopCode == nil, winIsWindow(modalHwnd) != 0, winGetMessageW(&message, nil, 0, 0) > 0 {
+            withUnsafePointer(to: message) { messagePointer in
+                _ = winTranslateMessage(messagePointer)
+                _ = winDispatchMessageW(messagePointer)
+            }
+        }
+
+        let code = modalStopCode ?? NSApplication.ModalResponse.cancel.rawValue
+        modalStopCode = outerStopCode
+        return code
+    }
+
+    /// Stops the innermost modal event loop with a response code.
+    public func stopModal(withCode code: Int) {
+        modalStopCode = code
     }
 
     /// Requests native application termination.

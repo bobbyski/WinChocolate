@@ -375,6 +375,7 @@ let hideButton = NSButton(title: "Hide Counter", frame: NSMakeRect(316, 24, 144,
 let moveButton = NSButton(title: "Move Click", frame: NSMakeRect(480, 24, 128, 34))
 let panelButton = NSButton(title: "Panel", frame: NSMakeRect(632, 24, 100, 34))
 let popoverButton = NSButton(title: "Popover", frame: NSMakeRect(752, 24, 112, 34))
+let askToSaveButton = NSButton(title: "Ask to Save", frame: NSMakeRect(884, 24, 112, 34))
 let editableLabel = NSTextField(string: "Type here:", frame: NSMakeRect(32, 88, 104, 24))
 let editableTextField = NSTextField(string: "", frame: NSMakeRect(152, 86, 360, 28))
 let secureLabel = NSTextField(string: "Password:", frame: NSMakeRect(32, 122, 104, 24))
@@ -406,6 +407,7 @@ let slider = NSSlider(value: 50, minValue: 0, maxValue: 100, target: nil, action
 let sliderValueLabel = NSTextField(string: "50", frame: NSMakeRect(312, 28, 48, 24))
 let progressLabel = NSTextField(string: "Progress:", frame: NSMakeRect(32, 60, 88, 24))
 let progressIndicator = NSProgressIndicator(frame: NSMakeRect(128, 64, 232, 18))
+let activityIndicator = NSProgressIndicator(frame: NSMakeRect(388, 64, 160, 18))
 let stepperLabel = NSTextField(string: "Stepper:", frame: NSMakeRect(32, 94, 88, 24))
 let stepper = NSStepper(frame: NSMakeRect(128, 94, 20, 28))
 let stepperValueLabel = NSTextField(string: "50", frame: NSMakeRect(176, 94, 64, 24))
@@ -1677,6 +1679,32 @@ canvasView.onEvent = { message in
     drawingEventLabel.stringValue = "Last canvas event: \(message)"
 }
 
+askToSaveButton.onAction = { _ in
+    updateFocusDisplay()
+    let alert = NSAlert()
+    alert.messageText = "Do you want to save the changes to Untitled?"
+    alert.informativeText = "Your changes will be lost if you don't save them."
+    alert.addButton(withTitle: "Save")
+    alert.addButton(withTitle: "Don't Save")
+    alert.addButton(withTitle: "Cancel")
+    alert.showsSuppressionButton = true
+
+    let response = alert.runModal()
+    let choice: String
+    switch response {
+    case .alertFirstButtonReturn:
+        choice = "Save"
+    case .alertSecondButtonReturn:
+        choice = "Don't Save"
+    case .alertThirdButtonReturn:
+        choice = "Cancel"
+    default:
+        choice = "Dismissed"
+    }
+    let suppressed = alert.suppressionButton?.state == .on ? ", don't ask again" : ""
+    statusLabel.stringValue = "Ask to Save: \(choice)\(suppressed)"
+}
+
 openToolbarItem.onAction = { _ in
     updateFocusDisplay()
     let panel = NSOpenPanel.openPanel()
@@ -1921,6 +1949,7 @@ controlsPage.addSubview(hideButton)
 controlsPage.addSubview(moveButton)
 controlsPage.addSubview(panelButton)
 controlsPage.addSubview(popoverButton)
+controlsPage.addSubview(askToSaveButton)
 controlsPage.addSubview(alertButton)
 controlsPage.addSubview(titleCheckbox)
 controlsPage.addSubview(alertStyleBox)
@@ -1943,6 +1972,9 @@ valuesPage.addSubview(slider)
 valuesPage.addSubview(sliderValueLabel)
 valuesPage.addSubview(progressLabel)
 valuesPage.addSubview(progressIndicator)
+activityIndicator.isIndeterminate = true
+activityIndicator.startAnimation(nil)
+valuesPage.addSubview(activityIndicator)
 valuesPage.addSubview(stepperLabel)
 valuesPage.addSubview(stepper)
 valuesPage.addSubview(stepperValueLabel)

@@ -299,6 +299,12 @@ func winSetPolyFillMode(_ deviceContext: HDC?, _ mode: Int32) -> Int32
 @_silgen_name("WindowFromPoint")
 func winWindowFromPoint(_ point: POINT) -> HWND?
 
+@_silgen_name("SetTimer")
+func winSetTimer(_ hwnd: HWND?, _ identifier: UInt, _ elapseMilliseconds: UINT, _ timerProc: UnsafeMutableRawPointer?) -> UInt
+
+@_silgen_name("KillTimer")
+func winKillTimer(_ hwnd: HWND?, _ identifier: UInt) -> Int32
+
 @_silgen_name("CreateFontW")
 func winCreateFontW(
     _ height: Int32,
@@ -604,6 +610,7 @@ let mkLButton: WPARAM = 0x0001
 let csDblClks: UINT = 0x0008
 let psSolid: Int32 = 0
 let windingFillMode: Int32 = 2
+let wmTimer: UINT = 0x0113
 let transparentBkMode: Int32 = 1
 let dtCenter: UINT = 0x00000001
 let dtVCenter: UINT = 0x00000004
