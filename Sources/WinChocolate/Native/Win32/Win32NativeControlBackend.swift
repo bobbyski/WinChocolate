@@ -23,6 +23,7 @@ public final class Win32NativeControlBackend: NativeControlBackend {
     var otherMouseUpActions: [UInt: (NSEvent) -> Void] = [:]
     var scrollWheelActions: [UInt: (NSEvent) -> Void] = [:]
     var activeCursorName: String?
+    var cursorRegions: [UInt: [NativeCursorRegion]] = [:]
     var keyEquivalentHandler: ((NSEvent) -> Bool)?
     var drawActions: [UInt: (NativeDrawingContext, NSRect) -> Void] = [:]
     var keyDownActions: [UInt: (NSEvent) -> Void] = [:]

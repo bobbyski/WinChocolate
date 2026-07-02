@@ -61,7 +61,12 @@ public final class NSApplication: NSObject {
         didSet {
             nativeBackend.installMainMenu(mainMenu)
             nativeBackend.registerKeyEquivalentHandler { [weak self] event in
-                self?.mainMenu?.performKeyEquivalent(with: event) ?? false
+                // The key window's view hierarchy sees Cmd-key events before
+                // the main menu, matching AppKit's dispatch order.
+                if self?.keyWindow?.performKeyEquivalent(with: event) == true {
+                    return true
+                }
+                return self?.mainMenu?.performKeyEquivalent(with: event) ?? false
             }
         }
     }

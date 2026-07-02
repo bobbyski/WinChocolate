@@ -363,12 +363,61 @@ open class NSView: NSResponder {
                 self.draw(dirtyRect)
             }
         }
+        updateCursorRegions()
 
         for subview in subviews {
             subview.realizeNativePeer(in: backend, parent: handle)
         }
 
         return handle
+    }
+
+    // MARK: - Cursor rectangles
+
+    private var cursorRects: [(rect: NSRect, cursor: NSCursor)] = []
+
+    /// Associates a hover cursor with a rectangle in local coordinates.
+    ///
+    /// Call from `resetCursorRects()`, matching AppKit's contract; rects
+    /// added elsewhere are discarded on the next invalidation.
+    open func addCursorRect(_ rect: NSRect, cursor: NSCursor) {
+        cursorRects.append((rect, cursor))
+    }
+
+    /// Removes all of the view's cursor rectangles.
+    open func discardCursorRects() {
+        cursorRects.removeAll()
+    }
+
+    /// Override point: rebuild cursor rectangles with `addCursorRect`.
+    open func resetCursorRects() {
+    }
+
+    /// Discards, rebuilds, and pushes cursor rectangles to the native peer.
+    internal func updateCursorRegions() {
+        discardCursorRects()
+        resetCursorRects()
+        guard let nativeHandle, let realizedBackend else {
+            return
+        }
+
+        let regions = cursorRects.map { NativeCursorRegion(rect: $0.rect, cursorName: $0.cursor.cursorName) }
+        realizedBackend.setCursorRegions(regions, for: nativeHandle)
+    }
+
+    /// Gives this view and its subtree a chance to consume a key equivalent.
+    ///
+    /// Subviews are asked depth-first before the main menu sees the event,
+    /// matching AppKit's dispatch order. The base implementation only
+    /// forwards; views with their own shortcuts override and return `true`
+    /// when they handle the event.
+    open func performKeyEquivalent(with event: NSEvent) -> Bool {
+        for subview in subviews where !subview.isHidden {
+            if subview.performKeyEquivalent(with: event) {
+                return true
+            }
+        }
+        return false
     }
 
     /// Draws the view's custom content.

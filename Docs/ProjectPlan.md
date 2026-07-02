@@ -21,20 +21,20 @@ Overall Progress                           ████████████�
 
 Phase 1 · Package, Core Names, App Shell   ██████████████████████████  100%  ✅ Complete
 Phase 2 · Classic Win32 Backend            ██████████████████████████  100%  ✅ Complete
-Phase 3 · AppKit Surface Expansion         ████████████████████░░░░░░   77%  🔄 In Progress
+Phase 3 · AppKit Surface Expansion         ████████████████████░░░░░░   78%  🔄 In Progress
 Phase 4 · Demo Harness                     █████████████████████░░░░░   80%  🔄 In Progress
 Phase 5 · Tables, Lists, Collections       █████░░░░░░░░░░░░░░░░░░░░░   21%  🔄 In Progress
 Phase 6 · Toolbar API Parity               █████████░░░░░░░░░░░░░░░░░   34%  🔄 In Progress
 Phase 7 · WinFoundation Bridge             █████░░░░░░░░░░░░░░░░░░░░░   18%  🔄 In Progress
 Phase 8 · Modern Windows Appearance        ░░░░░░░░░░░░░░░░░░░░░░░░░░    0%  ⏳ Pending
 Phase 9 · Auto Layout                      ░░░░░░░░░░░░░░░░░░░░░░░░░░    0%  ⏳ Pending
-Phase 10 · Focus, Accessibility, Polish    █████░░░░░░░░░░░░░░░░░░░░░   21%  ⏳ Pending
+Phase 10 · Focus, Accessibility, Polish    ███████░░░░░░░░░░░░░░░░░░░   27%  🔄 In Progress
 Phase 11 · Cross-Platform Test Apps        ░░░░░░░░░░░░░░░░░░░░░░░░░░    0%  ⏳ Pending
 ```
 
 **Status key:** ✅ Done &nbsp;|&nbsp; 🔄 In Progress &nbsp;|&nbsp; ⏳ Pending &nbsp;|&nbsp; ⏸️ Deferred &nbsp;|&nbsp; 🚫 Blocked
 
-**How percentages are computed:** each item carries a completion estimate (✅ = 100%, 🔄 = the `~NN%` shown in its notes, ⏳/⏸️ = 0%); a phase is the average of its items, and Overall is the average across all 80 tracked items (12 ✅). Recomputed 2026-07-01 after enumerating the missing AppKit surfaces — Overall dropped from 64% because tracked scope grew from 55 to 79 items, not because work regressed. 2026-07-02: added 10.7 (per-monitor DPI awareness), growing scope to 80 items.
+**How percentages are computed:** each item carries a completion estimate (✅ = 100%, 🔄 = the `~NN%` shown in its notes, ⏳/⏸️ = 0%); a phase is the average of its items, and Overall is the average across all 80 tracked items (13 ✅). Recomputed 2026-07-01 after enumerating the missing AppKit surfaces — Overall dropped from 64% because tracked scope grew from 55 to 79 items, not because work regressed. 2026-07-02: added 10.7 (per-monitor DPI awareness), growing scope to 80 items.
 
 ---
 
@@ -75,7 +75,7 @@ Keep the classic backend real, testable, and available as a stable presentation 
 
 ---
 
-## Phase 3 — AppKit Surface Expansion 🔄 77%
+## Phase 3 — AppKit Surface Expansion 🔄 78%
 
 Broaden source-compatible AppKit-style APIs while keeping mechanics hidden behind the framework. Items 3.5, 3.6, 3.9, and 3.11 are prerequisites for the Phase 11 cross-platform apps.
 
@@ -86,7 +86,7 @@ Broaden source-compatible AppKit-style APIs while keeping mechanics hidden behin
 | 3.3 | View composition | 🔄 In Progress | ~70% — scroll/clip/split/visual-effect slices exist. Split dividers now track mouse drags (clamped between neighbor panes), draw a classic center line, show the resize cursor on hover, and report through `NSSplitViewDelegate.splitViewDidResizeSubviews`. Remaining: scroll depth. |
 | 3.4 | Source compatibility gaps | 🔄 In Progress | ~20% — continue filling AppKit names as demo and ports need them; ongoing by nature. |
 | 3.5 | Custom drawing | ✅ Done | `NSView.draw(_:)` with `NSGraphicsContext.current`, `NSBezierPath`, `NSColor` set/fill/stroke, `NSRectFill`/`NSFrameRect`, `needsDisplay`, `String.draw(at:withAttributes:)`, `NSImage.draw(in:)` via GDI+/StretchBlt, real text metrics via GetTextExtentPoint32W. `NSGradient` (rect and path fills at any angle over a GDI+ rect-with-angle line brush) plus clipping: `NSBezierPath.addClip()`, `NSRectClip`, `NSGraphicsContext.saveGraphicsState`/`restoreGraphicsState` over SaveDC/SelectClipPath/RestoreDC. |
-| 3.6 | Event and responder depth | 🔄 In Progress | ~85% — right/middle mouse, double-click `clickCount`, scroll wheel under the cursor, `NSCursor` (set/push/pop over WM_SETCURSOR), and menu key equivalents through the wndproc. Missing: view-chain `performKeyEquivalent`, cursor rects. |
+| 3.6 | Event and responder depth | ✅ Done | Right/middle mouse, double-click `clickCount`, scroll wheel under the cursor, `NSCursor` (set/push/pop over WM_SETCURSOR), and menu key equivalents through the wndproc. Cursor rects: `addCursorRect`/`resetCursorRects`/`discardCursorRects` + `NSWindow.invalidateCursorRects(for:)`, resolved per hover position in WM_SETCURSOR (split-view dividers and the demo canvas use them). Key equivalents dispatch AppKit-style: key window's view chain (`performKeyEquivalent`) first, then the main menu. |
 | 3.7 | `NSAlert` custom dialog | 🔄 In Progress | ~95% — composed modal panel with custom buttons, suppression checkbox, style icon badge, `accessoryView`, and `beginSheetModal(for:)`; panels size to measured message text. Plain alerts keep the native message box. |
 | 3.8 | Standard panels | 🔄 In Progress | ~70% — `NSColorPanel`/`NSFontPanel`/`NSFontManager` shared instances run the classic ChooseColorW/ChooseFontW dialogs; color well attaches to the shared panel. Missing: true floating panels, font-panel live apply. |
 | 3.9 | `NSDocument` architecture | 🔄 In Progress | ~75% — `NSDocument` (read/write/data overrides, dirty tracking, save/saveAs through `NSSavePanel`) and `NSDocumentController` (documents, recents, `openDocument`/`newDocument`, `winDocumentClass` hook). Window controllers: `NSWindowController` (showWindow, close, title sync with a classic `*` dirty prefix), `makeWindowControllers`/`addWindowController`/`showWindows`, open/new flows make and show windows. Missing: autosave (needs 7.6 `Timer`), document types from metadata, close-with-unsaved-changes prompt. |
@@ -199,7 +199,7 @@ Add AppKit-shaped layout APIs after the core frame-based control surface is stab
 
 ---
 
-## Phase 10 — Focus, Accessibility, Polish 🔄 21%
+## Phase 10 — Focus, Accessibility, Polish 🔄 27%
 
 Turn first slices into a framework that feels deliberate.
 
@@ -210,7 +210,7 @@ Turn first slices into a framework that feels deliberate.
 | 10.3 | Public API docs | 🔄 In Progress | ~70% — keep public types and members documented. |
 | 10.4 | Large-file review | 🔄 In Progress | ~50% — the Win32 backend is split into 14 focused files under `Native/Win32/`; `NSToolbar.swift` (~1,050 lines) and the demo main (~1,900 lines) remain on the `NEEDS_HUMAN.md` list. |
 | 10.5 | Native tooltips | ⏳ Pending | `NSView.toolTip` flows through the backend, but a `tooltips_class32` host is needed so users actually see tooltip bubbles. |
-| 10.6 | Cursor and hover polish | ⏳ Pending | I-beam over text, pointer defaults, hover states; pairs with `NSCursor` (3.6). |
+| 10.6 | Cursor and hover polish | 🔄 In Progress | ~40% — cursor rects landed (3.6) with per-region WM_SETCURSOR resolution; remaining: I-beam defaults over text controls, hover states. |
 | 10.7 | Per-monitor DPI awareness | ⏳ Pending | The process currently runs DPI-virtualized: Windows bitmap-scales the UI when the display scale is not 100%, so text and controls render soft. Declare per-monitor-v2 awareness (manifest or `SetProcessDpiAwarenessContext`), scale logical points to device pixels in the backend (window/control frames, fonts, `GetWindowRect`-derived math like sheet positioning), and handle `WM_DPICHANGED` for monitor moves. Point-based AppKit coordinates stay unchanged at the public API. |
 
 ---

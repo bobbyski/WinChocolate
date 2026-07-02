@@ -66,6 +66,15 @@ extension Win32NativeControlBackend {
         _ = winSetCursor(systemCursor(named: name))
     }
 
+    /// Replaces a native view's hover cursor regions.
+    public func setCursorRegions(_ regions: [NativeCursorRegion], for handle: NativeHandle) {
+        if regions.isEmpty {
+            cursorRegions.removeValue(forKey: handle.rawValue)
+        } else {
+            cursorRegions[handle.rawValue] = regions
+        }
+    }
+
     func systemCursor(named name: String) -> HCURSOR? {
         let identifier: Int
         switch name {

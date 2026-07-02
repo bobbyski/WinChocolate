@@ -105,6 +105,16 @@ open class NSWindow: NSResponder {
     /// The responder currently receiving keyboard focus in this window.
     public private(set) weak var firstResponder: NSResponder?
 
+    /// Rebuilds a view's cursor rectangles and pushes them to its native peer.
+    open func invalidateCursorRects(for view: NSView) {
+        view.updateCursorRegions()
+    }
+
+    /// Gives the window's view hierarchy a chance to consume a key equivalent.
+    open func performKeyEquivalent(with event: NSEvent) -> Bool {
+        contentView?.performKeyEquivalent(with: event) ?? false
+    }
+
     private var storedUndoManager: NSUndoManager?
 
     /// The undo manager shared by this window's views.

@@ -3985,6 +3985,104 @@ func testSplitViewDividerDragResizesPanes() {
     expect(left.frame.size.width == 0 && right.frame.origin.x == 8, "A drag starting outside the divider should not move it.")
 }
 
+final class CursorRectTestView: NSView {
+    override func resetCursorRects() {
+        addCursorRect(NSMakeRect(10, 10, 50, 20), cursor: .iBeam)
+        addCursorRect(NSMakeRect(0, 40, 30, 30), cursor: .pointingHand)
+    }
+}
+
+func testCursorRectsFlowToBackendRegions() {
+    let backend = InMemoryNativeControlBackend()
+    let view = CursorRectTestView(frame: NSMakeRect(0, 0, 100, 100))
+    let handle = view.realizeNativePeer(in: backend, parent: nil)
+
+    let regions = backend.cursorRegions[handle] ?? []
+    expect(regions.count == 2, "resetCursorRects did not push both cursor regions at realize time.")
+    expect(regions.first == NativeCursorRegion(rect: NSMakeRect(10, 10, 50, 20), cursorName: "iBeam"), "The first cursor region did not carry its rect and cursor name.")
+    expect(regions.last?.cursorName == "pointingHand", "The second cursor region did not carry its cursor name.")
+
+    // Split views publish divider gaps as resize regions and keep them
+    // aligned as the divider moves.
+    let split = NSSplitView(frame: NSMakeRect(0, 0, 208, 100))
+    split.addSubview(NSView(frame: NSMakeRect(0, 0, 10, 10)))
+    split.addSubview(NSView(frame: NSMakeRect(0, 0, 10, 10)))
+    let splitHandle = split.realizeNativePeer(in: backend, parent: nil)
+
+    var splitRegions = backend.cursorRegions[splitHandle] ?? []
+    expect(splitRegions == [NativeCursorRegion(rect: NSMakeRect(100, 0, 8, 100), cursorName: "resizeLeftRight")], "The split view did not publish its divider gap as a resize cursor region.")
+
+    split.setPosition(60, ofDividerAt: 0)
+    splitRegions = backend.cursorRegions[splitHandle] ?? []
+    expect(splitRegions.first?.rect == NSMakeRect(60, 0, 8, 100), "Moving the divider did not update its cursor region.")
+}
+
+final class KeyEquivalentTestView: NSView {
+    var consumesEquivalents = false
+    var seenEquivalents = 0
+
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        seenEquivalents += 1
+        return consumesEquivalents
+    }
+}
+
+func testViewChainSeesKeyEquivalentsBeforeMenu() {
+    clearApplicationWindows()
+    defer {
+        clearApplicationWindows()
+    }
+
+    let application = NSApplication.shared
+    let backend = InMemoryNativeControlBackend()
+    let previousBackend = application.nativeBackend
+    application.nativeBackend = backend
+    let previousMenu = application.mainMenu
+    defer {
+        application.nativeBackend = previousBackend
+        application.mainMenu = previousMenu
+    }
+
+    let window = NSWindow(
+        contentRect: NSMakeRect(0, 0, 400, 300),
+        styleMask: [.titled],
+        backing: .buffered,
+        defer: false,
+        nativeBackend: backend
+    )
+    let content = NSView(frame: NSMakeRect(0, 0, 400, 300))
+    let keyView = KeyEquivalentTestView(frame: NSMakeRect(0, 0, 100, 100))
+    content.addSubview(keyView)
+    window.contentView = content
+    window.makeKey()
+
+    var menuFired = false
+    let menu = NSMenu()
+    let submenuItem = NSMenuItem(title: "Test", action: nil, keyEquivalent: "")
+    let submenu = NSMenu(title: "Test")
+    let item = NSMenuItem(title: "Do Thing", action: nil, keyEquivalent: "k")
+    item.onAction = { _ in
+        menuFired = true
+    }
+    submenu.addItem(item)
+    submenuItem.submenu = submenu
+    menu.addItem(submenuItem)
+    application.mainMenu = menu
+
+    let event = NSEvent(type: .keyDown, locationInWindow: NSMakePoint(0, 0), keyCode: 0x4b, characters: "k", modifierFlags: [.control])
+
+    // The view declines, so the menu equivalent fires.
+    expect(backend.keyEquivalentHandler?(event) == true, "The menu key equivalent did not fire when no view consumed it.")
+    expect(keyView.seenEquivalents == 1, "The view chain was not consulted before the menu.")
+    expect(menuFired, "The menu action did not run after the view declined.")
+
+    // The view consumes, so the menu never sees the event.
+    menuFired = false
+    keyView.consumesEquivalents = true
+    expect(backend.keyEquivalentHandler?(event) == true, "A view-consumed key equivalent should report handled.")
+    expect(!menuFired, "The menu should not fire when a view consumed the equivalent.")
+}
+
 final class NoteTestDocument: NSDocument {
     var text = "seed"
     var madeControllers = 0
@@ -4954,6 +5052,8 @@ testTextViewUndoRestoresPreviousText()
 testDocumentWindowControllersSyncTitles()
 testDocumentControllerNewDocumentMakesAndShowsWindows()
 testSplitViewDividerDragResizesPanes()
+testCursorRectsFlowToBackendRegions()
+testViewChainSeesKeyEquivalentsBeforeMenu()
 testAttributedStringStoresStringAndAttributes()
 testRightMouseScrollAndClickCountReachTheView()
 testAlertCustomButtonsRunComposedModalPanel()

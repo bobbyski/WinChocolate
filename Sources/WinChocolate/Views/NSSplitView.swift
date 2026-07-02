@@ -112,6 +112,7 @@ open class NSSplitView: NSView {
         }
 
         needsDisplay = true
+        updateCursorRegions()
         delegate?.splitViewDidResizeSubviews(NSNotification(name: Self.didResizeSubviewsNotification, object: self))
     }
 
@@ -141,6 +142,7 @@ open class NSSplitView: NSView {
         }
 
         needsDisplay = true
+        updateCursorRegions()
     }
 
     // MARK: - Divider geometry
@@ -203,14 +205,13 @@ open class NSSplitView: NSView {
         super.mouseUp(with: event)
     }
 
-    /// Shows the resize cursor over divider gaps.
-    open override func mouseMoved(with event: NSEvent) {
-        if dividerIndex(at: convert(event.locationInWindow, from: nil)) != nil {
-            (isVertical ? NSCursor.resizeLeftRight : NSCursor.resizeUpDown).set()
-        } else {
-            NSCursor.arrow.set()
+    /// Publishes divider gaps as resize-cursor rectangles.
+    open override func resetCursorRects() {
+        for index in 0..<max(0, subviews.count - 1) {
+            if let rect = dividerRect(at: index) {
+                addCursorRect(rect, cursor: isVertical ? .resizeLeftRight : .resizeUpDown)
+            }
         }
-        super.mouseMoved(with: event)
     }
 
     // MARK: - Divider drawing

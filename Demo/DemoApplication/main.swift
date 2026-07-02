@@ -76,6 +76,11 @@ final class DemoCanvasView: NSView {
         false
     }
 
+    override func resetCursorRects() {
+        // Crosshair inside the drawing surface, published as a cursor rect.
+        addCursorRect(NSMakeRect(4, 4, frame.size.width - 8, frame.size.height - 8), cursor: .crosshair)
+    }
+
     override func draw(_ dirtyRect: NSRect) {
         let inset = NSMakeRect(4, 4, frame.size.width - 8, frame.size.height - 8)
         NSColor(calibratedRed: 0.98, green: 0.98, blue: 0.96, alpha: 1).setFill()

@@ -141,6 +141,21 @@ public enum NativePathSegment: Equatable, Sendable {
     case close
 }
 
+/// One hover cursor region of a native view.
+public struct NativeCursorRegion: Equatable {
+    /// The region rectangle in view-local coordinates.
+    public var rect: NSRect
+
+    /// The framework cursor name shown while hovering the rectangle.
+    public var cursorName: String
+
+    /// Creates a cursor region.
+    public init(rect: NSRect, cursorName: String) {
+        self.rect = rect
+        self.cursorName = cursorName
+    }
+}
+
 /// One color stop of a linear gradient in backend drawing terms.
 public struct NativeGradientStop: Equatable {
     /// The stop color.
@@ -511,6 +526,13 @@ public protocol NativeControlBackend: AnyObject {
 
     /// Makes the named framework cursor the active pointer image.
     func setCursor(named name: String)
+
+    /// Replaces a native view's hover cursor regions.
+    ///
+    /// Regions pair view-local rectangles with framework cursor names. The
+    /// backend resolves the pointer image per hover position, first matching
+    /// region wins, and positions outside every region show the arrow.
+    func setCursorRegions(_ regions: [NativeCursorRegion], for handle: NativeHandle)
 
     /// Registers the handler consulted for menu key equivalents before key-down routing.
     func registerKeyEquivalentHandler(_ handler: @escaping (NSEvent) -> Bool)

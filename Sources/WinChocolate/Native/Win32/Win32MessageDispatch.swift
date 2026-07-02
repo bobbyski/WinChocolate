@@ -168,11 +168,25 @@ extension Win32NativeControlBackend {
             action(NSEvent(type: .otherMouseUp, locationInWindow: mouseLocation(from: lParam, in: hwnd), modifierFlags: currentModifierFlags()))
             return 0
         case wmSetCursor:
+            guard (lParam & 0xffff) == htClient, let hwnd else {
+                return nil
+            }
+
+            // Cursor regions resolve per hover position, so views can show
+            // different cursors over different rectangles (cursor rects).
+            if let regions = cursorRegions[nativeHandle(from: hwnd).rawValue] {
+                var screenPoint = POINT()
+                _ = winGetCursorPos(&screenPoint)
+                _ = winScreenToClient(hwnd, &screenPoint)
+                let local = NSMakePoint(CGFloat(screenPoint.x), CGFloat(screenPoint.y))
+                let name = regions.first { NSPointInRect(local, $0.rect) }?.cursorName ?? "arrow"
+                _ = winSetCursor(systemCursor(named: name))
+                return 1
+            }
+
             // A framework cursor replaces the class arrow inside the client
             // area only; the non-client frame keeps the system cursor.
-            guard (lParam & 0xffff) == htClient,
-                  let cursorName = activeCursorName,
-                  cursorName != "arrow" else {
+            guard let cursorName = activeCursorName, cursorName != "arrow" else {
                 return nil
             }
 

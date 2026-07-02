@@ -1234,6 +1234,14 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
         cursorNames.append(name)
     }
 
+    /// Hover cursor regions by handle.
+    public private(set) var cursorRegions: [NativeHandle: [NativeCursorRegion]] = [:]
+
+    /// Records a view's hover cursor regions.
+    public func setCursorRegions(_ regions: [NativeCursorRegion], for handle: NativeHandle) {
+        cursorRegions[handle] = regions
+    }
+
     /// The most recently registered key-equivalent handler.
     public private(set) var keyEquivalentHandler: ((NSEvent) -> Bool)?
 
