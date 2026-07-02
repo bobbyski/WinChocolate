@@ -295,6 +295,57 @@ final class DemoGradientsView: NSView {
     }
 }
 
+/// A plain-text document demonstrating the NSDocument window-controller flow.
+final class DemoNoteDocument: NSDocument {
+    var text = ""
+
+    override func data(ofType typeName: String) throws -> Data {
+        Data(Array(text.utf8))
+    }
+
+    override func read(from data: Data, ofType typeName: String) throws {
+        text = String(decoding: data, as: UTF8.self)
+    }
+
+    override func makeWindowControllers() {
+        let noteWindow = NSWindow(
+            contentRect: NSMakeRect(220, 180, 460, 320),
+            styleMask: [.titled, .closable, .resizable],
+            backing: .buffered,
+            defer: false
+        )
+        let editor = NSTextView(frame: NSMakeRect(12, 12, 436, 296))
+        editor.string = text
+        editor.allowsUndo = true
+        editor.onTextChanged = { [weak self] textView in
+            self?.text = textView.string
+            self?.updateChangeCount(.changeDone)
+        }
+        let noteContent = NSView(frame: NSMakeRect(0, 0, 460, 320))
+        noteContent.addSubview(editor)
+        noteWindow.contentView = noteContent
+        addWindowController(NSWindowController(window: noteWindow))
+    }
+}
+
+/// Enables Edit-menu items from the notes text view's undo stacks.
+final class EditMenuController: NSMenuItemValidation {
+    var textView: NSTextView?
+
+    func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        guard let manager = textView?.undoManager else {
+            return false
+        }
+
+        if menuItem.keyEquivalentModifierMask.contains(.shift) {
+            return manager.canRedo
+        }
+        return manager.canUndo
+    }
+}
+
+let editMenuController = EditMenuController()
+
 final class DemoTableDataSource: NSTableViewDataSource {
     var rows: [[String]] = [
         ["NSApplication", "Running"],
@@ -2253,6 +2304,42 @@ tablesPage.addSubview(scrollSelectedButton)
 tablesPage.addSubview(tableScrollView)
 tablesPage.addSubview(outlineLabel)
 tablesPage.addSubview(outlineScrollView)
+// Document-architecture demo: a New Note window driven by NSDocument,
+// NSWindowController, and the shared NSDocumentController. The window title
+// gains the classic asterisk while the note has unsaved edits.
+NSDocumentController.shared.winDocumentClass = DemoNoteDocument.self
+let newNoteItem = NSMenuItem(title: "New Note Document", action: nil, keyEquivalent: "n")
+newNoteItem.onAction = { _ in
+    let document = NSDocumentController.shared.newDocument(nil)
+    statusLabel.stringValue = "New note document (\(NSDocumentController.shared.documents.count) open)"
+    _ = document
+}
+appMenu.insertItem(newNoteItem, at: 0)
+
+// Edit menu drives the notes text view's undo stack; items enable through
+// NSMenuItemValidation just before the menu opens.
+let editMenuItem = NSMenuItem(title: "Edit", action: nil, keyEquivalent: "")
+let editMenu = NSMenu(title: "Edit")
+notesTextView.allowsUndo = true
+let undoItem = NSMenuItem(title: "Undo", action: nil, keyEquivalent: "z")
+undoItem.target = editMenuController
+undoItem.onAction = { _ in
+    notesTextView.undoManager?.undo()
+    statusLabel.stringValue = "Undo (notes)"
+}
+let redoItem = NSMenuItem(title: "Redo", action: nil, keyEquivalent: "z")
+redoItem.keyEquivalentModifierMask = [.command, .shift]
+redoItem.target = editMenuController
+redoItem.onAction = { _ in
+    notesTextView.undoManager?.redo()
+    statusLabel.stringValue = "Redo (notes)"
+}
+editMenu.addItem(undoItem)
+editMenu.addItem(redoItem)
+editMenuItem.submenu = editMenu
+menuBar.addItem(editMenuItem)
+editMenuController.textView = notesTextView
+
 // View menu mirrors the toolbar page selector so every demo page also has a
 // menu entry.
 let viewMenuItem = NSMenuItem(title: "View", action: nil, keyEquivalent: "")

@@ -45,10 +45,21 @@ open class NSDocumentController: NSObject {
         }
     }
 
+    /// Creates a new untitled document with its windows shown.
+    @discardableResult
+    open func newDocument(_ sender: Any?) -> NSDocument {
+        let document = winDocumentClass.init()
+        addDocument(document)
+        document.makeWindowControllers()
+        document.showWindows()
+        return document
+    }
+
     /// Presents an open panel and opens each chosen file as a document.
     ///
-    /// Each URL becomes an instance of `winDocumentClass`; URLs whose read
-    /// fails are skipped without adding a document.
+    /// Each URL becomes an instance of `winDocumentClass` with its window
+    /// controllers made and shown; URLs whose read fails are skipped without
+    /// adding a document.
     open func openDocument(_ sender: Any?) {
         let panel = NSOpenPanel.openPanel()
         panel.canChooseFiles = true
@@ -66,6 +77,8 @@ open class NSDocumentController: NSObject {
             }
 
             addDocument(document)
+            document.makeWindowControllers()
+            document.showWindows()
             noteNewRecentDocumentURL(url)
         }
     }

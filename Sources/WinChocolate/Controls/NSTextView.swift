@@ -203,6 +203,8 @@ open class NSTextView: NSControl {
         return handle
     }
 
+    private var hasOpenTypingUndoGroup = false
+
     private func updateStringFromNative(_ text: String) {
         let previousText = string
         isUpdatingFromNative = true
@@ -210,7 +212,13 @@ open class NSTextView: NSControl {
         objectValue = text
         isUpdatingFromNative = false
         if allowsUndo && previousText != text {
-            registerUndoReplacingText(with: previousText)
+            // Single-unit edits coalesce into one typing burst per undo
+            // action, like AppKit; larger edits (paste, cut) stand alone.
+            let extendsTypingBurst = abs(text.utf16.count - previousText.utf16.count) == 1
+            if !(extendsTypingBurst && hasOpenTypingUndoGroup) {
+                registerUndoReplacingText(with: previousText)
+            }
+            hasOpenTypingUndoGroup = extendsTypingBurst
         }
         onTextChanged?(self)
         delegate?.textDidChange(NSNotification(name: Self.textDidChangeNotification, object: self))
@@ -234,6 +242,7 @@ open class NSTextView: NSControl {
     }
 
     private func applyUndoText(_ text: String) {
+        hasOpenTypingUndoGroup = false
         string = text
         objectValue = text
         selectedRange = NSMakeRange(text.utf16.count, 0)

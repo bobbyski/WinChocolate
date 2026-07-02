@@ -191,6 +191,11 @@ open class NSMenu: NSObject {
                 return false
             }
         }
+        // Shift must match exactly so Cmd+Shift+Z (Redo) does not also
+        // trigger a plain Cmd+Z (Undo) equivalent.
+        guard flags.contains(.shift) == mask.contains(.shift) else {
+            return false
+        }
         return flags.isSuperset(of: required)
     }
 

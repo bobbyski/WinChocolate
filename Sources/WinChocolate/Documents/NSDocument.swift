@@ -43,6 +43,9 @@ open class NSDocument: NSObject {
     /// Whether the document has unsaved changes.
     open private(set) var isDocumentEdited = false
 
+    /// The window controllers presenting this document.
+    open private(set) var windowControllers: [NSWindowController] = []
+
     /// Creates an empty document.
     ///
     /// `required` so `NSDocumentController` can instantiate its configured
@@ -56,6 +59,38 @@ open class NSDocument: NSObject {
         fileURL?.lastPathComponent ?? "Untitled"
     }
 
+    /// Creates this document's window controllers. Subclasses override.
+    ///
+    /// The base implementation creates nothing, matching AppKit's contract
+    /// where documents without nib-driven windows build their own.
+    open func makeWindowControllers() {
+    }
+
+    /// Attaches a window controller to this document.
+    open func addWindowController(_ windowController: NSWindowController) {
+        guard !windowControllers.contains(where: { $0 === windowController }) else {
+            return
+        }
+
+        windowControllers.append(windowController)
+        windowController.document = self
+    }
+
+    /// Detaches a window controller from this document.
+    open func removeWindowController(_ windowController: NSWindowController) {
+        windowControllers.removeAll { $0 === windowController }
+        if windowController.document === self {
+            windowController.document = nil
+        }
+    }
+
+    /// Shows all of the document's windows.
+    open func showWindows() {
+        for controller in windowControllers {
+            controller.showWindow(nil)
+        }
+    }
+
     /// Updates the change count that decides `isDocumentEdited`.
     open func updateChangeCount(_ change: ChangeType) {
         switch change {
@@ -63,6 +98,13 @@ open class NSDocument: NSObject {
             isDocumentEdited = true
         case .changeCleared:
             isDocumentEdited = false
+        }
+        synchronizeWindowTitles()
+    }
+
+    private func synchronizeWindowTitles() {
+        for controller in windowControllers {
+            controller.synchronizeWindowTitleWithDocumentName()
         }
     }
 
@@ -107,8 +149,12 @@ open class NSDocument: NSObject {
         runSavePanelAndWrite()
     }
 
-    /// Closes the document, removing it from the shared document controller.
+    /// Closes the document, its windows, and its controller registration.
     open func close() {
+        for controller in windowControllers {
+            controller.close()
+        }
+        windowControllers.removeAll()
         NSDocumentController.shared.removeDocument(self)
     }
 

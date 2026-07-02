@@ -3830,6 +3830,175 @@ func testGradientAndClipCommandsReachBackendContext() {
     expect(recording.fills.first?.color == .green, "Clipped fill did not carry its color.")
 }
 
+func testUndoManagerRegistersUndoAndRedo() {
+    final class Counter {
+        var value = 0
+    }
+
+    let manager = NSUndoManager()
+    let counter = Counter()
+
+    func setValue(_ newValue: Int) {
+        let oldValue = counter.value
+        counter.value = newValue
+        manager.registerUndo(withTarget: counter) { _ in
+            setValue(oldValue)
+        }
+        manager.setActionName("Set Value")
+    }
+
+    setValue(1)
+    setValue(2)
+    expect(manager.canUndo, "Registrations did not populate the undo stack.")
+    expect(!manager.canRedo, "Nothing was undone, so redo should be empty.")
+    expect(manager.undoMenuItemTitle == "Undo Set Value", "Action name did not flow into the undo menu title.")
+
+    manager.undo()
+    expect(counter.value == 1, "Undo did not run the most recent action.")
+    expect(manager.canRedo, "Undo did not move the inverse onto the redo stack.")
+    expect(manager.redoMenuItemTitle == "Redo Set Value", "Undo did not carry the action name to redo.")
+
+    manager.undo()
+    expect(counter.value == 0, "Second undo did not run the older action.")
+    expect(!manager.canUndo, "Undo stack should be empty after undoing everything.")
+
+    manager.redo()
+    manager.redo()
+    expect(counter.value == 2, "Redo did not replay both actions in order.")
+    expect(!manager.canRedo && manager.canUndo, "Redo did not rebuild the undo stack.")
+
+    manager.undo()
+    setValue(5)
+    expect(!manager.canRedo, "A fresh registration should clear the redo stack.")
+
+    manager.removeAllActions()
+    expect(!manager.canUndo && !manager.canRedo, "removeAllActions did not clear both stacks.")
+
+    let limited = NSUndoManager()
+    limited.levelsOfUndo = 1
+    limited.registerUndo(withTarget: counter) { _ in }
+    limited.registerUndo(withTarget: counter) { _ in }
+    limited.undo()
+    expect(!limited.canUndo, "levelsOfUndo did not cap the undo stack.")
+}
+
+func testTextViewUndoRestoresPreviousText() {
+    let backend = InMemoryNativeControlBackend()
+    let textView = NSTextView(frame: NSMakeRect(0, 0, 200, 80))
+    textView.string = "one"
+    textView.allowsUndo = true
+    let handle = textView.realizeNativePeer(in: backend, parent: nil)
+
+    backend.textChangeActions[handle]?("one two")
+    expect(textView.string == "one two", "Native change did not update the string.")
+    let manager = textView.undoManager
+    expect(manager?.canUndo == true, "Text change did not register an undo action.")
+
+    manager?.undo()
+    expect(textView.string == "one", "Undo did not restore the previous text.")
+    expect(manager?.canRedo == true, "Undo did not produce a redo action.")
+
+    manager?.redo()
+    expect(textView.string == "one two", "Redo did not reapply the edit.")
+    expect(manager?.canUndo == true, "Redo did not rebuild the undo action.")
+
+    manager?.undo()
+    expect(textView.string == "one", "Undo after redo did not restore the previous text again.")
+
+    // Consecutive single-unit edits coalesce into one typing-burst action.
+    backend.textChangeActions[handle]?("one!")
+    backend.textChangeActions[handle]?("one!?")
+    backend.textChangeActions[handle]?("one!?#")
+    manager?.undo()
+    expect(textView.string == "one", "Typing-burst undo did not revert the whole burst.")
+
+    let plain = NSTextView(frame: NSMakeRect(0, 0, 200, 80))
+    let plainHandle = plain.realizeNativePeer(in: backend, parent: nil)
+    backend.textChangeActions[plainHandle]?("edited")
+    expect(plain.undoManager?.canUndo == false, "allowsUndo == false should not register undo actions.")
+}
+
+final class NoteTestDocument: NSDocument {
+    var text = "seed"
+    var madeControllers = 0
+
+    override func data(ofType typeName: String) throws -> Data {
+        Data(Array(text.utf8))
+    }
+
+    override func read(from data: Data, ofType typeName: String) throws {
+        text = String(decoding: data, as: UTF8.self)
+    }
+
+    override func makeWindowControllers() {
+        madeControllers += 1
+        let window = NSWindow(
+            contentRect: NSMakeRect(40, 40, 300, 200),
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: false
+        )
+        addWindowController(NSWindowController(window: window))
+    }
+}
+
+func testDocumentWindowControllersSyncTitles() {
+    clearApplicationWindows()
+    defer {
+        clearApplicationWindows()
+    }
+
+    let document = NoteTestDocument()
+    document.makeWindowControllers()
+    expect(document.windowControllers.count == 1, "makeWindowControllers did not attach a controller.")
+
+    let controller = document.windowControllers[0]
+    expect(controller.document === document, "addWindowController did not point the controller at the document.")
+    expect(controller.isWindowLoaded, "The controller should report its window as loaded.")
+    expect(controller.window?.title == "Untitled", "Attaching did not sync the untitled display name.")
+
+    document.updateChangeCount(.changeDone)
+    expect(controller.window?.title == "*Untitled", "An edited document did not gain the asterisk title.")
+
+    document.updateChangeCount(.changeCleared)
+    expect(controller.window?.title == "Untitled", "Clearing changes did not drop the asterisk title.")
+
+    let second = NSWindowController(window: nil)
+    document.addWindowController(second)
+    document.addWindowController(second)
+    expect(document.windowControllers.count == 2, "Re-adding a controller should not duplicate it.")
+
+    document.removeWindowController(second)
+    expect(document.windowControllers.count == 1, "removeWindowController did not detach the controller.")
+    expect(second.document == nil, "Detaching did not clear the controller's document.")
+
+    document.close()
+    expect(document.windowControllers.isEmpty, "close did not release the window controllers.")
+}
+
+func testDocumentControllerNewDocumentMakesAndShowsWindows() {
+    clearApplicationWindows()
+    defer {
+        clearApplicationWindows()
+    }
+
+    let shared = NSDocumentController.shared
+    let previousClass = shared.winDocumentClass
+    defer {
+        shared.winDocumentClass = previousClass
+    }
+    shared.winDocumentClass = NoteTestDocument.self
+
+    let document = shared.newDocument(nil)
+    expect(shared.documents.contains { $0 === document }, "newDocument did not register the document.")
+    expect(shared.currentDocument === document, "newDocument did not become the current document.")
+    expect((document as? NoteTestDocument)?.madeControllers == 1, "newDocument did not make window controllers.")
+    expect(document.windowControllers.first?.window != nil, "The new document's controller has no window.")
+
+    document.close()
+    expect(!shared.documents.contains { $0 === document }, "close did not remove the document from the controller.")
+}
+
 func testAttributedStringStoresStringAndAttributes() {
     let plain = NSAttributedString(string: "Plain")
     expect(plain.string == "Plain", "Attributed string did not store its characters.")
@@ -4713,6 +4882,10 @@ testOpenPanelBeginInvokesCompletionHandler()
 testViewDrawDispatchesPathsToBackendContext()
 testViewDrawDispatchesTextAndImagesToBackendContext()
 testGradientAndClipCommandsReachBackendContext()
+testUndoManagerRegistersUndoAndRedo()
+testTextViewUndoRestoresPreviousText()
+testDocumentWindowControllersSyncTitles()
+testDocumentControllerNewDocumentMakesAndShowsWindows()
 testAttributedStringStoresStringAndAttributes()
 testRightMouseScrollAndClickCountReachTheView()
 testAlertCustomButtonsRunComposedModalPanel()
