@@ -204,6 +204,7 @@ open class NSTextView: NSControl {
     }
 
     private var hasOpenTypingUndoGroup = false
+    private var typingGroupIsInsertion = false
 
     private func updateStringFromNative(_ text: String) {
         let previousText = string
@@ -212,16 +213,52 @@ open class NSTextView: NSControl {
         objectValue = text
         isUpdatingFromNative = false
         if allowsUndo && previousText != text {
-            // Single-unit edits coalesce into one typing burst per undo
-            // action, like AppKit; larger edits (paste, cut) stand alone.
-            let extendsTypingBurst = abs(text.utf16.count - previousText.utf16.count) == 1
-            if !(extendsTypingBurst && hasOpenTypingUndoGroup) {
-                registerUndoReplacingText(with: previousText)
-            }
-            hasOpenTypingUndoGroup = extendsTypingBurst
+            registerTypingUndo(previousText: previousText, text: text)
         }
         onTextChanged?(self)
         delegate?.textDidChange(NSNotification(name: Self.textDidChangeNotification, object: self))
+    }
+
+    /// Registers undo state for one native edit, coalescing typing bursts.
+    ///
+    /// Word-sized granularity like AppKit: consecutive single-unit
+    /// insertions share one undo action until a whitespace unit ends the
+    /// word, consecutive single-unit deletions share one action, switching
+    /// between inserting and deleting starts a new action, and larger edits
+    /// (paste, cut) always stand alone.
+    private func registerTypingUndo(previousText: String, text: String) {
+        let delta = text.utf16.count - previousText.utf16.count
+        let isSingleInsertion = delta == 1
+        let isSingleDeletion = delta == -1
+
+        let continuesGroup = hasOpenTypingUndoGroup
+            && ((isSingleInsertion && typingGroupIsInsertion) || (isSingleDeletion && !typingGroupIsInsertion))
+        if !continuesGroup {
+            registerUndoReplacingText(with: previousText)
+        }
+
+        if isSingleInsertion {
+            // A whitespace unit finishes the word and closes its group.
+            hasOpenTypingUndoGroup = !insertedUnitIsWhitespace(previousText: previousText, text: text)
+            typingGroupIsInsertion = true
+        } else if isSingleDeletion {
+            hasOpenTypingUndoGroup = true
+            typingGroupIsInsertion = false
+        } else {
+            hasOpenTypingUndoGroup = false
+        }
+    }
+
+    /// Whether a single-unit insertion added a whitespace character.
+    private func insertedUnitIsWhitespace(previousText: String, text: String) -> Bool {
+        let oldUnits = Array(previousText.utf16)
+        let newUnits = Array(text.utf16)
+        var index = 0
+        while index < oldUnits.count && oldUnits[index] == newUnits[index] {
+            index += 1
+        }
+        let inserted = newUnits[index]
+        return inserted == 32 || inserted == 9 || inserted == 10 || inserted == 13
     }
 
     /// Registers an undo action restoring earlier text.

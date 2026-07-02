@@ -3912,6 +3912,26 @@ func testTextViewUndoRestoresPreviousText() {
     manager?.undo()
     expect(textView.string == "one", "Typing-burst undo did not revert the whole burst.")
 
+    // Whitespace closes a word group, so words peel back one undo at a time.
+    backend.textChangeActions[handle]?("one ")
+    backend.textChangeActions[handle]?("one t")
+    backend.textChangeActions[handle]?("one tw")
+    backend.textChangeActions[handle]?("one two")
+    manager?.undo()
+    expect(textView.string == "one ", "Undo did not peel back just the last word.")
+    manager?.undo()
+    expect(textView.string == "one", "Undo did not peel back the whitespace group.")
+
+    // Deletions coalesce separately from insertions.
+    backend.textChangeActions[handle]?("one1")
+    backend.textChangeActions[handle]?("one12")
+    backend.textChangeActions[handle]?("one1")
+    backend.textChangeActions[handle]?("one")
+    manager?.undo()
+    expect(textView.string == "one12", "Undo did not revert the deletion run as one action.")
+    manager?.undo()
+    expect(textView.string == "one", "Undo did not revert the insertion run separately.")
+
     let plain = NSTextView(frame: NSMakeRect(0, 0, 200, 80))
     let plainHandle = plain.realizeNativePeer(in: backend, parent: nil)
     backend.textChangeActions[plainHandle]?("edited")
