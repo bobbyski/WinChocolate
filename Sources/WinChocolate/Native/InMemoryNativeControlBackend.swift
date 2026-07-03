@@ -292,6 +292,12 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
 
         /// Whether a top-level window requested the application menu bar.
         public var usesMainMenu: Bool
+
+        /// Recorded top-level window z-ordering level raw value.
+        public var windowLevel: Int = 0
+
+        /// Whether the recorded window hides while the application is inactive.
+        public var hidesOnDeactivate: Bool = false
     }
 
     private var nextRawHandle: UInt = 1
@@ -378,6 +384,21 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
         return handle
     }
 
+    /// Records a native window level change.
+    public func setWindowLevel(_ level: NSWindow.Level, for handle: NativeHandle) {
+        records[handle]?.windowLevel = level.rawValue
+    }
+
+    /// Records whether a native window hides while the application is inactive.
+    public func setHidesOnDeactivate(_ hidesOnDeactivate: Bool, for handle: NativeHandle) {
+        records[handle]?.hidesOnDeactivate = hidesOnDeactivate
+    }
+
+    /// Returns a fixed font family list for deterministic tests.
+    public func fontFamilyNames() -> [String] {
+        ["Arial", "Consolas", "Courier New", "Georgia", "Segoe UI", "Tahoma", "Times New Roman", "Verdana"]
+    }
+
     /// Records that a window should be shown.
     public func showWindow(_ handle: NativeHandle) {
         guard var record = records[handle] else {
@@ -406,6 +427,25 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     /// Records a native window close action.
     public func registerWindowCloseAction(for handle: NativeHandle, action: @escaping () -> Void) {
         windowCloseActions[handle] = action
+    }
+
+    /// Registered window close-veto handlers by handle.
+    public private(set) var windowShouldCloseHandlers: [NativeHandle: () -> Bool] = [:]
+
+    /// Records a window close-veto handler.
+    public func registerWindowShouldCloseHandler(for handle: NativeHandle, handler: @escaping () -> Bool) {
+        windowShouldCloseHandlers[handle] = handler
+    }
+
+    /// Simulates a title-bar close request, honoring the veto handler.
+    @discardableResult
+    public func requestWindowClose(_ handle: NativeHandle) -> Bool {
+        if windowShouldCloseHandlers[handle]?() == false {
+            return false
+        }
+
+        closeWindow(handle)
+        return true
     }
 
     /// Records a native window resize action.

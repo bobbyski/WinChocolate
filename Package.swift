@@ -22,7 +22,8 @@ let package = Package(
         .target(
             name: "WinFoundation",
             linkerSettings: [
-                .linkedLibrary("Ole32")
+                .linkedLibrary("Ole32"),
+                .linkedLibrary("Shell32")
             ]
         ),
         .target(

@@ -234,8 +234,28 @@ public protocol NativeControlBackend: AnyObject {
     /// Closes a previously created native window.
     func closeWindow(_ handle: NativeHandle)
 
+    /// Updates a native top-level window's z-ordering level.
+    ///
+    /// Levels above `.normal` float over the application's normal windows
+    /// with tool-window chrome and no taskbar presence.
+    func setWindowLevel(_ level: NSWindow.Level, for handle: NativeHandle)
+
+    /// Updates whether a native top-level window hides while the application
+    /// is inactive and reappears when it activates again.
+    func setHidesOnDeactivate(_ hidesOnDeactivate: Bool, for handle: NativeHandle)
+
+    /// Returns the installed font family names sorted for display.
+    func fontFamilyNames() -> [String]
+
     /// Registers the action to perform when a native top-level window closes.
     func registerWindowCloseAction(for handle: NativeHandle, action: @escaping () -> Void)
+
+    /// Registers the handler consulted before a title-bar close proceeds.
+    ///
+    /// Returning false vetoes the close, leaving the window open (AppKit's
+    /// `windowShouldClose` contract). Programmatic `closeWindow` calls skip
+    /// the handler.
+    func registerWindowShouldCloseHandler(for handle: NativeHandle, handler: @escaping () -> Bool)
 
     /// Registers the action to perform when a native top-level window resizes.
     func registerWindowResizeAction(for handle: NativeHandle, action: @escaping (NSSize) -> Void)

@@ -17,15 +17,15 @@ This plan is the high-level project tracker. `CONTROL_PARITY.md` remains the det
 ## Dashboard
 
 ```text
-Overall Progress                           ██████████████░░░░░░░░░░░░░░░░░░   43%  (per-item estimate)
+Overall Progress                           ██████████████░░░░░░░░░░░░░░░░░░   45%  (per-item estimate)
 
 Phase 1 · Package, Core Names, App Shell   ██████████████████████████  100%  ✅ Complete
 Phase 2 · Classic Win32 Backend            ██████████████████████████  100%  ✅ Complete
-Phase 3 · AppKit Surface Expansion         █████████████████████░░░░░   80%  🔄 In Progress
+Phase 3 · AppKit Surface Expansion         ██████████████████████░░░░   86%  🔄 In Progress
 Phase 4 · Demo Harness                     █████████████████████░░░░░   80%  🔄 In Progress
 Phase 5 · Tables, Lists, Collections       █████░░░░░░░░░░░░░░░░░░░░░   21%  🔄 In Progress
 Phase 6 · Toolbar API Parity               █████████░░░░░░░░░░░░░░░░░   34%  🔄 In Progress
-Phase 7 · WinFoundation Bridge             ████████░░░░░░░░░░░░░░░░░░   29%  🔄 In Progress
+Phase 7 · WinFoundation Bridge             ██████░░░░░░░░░░░░░░░░░░░░   24%  🔄 In Progress
 Phase 8 · Modern Windows Appearance        ░░░░░░░░░░░░░░░░░░░░░░░░░░    0%  ⏳ Pending
 Phase 9 · Auto Layout                      ░░░░░░░░░░░░░░░░░░░░░░░░░░    0%  ⏳ Pending
 Phase 10 · Focus, Accessibility, Polish    ███████░░░░░░░░░░░░░░░░░░░   27%  🔄 In Progress
@@ -34,7 +34,13 @@ Phase 11 · Cross-Platform Test Apps        ░░░░░░░░░░░░
 
 **Status key:** ✅ Done &nbsp;|&nbsp; 🔄 In Progress &nbsp;|&nbsp; ⏳ Pending &nbsp;|&nbsp; ⏸️ Deferred &nbsp;|&nbsp; 🚫 Blocked
 
-**How percentages are computed:** each item carries a completion estimate (✅ = 100%, 🔄 = the `~NN%` shown in its notes, ⏳/⏸️ = 0%); a phase is the average of its items, and Overall is the average across all 80 tracked items (15 ✅). Recomputed 2026-07-01 after enumerating the missing AppKit surfaces — Overall dropped from 64% because tracked scope grew from 55 to 79 items, not because work regressed. 2026-07-02: added 10.7 (per-monitor DPI awareness), growing scope to 80 items.
+**How percentages are computed:** each item carries a completion estimate (✅ = 100%, 🔄 = the `~NN%` shown in its notes, ⏳/⏸️ = 0%); a phase is the average of its items, and Overall is the average across all 80 tracked items (17 ✅). Recomputed 2026-07-01 after enumerating the missing AppKit surfaces — Overall dropped from 64% because tracked scope grew from 55 to 79 items, not because work regressed. 2026-07-02: added 10.7 (per-monitor DPI awareness), growing scope to 80 items; later that day 3.8 moved 70%→90% (floating panels + live apply), lifting Phase 3 to 86%.
+
+---
+
+## Working method — milestones
+
+Each phase is a milestone, and work always drives toward completing the **current** milestone before advancing. A milestone is never left blocked by a later one: if a current-phase item depends on an item scheduled for a future phase, that future item is **pulled into the current phase and done now**, then renumbered here with percentages recomputed. (Already applied: `Timer` and `FileManager` were pulled from Phase 7 into Phase 3 to unblock `NSDocument` autosave/close — see 3.14 and 3.15.)
 
 ---
 
@@ -42,7 +48,7 @@ Phase 11 · Cross-Platform Test Apps        ░░░░░░░░░░░░
 
 | Priority | Area | Task | Status | Notes |
 |---:|---|---|---|---|
-| 1 | Demo and controls | Keep moving through the next control surface. | 🔄 In Progress | Latest surface: `Timer` (7.6) unblocked Minesweeper and document autosave, after find/replace (3.11) and menu rebuild-on-open (3.10). Remaining 3.x: floating panels (3.8), scroll depth (3.3), autosave (3.9), rich text (3.11), plus open-ended 3.1/3.4. Phase 11 prerequisites still open: `FileManager` (7.5), `UserDefaults` (7.7). |
+| 1 | Demo and controls | Keep moving through the next control surface. | 🔄 In Progress | Latest surface: floating color/font panels with live apply (3.8), after `scrollToVisible`/`enclosingScrollView` (3.3). Remaining for the milestone: mouse-wheel scroll depth (3.3), rich text (3.11), plus open-ended 3.1/3.4. |
 | 2 | Contracts | Add focused tests whenever a framework behavior becomes real, especially for controls that demos depend on. | 🔄 In Progress | Recent examples: save/open panels, toolbar customization, resize propagation. |
 | 3 | Documentation | Keep `CONTROL_PARITY.md` and this plan synchronized when a surface moves from placeholder to working. | 🔄 In Progress | Update item estimates after meaningful feature batches and recompute phase percentages. |
 
@@ -75,25 +81,27 @@ Keep the classic backend real, testable, and available as a stable presentation 
 
 ---
 
-## Phase 3 — AppKit Surface Expansion 🔄 80%
+## Phase 3 — AppKit Surface Expansion 🔄 84%
 
-Broaden source-compatible AppKit-style APIs while keeping mechanics hidden behind the framework. Items 3.5, 3.6, 3.9, and 3.11 are prerequisites for the Phase 11 cross-platform apps.
+Broaden source-compatible AppKit-style APIs while keeping mechanics hidden behind the framework. Items 3.5, 3.6, 3.9, 3.11, 3.14, and 3.15 are prerequisites for the Phase 11 cross-platform apps (3.14/3.15 were pulled forward from Phase 7 under the milestone rule above).
 
 | # | Item | Status | Notes |
 |---|---|---|---|
 | 3.1 | Common controls | 🔄 In Progress | ~80% — buttons, text, popup/combo, sliders, steppers, date picker, color well, etc. Remaining: behavioral depth per `CONTROL_PARITY.md`. |
 | 3.2 | Windows, panels, popovers, alerts | 🔄 In Progress | ~80% — save/open panels over comdlg32/shell, modal sessions, and sheets (`NSWindow.beginSheet`/`endSheet`, app-modal positioned under the title area as the classic compromise). `NSSavePanel`/`NSOpenPanel.beginSheetModal(for:)` pins the OS file dialog under the parent's title area via a thread-local CBT hook plus a brief timer pin — keeps the modern Explorer style, which an OFN template hook would downgrade. `NSAlert.beginSheetModal` presents a chromeless (borderless) composed panel attached under the title area; borderless top-level windows now map to `WS_POPUP|WS_BORDER` (fixes popover chrome too). Richer chrome remains. |
-| 3.3 | View composition | 🔄 In Progress | ~70% — scroll/clip/split/visual-effect slices exist. Split dividers now track mouse drags (clamped between neighbor panes), draw a classic center line, show the resize cursor on hover, and report through `NSSplitViewDelegate.splitViewDidResizeSubviews`. Remaining: scroll depth. |
+| 3.3 | View composition | 🔄 In Progress | ~80% — scroll/clip/split/visual-effect slices exist. Split dividers track mouse drags (clamped, classic center line, resize cursor, `NSSplitViewDelegate`). Scrolling: `NSView.enclosingScrollView` and `scrollToVisible(_:)` (document-space, clamped) keep a caret/selection on screen. Remaining: mouse-wheel content scrolling depth, magnification. |
 | 3.4 | Source compatibility gaps | 🔄 In Progress | ~20% — continue filling AppKit names as demo and ports need them; ongoing by nature. |
 | 3.5 | Custom drawing | ✅ Done | `NSView.draw(_:)` with `NSGraphicsContext.current`, `NSBezierPath`, `NSColor` set/fill/stroke, `NSRectFill`/`NSFrameRect`, `needsDisplay`, `String.draw(at:withAttributes:)`, `NSImage.draw(in:)` via GDI+/StretchBlt, real text metrics via GetTextExtentPoint32W. `NSGradient` (rect and path fills at any angle over a GDI+ rect-with-angle line brush) plus clipping: `NSBezierPath.addClip()`, `NSRectClip`, `NSGraphicsContext.saveGraphicsState`/`restoreGraphicsState` over SaveDC/SelectClipPath/RestoreDC. |
 | 3.6 | Event and responder depth | ✅ Done | Right/middle mouse, double-click `clickCount`, scroll wheel under the cursor, `NSCursor` (set/push/pop over WM_SETCURSOR), and menu key equivalents through the wndproc. Cursor rects: `addCursorRect`/`resetCursorRects`/`discardCursorRects` + `NSWindow.invalidateCursorRects(for:)`, resolved per hover position in WM_SETCURSOR (split-view dividers and the demo canvas use them). Key equivalents dispatch AppKit-style: key window's view chain (`performKeyEquivalent`) first, then the main menu. |
 | 3.7 | `NSAlert` custom dialog | 🔄 In Progress | ~95% — composed modal panel with custom buttons, suppression checkbox, style icon badge, `accessoryView`, and `beginSheetModal(for:)`; panels size to measured message text. Plain alerts keep the native message box. |
-| 3.8 | Standard panels | 🔄 In Progress | ~70% — `NSColorPanel`/`NSFontPanel`/`NSFontManager` shared instances run the classic ChooseColorW/ChooseFontW dialogs; color well attaches to the shared panel. Missing: true floating panels, font-panel live apply. |
-| 3.9 | `NSDocument` architecture | 🔄 In Progress | ~75% — `NSDocument` (read/write/data overrides, dirty tracking, save/saveAs through `NSSavePanel`) and `NSDocumentController` (documents, recents, `openDocument`/`newDocument`, `winDocumentClass` hook). Window controllers: `NSWindowController` (showWindow, close, title sync with a classic `*` dirty prefix), `makeWindowControllers`/`addWindowController`/`showWindows`, open/new flows make and show windows. Missing: autosave (needs 7.6 `Timer`), document types from metadata, close-with-unsaved-changes prompt. |
+| 3.8 | Standard panels | 🔄 In Progress | ~90% — `NSColorPanel`/`NSFontPanel` are composed floating utility panels (topmost tool windows that hide on app deactivate, hide-not-destroy on close) with live apply: color changes flow to the active color well and `changeColor(_:)`; font selections update `NSFontManager` and send `changeFont(_:)` down the key/main window's responder chain (`convert(_:)` returns the pick; `NSTextView` adopts it). Installed families come from `EnumFontFamiliesExW`. Supporting surface: `NSWindow.level`/`orderFront`/`orderOut`/`canBecomeKey`/`canBecomeMain`, working `NSPanel.isFloatingPanel`/`hidesOnDeactivate`, `.utilityWindow` style. Missing: HSB/alpha color modes, typeface variants beyond Regular/Bold. |
+| 3.9 | `NSDocument` architecture | ✅ Done | `NSDocument` (read/write/data overrides, dirty tracking, save/saveAs through `NSSavePanel`), `NSDocumentController` (documents, recents, `openDocument`/`newDocument`, `winDocumentClass` hook), and `NSWindowController` (showWindow/close, `*`-prefixed dirty title sync, make/add/show). `NSWindowDelegate.windowShouldClose` vetoes a title-bar close (WM_CLOSE consults the framework); the controller runs the AppKit Save/Cancel/Don't-Save sheet on close. Autosave-in-place for opted-in classes on a 30s `Timer`. Quit now waits for the last window, so closing a document window leaves the app running. Missing: document types from metadata. |
 | 3.10 | Menu depth | ✅ Done | Context menus, Ctrl-mapped key equivalents with right-aligned accelerator text ("Ctrl+Z"), check-state marks, and live validation: `NSMenuItemValidation`/`autoenablesItems`/`NSMenu.update()` run on WM_INITMENUPOPUP, which now rebuilds the native items wholesale — added/removed/retitled items (dynamic "Undo Typing" titles, recent-file lists) always display current state. |
 | 3.11 | `NSTextView` depth | 🔄 In Progress | ~90% — `selectedRange`/`NSRange`, `insertText(_:replacementRange:)`, `scrollRangeToVisible`, `NSTextViewDelegate.textDidChange`, read-only sync, fonts. Undo: `NSUndoManager`, `NSWindow.undoManager`, `allowsUndo` with word-granular typing coalescing, Edit-menu Cmd+Z/Cmd+Shift+Z. Find/replace: `NSTextFinder.Action` tags + `performTextFinderAction(_:)` (find next/previous with wrap, case-insensitive, use-selection, replace/replace-all) and a composed app-modal Find panel; closing a modal window from its title bar now ends the modal session. Missing: rich text attributes. |
 | 3.12 | Progress indicator completion | 🔄 In Progress | ~80% — `isIndeterminate`, `.spinning` style, and `startAnimation`/`stopAnimation` animate via a native-timer sweep (the classic theme lacks marquee support). Missing: a true spinner visual in the modern appearance. |
 | 3.13 | `NSImage` formats | 🔄 In Progress | ~80% — PNG/JPEG/GIF/ICO decode via the GDI+ flat API (BMP keeps the fast LoadImageW path) for both `NSImageView` and `NSImage.draw(in:)`; ICO verified through the demo's generated icon. Missing: template images, per-path bitmap caching. |
+| 3.14 | `Timer` and run-loop scheduling | ✅ Done | *(Pulled forward from 7.6 to unblock 3.9 autosave.)* `Timer.scheduledTimer(withTimeInterval:repeats:block:)` over a backend run-loop timer (`SetTimer` thread timers dispatched by every message loop, including modal sessions). The scheduling retains the timer until `invalidate()`, matching Foundation's run-loop ownership; one-shot timers self-invalidate after firing. Selector-based scheduling remains future work. |
+| 3.15 | `FileManager` | ✅ Done | *(Pulled forward from 7.5 to unblock 3.9 document persistence.)* `FileManager.default` with existence checks (`isDirectory` via an `ObjCBool` shim), sorted directory listing (path and URL forms), `createDirectory` with intermediates, recursive remove/copy, move, `temporaryDirectory`, and `urls(for:in:)` known folders (Documents/Desktop/AppData/caches over `SHGetFolderPathW`). Attribute dictionaries, enumerators, and delegates remain future work. |
 
 ---
 
@@ -152,9 +160,9 @@ Design note: toolbars are the rare exception to the "look like Windows" rule —
 
 ---
 
-## Phase 7 — WinFoundation Bridge 🔄 29%
+## Phase 7 — WinFoundation Bridge 🔄 24%
 
-Bridge enough Foundation-shaped API to keep WinChocolate source-compatible while the local Windows Swift toolchain cannot import real Foundation. Items 7.5-7.7 are prerequisites for Phase 11 apps and toolbar autosave.
+Bridge enough Foundation-shaped API to keep WinChocolate source-compatible while the local Windows Swift toolchain cannot import real Foundation. `FileManager` and `Timer` were pulled forward into Phase 3 (3.15, 3.14) as milestone blockers; `UserDefaults` (7.7) is still a prerequisite for toolbar autosave (6.8).
 
 | # | Item | Status | Notes |
 |---|---|---|---|
@@ -162,8 +170,8 @@ Bridge enough Foundation-shaped API to keep WinChocolate source-compatible while
 | 7.2 | Real Foundation canary | 🔄 In Progress | ~30% — `USE_REAL_FOUNDATION` path remains the eventual target; rerun the canary in `FOUNDATION_SHIMS.md` on new toolchains. |
 | 7.3 | Resource and file behavior | 🔄 In Progress | ~40% — needed by image loading, panels, documents. |
 | 7.4 | Broader Foundation compatibility | ⏳ Pending | Add only when AppKit/API needs justify it. |
-| 7.5 | `FileManager` | ⏳ Pending | Existence checks, directory listing, create/remove/copy/move. Required by Notes and the text editor (Phase 11). |
-| 7.6 | `Timer` and run-loop scheduling | ✅ Done | `Timer.scheduledTimer(withTimeInterval:repeats:block:)` over a backend run-loop timer (`SetTimer` thread timers dispatched by every message loop, including modal sessions). The scheduling retains the timer until `invalidate()`, matching Foundation's run-loop ownership; one-shot timers self-invalidate after firing. Selector-based scheduling remains future work. |
+| 7.5 | `FileManager` | ➡️ Moved to 3.15 | Pulled into Phase 3 as a milestone blocker for `NSDocument` (3.9); done. Counted under Phase 3. |
+| 7.6 | `Timer` and run-loop scheduling | ➡️ Moved to 3.14 | Pulled into Phase 3 as a milestone blocker for `NSDocument` autosave (3.9); done. Counted under Phase 3. |
 | 7.7 | `UserDefaults` | ⏳ Pending | Persistent defaults (registry or plist-style file). Required by toolbar autosave (6.8). |
 | 7.8 | `NotificationCenter` | ⏳ Pending | Post/observe with object filtering; several AppKit notifications already have names waiting for a real center. |
 | 7.9 | String and data I/O | 🔄 In Progress | ~40% — `Data` read/write exists; `String(contentsOf:)`/`write(to:)` and encodings remain. |
@@ -227,7 +235,7 @@ import WinChocolate
 #endif
 ```
 
-These apps are consumers, not framework extensions: any helper an app needs to behave correctly is a design signal that the capability belongs in WinChocolate (and any Mac-only API it needs is a parity gap to fill). Each app deliberately stresses a different API surface. Known prerequisites: custom drawing (3.5), event depth (3.6), `NSDocument` (3.9), `NSTextView` depth (3.11), `FileManager` (7.5), `Timer` (7.6).
+These apps are consumers, not framework extensions: any helper an app needs to behave correctly is a design signal that the capability belongs in WinChocolate (and any Mac-only API it needs is a parity gap to fill). Each app deliberately stresses a different API surface. Known prerequisites: custom drawing (3.5), event depth (3.6), `NSDocument` (3.9), `NSTextView` depth (3.11), `Timer` (3.14), `FileManager` (3.15).
 
 | # | Item | Status | Notes |
 |---|---|---|---|

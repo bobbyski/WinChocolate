@@ -45,3 +45,20 @@ public struct NSRange: Equatable, Hashable, Sendable {
 public func NSMakeRange(_ location: Int, _ length: Int) -> NSRange {
     NSRange(location: location, length: length)
 }
+
+/// Objective-C's boolean bridge type, kept so `FileManager` call sites that
+/// pass `&isDirectory` compile unchanged on Windows.
+public struct ObjCBool: ExpressibleByBooleanLiteral, Sendable {
+    /// The wrapped boolean value.
+    public var boolValue: Bool
+
+    /// Creates a value wrapping a boolean.
+    public init(_ value: Bool) {
+        self.boolValue = value
+    }
+
+    /// Creates a value from a boolean literal.
+    public init(booleanLiteral value: Bool) {
+        self.boolValue = value
+    }
+}

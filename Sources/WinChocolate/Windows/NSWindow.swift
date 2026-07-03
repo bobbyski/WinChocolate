@@ -1,3 +1,22 @@
+/// The methods a window delegate uses to participate in window lifecycle.
+public protocol NSWindowDelegate: AnyObject {
+    /// Returns whether the window may close; false vetoes a title-bar close.
+    func windowShouldClose(_ sender: NSWindow) -> Bool
+
+    /// Tells the delegate the window is closing.
+    func windowWillClose(_ notification: NSNotification)
+}
+
+extension NSWindowDelegate {
+    /// Default: windows may always close.
+    public func windowShouldClose(_ sender: NSWindow) -> Bool {
+        true
+    }
+
+    /// Default no-op so delegates only implement the callbacks they need.
+    public func windowWillClose(_ notification: NSNotification) {}
+}
+
 /// A top-level application window.
 ///
 /// `NSWindow` owns an optional content view and a backend-created native window.
@@ -28,6 +47,29 @@ open class NSWindow: NSResponder {
 
         /// Resizable window style.
         public static let resizable = StyleMask(rawValue: 1 << 3)
+
+        /// Utility-panel window style with compact tool-window chrome.
+        public static let utilityWindow = StyleMask(rawValue: 1 << 4)
+    }
+
+    /// Window z-ordering levels matching AppKit names.
+    public struct Level: RawRepresentable, Equatable, Hashable, Sendable {
+        /// Raw level value; higher levels order above lower ones.
+        public let rawValue: Int
+
+        /// Creates a level from a raw value.
+        public init(rawValue: Int) {
+            self.rawValue = rawValue
+        }
+
+        /// The default level for document windows.
+        public static let normal = Level(rawValue: 0)
+
+        /// The level for floating utility panels above document windows.
+        public static let floating = Level(rawValue: 3)
+
+        /// The level for modal panels.
+        public static let modalPanel = Level(rawValue: 8)
     }
 
     /// Window backing store strategy.
@@ -64,6 +106,20 @@ open class NSWindow: NSResponder {
 
     /// The window style mask.
     public let styleMask: StyleMask
+
+    /// The window's z-ordering level.
+    ///
+    /// Levels above `.normal` keep the window floating over the
+    /// application's normal windows.
+    open var level: Level = .normal {
+        didSet {
+            guard level != oldValue, let nativeHandle else {
+                return
+            }
+
+            nativeBackend.setWindowLevel(level, for: nativeHandle)
+        }
+    }
 
     /// The window backing store type.
     public let backingType: BackingStoreType
@@ -104,6 +160,9 @@ open class NSWindow: NSResponder {
 
     /// The responder currently receiving keyboard focus in this window.
     public private(set) weak var firstResponder: NSResponder?
+
+    /// The window delegate, consulted for close decisions and lifecycle.
+    open weak var delegate: NSWindowDelegate?
 
     /// Rebuilds a view's cursor rectangles and pushes them to its native peer.
     open func invalidateCursorRects(for view: NSView) {
@@ -192,12 +251,40 @@ open class NSWindow: NSResponder {
         super.init()
     }
 
+    /// Whether the window can become the key window.
+    open var canBecomeKey: Bool {
+        true
+    }
+
+    /// Whether the window can become the application's main window.
+    open var canBecomeMain: Bool {
+        true
+    }
+
     /// Shows the window and makes it the key window.
     open func makeKeyAndOrderFront(_ sender: Any?) {
         let handle = realizeNativePeer()
         makeMain()
         makeKey()
         nativeBackend.showWindow(handle)
+    }
+
+    /// Shows the window without changing the key window.
+    open func orderFront(_ sender: Any?) {
+        let handle = realizeNativePeer()
+        nativeBackend.showWindow(handle)
+    }
+
+    /// Hides the window without closing it.
+    open func orderOut(_ sender: Any?) {
+        guard let nativeHandle else {
+            return
+        }
+
+        if isKeyWindow {
+            NSApplication.shared.mainWindow?.makeKey()
+        }
+        nativeBackend.setHidden(true, for: nativeHandle)
     }
 
     /// Presents a window as a sheet attached to this window.
@@ -225,11 +312,19 @@ open class NSWindow: NSResponder {
 
     /// Makes the window the key window.
     open func makeKey() {
+        guard canBecomeKey else {
+            return
+        }
+
         NSApplication.shared.makeKeyWindow(self)
     }
 
     /// Makes the window the main window.
     open func makeMain() {
+        guard canBecomeMain else {
+            return
+        }
+
         NSApplication.shared.makeMainWindow(self)
     }
 
@@ -337,8 +432,17 @@ open class NSWindow: NSResponder {
         nativeBackend.registerWindowCloseAction(for: handle) { [weak self] in
             self?.nativeWindowDidClose()
         }
+        nativeBackend.registerWindowShouldCloseHandler(for: handle) { [weak self] in
+            guard let self else {
+                return true
+            }
+            return self.delegate?.windowShouldClose(self) ?? true
+        }
         nativeBackend.registerWindowResizeAction(for: handle) { [weak self] size in
             self?.nativeWindowDidResize(to: size)
+        }
+        if level != .normal {
+            nativeBackend.setWindowLevel(level, for: handle)
         }
         NSApplication.shared.addWindowsItem(self)
         installToolbarHost()
@@ -347,11 +451,19 @@ open class NSWindow: NSResponder {
         return handle
     }
 
+    /// Closes the window after asking the delegate, like the close button.
+    open func performClose(_ sender: Any?) {
+        if delegate?.windowShouldClose(self) ?? true {
+            close()
+        }
+    }
+
     private func nativeWindowDidClose() {
         toolbarHostView?.destroyNativePeer()
         toolbarHostView = nil
         nativeHandle = nil
         NSApplication.shared.removeWindowsItem(self)
+        delegate?.windowWillClose(NSNotification(name: "NSWindowWillCloseNotification", object: self))
     }
 
     private func nativeWindowDidResize(to size: NSSize) {

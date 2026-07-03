@@ -405,6 +405,56 @@ open class NSView: NSResponder {
         realizedBackend.setCursorRegions(regions, for: nativeHandle)
     }
 
+    /// The nearest ancestor scroll view containing this view, if any.
+    open var enclosingScrollView: NSScrollView? {
+        var ancestor = superview
+        while let view = ancestor {
+            if let scrollView = view as? NSScrollView {
+                return scrollView
+            }
+            ancestor = view.superview
+        }
+        return nil
+    }
+
+    /// Scrolls the nearest enclosing scroll view to make a rect visible.
+    ///
+    /// The rectangle is in this view's coordinates. Returns whether any
+    /// scrolling occurred, matching AppKit.
+    @discardableResult
+    open func scrollToVisible(_ rect: NSRect) -> Bool {
+        guard let scrollView = enclosingScrollView, let documentView = scrollView.documentView else {
+            return false
+        }
+
+        let clipView = scrollView.contentView
+        // Work in document coordinates so the comparison matches
+        // `documentVisibleRect`, which is expressed there too.
+        let target = convert(rect, to: documentView)
+        let visible = clipView.documentVisibleRect
+        var origin = clipView.boundsOrigin
+
+        if NSMinX(target) < NSMinX(visible) {
+            origin.x = NSMinX(target)
+        } else if NSMaxX(target) > NSMaxX(visible) {
+            origin.x += NSMaxX(target) - NSMaxX(visible)
+        }
+
+        if NSMinY(target) < NSMinY(visible) {
+            origin.y = NSMinY(target)
+        } else if NSMaxY(target) > NSMaxY(visible) {
+            origin.y += NSMaxY(target) - NSMaxY(visible)
+        }
+
+        let constrained = clipView.constrainBoundsRect(NSRect(origin: origin, size: visible.size)).origin
+        guard constrained != clipView.boundsOrigin else {
+            return false
+        }
+
+        clipView.scroll(to: constrained)
+        return true
+    }
+
     /// Gives this view and its subtree a chance to consume a key equivalent.
     ///
     /// Subviews are asked depth-first before the main menu sees the event,

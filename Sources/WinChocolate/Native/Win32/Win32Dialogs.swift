@@ -234,6 +234,32 @@ extension Win32NativeControlBackend {
         )
     }
 
+    /// Returns the installed font family names sorted for display.
+    ///
+    /// Enumerated once over the screen device context and cached; vertical
+    /// families (`@`-prefixed) are skipped because AppKit has no equivalent.
+    public func fontFamilyNames() -> [String] {
+        if let cachedFontFamilyNames {
+            return cachedFontFamilyNames
+        }
+
+        guard let deviceContext = winGetDC(nil) else {
+            return []
+        }
+        defer {
+            _ = winReleaseDC(nil, deviceContext)
+        }
+
+        Self.enumeratedFontFamilies.removeAll()
+        var logFont = LOGFONTW()
+        logFont.lfCharSet = UInt8(defaultCharset)
+        _ = winEnumFontFamiliesExW(deviceContext, &logFont, fontFamilyEnumerationProcedure, 0, 0)
+
+        let names = Self.enumeratedFontFamilies.sorted()
+        cachedFontFamilyNames = names
+        return names
+    }
+
     /// Runs the native `ChooseFontW` modal font chooser.
     public func runFontChooser(initialFont: NSFont?) -> NSFont? {
         let owner = NSApplication.shared.keyWindow?.nativeHandle.flatMap { hwnd(from: $0) }
@@ -308,6 +334,8 @@ extension Win32NativeControlBackend {
 }
 
 extension Win32NativeControlBackend {
+    /// Family names collected by the C enumeration callback, which cannot capture state.
+    nonisolated(unsafe) static var enumeratedFontFamilies: Set<String> = []
     /// Owner window consumed by the CBT hook while a positioned dialog opens.
     nonisolated(unsafe) static var pendingSheetOwner: HWND?
     /// Dialog being pinned under its owner while it finishes opening.
@@ -318,6 +346,25 @@ extension Win32NativeControlBackend {
     nonisolated(unsafe) static var sheetPinTimer: UInt = 0
     /// Remaining timer ticks before the pin is released.
     nonisolated(unsafe) static var sheetPinTicksRemaining = 0
+}
+
+/// Collects one enumerated font family name, skipping vertical families.
+private let fontFamilyEnumerationProcedure: @convention(c) (UnsafeRawPointer?, UnsafeRawPointer?, DWORD, LPARAM) -> Int32 = { logFontPointer, _, _, _ in
+    guard let logFontPointer else {
+        return 1
+    }
+
+    let logFont = logFontPointer.loadUnaligned(as: LOGFONTW.self)
+    var name = ""
+    withUnsafeBytes(of: logFont.lfFaceName) { raw in
+        let faceName = raw.bindMemory(to: UInt16.self)
+        let length = faceName.firstIndex(of: 0) ?? faceName.count
+        name = String(decoding: faceName.prefix(length), as: UTF16.self)
+    }
+    if !name.isEmpty && !name.hasPrefix("@") {
+        Win32NativeControlBackend.enumeratedFontFamilies.insert(name)
+    }
+    return 1
 }
 
 /// Places a dialog under its owner's title area like a sheet.

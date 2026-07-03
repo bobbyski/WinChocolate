@@ -60,6 +60,9 @@ open class NSColorWell: NSControl {
         activate(true)
         objectValue = color
         sendAction()
+        // Clicking a color well also brings up the shared color panel,
+        // matching AppKit; panel picks then flow back into this well live.
+        NSColorPanel.shared.makeKeyAndOrderFront(self)
         super.mouseDown(with: event)
     }
 }

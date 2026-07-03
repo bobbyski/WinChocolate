@@ -91,6 +91,15 @@ open class NSTextView: NSControl {
         }
     }
 
+    /// Applies a live font panel change to the whole text view.
+    ///
+    /// Per-range rich text attributes remain future work, so the panel
+    /// selection converts the view's single font, keeping AppKit's
+    /// `changeFont(_:)` contract useful for plain-text views.
+    open override func changeFont(_ sender: Any?) {
+        font = NSFontManager.shared.convert(font ?? NSFont.systemFont(ofSize: 13))
+    }
+
     /// Swift-native callback invoked when editing changes the text.
     open var onTextChanged: ((NSTextView) -> Void)?
 

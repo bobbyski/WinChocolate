@@ -1419,6 +1419,14 @@ func testSearchFieldTracksRecentSearchesAndNativeChanges() {
 
 func testColorWellStoresColorAndSendsAction() {
     let backend = InMemoryNativeControlBackend()
+    // A well click presents the shared color panel, which must land on the
+    // in-memory backend rather than a real native window.
+    let previousBackend = NSApplication.shared.nativeBackend
+    NSApplication.shared.nativeBackend = backend
+    defer {
+        NSApplication.shared.nativeBackend = previousBackend
+    }
+
     let colorWell = NSColorWell(frame: NSMakeRect(0, 0, 40, 24))
     colorWell.color = .red
     var actionCount = 0
@@ -4017,6 +4025,193 @@ func testCursorRectsFlowToBackendRegions() {
     expect(splitRegions.first?.rect == NSMakeRect(60, 0, 8, 100), "Moving the divider did not update its cursor region.")
 }
 
+final class AutosaveTestDocument: NSDocument {
+    var text = "seed"
+
+    override class var autosavesInPlace: Bool {
+        true
+    }
+
+    override func data(ofType typeName: String) throws -> Data {
+        Data(Array(text.utf8))
+    }
+
+    override func read(from data: Data, ofType typeName: String) throws {
+        text = String(decoding: data, as: UTF8.self)
+    }
+}
+
+func testDocumentWindowCloseAsksToSaveAndAutosaves() {
+    clearApplicationWindows()
+    defer {
+        clearApplicationWindows()
+    }
+
+    let application = NSApplication.shared
+    let backend = InMemoryNativeControlBackend()
+    let previousBackend = application.nativeBackend
+    application.nativeBackend = backend
+    defer {
+        application.nativeBackend = previousBackend
+    }
+
+    let document = AutosaveTestDocument()
+    NSDocumentController.shared.addDocument(document)
+    let window = NSWindow(
+        contentRect: NSMakeRect(40, 40, 300, 200),
+        styleMask: [.titled],
+        backing: .buffered,
+        defer: false,
+        nativeBackend: backend
+    )
+    let handle = window.realizeNativePeer()
+    document.addWindowController(NSWindowController(window: window))
+    document.updateChangeCount(.changeDone)
+
+    // Cancel vetoes the title-bar close.
+    backend.nextModalResponseCode = NSApplication.ModalResponse.alertSecondButtonReturn.rawValue
+    expect(!backend.requestWindowClose(handle), "Cancel did not veto the close.")
+    expect(window.nativeHandle != nil, "A vetoed close should leave the window realized.")
+    expect(NSDocumentController.shared.documents.contains { $0 === document }, "A vetoed close should keep the document open.")
+
+    // Autosave writes edited documents that have a file, via the timer.
+    let autosaveURL = FileManager.default.temporaryDirectory.appendingPathComponent("WinChocolateAutosaveTest.txt")
+    try? FileManager.default.removeItem(at: autosaveURL)
+    defer {
+        try? FileManager.default.removeItem(at: autosaveURL)
+    }
+    document.fileURL = autosaveURL
+    document.text = "autosaved contents"
+    let timerIdentifier = backend.scheduledTimers.last?.identifier ?? 0
+    expect(backend.scheduledTimers.last?.intervalMilliseconds == 30_000, "The autosave timer was not scheduled by addDocument.")
+    backend.fireTimer(timerIdentifier)
+    expect(!document.isDocumentEdited, "Autosave did not clear the edited state.")
+    let saved = (try? Data(contentsOf: autosaveURL)).map { String(decoding: $0, as: UTF8.self) }
+    expect(saved == "autosaved contents", "Autosave did not write the document file.")
+
+    // Don't Save closes without writing and releases the document.
+    document.updateChangeCount(.changeDone)
+    backend.nextModalResponseCode = NSApplication.ModalResponse.alertThirdButtonReturn.rawValue
+    expect(backend.requestWindowClose(handle), "Don't Save did not allow the close.")
+    expect(document.windowControllers.isEmpty, "Closing the window did not detach its controller.")
+    expect(!NSDocumentController.shared.documents.contains { $0 === document }, "Closing the last window did not close the document.")
+}
+
+func testFileManagerCoversDocumentAppNeeds() {
+    let manager = FileManager.default
+    let root = manager.temporaryDirectory.appendingPathComponent("WinChocolateFMTest")
+    try? manager.removeItem(at: root)
+    defer {
+        try? manager.removeItem(at: root)
+    }
+
+    // Nested creation, existence, and directory reporting.
+    let nested = root.appendingPathComponent("a").appendingPathComponent("b")
+    do {
+        try manager.createDirectory(at: nested, withIntermediateDirectories: true)
+    } catch {
+        expect(false, "createDirectory with intermediates threw: \(error)")
+    }
+    var isDirectory = ObjCBool(false)
+    expect(manager.fileExists(atPath: nested.path, isDirectory: &isDirectory), "The nested directory does not exist after creation.")
+    expect(isDirectory.boolValue, "The nested directory was not reported as a directory.")
+    expect(!manager.fileExists(atPath: root.appendingPathComponent("missing").path), "A missing path should not exist.")
+
+    // File round trip plus isDirectory == false for plain files.
+    let fileURL = nested.appendingPathComponent("note.txt")
+    do {
+        try Data(Array("hello files".utf8)).write(to: fileURL)
+    } catch {
+        expect(false, "Writing the test file threw: \(error)")
+    }
+    expect(manager.fileExists(atPath: fileURL.path, isDirectory: &isDirectory), "The written file does not exist.")
+    expect(!isDirectory.boolValue, "A plain file was reported as a directory.")
+
+    // Listing sees the file, sorted.
+    do {
+        let names = try manager.contentsOfDirectory(atPath: nested.path)
+        expect(names == ["note.txt"], "Directory listing did not return the file: \(names)")
+        let urls = try manager.contentsOfDirectory(at: nested, includingPropertiesForKeys: nil)
+        expect(urls.first?.lastPathComponent == "note.txt", "URL listing did not return the file URL.")
+    } catch {
+        expect(false, "contentsOfDirectory threw: \(error)")
+    }
+
+    // Copy requires a fresh destination and copies contents.
+    let copyURL = nested.appendingPathComponent("copy.txt")
+    do {
+        try manager.copyItem(at: fileURL, to: copyURL)
+        let copied = try Data(contentsOf: copyURL)
+        expect(String(decoding: copied, as: UTF8.self) == "hello files", "The copied file's contents did not round trip.")
+    } catch {
+        expect(false, "copyItem threw: \(error)")
+    }
+    do {
+        try manager.copyItem(at: fileURL, to: copyURL)
+        expect(false, "Copying over an existing destination should throw.")
+    } catch {
+    }
+
+    // Move renames and removes the source.
+    let movedURL = nested.appendingPathComponent("moved.txt")
+    do {
+        try manager.moveItem(at: copyURL, to: movedURL)
+    } catch {
+        expect(false, "moveItem threw: \(error)")
+    }
+    expect(!manager.fileExists(atPath: copyURL.path), "The moved file still exists at its source.")
+    expect(manager.fileExists(atPath: movedURL.path), "The moved file does not exist at its destination.")
+
+    // Directory copy is recursive.
+    let treeCopy = root.appendingPathComponent("tree")
+    do {
+        try manager.copyItem(at: root.appendingPathComponent("a"), to: treeCopy)
+        expect(manager.fileExists(atPath: treeCopy.appendingPathComponent("b").appendingPathComponent("note.txt").path), "Recursive copy did not carry nested files.")
+    } catch {
+        expect(false, "Recursive copyItem threw: \(error)")
+    }
+
+    // Recursive removal takes the whole tree.
+    do {
+        try manager.removeItem(at: root)
+    } catch {
+        expect(false, "Recursive removeItem threw: \(error)")
+    }
+    expect(!manager.fileExists(atPath: root.path), "The removed tree still exists.")
+
+    // Known folders resolve to real locations.
+    let documents = manager.urls(for: .documentDirectory, in: .userDomainMask)
+    expect(documents.count == 1, "The Documents folder did not resolve.")
+    expect(manager.fileExists(atPath: documents[0].path), "The resolved Documents folder does not exist.")
+}
+
+func testScrollToVisibleMovesTheClipView() {
+    let backend = InMemoryNativeControlBackend()
+    let scrollView = NSScrollView(frame: NSMakeRect(0, 0, 100, 100))
+    let document = NSView(frame: NSMakeRect(0, 0, 100, 500))
+    scrollView.documentView = document
+    let child = NSView(frame: NSMakeRect(0, 300, 100, 40))
+    document.addSubview(child)
+    _ = scrollView.realizeNativePeer(in: backend, parent: nil)
+
+    expect(child.enclosingScrollView === scrollView, "enclosingScrollView did not find the ancestor scroll view.")
+    expect(scrollView.contentView.boundsOrigin == NSZeroPoint, "The clip view should start at the origin.")
+
+    // A rect below the viewport scrolls just enough to reveal its bottom.
+    let didScroll = child.scrollToVisible(child.bounds)
+    expect(didScroll, "scrollToVisible did not report scrolling for an off-screen rect.")
+    expect(scrollView.contentView.boundsOrigin.y == 240, "scrollToVisible did not align the rect's bottom to the viewport bottom.")
+
+    // Scrolling to an already-visible rect does nothing.
+    let didScrollAgain = child.scrollToVisible(child.bounds)
+    expect(!didScrollAgain, "scrollToVisible should not scroll when the rect is already visible.")
+
+    // A view outside any scroll view reports no scrolling.
+    let orphan = NSView(frame: NSMakeRect(0, 0, 10, 10))
+    expect(orphan.enclosingScrollView == nil, "A detached view should have no enclosing scroll view.")
+    expect(!orphan.scrollToVisible(orphan.bounds), "scrollToVisible without a scroll view should report false.")
+}
+
 func testTimerSchedulesFiresAndInvalidates() {
     let application = NSApplication.shared
     let backend = InMemoryNativeControlBackend()
@@ -4725,85 +4920,229 @@ func testDocumentControllerTracksDocumentsRecentsAndOpen() {
     expect(!shared.documents.contains { $0 === closing }, "close() did not remove the document from the shared controller.")
 }
 
-func testColorPanelRunsChooserAndUpdatesColor() {
+final class ColorChangeRecordingView: NSView {
+    var receivedColors: [NSColor] = []
+
+    override var acceptsFirstResponder: Bool {
+        true
+    }
+
+    override func changeColor(_ sender: Any?) {
+        if let panel = sender as? NSColorPanel {
+            receivedColors.append(panel.color)
+        }
+    }
+}
+
+final class FontChangeRecordingView: NSView {
+    var receivedFonts: [NSFont] = []
+
+    override var acceptsFirstResponder: Bool {
+        true
+    }
+
+    override func changeFont(_ sender: Any?) {
+        receivedFonts.append(NSFontManager.shared.convert(NSFont.systemFont(ofSize: 13)))
+    }
+}
+
+func testFloatingPanelStateReachesBackend() {
+    let backend = InMemoryNativeControlBackend()
+    let panel = NSPanel(
+        contentRect: NSMakeRect(100, 100, 200, 150),
+        styleMask: [.titled, .closable, .utilityWindow],
+        backing: .buffered,
+        defer: false,
+        nativeBackend: backend
+    )
+    panel.isFloatingPanel = true
+    panel.hidesOnDeactivate = true
+    panel.orderFrontRegardless()
+
+    guard let handle = panel.nativeHandle else {
+        expect(false, "Panel did not realize a native window.")
+        return
+    }
+
+    expect(backend.records[handle]?.kind == "window", "Panel did not use a window peer.")
+    expect(backend.records[handle]?.windowLevel == NSWindow.Level.floating.rawValue, "Floating panel level was not applied at realization.")
+    expect(backend.records[handle]?.hidesOnDeactivate == true, "hidesOnDeactivate was not applied at realization.")
+    expect(backend.records[handle]?.isHidden == false, "orderFrontRegardless did not show the panel.")
+
+    // Level changes after realization flow through immediately.
+    panel.isFloatingPanel = false
+    expect(backend.records[handle]?.windowLevel == NSWindow.Level.normal.rawValue, "Clearing isFloatingPanel did not return the level to normal.")
+    panel.level = .floating
+    expect(backend.records[handle]?.windowLevel == NSWindow.Level.floating.rawValue, "Setting level directly did not reach the backend.")
+
+    // orderOut hides without destroying; orderFront shows the same peer again.
+    panel.orderOut(nil)
+    expect(backend.records[handle]?.isHidden == true, "orderOut did not hide the panel.")
+    expect(panel.nativeHandle != nil, "orderOut destroyed the panel peer.")
+    panel.orderFront(nil)
+    expect(backend.records[handle]?.isHidden == false, "orderFront did not reshow the hidden panel.")
+
+    // Panels never become the application's main window.
+    panel.makeMain()
+    expect(NSApplication.shared.mainWindow !== panel, "A panel became the application's main window.")
+}
+
+func testColorPanelFloatsAndAppliesColorsLive() {
     let backend = InMemoryNativeControlBackend()
     let previousBackend = NSApplication.shared.nativeBackend
     NSApplication.shared.nativeBackend = backend
     defer {
         NSApplication.shared.nativeBackend = previousBackend
-        NSColorPanel.shared.winColorDidChange = nil
     }
 
-    let panel = NSColorPanel.shared
+    // A document window whose first responder listens for changeColor.
+    let documentWindow = NSWindow(
+        contentRect: NSMakeRect(50, 50, 400, 300),
+        styleMask: [.titled, .closable],
+        backing: .buffered,
+        defer: false,
+        nativeBackend: backend
+    )
+    let recorder = ColorChangeRecordingView(frame: NSMakeRect(0, 0, 400, 300))
+    documentWindow.contentView = recorder
+    documentWindow.makeKeyAndOrderFront(nil)
+    documentWindow.makeFirstResponder(recorder)
+
+    let panel = NSColorPanel(nativeBackend: backend)
     panel.color = .red
     var changedColors: [NSColor] = []
     panel.winColorDidChange = { changedColors.append($0) }
 
-    backend.nextColorChooserResult = .blue
     panel.makeKeyAndOrderFront(nil)
+    guard let handle = panel.nativeHandle else {
+        expect(false, "Color panel did not realize a native window.")
+        return
+    }
 
-    expect(backend.colorChooserRequests == [.red], "Color chooser was not seeded with the panel color.")
-    expect(panel.color == .blue, "Confirmed chooser color did not update the panel color.")
-    expect(changedColors == [.blue], "Confirmed chooser color did not fire the change closure.")
+    expect(backend.records[handle]?.windowLevel == NSWindow.Level.floating.rawValue, "Color panel is not a floating window.")
+    expect(backend.records[handle]?.hidesOnDeactivate == true, "Color panel does not hide on deactivate.")
+    expect(backend.records[handle]?.isHidden == false, "Presented color panel is hidden.")
+    expect(NSApplication.shared.mainWindow === documentWindow, "The color panel displaced the main window.")
 
-    // A cancelled chooser leaves the panel untouched.
-    backend.nextColorChooserResult = nil
+    // Dragging a component slider recomposes the color and applies it live.
+    // Programmatic color sets also dispatch, so start observing here.
+    recorder.receivedColors.removeAll()
+    let sliderHandles = backend.records.filter { $0.value.kind == "slider" }.keys.sorted { $0.rawValue < $1.rawValue }
+    expect(sliderHandles.count == 3, "Color panel did not realize three component sliders.")
+    if sliderHandles.count == 3 {
+        backend.setSliderValue(255, for: sliderHandles[2])
+        backend.actions[sliderHandles[2]]?()
+    }
+
+    let magenta = NSColor(calibratedRed: 1, green: 0, blue: 1, alpha: 1)
+    expect(panel.color == magenta, "Slider change did not recompose the panel color.")
+    expect(changedColors == [magenta], "Slider change did not fire the change closure.")
+    expect(recorder.receivedColors == [magenta], "changeColor did not reach the document window's first responder.")
+
+    // A title-bar close hides the shared-style panel instead of destroying it.
+    let closed = backend.requestWindowClose(handle)
+    expect(!closed, "Title-bar close destroyed the color panel instead of hiding it.")
+    expect(backend.records[handle]?.isHidden == true, "Close request did not hide the color panel.")
+    expect(panel.nativeHandle != nil, "Close request destroyed the color panel peer.")
+    expect(NSApplication.shared.keyWindow === documentWindow, "Hiding the key panel did not return key status to the document window.")
+
     panel.makeKeyAndOrderFront(nil)
+    expect(backend.records[handle]?.isHidden == false, "Re-presenting did not show the hidden color panel.")
 
-    expect(backend.colorChooserRequests.count == 2, "Second presentation did not run the chooser again.")
-    expect(panel.color == .blue, "Cancelled chooser changed the panel color.")
-    expect(changedColors.count == 1, "Cancelled chooser fired the change closure.")
-
-    // An active color well is seeded into and updated from the panel.
+    // The shared panel feeds the active color well live and lets go on deactivate.
     let colorWell = NSColorWell(frame: NSMakeRect(0, 0, 32, 24))
     colorWell.color = .green
     colorWell.activate(true)
-    expect(panel.color == .green, "Activating a color well did not seed the panel color.")
-
-    backend.nextColorChooserResult = .white
-    panel.makeKeyAndOrderFront(nil)
-    expect(colorWell.color == .white, "Chooser result did not flow into the active color well.")
+    expect(NSColorPanel.shared.color == .green, "Activating a color well did not seed the shared panel color.")
+    NSColorPanel.shared.color = .white
+    expect(colorWell.color == .white, "Shared panel color did not flow into the active color well.")
     colorWell.deactivate()
-
-    backend.nextColorChooserResult = .black
-    panel.makeKeyAndOrderFront(nil)
+    NSColorPanel.shared.color = .black
     expect(colorWell.color == .white, "Deactivated color well still received panel colors.")
 }
 
-func testFontPanelAndManagerRunChooserAndUpdateSelection() {
+func testFontPanelLiveApplyThroughFontManager() {
     let backend = InMemoryNativeControlBackend()
     let previousBackend = NSApplication.shared.nativeBackend
     NSApplication.shared.nativeBackend = backend
+    let manager = NSFontManager.shared
     defer {
         NSApplication.shared.nativeBackend = previousBackend
-        NSFontManager.shared.winFontDidChange = nil
-        NSFontPanel.shared.winFontDidChange = nil
+        manager.winFontDidChange = nil
+        manager.target = nil
     }
 
-    let manager = NSFontManager.shared
-    let seedFont = NSFont(name: "Georgia", size: 14)
-    manager.setSelectedFont(seedFont, isMultiple: false)
-    expect(NSFontPanel.shared.winSelectedFont == seedFont, "setSelectedFont did not seed the shared font panel.")
+    // A document window whose first responder converts changeFont sends.
+    let documentWindow = NSWindow(
+        contentRect: NSMakeRect(50, 50, 400, 300),
+        styleMask: [.titled, .closable],
+        backing: .buffered,
+        defer: false,
+        nativeBackend: backend
+    )
+    let recorder = FontChangeRecordingView(frame: NSMakeRect(0, 0, 400, 300))
+    documentWindow.contentView = recorder
+    documentWindow.makeKeyAndOrderFront(nil)
+    documentWindow.makeFirstResponder(recorder)
 
+    let seedFont = NSFont(name: "Georgia", size: 14)
+    manager.selectedFont = seedFont
     var changedFonts: [NSFont] = []
     manager.winFontDidChange = { changedFonts.append($0) }
 
-    let chosenFont = NSFont(name: "Consolas", size: 11, weight: .bold)
-    backend.nextFontChooserResult = chosenFont
-    manager.orderFrontFontPanel(nil)
+    let panel = NSFontPanel(nativeBackend: backend)
+    panel.setPanelFont(seedFont, isMultiple: false)
+    expect(panel.winSelectedFont == seedFont, "setPanelFont did not seed the panel selection.")
 
-    expect(backend.fontChooserRequests == [seedFont], "Font chooser was not seeded with the selected font.")
-    expect(manager.selectedFont == chosenFont, "Confirmed chooser font did not update the manager selection.")
-    expect(NSFontPanel.shared.winSelectedFont == chosenFont, "Confirmed chooser font did not update the panel selection.")
-    expect(changedFonts == [chosenFont], "Confirmed chooser font did not fire the change closure.")
+    panel.makeKeyAndOrderFront(nil)
+    guard let handle = panel.nativeHandle else {
+        expect(false, "Font panel did not realize a native window.")
+        return
+    }
 
-    // A cancelled chooser leaves the selection untouched.
-    backend.nextFontChooserResult = nil
-    manager.orderFrontFontPanel(nil)
+    expect(backend.records[handle]?.windowLevel == NSWindow.Level.floating.rawValue, "Font panel is not a floating window.")
+    expect(backend.records[handle]?.hidesOnDeactivate == true, "Font panel does not hide on deactivate.")
 
-    expect(backend.fontChooserRequests.count == 2, "Second presentation did not run the chooser again.")
-    expect(manager.selectedFont == chosenFont, "Cancelled chooser changed the manager selection.")
-    expect(changedFonts.count == 1, "Cancelled chooser fired the change closure.")
+    // The family list shows the installed families from the backend.
+    let families = backend.fontFamilyNames()
+    guard let tableHandle = backend.records.first(where: { $0.value.kind == "tableView" })?.key else {
+        expect(false, "Font panel did not realize a family table.")
+        return
+    }
+    expect(backend.records[tableHandle]?.tableRows.count == families.count, "Family table does not list the installed families.")
+
+    // Selecting a family applies the font live through the manager.
+    guard let consolasRow = families.firstIndex(of: "Consolas") else {
+        expect(false, "Deterministic family list is missing Consolas.")
+        return
+    }
+    backend.setTableSelectedRow(consolasRow, for: tableHandle)
+    backend.actions[tableHandle]?()
+
+    expect(manager.selectedFont?.fontName == "Consolas", "Family selection did not update the manager's selected font.")
+    expect(panel.winSelectedFont?.fontName == "Consolas", "Family selection did not update the panel selection.")
+    expect(changedFonts.count == 1, "Family selection did not fire the manager change closure.")
+    expect(recorder.receivedFonts.count == 1, "changeFont did not reach the document window's first responder.")
+    expect(recorder.receivedFonts.first?.fontName == "Consolas", "convert(_:) did not return the live panel selection.")
+
+    // Editing the size combo re-applies with the new point size.
+    let comboHandle = backend.records.first { $0.value.kind == "comboBox" }?.key
+    expect(comboHandle != nil, "Font panel did not realize a size combo box.")
+    if let comboHandle {
+        backend.textChangeActions[comboHandle]?("24")
+        expect(manager.selectedFont?.pointSize == 24, "Size change did not update the selected font size.")
+        expect(recorder.receivedFonts.count == 2, "Size change did not send changeFont again.")
+    }
+
+    // NSTextView applies panel fonts to its whole plain-text contents.
+    let textView = NSTextView(frame: NSMakeRect(0, 0, 200, 100))
+    textView.changeFont(manager)
+    expect(textView.font == manager.selectedFont, "NSTextView.changeFont did not adopt the panel selection.")
+
+    // A title-bar close hides the shared-style panel instead of destroying it.
+    let closed = backend.requestWindowClose(handle)
+    expect(!closed, "Title-bar close destroyed the font panel instead of hiding it.")
+    expect(backend.records[handle]?.isHidden == true, "Close request did not hide the font panel.")
 }
 
 final class RealizationRecordingView: NSView {
@@ -5143,7 +5482,10 @@ testSplitViewDividerDragResizesPanes()
 testCursorRectsFlowToBackendRegions()
 testViewChainSeesKeyEquivalentsBeforeMenu()
 testTextViewFindAndReplace()
+testScrollToVisibleMovesTheClipView()
 testTimerSchedulesFiresAndInvalidates()
+testFileManagerCoversDocumentAppNeeds()
+testDocumentWindowCloseAsksToSaveAndAutosaves()
 testAttributedStringStoresStringAndAttributes()
 testRightMouseScrollAndClickCountReachTheView()
 testAlertCustomButtonsRunComposedModalPanel()
@@ -5162,8 +5504,9 @@ testTextViewSelectionInsertionAndDelegate()
 testDocumentChangeCountAndOverridableDefaults()
 testDocumentSavePanelFlowWritesAndReadsBack()
 testDocumentControllerTracksDocumentsRecentsAndOpen()
-testColorPanelRunsChooserAndUpdatesColor()
-testFontPanelAndManagerRunChooserAndUpdateSelection()
+testFloatingPanelStateReachesBackend()
+testColorPanelFloatsAndAppliesColorsLive()
+testFontPanelLiveApplyThroughFontManager()
 testAlertAccessoryViewJoinsComposedPanel()
 
 print("WinChocolate contract tests passed.")

@@ -30,6 +30,7 @@ public final class Win32NativeControlBackend: NativeControlBackend {
     var keyDownActions: [UInt: (NSEvent) -> Void] = [:]
     var keyUpActions: [UInt: (NSEvent) -> Void] = [:]
     var windowCloseActions: [UInt: () -> Void] = [:]
+    var windowShouldCloseHandlers: [UInt: () -> Bool] = [:]
     var windowResizeActions: [UInt: (NSSize) -> Void] = [:]
     var originalControlProcedures: [UInt: WNDPROC] = [:]
     var controlHandleAliases: [UInt: NativeHandle] = [:]
@@ -56,6 +57,9 @@ public final class Win32NativeControlBackend: NativeControlBackend {
     private var isComInitialized = false
     var windowStyles: [UInt: DWORD] = [:]
     var windowMenuFlags: [UInt: Bool] = [:]
+    var hidesOnDeactivateHandles: Set<UInt> = []
+    var deactivateHiddenHandles: Set<UInt> = []
+    var cachedFontFamilyNames: [String]?
     private var defaultControlBackgroundBrush: HBRUSH?
     var fonts: [UInt: HFONT] = [:]
     var bitmaps: [UInt: HBITMAP] = [:]

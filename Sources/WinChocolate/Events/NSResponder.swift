@@ -67,6 +67,24 @@ open class NSResponder: NSObject {
         nextResponder?.scrollWheel(with: event)
     }
 
+    /// Applies a font change from the shared font panel.
+    ///
+    /// AppKit sends `changeFont(_:)` along the responder chain while the font
+    /// panel selection changes; responders that handle fonts override this
+    /// and read the new font from `NSFontManager.shared`. Unhandled changes
+    /// continue to the next responder.
+    open func changeFont(_ sender: Any?) {
+        nextResponder?.changeFont(sender)
+    }
+
+    /// Applies a color change from the shared color panel.
+    ///
+    /// Sent along the responder chain while the color panel selection
+    /// changes, matching AppKit's `changeColor(_:)` convention.
+    open func changeColor(_ sender: Any?) {
+        nextResponder?.changeColor(sender)
+    }
+
     /// Handles a key press.
     open func keyDown(with event: NSEvent) {
         nextResponder?.keyDown(with: event)

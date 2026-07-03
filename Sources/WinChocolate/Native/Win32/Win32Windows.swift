@@ -22,11 +22,12 @@ extension Win32NativeControlBackend {
         // AppKit's contentRect describes the content area; grow the native
         // rect so the client area matches the requested size exactly.
         let style = windowStyle(from: styleMask)
+        let extendedStyle: DWORD = styleMask.contains(.utilityWindow) ? wsExToolWindow : 0
         let outerSize = outerWindowSize(forContentSize: frame.size, style: style, hasMenu: usesMainMenu)
         let hwnd = withWideString(winChocolateWindowClassName) { className in
             withWideString(title) { windowTitle in
                 winCreateWindowExW(
-                    0,
+                    extendedStyle,
                     className,
                     windowTitle,
                     style,
@@ -57,6 +58,71 @@ extension Win32NativeControlBackend {
         return handle
     }
 
+    /// Updates a native top-level window's z-ordering level.
+    ///
+    /// Floating levels present tool-window chrome (no taskbar button) and pin
+    /// the window to the topmost band so it stays above the application's
+    /// normal windows; `.normal` returns it to the regular band.
+    public func setWindowLevel(_ level: NSWindow.Level, for handle: NativeHandle) {
+        guard let hwnd = hwnd(from: handle) else {
+            return
+        }
+
+        let isFloating = level.rawValue > NSWindow.Level.normal.rawValue
+        var extendedStyle = winGetWindowLongPtrW(hwnd, gwlExStyle)
+        if isFloating {
+            extendedStyle |= LONG_PTR(wsExToolWindow)
+        } else {
+            extendedStyle &= ~LONG_PTR(wsExToolWindow)
+        }
+        _ = winSetWindowLongPtrW(hwnd, gwlExStyle, extendedStyle)
+        _ = winSetWindowPos(
+            hwnd,
+            isFloating ? hwndTopmost : hwndNoTopmost,
+            0,
+            0,
+            0,
+            0,
+            swpNoMove | swpNoSize | swpNoActivate | swpFrameChanged
+        )
+    }
+
+    /// Updates whether a native window hides while the application is inactive.
+    public func setHidesOnDeactivate(_ hidesOnDeactivate: Bool, for handle: NativeHandle) {
+        if hidesOnDeactivate {
+            hidesOnDeactivateHandles.insert(handle.rawValue)
+        } else {
+            hidesOnDeactivateHandles.remove(handle.rawValue)
+            deactivateHiddenHandles.remove(handle.rawValue)
+        }
+    }
+
+    /// Hides and restores hide-on-deactivate windows as the app activation changes.
+    ///
+    /// WM_ACTIVATEAPP arrives on every top-level window; the visibility check
+    /// makes repeated sweeps idempotent so only windows this deactivation hid
+    /// are restored on the next activation.
+    func applicationActivationDidChange(isActive: Bool) {
+        if isActive {
+            for rawHandle in deactivateHiddenHandles {
+                guard let hwnd = hwnd(from: NativeHandle(rawValue: rawHandle)) else {
+                    continue
+                }
+                _ = winShowWindow(hwnd, swShowNoActivate)
+            }
+            deactivateHiddenHandles.removeAll()
+            return
+        }
+
+        for rawHandle in hidesOnDeactivateHandles {
+            guard let hwnd = hwnd(from: NativeHandle(rawValue: rawHandle)), winIsWindowVisible(hwnd) != 0 else {
+                continue
+            }
+            _ = winShowWindow(hwnd, swHide)
+            deactivateHiddenHandles.insert(rawHandle)
+        }
+    }
+
     /// Shows a native window.
     public func showWindow(_ handle: NativeHandle) {
         guard let hwnd = hwnd(from: handle) else {
@@ -77,6 +143,8 @@ extension Win32NativeControlBackend {
         windowHandles.remove(handle)
         windowStyles.removeValue(forKey: handle.rawValue)
         windowMenuFlags.removeValue(forKey: handle.rawValue)
+        hidesOnDeactivateHandles.remove(handle.rawValue)
+        deactivateHiddenHandles.remove(handle.rawValue)
         mainMenuWindowHandles.remove(handle)
         controlActions.removeValue(forKey: handle.rawValue)
         textChangeActions.removeValue(forKey: handle.rawValue)
@@ -95,6 +163,7 @@ extension Win32NativeControlBackend {
         keyDownActions.removeValue(forKey: handle.rawValue)
         keyUpActions.removeValue(forKey: handle.rawValue)
         windowCloseActions.removeValue(forKey: handle.rawValue)
+        windowShouldCloseHandlers.removeValue(forKey: handle.rawValue)
         windowResizeActions.removeValue(forKey: handle.rawValue)
         toolbarActions.removeValue(forKey: handle.rawValue)
         originalControlProcedures.removeValue(forKey: handle.rawValue)

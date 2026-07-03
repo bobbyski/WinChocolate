@@ -1,10 +1,10 @@
 /// The shared font conversion manager.
 ///
-/// This first slice keeps AppKit's `NSFontManager` entry points for tracking
-/// the selected font and ordering the font panel front. The classic Windows
-/// backend presents the native modal font chooser, so
-/// `orderFrontFontPanel(_:)` runs synchronously and applies a confirmed pick
-/// before returning.
+/// The manager tracks the selected font and fronts the shared floating font
+/// panel. Panel selections apply live: the manager updates `selectedFont`,
+/// sends `changeFont(_:)` along the responder chain (or to `target` when
+/// set), and fires `winFontDidChange`. Responders apply the change by
+/// calling `convert(_:)` on their current font, matching AppKit's contract.
 open class NSFontManager: NSObject {
     nonisolated(unsafe) private static let sharedManager = NSFontManager()
 
@@ -19,14 +19,13 @@ open class NSFontManager: NSObject {
     /// Whether the current selection spans multiple fonts.
     open private(set) var isMultiple = false
 
-    /// The object that receives `changeFont` conversions, stored for AppKit
-    /// API compatibility.
+    /// The object that receives `changeFont(_:)` instead of the responder
+    /// chain, when set.
     open weak var target: AnyObject?
 
     /// Called after the user picks a font in the panel.
     ///
-    /// AppKit notifies through the `changeFont(_:)` responder convention; this
-    /// Windows-only closure is the framework's first-slice notification.
+    /// Fired alongside the `changeFont(_:)` responder-chain action.
     open var winFontDidChange: ((NSFont) -> Void)?
 
     /// Creates a font manager.
@@ -41,22 +40,35 @@ open class NSFontManager: NSObject {
         NSFontPanel.shared.setPanelFont(fontObj, isMultiple: flag)
     }
 
-    /// Orders the shared font panel front, seeded with the selected font.
+    /// Returns a font converted to the panel's current selection.
     ///
-    /// A confirmed pick updates `selectedFont` and fires `winFontDidChange`.
+    /// Responders call this from `changeFont(_:)` to apply the panel pick,
+    /// matching AppKit's conversion entry point. Without a panel selection
+    /// the font passes through unchanged.
+    open func convert(_ font: NSFont) -> NSFont {
+        selectedFont ?? font
+    }
+
+    /// Orders the shared floating font panel front, seeded with the selected font.
     open func orderFrontFontPanel(_ sender: Any?) {
         let panel = NSFontPanel.shared
         if let selectedFont {
             panel.setPanelFont(selectedFont, isMultiple: isMultiple)
         }
-        panel.winFontDidChange = { [weak self] font in
-            guard let self else {
-                return
-            }
-
-            self.selectedFont = font
-            self.winFontDidChange?(font)
-        }
         panel.makeKeyAndOrderFront(sender)
+    }
+
+    /// Applies a live font panel selection.
+    ///
+    /// Updates the tracked selection, fires the change closure, and sends
+    /// `changeFont(_:)` to the target or down the active responder chain.
+    func panelFontDidChange(_ font: NSFont) {
+        selectedFont = font
+        winFontDidChange?(font)
+
+        let responder = (target as? NSResponder)
+            ?? NSApplication.shared.panelActionWindow?.firstResponder
+            ?? NSApplication.shared.panelActionWindow
+        responder?.changeFont(self)
     }
 }

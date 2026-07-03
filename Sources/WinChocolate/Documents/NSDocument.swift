@@ -46,6 +46,17 @@ open class NSDocument: NSObject {
     /// The window controllers presenting this document.
     open private(set) var windowControllers: [NSWindowController] = []
 
+    /// Whether documents of this class save automatically in place.
+    ///
+    /// Subclasses return true to opt in, matching AppKit; the shared
+    /// document controller then autosaves edited documents that have a file
+    /// on a periodic run-loop timer.
+    open class var autosavesInPlace: Bool {
+        false
+    }
+
+    private var autosaveTimer: Timer?
+
     /// Creates an empty document.
     ///
     /// `required` so `NSDocumentController` can instantiate its configured
@@ -151,11 +162,36 @@ open class NSDocument: NSObject {
 
     /// Closes the document, its windows, and its controller registration.
     open func close() {
+        autosaveTimer?.invalidate()
+        autosaveTimer = nil
         for controller in windowControllers {
             controller.close()
         }
         windowControllers.removeAll()
         NSDocumentController.shared.removeDocument(self)
+    }
+
+    /// Saves in place when the document is edited and bound to a file.
+    ///
+    /// Untitled documents are skipped: with no destination there is nothing
+    /// to autosave without prompting, which autosave must never do.
+    open func autosave() {
+        guard isDocumentEdited, fileURL != nil else {
+            return
+        }
+
+        save(nil)
+    }
+
+    /// Starts the periodic autosave timer for opted-in document classes.
+    internal func startAutosaveTimerIfNeeded() {
+        guard type(of: self).autosavesInPlace, autosaveTimer == nil else {
+            return
+        }
+
+        autosaveTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
+            self?.autosave()
+        }
     }
 
     private func runSavePanelAndWrite() {

@@ -654,6 +654,21 @@ func winSetFocus(_ hwnd: HWND?) -> HWND?
 @_silgen_name("SetWindowLongPtrW")
 func winSetWindowLongPtrW(_ hwnd: HWND?, _ index: Int32, _ newLong: LONG_PTR) -> LONG_PTR
 
+@_silgen_name("GetWindowLongPtrW")
+func winGetWindowLongPtrW(_ hwnd: HWND?, _ index: Int32) -> LONG_PTR
+
+@_silgen_name("IsWindowVisible")
+func winIsWindowVisible(_ hwnd: HWND?) -> Int32
+
+@_silgen_name("EnumFontFamiliesExW")
+func winEnumFontFamiliesExW(
+    _ deviceContext: HDC?,
+    _ logFont: UnsafeMutablePointer<LOGFONTW>,
+    _ callback: @convention(c) (UnsafeRawPointer?, UnsafeRawPointer?, DWORD, LPARAM) -> Int32,
+    _ lParam: LPARAM,
+    _ flags: DWORD
+) -> Int32
+
 @_silgen_name("SetWindowPos")
 func winSetWindowPos(
     _ hwnd: HWND?,
@@ -824,6 +839,15 @@ let mbIconWarning: UINT = 0x00000030
 let mbIconError: UINT = 0x00000010
 let swShow: Int32 = 5
 let swHide: Int32 = 0
+let swShowNoActivate: Int32 = 4
+let gwlExStyle: Int32 = -20
+let wsExToolWindow: DWORD = 0x0000_0080
+let swpFrameChanged: UINT = 0x0020
+let wmActivateApp: UINT = 0x001c
+/// Special SetWindowPos z-order handle placing a window above non-topmost windows.
+var hwndTopmost: HWND? { HWND(bitPattern: -1) }
+/// Special SetWindowPos z-order handle returning a window to the normal band.
+var hwndNoTopmost: HWND? { HWND(bitPattern: -2) }
 let rdwInvalidate: UINT = 0x0001
 let rdwErase: UINT = 0x0004
 let rdwAllChildren: UINT = 0x0080
@@ -831,6 +855,7 @@ let rdwUpdateNow: UINT = 0x0100
 let swpNoActivate: UINT = 0x0010
 let swpShowWindow: UINT = 0x0040
 let wmDestroy: UINT = 0x0002
+let wmClose: UINT = 0x0010
 let wmSize: UINT = 0x0005
 let wmNotify: UINT = 0x004e
 let wmPaint: UINT = 0x000f

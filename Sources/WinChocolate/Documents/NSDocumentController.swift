@@ -35,6 +35,7 @@ open class NSDocumentController: NSObject {
     open func addDocument(_ document: NSDocument) {
         documents.append(document)
         currentDocument = document
+        document.startAutosaveTimerIfNeeded()
     }
 
     /// Removes a document from the open-documents list.

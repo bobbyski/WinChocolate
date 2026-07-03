@@ -5,6 +5,21 @@ extension Win32NativeControlBackend {
         case wmWinChocolateAsync:
             runAsyncActions()
             return 0
+        case wmClose:
+            // A title-bar close consults the framework first, matching
+            // AppKit's windowShouldClose veto; programmatic closes skip this.
+            guard let hwnd,
+                  let handler = windowShouldCloseHandlers[nativeHandle(from: hwnd).rawValue],
+                  !handler() else {
+                return nil
+            }
+
+            return 0
+        case wmActivateApp:
+            // Floating panels with hidesOnDeactivate leave the screen while
+            // another application is active and return afterward.
+            applicationActivationDidChange(isActive: wParam != 0)
+            return nil
         case wmInitMenuPopup:
             // Run AppKit-style validation just before a menu drops down, then
             // rebuild the native items so mutations and dynamic titles show.
@@ -460,15 +475,17 @@ extension Win32NativeControlBackend {
                     return 0
                 }
 
-                let shouldTerminate = mainMenuWindowHandles.contains(handle)
                 windowHandles.remove(handle)
                 windowStyles.removeValue(forKey: handle.rawValue)
                 windowMenuFlags.removeValue(forKey: handle.rawValue)
                 mainMenuWindowHandles.remove(handle)
                 windowResizeActions.removeValue(forKey: handle.rawValue)
+                windowShouldCloseHandlers.removeValue(forKey: handle.rawValue)
                 windowCloseActions.removeValue(forKey: handle.rawValue)?()
 
-                if shouldTerminate {
+                // Quit once the last top-level window closes, so closing a
+                // secondary document window leaves the app running.
+                if windowHandles.isEmpty {
                     winPostQuitMessage(0)
                 }
             }

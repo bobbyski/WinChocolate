@@ -25,9 +25,15 @@ open class NSWindowController: NSResponder {
     open var shouldCloseDocument = false
 
     /// Creates a controller managing a window.
+    ///
+    /// The controller becomes the window's delegate when it has none, so
+    /// document windows get the save-changes prompt and close bookkeeping.
     public init(window: NSWindow?) {
         self.window = window
         super.init()
+        if let window, window.delegate == nil {
+            window.delegate = self
+        }
     }
 
     /// Whether the controller currently has a window.
@@ -63,5 +69,52 @@ open class NSWindowController: NSResponder {
             return "*\(displayName)"
         }
         return displayName
+    }
+}
+
+extension NSWindowController: NSWindowDelegate {
+    /// Asks to save unsaved document changes before the window closes.
+    ///
+    /// Save runs the document's save flow (which may present a save panel)
+    /// and only allows the close once the document is clean; Cancel vetoes
+    /// the close; Don't Save discards.
+    public func windowShouldClose(_ sender: NSWindow) -> Bool {
+        guard let document, document.isDocumentEdited else {
+            return true
+        }
+
+        let alert = NSAlert()
+        alert.messageText = "Do you want to save the changes made to \(document.displayName)?"
+        alert.informativeText = "Your changes will be lost if you don't save them."
+        alert.addButton(withTitle: "Save")
+        alert.addButton(withTitle: "Cancel")
+        alert.addButton(withTitle: "Don't Save")
+
+        var response = NSApplication.ModalResponse.alertSecondButtonReturn
+        alert.beginSheetModal(for: sender) { alertResponse in
+            response = alertResponse
+        }
+
+        switch response {
+        case .alertFirstButtonReturn:
+            document.save(nil)
+            return !document.isDocumentEdited
+        case .alertThirdButtonReturn:
+            return true
+        default:
+            return false
+        }
+    }
+
+    /// Detaches from the document, closing it with its last window.
+    public func windowWillClose(_ notification: NSNotification) {
+        guard let document else {
+            return
+        }
+
+        document.removeWindowController(self)
+        if document.windowControllers.isEmpty {
+            document.close()
+        }
     }
 }

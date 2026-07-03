@@ -66,6 +66,11 @@ extension Win32NativeControlBackend {
         _ = winSetCursor(systemCursor(named: name))
     }
 
+    /// Registers the handler consulted before a title-bar close proceeds.
+    public func registerWindowShouldCloseHandler(for handle: NativeHandle, handler: @escaping () -> Bool) {
+        windowShouldCloseHandlers[handle.rawValue] = handler
+    }
+
     /// Replaces a native view's hover cursor regions.
     public func setCursorRegions(_ regions: [NativeCursorRegion], for handle: NativeHandle) {
         if regions.isEmpty {

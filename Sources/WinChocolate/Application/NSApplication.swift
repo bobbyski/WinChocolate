@@ -170,6 +170,24 @@ public final class NSApplication: NSObject {
         mainWindow = window
     }
 
+    /// Shows the shared color panel.
+    public func orderFrontColorPanel(_ sender: Any?) {
+        NSColorPanel.shared.makeKeyAndOrderFront(sender)
+    }
+
+    /// The window whose responder chain receives panel actions.
+    ///
+    /// Floating panels send `changeFont(_:)`/`changeColor(_:)` while they are
+    /// key, so the chain starts at the key window unless a panel is key, in
+    /// which case the main window's chain receives the action.
+    var panelActionWindow: NSWindow? {
+        if let keyWindow, !(keyWindow is NSPanel) {
+            return keyWindow
+        }
+
+        return mainWindow
+    }
+
     private func notification(named name: String) -> NSNotification {
         NSNotification(name: name, object: self)
     }
