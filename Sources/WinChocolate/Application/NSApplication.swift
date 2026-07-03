@@ -93,6 +93,9 @@ public final class NSApplication: NSObject {
         nativeBackend.runApplication()
     }
 
+    /// Windows currently running modal sessions, outermost first.
+    private var modalWindows: [NSWindow] = []
+
     /// Runs a modal event loop for a window until `stopModal` is called.
     @discardableResult
     public func runModal(for window: NSWindow) -> ModalResponse {
@@ -100,7 +103,21 @@ public final class NSApplication: NSObject {
         window.makeMain()
         window.makeKey()
         nativeBackend.showWindow(handle)
+        modalWindows.append(window)
+        defer {
+            modalWindows.removeLast()
+        }
         return ModalResponse(rawValue: nativeBackend.runModal(for: handle))
+    }
+
+    /// Ends the active modal session when its window is closing.
+    ///
+    /// Title-bar closes reach the window directly; without this, the nested
+    /// modal loop would keep running with no window to dismiss it.
+    internal func windowWillClose(_ window: NSWindow) {
+        if modalWindows.last === window {
+            stopModal(withCode: .cancel)
+        }
     }
 
     /// Stops the current modal event loop with `.stop`.

@@ -4017,6 +4017,94 @@ func testCursorRectsFlowToBackendRegions() {
     expect(splitRegions.first?.rect == NSMakeRect(60, 0, 8, 100), "Moving the divider did not update its cursor region.")
 }
 
+func testTimerSchedulesFiresAndInvalidates() {
+    let application = NSApplication.shared
+    let backend = InMemoryNativeControlBackend()
+    let previousBackend = application.nativeBackend
+    application.nativeBackend = backend
+    defer {
+        application.nativeBackend = previousBackend
+    }
+
+    var repeatingFires = 0
+    let repeating = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { _ in
+        repeatingFires += 1
+    }
+    let repeatingIdentifier = backend.scheduledTimers.last?.identifier ?? 0
+    expect(backend.scheduledTimers.last?.intervalMilliseconds == 250, "The timer interval did not convert to milliseconds.")
+    expect(repeating.timeInterval == 0.25, "The timer did not keep its interval.")
+
+    backend.fireTimer(repeatingIdentifier)
+    backend.fireTimer(repeatingIdentifier)
+    expect(repeatingFires == 2, "A repeating timer did not fire on each tick.")
+    expect(repeating.isValid, "A repeating timer should stay valid after firing.")
+
+    repeating.invalidate()
+    expect(!repeating.isValid, "invalidate did not mark the timer invalid.")
+    expect(backend.canceledTimerIdentifiers.contains(repeatingIdentifier), "invalidate did not cancel the native timer.")
+    backend.fireTimer(repeatingIdentifier)
+    expect(repeatingFires == 2, "A canceled timer's action should not fire.")
+
+    var oneShotFires = 0
+    let oneShot = Timer.scheduledTimer(withTimeInterval: 1, repeats: false) { _ in
+        oneShotFires += 1
+    }
+    let oneShotIdentifier = backend.scheduledTimers.last?.identifier ?? 0
+    backend.fireTimer(oneShotIdentifier)
+    expect(oneShotFires == 1, "A one-shot timer did not fire.")
+    expect(!oneShot.isValid, "A one-shot timer should invalidate after firing.")
+    expect(backend.canceledTimerIdentifiers.contains(oneShotIdentifier), "A one-shot timer did not cancel its native timer after firing.")
+}
+
+func testTextViewFindAndReplace() {
+    let backend = InMemoryNativeControlBackend()
+    let textView = NSTextView(frame: NSMakeRect(0, 0, 300, 100))
+    textView.string = "alpha beta alpha BETA alpha"
+    _ = textView.realizeNativePeer(in: backend, parent: nil)
+
+    let previousSearch = NSTextFinder.winSharedSearchString
+    let previousReplacement = NSTextFinder.winSharedReplacementString
+    defer {
+        NSTextFinder.winSharedSearchString = previousSearch
+        NSTextFinder.winSharedReplacementString = previousReplacement
+    }
+
+    // Forward find is case-insensitive and wraps.
+    NSTextFinder.winSharedSearchString = "beta"
+    textView.setSelectedRange(NSMakeRange(0, 0))
+    textView.performTextFinderAction(.nextMatch)
+    expect(textView.selectedRange == NSMakeRange(6, 4), "nextMatch did not select the first match.")
+    textView.performTextFinderAction(.nextMatch)
+    expect(textView.selectedRange == NSMakeRange(17, 4), "nextMatch did not find the uppercase match case-insensitively.")
+    textView.performTextFinderAction(.nextMatch)
+    expect(textView.selectedRange == NSMakeRange(6, 4), "nextMatch did not wrap around to the first match.")
+
+    // Backward find wraps the other way.
+    textView.performTextFinderAction(.previousMatch)
+    expect(textView.selectedRange == NSMakeRange(17, 4), "previousMatch did not wrap to the last match.")
+
+    // The selection becomes the search string through the menu tag path.
+    textView.setSelectedRange(NSMakeRange(0, 5))
+    let useSelectionItem = NSMenuItem(title: "Use Selection for Find", action: nil, keyEquivalent: "")
+    useSelectionItem.tag = NSTextFinder.Action.setSearchString.rawValue
+    textView.performTextFinderAction(useSelectionItem)
+    expect(NSTextFinder.winSharedSearchString == "alpha", "setSearchString did not adopt the selection.")
+
+    // Replace only rewrites a selection that matches the search string.
+    NSTextFinder.winSharedReplacementString = "omega"
+    textView.setSelectedRange(NSMakeRange(6, 4))
+    textView.performTextFinderAction(.replace)
+    expect(textView.string == "alpha beta alpha BETA alpha", "Replace should not rewrite a selection that does not match.")
+
+    textView.setSelectedRange(NSMakeRange(0, 5))
+    textView.performTextFinderAction(.replace)
+    expect(textView.string == "omega beta alpha BETA alpha", "Replace did not rewrite the matching selection.")
+
+    // Replace-all rewrites every remaining case-insensitive match.
+    textView.performTextFinderAction(.replaceAll)
+    expect(textView.string == "omega beta omega BETA omega", "replaceAll did not rewrite every match.")
+}
+
 final class KeyEquivalentTestView: NSView {
     var consumesEquivalents = false
     var seenEquivalents = 0
@@ -5054,6 +5142,8 @@ testDocumentControllerNewDocumentMakesAndShowsWindows()
 testSplitViewDividerDragResizesPanes()
 testCursorRectsFlowToBackendRegions()
 testViewChainSeesKeyEquivalentsBeforeMenu()
+testTextViewFindAndReplace()
+testTimerSchedulesFiresAndInvalidates()
 testAttributedStringStoresStringAndAttributes()
 testRightMouseScrollAndClickCountReachTheView()
 testAlertCustomButtonsRunComposedModalPanel()

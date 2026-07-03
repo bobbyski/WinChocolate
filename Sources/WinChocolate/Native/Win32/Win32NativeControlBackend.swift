@@ -4,7 +4,7 @@
 /// This backend owns the first native milestone: top-level windows, a menu bar,
 /// push buttons, static text fields, and `WM_COMMAND` dispatch for actions.
 public final class Win32NativeControlBackend: NativeControlBackend {
-    nonisolated(unsafe) private static weak var activeBackend: Win32NativeControlBackend?
+    nonisolated(unsafe) fileprivate static weak var activeBackend: Win32NativeControlBackend?
 
     private var isWindowClassRegistered = false
     private var isViewClassRegistered = false
@@ -24,6 +24,7 @@ public final class Win32NativeControlBackend: NativeControlBackend {
     var scrollWheelActions: [UInt: (NSEvent) -> Void] = [:]
     var activeCursorName: String?
     var cursorRegions: [UInt: [NativeCursorRegion]] = [:]
+    var timerActions: [UInt: () -> Void] = [:]
     var keyEquivalentHandler: ((NSEvent) -> Bool)?
     var drawActions: [UInt: (NativeDrawingContext, NSRect) -> Void] = [:]
     var keyDownActions: [UInt: (NSEvent) -> Void] = [:]
@@ -109,6 +110,19 @@ public final class Win32NativeControlBackend: NativeControlBackend {
     /// Stops the innermost modal event loop with a response code.
     public func stopModal(withCode code: Int) {
         modalStopCode = code
+    }
+
+    /// Schedules a repeating native timer dispatched by the message loop.
+    public func scheduleNativeTimer(intervalMilliseconds: Int, action: @escaping () -> Void) -> UInt {
+        let identifier = winSetTimerWithProcedure(nil, 0, UINT(max(1, intervalMilliseconds)), runLoopTimerProcedure)
+        timerActions[identifier] = action
+        return identifier
+    }
+
+    /// Cancels a scheduled native timer.
+    public func cancelNativeTimer(_ identifier: UInt) {
+        timerActions.removeValue(forKey: identifier)
+        _ = winKillTimer(nil, identifier)
     }
 
     /// Requests native application termination.
@@ -498,5 +512,10 @@ func winChocolateControlProcedure(
         wParam: wParam,
         lParam: lParam
     )
+}
+
+/// Dispatches thread-timer ticks to the active backend's timer actions.
+let runLoopTimerProcedure: @convention(c) (HWND?, UINT, UInt, DWORD) -> Void = { _, _, identifier, _ in
+    Win32NativeControlBackend.activeBackend?.timerActions[identifier]?()
 }
 #endif

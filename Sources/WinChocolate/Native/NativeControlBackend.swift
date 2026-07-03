@@ -534,6 +534,16 @@ public protocol NativeControlBackend: AnyObject {
     /// region wins, and positions outside every region show the arrow.
     func setCursorRegions(_ regions: [NativeCursorRegion], for handle: NativeHandle)
 
+    /// Schedules a repeating run-loop timer, returning its identifier.
+    ///
+    /// The action fires on the UI thread from the native message loop until
+    /// the timer is canceled. One-shot behavior is layered above by the
+    /// caller canceling after the first fire.
+    func scheduleNativeTimer(intervalMilliseconds: Int, action: @escaping () -> Void) -> UInt
+
+    /// Cancels a scheduled run-loop timer.
+    func cancelNativeTimer(_ identifier: UInt)
+
     /// Registers the handler consulted for menu key equivalents before key-down routing.
     func registerKeyEquivalentHandler(_ handler: @escaping (NSEvent) -> Bool)
 

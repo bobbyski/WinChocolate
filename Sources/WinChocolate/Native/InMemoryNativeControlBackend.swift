@@ -1242,6 +1242,44 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
         cursorRegions[handle] = regions
     }
 
+    /// A recorded run-loop timer request.
+    public struct ScheduledTimer: Equatable, Sendable {
+        /// The timer identifier handed back to the scheduler.
+        public let identifier: UInt
+
+        /// The requested firing interval in milliseconds.
+        public let intervalMilliseconds: Int
+    }
+
+    /// Scheduled run-loop timers, oldest first.
+    public private(set) var scheduledTimers: [ScheduledTimer] = []
+
+    /// Identifiers of canceled run-loop timers, oldest first.
+    public private(set) var canceledTimerIdentifiers: [UInt] = []
+
+    private var timerActions: [UInt: () -> Void] = [:]
+    private var nextTimerIdentifier: UInt = 1
+
+    /// Records a run-loop timer request.
+    public func scheduleNativeTimer(intervalMilliseconds: Int, action: @escaping () -> Void) -> UInt {
+        let identifier = nextTimerIdentifier
+        nextTimerIdentifier += 1
+        scheduledTimers.append(ScheduledTimer(identifier: identifier, intervalMilliseconds: intervalMilliseconds))
+        timerActions[identifier] = action
+        return identifier
+    }
+
+    /// Records a run-loop timer cancellation.
+    public func cancelNativeTimer(_ identifier: UInt) {
+        timerActions.removeValue(forKey: identifier)
+        canceledTimerIdentifiers.append(identifier)
+    }
+
+    /// Fires a scheduled timer's action, standing in for a message-loop tick.
+    public func fireTimer(_ identifier: UInt) {
+        timerActions[identifier]?()
+    }
+
     /// The most recently registered key-equivalent handler.
     public private(set) var keyEquivalentHandler: ((NSEvent) -> Bool)?
 

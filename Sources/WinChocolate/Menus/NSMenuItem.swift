@@ -22,6 +22,12 @@ open class NSMenuItem: NSObject {
     /// Whether the menu item can be performed.
     open var isEnabled: Bool = true
 
+    /// An integer the application uses to identify the item.
+    ///
+    /// Find menu items carry `NSTextFinder.Action` raw values here, matching
+    /// AppKit's tag-driven find dispatch.
+    open var tag: Int = 0
+
     /// Whether the menu item is hidden from native menu construction.
     open var isHidden: Bool = false
 

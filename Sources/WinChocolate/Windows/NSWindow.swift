@@ -286,6 +286,9 @@ open class NSWindow: NSResponder {
             return
         }
 
+        // A modal window closed from its title bar ends its session, so
+        // `runModal(for:)` callers unwind instead of leaking a nested loop.
+        NSApplication.shared.windowWillClose(self)
         nativeBackend.closeWindow(nativeHandle)
         toolbarHostView?.destroyNativePeer()
         toolbarHostView = nil

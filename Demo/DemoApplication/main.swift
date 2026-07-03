@@ -604,6 +604,7 @@ let segmentedControl = NSSegmentedControl(labels: ["One", "Two", "Three"], frame
 let scrollerLabel = NSTextField(string: "Scroller:", frame: NSMakeRect(32, 334, 88, 24))
 let scroller = NSScroller(frame: NSMakeRect(128, 340, 240, 18))
 let scrollerValueLabel = NSTextField(string: "0", frame: NSMakeRect(384, 334, 48, 24))
+let timerTickLabel = NSTextField(string: "Timer: 0s", frame: NSMakeRect(480, 382, 160, 24))
 let dateLabel = NSTextField(string: "Date:", frame: NSMakeRect(32, 382, 88, 24))
 let datePicker = NSDatePicker(date: Date(timeIntervalSince1970: 1_780_272_000), frame: NSMakeRect(128, 378, 184, 28))
 let dateValueLabel = NSTextField(string: "2026-06-01", frame: NSMakeRect(328, 382, 120, 24))
@@ -2298,6 +2299,14 @@ valuesPage.addSubview(scrollerValueLabel)
 valuesPage.addSubview(dateLabel)
 valuesPage.addSubview(datePicker)
 valuesPage.addSubview(dateValueLabel)
+valuesPage.addSubview(timerTickLabel)
+
+// A repeating run-loop Timer ticking the label once per second.
+var timerTicks = 0
+Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
+    timerTicks += 1
+    timerTickLabel.stringValue = "Timer: \(timerTicks)s"
+}
 
 drawingPage.addSubview(canvasLabel)
 drawingPage.addSubview(canvasView)
@@ -2361,6 +2370,30 @@ redoItem.onAction = { _ in
 }
 editMenu.addItem(undoItem)
 editMenu.addItem(redoItem)
+editMenu.addItem(NSMenuItem.separator())
+
+// Find targets the focused text view like AppKit's responder-chain
+// dispatch, falling back to the main window's notes view.
+let activeFindTextView: () -> NSTextView = {
+    (NSApplication.shared.keyWindow?.firstResponder as? NSTextView) ?? notesTextView
+}
+
+// Find items dispatch through NSTextFinder.Action tags, AppKit-style.
+let findItem = NSMenuItem(title: "Find...", action: nil, keyEquivalent: "f")
+findItem.tag = NSTextFinder.Action.showFindInterface.rawValue
+let findNextItem = NSMenuItem(title: "Find Next", action: nil, keyEquivalent: "g")
+findNextItem.tag = NSTextFinder.Action.nextMatch.rawValue
+let findPreviousItem = NSMenuItem(title: "Find Previous", action: nil, keyEquivalent: "g")
+findPreviousItem.keyEquivalentModifierMask = [.command, .shift]
+findPreviousItem.tag = NSTextFinder.Action.previousMatch.rawValue
+let useSelectionItem = NSMenuItem(title: "Use Selection for Find", action: nil, keyEquivalent: "e")
+useSelectionItem.tag = NSTextFinder.Action.setSearchString.rawValue
+for item in [findItem, findNextItem, findPreviousItem, useSelectionItem] {
+    item.onAction = { sender in
+        activeFindTextView().performTextFinderAction(sender)
+    }
+    editMenu.addItem(item)
+}
 editMenuItem.submenu = editMenu
 menuBar.addItem(editMenuItem)
 editMenuController.textView = notesTextView

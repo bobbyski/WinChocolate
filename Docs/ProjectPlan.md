@@ -17,15 +17,15 @@ This plan is the high-level project tracker. `CONTROL_PARITY.md` remains the det
 ## Dashboard
 
 ```text
-Overall Progress                           █████████████░░░░░░░░░░░░░░░░░░░   40%  (per-item estimate)
+Overall Progress                           ██████████████░░░░░░░░░░░░░░░░░░   43%  (per-item estimate)
 
 Phase 1 · Package, Core Names, App Shell   ██████████████████████████  100%  ✅ Complete
 Phase 2 · Classic Win32 Backend            ██████████████████████████  100%  ✅ Complete
-Phase 3 · AppKit Surface Expansion         █████████████████████░░░░░   79%  🔄 In Progress
+Phase 3 · AppKit Surface Expansion         █████████████████████░░░░░   80%  🔄 In Progress
 Phase 4 · Demo Harness                     █████████████████████░░░░░   80%  🔄 In Progress
 Phase 5 · Tables, Lists, Collections       █████░░░░░░░░░░░░░░░░░░░░░   21%  🔄 In Progress
 Phase 6 · Toolbar API Parity               █████████░░░░░░░░░░░░░░░░░   34%  🔄 In Progress
-Phase 7 · WinFoundation Bridge             █████░░░░░░░░░░░░░░░░░░░░░   18%  🔄 In Progress
+Phase 7 · WinFoundation Bridge             ████████░░░░░░░░░░░░░░░░░░   29%  🔄 In Progress
 Phase 8 · Modern Windows Appearance        ░░░░░░░░░░░░░░░░░░░░░░░░░░    0%  ⏳ Pending
 Phase 9 · Auto Layout                      ░░░░░░░░░░░░░░░░░░░░░░░░░░    0%  ⏳ Pending
 Phase 10 · Focus, Accessibility, Polish    ███████░░░░░░░░░░░░░░░░░░░   27%  🔄 In Progress
@@ -34,7 +34,7 @@ Phase 11 · Cross-Platform Test Apps        ░░░░░░░░░░░░
 
 **Status key:** ✅ Done &nbsp;|&nbsp; 🔄 In Progress &nbsp;|&nbsp; ⏳ Pending &nbsp;|&nbsp; ⏸️ Deferred &nbsp;|&nbsp; 🚫 Blocked
 
-**How percentages are computed:** each item carries a completion estimate (✅ = 100%, 🔄 = the `~NN%` shown in its notes, ⏳/⏸️ = 0%); a phase is the average of its items, and Overall is the average across all 80 tracked items (14 ✅). Recomputed 2026-07-01 after enumerating the missing AppKit surfaces — Overall dropped from 64% because tracked scope grew from 55 to 79 items, not because work regressed. 2026-07-02: added 10.7 (per-monitor DPI awareness), growing scope to 80 items.
+**How percentages are computed:** each item carries a completion estimate (✅ = 100%, 🔄 = the `~NN%` shown in its notes, ⏳/⏸️ = 0%); a phase is the average of its items, and Overall is the average across all 80 tracked items (15 ✅). Recomputed 2026-07-01 after enumerating the missing AppKit surfaces — Overall dropped from 64% because tracked scope grew from 55 to 79 items, not because work regressed. 2026-07-02: added 10.7 (per-monitor DPI awareness), growing scope to 80 items.
 
 ---
 
@@ -42,7 +42,7 @@ Phase 11 · Cross-Platform Test Apps        ░░░░░░░░░░░░
 
 | Priority | Area | Task | Status | Notes |
 |---:|---|---|---|---|
-| 1 | Demo and controls | Keep moving through the next control surface. | 🔄 In Progress | Latest surface: menu rebuild-on-open with accelerator text closed 3.10; cursor rects and view-chain key equivalents closed 3.6. Remaining 3.x: find/replace (3.11), floating panels (3.8), scroll depth (3.3), document autosave (3.9, needs 7.6 `Timer`), plus open-ended 3.1/3.4. |
+| 1 | Demo and controls | Keep moving through the next control surface. | 🔄 In Progress | Latest surface: `Timer` (7.6) unblocked Minesweeper and document autosave, after find/replace (3.11) and menu rebuild-on-open (3.10). Remaining 3.x: floating panels (3.8), scroll depth (3.3), autosave (3.9), rich text (3.11), plus open-ended 3.1/3.4. Phase 11 prerequisites still open: `FileManager` (7.5), `UserDefaults` (7.7). |
 | 2 | Contracts | Add focused tests whenever a framework behavior becomes real, especially for controls that demos depend on. | 🔄 In Progress | Recent examples: save/open panels, toolbar customization, resize propagation. |
 | 3 | Documentation | Keep `CONTROL_PARITY.md` and this plan synchronized when a surface moves from placeholder to working. | 🔄 In Progress | Update item estimates after meaningful feature batches and recompute phase percentages. |
 
@@ -75,7 +75,7 @@ Keep the classic backend real, testable, and available as a stable presentation 
 
 ---
 
-## Phase 3 — AppKit Surface Expansion 🔄 79%
+## Phase 3 — AppKit Surface Expansion 🔄 80%
 
 Broaden source-compatible AppKit-style APIs while keeping mechanics hidden behind the framework. Items 3.5, 3.6, 3.9, and 3.11 are prerequisites for the Phase 11 cross-platform apps.
 
@@ -91,7 +91,7 @@ Broaden source-compatible AppKit-style APIs while keeping mechanics hidden behin
 | 3.8 | Standard panels | 🔄 In Progress | ~70% — `NSColorPanel`/`NSFontPanel`/`NSFontManager` shared instances run the classic ChooseColorW/ChooseFontW dialogs; color well attaches to the shared panel. Missing: true floating panels, font-panel live apply. |
 | 3.9 | `NSDocument` architecture | 🔄 In Progress | ~75% — `NSDocument` (read/write/data overrides, dirty tracking, save/saveAs through `NSSavePanel`) and `NSDocumentController` (documents, recents, `openDocument`/`newDocument`, `winDocumentClass` hook). Window controllers: `NSWindowController` (showWindow, close, title sync with a classic `*` dirty prefix), `makeWindowControllers`/`addWindowController`/`showWindows`, open/new flows make and show windows. Missing: autosave (needs 7.6 `Timer`), document types from metadata, close-with-unsaved-changes prompt. |
 | 3.10 | Menu depth | ✅ Done | Context menus, Ctrl-mapped key equivalents with right-aligned accelerator text ("Ctrl+Z"), check-state marks, and live validation: `NSMenuItemValidation`/`autoenablesItems`/`NSMenu.update()` run on WM_INITMENUPOPUP, which now rebuilds the native items wholesale — added/removed/retitled items (dynamic "Undo Typing" titles, recent-file lists) always display current state. |
-| 3.11 | `NSTextView` depth | 🔄 In Progress | ~75% — `selectedRange`/`NSRange`, `insertText(_:replacementRange:)`, `scrollRangeToVisible`, `NSTextViewDelegate.textDidChange`, read-only sync, fonts. Undo: `NSUndoManager` (target/handler registration, redo routing, action names, `levelsOfUndo`), `NSWindow.undoManager`, `allowsUndo` with typing-burst coalescing; menu key equivalents now fire while native controls have focus, so Edit-menu Cmd+Z/Cmd+Shift+Z work mid-edit. Missing: find/replace, rich text attributes. |
+| 3.11 | `NSTextView` depth | 🔄 In Progress | ~90% — `selectedRange`/`NSRange`, `insertText(_:replacementRange:)`, `scrollRangeToVisible`, `NSTextViewDelegate.textDidChange`, read-only sync, fonts. Undo: `NSUndoManager`, `NSWindow.undoManager`, `allowsUndo` with word-granular typing coalescing, Edit-menu Cmd+Z/Cmd+Shift+Z. Find/replace: `NSTextFinder.Action` tags + `performTextFinderAction(_:)` (find next/previous with wrap, case-insensitive, use-selection, replace/replace-all) and a composed app-modal Find panel; closing a modal window from its title bar now ends the modal session. Missing: rich text attributes. |
 | 3.12 | Progress indicator completion | 🔄 In Progress | ~80% — `isIndeterminate`, `.spinning` style, and `startAnimation`/`stopAnimation` animate via a native-timer sweep (the classic theme lacks marquee support). Missing: a true spinner visual in the modern appearance. |
 | 3.13 | `NSImage` formats | 🔄 In Progress | ~80% — PNG/JPEG/GIF/ICO decode via the GDI+ flat API (BMP keeps the fast LoadImageW path) for both `NSImageView` and `NSImage.draw(in:)`; ICO verified through the demo's generated icon. Missing: template images, per-path bitmap caching. |
 
@@ -152,7 +152,7 @@ Design note: toolbars are the rare exception to the "look like Windows" rule —
 
 ---
 
-## Phase 7 — WinFoundation Bridge 🔄 18%
+## Phase 7 — WinFoundation Bridge 🔄 29%
 
 Bridge enough Foundation-shaped API to keep WinChocolate source-compatible while the local Windows Swift toolchain cannot import real Foundation. Items 7.5-7.7 are prerequisites for Phase 11 apps and toolbar autosave.
 
@@ -163,7 +163,7 @@ Bridge enough Foundation-shaped API to keep WinChocolate source-compatible while
 | 7.3 | Resource and file behavior | 🔄 In Progress | ~40% — needed by image loading, panels, documents. |
 | 7.4 | Broader Foundation compatibility | ⏳ Pending | Add only when AppKit/API needs justify it. |
 | 7.5 | `FileManager` | ⏳ Pending | Existence checks, directory listing, create/remove/copy/move. Required by Notes and the text editor (Phase 11). |
-| 7.6 | `Timer` and run-loop scheduling | ⏳ Pending | `Timer.scheduledTimer` driven by the native message loop (`SetTimer`). Required by Minesweeper (Phase 11). |
+| 7.6 | `Timer` and run-loop scheduling | ✅ Done | `Timer.scheduledTimer(withTimeInterval:repeats:block:)` over a backend run-loop timer (`SetTimer` thread timers dispatched by every message loop, including modal sessions). The scheduling retains the timer until `invalidate()`, matching Foundation's run-loop ownership; one-shot timers self-invalidate after firing. Selector-based scheduling remains future work. |
 | 7.7 | `UserDefaults` | ⏳ Pending | Persistent defaults (registry or plist-style file). Required by toolbar autosave (6.8). |
 | 7.8 | `NotificationCenter` | ⏳ Pending | Post/observe with object filtering; several AppKit notifications already have names waiting for a real center. |
 | 7.9 | String and data I/O | 🔄 In Progress | ~40% — `Data` read/write exists; `String(contentsOf:)`/`write(to:)` and encodings remain. |
