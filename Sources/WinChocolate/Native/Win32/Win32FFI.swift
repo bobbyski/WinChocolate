@@ -694,6 +694,39 @@ func winIsWindowVisible(_ hwnd: HWND?) -> Int32
 @_silgen_name("LoadLibraryW")
 func winLoadLibraryW(_ name: UnsafePointer<UInt16>?) -> UnsafeMutableRawPointer?
 
+@_silgen_name("OpenClipboard")
+func winOpenClipboard(_ owner: HWND?) -> Int32
+
+@_silgen_name("CloseClipboard")
+func winCloseClipboard() -> Int32
+
+@_silgen_name("EmptyClipboard")
+func winEmptyClipboard() -> Int32
+
+@_silgen_name("SetClipboardData")
+func winSetClipboardData(_ format: UINT, _ data: UnsafeMutableRawPointer?) -> UnsafeMutableRawPointer?
+
+@_silgen_name("GetClipboardData")
+func winGetClipboardData(_ format: UINT) -> UnsafeMutableRawPointer?
+
+@_silgen_name("IsClipboardFormatAvailable")
+func winIsClipboardFormatAvailable(_ format: UINT) -> Int32
+
+@_silgen_name("GetClipboardSequenceNumber")
+func winGetClipboardSequenceNumber() -> DWORD
+
+@_silgen_name("GlobalAlloc")
+func winGlobalAlloc(_ flags: UINT, _ bytes: UInt) -> UnsafeMutableRawPointer?
+
+@_silgen_name("GlobalLock")
+func winGlobalLock(_ memory: UnsafeMutableRawPointer?) -> UnsafeMutableRawPointer?
+
+@_silgen_name("GlobalUnlock")
+func winGlobalUnlock(_ memory: UnsafeMutableRawPointer?) -> Int32
+
+@_silgen_name("GlobalFree")
+func winGlobalFree(_ memory: UnsafeMutableRawPointer?) -> UnsafeMutableRawPointer?
+
 @_silgen_name("SetGraphicsMode")
 func winSetGraphicsMode(_ deviceContext: HDC?, _ mode: Int32) -> Int32
 
@@ -898,6 +931,10 @@ let enmChange: LPARAM = 0x0001
 let scfSelection: WPARAM = 0x0001
 /// EM_SETCHARFORMAT target: all text.
 let scfAll: WPARAM = 0x0004
+/// Clipboard format: UTF-16 text.
+let cfUnicodeText: UINT = 13
+/// GlobalAlloc movable-memory flag required by SetClipboardData.
+let gmemMoveable: UINT = 0x0002
 let cfmBold: DWORD = 0x0000_0001
 let cfeBold: DWORD = 0x0000_0001
 let cfmColor: DWORD = 0x4000_0000

@@ -85,6 +85,24 @@ open class NSResponder: NSObject {
         nextResponder?.changeColor(sender)
     }
 
+    /// Copies the selection to the general pasteboard.
+    ///
+    /// Sent along the responder chain like AppKit's Edit-menu actions;
+    /// responders with selections override this.
+    open func copy(_ sender: Any?) {
+        nextResponder?.copy(sender)
+    }
+
+    /// Deletes the selection after copying it to the general pasteboard.
+    open func cut(_ sender: Any?) {
+        nextResponder?.cut(sender)
+    }
+
+    /// Inserts the general pasteboard's contents at the selection.
+    open func paste(_ sender: Any?) {
+        nextResponder?.paste(sender)
+    }
+
     /// Handles a key press.
     open func keyDown(with event: NSEvent) {
         nextResponder?.keyDown(with: event)

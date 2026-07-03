@@ -2431,6 +2431,32 @@ for item in [findItem, findNextItem, findPreviousItem, useSelectionItem] {
     }
     editMenu.addItem(item)
 }
+
+// Clipboard actions dispatch to the focused text view over NSPasteboard.
+editMenu.addItem(NSMenuItem.separator())
+let cutItem = NSMenuItem(title: "Cut", action: nil, keyEquivalent: "x")
+cutItem.onAction = { _ in
+    activeFindTextView().cut(nil)
+    statusLabel.stringValue = "Cut (notes)"
+}
+let copyItem = NSMenuItem(title: "Copy", action: nil, keyEquivalent: "c")
+copyItem.onAction = { _ in
+    activeFindTextView().copy(nil)
+    statusLabel.stringValue = "Copied: \(NSPasteboard.general.string(forType: .string) ?? "")"
+}
+let pasteItem = NSMenuItem(title: "Paste", action: nil, keyEquivalent: "v")
+pasteItem.onAction = { _ in
+    activeFindTextView().paste(nil)
+    statusLabel.stringValue = "Pasted: \(NSPasteboard.general.string(forType: .string) ?? "")"
+}
+let selectAllItem = NSMenuItem(title: "Select All", action: nil, keyEquivalent: "a")
+selectAllItem.onAction = { _ in
+    activeFindTextView().selectAll(nil)
+    statusLabel.stringValue = "Select All (notes)"
+}
+for item in [cutItem, copyItem, pasteItem, selectAllItem] {
+    editMenu.addItem(item)
+}
 editMenuItem.submenu = editMenu
 menuBar.addItem(editMenuItem)
 editMenuController.textView = notesTextView

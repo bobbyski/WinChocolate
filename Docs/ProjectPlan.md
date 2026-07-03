@@ -2,7 +2,7 @@
 
 ## Summary
 
-WinChocolate is an AppKit-shaped Swift framework for Windows. Apple AppKit API compatibility is the project's primary goal: apps are built with the Apple API and look like Windows apps. The near-term focus is a dependable classic Win32 backend with enough Cocoa/AppKit compatibility to port small apps, while preserving a path toward modern Windows visuals, richer layout, and deeper Foundation parity.
+WinChocolate is an AppKit-shaped Swift framework for Windows. Apple AppKit API compatibility is the project's primary goal: apps are built with the Apple API and look like Windows apps. The near-term focus is a dependable classic Win32 backend with enough Cocoa/AppKit compatibility to port small apps, while preserving a path toward modern Windows visuals, richer layout, and deeper Foundation parity. A Linux sibling, **LinChocolate**, follows once Windows is going — same Apple API in, native Linux look out; it has its own plan in `Docs/LinChocolatePlan.md`.
 
 This plan is the high-level project tracker. `CONTROL_PARITY.md` remains the detailed control-by-control map, and `Architecture.md` remains the design overview.
 
@@ -17,14 +17,14 @@ This plan is the high-level project tracker. `CONTROL_PARITY.md` remains the det
 ## Dashboard
 
 ```text
-Overall Progress                           ███████████████░░░░░░░░░░░░░░░░░   46%  (per-item estimate)
+Overall Progress                           █████████████░░░░░░░░░░░░░░░░░░░   42%  (per-item estimate)
 
 Phase 1 · Package, Core Names, App Shell   ██████████████████████████  100%  ✅ Complete
 Phase 2 · Classic Win32 Backend            ██████████████████████████  100%  ✅ Complete
-Phase 3 · AppKit Surface Expansion         ███████████████████████░░░   88%  🔄 In Progress
+Phase 3 · AppKit Surface Expansion         ███████████████░░░░░░░░░░░   58%  🔄 In Progress
 Phase 4 · Demo Harness                     █████████████████████░░░░░   80%  🔄 In Progress
 Phase 5 · Tables, Lists, Collections       █████░░░░░░░░░░░░░░░░░░░░░   21%  🔄 In Progress
-Phase 6 · Toolbar API Parity               █████████░░░░░░░░░░░░░░░░░   34%  🔄 In Progress
+Phase 6 · Toolbar API Parity               ██████████░░░░░░░░░░░░░░░░   37%  🔄 In Progress
 Phase 7 · WinFoundation Bridge             ██████░░░░░░░░░░░░░░░░░░░░   24%  🔄 In Progress
 Phase 8 · Modern Windows Appearance        ░░░░░░░░░░░░░░░░░░░░░░░░░░    0%  ⏳ Pending
 Phase 9 · Auto Layout                      ░░░░░░░░░░░░░░░░░░░░░░░░░░    0%  ⏳ Pending
@@ -34,7 +34,7 @@ Phase 11 · Cross-Platform Test Apps        ░░░░░░░░░░░░
 
 **Status key:** ✅ Done &nbsp;|&nbsp; 🔄 In Progress &nbsp;|&nbsp; ⏳ Pending &nbsp;|&nbsp; ⏸️ Deferred &nbsp;|&nbsp; 🚫 Blocked
 
-**How percentages are computed:** each item carries a completion estimate (✅ = 100%, 🔄 = the `~NN%` shown in its notes, ⏳/⏸️ = 0%); a phase is the average of its items, and Overall is the average across all 80 tracked items (17 ✅). Recomputed 2026-07-01 after enumerating the missing AppKit surfaces — Overall dropped from 64% because tracked scope grew from 55 to 79 items, not because work regressed. 2026-07-02: added 10.7 (per-monitor DPI awareness), growing scope to 80 items; later that day 3.8 moved 70%→90% (floating panels + live apply), lifting Phase 3 to 86%. 2026-07-03: 3.3 closed (wheel scrolling + magnification), lifting Phase 3 to 88% and Overall to 46%.
+**How percentages are computed:** each item carries a completion estimate (✅ = 100%, 🔄 = the `~NN%` shown in its notes, ⏳/⏸️ = 0%); a phase is the average of its items, and Overall is the average across all 89 tracked items (17 ✅). LinChocolate (the Linux port) has its own plan in `Docs/LinChocolatePlan.md` and does not count here. Recomputed 2026-07-01 after enumerating the missing AppKit surfaces — Overall dropped from 64% because tracked scope grew from 55 to 79 items, not because work regressed. 2026-07-02: added 10.7 (per-monitor DPI awareness), growing scope to 80 items; later that day 3.8 moved 70%→90% (floating panels + live apply). 2026-07-03: 3.3 closed (wheel scrolling + magnification) and 3.11 closed (rich text attributes over the rich-edit peer); then, after clarifying that broad AppKit coverage — not the Phase 11 apps — is the target, items 3.16-3.23 and 9.5 were added, and later the same day 3.24 (symbol images, absorbing 6.12) — scope 80→89, dropping Phase 3 from 88% to 55% and Overall from 46% to 41% on scope growth alone. LinChocolate was briefly a Phase 12 here before moving to its own plan.
 
 ---
 
@@ -42,13 +42,15 @@ Phase 11 · Cross-Platform Test Apps        ░░░░░░░░░░░░
 
 Each phase is a milestone, and work always drives toward completing the **current** milestone before advancing. A milestone is never left blocked by a later one: if a current-phase item depends on an item scheduled for a future phase, that future item is **pulled into the current phase and done now**, then renumbered here with percentages recomputed. (Already applied: `Timer` and `FileManager` were pulled from Phase 7 into Phase 3 to unblock `NSDocument` autosave/close — see 3.14 and 3.15.)
 
+**Scope comes from the AppKit surface itself, not from the test apps.** The goal is that most AppKit programs build and run (at least their UI); the Phase 11 apps only demonstrate that. When any work reveals a missing AppKit capability, it is added here as a first-class item in the phase it belongs to — never deferred "until a test app needs it."
+
 ---
 
 ## Active Next
 
 | Priority | Area | Task | Status | Notes |
 |---:|---|---|---|---|
-| 1 | Demo and controls | Keep moving through the next control surface. | 🔄 In Progress | Latest surface: wheel scrolling + magnification closed out 3.3, after the floating color/font panels (3.8). Remaining for the milestone: rich text (3.11), panel/alert chrome depth (3.2/3.7/3.8), progress/image leftovers (3.12/3.13), plus open-ended 3.1/3.4. |
+| 1 | Demo and controls | Keep moving through the next control surface. | 🔄 In Progress | Latest surface: rich text attributes closed out 3.11 (rich-edit peer, per-range font/color, selection-scoped `changeFont`). The milestone now includes the newly enumerated AppKit surfaces 3.16-3.24. Latest surface: pasteboard strings + clipboard actions (3.17, ~70%). Suggested order for the rest: rich/image pasteboard types (3.17), text system objects (3.16), font traits (3.20), screens/window state (3.19), hover tracking (3.21), drag and drop (3.18), symbol images (3.24, design questions first), printing (3.22) — alongside panel/alert chrome depth (3.2/3.7/3.8), progress/image leftovers (3.12/3.13), and open-ended 3.1/3.4. |
 | 2 | Contracts | Add focused tests whenever a framework behavior becomes real, especially for controls that demos depend on. | 🔄 In Progress | Recent examples: save/open panels, toolbar customization, resize propagation. |
 | 3 | Documentation | Keep `CONTROL_PARITY.md` and this plan synchronized when a surface moves from placeholder to working. | 🔄 In Progress | Update item estimates after meaningful feature batches and recompute phase percentages. |
 
@@ -83,7 +85,7 @@ Keep the classic backend real, testable, and available as a stable presentation 
 
 ## Phase 3 — AppKit Surface Expansion 🔄 84%
 
-Broaden source-compatible AppKit-style APIs while keeping mechanics hidden behind the framework. Items 3.5, 3.6, 3.9, 3.11, 3.14, and 3.15 are prerequisites for the Phase 11 cross-platform apps (3.14/3.15 were pulled forward from Phase 7 under the milestone rule above).
+Broaden source-compatible AppKit-style APIs while keeping mechanics hidden behind the framework. Items 3.5, 3.6, 3.9, 3.11, 3.14, and 3.15 are prerequisites for the Phase 11 cross-platform apps (3.14/3.15 were pulled forward from Phase 7 under the milestone rule above). Items 3.16-3.24 (added 2026-07-03) enumerate the broader AppKit surfaces most real applications rely on — text system objects, pasteboard, drag and drop, screens/window state, font traits, hover tracking, printing, symbol images — because the goal is running most AppKit UIs, not just the Phase 11 proofs.
 
 | # | Item | Status | Notes |
 |---|---|---|---|
@@ -97,11 +99,20 @@ Broaden source-compatible AppKit-style APIs while keeping mechanics hidden behin
 | 3.8 | Standard panels | 🔄 In Progress | ~90% — `NSColorPanel`/`NSFontPanel` are composed floating utility panels (topmost tool windows that hide on app deactivate, hide-not-destroy on close) with live apply: color changes flow to the active color well and `changeColor(_:)`; font selections update `NSFontManager` and send `changeFont(_:)` down the key/main window's responder chain (`convert(_:)` returns the pick; `NSTextView` adopts it). Installed families come from `EnumFontFamiliesExW`. Supporting surface: `NSWindow.level`/`orderFront`/`orderOut`/`canBecomeKey`/`canBecomeMain`, working `NSPanel.isFloatingPanel`/`hidesOnDeactivate`, `.utilityWindow` style. Missing: HSB/alpha color modes, typeface variants beyond Regular/Bold. |
 | 3.9 | `NSDocument` architecture | ✅ Done | `NSDocument` (read/write/data overrides, dirty tracking, save/saveAs through `NSSavePanel`), `NSDocumentController` (documents, recents, `openDocument`/`newDocument`, `winDocumentClass` hook), and `NSWindowController` (showWindow/close, `*`-prefixed dirty title sync, make/add/show). `NSWindowDelegate.windowShouldClose` vetoes a title-bar close (WM_CLOSE consults the framework); the controller runs the AppKit Save/Cancel/Don't-Save sheet on close. Autosave-in-place for opted-in classes on a 30s `Timer`. Quit now waits for the last window, so closing a document window leaves the app running. Missing: document types from metadata. |
 | 3.10 | Menu depth | ✅ Done | Context menus, Ctrl-mapped key equivalents with right-aligned accelerator text ("Ctrl+Z"), check-state marks, and live validation: `NSMenuItemValidation`/`autoenablesItems`/`NSMenu.update()` run on WM_INITMENUPOPUP, which now rebuilds the native items wholesale — added/removed/retitled items (dynamic "Undo Typing" titles, recent-file lists) always display current state. |
-| 3.11 | `NSTextView` depth | 🔄 In Progress | ~90% — `selectedRange`/`NSRange`, `insertText(_:replacementRange:)`, `scrollRangeToVisible`, `NSTextViewDelegate.textDidChange`, read-only sync, fonts. Undo: `NSUndoManager`, `NSWindow.undoManager`, `allowsUndo` with word-granular typing coalescing, Edit-menu Cmd+Z/Cmd+Shift+Z. Find/replace: `NSTextFinder.Action` tags + `performTextFinderAction(_:)` (find next/previous with wrap, case-insensitive, use-selection, replace/replace-all) and a composed app-modal Find panel; closing a modal window from its title bar now ends the modal session. Missing: rich text attributes. |
+| 3.11 | `NSTextView` depth | ✅ Done | `selectedRange`/`NSRange`, `insertText(_:replacementRange:)`, `scrollRangeToVisible`, `NSTextViewDelegate.textDidChange`, read-only sync, fonts. Undo: `NSUndoManager`, `NSWindow.undoManager`, `allowsUndo` with word-granular typing coalescing, Edit-menu Cmd+Z/Cmd+Shift+Z. Find/replace: `NSTextFinder.Action` tags + `performTextFinderAction(_:)` and a composed app-modal Find panel. Rich text: `isRichText` realizes a rich-edit peer (`RICHEDIT50W` with `EM_SETCHARFORMAT`), `setFont(_:range:)`/`setTextColor(_:range:)` format ranges, and `changeFont(_:)` converts the selection in rich views. Attribute storage/enumeration and RTF persistence continue as 3.16. |
 | 3.12 | Progress indicator completion | 🔄 In Progress | ~80% — `isIndeterminate`, `.spinning` style, and `startAnimation`/`stopAnimation` animate via a native-timer sweep (the classic theme lacks marquee support). Missing: a true spinner visual in the modern appearance. |
 | 3.13 | `NSImage` formats | 🔄 In Progress | ~80% — PNG/JPEG/GIF/ICO decode via the GDI+ flat API (BMP keeps the fast LoadImageW path) for both `NSImageView` and `NSImage.draw(in:)`; ICO verified through the demo's generated icon. Missing: template images, per-path bitmap caching. |
 | 3.14 | `Timer` and run-loop scheduling | ✅ Done | *(Pulled forward from 7.6 to unblock 3.9 autosave.)* `Timer.scheduledTimer(withTimeInterval:repeats:block:)` over a backend run-loop timer (`SetTimer` thread timers dispatched by every message loop, including modal sessions). The scheduling retains the timer until `invalidate()`, matching Foundation's run-loop ownership; one-shot timers self-invalidate after firing. Selector-based scheduling remains future work. |
 | 3.15 | `FileManager` | ✅ Done | *(Pulled forward from 7.5 to unblock 3.9 document persistence.)* `FileManager.default` with existence checks (`isDirectory` via an `ObjCBool` shim), sorted directory listing (path and URL forms), `createDirectory` with intermediates, recursive remove/copy, move, `temporaryDirectory`, and `urls(for:in:)` known folders (Documents/Desktop/AppData/caches over `SHGetFolderPathW`). Attribute dictionaries, enumerators, and delegates remain future work. |
+| 3.16 | Rich text system objects | ⏳ Pending | `NSTextStorage` and `NSMutableAttributedString` with per-range attribute storage and enumeration (`attribute(_:at:effectiveRange:)`, `enumerateAttributes`), more attribute keys (underline, strikethrough, background color, paragraph alignment), and RTF read/write. Completes the rich text path 3.11 opened. |
+| 3.17 | `NSPasteboard` | 🔄 In Progress | ~70% — `NSPasteboard.general` runs over the Windows clipboard (`CF_UNICODETEXT`): typed string read/write, `types`, `changeCount` via the system clipboard sequence number (tracks other apps' changes), `clearContents`, and old-style `declareTypes(_:owner:)`. `copy(_:)`/`cut(_:)`/`paste(_:)` responder-chain actions with `NSTextView` implementations (plus `selectAll`), verified interoperating with native controls and external apps. Remaining: rich text and image pasteboard types. |
+| 3.18 | Drag and drop | ⏳ Pending | View-level `NSDraggingSource`/`NSDraggingDestination`, `registerForDraggedTypes(_:)`, dragging pasteboard items over OLE drag and drop, and file drops from Explorer. Table row drag (5.8) builds on this. |
+| 3.19 | Screens and window state depth | ⏳ Pending | `NSScreen` with real monitor frames and `visibleFrame` (today `center()` assumes a fake 1024×768 desktop); `miniaturize`/`deminiaturize`/`zoom`/`orderBack`/`isVisible`; `setFrameAutosaveName` (needs `UserDefaults`, 7.7); window move/resize delegate callbacks and notifications (needs 7.8). |
+| 3.20 | Font traits and descriptors | ⏳ Pending | Italic/oblique trait (missing from `NSFont` entirely: model, backend `LOGFONT`/`CFE_ITALIC`, drawing text runs), extended weights beyond regular/bold, `NSFontDescriptor` basics, and the font panel's typeface list growing past Regular/Bold (closes the 3.8 typeface caveat). |
+| 3.21 | Hover tracking | ⏳ Pending | `NSTrackingArea`, `mouseEntered(with:)`/`mouseExited(with:)`, and `updateTrackingAreas()` over `WM_MOUSEMOVE`/`TrackMouseEvent`; feeds the hover polish in 10.6. |
+| 3.22 | Printing basics | ⏳ Pending | First `NSPrintOperation`/`NSPrintInfo`/`NSPrintPanel` slice: the native print dialog plus rendering custom-drawn views into a printer device context. Most document apps expose Print; the UI contract matters more than fidelity at first. |
+| 3.23 | Cocoa bindings | ⏸️ Deferred | `bind(_:to:withKeyPath:options:)`, `NSObjectController`/`NSArrayController`. Needs KVO-like infrastructure that Swift on Windows lacks; many older nib-based apps use bindings, but nib loading itself is out of scope, so programmatic-UI apps rarely need them. Revisit after Phase 9. |
+| 3.24 | System symbol images | ⏳ Pending | An SF Symbols equivalent: `NSImage(systemSymbolName:accessibilityDescription:)` resolves Apple's symbol **names** to WinChocolate's **own original glyph set** — drawn from scratch, never traced or copied from Apple's SF Symbols, so the artwork is copyright-clean while call sites stay source-compatible. Start with a subset covering the common toolbar/menu icons (document, folder, gear, magnifyingglass, plus, minus, trash, pencil, play/pause, arrow.\*, chevron.\*); unknown names return a labeled placeholder so apps never break. Open design questions to settle first: glyph authoring format (path-based drawing vs bundled bitmaps), size/weight variants, template-image tinting (ties into 3.13), and the authoring pipeline. Absorbs the name-mapping half of 6.12; also the seed of a cross-platform asset set LinChocolate (`Docs/LinChocolatePlan.md`) will reuse. |
 
 ---
 
@@ -155,7 +166,7 @@ Design note: toolbars are the rare exception to the "look like Windows" rule —
 | 6.9 | Overflow and item visibility contract | ⏳ Pending | Behavior when the toolbar is too narrow: flexible space, overflow menu, visibility priority, custom view constraints. |
 | 6.10 | Toolbar rendering implementation | 🔄 In Progress | ~40% — composed renderer works (chrome background, separators, composite items, custom views); final renderer choice deferred until the API contract is settled. |
 | 6.11 | Customization visual polish | 🔄 In Progress | ~30% — layout matches Apple's sheet; drag previews, drop-position indicators, and final visual matching remain. |
-| 6.12 | SF Symbols strategy | ⏸️ Deferred | Define legal/technical mapping from SF-symbol names to Windows-native or bundled assets. |
+| 6.12 | SF Symbols strategy | ➡️ Moved to 3.24 | Symbol-name compatibility over an original, copyright-clean glyph set now lives in 3.24; toolbars keep consuming named images through it. Counted under Phase 3. |
 | 6.13 | Apple drag-to-real-toolbar customization | ⏳ Pending | Attempt to replace the mirrored-strip compromise with Apple's real behavior: drag items directly between the customization palette and the live window toolbar, with the sheet attached under the toolbar. |
 
 ---
@@ -204,6 +215,7 @@ Add AppKit-shaped layout APIs after the core frame-based control surface is stab
 | 9.2 | Intrinsic sizes | ⏳ Pending | Needed for controls, toolbar items, and forms. |
 | 9.3 | Migration path from frames | ⏳ Pending | Demos can stay frame-based until constraints are real. |
 | 9.4 | `NSStackView` | ⏳ Pending | Stack-based layout container; commonly the first layout API real ports reach for. |
+| 9.5 | `NSGridView` | ⏳ Pending | Row/column form layout container; the standard AppKit answer for label-and-field forms. |
 
 ---
 
@@ -235,7 +247,7 @@ import WinChocolate
 #endif
 ```
 
-These apps are consumers, not framework extensions: any helper an app needs to behave correctly is a design signal that the capability belongs in WinChocolate (and any Mac-only API it needs is a parity gap to fill). Each app deliberately stresses a different API surface. Known prerequisites: custom drawing (3.5), event depth (3.6), `NSDocument` (3.9), `NSTextView` depth (3.11), `Timer` (3.14), `FileManager` (3.15).
+These apps **prove** the primary goal; they do not bound it — coverage work targets the AppKit surface most applications use (see the scoping rule under Working method), and framework items are never scoped down to just what these apps happen to touch. The apps are consumers, not framework extensions: any helper an app needs to behave correctly is a design signal that the capability belongs in WinChocolate (and any Mac-only API it needs is a parity gap to fill). Each app deliberately stresses a different API surface. Known prerequisites: custom drawing (3.5), event depth (3.6), `NSDocument` (3.9), `NSTextView` depth (3.11), `Timer` (3.14), `FileManager` (3.15).
 
 | # | Item | Status | Notes |
 |---|---|---|---|

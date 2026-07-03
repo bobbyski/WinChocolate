@@ -222,6 +222,58 @@ open class NSTextView: NSControl {
         selectedRange = range
     }
 
+    /// Copies the selected text to the general pasteboard.
+    open override func copy(_ sender: Any?) {
+        guard let selectedText = currentSelectedText() else {
+            return
+        }
+
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(selectedText, forType: .string)
+    }
+
+    /// Deletes the selected text after copying it to the general pasteboard.
+    open override func cut(_ sender: Any?) {
+        guard isEditable, currentSelectedText() != nil else {
+            return
+        }
+
+        copy(sender)
+        insertText("", replacementRange: selectedRange)
+    }
+
+    /// Inserts the general pasteboard's text at the selection.
+    open override func paste(_ sender: Any?) {
+        guard isEditable, let text = NSPasteboard.general.string(forType: .string) else {
+            return
+        }
+
+        insertText(text, replacementRange: selectedRange)
+    }
+
+    /// Selects all text.
+    open func selectAll(_ sender: Any?) {
+        selectedRange = NSMakeRange(0, string.utf16.count)
+    }
+
+    /// The selected substring, or `nil` when the selection is empty.
+    private func currentSelectedText() -> String? {
+        let selection = selectedRange
+        guard selection.length > 0 else {
+            return nil
+        }
+
+        let units = Array(string.utf16)
+        let location = min(max(0, selection.location), units.count)
+        let length = min(max(0, selection.length), units.count - location)
+        guard length > 0 else {
+            return nil
+        }
+
+        return String(decoding: units[location..<(location + length)], as: UTF16.self)
+    }
+
     /// Creates the native multiline text peer.
     open override func createNativePeer(in backend: NativeControlBackend, parent: NativeHandle?) -> NativeHandle {
         backend.createTextView(text: string, frame: frame, parent: parent, isEditable: isEditable, isRichText: isRichText)

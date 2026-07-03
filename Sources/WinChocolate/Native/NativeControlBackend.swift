@@ -247,6 +247,19 @@ public protocol NativeControlBackend: AnyObject {
     /// Returns the installed font family names sorted for display.
     func fontFamilyNames() -> [String]
 
+    /// Reads the system clipboard's plain text, when any.
+    func clipboardString() -> String?
+
+    /// Replaces the system clipboard contents with plain text.
+    func setClipboardString(_ string: String)
+
+    /// Empties the system clipboard.
+    func clearClipboard()
+
+    /// Returns a counter that changes whenever the clipboard contents change,
+    /// including changes made by other applications.
+    func clipboardChangeCount() -> Int
+
     /// Registers the action to perform when a native top-level window closes.
     func registerWindowCloseAction(for handle: NativeHandle, action: @escaping () -> Void)
 

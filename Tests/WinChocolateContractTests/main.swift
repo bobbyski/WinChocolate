@@ -4946,6 +4946,63 @@ final class FontChangeRecordingView: NSView {
     }
 }
 
+func testPasteboardAndTextViewClipboardActions() {
+    let backend = InMemoryNativeControlBackend()
+    let previousBackend = NSApplication.shared.nativeBackend
+    NSApplication.shared.nativeBackend = backend
+    defer {
+        NSApplication.shared.nativeBackend = previousBackend
+    }
+
+    // The general pasteboard reads and writes the backend clipboard.
+    let pasteboard = NSPasteboard.general
+    pasteboard.clearContents()
+    expect(pasteboard.string(forType: .string) == nil, "Cleared pasteboard still returned a string.")
+    expect(pasteboard.types == nil, "Cleared pasteboard still reported types.")
+
+    let countBeforeWrite = pasteboard.changeCount
+    expect(pasteboard.setString("Chocolate", forType: .string), "Writing a string was rejected.")
+    expect(pasteboard.string(forType: .string) == "Chocolate", "Written string did not read back.")
+    expect(pasteboard.types == [.string], "String type was not reported after writing.")
+    expect(pasteboard.changeCount > countBeforeWrite, "Writing did not advance the change count.")
+    expect(!pasteboard.setString("x", forType: NSPasteboard.PasteboardType(rawValue: "public.png")), "An unsupported type was accepted.")
+
+    // declareTypes clears, matching the old AppKit contract.
+    pasteboard.declareTypes([.string], owner: nil)
+    expect(pasteboard.string(forType: .string) == nil, "declareTypes did not clear the pasteboard.")
+
+    // Text view copy/cut/paste run over the general pasteboard.
+    let textView = NSTextView(frame: NSMakeRect(0, 0, 300, 100))
+    textView.string = "Hello World"
+    _ = textView.realizeNativePeer(in: backend, parent: nil)
+
+    textView.selectedRange = NSMakeRange(0, 5)
+    textView.copy(nil)
+    expect(pasteboard.string(forType: .string) == "Hello", "Copy did not place the selection on the pasteboard.")
+    expect(textView.string == "Hello World", "Copy changed the text.")
+
+    textView.selectedRange = NSMakeRange(6, 5)
+    textView.cut(nil)
+    expect(pasteboard.string(forType: .string) == "World", "Cut did not place the selection on the pasteboard.")
+    expect(textView.string == "Hello ", "Cut did not delete the selection.")
+
+    textView.selectedRange = NSMakeRange(0, 0)
+    textView.paste(nil)
+    expect(textView.string == "WorldHello ", "Paste did not insert at the selection.")
+
+    // Paste replaces a non-empty selection.
+    textView.selectedRange = NSMakeRange(0, 5)
+    textView.paste(nil)
+    expect(textView.string == "WorldHello ", "Paste over a selection did not replace it.")
+
+    // selectAll covers the whole text; read-only views refuse cut/paste.
+    textView.selectAll(nil)
+    expect(textView.selectedRange == NSMakeRange(0, textView.string.utf16.count), "selectAll did not select the whole text.")
+    textView.isEditable = false
+    textView.cut(nil)
+    expect(textView.string == "WorldHello ", "Cut modified a read-only text view.")
+}
+
 func testRichTextViewAppliesRangeFormatting() {
     let backend = InMemoryNativeControlBackend()
     let manager = NSFontManager.shared
@@ -5626,6 +5683,7 @@ testTextViewSelectionInsertionAndDelegate()
 testDocumentChangeCountAndOverridableDefaults()
 testDocumentSavePanelFlowWritesAndReadsBack()
 testDocumentControllerTracksDocumentsRecentsAndOpen()
+testPasteboardAndTextViewClipboardActions()
 testRichTextViewAppliesRangeFormatting()
 testScrollViewWheelScrollingMovesContent()
 testScrollViewMagnificationScalesGeometryAndDrawing()

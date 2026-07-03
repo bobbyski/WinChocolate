@@ -423,6 +423,34 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
         ["Arial", "Consolas", "Courier New", "Georgia", "Segoe UI", "Tahoma", "Times New Roman", "Verdana"]
     }
 
+    /// Recorded clipboard text, when any.
+    public private(set) var clipboardText: String?
+
+    /// Number of recorded clipboard changes.
+    public private(set) var clipboardChanges = 0
+
+    /// Reads the recorded clipboard text.
+    public func clipboardString() -> String? {
+        clipboardText
+    }
+
+    /// Records new clipboard text.
+    public func setClipboardString(_ string: String) {
+        clipboardText = string
+        clipboardChanges += 1
+    }
+
+    /// Clears the recorded clipboard.
+    public func clearClipboard() {
+        clipboardText = nil
+        clipboardChanges += 1
+    }
+
+    /// The recorded clipboard change count.
+    public func clipboardChangeCount() -> Int {
+        clipboardChanges
+    }
+
     /// Records that a window should be shown.
     public func showWindow(_ handle: NativeHandle) {
         guard var record = records[handle] else {
