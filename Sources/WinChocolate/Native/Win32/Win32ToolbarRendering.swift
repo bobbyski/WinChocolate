@@ -75,13 +75,25 @@ extension Win32NativeControlBackend {
         // Custom content drawn through `NSView.draw(_:)` paints above the
         // background and below any composed toolbar glyphs.
         if let drawAction = drawActions[handle.rawValue] {
+            // Magnified views draw in logical coordinates through a GDI
+            // world transform, which scales paths, text, and blits alike.
+            let scale = contentScales[handle.rawValue] ?? 1
             let dirtyRect = NSMakeRect(
                 0,
                 0,
-                CGFloat(max(0, rectangle.right - rectangle.left)),
-                CGFloat(max(0, rectangle.bottom - rectangle.top))
+                CGFloat(max(0, rectangle.right - rectangle.left)) / scale,
+                CGFloat(max(0, rectangle.bottom - rectangle.top)) / scale
             )
+            if scale != 1 {
+                _ = winSetGraphicsMode(deviceContext, gmAdvanced)
+                var transform = XFORM(eM11: Float(scale), eM22: Float(scale))
+                _ = winSetWorldTransform(deviceContext, &transform)
+            }
             drawAction(Win32DrawingContext(deviceContext: deviceContext), dirtyRect)
+            if scale != 1 {
+                _ = winModifyWorldTransform(deviceContext, nil, mwtIdentity)
+                _ = winSetGraphicsMode(deviceContext, gmCompatible)
+            }
         }
 
         let preview = toolbarPreview(from: text(from: hwnd))

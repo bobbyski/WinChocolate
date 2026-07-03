@@ -364,6 +364,15 @@ public protocol NativeControlBackend: AnyObject {
     /// Updates the native frame for a window or control.
     func setFrame(_ frame: NSRect, for handle: NativeHandle)
 
+    /// Updates the content scale applied to a custom-drawn view.
+    ///
+    /// Scales other than 1 magnify: frames set through `setFrame` grow by
+    /// the scale and custom drawing renders through a matching transform, so
+    /// `draw(_:)` code keeps working in logical coordinates. Native child
+    /// controls do not scale; scroll-view magnification applies this to
+    /// custom-drawn document views.
+    func setContentScale(_ scale: CGFloat, for handle: NativeHandle)
+
     /// Raises a native child control above sibling child controls.
     func raiseControl(_ handle: NativeHandle)
 

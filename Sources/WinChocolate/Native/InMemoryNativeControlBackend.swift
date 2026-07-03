@@ -298,6 +298,9 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
 
         /// Whether the recorded window hides while the application is inactive.
         public var hidesOnDeactivate: Bool = false
+
+        /// Recorded content scale for custom-drawn views.
+        public var contentScale: CGFloat = 1
     }
 
     private var nextRawHandle: UInt = 1
@@ -743,8 +746,20 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
             return
         }
 
-        record.frame = frame
+        // Scaled views record magnified native geometry, mirroring Win32.
+        let scale = record.contentScale
+        record.frame = scale == 1 ? frame : NSRect(
+            x: frame.origin.x * scale,
+            y: frame.origin.y * scale,
+            width: frame.size.width * scale,
+            height: frame.size.height * scale
+        )
         records[handle] = record
+    }
+
+    /// Records the content scale applied to a custom-drawn view.
+    public func setContentScale(_ scale: CGFloat, for handle: NativeHandle) {
+        records[handle]?.contentScale = scale
     }
 
     /// Records that a control should be raised above siblings.

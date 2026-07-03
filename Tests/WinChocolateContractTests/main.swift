@@ -4946,6 +4946,85 @@ final class FontChangeRecordingView: NSView {
     }
 }
 
+func testScrollViewWheelScrollingMovesContent() {
+    let backend = InMemoryNativeControlBackend()
+    let scrollView = NSScrollView(frame: NSMakeRect(0, 0, 200, 100))
+    scrollView.hasVerticalScroller = true
+    scrollView.hasHorizontalScroller = true
+    scrollView.documentView = NSView(frame: NSMakeRect(0, 0, 600, 400))
+    let handle = scrollView.realizeNativePeer(in: backend, parent: nil)
+
+    // One wheel notch down scrolls three lines of the default line scroll.
+    scrollView.scrollWheel(with: NSEvent(type: .scrollWheel, locationInWindow: NSMakePoint(10, 10), scrollingDeltaY: -1))
+    expect(scrollView.contentView.boundsOrigin.y == 48, "Wheel notch did not scroll three default lines.")
+    expect(backend.records[handle]?.scrollViewContentOffset.y == 48, "Wheel scroll did not sync the native scrollbar offset.")
+
+    // Scrolling above the top clamps at zero.
+    scrollView.scrollWheel(with: NSEvent(type: .scrollWheel, locationInWindow: NSMakePoint(10, 10), scrollingDeltaY: 5))
+    expect(scrollView.contentView.boundsOrigin.y == 0, "Wheel scroll did not clamp at the document top.")
+
+    // Shift converts a vertical wheel into horizontal scrolling.
+    scrollView.scrollWheel(with: NSEvent(type: .scrollWheel, locationInWindow: NSMakePoint(10, 10), modifierFlags: [.shift], scrollingDeltaY: -1))
+    expect(scrollView.contentView.boundsOrigin.x == 48, "Shift-wheel did not scroll horizontally.")
+    expect(scrollView.contentView.boundsOrigin.y == 0, "Shift-wheel still scrolled vertically.")
+
+    // Horizontal wheel deltas scroll horizontally on their own.
+    scrollView.scrollWheel(with: NSEvent(type: .scrollWheel, locationInWindow: NSMakePoint(10, 10), scrollingDeltaX: -1))
+    expect(scrollView.contentView.boundsOrigin.x == 96, "Horizontal wheel delta did not scroll horizontally.")
+
+    // Line scroll distances are adjustable.
+    scrollView.lineScroll = 8
+    scrollView.scrollWheel(with: NSEvent(type: .scrollWheel, locationInWindow: NSMakePoint(10, 10), scrollingDeltaY: -1))
+    expect(scrollView.contentView.boundsOrigin.y == 24, "Adjusted line scroll was not honored.")
+
+    // A large scroll clamps at the document end.
+    scrollView.scrollWheel(with: NSEvent(type: .scrollWheel, locationInWindow: NSMakePoint(10, 10), scrollingDeltaY: -100))
+    expect(scrollView.contentView.boundsOrigin.y == 300, "Wheel scroll did not clamp at the document bottom.")
+}
+
+func testScrollViewMagnificationScalesGeometryAndDrawing() {
+    let backend = InMemoryNativeControlBackend()
+    let scrollView = NSScrollView(frame: NSMakeRect(0, 0, 200, 100))
+    scrollView.hasVerticalScroller = true
+    let document = NSView(frame: NSMakeRect(0, 0, 400, 300))
+    scrollView.documentView = document
+    let handle = scrollView.realizeNativePeer(in: backend, parent: nil)
+    guard let documentHandle = document.nativeHandle else {
+        expect(false, "Document view did not realize a native peer.")
+        return
+    }
+
+    scrollView.setMagnification(2, centeredAt: NSMakePoint(0, 0))
+
+    expect(scrollView.magnification == 2, "setMagnification did not update the magnification.")
+    expect(backend.records[documentHandle]?.contentScale == 2, "Magnification did not reach the document view's content scale.")
+    expect(backend.records[documentHandle]?.frame.size == NSMakeSize(800, 600), "Magnification did not scale the document's native frame.")
+    expect(backend.records[handle]?.scrollViewContentSize == NSMakeSize(800, 600), "Scrollbar content size did not scale with magnification.")
+    expect(scrollView.contentView.documentVisibleRect.size == NSMakeSize(100, 50), "Visible document range did not shrink under magnification.")
+
+    // Scrolling clamps to the magnified extent and syncs scaled pixels.
+    scrollView.scroll(NSMakePoint(1_000, 1_000))
+    expect(scrollView.contentView.boundsOrigin == NSMakePoint(300, 250), "Magnified scroll did not clamp to the reduced document range.")
+    expect(backend.records[handle]?.scrollViewContentOffset == NSMakePoint(600, 500), "Native offset did not scale with magnification.")
+
+    // Wheel distances stay constant on screen: one notch is 48 screen
+    // points, which is 24 document units at 2x.
+    scrollView.scroll(NSMakePoint(0, 0))
+    scrollView.scrollWheel(with: NSEvent(type: .scrollWheel, locationInWindow: NSMakePoint(10, 10), scrollingDeltaY: -1))
+    expect(scrollView.contentView.boundsOrigin.y == 24, "Wheel scroll distance did not adjust for magnification.")
+
+    // The magnification range clamps, and 1x removes the content scale.
+    scrollView.setMagnification(100, centeredAt: NSMakePoint(0, 0))
+    expect(scrollView.magnification == scrollView.maxMagnification, "Magnification did not clamp to maxMagnification.")
+    scrollView.setMagnification(1, centeredAt: NSMakePoint(0, 0))
+    expect(backend.records[documentHandle]?.contentScale == 1, "Returning to 1x did not clear the content scale.")
+    expect(backend.records[documentHandle]?.frame.size == NSMakeSize(400, 300), "Returning to 1x did not restore the native frame.")
+
+    // magnify(toFit:) picks the scale that fits the rectangle.
+    scrollView.magnify(toFit: NSMakeRect(0, 0, 100, 50))
+    expect(scrollView.magnification == 2, "magnify(toFit:) did not compute the fitting magnification.")
+}
+
 func testFloatingPanelStateReachesBackend() {
     let backend = InMemoryNativeControlBackend()
     let panel = NSPanel(
@@ -5504,6 +5583,8 @@ testTextViewSelectionInsertionAndDelegate()
 testDocumentChangeCountAndOverridableDefaults()
 testDocumentSavePanelFlowWritesAndReadsBack()
 testDocumentControllerTracksDocumentsRecentsAndOpen()
+testScrollViewWheelScrollingMovesContent()
+testScrollViewMagnificationScalesGeometryAndDrawing()
 testFloatingPanelStateReachesBackend()
 testColorPanelFloatsAndAppliesColorsLive()
 testFontPanelLiveApplyThroughFontManager()

@@ -145,6 +145,7 @@ extension Win32NativeControlBackend {
         windowMenuFlags.removeValue(forKey: handle.rawValue)
         hidesOnDeactivateHandles.remove(handle.rawValue)
         deactivateHiddenHandles.remove(handle.rawValue)
+        contentScales.removeValue(forKey: handle.rawValue)
         mainMenuWindowHandles.remove(handle)
         controlActions.removeValue(forKey: handle.rawValue)
         textChangeActions.removeValue(forKey: handle.rawValue)
@@ -203,6 +204,7 @@ extension Win32NativeControlBackend {
 
         _ = winDestroyWindow(hwnd)
         controlActions.removeValue(forKey: handle.rawValue)
+        contentScales.removeValue(forKey: handle.rawValue)
         textChangeActions.removeValue(forKey: handle.rawValue)
         mouseDownActions.removeValue(forKey: handle.rawValue)
         mouseUpActions.removeValue(forKey: handle.rawValue)
@@ -266,12 +268,25 @@ extension Win32NativeControlBackend {
             return
         }
 
+        // Magnified custom views occupy their logical frame times the
+        // content scale on screen; drawing scales through a matching
+        // world transform during paint.
+        var scaledFrame = frame
+        if let scale = contentScales[handle.rawValue], scale != 1 {
+            scaledFrame = NSRect(
+                x: frame.origin.x * scale,
+                y: frame.origin.y * scale,
+                width: frame.size.width * scale,
+                height: frame.size.height * scale
+            )
+        }
+
         _ = winMoveWindow(
             hwnd,
-            Int32(frame.origin.x),
-            Int32(frame.origin.y),
-            Int32(frame.size.width),
-            Int32(max(frame.size.height, comboBoxDropdownHeights[handle.rawValue] ?? frame.size.height)),
+            Int32(scaledFrame.origin.x),
+            Int32(scaledFrame.origin.y),
+            Int32(scaledFrame.size.width),
+            Int32(max(scaledFrame.size.height, comboBoxDropdownHeights[handle.rawValue] ?? scaledFrame.size.height)),
             1
         )
 
@@ -280,6 +295,16 @@ extension Win32NativeControlBackend {
         if customViewHandles.contains(handle.rawValue), let parent = winGetParent(hwnd) {
             _ = winRedrawWindow(parent, nil, nil, rdwInvalidate | rdwErase | rdwAllChildren)
         }
+    }
+
+    /// Updates the content scale applied to a custom-drawn view.
+    public func setContentScale(_ scale: CGFloat, for handle: NativeHandle) {
+        if scale == 1 {
+            contentScales.removeValue(forKey: handle.rawValue)
+        } else {
+            contentScales[handle.rawValue] = scale
+        }
+        invalidateControl(handle)
     }
 
     /// Raises a native child control above sibling controls.

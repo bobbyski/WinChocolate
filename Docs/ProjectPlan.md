@@ -17,11 +17,11 @@ This plan is the high-level project tracker. `CONTROL_PARITY.md` remains the det
 ## Dashboard
 
 ```text
-Overall Progress                           ██████████████░░░░░░░░░░░░░░░░░░   45%  (per-item estimate)
+Overall Progress                           ███████████████░░░░░░░░░░░░░░░░░   46%  (per-item estimate)
 
 Phase 1 · Package, Core Names, App Shell   ██████████████████████████  100%  ✅ Complete
 Phase 2 · Classic Win32 Backend            ██████████████████████████  100%  ✅ Complete
-Phase 3 · AppKit Surface Expansion         ██████████████████████░░░░   86%  🔄 In Progress
+Phase 3 · AppKit Surface Expansion         ███████████████████████░░░   88%  🔄 In Progress
 Phase 4 · Demo Harness                     █████████████████████░░░░░   80%  🔄 In Progress
 Phase 5 · Tables, Lists, Collections       █████░░░░░░░░░░░░░░░░░░░░░   21%  🔄 In Progress
 Phase 6 · Toolbar API Parity               █████████░░░░░░░░░░░░░░░░░   34%  🔄 In Progress
@@ -34,7 +34,7 @@ Phase 11 · Cross-Platform Test Apps        ░░░░░░░░░░░░
 
 **Status key:** ✅ Done &nbsp;|&nbsp; 🔄 In Progress &nbsp;|&nbsp; ⏳ Pending &nbsp;|&nbsp; ⏸️ Deferred &nbsp;|&nbsp; 🚫 Blocked
 
-**How percentages are computed:** each item carries a completion estimate (✅ = 100%, 🔄 = the `~NN%` shown in its notes, ⏳/⏸️ = 0%); a phase is the average of its items, and Overall is the average across all 80 tracked items (17 ✅). Recomputed 2026-07-01 after enumerating the missing AppKit surfaces — Overall dropped from 64% because tracked scope grew from 55 to 79 items, not because work regressed. 2026-07-02: added 10.7 (per-monitor DPI awareness), growing scope to 80 items; later that day 3.8 moved 70%→90% (floating panels + live apply), lifting Phase 3 to 86%.
+**How percentages are computed:** each item carries a completion estimate (✅ = 100%, 🔄 = the `~NN%` shown in its notes, ⏳/⏸️ = 0%); a phase is the average of its items, and Overall is the average across all 80 tracked items (17 ✅). Recomputed 2026-07-01 after enumerating the missing AppKit surfaces — Overall dropped from 64% because tracked scope grew from 55 to 79 items, not because work regressed. 2026-07-02: added 10.7 (per-monitor DPI awareness), growing scope to 80 items; later that day 3.8 moved 70%→90% (floating panels + live apply), lifting Phase 3 to 86%. 2026-07-03: 3.3 closed (wheel scrolling + magnification), lifting Phase 3 to 88% and Overall to 46%.
 
 ---
 
@@ -48,7 +48,7 @@ Each phase is a milestone, and work always drives toward completing the **curren
 
 | Priority | Area | Task | Status | Notes |
 |---:|---|---|---|---|
-| 1 | Demo and controls | Keep moving through the next control surface. | 🔄 In Progress | Latest surface: floating color/font panels with live apply (3.8), after `scrollToVisible`/`enclosingScrollView` (3.3). Remaining for the milestone: mouse-wheel scroll depth (3.3), rich text (3.11), plus open-ended 3.1/3.4. |
+| 1 | Demo and controls | Keep moving through the next control surface. | 🔄 In Progress | Latest surface: wheel scrolling + magnification closed out 3.3, after the floating color/font panels (3.8). Remaining for the milestone: rich text (3.11), panel/alert chrome depth (3.2/3.7/3.8), progress/image leftovers (3.12/3.13), plus open-ended 3.1/3.4. |
 | 2 | Contracts | Add focused tests whenever a framework behavior becomes real, especially for controls that demos depend on. | 🔄 In Progress | Recent examples: save/open panels, toolbar customization, resize propagation. |
 | 3 | Documentation | Keep `CONTROL_PARITY.md` and this plan synchronized when a surface moves from placeholder to working. | 🔄 In Progress | Update item estimates after meaningful feature batches and recompute phase percentages. |
 
@@ -89,7 +89,7 @@ Broaden source-compatible AppKit-style APIs while keeping mechanics hidden behin
 |---|---|---|---|
 | 3.1 | Common controls | 🔄 In Progress | ~80% — buttons, text, popup/combo, sliders, steppers, date picker, color well, etc. Remaining: behavioral depth per `CONTROL_PARITY.md`. |
 | 3.2 | Windows, panels, popovers, alerts | 🔄 In Progress | ~80% — save/open panels over comdlg32/shell, modal sessions, and sheets (`NSWindow.beginSheet`/`endSheet`, app-modal positioned under the title area as the classic compromise). `NSSavePanel`/`NSOpenPanel.beginSheetModal(for:)` pins the OS file dialog under the parent's title area via a thread-local CBT hook plus a brief timer pin — keeps the modern Explorer style, which an OFN template hook would downgrade. `NSAlert.beginSheetModal` presents a chromeless (borderless) composed panel attached under the title area; borderless top-level windows now map to `WS_POPUP|WS_BORDER` (fixes popover chrome too). Richer chrome remains. |
-| 3.3 | View composition | 🔄 In Progress | ~80% — scroll/clip/split/visual-effect slices exist. Split dividers track mouse drags (clamped, classic center line, resize cursor, `NSSplitViewDelegate`). Scrolling: `NSView.enclosingScrollView` and `scrollToVisible(_:)` (document-space, clamped) keep a caret/selection on screen. Remaining: mouse-wheel content scrolling depth, magnification. |
+| 3.3 | View composition | ✅ Done | Scroll/clip/split/visual-effect compose. Split dividers track mouse drags (clamped, classic center line, resize cursor, `NSSplitViewDelegate`). Scrolling: `enclosingScrollView`, `scrollToVisible(_:)`, and mouse-wheel content scrolling (`scrollWheel` with `lineScroll` distances, Shift-for-horizontal, `WM_MOUSEHWHEEL`; the wheel walks up to the nearest scrolling ancestor when over a native child). Magnification: `magnification`/`setMagnification(_:centeredAt:)`/`magnify(toFit:)` scale custom-drawn document views through a backend content scale (GDI world transform), with anchored zoom and scaled scrollbar geometry. Known limits, tracked ahead: no zoom gestures (Phase 8), native child controls don't scale, and event locations stay in window coordinates under magnification. |
 | 3.4 | Source compatibility gaps | 🔄 In Progress | ~20% — continue filling AppKit names as demo and ports need them; ongoing by nature. |
 | 3.5 | Custom drawing | ✅ Done | `NSView.draw(_:)` with `NSGraphicsContext.current`, `NSBezierPath`, `NSColor` set/fill/stroke, `NSRectFill`/`NSFrameRect`, `needsDisplay`, `String.draw(at:withAttributes:)`, `NSImage.draw(in:)` via GDI+/StretchBlt, real text metrics via GetTextExtentPoint32W. `NSGradient` (rect and path fills at any angle over a GDI+ rect-with-angle line brush) plus clipping: `NSBezierPath.addClip()`, `NSRectClip`, `NSGraphicsContext.saveGraphicsState`/`restoreGraphicsState` over SaveDC/SelectClipPath/RestoreDC. |
 | 3.6 | Event and responder depth | ✅ Done | Right/middle mouse, double-click `clickCount`, scroll wheel under the cursor, `NSCursor` (set/push/pop over WM_SETCURSOR), and menu key equivalents through the wndproc. Cursor rects: `addCursorRect`/`resetCursorRects`/`discardCursorRects` + `NSWindow.invalidateCursorRects(for:)`, resolved per hover position in WM_SETCURSOR (split-view dividers and the demo canvas use them). Key equivalents dispatch AppKit-style: key window's view chain (`performKeyEquivalent`) first, then the main menu. |
@@ -115,7 +115,7 @@ Use the demo as a visual smoke test and workflow exerciser.
 | 4.2 | Page selector | ✅ Done | Moved to toolbar as a custom toolbar item. |
 | 4.3 | Table/media/value pages | 🔄 In Progress | ~70% — good coverage, but should keep evolving with new controls. |
 | 4.4 | Visual QA | 🔄 In Progress | ~70% — manual screenshots remain useful for layout and toolbar work. |
-| 4.5 | Coverage for new surfaces | 🔄 In Progress | ~60% — save/open panels, toolbar customization, and the Drawing page (canvas + paths gallery, View menu entries) are wired; keep adding coverage as 3.7-3.13 surfaces land. |
+| 4.5 | Coverage for new surfaces | 🔄 In Progress | ~65% — save/open panels, toolbar customization, and the Drawing page (canvas + paths gallery, View menu entries) are wired; the paths gallery now lives in a magnifiable scroll view with zoom buttons (wheel scrolling + 3.3 magnification). Keep adding coverage as 3.7-3.13 surfaces land. |
 
 ---
 

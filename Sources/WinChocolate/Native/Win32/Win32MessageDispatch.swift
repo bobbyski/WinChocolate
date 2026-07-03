@@ -203,13 +203,24 @@ extension Win32NativeControlBackend {
 
             _ = winSetCursor(systemCursor(named: cursorName))
             return 1
-        case wmMouseWheel:
+        case wmMouseWheel, wmMouseHWheel:
             // The wheel message goes to the focused window; deliver it to the
-            // view under the cursor, matching AppKit's scroll routing.
+            // view under the cursor, matching AppKit's scroll routing. When
+            // the cursor sits over a native child without a wheel handler
+            // (an EDIT inside a document, say), walk up to the nearest
+            // ancestor that scrolls.
             let screenPoint = POINT(x: Int32(lParam & 0xffff), y: Int32((lParam >> 16) & 0xffff))
             let wheelDelta = Int16(truncatingIfNeeded: Int32((wParam >> 16) & 0xffff))
-            guard let target = winWindowFromPoint(screenPoint),
-                  let action = scrollWheelActions[nativeHandle(from: target).rawValue] else {
+            var target = winWindowFromPoint(screenPoint)
+            var action: ((NSEvent) -> Void)?
+            while let candidate = target {
+                if let found = scrollWheelActions[nativeHandle(from: candidate).rawValue] {
+                    action = found
+                    break
+                }
+                target = winGetParent(candidate)
+            }
+            guard let action, let target else {
                 return nil
             }
 
@@ -217,11 +228,15 @@ extension Win32NativeControlBackend {
             if let rootWindow = rootWindow(for: target) {
                 _ = winScreenToClient(rootWindow, &clientPoint)
             }
+            // Horizontal wheel: positive tilts right, which reveals content
+            // further right, so it maps to a negative AppKit deltaX.
+            let lines = CGFloat(wheelDelta) / 120
             action(NSEvent(
                 type: .scrollWheel,
                 locationInWindow: NSMakePoint(CGFloat(clientPoint.x), CGFloat(clientPoint.y)),
                 modifierFlags: currentModifierFlags(),
-                scrollingDeltaY: CGFloat(wheelDelta) / 120
+                scrollingDeltaX: message == wmMouseHWheel ? -lines : 0,
+                scrollingDeltaY: message == wmMouseHWheel ? 0 : lines
             ))
             return 0
         case wmPaint:

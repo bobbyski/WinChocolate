@@ -26,9 +26,18 @@ open class NSClipView: NSView {
         }
     }
 
-    /// The visible document rectangle.
+    /// The document magnification managed by the enclosing scroll view.
+    ///
+    /// The clip view's frame stays in viewport points; magnification shrinks
+    /// the document range that fits inside it.
+    internal var magnification: CGFloat = 1
+
+    /// The visible document rectangle, in document coordinates.
     open var documentVisibleRect: NSRect {
-        NSRect(origin: boundsOrigin, size: bounds.size)
+        NSRect(
+            origin: boundsOrigin,
+            size: NSSize(width: bounds.size.width / magnification, height: bounds.size.height / magnification)
+        )
     }
 
     /// Creates a clip view with a frame.
@@ -54,8 +63,9 @@ open class NSClipView: NSView {
             return NSRect(origin: NSZeroPoint, size: proposedBounds.size)
         }
 
-        let maxX = max(0, documentView.frame.size.width - frame.size.width)
-        let maxY = max(0, documentView.frame.size.height - frame.size.height)
+        // Under magnification the viewport covers a smaller document range.
+        let maxX = max(0, documentView.frame.size.width - frame.size.width / magnification)
+        let maxY = max(0, documentView.frame.size.height - frame.size.height / magnification)
         let origin = NSPoint(
             x: min(max(proposedBounds.origin.x, 0), maxX),
             y: min(max(proposedBounds.origin.y, 0), maxY)

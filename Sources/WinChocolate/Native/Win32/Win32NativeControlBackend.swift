@@ -60,6 +60,7 @@ public final class Win32NativeControlBackend: NativeControlBackend {
     var hidesOnDeactivateHandles: Set<UInt> = []
     var deactivateHiddenHandles: Set<UInt> = []
     var cachedFontFamilyNames: [String]?
+    var contentScales: [UInt: CGFloat] = [:]
     private var defaultControlBackgroundBrush: HBRUSH?
     var fonts: [UInt: HFONT] = [:]
     var bitmaps: [UInt: HBITMAP] = [:]

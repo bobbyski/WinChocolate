@@ -30,6 +30,15 @@ struct POINT {
     var y: Int32 = 0
 }
 
+struct XFORM {
+    var eM11: Float = 1
+    var eM12: Float = 0
+    var eM21: Float = 0
+    var eM22: Float = 1
+    var eDx: Float = 0
+    var eDy: Float = 0
+}
+
 struct MSG {
     var hwnd: HWND?
     var message: UINT = 0
@@ -660,6 +669,15 @@ func winGetWindowLongPtrW(_ hwnd: HWND?, _ index: Int32) -> LONG_PTR
 @_silgen_name("IsWindowVisible")
 func winIsWindowVisible(_ hwnd: HWND?) -> Int32
 
+@_silgen_name("SetGraphicsMode")
+func winSetGraphicsMode(_ deviceContext: HDC?, _ mode: Int32) -> Int32
+
+@_silgen_name("SetWorldTransform")
+func winSetWorldTransform(_ deviceContext: HDC?, _ transform: UnsafePointer<XFORM>) -> Int32
+
+@_silgen_name("ModifyWorldTransform")
+func winModifyWorldTransform(_ deviceContext: HDC?, _ transform: UnsafePointer<XFORM>?, _ mode: DWORD) -> Int32
+
 @_silgen_name("EnumFontFamiliesExW")
 func winEnumFontFamiliesExW(
     _ deviceContext: HDC?,
@@ -844,6 +862,13 @@ let gwlExStyle: Int32 = -20
 let wsExToolWindow: DWORD = 0x0000_0080
 let swpFrameChanged: UINT = 0x0020
 let wmActivateApp: UINT = 0x001c
+let wmMouseHWheel: UINT = 0x020e
+/// GDI graphics mode allowing world transforms.
+let gmAdvanced: Int32 = 2
+/// Default GDI graphics mode without world transforms.
+let gmCompatible: Int32 = 1
+/// ModifyWorldTransform mode resetting to the identity transform.
+let mwtIdentity: DWORD = 1
 /// Special SetWindowPos z-order handle placing a window above non-topmost windows.
 var hwndTopmost: HWND? { HWND(bitPattern: -1) }
 /// Special SetWindowPos z-order handle returning a window to the normal band.

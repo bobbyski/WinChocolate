@@ -48,7 +48,7 @@ References used for this map:
 | `NSMatrix` | Group of child controls | ItemsControl/custom panel | Deprecated AppKit API; first composed button-grid slice exists for old ports. | Partial | Planned |
 | `NSForm` | Group of labels/edit controls | Form layout pattern | Deprecated AppKit API; first composed label/edit-row slice exists. | Partial | Planned |
 | `NSBox` | `BUTTON` group-box style | `GroupBox` | Basic title/frame peer exists. | Done | Planned |
-| `NSScrollView` | Custom child `HWND` with scrollbars | `ScrollViewer` | Owns an `NSClipView` content view and document-view host; native scrollbar events now update the clip origin. | Partial | Planned |
+| `NSScrollView` | Custom child `HWND` with scrollbars | `ScrollViewer` | Owns an `NSClipView` content view and document-view host; native scrollbar events update the clip origin, the mouse wheel scrolls content (configurable `lineScroll`, Shift-for-horizontal, horizontal wheel, nearest-scrolling-ancestor routing), and magnification scales custom-drawn documents via a GDI world transform with anchored zoom. | Partial | Planned |
 | `NSScroller` | `SCROLLBAR` | `ScrollBar` | Standalone normalized value/knob-proportion slice exists; detailed parts, overlay behavior, and custom styling are future work. | Partial | Planned |
 | `NSTableView` | `SysListView32` report mode | `ListView` / `DataGrid` pattern | Columns, rows, selection, sorting slice exists; editing/reuse/accessibility incomplete. | Partial | Planned |
 | `NSTableColumn` | List-view column/header metadata | Grid/list column metadata | Swift-side column model exists. | Partial | Planned |
@@ -74,7 +74,7 @@ References used for this map:
 | `NSFontPanel` | Composed floating tool window | Custom font picker | Floating utility panel with installed-family list (`EnumFontFamiliesExW`), typeface popup, size combo, and live preview; selections apply live through `NSFontManager.convert(_:)` and `changeFont(_:)` on the responder chain, and closing hides the shared panel. Typeface variants beyond Regular/Bold are future work. | Partial | Planned |
 | `NSColorPanel` | Composed floating tool window | `ColorPicker` dialog | Floating utility panel with preset swatches, RGB sliders, and live preview; changes flow live into the active color well and `changeColor(_:)` on the responder chain, and closing hides the shared panel. HSB/alpha modes are future work. | Partial | Planned |
 | `NSRulerView` | Custom drawing | Custom drawing | Text/document companion view; no direct Windows peer. | Planned | Planned |
-| `NSClipView` | Child clipping `HWND`/viewport | `ScrollViewer` viewport | First viewport/document-host slice exists with bounds origin and visible-rect state. | Partial | Planned |
+| `NSClipView` | Child clipping `HWND`/viewport | `ScrollViewer` viewport | Viewport/document host with bounds origin, magnification-aware clamping, and visible-rect state in document coordinates. | Partial | Planned |
 | `NSVisualEffectView` | DWM/acrylic/custom composition | Acrylic/Mica/Backdrop | First material/blending/state API slice exists with a classic fallback background; true acrylic/Mica rendering is future modern-backend work. | Partial | Planned |
 
 ## Windows Controls With No Direct AppKit Counterpart

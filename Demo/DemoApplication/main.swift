@@ -613,7 +613,12 @@ let canvasView = DemoCanvasView(frame: NSMakeRect(32, 68, 420, 280))
 let canvasHintLabel = NSTextField(string: "Click: fill color   Right-click: outline   Scroll: size   Double-click: reset", frame: NSMakeRect(32, 356, 520, 24))
 let drawingEventLabel = NSTextField(string: "Last canvas event: none", frame: NSMakeRect(32, 388, 520, 24))
 let shapesLabel = NSTextField(string: "Paths:", frame: NSMakeRect(490, 36, 200, 24))
-let shapesView = DemoShapesView(frame: NSMakeRect(490, 68, 420, 280))
+let shapesView = DemoShapesView(frame: NSMakeRect(0, 0, 420, 280))
+let shapesScrollView = NSScrollView(frame: NSMakeRect(490, 68, 420, 280))
+let shapesZoomInButton = NSButton(title: "Zoom In", frame: NSMakeRect(620, 356, 88, 28))
+let shapesZoomOutButton = NSButton(title: "Zoom Out", frame: NSMakeRect(716, 356, 88, 28))
+let shapesZoomResetButton = NSButton(title: "1x", frame: NSMakeRect(812, 356, 48, 28))
+let shapesZoomLabel = NSTextField(string: "1.00x", frame: NSMakeRect(868, 358, 64, 24))
 let gradientsLabel = NSTextField(string: "Gradients and clipping:", frame: NSMakeRect(32, 420, 300, 24))
 let gradientsView = DemoGradientsView(frame: NSMakeRect(32, 448, 878, 100))
 let pageSelector = NSPopUpButton(frame: NSMakeRect(0, 0, 168, 28), pullsDown: false)
@@ -1972,6 +1977,30 @@ canvasView.onEvent = { message in
     drawingEventLabel.stringValue = "Last canvas event: \(message)"
 }
 
+shapesScrollView.hasVerticalScroller = true
+shapesScrollView.hasHorizontalScroller = true
+shapesScrollView.allowsMagnification = true
+shapesScrollView.documentView = shapesView
+
+let updateShapesZoom: (CGFloat) -> Void = { magnification in
+    shapesScrollView.magnification = magnification
+    let rounded = (shapesScrollView.magnification * 100).rounded() / 100
+    shapesZoomLabel.stringValue = "\(rounded)x"
+    statusLabel.stringValue = "Paths zoom: \(rounded)x"
+}
+
+shapesZoomInButton.onAction = { _ in
+    updateShapesZoom(shapesScrollView.magnification * 1.25)
+}
+
+shapesZoomOutButton.onAction = { _ in
+    updateShapesZoom(shapesScrollView.magnification / 1.25)
+}
+
+shapesZoomResetButton.onAction = { _ in
+    updateShapesZoom(1)
+}
+
 askToSaveButton.onAction = { _ in
     updateFocusDisplay()
     let alert = NSAlert()
@@ -2313,7 +2342,11 @@ drawingPage.addSubview(canvasView)
 drawingPage.addSubview(canvasHintLabel)
 drawingPage.addSubview(drawingEventLabel)
 drawingPage.addSubview(shapesLabel)
-drawingPage.addSubview(shapesView)
+drawingPage.addSubview(shapesScrollView)
+drawingPage.addSubview(shapesZoomInButton)
+drawingPage.addSubview(shapesZoomOutButton)
+drawingPage.addSubview(shapesZoomResetButton)
+drawingPage.addSubview(shapesZoomLabel)
 drawingPage.addSubview(gradientsLabel)
 drawingPage.addSubview(gradientsView)
 
