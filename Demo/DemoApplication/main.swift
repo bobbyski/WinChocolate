@@ -1391,6 +1391,7 @@ demoSplitDelegate.onResize = {
 }
 notesLabel.font = NSFont.boldSystemFont(ofSize: 12)
 secureLabel.font = NSFont.boldSystemFont(ofSize: 12)
+notesTextView.isRichText = true
 notesTextView.string = "Multiline NSTextView"
 tokenLabel.font = NSFont.boldSystemFont(ofSize: 12)
 formLabel.font = NSFont.boldSystemFont(ofSize: 12)
@@ -1845,7 +1846,10 @@ selectWordButton.onAction = { _ in
     let firstWordLength = notesTextView.string.utf16.prefix { $0 != 32 }.count
     notesTextView.setSelectedRange(NSMakeRange(0, firstWordLength))
     let selection = notesTextView.selectedRange
-    statusLabel.stringValue = "Notes selection: location \(selection.location), length \(selection.length)"
+    // Rich text: the selected word takes a per-range font and color.
+    notesTextView.setFont(NSFont(name: "Georgia", size: 14, weight: .bold), range: selection)
+    notesTextView.setTextColor(.blue, range: selection)
+    statusLabel.stringValue = "Notes selection styled: location \(selection.location), length \(selection.length)"
 }
 
 tokenField.onTextChanged = { field in

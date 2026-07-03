@@ -33,21 +33,93 @@ extension Win32NativeControlBackend {
     }
 
     /// Creates a native multiline text view child.
-    public func createTextView(text: String, frame: NSRect, parent: NativeHandle?, isEditable: Bool) -> NativeHandle {
+    ///
+    /// Rich text views use the modern rich-edit control (`RICHEDIT50W` from
+    /// Msftedit.dll) so per-range character formatting works; plain views
+    /// keep the classic multiline `EDIT`.
+    public func createTextView(text: String, frame: NSRect, parent: NativeHandle?, isEditable: Bool, isRichText: Bool) -> NativeHandle {
+        let editStyle = wsChild | wsVisible | wsTabStop | wsBorder | wsVScroll | esMultiline | esAutoVScroll | esWantReturn | esNoHideSel
+        var className = isEditable ? "EDIT" : "STATIC"
+        if isRichText {
+            Self.loadRichEditLibraryIfNeeded()
+            className = "RICHEDIT50W"
+        }
+
         let handle = createChildWindow(
-            className: isEditable ? "EDIT" : "STATIC",
+            className: className,
             text: text,
             frame: frame,
             parent: parent,
             commandIdentifier: nil,
-            style: isEditable
-                ? wsChild | wsVisible | wsTabStop | wsBorder | wsVScroll | esMultiline | esAutoVScroll | esWantReturn | esNoHideSel
-                : wsChild | wsVisible | wsBorder
+            style: isEditable || isRichText ? editStyle : wsChild | wsVisible | wsBorder
         )
-        if isEditable {
+        if isRichText {
+            richTextHandles.insert(handle.rawValue)
+            if let hwnd = hwnd(from: handle) {
+                // Rich edit only sends EN_CHANGE when asked.
+                _ = winSendMessageW(hwnd, emSetEventMask, 0, enmChange)
+                if !isEditable {
+                    _ = winSendMessageW(hwnd, emSetReadOnly, 1, 0)
+                }
+            }
+        }
+        if isEditable || isRichText {
             subclassControlForTabKey(handle)
         }
         return handle
+    }
+
+    /// Loads the rich-edit window classes once per process.
+    private static func loadRichEditLibraryIfNeeded() {
+        guard !isRichEditLibraryLoaded else {
+            return
+        }
+
+        isRichEditLibraryLoaded = true
+        withWideString("Msftedit.dll") { name in
+            _ = winLoadLibraryW(name)
+        }
+    }
+
+    /// Applies character formatting to a text range of a rich text view.
+    ///
+    /// The range is selected, formatted with `EM_SETCHARFORMAT`, and the
+    /// user's selection restored, so callers can format without disturbing
+    /// editing state.
+    public func setTextRangeFormat(font: NSFont?, color: NSColor?, location: Int, length: Int, for handle: NativeHandle) {
+        guard let hwnd = hwnd(from: handle), font != nil || color != nil else {
+            return
+        }
+
+        let savedSelection = textSelection(for: handle)
+        let start = max(0, location)
+        _ = winSendMessageW(hwnd, emSetSel, WPARAM(start), LPARAM(start + max(0, length)))
+
+        var format = CHARFORMATW()
+        format.cbSize = UINT(MemoryLayout<CHARFORMATW>.stride)
+        if let font {
+            format.dwMask |= cfmFace | cfmSize | cfmBold
+            // Rich edit character heights are in twips (1/20 point).
+            format.yHeight = Int32((font.pointSize * 20).rounded())
+            if font.weight == .bold {
+                format.dwEffects |= cfeBold
+            }
+            withUnsafeMutableBytes(of: &format.szFaceName) { raw in
+                let faceName = raw.bindMemory(to: UInt16.self)
+                for (index, unit) in font.fontName.utf16.prefix(31).enumerated() {
+                    faceName[index] = unit
+                }
+            }
+        }
+        if let color {
+            format.dwMask |= cfmColor
+            format.crTextColor = colorRef(from: color)
+        }
+        withUnsafePointer(to: &format) { pointer in
+            _ = winSendMessageW(hwnd, emSetCharFormat, scfSelection, Int(bitPattern: pointer))
+        }
+
+        _ = winSendMessageW(hwnd, emSetSel, WPARAM(savedSelection.location), LPARAM(savedSelection.location + savedSelection.length))
     }
 
     /// Registers the action to perform when native text changes.
@@ -107,6 +179,19 @@ extension Win32NativeControlBackend {
 
     /// Updates a native control's text color.
     public func setTextColor(_ color: NSColor?, for handle: NativeHandle) {
+        // Rich edit ignores WM_CTLCOLOR; its whole-control color is a
+        // character format applied to all text.
+        if richTextHandles.contains(handle.rawValue), let hwnd = hwnd(from: handle), let color {
+            var format = CHARFORMATW()
+            format.cbSize = UINT(MemoryLayout<CHARFORMATW>.stride)
+            format.dwMask = cfmColor
+            format.crTextColor = colorRef(from: color)
+            withUnsafePointer(to: &format) { pointer in
+                _ = winSendMessageW(hwnd, emSetCharFormat, scfAll, Int(bitPattern: pointer))
+            }
+            return
+        }
+
         if let color {
             textColors[handle.rawValue] = colorRef(from: color)
         } else {

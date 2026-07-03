@@ -47,6 +47,14 @@ open class NSTextView: NSControl {
     /// Whether the text view accepts selection.
     open var isSelectable: Bool
 
+    /// Whether the text view keeps rich text with per-range attributes.
+    ///
+    /// Rich text views realize the platform's rich-edit peer, which
+    /// `setFont(_:range:)`, `setTextColor(_:range:)`, and selection-scoped
+    /// `changeFont(_:)` format through. Set before the view realizes; plain
+    /// text remains the default, matching the classic multiline control.
+    open var isRichText: Bool = false
+
     /// Whether editing changes register with the undo manager.
     open var allowsUndo = false
 
@@ -91,13 +99,40 @@ open class NSTextView: NSControl {
         }
     }
 
-    /// Applies a live font panel change to the whole text view.
+    /// Applies a live font panel change.
     ///
-    /// Per-range rich text attributes remain future work, so the panel
-    /// selection converts the view's single font, keeping AppKit's
-    /// `changeFont(_:)` contract useful for plain-text views.
+    /// Rich text views convert the selected range, matching AppKit; plain
+    /// views (or an empty selection) convert the whole view's font.
     open override func changeFont(_ sender: Any?) {
-        font = NSFontManager.shared.convert(font ?? NSFont.systemFont(ofSize: 13))
+        let converted = NSFontManager.shared.convert(font ?? NSFont.systemFont(ofSize: 13))
+        let selection = selectedRange
+        if isRichText && selection.length > 0 {
+            setFont(converted, range: selection)
+            return
+        }
+
+        font = converted
+    }
+
+    /// Applies a font to a character range of a rich text view.
+    open func setFont(_ font: NSFont, range: NSRange) {
+        guard let nativeHandle else {
+            return
+        }
+
+        realizedBackend?.setTextRangeFormat(font: font, color: nil, location: range.location, length: range.length, for: nativeHandle)
+    }
+
+    /// Applies a color to a character range of a rich text view.
+    ///
+    /// A `nil` color leaves the range unchanged in this slice; resetting to
+    /// the default color arrives with attribute enumeration.
+    open func setTextColor(_ color: NSColor?, range: NSRange) {
+        guard let nativeHandle, let color else {
+            return
+        }
+
+        realizedBackend?.setTextRangeFormat(font: nil, color: color, location: range.location, length: range.length, for: nativeHandle)
     }
 
     /// Swift-native callback invoked when editing changes the text.
@@ -189,7 +224,7 @@ open class NSTextView: NSControl {
 
     /// Creates the native multiline text peer.
     open override func createNativePeer(in backend: NativeControlBackend, parent: NativeHandle?) -> NativeHandle {
-        backend.createTextView(text: string, frame: frame, parent: parent, isEditable: isEditable)
+        backend.createTextView(text: string, frame: frame, parent: parent, isEditable: isEditable, isRichText: isRichText)
     }
 
     /// Ensures the text view has a native peer and registers text-change dispatch.

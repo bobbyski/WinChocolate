@@ -4946,6 +4946,49 @@ final class FontChangeRecordingView: NSView {
     }
 }
 
+func testRichTextViewAppliesRangeFormatting() {
+    let backend = InMemoryNativeControlBackend()
+    let manager = NSFontManager.shared
+    defer {
+        manager.selectedFont = nil
+    }
+
+    let textView = NSTextView(frame: NSMakeRect(0, 0, 300, 120))
+    textView.isRichText = true
+    textView.string = "Rich text attributes"
+    let handle = textView.realizeNativePeer(in: backend, parent: nil)
+
+    expect(backend.records[handle]?.isRichText == true, "Rich text view did not request a rich-edit peer.")
+
+    // Per-range font and color formatting reach the backend.
+    let rangeFont = NSFont(name: "Georgia", size: 18, weight: .bold)
+    textView.setFont(rangeFont, range: NSMakeRange(0, 4))
+    textView.setTextColor(.red, range: NSMakeRange(5, 4))
+
+    let formats = backend.records[handle]?.textRangeFormats ?? []
+    expect(formats.count == 2, "Range formatting did not reach the backend.")
+    expect(formats.first?.font == rangeFont, "Range font was not recorded.")
+    expect(formats.first?.location == 0 && formats.first?.length == 4, "Font range was not recorded.")
+    expect(formats.last?.color == .red, "Range color was not recorded.")
+    expect(formats.last?.location == 5 && formats.last?.length == 4, "Color range was not recorded.")
+
+    // changeFont converts the selection when one exists.
+    manager.selectedFont = NSFont(name: "Consolas", size: 12)
+    textView.selectedRange = NSMakeRange(0, 9)
+    textView.changeFont(nil)
+    let selectionFormat = backend.records[handle]?.textRangeFormats.last
+    expect(selectionFormat?.font?.fontName == "Consolas", "changeFont did not format the selected range.")
+    expect(selectionFormat?.location == 0 && selectionFormat?.length == 9, "changeFont did not use the selection range.")
+    expect(textView.font == nil, "Selection-scoped changeFont overwrote the whole-view font.")
+
+    // Plain text views still convert the whole view's font.
+    let plain = NSTextView(frame: NSMakeRect(0, 0, 100, 50))
+    _ = plain.realizeNativePeer(in: backend, parent: nil)
+    plain.changeFont(nil)
+    expect(plain.font?.fontName == "Consolas", "Plain-text changeFont did not convert the view font.")
+    expect(backend.records[handle]?.textRangeFormats.count == 3, "Plain-text changeFont leaked range formatting.")
+}
+
 func testScrollViewWheelScrollingMovesContent() {
     let backend = InMemoryNativeControlBackend()
     let scrollView = NSScrollView(frame: NSMakeRect(0, 0, 200, 100))
@@ -5583,6 +5626,7 @@ testTextViewSelectionInsertionAndDelegate()
 testDocumentChangeCountAndOverridableDefaults()
 testDocumentSavePanelFlowWritesAndReadsBack()
 testDocumentControllerTracksDocumentsRecentsAndOpen()
+testRichTextViewAppliesRangeFormatting()
 testScrollViewWheelScrollingMovesContent()
 testScrollViewMagnificationScalesGeometryAndDrawing()
 testFloatingPanelStateReachesBackend()

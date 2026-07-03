@@ -61,6 +61,9 @@ public final class Win32NativeControlBackend: NativeControlBackend {
     var deactivateHiddenHandles: Set<UInt> = []
     var cachedFontFamilyNames: [String]?
     var contentScales: [UInt: CGFloat] = [:]
+    var richTextHandles: Set<UInt> = []
+    /// Whether Msftedit.dll has been loaded to register rich-edit classes.
+    nonisolated(unsafe) static var isRichEditLibraryLoaded = false
     private var defaultControlBackgroundBrush: HBRUSH?
     var fonts: [UInt: HFONT] = [:]
     var bitmaps: [UInt: HBITMAP] = [:]

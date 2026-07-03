@@ -30,6 +30,28 @@ struct POINT {
     var y: Int32 = 0
 }
 
+struct CHARFORMATW {
+    var cbSize: UINT = 0
+    var dwMask: DWORD = 0
+    var dwEffects: DWORD = 0
+    var yHeight: Int32 = 0
+    var yOffset: Int32 = 0
+    var crTextColor: DWORD = 0
+    var bCharSet: UInt8 = 0
+    var bPitchAndFamily: UInt8 = 0
+    var szFaceName: (
+        UInt16, UInt16, UInt16, UInt16, UInt16, UInt16, UInt16, UInt16,
+        UInt16, UInt16, UInt16, UInt16, UInt16, UInt16, UInt16, UInt16,
+        UInt16, UInt16, UInt16, UInt16, UInt16, UInt16, UInt16, UInt16,
+        UInt16, UInt16, UInt16, UInt16, UInt16, UInt16, UInt16, UInt16
+    ) = (
+        0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0
+    )
+}
+
 struct XFORM {
     var eM11: Float = 1
     var eM12: Float = 0
@@ -669,6 +691,9 @@ func winGetWindowLongPtrW(_ hwnd: HWND?, _ index: Int32) -> LONG_PTR
 @_silgen_name("IsWindowVisible")
 func winIsWindowVisible(_ hwnd: HWND?) -> Int32
 
+@_silgen_name("LoadLibraryW")
+func winLoadLibraryW(_ name: UnsafePointer<UInt16>?) -> UnsafeMutableRawPointer?
+
 @_silgen_name("SetGraphicsMode")
 func winSetGraphicsMode(_ deviceContext: HDC?, _ mode: Int32) -> Int32
 
@@ -863,6 +888,21 @@ let wsExToolWindow: DWORD = 0x0000_0080
 let swpFrameChanged: UINT = 0x0020
 let wmActivateApp: UINT = 0x001c
 let wmMouseHWheel: UINT = 0x020e
+/// Rich edit: EM_SETCHARFORMAT (WM_USER + 68).
+let emSetCharFormat: UINT = wmUser + 68
+/// Rich edit: EM_SETEVENTMASK (WM_USER + 69).
+let emSetEventMask: UINT = wmUser + 69
+/// Rich edit event mask requesting EN_CHANGE notifications.
+let enmChange: LPARAM = 0x0001
+/// EM_SETCHARFORMAT target: the current selection.
+let scfSelection: WPARAM = 0x0001
+/// EM_SETCHARFORMAT target: all text.
+let scfAll: WPARAM = 0x0004
+let cfmBold: DWORD = 0x0000_0001
+let cfeBold: DWORD = 0x0000_0001
+let cfmColor: DWORD = 0x4000_0000
+let cfmFace: DWORD = 0x2000_0000
+let cfmSize: DWORD = 0x8000_0000
 /// GDI graphics mode allowing world transforms.
 let gmAdvanced: Int32 = 2
 /// Default GDI graphics mode without world transforms.

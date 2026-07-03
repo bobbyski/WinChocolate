@@ -301,6 +301,27 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
 
         /// Recorded content scale for custom-drawn views.
         public var contentScale: CGFloat = 1
+
+        /// Whether the recorded text view is rich text.
+        public var isRichText: Bool = false
+
+        /// Recorded rich-text range formatting requests, oldest first.
+        public var textRangeFormats: [TextRangeFormat] = []
+    }
+
+    /// One recorded rich-text range formatting request.
+    public struct TextRangeFormat: Equatable, Sendable {
+        /// The applied font, when any.
+        public var font: NSFont?
+
+        /// The applied color, when any.
+        public var color: NSColor?
+
+        /// The formatted range start, in UTF-16 units.
+        public var location: Int
+
+        /// The formatted range length, in UTF-16 units.
+        public var length: Int
     }
 
     private var nextRawHandle: UInt = 1
@@ -506,10 +527,21 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     }
 
     /// Records a text view creation request.
-    public func createTextView(text: String, frame: NSRect, parent: NativeHandle?, isEditable: Bool) -> NativeHandle {
+    public func createTextView(text: String, frame: NSRect, parent: NativeHandle?, isEditable: Bool, isRichText: Bool) -> NativeHandle {
         let handle = makeHandle(kind: isEditable ? "editableTextView" : "textView", text: text, frame: frame, parent: parent)
         records[handle]?.isTextEditable = isEditable
+        records[handle]?.isRichText = isRichText
         return handle
+    }
+
+    /// Records a rich-text range formatting request.
+    public func setTextRangeFormat(font: NSFont?, color: NSColor?, location: Int, length: Int, for handle: NativeHandle) {
+        records[handle]?.textRangeFormats.append(TextRangeFormat(
+            font: font,
+            color: color,
+            location: location,
+            length: length
+        ))
     }
 
     /// Records a pop-up button creation request.

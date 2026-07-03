@@ -285,7 +285,10 @@ public protocol NativeControlBackend: AnyObject {
     func createSecureTextField(text: String, frame: NSRect, parent: NativeHandle?) -> NativeHandle
 
     /// Creates a native multiline text view child.
-    func createTextView(text: String, frame: NSRect, parent: NativeHandle?, isEditable: Bool) -> NativeHandle
+    ///
+    /// Rich text views use the platform's rich-edit control so per-range
+    /// character formatting through `setTextRangeFormat` works.
+    func createTextView(text: String, frame: NSRect, parent: NativeHandle?, isEditable: Bool, isRichText: Bool) -> NativeHandle
 
     /// Creates a native pop-up button child.
     func createPopUpButton(items: [String], selectedIndex: Int, frame: NSRect, parent: NativeHandle?) -> NativeHandle
@@ -356,6 +359,12 @@ public protocol NativeControlBackend: AnyObject {
 
     /// Replaces the selected native text of an edit control as an undoable edit.
     func replaceSelectedText(_ text: String, for handle: NativeHandle)
+
+    /// Applies character formatting to a text range of a rich text view.
+    ///
+    /// A `nil` font or color leaves that aspect of the range unchanged. The
+    /// user's selection is preserved across the formatting change.
+    func setTextRangeFormat(font: NSFont?, color: NSColor?, location: Int, length: Int, for handle: NativeHandle)
 
     /// Updates whether a native edit control accepts keyboard editing while
     /// still allowing selection and scrolling.
