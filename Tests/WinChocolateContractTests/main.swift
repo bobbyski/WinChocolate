@@ -1263,7 +1263,7 @@ func testDatePickerStoresDateRangeAndSyncsNativePeer() {
     expect(picker.dateValue == initialDate, "Date picker dateValue was not stored.")
     expect(picker.minDate == minDate, "Date picker minDate was not stored.")
     expect(picker.maxDate == maxDate, "Date picker maxDate was not stored.")
-    expect(picker.stringValue == "2026-06-01", "Date picker stringValue did not format date.")
+    expect(picker.stringValue == "6/1/2026", "Date picker stringValue did not format the date in US style.")
     expect(picker.acceptsFirstResponder, "Date picker should accept first responder.")
 
     let handle = picker.realizeNativePeer(in: backend, parent: nil)
@@ -4966,29 +4966,174 @@ final class RecordingTextFieldDelegate: NSTextFieldDelegate {
     }
 }
 
+func testLocaleSystemPatterns() {
+    // The current locale is read from the system and exposes usable patterns.
+    let locale = Locale.current
+    expect(!locale.identifier.isEmpty, "Current locale identifier was empty.")
+    expect(!locale.shortDatePattern.isEmpty, "Locale short-date pattern was empty.")
+    expect(!locale.timePattern.isEmpty, "Locale time pattern was empty.")
+
+    // A constructed identifier is stored and bridges to the Windows form.
+    let constructed = Locale(identifier: "en_US")
+    expect(constructed.identifier == "en_US", "Locale did not store its identifier.")
+
+    // A style-based DateFormatter uses the locale for output.
+    let formatter = DateFormatter()
+    formatter.dateStyle = .short
+    let date = Date(timeIntervalSince1970: 1_780_272_000) // 2026-06-01 UTC
+    expect(formatter.string(from: date) == "6/1/2026", "Short style did not produce the US short date.")
+}
+
+func testDateFormatterPatternsAndRoundTrip() {
+    let formatter = DateFormatter()
+
+    // Round-trip a date+time through parse and format.
+    formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
+    guard let date = formatter.date(from: "2026-06-01 12:34:56") else {
+        expect(false, "date(from:) failed to parse a valid date.")
+        return
+    }
+    expect(formatter.string(from: date) == "2026-06-01 12:34:56", "Round-trip date+time mismatch.")
+
+    // Month names.
+    formatter.dateFormat = "MMMM d, yyyy"
+    expect(formatter.string(from: date) == "June 1, 2026", "Long month name was wrong.")
+    formatter.dateFormat = "MMM d"
+    expect(formatter.string(from: date) == "Jun 1", "Short month name was wrong.")
+
+    // 12-hour clock with meridiem, both directions.
+    formatter.dateFormat = "h:mm a"
+    expect(formatter.string(from: date) == "12:34 PM", "12-hour PM format was wrong.")
+    guard let morning = formatter.date(from: "9:05 AM") else {
+        expect(false, "12-hour parse failed.")
+        return
+    }
+    formatter.dateFormat = "HH:mm"
+    expect(formatter.string(from: morning) == "09:05", "AM parse/format was wrong.")
+
+    // The Unix epoch is a Thursday.
+    formatter.dateFormat = "yyyy-MM-dd"
+    guard let epoch = formatter.date(from: "1970-01-01") else {
+        expect(false, "Epoch parse failed.")
+        return
+    }
+    expect(epoch.timeIntervalSince1970 == 0, "Epoch parse was not zero.")
+    formatter.dateFormat = "EEEE"
+    expect(formatter.string(from: epoch) == "Thursday", "Epoch weekday was wrong.")
+
+    // Style presets drive output when dateFormat is empty.
+    let styled = DateFormatter()
+    styled.dateStyle = .medium
+    styled.timeStyle = .short
+    expect(styled.string(from: date) == "Jun 1, 2026 12:34 PM", "Style preset format was wrong.")
+
+    // Quoted literals pass through.
+    formatter.dateFormat = "yyyy 'at' HH:mm"
+    expect(formatter.string(from: date) == "2026 at 12:34", "Quoted literal was not handled.")
+
+    // A non-matching string parses to nil.
+    formatter.dateFormat = "yyyy-MM-dd"
+    expect(formatter.date(from: "not a date") == nil, "Bad input should parse to nil.")
+}
+
+func testWindowMovableByBackgroundAndPanelKeyAndColorWell() {
+    let backend = InMemoryNativeControlBackend()
+    let previousBackend = NSApplication.shared.nativeBackend
+    NSApplication.shared.nativeBackend = backend
+    defer {
+        NSApplication.shared.nativeBackend = previousBackend
+    }
+
+    // isMovableByWindowBackground marks the content view as a window-drag area.
+    let window = NSWindow(
+        contentRect: NSMakeRect(0, 0, 400, 300),
+        styleMask: [.titled],
+        backing: .buffered,
+        defer: false,
+        nativeBackend: backend
+    )
+    let content = NSView(frame: NSMakeRect(0, 0, 400, 300))
+    window.contentView = content
+    window.isMovableByWindowBackground = true
+    _ = window.realizeNativePeer()
+
+    guard let contentHandle = content.nativeHandle else {
+        expect(false, "Content view did not realize.")
+        return
+    }
+    expect(backend.windowDragViewHandles.contains(contentHandle), "Movable-by-background did not mark the content view.")
+    window.isMovableByWindowBackground = false
+    expect(!backend.windowDragViewHandles.contains(contentHandle), "Clearing movable-by-background did not unmark the view.")
+
+    // A becomesKeyOnlyIfNeeded panel becomes key only with an editable view.
+    let barePanel = NSPanel(
+        contentRect: NSMakeRect(0, 0, 200, 120),
+        styleMask: [.titled, .utilityWindow],
+        backing: .buffered,
+        defer: false,
+        nativeBackend: backend
+    )
+    barePanel.becomesKeyOnlyIfNeeded = true
+    let bareContent = NSView(frame: NSMakeRect(0, 0, 200, 120))
+    bareContent.addSubview(NSButton(title: "Close", frame: NSMakeRect(10, 10, 80, 28)))
+    barePanel.contentView = bareContent
+    expect(!barePanel.canBecomeKey, "A button-only key-only panel should not become key.")
+
+    let editPanel = NSPanel(
+        contentRect: NSMakeRect(0, 0, 200, 120),
+        styleMask: [.titled, .utilityWindow],
+        backing: .buffered,
+        defer: false,
+        nativeBackend: backend
+    )
+    editPanel.becomesKeyOnlyIfNeeded = true
+    let editContent = NSView(frame: NSMakeRect(0, 0, 200, 120))
+    let editField = NSTextField(string: "", frame: NSMakeRect(10, 10, 160, 24))
+    editField.isEditable = true
+    editContent.addSubview(editField)
+    editPanel.contentView = editContent
+    expect(editPanel.canBecomeKey, "A panel hosting an editable field should be able to become key.")
+
+    // Without the flag, panels always can become key.
+    editPanel.becomesKeyOnlyIfNeeded = false
+    expect(barePanel.canBecomeKey == false, "barePanel still keyed off its own flag.")
+
+    // NSColorWell style and border are configurable.
+    let well = NSColorWell(frame: NSMakeRect(0, 0, 44, 24))
+    expect(well.colorWellStyle == .default && well.isBordered, "Color well defaults were wrong.")
+    well.colorWellStyle = .minimal
+    well.isBordered = false
+    expect(well.colorWellStyle == .minimal && !well.isBordered, "Color well style/border did not update.")
+}
+
 func testDatePickerElementFormats() {
     let backend = InMemoryNativeControlBackend()
 
-    // Date-only (the default) uses no explicit format.
+    // Date-only defers to the native control's locale short date (nil format).
     let dateOnly = NSDatePicker(frame: NSMakeRect(0, 0, 160, 24))
     let dateHandle = dateOnly.realizeNativePeer(in: backend, parent: nil)
-    expect(backend.records[dateHandle]?.datePickerFormat == nil, "Date-only picker set an unexpected format.")
+    expect(backend.records[dateHandle]?.datePickerFormat == nil, "Date-only picker should use the native locale default.")
 
-    // Time-only uses the time format.
+    // Time-only uses the locale time pattern.
     let timeOnly = NSDatePicker(frame: NSMakeRect(0, 0, 160, 24))
     timeOnly.datePickerElements = [.hourMinuteSecond]
     let timeHandle = timeOnly.realizeNativePeer(in: backend, parent: nil)
-    expect(backend.records[timeHandle]?.datePickerFormat == "HH':'mm':'ss", "Time picker did not use the time format.")
+    expect(backend.records[timeHandle]?.datePickerFormat == Locale.current.timePattern, "Time picker did not use the locale time pattern.")
 
-    // Both elements combine into a date-time format.
+    // Both elements combine the locale date and time patterns.
     let both = NSDatePicker(frame: NSMakeRect(0, 0, 200, 24))
     both.datePickerElements = [.yearMonthDay, .hourMinuteSecond]
     let bothHandle = both.realizeNativePeer(in: backend, parent: nil)
-    expect(backend.records[bothHandle]?.datePickerFormat == "yyyy'-'MM'-'dd HH':'mm':'ss", "Date-time picker format was wrong.")
+    let expectedBoth = "\(Locale.current.shortDatePattern) \(Locale.current.timePattern)"
+    expect(backend.records[bothHandle]?.datePickerFormat == expectedBoth, "Date-time picker format was wrong.")
 
     // Changing elements after realization re-applies the format.
     both.datePickerElements = [.hourMinuteSecond]
-    expect(backend.records[bothHandle]?.datePickerFormat == "HH':'mm':'ss", "Element change did not re-apply the format.")
+    expect(backend.records[bothHandle]?.datePickerFormat == Locale.current.timePattern, "Element change did not re-apply the format.")
+
+    // stringValue formats through the locale (US short date on a US machine).
+    let stringPicker = NSDatePicker(date: Date(timeIntervalSince1970: 1_780_272_000), frame: NSMakeRect(0, 0, 200, 24))
+    expect(stringPicker.stringValue == "6/1/2026", "Date-only stringValue was not the US short date.")
 }
 
 func testButtonImageAndAlternateTitle() {
@@ -6155,6 +6300,9 @@ testTextViewSelectionInsertionAndDelegate()
 testDocumentChangeCountAndOverridableDefaults()
 testDocumentSavePanelFlowWritesAndReadsBack()
 testDocumentControllerTracksDocumentsRecentsAndOpen()
+testLocaleSystemPatterns()
+testDateFormatterPatternsAndRoundTrip()
+testWindowMovableByBackgroundAndPanelKeyAndColorWell()
 testDatePickerElementFormats()
 testButtonImageAndAlternateTitle()
 testTextFieldDelegateEditingCallbacks()

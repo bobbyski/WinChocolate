@@ -667,6 +667,15 @@ extension Win32NativeControlBackend {
                 return 0
             }
 
+            // A background click on a movable-by-background view drags the
+            // whole window: hand the press to the non-client caption logic.
+            if windowDragViewHandles.contains(handle.rawValue), let root = rootWindow(for: hwnd) {
+                mouseDownActions[handle.rawValue]?(NSEvent(type: .leftMouseDown, locationInWindow: mouseLocation(from: lParam, in: hwnd), modifierFlags: currentModifierFlags()))
+                _ = winReleaseCapture()
+                _ = winSendMessageW(root, wmNCLButtonDown, WPARAM(htCaption), 0)
+                return 0
+            }
+
             guard let action = mouseDownActions[handle.rawValue] else {
                 return nil
             }

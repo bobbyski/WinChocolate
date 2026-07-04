@@ -10,6 +10,15 @@ extension Win32NativeControlBackend {
         focusChangeActions[handle.rawValue] = action
     }
 
+    /// Sets whether a background click on a view drags its top-level window.
+    public func setViewDragsParentWindow(_ enabled: Bool, for handle: NativeHandle) {
+        if enabled {
+            windowDragViewHandles.insert(handle.rawValue)
+        } else {
+            windowDragViewHandles.remove(handle.rawValue)
+        }
+    }
+
     /// Registers the action to perform when a native view receives a mouse-down event.
     public func registerMouseDownAction(for handle: NativeHandle, action: @escaping (NSEvent) -> Void) {
         mouseDownActions[handle.rawValue] = action

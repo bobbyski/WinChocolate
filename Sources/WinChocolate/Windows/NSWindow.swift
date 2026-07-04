@@ -158,6 +158,16 @@ open class NSWindow: NSResponder {
         }
     }
 
+    /// Whether the user can drag the window by clicking its background.
+    ///
+    /// Clicks that land on a control still act on the control; only clicks on
+    /// the empty content area start a window move.
+    open var isMovableByWindowBackground: Bool = false {
+        didSet {
+            applyMovableByWindowBackground()
+        }
+    }
+
     /// Whether native creation should be deferred until first display.
     public let isDeferred: Bool
 
@@ -166,6 +176,7 @@ open class NSWindow: NSResponder {
         didSet {
             contentView?.nextResponder = self
             layoutToolbarAndContent()
+            applyMovableByWindowBackground()
         }
     }
 
@@ -483,7 +494,18 @@ open class NSWindow: NSResponder {
         installToolbarHost()
         layoutToolbarAndContent()
         contentView?.realizeNativePeer(in: nativeBackend, parent: handle)
+        if isMovableByWindowBackground {
+            applyMovableByWindowBackground()
+        }
         return handle
+    }
+
+    private func applyMovableByWindowBackground() {
+        guard let contentHandle = contentView?.nativeHandle else {
+            return
+        }
+
+        nativeBackend.setViewDragsParentWindow(isMovableByWindowBackground, for: contentHandle)
     }
 
     private func applySizeLimits() {

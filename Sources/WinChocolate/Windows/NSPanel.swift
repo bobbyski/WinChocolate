@@ -39,6 +39,27 @@ open class NSPanel: NSWindow {
         false
     }
 
+    /// A `becomesKeyOnlyIfNeeded` panel becomes key only when it hosts an
+    /// editable view that needs first-responder status.
+    open override var canBecomeKey: Bool {
+        guard becomesKeyOnlyIfNeeded else {
+            return true
+        }
+
+        return contentView.map { NSPanel.containsEditableView($0) } ?? false
+    }
+
+    /// Whether a view tree contains an editable text control.
+    private static func containsEditableView(_ view: NSView) -> Bool {
+        if let field = view as? NSTextField, field.isEditable {
+            return true
+        }
+        if let textView = view as? NSTextView, textView.isEditable {
+            return true
+        }
+        return view.subviews.contains { containsEditableView($0) }
+    }
+
     /// Creates a panel using AppKit's designated initializer shape.
     public override init(
         contentRect: NSRect,

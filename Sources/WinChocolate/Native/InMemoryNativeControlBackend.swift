@@ -924,6 +924,18 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
         records[handle]?.maxContentSize = maxSize
     }
 
+    /// Handles whose background click drags the parent window.
+    public private(set) var windowDragViewHandles: Set<NativeHandle> = []
+
+    /// Records whether a view's background click drags its window.
+    public func setViewDragsParentWindow(_ enabled: Bool, for handle: NativeHandle) {
+        if enabled {
+            windowDragViewHandles.insert(handle)
+        } else {
+            windowDragViewHandles.remove(handle)
+        }
+    }
+
     /// The handle currently watched for an outside-click dismiss, if any.
     public private(set) var outsideClickDismissHandle: NativeHandle?
 

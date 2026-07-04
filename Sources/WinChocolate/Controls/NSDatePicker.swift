@@ -60,16 +60,18 @@ open class NSDatePicker: NSControl {
         }
     }
 
-    /// The native display format for the current element flags, or `nil` for
-    /// the default date display.
+    /// The native display format for the current element flags, taken from the
+    /// user's locale so the picker shows dates the system's way (US on a US
+    /// machine). `nil` lets the native control use its own locale short date.
     private var nativeDateFormat: String? {
         let showsDate = datePickerElements.contains(.yearMonthDay)
         let showsTime = datePickerElements.contains(.hourMinuteSecond)
+        let locale = Locale.current
         switch (showsDate, showsTime) {
         case (true, true):
-            return "yyyy'-'MM'-'dd HH':'mm':'ss"
+            return "\(locale.shortDatePattern) \(locale.timePattern)"
         case (false, true):
-            return "HH':'mm':'ss"
+            return locale.timePattern
         default:
             return nil
         }
@@ -125,10 +127,16 @@ open class NSDatePicker: NSControl {
         return handle
     }
 
-    /// Human-readable date for demo and test output.
+    /// Human-readable date for demo and test output, formatted through
+    /// `DateFormatter` so no date math lives in this control. The format
+    /// follows the picker's elements (date, time, or both).
     open var stringValue: String {
-        let components = Self.utcDateComponents(for: dateValue)
-        return "\(Self.padded(components.year, digits: 4))-\(Self.padded(components.month, digits: 2))-\(Self.padded(components.day, digits: 2))"
+        let formatter = DateFormatter()
+        let showsTime = datePickerElements.contains(.hourMinuteSecond)
+        let showsDate = datePickerElements.contains(.yearMonthDay) || !showsTime
+        formatter.dateStyle = showsDate ? .short : .none
+        formatter.timeStyle = showsTime ? .medium : .none
+        return formatter.string(from: dateValue)
     }
 
     private func syncNativeDate() {
@@ -149,27 +157,4 @@ open class NSDatePicker: NSControl {
         return date
     }
 
-    private static func utcDateComponents(for date: Date) -> (year: Int, month: Int, day: Int) {
-        let days = Int((date.timeIntervalSince1970 / 86_400.0).rounded(.down))
-        let z = days + 719_468
-        let era = (z >= 0 ? z : z - 146_096) / 146_097
-        let doe = z - era * 146_097
-        let yoe = (doe - doe / 1_460 + doe / 36_524 - doe / 146_096) / 365
-        var year = yoe + era * 400
-        let doy = doe - (365 * yoe + yoe / 4 - yoe / 100)
-        let mp = (5 * doy + 2) / 153
-        let day = doy - (153 * mp + 2) / 5 + 1
-        let month = mp + (mp < 10 ? 3 : -9)
-        year += month <= 2 ? 1 : 0
-        return (year, month, day)
-    }
-
-    private static func padded(_ value: Int, digits: Int) -> String {
-        let text = String(value)
-        guard text.count < digits else {
-            return text
-        }
-
-        return String(repeating: "0", count: digits - text.count) + text
-    }
 }

@@ -64,6 +64,7 @@ public final class Win32NativeControlBackend: NativeControlBackend {
     var contentScales: [UInt: CGFloat] = [:]
     var richTextHandles: Set<UInt> = []
     var multilineTextHandles: Set<UInt> = []
+    var windowDragViewHandles: Set<UInt> = []
     var windowMinContentSizes: [UInt: NSSize] = [:]
     var windowMaxContentSizes: [UInt: NSSize] = [:]
     /// Whether Msftedit.dll has been loaded to register rich-edit classes.

@@ -331,6 +331,12 @@ public protocol NativeControlBackend: AnyObject {
     /// Constrains a top-level window's content size during user resizing.
     func setWindowContentSizeLimits(minSize: NSSize?, maxSize: NSSize?, for handle: NativeHandle)
 
+    /// Sets whether a background click on a view drags its top-level window.
+    ///
+    /// Used by `isMovableByWindowBackground`: a mouse-down on the view (where
+    /// no child control consumes it) initiates a window move.
+    func setViewDragsParentWindow(_ enabled: Bool, for handle: NativeHandle)
+
     /// Starts watching for a mouse click outside a window, dismissing it.
     ///
     /// Used by transient popovers: a click anywhere outside the window (or its

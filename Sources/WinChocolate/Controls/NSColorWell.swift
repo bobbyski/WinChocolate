@@ -5,6 +5,24 @@
 /// `NSColorPanel`, so colors confirmed in the panel's chooser flow back into
 /// the well's `color`.
 open class NSColorWell: NSControl {
+    /// The visual presentation style of a color well.
+    public enum Style: Equatable, Sendable {
+        /// The standard bordered swatch.
+        case `default`
+
+        /// A compact borderless swatch.
+        case minimal
+
+        /// A swatch with a dropdown affordance.
+        case expanded
+    }
+
+    /// The color well's presentation style.
+    open var colorWellStyle: Style = .default
+
+    /// Whether the color well draws a border.
+    open var isBordered: Bool = true
+
     /// The selected color.
     open var color: NSColor {
         didSet {
