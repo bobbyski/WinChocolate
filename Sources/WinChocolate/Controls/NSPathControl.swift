@@ -40,6 +40,14 @@ open class NSPathControl: NSTextField {
         clickedPathComponentCell?.url
     }
 
+    private var componentButtons: [NSButton] = []
+
+    /// Path controls compose their breadcrumb segments in a container view so
+    /// each component is individually clickable.
+    open override func createNativePeer(in backend: NativeControlBackend, parent: NativeHandle?) -> NativeHandle {
+        backend.createView(frame: frame, parent: parent)
+    }
+
     /// Creates a path control with a frame.
     public override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -94,6 +102,36 @@ open class NSPathControl: NSTextField {
             cell.title = component
             cell.url = URL(fileURLWithPath: cumulativePath)
             return cell
+        }
+        rebuildBreadcrumbButtons()
+    }
+
+    /// Rebuilds one clickable breadcrumb button per path component, chevron-
+    /// separated. Clicking a segment selects that component and fires the action.
+    private func rebuildBreadcrumbButtons() {
+        for button in componentButtons {
+            button.removeFromSuperview()
+        }
+        componentButtons = []
+
+        let height = frame.size.height > 0 ? frame.size.height : 24
+        var x: CGFloat = 0
+        for (index, cell) in pathComponentCells.enumerated() {
+            let label = index == 0 ? cell.title : "\u{203A} \(cell.title)"
+            let width = max(24, CGFloat(label.count) * 8 + 16)
+            let button = NSButton(title: label, frame: NSMakeRect(x, 0, width, height))
+            button.onAction = { [weak self] _ in
+                self?.selectComponentCell(at: index)
+            }
+            addSubview(button)
+            componentButtons.append(button)
+            x += width
+
+            // Realize immediately when the control is already on screen (a URL
+            // set after display); otherwise the parent realizes them.
+            if let nativeHandle, let realizedBackend {
+                button.realizeNativePeer(in: realizedBackend, parent: nativeHandle)
+            }
         }
     }
 }

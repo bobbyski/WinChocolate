@@ -39,7 +39,15 @@ open class NSStepper: NSControl {
     }
 
     /// Whether stepping past an edge wraps to the opposite edge.
-    open var valueWraps: Bool
+    open var valueWraps: Bool {
+        didSet {
+            guard let nativeHandle else {
+                return
+            }
+
+            realizedBackend?.setStepperWraps(valueWraps, for: nativeHandle)
+        }
+    }
 
     /// Whether holding the native control should repeatedly change value.
     open var autorepeat: Bool
@@ -90,6 +98,7 @@ open class NSStepper: NSControl {
         let handle = super.realizeNativePeer(in: backend, parent: parent)
         backend.setStepperRange(minValue: minValue, maxValue: maxValue, increment: increment, for: handle)
         backend.setStepperValue(doubleValue, for: handle)
+        backend.setStepperWraps(valueWraps, for: handle)
         backend.registerAction(for: handle) { [weak self, weak backend] in
             guard let self, let backend, let nativeHandle = self.nativeHandle else {
                 return

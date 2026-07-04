@@ -577,12 +577,45 @@ extension Win32NativeControlBackend {
 
     func dispatchControlMessage(hwnd: HWND?, message: UINT, wParam: WPARAM, lParam: LPARAM) -> LRESULT? {
         switch message {
+        case wmLButtonDown:
+            guard let hwnd else {
+                return nil
+            }
+
+            let handle = actionHandle(from: hwnd)
+            if editableLevelHandles.contains(handle.rawValue) {
+                applyLevelIndicatorClick(x: Int(point(from: lParam).x), for: handle)
+                _ = winSetCapture(hwnd)
+                controlActions[handle.rawValue]?()
+                return 0
+            }
+            return nil
+        case wmLButtonUp:
+            guard let hwnd else {
+                return nil
+            }
+
+            if editableLevelHandles.contains(actionHandle(from: hwnd).rawValue) {
+                _ = winReleaseCapture()
+                return 0
+            }
+            return nil
         case wmMouseMove:
             guard let hwnd else {
                 return nil
             }
 
             let handle = actionHandle(from: hwnd)
+
+            // A pressed drag over an editable level bar tracks the value.
+            if editableLevelHandles.contains(handle.rawValue) {
+                if (wParam & mkLButton) != 0 {
+                    applyLevelIndicatorClick(x: Int(point(from: lParam).x), for: handle)
+                    controlActions[handle.rawValue]?()
+                }
+                return nil
+            }
+
             guard !comboBoxHandles.contains(handle.rawValue) else {
                 return nil
             }

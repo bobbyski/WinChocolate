@@ -1258,7 +1258,71 @@ func testLevelIndicatorStoresRangeValueAndUsesProgressPeer() {
     level.doubleValue = 20
     expect(level.doubleValue == 10, "Level indicator did not clamp to maxValue.")
     expect(backend.records[handle]?.progressValue == 10, "Level indicator clamped value was not synced.")
-    expect(!level.acceptsFirstResponder, "Level indicator should skip key-view traversal.")
+    expect(!level.acceptsFirstResponder, "Non-editable level indicator should skip key-view traversal.")
+}
+
+func testMinorControlCleanups() {
+    let backend = InMemoryNativeControlBackend()
+
+    // NSStepper.valueWraps reaches the native peer (native wrap-at-ends).
+    let stepper = NSStepper(frame: NSMakeRect(0, 0, 20, 30))
+    stepper.valueWraps = true
+    let stepperHandle = stepper.realizeNativePeer(in: backend, parent: nil)
+    expect(backend.stepperWraps[stepperHandle] == true, "Stepper wrap was not synced to the peer.")
+    stepper.valueWraps = false
+    expect(backend.stepperWraps[stepperHandle] == false, "Stepper wrap change did not sync.")
+
+    // NSPopUpButton.autoenablesItems + per-item enabled model.
+    let popup = NSPopUpButton(frame: NSMakeRect(0, 0, 120, 26))
+    popup.addItems(withTitles: ["A", "B", "C"])
+    expect(popup.isItemEnabled(at: 1), "Popup items should be enabled by default.")
+    popup.autoenablesItems = false
+    popup.setItemEnabled(false, at: 1)
+    expect(!popup.isItemEnabled(at: 1), "Per-item disable did not apply with autoenablesItems off.")
+    popup.autoenablesItems = true
+    expect(popup.isItemEnabled(at: 1), "autoenablesItems should override per-item state.")
+
+    // NSSlider.altIncrementValue round-trips.
+    let slider = NSSlider(frame: NSMakeRect(0, 0, 120, 20))
+    slider.altIncrementValue = 5
+    expect(slider.altIncrementValue == 5, "altIncrementValue did not store.")
+
+    // NSButton.sound (NSSound) round-trips.
+    let button = NSButton(title: "Beep", frame: NSMakeRect(0, 0, 80, 30))
+    let sound = NSSound(named: "Ping")
+    button.sound = sound
+    expect(button.sound === sound, "Button sound did not store.")
+    expect(NSSound(named: "") == nil, "Empty sound name should fail init.")
+}
+
+func testLevelIndicatorEditableClickSetsValue() {
+    let backend = InMemoryNativeControlBackend()
+    let level = NSLevelIndicator(frame: NSMakeRect(0, 0, 120, 20))
+    level.minValue = 0
+    level.maxValue = 10
+    level.isEditable = true
+    var actionCount = 0
+    level.onAction = { _ in actionCount += 1 }
+
+    let handle = level.realizeNativePeer(in: backend, parent: nil)
+    expect(level.acceptsFirstResponder, "Editable level indicator should accept first responder.")
+
+    // A click at 30% of the width maps to value 3 in [0, 10] and fires the action.
+    backend.simulateLevelIndicatorClick(fraction: 0.3, for: handle)
+    expect(level.doubleValue == 3, "Level click did not map the fraction to a value.")
+    expect(actionCount == 1, "Level click did not fire the action.")
+
+    // Dragging to the far right pins to the maximum.
+    backend.simulateLevelIndicatorClick(fraction: 1.0, for: handle)
+    expect(level.doubleValue == 10, "Level drag to the end did not reach max.")
+    expect(actionCount == 2, "Level drag did not fire the action.")
+
+    // A non-editable indicator ignores clicks.
+    let display = NSLevelIndicator(frame: NSMakeRect(0, 0, 120, 20))
+    display.maxValue = 10
+    let displayHandle = display.realizeNativePeer(in: backend, parent: nil)
+    backend.simulateLevelIndicatorClick(fraction: 0.5, for: displayHandle)
+    expect(display.doubleValue == 0, "Non-editable level indicator should ignore clicks.")
 }
 
 func testScrollerStoresValueAndSyncsNativePeer() {
@@ -3204,9 +3268,10 @@ func testPathControlStoresURLAndPathComponentCells() {
 
     let handle = pathControl.realizeNativePeer(in: backend, parent: nil)
 
-    expect(backend.records[handle]?.kind == "textField", "Path control did not use text-field peer.")
+    expect(backend.records[handle]?.kind == "view", "Path control did not use a breadcrumb container peer.")
     expect(pathControl.stringValue.contains("WinChocolate"), "Path control did not display URL path.")
     expect(pathControl.pathComponentCells.contains { $0.title == "WinChocolate" }, "Path control did not build component cells.")
+    expect(pathControl.subviews.compactMap { $0 as? NSButton }.count == pathControl.pathComponentCells.count, "Path control did not compose a breadcrumb button per component.")
 
     pathControl.setURL(URL(fileURLWithPath: "C:\\AIResearch\\WinChocolate\\Code"))
 
@@ -3242,6 +3307,14 @@ func testPathControlComponentURLsAndSelection() {
     expect(actionFired, "Selecting a component did not fire the control action.")
     expect(pathControl.clickedPathComponentCell === last, "Clicked component cell was not recorded.")
     expect(pathControl.clickedPathComponentURL == last.url, "Clicked component URL did not match the cell.")
+
+    // Clicking the composed breadcrumb segment selects the same component.
+    let buttons = pathControl.subviews.compactMap { $0 as? NSButton }
+    expect(buttons.count == pathControl.pathComponentCells.count, "Breadcrumb button count did not match components.")
+    actionFired = false
+    buttons.last?.sendAction()
+    expect(actionFired, "Clicking a breadcrumb segment did not fire the action.")
+    expect(pathControl.clickedPathComponentCell === last, "Breadcrumb click did not select its component.")
 
     // An out-of-range selection is rejected.
     expect(!pathControl.selectComponentCell(at: 99), "selectComponentCell should reject an out-of-range index.")
@@ -6562,6 +6635,8 @@ testSliderStoresRangeValueAndSyncsNativePeer()
 testSliderNativeActionUpdatesValue()
 testProgressIndicatorStoresRangeValueAndSyncsNativePeer()
 testLevelIndicatorStoresRangeValueAndUsesProgressPeer()
+testLevelIndicatorEditableClickSetsValue()
+testMinorControlCleanups()
 testScrollerStoresValueAndSyncsNativePeer()
 testScrollerNativeActionUpdatesValue()
 testScrollerHitPartReflectsGesture()

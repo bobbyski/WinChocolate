@@ -64,6 +64,12 @@ open class NSSlider: NSControl {
     /// Whether the slider only allows values that fall on a tick mark.
     open var allowsTickMarkValuesOnly: Bool = false
 
+    /// The increment used for Option-modified keyboard/drag steps.
+    ///
+    /// Stored for source compatibility; the native trackbar owns its own
+    /// keyboard stepping, so honoring this during Option-drag is future work.
+    open var altIncrementValue: Double = -1
+
     /// Whether the slider is drawn vertically.
     ///
     /// AppKit also infers orientation from the frame; setting this explicitly

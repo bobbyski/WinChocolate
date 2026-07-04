@@ -1201,6 +1201,36 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
         records[handle] = record
     }
 
+    /// Editable level indicators and their ranges/last-set values.
+    private var editableLevelRanges: [NativeHandle: (minValue: Double, maxValue: Double)] = [:]
+    private var levelIndicatorValues: [NativeHandle: Double] = [:]
+
+    /// Records whether a level indicator is editable and its value range.
+    public func setLevelIndicatorEditable(_ editable: Bool, minValue: Double, maxValue: Double, for handle: NativeHandle) {
+        if editable {
+            editableLevelRanges[handle] = (min(minValue, maxValue), max(minValue, maxValue))
+        } else {
+            editableLevelRanges.removeValue(forKey: handle)
+        }
+    }
+
+    /// Reads the value a click/drag last set on an editable level indicator.
+    public func levelIndicatorValue(for handle: NativeHandle) -> Double {
+        levelIndicatorValues[handle] ?? 0
+    }
+
+    /// Test helper: pretends the user clicked an editable level bar at a
+    /// horizontal fraction, setting the value and firing the action.
+    public func simulateLevelIndicatorClick(fraction: Double, for handle: NativeHandle) {
+        guard let range = editableLevelRanges[handle] else {
+            return
+        }
+
+        let clamped = min(max(fraction, 0), 1)
+        levelIndicatorValues[handle] = range.minValue + clamped * (range.maxValue - range.minValue)
+        actions[handle]?()
+    }
+
     /// Updates recorded scroller state.
     public func setScrollerValue(_ value: Double, knobProportion: Double, for handle: NativeHandle) {
         guard var record = records[handle] else {
@@ -1258,6 +1288,13 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     /// Reads recorded stepper value.
     public func stepperValue(for handle: NativeHandle) -> Double {
         records[handle]?.stepperValue ?? 0
+    }
+
+    /// Records whether a stepper wraps at its range ends.
+    public private(set) var stepperWraps: [NativeHandle: Bool] = [:]
+
+    public func setStepperWraps(_ wraps: Bool, for handle: NativeHandle) {
+        stepperWraps[handle] = wraps
     }
 
     /// Updates recorded date picker state.

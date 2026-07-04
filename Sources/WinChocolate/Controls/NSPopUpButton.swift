@@ -5,7 +5,15 @@
 open class NSPopUpButton: NSControl {
     private var titles: [String]
     private var tags: [Int] = []
+    private var enabledStates: [Bool] = []
     private var isUpdatingSelectionFromNative = false
+
+    /// Whether items are automatically enabled/disabled by menu validation.
+    ///
+    /// When cleared, explicit per-item enabled state (`setItemEnabled(_:at:)`)
+    /// applies. Visually graying individual items in the native combo needs
+    /// owner-draw (tracked in 8.3); the enabled model is available now.
+    open var autoenablesItems: Bool = true
 
     /// Whether the button acts as a pull-down menu (fixed title) rather than a
     /// pop-up that shows the selected item.
@@ -69,6 +77,7 @@ open class NSPopUpButton: NSControl {
     open func addItem(withTitle title: String) {
         titles.append(title)
         tags.append(0)
+        enabledStates.append(true)
         if indexOfSelectedItem < 0 {
             indexOfSelectedItem = 0
         }
@@ -79,6 +88,7 @@ open class NSPopUpButton: NSControl {
     open func addItems(withTitles titles: [String]) {
         self.titles.append(contentsOf: titles)
         self.tags.append(contentsOf: Array(repeating: 0, count: titles.count))
+        self.enabledStates.append(contentsOf: Array(repeating: true, count: titles.count))
         if indexOfSelectedItem < 0 && !self.titles.isEmpty {
             indexOfSelectedItem = 0
         }
@@ -89,8 +99,29 @@ open class NSPopUpButton: NSControl {
     open func removeAllItems() {
         titles.removeAll()
         tags.removeAll()
+        enabledStates.removeAll()
         indexOfSelectedItem = -1
         syncItemsToNative()
+    }
+
+    /// Sets whether the item at an index is enabled (used when
+    /// `autoenablesItems` is off).
+    open func setItemEnabled(_ enabled: Bool, at index: Int) {
+        guard enabledStates.indices.contains(index) else {
+            return
+        }
+
+        enabledStates[index] = enabled
+    }
+
+    /// Returns whether the item at an index is enabled. Always `true` while
+    /// `autoenablesItems` is set.
+    open func isItemEnabled(at index: Int) -> Bool {
+        guard enabledStates.indices.contains(index) else {
+            return false
+        }
+
+        return autoenablesItems ? true : enabledStates[index]
     }
 
     /// Sets the tag for an item at an index.
@@ -138,6 +169,9 @@ open class NSPopUpButton: NSControl {
         titles.remove(at: index)
         if tags.indices.contains(index) {
             tags.remove(at: index)
+        }
+        if enabledStates.indices.contains(index) {
+            enabledStates.remove(at: index)
         }
         if titles.isEmpty {
             indexOfSelectedItem = -1

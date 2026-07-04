@@ -1392,6 +1392,7 @@ levelIndicator.maxValue = 100
 levelIndicator.warningValue = 70
 levelIndicator.criticalValue = 90
 levelIndicator.doubleValue = stepper.doubleValue
+levelIndicator.isEditable = true
 colorWellLabel.font = NSFont.boldSystemFont(ofSize: 12)
 colorWell.color = demoColors[colorIndex]
 segmentedLabel.font = NSFont.boldSystemFont(ofSize: 12)
@@ -1794,6 +1795,14 @@ colorWell.onAction = { _ in
         statusLabel.stringValue = "Color well changed: RGB \(red), \(green), \(blue)"
     }
     panel.makeKeyAndOrderFront(colorWell)
+}
+
+pathControl.onAction = { control in
+    guard let path = control as? NSPathControl else {
+        return
+    }
+
+    statusLabel.stringValue = "Path clicked: \(path.clickedPathComponentCell?.title ?? "?")"
 }
 
 fontButton.onAction = { _ in

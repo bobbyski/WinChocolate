@@ -64,6 +64,13 @@ open class NSLevelIndicator: NSControl {
     /// Requested AppKit style.
     open var levelIndicatorStyle: Style
 
+    /// Whether the user can click or drag the bar to set its value.
+    open var isEditable: Bool = false {
+        didSet {
+            applyEditable()
+        }
+    }
+
     /// Integer view of the current value.
     open var intValue: Int {
         get {
@@ -104,9 +111,18 @@ open class NSLevelIndicator: NSControl {
         realizedBackend?.setProgressBarColor(color, for: nativeHandle)
     }
 
-    /// Level indicators are display controls and skip normal key-view traversal.
+    /// Editable level indicators take focus; display-only ones skip traversal.
     open override var acceptsFirstResponder: Bool {
-        false
+        isEditable
+    }
+
+    /// Pushes the editable state (and range) to the native bar.
+    private func applyEditable() {
+        guard let nativeHandle else {
+            return
+        }
+
+        realizedBackend?.setLevelIndicatorEditable(isEditable, minValue: minValue, maxValue: maxValue, for: nativeHandle)
     }
 
     /// Creates the native level peer.
@@ -121,6 +137,18 @@ open class NSLevelIndicator: NSControl {
         backend.setProgressIndicatorRange(minValue: minValue, maxValue: maxValue, for: handle)
         backend.setProgressIndicatorValue(doubleValue, for: handle)
         updateBarColor()
+        if isEditable {
+            backend.setLevelIndicatorEditable(true, minValue: minValue, maxValue: maxValue, for: handle)
+            backend.registerAction(for: handle) { [weak self, weak backend] in
+                guard let self, let backend, let nativeHandle = self.nativeHandle else {
+                    return
+                }
+
+                self.doubleValue = backend.levelIndicatorValue(for: nativeHandle)
+                _ = self.window?.makeFirstResponder(self)
+                self.sendAction()
+            }
+        }
         return handle
     }
 

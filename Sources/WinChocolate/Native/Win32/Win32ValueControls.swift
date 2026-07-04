@@ -86,6 +86,22 @@ extension Win32NativeControlBackend {
         )
         if showsCalendar {
             monthCalHandles.insert(handle.rawValue)
+            // The month-calendar has a fixed natural grid size; grow the peer to
+            // at least that so the last week row and the "Today" footer are not
+            // clipped by a smaller requested frame.
+            if let hwnd = hwnd(from: handle) {
+                var required = RECT()
+                let ok = withUnsafeMutablePointer(to: &required) { pointer in
+                    winSendMessageW(hwnd, mcmGetMinReqRect, 0, LPARAM(bitPattern: pointer))
+                }
+                if ok != 0 {
+                    let minWidth = Int32(required.right - required.left)
+                    let minHeight = Int32(required.bottom - required.top)
+                    let width = max(Int32(frame.size.width.rounded()), minWidth)
+                    let height = max(Int32(frame.size.height.rounded()), minHeight)
+                    _ = winSetWindowPos(hwnd, nil, 0, 0, width, height, swpNoMove | swpNoZOrder | swpNoActivate)
+                }
+            }
         } else {
             subclassControlForTabKey(handle)
         }
@@ -206,6 +222,47 @@ extension Win32NativeControlBackend {
             return
         }
 
+        _ = winSendMessageW(hwnd, pbmSetPos, WPARAM(Int32(value.rounded())), 0)
+    }
+
+    /// Makes a level indicator's native bar respond to click/drag.
+    public func setLevelIndicatorEditable(_ editable: Bool, minValue: Double, maxValue: Double, for handle: NativeHandle) {
+        guard editable else {
+            editableLevelHandles.remove(handle.rawValue)
+            levelIndicatorRanges.removeValue(forKey: handle.rawValue)
+            return
+        }
+
+        levelIndicatorRanges[handle.rawValue] = (min(minValue, maxValue), max(minValue, maxValue))
+        if editableLevelHandles.insert(handle.rawValue).inserted {
+            // Subclass the bar so its window procedure routes mouse messages
+            // through the framework, which native progress bars otherwise eat.
+            subclassControlForTabKey(handle)
+        }
+    }
+
+    /// Reads the value a click/drag last set on an editable level indicator.
+    public func levelIndicatorValue(for handle: NativeHandle) -> Double {
+        levelIndicatorValues[handle.rawValue] ?? 0
+    }
+
+    /// Maps a horizontal click position on an editable level bar to a value,
+    /// updates the bar, and records it for the framework action.
+    func applyLevelIndicatorClick(x: Int, for handle: NativeHandle) {
+        guard let hwnd = hwnd(from: handle), let range = levelIndicatorRanges[handle.rawValue] else {
+            return
+        }
+
+        var rectangle = RECT()
+        _ = winGetClientRect(hwnd, &rectangle)
+        let width = Double(rectangle.right - rectangle.left)
+        guard width > 0 else {
+            return
+        }
+
+        let fraction = min(max(Double(x) / width, 0), 1)
+        let value = range.minValue + fraction * (range.maxValue - range.minValue)
+        levelIndicatorValues[handle.rawValue] = value
         _ = winSendMessageW(hwnd, pbmSetPos, WPARAM(Int32(value.rounded())), 0)
     }
 
@@ -332,6 +389,21 @@ extension Win32NativeControlBackend {
     /// Reads native stepper value.
     public func stepperValue(for handle: NativeHandle) -> Double {
         stepperRanges[handle.rawValue]?.value ?? 0
+    }
+
+    /// Toggles the up/down control's wrap-at-ends style.
+    public func setStepperWraps(_ wraps: Bool, for handle: NativeHandle) {
+        guard let hwnd = hwnd(from: handle) else {
+            return
+        }
+
+        var style = winGetWindowLongPtrW(hwnd, gwlStyle)
+        if wraps {
+            style |= LONG_PTR(udsWrap)
+        } else {
+            style &= ~LONG_PTR(udsWrap)
+        }
+        _ = winSetWindowLongPtrW(hwnd, gwlStyle, style)
     }
 
     /// Updates native date-picker state.

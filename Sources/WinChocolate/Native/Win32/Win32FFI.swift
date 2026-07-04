@@ -1135,6 +1135,7 @@ let gdtValid: WPARAM = 0
 let mcmFirst: UINT = 0x1000
 let mcmGetCurSel: UINT = mcmFirst + 1
 let mcmSetCurSel: UINT = mcmFirst + 2
+let mcmGetMinReqRect: UINT = mcmFirst + 9
 let bmSetImage: UINT = 0x00f7
 let bsBitmap: DWORD = 0x0080
 let udsWrap: DWORD = 0x0001

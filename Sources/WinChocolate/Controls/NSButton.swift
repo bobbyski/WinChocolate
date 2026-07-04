@@ -44,6 +44,9 @@ open class NSButton: NSControl {
         }
     }
 
+    /// A sound played when the button is clicked.
+    open var sound: NSSound?
+
     /// The title shown while the button is in its alternate (on) state.
     open var alternateTitle: String = "" {
         didSet {
@@ -151,6 +154,7 @@ open class NSButton: NSControl {
                 self.updateStateFromNative(backend.buttonState(for: nativeHandle))
             }
 
+            self.sound?.play()
             _ = self.window?.makeFirstResponder(self)
             self.sendAction()
         }

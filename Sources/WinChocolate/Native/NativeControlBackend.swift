@@ -549,6 +549,15 @@ public protocol NativeControlBackend: AnyObject {
     /// Reports which part of a scroller the user last actuated.
     func scrollerPart(for handle: NativeHandle) -> NativeScrollerPart
 
+    /// Makes a level indicator respond to click/drag as a value setter.
+    ///
+    /// When editable, a click or drag maps the horizontal position to a value in
+    /// `[minValue, maxValue]`, updates the bar, and fires the control action.
+    func setLevelIndicatorEditable(_ editable: Bool, minValue: Double, maxValue: Double, for handle: NativeHandle)
+
+    /// Reads the value a click/drag last set on an editable level indicator.
+    func levelIndicatorValue(for handle: NativeHandle) -> Double
+
     /// Updates native stepper range.
     func setStepperRange(minValue: Double, maxValue: Double, increment: Double, for handle: NativeHandle)
 
@@ -557,6 +566,9 @@ public protocol NativeControlBackend: AnyObject {
 
     /// Reads native stepper value.
     func stepperValue(for handle: NativeHandle) -> Double
+
+    /// Sets whether the native stepper wraps past its range ends.
+    func setStepperWraps(_ wraps: Bool, for handle: NativeHandle)
 
     /// Updates native date-picker state.
     func setDatePickerDate(_ date: Date, minDate: Date?, maxDate: Date?, for handle: NativeHandle)
