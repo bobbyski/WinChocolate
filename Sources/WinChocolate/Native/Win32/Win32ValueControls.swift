@@ -12,6 +12,9 @@ extension Win32NativeControlBackend {
             style: wsChild | wsVisible | wsTabStop
         )
         trackbarHandles.insert(handle.rawValue)
+        // The trackbar requests its channel background via WM_CTLCOLORSTATIC;
+        // transparency lets the slider float on the window color.
+        transparentBackgroundHandles.insert(handle.rawValue)
         subclassControlForTabKey(handle)
         setSliderRange(minValue: minValue, maxValue: maxValue, for: handle)
         setSliderValue(value, for: handle)
@@ -125,6 +128,57 @@ extension Win32NativeControlBackend {
         }
 
         return Double(winSendMessageW(hwnd, sbmGetPos, 0, 0))
+    }
+
+    /// Sets the tick-mark count on a trackbar slider.
+    ///
+    /// A positive count turns on auto-ticks and spaces them across the range;
+    /// zero removes them. Only affects trackbar peers.
+    public func setSliderTickMarks(count: Int, for handle: NativeHandle) {
+        guard let hwnd = hwnd(from: handle), trackbarHandles.contains(handle.rawValue) else {
+            return
+        }
+
+        var style = winGetWindowLongPtrW(hwnd, gwlStyle)
+        style &= ~LONG_PTR(tbsNoTicks | tbsAutoTicks)
+        style |= LONG_PTR(count > 0 ? tbsAutoTicks : tbsNoTicks)
+        _ = winSetWindowLongPtrW(hwnd, gwlStyle, style)
+
+        if count > 1 {
+            let range = sliderRanges[handle.rawValue] ?? (0, 1)
+            let span = max(1.0, range.maxValue - range.minValue)
+            let frequency = max(1, Int32((span / Double(count - 1)).rounded()))
+            _ = winSendMessageW(hwnd, tbmSetTicFreq, WPARAM(frequency), 0)
+        }
+        _ = winInvalidateRect(hwnd, nil, 1)
+    }
+
+    /// Sets whether a trackbar slider is drawn vertically.
+    public func setSliderVertical(_ isVertical: Bool, for handle: NativeHandle) {
+        guard let hwnd = hwnd(from: handle), trackbarHandles.contains(handle.rawValue) else {
+            return
+        }
+
+        var style = winGetWindowLongPtrW(hwnd, gwlStyle)
+        if isVertical {
+            style |= LONG_PTR(tbsVert)
+        } else {
+            style &= ~LONG_PTR(tbsVert)
+        }
+        _ = winSetWindowLongPtrW(hwnd, gwlStyle, style)
+        _ = winSetWindowPos(hwnd, nil, 0, 0, 0, 0, swpNoMove | swpNoSize | swpNoZOrder | swpNoActivate | swpFrameChanged)
+        _ = winInvalidateRect(hwnd, nil, 1)
+    }
+
+    /// Sets the fill color of a progress/level bar (nil restores the default).
+    public func setProgressBarColor(_ color: NSColor?, for handle: NativeHandle) {
+        guard let hwnd = hwnd(from: handle) else {
+            return
+        }
+
+        // CLR_DEFAULT (0xFF000000) restores the theme color.
+        let barColor = color.map { colorRef(from: $0) } ?? 0xFF00_0000
+        _ = winSendMessageW(hwnd, pbmSetBarColor, 0, LPARAM(barColor))
     }
 
     /// Updates native progress-indicator range.

@@ -50,6 +50,49 @@ open class NSSlider: NSControl {
         }
     }
 
+    /// The number of tick marks shown along the slider (0 for none).
+    open var numberOfTickMarks: Int = 0 {
+        didSet {
+            guard let nativeHandle else {
+                return
+            }
+
+            realizedBackend?.setSliderTickMarks(count: numberOfTickMarks, for: nativeHandle)
+        }
+    }
+
+    /// Whether the slider only allows values that fall on a tick mark.
+    open var allowsTickMarkValuesOnly: Bool = false
+
+    /// Whether the slider is drawn vertically.
+    ///
+    /// AppKit also infers orientation from the frame; setting this explicitly
+    /// takes precedence.
+    open var isVertical: Bool = false {
+        didSet {
+            guard let nativeHandle else {
+                return
+            }
+
+            realizedBackend?.setSliderVertical(isVertical, for: nativeHandle)
+        }
+    }
+
+    /// The value of the tick mark closest to a value.
+    open func closestTickMarkValue(toValue value: Double) -> Double {
+        guard numberOfTickMarks > 1 else {
+            return clamped(value)
+        }
+
+        let step = (maxValue - minValue) / Double(numberOfTickMarks - 1)
+        guard step > 0 else {
+            return clamped(value)
+        }
+
+        let index = ((value - minValue) / step).rounded()
+        return clamped(minValue + index * step)
+    }
+
     /// Creates a slider with a frame.
     public override init(frame frameRect: NSRect) {
         self.minValue = 0
@@ -79,14 +122,25 @@ open class NSSlider: NSControl {
     @discardableResult
     open override func realizeNativePeer(in backend: NativeControlBackend, parent: NativeHandle?) -> NativeHandle {
         let handle = super.realizeNativePeer(in: backend, parent: parent)
+        if isVertical {
+            backend.setSliderVertical(true, for: handle)
+        }
         backend.setSliderRange(minValue: minValue, maxValue: maxValue, for: handle)
         backend.setSliderValue(doubleValue, for: handle)
+        if numberOfTickMarks > 0 {
+            backend.setSliderTickMarks(count: numberOfTickMarks, for: handle)
+        }
         backend.registerAction(for: handle) { [weak self, weak backend] in
             guard let self, let backend, let nativeHandle = self.nativeHandle else {
                 return
             }
 
-            self.updateValueFromNative(backend.sliderValue(for: nativeHandle))
+            var value = backend.sliderValue(for: nativeHandle)
+            if self.allowsTickMarkValuesOnly {
+                value = self.closestTickMarkValue(toValue: value)
+                backend.setSliderValue(value, for: nativeHandle)
+            }
+            self.updateValueFromNative(value)
             _ = self.window?.makeFirstResponder(self)
             self.sendAction()
         }

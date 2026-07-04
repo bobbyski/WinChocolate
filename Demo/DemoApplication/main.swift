@@ -19,6 +19,9 @@ let window = NSWindow(
     defer: false
 )
 window.title = "WinChocolate Click Counter"
+// 3.2: constrain how far the user can resize the window.
+window.contentMinSize = NSMakeSize(900, 600)
+window.contentMaxSize = NSMakeSize(1400, 1000)
 
 final class DemoContentView: NSView {
     var onBlankAreaMouseDown: ((NSEvent) -> Void)?
@@ -548,6 +551,8 @@ let counterLabel = NSTextField(string: "Clicks: 0", frame: NSMakeRect(32, 36, 30
 let statusLabel = NSTextField(string: "Ready", frame: NSMakeRect(32, 74, 640, 24))
 let focusLabel = NSTextField(string: "Focus: none", frame: NSMakeRect(744, 74, 300, 24))
 let button = NSButton(title: "Click", frame: NSMakeRect(32, 24, 100, 34))
+// 3.1: Return activates the default button, from anywhere but a text view.
+button.keyEquivalent = "\r"
 let enableButton = NSButton(title: "Disable Click", frame: NSMakeRect(152, 24, 144, 34))
 let hideButton = NSButton(title: "Hide Counter", frame: NSMakeRect(316, 24, 144, 34))
 let moveButton = NSButton(title: "Move Click", frame: NSMakeRect(480, 24, 128, 34))
@@ -584,6 +589,8 @@ let matrix = NSMatrix(
 let sliderLabel = NSTextField(string: "Slider:", frame: NSMakeRect(32, 28, 72, 24))
 let slider = NSSlider(value: 50, minValue: 0, maxValue: 100, target: nil, action: "sliderChanged:")
 let sliderValueLabel = NSTextField(string: "50", frame: NSMakeRect(312, 28, 48, 24))
+let verticalSliderLabel = NSTextField(string: "Vert:", frame: NSMakeRect(604, 28, 44, 24))
+let verticalSlider = NSSlider(value: 50, minValue: 0, maxValue: 100, target: nil, action: nil)
 let progressLabel = NSTextField(string: "Progress:", frame: NSMakeRect(32, 60, 88, 24))
 let progressIndicator = NSProgressIndicator(frame: NSMakeRect(128, 64, 232, 18))
 let activityIndicator = NSProgressIndicator(frame: NSMakeRect(388, 64, 160, 18))
@@ -1335,8 +1342,21 @@ stepper.increment = 1
 stepper.doubleValue = 50
 stepperValueLabel.textColor = .blue
 comboLabel.font = NSFont.boldSystemFont(ofSize: 12)
-comboBox.addItems(withObjectValues: ["Cocoa", "AppKit", "WinChocolate"])
+comboBox.addItems(withObjectValues: ["Cocoa", "AppKit", "WinChocolate", "Windows", "Wingding"])
+comboBox.completes = true
+comboBox.numberOfVisibleItems = 8
 comboBox.stringValue = "WinChocolate"
+
+// 3.1 depth on the Values page: slider tick marks, a vertical slider,
+// and a right-aligned editable field with a placeholder.
+slider.numberOfTickMarks = 11
+// Placed in the open right-hand column so it clears the Progress/Stepper rows.
+verticalSlider.frame = NSMakeRect(612, 56, 26, 150)
+verticalSlider.isVertical = true
+verticalSlider.numberOfTickMarks = 6
+verticalSlider.allowsTickMarkValuesOnly = true
+editableTextField.placeholderString = "Type here…"
+editableTextField.alignment = .right
 searchLabel.font = NSFont.boldSystemFont(ofSize: 12)
 searchField.placeholderString = "Find controls"
 levelLabel.font = NSFont.boldSystemFont(ofSize: 12)
@@ -1844,11 +1864,17 @@ selectWordButton.onAction = { _ in
 
     _ = window.makeFirstResponder(notesTextView)
     let firstWordLength = notesTextView.string.utf16.prefix { $0 != 32 }.count
-    notesTextView.setSelectedRange(NSMakeRange(0, firstWordLength))
-    let selection = notesTextView.selectedRange
-    // Rich text: the selected word takes a per-range font and color.
-    notesTextView.setFont(NSFont(name: "Georgia", size: 14, weight: .bold), range: selection)
-    notesTextView.setTextColor(.blue, range: selection)
+    let selection = NSMakeRange(0, firstWordLength)
+    // Rich text through the text storage: the styled word round-trips to
+    // the native peer, and Edit > Copy stages RTF alongside the string.
+    if let storage = notesTextView.textStorage {
+        storage.beginEditing()
+        storage.addAttribute(.font, value: NSFont(name: "Georgia", size: 14, weight: .bold, italic: true), range: selection)
+        storage.addAttribute(.foregroundColor, value: NSColor.blue, range: selection)
+        storage.addAttribute(.underlineStyle, value: NSUnderlineStyle.single.rawValue, range: selection)
+        storage.endEditing()
+    }
+    notesTextView.setSelectedRange(selection)
     statusLabel.stringValue = "Notes selection styled: location \(selection.location), length \(selection.length)"
 }
 
@@ -2307,6 +2333,8 @@ controlsPage.addSubview(matrix)
 valuesPage.addSubview(sliderLabel)
 valuesPage.addSubview(slider)
 valuesPage.addSubview(sliderValueLabel)
+valuesPage.addSubview(verticalSliderLabel)
+valuesPage.addSubview(verticalSlider)
 valuesPage.addSubview(progressLabel)
 valuesPage.addSubview(progressIndicator)
 activityIndicator.isIndeterminate = true

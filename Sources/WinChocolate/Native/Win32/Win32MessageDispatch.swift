@@ -20,6 +20,31 @@ extension Win32NativeControlBackend {
             // another application is active and return afterward.
             applicationActivationDidChange(isActive: wParam != 0)
             return nil
+        case wmGetMinMaxInfo:
+            // Constrain user resizing to the window's content size limits,
+            // converting each content size to the outer window rect.
+            guard let hwnd, lParam != 0,
+                  let info = UnsafeMutablePointer<MINMAXINFO>(bitPattern: UInt(bitPattern: lParam)) else {
+                return nil
+            }
+            let handle = nativeHandle(from: hwnd)
+            guard windowHandles.contains(handle) else {
+                return nil
+            }
+            let style = windowStyles[handle.rawValue] ?? 0
+            let hasMenu = windowMenuFlags[handle.rawValue] ?? false
+            if let minSize = windowMinContentSizes[handle.rawValue] {
+                let outer = outerWindowSize(forContentSize: minSize, style: style, hasMenu: hasMenu)
+                info.pointee.ptMinTrackSize = POINT(x: outer.width, y: outer.height)
+            }
+            if let maxSize = windowMaxContentSizes[handle.rawValue] {
+                let outer = outerWindowSize(forContentSize: maxSize, style: style, hasMenu: hasMenu)
+                info.pointee.ptMaxTrackSize = POINT(x: outer.width, y: outer.height)
+            }
+            guard windowMinContentSizes[handle.rawValue] != nil || windowMaxContentSizes[handle.rawValue] != nil else {
+                return nil
+            }
+            return 0
         case wmInitMenuPopup:
             // Run AppKit-style validation just before a menu drops down, then
             // rebuild the native items so mutations and dynamic titles show.
@@ -447,10 +472,18 @@ extension Win32NativeControlBackend {
 
             let rawHandle = UInt(bitPattern: lParam)
             let deviceContext = HDC(bitPattern: wParam)
+            if let textColor = textColors[rawHandle] {
+                _ = winSetTextColor(deviceContext, textColor)
+            }
+
+            // An explicit background color always wins, even on a control that
+            // is otherwise transparent, so colored labels keep their fill.
+            if let backgroundColor = backgroundColors[rawHandle], let brush = backgroundBrushes[rawHandle] {
+                _ = winSetBkColor(deviceContext, backgroundColor)
+                return Int(bitPattern: brush)
+            }
+
             if transparentBackgroundHandles.contains(rawHandle) {
-                if let textColor = textColors[rawHandle] {
-                    _ = winSetTextColor(deviceContext, textColor)
-                }
                 _ = winSetBkMode(deviceContext, transparentBkMode)
                 // Erase with the effective parent color instead of skipping the
                 // erase: a NULL brush leaves stale pixels behind when sibling
@@ -579,10 +612,18 @@ extension Win32NativeControlBackend {
         case wmKeyDown, wmSysKeyDown:
             // Menu key equivalents fire even when a native control has
             // focus, matching AppKit's Cmd-key ordering: the main menu sees
-            // the event before the focused view's own key handling.
-            if let keyEquivalentHandler, currentModifierFlags().contains(.control),
-               keyEquivalentHandler(keyEvent(type: .keyDown, wParam: wParam)) {
-                return 0
+            // the event before the focused view's own key handling. Return
+            // and Escape also route here so default/cancel buttons and menu
+            // items with those equivalents fire — except inside a multiline
+            // text control, which keeps Return for newlines.
+            if let keyEquivalentHandler {
+                let virtualKey = UInt16(wParam & 0xffff)
+                let isDefaultOrCancel = (virtualKey == UInt16(vkReturn) || virtualKey == UInt16(vkEscape))
+                    && !(hwnd.map { multilineTextHandles.contains(actionHandle(from: $0).rawValue) } ?? false)
+                if (currentModifierFlags().contains(.control) || isDefaultOrCancel),
+                   keyEquivalentHandler(keyEvent(type: .keyDown, wParam: wParam)) {
+                    return 0
+                }
             }
 
             guard UInt16(wParam & 0xffff) == UInt16(vkTab),

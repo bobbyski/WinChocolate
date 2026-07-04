@@ -87,6 +87,20 @@ extension Win32NativeControlBackend {
         )
     }
 
+    /// Constrains a top-level window's content size during user resizing.
+    public func setWindowContentSizeLimits(minSize: NSSize?, maxSize: NSSize?, for handle: NativeHandle) {
+        if let minSize {
+            windowMinContentSizes[handle.rawValue] = minSize
+        } else {
+            windowMinContentSizes.removeValue(forKey: handle.rawValue)
+        }
+        if let maxSize {
+            windowMaxContentSizes[handle.rawValue] = maxSize
+        } else {
+            windowMaxContentSizes.removeValue(forKey: handle.rawValue)
+        }
+    }
+
     /// Updates whether a native window hides while the application is inactive.
     public func setHidesOnDeactivate(_ hidesOnDeactivate: Bool, for handle: NativeHandle) {
         if hidesOnDeactivate {
@@ -147,6 +161,9 @@ extension Win32NativeControlBackend {
         deactivateHiddenHandles.remove(handle.rawValue)
         contentScales.removeValue(forKey: handle.rawValue)
         richTextHandles.remove(handle.rawValue)
+        multilineTextHandles.remove(handle.rawValue)
+        windowMinContentSizes.removeValue(forKey: handle.rawValue)
+        windowMaxContentSizes.removeValue(forKey: handle.rawValue)
         mainMenuWindowHandles.remove(handle)
         controlActions.removeValue(forKey: handle.rawValue)
         textChangeActions.removeValue(forKey: handle.rawValue)
@@ -207,6 +224,7 @@ extension Win32NativeControlBackend {
         controlActions.removeValue(forKey: handle.rawValue)
         contentScales.removeValue(forKey: handle.rawValue)
         richTextHandles.remove(handle.rawValue)
+        multilineTextHandles.remove(handle.rawValue)
         textChangeActions.removeValue(forKey: handle.rawValue)
         mouseDownActions.removeValue(forKey: handle.rawValue)
         mouseUpActions.removeValue(forKey: handle.rawValue)

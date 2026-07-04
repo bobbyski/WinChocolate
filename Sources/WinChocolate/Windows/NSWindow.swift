@@ -124,6 +124,40 @@ open class NSWindow: NSResponder {
     /// The window backing store type.
     public let backingType: BackingStoreType
 
+    /// The minimum content size the user may resize the window to.
+    ///
+    /// Zero (the default) means unconstrained. Takes precedence over
+    /// `minSize` when both are set.
+    open var contentMinSize: NSSize = NSMakeSize(0, 0) {
+        didSet {
+            applySizeLimits()
+        }
+    }
+
+    /// The maximum content size the user may resize the window to.
+    open var contentMaxSize: NSSize = NSMakeSize(0, 0) {
+        didSet {
+            applySizeLimits()
+        }
+    }
+
+    /// The minimum window frame size.
+    ///
+    /// The classic backend applies this as a content-size limit (a small
+    /// title/border approximation); `contentMinSize` is exact.
+    open var minSize: NSSize = NSMakeSize(0, 0) {
+        didSet {
+            applySizeLimits()
+        }
+    }
+
+    /// The maximum window frame size.
+    open var maxSize: NSSize = NSMakeSize(0, 0) {
+        didSet {
+            applySizeLimits()
+        }
+    }
+
     /// Whether native creation should be deferred until first display.
     public let isDeferred: Bool
 
@@ -444,11 +478,28 @@ open class NSWindow: NSResponder {
         if level != .normal {
             nativeBackend.setWindowLevel(level, for: handle)
         }
+        applySizeLimits()
         NSApplication.shared.addWindowsItem(self)
         installToolbarHost()
         layoutToolbarAndContent()
         contentView?.realizeNativePeer(in: nativeBackend, parent: handle)
         return handle
+    }
+
+    private func applySizeLimits() {
+        guard let nativeHandle else {
+            return
+        }
+
+        func positive(_ size: NSSize) -> NSSize? {
+            (size.width > 0 || size.height > 0) ? size : nil
+        }
+
+        nativeBackend.setWindowContentSizeLimits(
+            minSize: positive(contentMinSize) ?? positive(minSize),
+            maxSize: positive(contentMaxSize) ?? positive(maxSize),
+            for: nativeHandle
+        )
     }
 
     /// Closes the window after asking the delegate, like the close button.

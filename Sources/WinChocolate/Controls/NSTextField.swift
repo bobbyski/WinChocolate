@@ -1,3 +1,18 @@
+/// Horizontal text alignment, matching AppKit names.
+public enum NSTextAlignment: Sendable {
+    /// Left-aligned text.
+    case left
+
+    /// Center-aligned text.
+    case center
+
+    /// Right-aligned text.
+    case right
+
+    /// Natural alignment for the writing direction (left here).
+    case natural
+}
+
 /// A single-line text entry or label control.
 ///
 /// `NSTextField` maps to a native Windows edit/static control depending on later
@@ -41,7 +56,26 @@ open class NSTextField: NSControl {
     }
 
     /// Placeholder text for editable fields.
-    open var placeholderString: String?
+    open var placeholderString: String? {
+        didSet {
+            guard let nativeHandle else {
+                return
+            }
+
+            realizedBackend?.setTextPlaceholder(placeholderString, for: nativeHandle)
+        }
+    }
+
+    /// Horizontal alignment of the field's text.
+    open var alignment: NSTextAlignment = .natural {
+        didSet {
+            guard let nativeHandle else {
+                return
+            }
+
+            realizedBackend?.setTextAlignment(alignment, for: nativeHandle)
+        }
+    }
 
     /// The text color, when explicitly set.
     open var textColor: NSColor? {
@@ -114,9 +148,19 @@ open class NSTextField: NSControl {
     @discardableResult
     open override func realizeNativePeer(in backend: NativeControlBackend, parent: NativeHandle?) -> NativeHandle {
         let handle = super.realizeNativePeer(in: backend, parent: parent)
-        backend.setDrawsBackground(drawsBackground, for: handle)
+        // Labels (non-editable, no explicit background color) show the window
+        // color instead of an opaque control-face rectangle. Editable fields
+        // and any field given a background color stay opaque.
+        let showsBackground = (isEditable || backgroundColor != nil) && drawsBackground
+        backend.setDrawsBackground(showsBackground, for: handle)
         backend.setTextColor(textColor, for: handle)
         backend.setFont(font, for: handle)
+        if let placeholderString {
+            backend.setTextPlaceholder(placeholderString, for: handle)
+        }
+        if alignment != .natural {
+            backend.setTextAlignment(alignment, for: handle)
+        }
         backend.registerTextChangeAction(for: handle) { [weak self] text in
             guard let self else {
                 return

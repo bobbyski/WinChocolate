@@ -96,6 +96,27 @@ extension Win32NativeControlBackend {
         setText(text, for: handle)
     }
 
+    /// Sets how many items a combo box shows before the list scrolls.
+    ///
+    /// The dropdown height is part of the combo's window height, so a taller
+    /// window shows more list rows; the edit portion keeps its system height.
+    public func setComboBoxVisibleItems(_ count: Int, for handle: NativeHandle) {
+        guard let hwnd = hwnd(from: handle), count > 0 else {
+            return
+        }
+
+        let itemHeight = 16
+        let editHeight = 24
+        let dropdownHeight = CGFloat(editHeight + count * itemHeight + 4)
+        comboBoxDropdownHeights[handle.rawValue] = dropdownHeight
+
+        var rect = RECT()
+        guard winGetWindowRect(hwnd, &rect) != 0 else {
+            return
+        }
+        _ = winSetWindowPos(hwnd, nil, 0, 0, rect.right - rect.left, Int32(dropdownHeight), swpNoMove | swpNoZOrder | swpNoActivate)
+    }
+
     /// Reads native combo-box text.
     public func comboBoxText(for handle: NativeHandle) -> String {
         guard let hwnd = hwnd(from: handle) else {

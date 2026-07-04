@@ -53,6 +53,11 @@ extension Win32NativeControlBackend {
             commandIdentifier: nil,
             style: isEditable || isRichText ? editStyle : wsChild | wsVisible | wsBorder
         )
+        if isEditable || isRichText {
+            // Multiline edits keep Return for newlines, so the default-button
+            // key-equivalent routing skips them.
+            multilineTextHandles.insert(handle.rawValue)
+        }
         if isRichText {
             richTextHandles.insert(handle.rawValue)
             if let hwnd = hwnd(from: handle) {
@@ -86,8 +91,8 @@ extension Win32NativeControlBackend {
     /// The range is selected, formatted with `EM_SETCHARFORMAT`, and the
     /// user's selection restored, so callers can format without disturbing
     /// editing state.
-    public func setTextRangeFormat(font: NSFont?, color: NSColor?, location: Int, length: Int, for handle: NativeHandle) {
-        guard let hwnd = hwnd(from: handle), font != nil || color != nil else {
+    public func setTextRangeFormat(font: NSFont?, color: NSColor?, underline: Bool?, strikethrough: Bool?, location: Int, length: Int, for handle: NativeHandle) {
+        guard let hwnd = hwnd(from: handle), font != nil || color != nil || underline != nil || strikethrough != nil else {
             return
         }
 
@@ -98,11 +103,14 @@ extension Win32NativeControlBackend {
         var format = CHARFORMATW()
         format.cbSize = UINT(MemoryLayout<CHARFORMATW>.stride)
         if let font {
-            format.dwMask |= cfmFace | cfmSize | cfmBold
+            format.dwMask |= cfmFace | cfmSize | cfmBold | cfmItalic
             // Rich edit character heights are in twips (1/20 point).
             format.yHeight = Int32((font.pointSize * 20).rounded())
-            if font.weight == .bold {
+            if font.weight.isBold {
                 format.dwEffects |= cfeBold
+            }
+            if font.italic {
+                format.dwEffects |= cfeItalic
             }
             withUnsafeMutableBytes(of: &format.szFaceName) { raw in
                 let faceName = raw.bindMemory(to: UInt16.self)
@@ -115,6 +123,18 @@ extension Win32NativeControlBackend {
             format.dwMask |= cfmColor
             format.crTextColor = colorRef(from: color)
         }
+        if let underline {
+            format.dwMask |= cfmUnderline
+            if underline {
+                format.dwEffects |= cfeUnderline
+            }
+        }
+        if let strikethrough {
+            format.dwMask |= cfmStrikeOut
+            if strikethrough {
+                format.dwEffects |= cfeStrikeOut
+            }
+        }
         withUnsafePointer(to: &format) { pointer in
             _ = winSendMessageW(hwnd, emSetCharFormat, scfSelection, Int(bitPattern: pointer))
         }
@@ -125,6 +145,39 @@ extension Win32NativeControlBackend {
     /// Registers the action to perform when native text changes.
     public func registerTextChangeAction(for handle: NativeHandle, action: @escaping (String) -> Void) {
         textChangeActions[handle.rawValue] = action
+    }
+
+    /// Sets the cue-banner placeholder shown while an edit field is empty.
+    public func setTextPlaceholder(_ placeholder: String?, for handle: NativeHandle) {
+        guard let hwnd = hwnd(from: handle) else {
+            return
+        }
+
+        // wParam 1 keeps the cue visible even while the field has focus,
+        // matching AppKit's placeholder behavior.
+        withWideString(placeholder ?? "") { text in
+            _ = winSendMessageW(hwnd, emSetCueBanner, 1, Int(bitPattern: text))
+        }
+    }
+
+    /// Sets the horizontal text alignment of an edit field.
+    public func setTextAlignment(_ alignment: NSTextAlignment, for handle: NativeHandle) {
+        guard let hwnd = hwnd(from: handle) else {
+            return
+        }
+
+        var style = winGetWindowLongPtrW(hwnd, gwlStyle)
+        style &= ~LONG_PTR(esCenter | esRight)
+        switch alignment {
+        case .center:
+            style |= LONG_PTR(esCenter)
+        case .right:
+            style |= LONG_PTR(esRight)
+        case .left, .natural:
+            break
+        }
+        _ = winSetWindowLongPtrW(hwnd, gwlStyle, style)
+        _ = winInvalidateRect(hwnd, nil, 1)
     }
 
     /// Reads the native edit-control selection with `EM_GETSEL`.
@@ -252,7 +305,7 @@ extension Win32NativeControlBackend {
                 0,
                 0,
                 Int32(font.weight.rawValue),
-                0,
+                font.italic ? 1 : 0,
                 0,
                 0,
                 defaultCharset,
@@ -274,7 +327,7 @@ extension Win32NativeControlBackend {
     }
 
     /// Measures a single-line text run with the real font metrics.
-    public func measureText(_ text: String, fontName: String, fontSize: CGFloat, bold: Bool) -> NSSize {
+    public func measureText(_ text: String, fontName: String, fontSize: CGFloat, weight: Int, italic: Bool) -> NSSize {
         guard let deviceContext = winGetDC(nil) else {
             return NSMakeSize(0, 0)
         }
@@ -289,8 +342,8 @@ extension Win32NativeControlBackend {
                 0,
                 0,
                 0,
-                bold ? 700 : 400,
-                0,
+                Int32(weight),
+                italic ? 1 : 0,
                 0,
                 0,
                 defaultCharset,

@@ -9,7 +9,36 @@ open class NSComboBox: NSTextField {
     open var onComboBoxTextChanged: ((NSComboBox) -> Void)?
 
     /// Whether the combo box completes typed text from its item list.
+    ///
+    /// The completion candidate is available through `completedString(forPrefix:)`
+    /// and, when set, is applied on commit (Return / selection). Live
+    /// as-you-type suffix selection over the native combo edit is future work.
     open var completes: Bool = false
+
+    /// How many items the dropdown shows before scrolling.
+    open var numberOfVisibleItems: Int = 5 {
+        didSet {
+            guard let nativeHandle else {
+                return
+            }
+
+            realizedBackend?.setComboBoxVisibleItems(numberOfVisibleItems, for: nativeHandle)
+        }
+    }
+
+    /// The first item that has `prefix` as a case-insensitive prefix, when the
+    /// item extends the prefix. Returns `nil` when nothing completes.
+    open func completedString(forPrefix prefix: String) -> String? {
+        guard !prefix.isEmpty else {
+            return nil
+        }
+
+        let lowerPrefix = prefix.lowercased()
+        for item in items where item.count > prefix.count && item.lowercased().hasPrefix(lowerPrefix) {
+            return item
+        }
+        return nil
+    }
 
     /// Creates a combo box with a frame.
     public override init(frame frameRect: NSRect) {
@@ -84,6 +113,7 @@ open class NSComboBox: NSTextField {
     @discardableResult
     open override func realizeNativePeer(in backend: NativeControlBackend, parent: NativeHandle?) -> NativeHandle {
         let handle = super.realizeNativePeer(in: backend, parent: parent)
+        backend.setComboBoxVisibleItems(numberOfVisibleItems, for: handle)
         backend.registerTextChangeAction(for: handle) { [weak self] text in
             guard let self else {
                 return
@@ -100,6 +130,10 @@ open class NSComboBox: NSTextField {
 
             _ = self.window?.makeFirstResponder(self)
             self.updateStringValueFromNative(backend.comboBoxText(for: nativeHandle))
+            // On commit, complete a partial entry to the first matching item.
+            if self.completes, let completed = self.completedString(forPrefix: self.stringValue) {
+                self.stringValue = completed
+            }
             self.sendAction()
         }
         return handle

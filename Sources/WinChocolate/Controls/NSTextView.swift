@@ -120,7 +120,7 @@ open class NSTextView: NSControl {
             return
         }
 
-        realizedBackend?.setTextRangeFormat(font: font, color: nil, location: range.location, length: range.length, for: nativeHandle)
+        realizedBackend?.setTextRangeFormat(font: font, color: nil, underline: nil, strikethrough: nil, location: range.location, length: range.length, for: nativeHandle)
     }
 
     /// Applies a color to a character range of a rich text view.
@@ -132,7 +132,62 @@ open class NSTextView: NSControl {
             return
         }
 
-        realizedBackend?.setTextRangeFormat(font: nil, color: color, location: range.location, length: range.length, for: nativeHandle)
+        realizedBackend?.setTextRangeFormat(font: nil, color: color, underline: nil, strikethrough: nil, location: range.location, length: range.length, for: nativeHandle)
+    }
+
+    private var storedTextStorage: NSTextStorage?
+    private var isApplyingTextStorage = false
+
+    /// The text storage holding the view's attributed contents.
+    ///
+    /// Created on first access seeded with the current text. Edits to the
+    /// storage apply back to the view: the plain text always follows, and
+    /// rich text views also receive the attribute runs (font, color,
+    /// underline, strikethrough) as native character formatting.
+    open var textStorage: NSTextStorage? {
+        if let storedTextStorage {
+            return storedTextStorage
+        }
+
+        let storage = NSTextStorage(string: string)
+        storage.winDidEdit = { [weak self] storage in
+            self?.applyTextStorage(storage)
+        }
+        storedTextStorage = storage
+        return storage
+    }
+
+    private func applyTextStorage(_ storage: NSTextStorage) {
+        guard !isApplyingTextStorage else {
+            return
+        }
+
+        isApplyingTextStorage = true
+        defer {
+            isApplyingTextStorage = false
+        }
+
+        // Setting the text resets native character formats to the default,
+        // so re-applying every run afterward leaves unattributed stretches
+        // at the control's defaults.
+        string = storage.string
+        guard isRichText, let nativeHandle, let realizedBackend else {
+            return
+        }
+
+        storage.enumerateAttributes(in: NSMakeRange(0, storage.length)) { attributes, range, _ in
+            let underlineStyle = attributes[.underlineStyle] as? Int
+            let strikethroughStyle = attributes[.strikethroughStyle] as? Int
+            realizedBackend.setTextRangeFormat(
+                font: attributes[.font] as? NSFont,
+                color: attributes[.foregroundColor] as? NSColor,
+                underline: underlineStyle.map { $0 != 0 },
+                strikethrough: strikethroughStyle.map { $0 != 0 },
+                location: range.location,
+                length: range.length,
+                for: nativeHandle
+            )
+        }
     }
 
     /// Swift-native callback invoked when editing changes the text.
@@ -223,6 +278,10 @@ open class NSTextView: NSControl {
     }
 
     /// Copies the selected text to the general pasteboard.
+    ///
+    /// Rich text views whose contents came through `textStorage` also stage
+    /// an RTF representation, so formatting survives pasting into other
+    /// applications.
     open override func copy(_ sender: Any?) {
         guard let selectedText = currentSelectedText() else {
             return
@@ -231,6 +290,11 @@ open class NSTextView: NSControl {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         pasteboard.setString(selectedText, forType: .string)
+
+        if isRichText, let storage = storedTextStorage, storage.string == string,
+           let rtfData = storage.rtf(from: selectedRange) {
+            pasteboard.setData(rtfData, forType: .rtf)
+        }
     }
 
     /// Deletes the selected text after copying it to the general pasteboard.
@@ -308,6 +372,9 @@ open class NSTextView: NSControl {
         string = text
         objectValue = text
         isUpdatingFromNative = false
+        if !isApplyingTextStorage {
+            storedTextStorage?.winSyncPlainText(text)
+        }
         if allowsUndo && previousText != text {
             registerTypingUndo(previousText: previousText, text: text)
         }

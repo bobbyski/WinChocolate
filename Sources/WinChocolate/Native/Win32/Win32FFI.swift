@@ -61,6 +61,14 @@ struct XFORM {
     var eDy: Float = 0
 }
 
+struct MINMAXINFO {
+    var ptReserved: POINT = POINT()
+    var ptMaxSize: POINT = POINT()
+    var ptMaxPosition: POINT = POINT()
+    var ptMinTrackSize: POINT = POINT()
+    var ptMaxTrackSize: POINT = POINT()
+}
+
 struct MSG {
     var hwnd: HWND?
     var message: UINT = 0
@@ -715,6 +723,12 @@ func winIsClipboardFormatAvailable(_ format: UINT) -> Int32
 @_silgen_name("GetClipboardSequenceNumber")
 func winGetClipboardSequenceNumber() -> DWORD
 
+@_silgen_name("RegisterClipboardFormatW")
+func winRegisterClipboardFormatW(_ name: UnsafePointer<UInt16>?) -> UINT
+
+@_silgen_name("GlobalSize")
+func winGlobalSize(_ memory: UnsafeMutableRawPointer?) -> UInt
+
 @_silgen_name("GlobalAlloc")
 func winGlobalAlloc(_ flags: UINT, _ bytes: UInt) -> UnsafeMutableRawPointer?
 
@@ -919,6 +933,8 @@ let swShowNoActivate: Int32 = 4
 let gwlExStyle: Int32 = -20
 let wsExToolWindow: DWORD = 0x0000_0080
 let swpFrameChanged: UINT = 0x0020
+let swpNoZOrder: UINT = 0x0004
+let gwlStyle: Int32 = -16
 let wmActivateApp: UINT = 0x001c
 let wmMouseHWheel: UINT = 0x020e
 /// Rich edit: EM_SETCHARFORMAT (WM_USER + 68).
@@ -937,6 +953,12 @@ let cfUnicodeText: UINT = 13
 let gmemMoveable: UINT = 0x0002
 let cfmBold: DWORD = 0x0000_0001
 let cfeBold: DWORD = 0x0000_0001
+let cfmItalic: DWORD = 0x0000_0002
+let cfeItalic: DWORD = 0x0000_0002
+let cfmUnderline: DWORD = 0x0000_0004
+let cfeUnderline: DWORD = 0x0000_0004
+let cfmStrikeOut: DWORD = 0x0000_0008
+let cfeStrikeOut: DWORD = 0x0000_0008
 let cfmColor: DWORD = 0x4000_0000
 let cfmFace: DWORD = 0x2000_0000
 let cfmSize: DWORD = 0x8000_0000
@@ -1004,6 +1026,8 @@ let mfEnabled: UINT = 0x0000
 let mfUnchecked: UINT = 0x0000
 let mfByPosition: UINT = 0x0400
 let whCbt: Int32 = 5
+let whMouse: Int32 = 7
+let wmNCLButtonDown: UINT = 0x00a1
 let hcbtActivate: Int32 = 5
 let transparentBkMode: Int32 = 1
 let dtCenter: UINT = 0x00000001
@@ -1026,6 +1050,15 @@ let tbmGetPos: UINT = 0x0400
 let tbmSetPos: UINT = 0x0405
 let tbmSetRangeMin: UINT = 0x0407
 let tbmSetRangeMax: UINT = 0x0408
+let tbmSetTicFreq: UINT = 0x0414
+let tbsAutoTicks: DWORD = 0x0001
+let tbsVert: DWORD = 0x0002
+let tbsNoTicks: DWORD = 0x0010
+let esCenter: DWORD = 0x0001
+let esRight: DWORD = 0x0002
+let emSetCueBanner: UINT = 0x1501
+let pbmSetBarColor: UINT = 0x0409
+let wmGetMinMaxInfo: UINT = 0x0024
 let sbmSetScrollInfo: UINT = 0x00e9
 let sbmGetScrollInfo: UINT = 0x00ea
 let pbmSetRange32: UINT = 0x0406

@@ -4946,6 +4946,306 @@ final class FontChangeRecordingView: NSView {
     }
 }
 
+func testCommonControlDepthWiresToBackend() {
+    let backend = InMemoryNativeControlBackend()
+
+    // Text field: placeholder + alignment reach the peer.
+    let field = NSTextField(string: "", frame: NSMakeRect(0, 0, 120, 24))
+    field.isEditable = true
+    field.placeholderString = "Search"
+    field.alignment = .center
+    let fieldHandle = field.realizeNativePeer(in: backend, parent: nil)
+    expect(backend.records[fieldHandle]?.placeholder == "Search", "Placeholder did not reach the backend.")
+    expect(backend.records[fieldHandle]?.textAlignment == .center, "Alignment did not reach the backend.")
+    field.alignment = .right
+    expect(backend.records[fieldHandle]?.textAlignment == .right, "Alignment change did not sync.")
+
+    // Slider: tick marks + vertical + tick snapping.
+    let slider = NSSlider(frame: NSMakeRect(0, 0, 120, 24))
+    slider.minValue = 0
+    slider.maxValue = 10
+    slider.numberOfTickMarks = 11
+    slider.isVertical = true
+    let sliderHandle = slider.realizeNativePeer(in: backend, parent: nil)
+    expect(backend.records[sliderHandle]?.sliderTickMarkCount == 11, "Tick-mark count did not reach the backend.")
+    expect(backend.records[sliderHandle]?.sliderIsVertical == true, "Vertical orientation did not reach the backend.")
+    expect(slider.closestTickMarkValue(toValue: 4.4) == 4, "Tick snapping picked the wrong value.")
+
+    // Combo box: visible items + forward completion.
+    let combo = NSComboBox(frame: NSMakeRect(0, 0, 140, 24))
+    combo.addItems(withObjectValues: ["Apple", "Apricot", "Banana"])
+    combo.numberOfVisibleItems = 8
+    combo.completes = true
+    let comboHandle = combo.realizeNativePeer(in: backend, parent: nil)
+    expect(backend.records[comboHandle]?.comboBoxVisibleItems == 8, "Visible-item count did not reach the backend.")
+    expect(combo.completedString(forPrefix: "ap") == "Apple", "Completion did not find the first prefix match.")
+    expect(combo.completedString(forPrefix: "ban") == "Banana", "Completion missed a later item.")
+    expect(combo.completedString(forPrefix: "z") == nil, "Completion matched a non-prefix.")
+
+    // Button: key equivalent fires the action.
+    let button = NSButton(title: "OK", frame: NSMakeRect(0, 0, 80, 28))
+    button.keyEquivalent = "\r"
+    var clicks = 0
+    button.onAction = { _ in clicks += 1 }
+    _ = button.realizeNativePeer(in: backend, parent: nil)
+    let returnEvent = NSEvent(type: .keyDown, locationInWindow: NSMakePoint(0, 0), keyCode: 0x0d, characters: "\r", modifierFlags: [])
+    expect(button.performKeyEquivalent(with: returnEvent), "Return key equivalent was not recognized.")
+    expect(clicks == 1, "Key equivalent did not fire the action.")
+    let otherEvent = NSEvent(type: .keyDown, locationInWindow: NSMakePoint(0, 0), keyCode: 0x41, characters: "a", modifierFlags: [])
+    expect(!button.performKeyEquivalent(with: otherEvent), "Unrelated key wrongly matched the equivalent.")
+
+    // Level indicator: warning/critical recolor the bar.
+    let level = NSLevelIndicator(frame: NSMakeRect(0, 0, 120, 20))
+    level.minValue = 0
+    level.maxValue = 100
+    level.warningValue = 60
+    level.criticalValue = 85
+    let levelHandle = level.realizeNativePeer(in: backend, parent: nil)
+    level.doubleValue = 40
+    expect(backend.records[levelHandle]?.progressBarColor == nil, "Below-threshold bar was colored.")
+    level.doubleValue = 70
+    expect(backend.records[levelHandle]?.progressBarColor != nil, "Warning threshold did not color the bar.")
+    level.doubleValue = 95
+    expect(backend.records[levelHandle]?.progressBarColor == .red, "Critical threshold did not turn the bar red.")
+}
+
+func testSegmentedControlKeyboardSelection() {
+    let segmented = NSSegmentedControl(labels: ["One", "Two", "Three"], frame: NSMakeRect(0, 0, 180, 24))
+    segmented.trackingMode = .selectOne
+    segmented.selectedSegment = 0
+    var actions = 0
+    segmented.onAction = { _ in actions += 1 }
+
+    let right = NSEvent(type: .keyDown, locationInWindow: NSMakePoint(0, 0), keyCode: 0x27, characters: nil, modifierFlags: [])
+    segmented.keyDown(with: right)
+    expect(segmented.selectedSegment == 1, "Right arrow did not advance the segment.")
+    segmented.keyDown(with: right)
+    expect(segmented.selectedSegment == 2, "Right arrow did not keep advancing.")
+    segmented.keyDown(with: right)
+    expect(segmented.selectedSegment == 2, "Right arrow moved past the last segment.")
+
+    let left = NSEvent(type: .keyDown, locationInWindow: NSMakePoint(0, 0), keyCode: 0x25, characters: nil, modifierFlags: [])
+    segmented.keyDown(with: left)
+    expect(segmented.selectedSegment == 1, "Left arrow did not move back.")
+    expect(actions == 3, "Keyboard selection did not send actions.")
+
+    // A disabled segment is skipped.
+    segmented.setEnabled(false, forSegment: 0)
+    segmented.keyDown(with: left)
+    expect(segmented.selectedSegment == 1, "Left arrow did not skip the disabled first segment.")
+}
+
+func testWindowSizeLimitsAndPopoverDismiss() {
+    let backend = InMemoryNativeControlBackend()
+    let previousBackend = NSApplication.shared.nativeBackend
+    NSApplication.shared.nativeBackend = backend
+    defer {
+        NSApplication.shared.nativeBackend = previousBackend
+    }
+
+    // Window content size limits reach the backend.
+    let window = NSWindow(
+        contentRect: NSMakeRect(0, 0, 400, 300),
+        styleMask: [.titled, .resizable],
+        backing: .buffered,
+        defer: false,
+        nativeBackend: backend
+    )
+    window.contentMinSize = NSMakeSize(320, 240)
+    window.contentMaxSize = NSMakeSize(800, 600)
+    let windowHandle = window.realizeNativePeer()
+    expect(backend.records[windowHandle]?.minContentSize == NSMakeSize(320, 240), "Min content size did not reach the backend.")
+    expect(backend.records[windowHandle]?.maxContentSize == NSMakeSize(800, 600), "Max content size did not reach the backend.")
+
+    // Transient popover registers an outside-click dismiss and closes on it.
+    let anchor = NSView(frame: NSMakeRect(10, 10, 40, 20))
+    window.contentView = NSView(frame: NSMakeRect(0, 0, 400, 300))
+    window.contentView?.addSubview(anchor)
+    window.makeKeyAndOrderFront(nil)
+
+    let controller = NSViewController()
+    controller.view = NSView(frame: NSMakeRect(0, 0, 200, 120))
+    let popover = NSPopover()
+    popover.behavior = .transient
+    popover.contentViewController = controller
+    popover.show(relativeTo: anchor.bounds, of: anchor, preferredEdge: .maxY)
+
+    expect(popover.isShown, "Popover did not show.")
+    expect(backend.outsideClickDismissHandle != nil, "Transient popover did not register an outside-click watch.")
+
+    backend.simulateOutsideClick()
+    expect(!popover.isShown, "Outside click did not dismiss the transient popover.")
+    expect(backend.outsideClickDismissHandle == nil, "Dismiss watch was not torn down after closing.")
+}
+
+func testFontTraitsWeightsAndDescriptor() {
+    // Italic and the extended weight scale round-trip through NSFont.
+    let base = NSFont(name: "Georgia", size: 14)
+    expect(!base.italic && base.weight == .regular, "Default font carried unexpected traits.")
+    expect(base.withItalic(true).italic, "withItalic did not set the italic trait.")
+    expect(base.withWeight(.semibold).weight == .semibold, "withWeight did not change the weight.")
+    expect(base.withWeight(.semibold).isBold, "Semibold did not report as bold.")
+    expect(!base.withWeight(.light).isBold, "Light incorrectly reported as bold.")
+    expect(NSFont.Weight.closest(toLogFontWeight: 620) == .semibold, "Closest weight mapping was wrong.")
+    expect(NSFont.Weight.allCases.count == 9, "Weight scale is not the standard nine steps.")
+
+    // Descriptor captures and reconstructs symbolic traits.
+    let descriptor = NSFont(name: "Consolas", size: 12, weight: .bold, italic: true).fontDescriptor
+    expect(descriptor.symbolicTraits.contains(.bold), "Descriptor dropped the bold trait.")
+    expect(descriptor.symbolicTraits.contains(.italic), "Descriptor dropped the italic trait.")
+    let rebuilt = NSFont(descriptor: descriptor, size: 0)
+    expect(rebuilt.fontName == "Consolas" && rebuilt.pointSize == 12, "Descriptor lost family or size.")
+    expect(rebuilt.isBold && rebuilt.italic, "Descriptor did not rebuild the traits.")
+    let plainDescriptor = NSFontDescriptor(name: "Arial", size: 10)
+    let withItalic = plainDescriptor.withSymbolicTraits(.italic)
+    expect(withItalic.symbolicTraits.contains(.italic), "withSymbolicTraits did not add the trait.")
+
+    // NSFontManager trait conversion toggles bold and italic.
+    let manager = NSFontManager.shared
+    let bolded = manager.convert(base, toHaveTrait: .bold)
+    expect(bolded.weight == .bold, "toHaveTrait: .bold did not bold the font.")
+    let italicized = manager.convert(bolded, toHaveTrait: .italic)
+    expect(italicized.italic && italicized.weight == .bold, "toHaveTrait: .italic dropped the existing bold.")
+    let unbolded = manager.convert(italicized, toHaveTrait: .unbold)
+    expect(unbolded.weight == .regular && unbolded.italic, ".unbold did not clear bold while keeping italic.")
+    expect(manager.traits(of: italicized) == [.bold, .italic], "traits(of:) did not report both traits.")
+
+    // Italic reaches the native rich-text peer as a character format.
+    let backend = InMemoryNativeControlBackend()
+    let textView = NSTextView(frame: NSMakeRect(0, 0, 200, 80))
+    textView.isRichText = true
+    textView.string = "styled"
+    let handle = textView.realizeNativePeer(in: backend, parent: nil)
+    textView.setFont(NSFont(name: "Georgia", size: 13, weight: .bold, italic: true), range: NSMakeRange(0, 6))
+    let format = backend.records[handle]?.textRangeFormats.last
+    expect(format?.font?.italic == true, "Italic font did not reach the native formatting.")
+    expect(format?.font?.weight == .bold, "Bold-italic font lost its weight.")
+}
+
+func testMutableAttributedStringRunsAndEnumeration() {
+    let text = NSMutableAttributedString(string: "Hello World")
+    expect(text.length == 11, "Length did not count UTF-16 units.")
+    expect(text.string == "Hello World", "String contents were lost.")
+
+    // Attributes apply per range and report effective ranges.
+    let boldFont = NSFont.boldSystemFont(ofSize: 14)
+    text.addAttribute(.font, value: boldFont, range: NSMakeRange(0, 5))
+    text.addAttribute(.foregroundColor, value: NSColor.red, range: NSMakeRange(6, 5))
+    text.addAttribute(.underlineStyle, value: NSUnderlineStyle.single.rawValue, range: NSMakeRange(0, 11))
+
+    var effective = NSRange(location: 0, length: 0)
+    withUnsafeMutablePointer(to: &effective) { pointer in
+        expect((text.attribute(.font, at: 2, effectiveRange: pointer) as? NSFont) == boldFont, "Font attribute did not read back.")
+    }
+    expect(effective == NSMakeRange(0, 5), "Effective range did not match the font run.")
+    expect(text.attribute(.font, at: 8, effectiveRange: nil) == nil, "Font leaked past its range.")
+    expect((text.attribute(.underlineStyle, at: 8, effectiveRange: nil) as? Int) == 1, "Underline did not cover the whole string.")
+
+    // Enumeration walks the distinct runs in order.
+    var enumeratedRanges: [NSRange] = []
+    text.enumerateAttributes(in: NSMakeRange(0, text.length)) { _, range, _ in
+        enumeratedRanges.append(range)
+    }
+    expect(enumeratedRanges == [NSMakeRange(0, 5), NSMakeRange(5, 1), NSMakeRange(6, 5)], "Enumeration did not yield the attribute runs.")
+
+    // setAttributes replaces; removeAttribute deletes one key.
+    text.setAttributes([.foregroundColor: NSColor.blue], range: NSMakeRange(0, 5))
+    expect(text.attribute(.font, at: 2, effectiveRange: nil) == nil, "setAttributes kept a replaced attribute.")
+    text.removeAttribute(.foregroundColor, range: NSMakeRange(0, 5))
+    expect(text.attribute(.foregroundColor, at: 2, effectiveRange: nil) == nil, "removeAttribute left the attribute behind.")
+
+    // Replacement text inherits the attributes at the replaced location.
+    let styled = NSMutableAttributedString(string: "abc", attributes: [.foregroundColor: NSColor.green])
+    styled.replaceCharacters(in: NSMakeRange(1, 1), with: "XY")
+    expect(styled.string == "aXYc", "replaceCharacters mangled the text.")
+    expect((styled.attribute(.foregroundColor, at: 1, effectiveRange: nil) as? NSColor) == .green, "Replacement did not inherit attributes.")
+
+    // Append, insert, and delete keep runs consistent.
+    styled.append(NSAttributedString(string: "!", attributes: [.foregroundColor: NSColor.red]))
+    expect(styled.string == "aXYc!", "append lost text.")
+    expect((styled.attribute(.foregroundColor, at: 4, effectiveRange: nil) as? NSColor) == .red, "append lost its attributes.")
+    styled.insert(NSAttributedString(string: ">>"), at: 0)
+    expect(styled.string == ">>aXYc!", "insert lost text.")
+    styled.deleteCharacters(in: NSMakeRange(0, 2))
+    expect(styled.string == "aXYc!", "deleteCharacters removed the wrong range.")
+
+    // attributedSubstring carries the overlapping runs.
+    let substring = styled.attributedSubstring(from: NSMakeRange(3, 2))
+    expect(substring.string == "c!", "attributedSubstring took the wrong text.")
+    expect((substring.attribute(.foregroundColor, at: 1, effectiveRange: nil) as? NSColor) == .red, "attributedSubstring dropped run attributes.")
+}
+
+func testTextStorageAppliesRunsToTextView() {
+    let backend = InMemoryNativeControlBackend()
+    let textView = NSTextView(frame: NSMakeRect(0, 0, 300, 100))
+    textView.isRichText = true
+    textView.string = "plain"
+    let handle = textView.realizeNativePeer(in: backend, parent: nil)
+
+    guard let storage = textView.textStorage else {
+        expect(false, "Text view did not vend a text storage.")
+        return
+    }
+    expect(storage.string == "plain", "Text storage was not seeded with the view's text.")
+
+    // A batched edit applies once: new text plus its attribute runs.
+    storage.beginEditing()
+    storage.replaceCharacters(in: NSMakeRange(0, storage.length), with: "Styled note")
+    storage.addAttribute(.font, value: NSFont(name: "Georgia", size: 16, weight: .bold), range: NSMakeRange(0, 6))
+    storage.addAttribute(.underlineStyle, value: NSUnderlineStyle.single.rawValue, range: NSMakeRange(7, 4))
+    storage.endEditing()
+
+    expect(textView.string == "Styled note", "Storage edits did not update the view text.")
+    let formats = backend.records[handle]?.textRangeFormats ?? []
+    expect(formats.contains { $0.font?.fontName == "Georgia" && $0.location == 0 && $0.length == 6 }, "Font run did not reach the native peer.")
+    expect(formats.contains { $0.underline == true && $0.location == 7 && $0.length == 4 }, "Underline run did not reach the native peer.")
+
+    // Native edits sync the storage's plain text.
+    backend.textChangeActions[handle]?("typed text")
+    expect(storage.string == "typed text", "Native editing did not sync the text storage.")
+}
+
+func testRTFWriterEmitsTablesRunsAndEscapes() {
+    let text = NSMutableAttributedString(string: "Bold red — ok")
+    text.addAttribute(.font, value: NSFont(name: "Georgia", size: 14, weight: .bold), range: NSMakeRange(0, 4))
+    text.addAttribute(.foregroundColor, value: NSColor.red, range: NSMakeRange(5, 3))
+    text.addAttribute(.strikethroughStyle, value: NSUnderlineStyle.single.rawValue, range: NSMakeRange(11, 2))
+
+    guard let data = text.rtf(from: NSMakeRange(0, text.length)) else {
+        expect(false, "RTF writer returned nil.")
+        return
+    }
+    let rtf = String(decoding: Array(data), as: UTF8.self)
+
+    expect(rtf.hasPrefix("{\\rtf1\\ansi\\deff0"), "RTF header is missing.")
+    expect(rtf.contains("Georgia;"), "Font table is missing the run font.")
+    expect(rtf.contains("\\red255\\green0\\blue0;"), "Color table is missing the run color.")
+    expect(rtf.contains("\\b Bold"), "Bold run controls are missing.")
+    expect(rtf.contains("\\cf1 red"), "Color run controls are missing.")
+    expect(rtf.contains("\\strike ok"), "Strikethrough run controls are missing.")
+    expect(rtf.contains("\\u8212?"), "Non-ASCII characters were not escaped.")
+    expect(rtf.hasSuffix("}"), "RTF is not closed.")
+
+    // A rich text view copy stages RTF alongside the plain string.
+    let backend = InMemoryNativeControlBackend()
+    let previousBackend = NSApplication.shared.nativeBackend
+    NSApplication.shared.nativeBackend = backend
+    defer {
+        NSApplication.shared.nativeBackend = previousBackend
+    }
+
+    let textView = NSTextView(frame: NSMakeRect(0, 0, 200, 80))
+    textView.isRichText = true
+    _ = textView.realizeNativePeer(in: backend, parent: nil)
+    textView.textStorage?.replaceCharacters(in: NSMakeRange(0, 0), with: "Rich copy")
+    textView.textStorage?.addAttribute(.font, value: NSFont.boldSystemFont(ofSize: 13), range: NSMakeRange(0, 4))
+    textView.selectedRange = NSMakeRange(0, 9)
+    textView.copy(nil)
+
+    expect(NSPasteboard.general.string(forType: .string) == "Rich copy", "Rich copy did not stage the plain string.")
+    expect(NSPasteboard.general.data(forType: .rtf) != nil, "Rich copy did not stage RTF data.")
+}
+
 func testPasteboardAndTextViewClipboardActions() {
     let backend = InMemoryNativeControlBackend()
     let previousBackend = NSApplication.shared.nativeBackend
@@ -4970,6 +5270,24 @@ func testPasteboardAndTextViewClipboardActions() {
     // declareTypes clears, matching the old AppKit contract.
     pasteboard.declareTypes([.string], owner: nil)
     expect(pasteboard.string(forType: .string) == nil, "declareTypes did not clear the pasteboard.")
+
+    // One logical copy can stage several representations together.
+    pasteboard.clearContents()
+    let rtfBytes = Data(Array("{\\rtf1 Hi}".utf8))
+    let pngBytes = Data([0x89, 0x50, 0x4e, 0x47])
+    expect(pasteboard.setString("Hi", forType: .string), "Staged string write was rejected.")
+    expect(pasteboard.setData(rtfBytes, forType: .rtf), "RTF data write was rejected.")
+    expect(pasteboard.setData(pngBytes, forType: .png), "PNG data write was rejected.")
+    expect(pasteboard.string(forType: .string) == "Hi", "Staged string was lost by later data writes.")
+    expect(pasteboard.data(forType: .rtf) == rtfBytes, "RTF data did not read back.")
+    expect(pasteboard.data(forType: .png) == pngBytes, "PNG data did not read back.")
+    expect(pasteboard.types == [.string, .rtf, .png], "Combined representations were not all reported.")
+    expect(pasteboard.data(forType: .string) == nil, "data(forType:) accepted the plain-text type.")
+
+    // Clearing drops every staged representation.
+    pasteboard.clearContents()
+    expect(pasteboard.data(forType: .rtf) == nil, "clearContents left RTF data behind.")
+    expect(pasteboard.types == nil, "clearContents left types behind.")
 
     // Text view copy/cut/paste run over the general pasteboard.
     let textView = NSTextView(frame: NSMakeRect(0, 0, 300, 100))
@@ -5683,6 +6001,13 @@ testTextViewSelectionInsertionAndDelegate()
 testDocumentChangeCountAndOverridableDefaults()
 testDocumentSavePanelFlowWritesAndReadsBack()
 testDocumentControllerTracksDocumentsRecentsAndOpen()
+testCommonControlDepthWiresToBackend()
+testSegmentedControlKeyboardSelection()
+testWindowSizeLimitsAndPopoverDismiss()
+testFontTraitsWeightsAndDescriptor()
+testMutableAttributedStringRunsAndEnumeration()
+testTextStorageAppliesRunsToTextView()
+testRTFWriterEmitsTablesRunsAndEscapes()
 testPasteboardAndTextViewClipboardActions()
 testRichTextViewAppliesRangeFormatting()
 testScrollViewWheelScrollingMovesContent()

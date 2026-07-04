@@ -38,8 +38,16 @@ public final class RecordingDrawingContext: NativeDrawingContext {
         /// The requested font point size.
         public let fontSize: CGFloat
 
-        /// Whether the text was drawn bold.
-        public let bold: Bool
+        /// The requested font weight (Windows `LOGFONT` scale).
+        public let weight: Int
+
+        /// Whether the text was drawn italic.
+        public let italic: Bool
+
+        /// Whether the text was drawn bold (weight of semibold or heavier).
+        public var bold: Bool {
+            weight >= NSFont.Weight.semibold.rawValue
+        }
     }
 
     /// A recorded image command.
@@ -114,8 +122,8 @@ public final class RecordingDrawingContext: NativeDrawingContext {
     }
 
     /// Records a text command.
-    public func drawText(_ text: String, at point: NSPoint, color: NSColor, fontName: String, fontSize: CGFloat, bold: Bool) {
-        texts.append(Text(text: text, point: point, color: color, fontName: fontName, fontSize: fontSize, bold: bold))
+    public func drawText(_ text: String, at point: NSPoint, color: NSColor, fontName: String, fontSize: CGFloat, weight: Int, italic: Bool) {
+        texts.append(Text(text: text, point: point, color: color, fontName: fontName, fontSize: fontSize, weight: weight, italic: italic))
     }
 
     /// Records an image command.
@@ -299,6 +307,30 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
         /// Whether the recorded window hides while the application is inactive.
         public var hidesOnDeactivate: Bool = false
 
+        /// Recorded placeholder (cue banner) text.
+        public var placeholder: String?
+
+        /// Recorded text alignment.
+        public var textAlignment: NSTextAlignment = .natural
+
+        /// Recorded slider tick-mark count.
+        public var sliderTickMarkCount: Int = 0
+
+        /// Whether the recorded slider is vertical.
+        public var sliderIsVertical: Bool = false
+
+        /// Recorded combo-box visible item count.
+        public var comboBoxVisibleItems: Int = 0
+
+        /// Recorded progress/level bar color.
+        public var progressBarColor: NSColor?
+
+        /// Recorded minimum content size limit.
+        public var minContentSize: NSSize?
+
+        /// Recorded maximum content size limit.
+        public var maxContentSize: NSSize?
+
         /// Recorded content scale for custom-drawn views.
         public var contentScale: CGFloat = 1
 
@@ -316,6 +348,12 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
 
         /// The applied color, when any.
         public var color: NSColor?
+
+        /// The applied underline state, when any.
+        public var underline: Bool?
+
+        /// The applied strikethrough state, when any.
+        public var strikethrough: Bool?
 
         /// The formatted range start, in UTF-16 units.
         public var location: Int
@@ -426,6 +464,9 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     /// Recorded clipboard text, when any.
     public private(set) var clipboardText: String?
 
+    /// Recorded clipboard data representations by platform format name.
+    public private(set) var clipboardDataRepresentations: [String: [UInt8]] = [:]
+
     /// Number of recorded clipboard changes.
     public private(set) var clipboardChanges = 0
 
@@ -436,13 +477,30 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
 
     /// Records new clipboard text.
     public func setClipboardString(_ string: String) {
-        clipboardText = string
+        setClipboardContents(text: string, dataRepresentations: [:])
+    }
+
+    /// Records a combined clipboard update.
+    public func setClipboardContents(text: String?, dataRepresentations: [String: [UInt8]]) {
+        clipboardText = text
+        clipboardDataRepresentations = dataRepresentations
         clipboardChanges += 1
+    }
+
+    /// Reads recorded clipboard bytes for a format name.
+    public func clipboardData(forFormat formatName: String) -> [UInt8]? {
+        clipboardDataRepresentations[formatName]
+    }
+
+    /// Returns whether a recorded format is present.
+    public func clipboardHasData(forFormat formatName: String) -> Bool {
+        clipboardDataRepresentations[formatName] != nil
     }
 
     /// Clears the recorded clipboard.
     public func clearClipboard() {
         clipboardText = nil
+        clipboardDataRepresentations = [:]
         clipboardChanges += 1
     }
 
@@ -563,10 +621,12 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     }
 
     /// Records a rich-text range formatting request.
-    public func setTextRangeFormat(font: NSFont?, color: NSColor?, location: Int, length: Int, for handle: NativeHandle) {
+    public func setTextRangeFormat(font: NSFont?, color: NSColor?, underline: Bool?, strikethrough: Bool?, location: Int, length: Int, for handle: NativeHandle) {
         records[handle]?.textRangeFormats.append(TextRangeFormat(
             font: font,
             color: color,
+            underline: underline,
+            strikethrough: strikethrough,
             location: location,
             length: length
         ))
@@ -820,6 +880,65 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     /// Records the content scale applied to a custom-drawn view.
     public func setContentScale(_ scale: CGFloat, for handle: NativeHandle) {
         records[handle]?.contentScale = scale
+    }
+
+    /// Records placeholder text.
+    public func setTextPlaceholder(_ placeholder: String?, for handle: NativeHandle) {
+        records[handle]?.placeholder = placeholder
+    }
+
+    /// Records text alignment.
+    public func setTextAlignment(_ alignment: NSTextAlignment, for handle: NativeHandle) {
+        records[handle]?.textAlignment = alignment
+    }
+
+    /// Records the slider tick-mark count.
+    public func setSliderTickMarks(count: Int, for handle: NativeHandle) {
+        records[handle]?.sliderTickMarkCount = count
+    }
+
+    /// Records the slider orientation.
+    public func setSliderVertical(_ isVertical: Bool, for handle: NativeHandle) {
+        records[handle]?.sliderIsVertical = isVertical
+    }
+
+    /// Records the combo-box visible item count.
+    public func setComboBoxVisibleItems(_ count: Int, for handle: NativeHandle) {
+        records[handle]?.comboBoxVisibleItems = count
+    }
+
+    /// Records the progress/level bar color.
+    public func setProgressBarColor(_ color: NSColor?, for handle: NativeHandle) {
+        records[handle]?.progressBarColor = color
+    }
+
+    /// Records window content size limits.
+    public func setWindowContentSizeLimits(minSize: NSSize?, maxSize: NSSize?, for handle: NativeHandle) {
+        records[handle]?.minContentSize = minSize
+        records[handle]?.maxContentSize = maxSize
+    }
+
+    /// The handle currently watched for an outside-click dismiss, if any.
+    public private(set) var outsideClickDismissHandle: NativeHandle?
+
+    /// The recorded outside-click dismiss action, for tests to invoke.
+    public private(set) var outsideClickDismissAction: (() -> Void)?
+
+    /// Records the start of an outside-click dismiss watch.
+    public func beginOutsideClickDismiss(for handle: NativeHandle, onDismiss: @escaping () -> Void) {
+        outsideClickDismissHandle = handle
+        outsideClickDismissAction = onDismiss
+    }
+
+    /// Records the end of an outside-click dismiss watch.
+    public func endOutsideClickDismiss() {
+        outsideClickDismissHandle = nil
+        outsideClickDismissAction = nil
+    }
+
+    /// Simulates a click outside the watched window, firing the dismiss action.
+    public func simulateOutsideClick() {
+        outsideClickDismissAction?()
     }
 
     /// Records that a control should be raised above siblings.
@@ -1331,7 +1450,7 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     public private(set) var progressIndeterminateStates: [NativeHandle: (isIndeterminate: Bool, animating: Bool)] = [:]
 
     /// Measures text with a deterministic estimate for tests.
-    public func measureText(_ text: String, fontName: String, fontSize: CGFloat, bold: Bool) -> NSSize {
+    public func measureText(_ text: String, fontName: String, fontSize: CGFloat, weight: Int, italic: Bool) -> NSSize {
         NSMakeSize(CGFloat(text.count) * fontSize * 0.55, fontSize * 1.35)
     }
 

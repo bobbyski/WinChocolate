@@ -101,6 +101,31 @@ open class NSButton: NSControl {
         return handle
     }
 
+    /// Fires the button when a key event matches its key equivalent.
+    ///
+    /// `\r`/`\n` both match Return (the default-button convention) and
+    /// `\u{1b}` matches Escape; other equivalents compare directly against the
+    /// event characters.
+    open override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        guard !keyEquivalent.isEmpty, isEnabled, !isHidden, let characters = event.characters else {
+            return false
+        }
+
+        let matches: Bool
+        switch keyEquivalent {
+        case "\r", "\n":
+            matches = characters == "\r" || characters == "\n"
+        default:
+            matches = characters == keyEquivalent
+        }
+        guard matches else {
+            return false
+        }
+
+        performClick(nil)
+        return true
+    }
+
     /// Programmatically performs the button action.
     open func performClick(_ sender: Any?) {
         if buttonType == .switchButton {

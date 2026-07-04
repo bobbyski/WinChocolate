@@ -49,6 +49,68 @@ open class NSFontManager: NSObject {
         selectedFont ?? font
     }
 
+    /// A font trait that can be added to or removed from a font.
+    public struct FontTraitMask: OptionSet, Sendable {
+        /// Raw option value.
+        public let rawValue: UInt
+
+        /// Creates a trait mask from a raw value.
+        public init(rawValue: UInt) {
+            self.rawValue = rawValue
+        }
+
+        /// The italic trait.
+        public static let italic = FontTraitMask(rawValue: 1 << 0)
+
+        /// The bold trait.
+        public static let bold = FontTraitMask(rawValue: 1 << 1)
+
+        /// The unbold (regular-weight) trait.
+        public static let unbold = FontTraitMask(rawValue: 1 << 2)
+
+        /// The unitalic (upright) trait.
+        public static let unitalic = FontTraitMask(rawValue: 1 << 3)
+    }
+
+    /// Returns a copy of a font with a trait added or removed.
+    ///
+    /// Adding `.bold`/`.italic` sets that trait; `.unbold`/`.unitalic` clears
+    /// it, matching AppKit's toggle-by-mask conversion.
+    open func convert(_ font: NSFont, toHaveTrait trait: FontTraitMask) -> NSFont {
+        var result = font
+        if trait.contains(.bold) {
+            result = result.withWeight(.bold)
+        }
+        if trait.contains(.unbold) {
+            result = result.withWeight(.regular)
+        }
+        if trait.contains(.italic) {
+            result = result.withItalic(true)
+        }
+        if trait.contains(.unitalic) {
+            result = result.withItalic(false)
+        }
+        return result
+    }
+
+    /// Returns the traits currently set on a font.
+    open func traits(of font: NSFont) -> FontTraitMask {
+        var traits: FontTraitMask = []
+        if font.weight.isBold {
+            traits.insert(.bold)
+        }
+        if font.italic {
+            traits.insert(.italic)
+        }
+        return traits
+    }
+
+    /// Returns a font's weight on AppKit's 0-15 coarse scale.
+    open func weight(of font: NSFont) -> Int {
+        // Map the 100-900 LOGFONT scale onto AppKit's 1-14 range.
+        max(1, min(14, font.weight.rawValue / 65))
+    }
+
     /// Orders the shared floating font panel front, seeded with the selected font.
     open func orderFrontFontPanel(_ sender: Any?) {
         let panel = NSFontPanel.shared

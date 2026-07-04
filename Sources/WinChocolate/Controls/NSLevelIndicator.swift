@@ -43,14 +43,23 @@ open class NSLevelIndicator: NSControl {
             }
 
             realizedBackend?.setProgressIndicatorValue(doubleValue, for: nativeHandle)
+            updateBarColor()
         }
     }
 
-    /// Warning threshold.
-    open var warningValue: Double
+    /// Warning threshold, or 0 for none. Values at or above it turn the bar amber.
+    open var warningValue: Double {
+        didSet {
+            updateBarColor()
+        }
+    }
 
-    /// Critical threshold.
-    open var criticalValue: Double
+    /// Critical threshold, or 0 for none. Values at or above it turn the bar red.
+    open var criticalValue: Double {
+        didSet {
+            updateBarColor()
+        }
+    }
 
     /// Requested AppKit style.
     open var levelIndicatorStyle: Style
@@ -70,11 +79,29 @@ open class NSLevelIndicator: NSControl {
         self.minValue = 0
         self.maxValue = 100
         self.doubleValue = 0
-        self.warningValue = 70
-        self.criticalValue = 90
+        // AppKit defaults both thresholds to 0 (no threshold coloring).
+        self.warningValue = 0
+        self.criticalValue = 0
         self.levelIndicatorStyle = .continuousCapacity
         super.init(frame: frameRect)
         self.objectValue = doubleValue
+    }
+
+    /// Recolors the bar when the value crosses a threshold.
+    private func updateBarColor() {
+        guard let nativeHandle else {
+            return
+        }
+
+        let color: NSColor?
+        if criticalValue > minValue && doubleValue >= criticalValue {
+            color = .red
+        } else if warningValue > minValue && doubleValue >= warningValue {
+            color = NSColor(calibratedRed: 0.95, green: 0.6, blue: 0.1, alpha: 1)
+        } else {
+            color = nil
+        }
+        realizedBackend?.setProgressBarColor(color, for: nativeHandle)
     }
 
     /// Level indicators are display controls and skip normal key-view traversal.
@@ -93,6 +120,7 @@ open class NSLevelIndicator: NSControl {
         let handle = super.realizeNativePeer(in: backend, parent: parent)
         backend.setProgressIndicatorRange(minValue: minValue, maxValue: maxValue, for: handle)
         backend.setProgressIndicatorValue(doubleValue, for: handle)
+        updateBarColor()
         return handle
     }
 

@@ -46,7 +46,7 @@ internal final class Win32DrawingContext: NativeDrawingContext {
     }
 
     /// Draws a single-line text run with `TextOutW` using a transient font.
-    internal func drawText(_ text: String, at point: NSPoint, color: NSColor, fontName: String, fontSize: CGFloat, bold: Bool) {
+    internal func drawText(_ text: String, at point: NSPoint, color: NSColor, fontName: String, fontSize: CGFloat, weight: Int, italic: Bool) {
         let font = withWideString(fontName) { faceName in
             // Points convert to pixels at 96 DPI, matching setFont rendering.
             winCreateFontW(
@@ -54,8 +54,8 @@ internal final class Win32DrawingContext: NativeDrawingContext {
                 0,
                 0,
                 0,
-                bold ? 700 : 400,
-                0,
+                Int32(weight),
+                italic ? 1 : 0,
                 0,
                 0,
                 defaultCharset,

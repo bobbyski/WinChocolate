@@ -184,7 +184,7 @@ public protocol NativeDrawingContext: AnyObject {
     func strokePath(_ segments: [NativePathSegment], color: NSColor, lineWidth: CGFloat)
 
     /// Draws a single-line text run with its top-left corner at a point.
-    func drawText(_ text: String, at point: NSPoint, color: NSColor, fontName: String, fontSize: CGFloat, bold: Bool)
+    func drawText(_ text: String, at point: NSPoint, color: NSColor, fontName: String, fontSize: CGFloat, weight: Int, italic: Bool)
 
     /// Draws an image file scaled to fill a rectangle.
     func drawImage(atPath path: String, in rect: NSRect)
@@ -253,6 +253,19 @@ public protocol NativeControlBackend: AnyObject {
     /// Replaces the system clipboard contents with plain text.
     func setClipboardString(_ string: String)
 
+    /// Replaces the system clipboard with several representations at once.
+    ///
+    /// Format names are platform clipboard format identifiers (for example
+    /// `"Rich Text Format"` or `"PNG"`); the text, when present, is written
+    /// as the plain-text representation alongside them.
+    func setClipboardContents(text: String?, dataRepresentations: [String: [UInt8]])
+
+    /// Reads the bytes of a named clipboard format, when present.
+    func clipboardData(forFormat formatName: String) -> [UInt8]?
+
+    /// Returns whether a named clipboard format is currently available.
+    func clipboardHasData(forFormat formatName: String) -> Bool
+
     /// Empties the system clipboard.
     func clearClipboard()
 
@@ -296,6 +309,36 @@ public protocol NativeControlBackend: AnyObject {
 
     /// Creates a native secure text field child.
     func createSecureTextField(text: String, frame: NSRect, parent: NativeHandle?) -> NativeHandle
+
+    /// Sets the placeholder (cue banner) text shown in an empty edit field.
+    func setTextPlaceholder(_ placeholder: String?, for handle: NativeHandle)
+
+    /// Sets the horizontal text alignment of an edit field.
+    func setTextAlignment(_ alignment: NSTextAlignment, for handle: NativeHandle)
+
+    /// Sets the tick-mark count on a slider (0 clears the ticks).
+    func setSliderTickMarks(count: Int, for handle: NativeHandle)
+
+    /// Sets whether a slider is drawn vertically.
+    func setSliderVertical(_ isVertical: Bool, for handle: NativeHandle)
+
+    /// Sets how many items a combo box shows before scrolling.
+    func setComboBoxVisibleItems(_ count: Int, for handle: NativeHandle)
+
+    /// Sets the fill color of a progress/level bar (nil restores the default).
+    func setProgressBarColor(_ color: NSColor?, for handle: NativeHandle)
+
+    /// Constrains a top-level window's content size during user resizing.
+    func setWindowContentSizeLimits(minSize: NSSize?, maxSize: NSSize?, for handle: NativeHandle)
+
+    /// Starts watching for a mouse click outside a window, dismissing it.
+    ///
+    /// Used by transient popovers: a click anywhere outside the window (or its
+    /// children) fires `onDismiss`. Only one watch is active at a time.
+    func beginOutsideClickDismiss(for handle: NativeHandle, onDismiss: @escaping () -> Void)
+
+    /// Stops the active outside-click dismiss watch.
+    func endOutsideClickDismiss()
 
     /// Creates a native multiline text view child.
     ///
@@ -375,9 +418,10 @@ public protocol NativeControlBackend: AnyObject {
 
     /// Applies character formatting to a text range of a rich text view.
     ///
-    /// A `nil` font or color leaves that aspect of the range unchanged. The
-    /// user's selection is preserved across the formatting change.
-    func setTextRangeFormat(font: NSFont?, color: NSColor?, location: Int, length: Int, for handle: NativeHandle)
+    /// A `nil` font, color, underline, or strikethrough leaves that aspect of
+    /// the range unchanged; `false` explicitly clears an effect. The user's
+    /// selection is preserved across the formatting change.
+    func setTextRangeFormat(font: NSFont?, color: NSColor?, underline: Bool?, strikethrough: Bool?, location: Int, length: Int, for handle: NativeHandle)
 
     /// Updates whether a native edit control accepts keyboard editing while
     /// still allowing selection and scrolling.
@@ -602,5 +646,5 @@ public protocol NativeControlBackend: AnyObject {
     func runContextMenu(_ menu: NSMenu, atScreenPoint point: NSPoint) -> NSMenuItem?
 
     /// Measures the rendered size of a single-line text run.
-    func measureText(_ text: String, fontName: String, fontSize: CGFloat, bold: Bool) -> NSSize
+    func measureText(_ text: String, fontName: String, fontSize: CGFloat, weight: Int, italic: Bool) -> NSSize
 }

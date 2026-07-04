@@ -4,7 +4,7 @@
 /// This backend owns the first native milestone: top-level windows, a menu bar,
 /// push buttons, static text fields, and `WM_COMMAND` dispatch for actions.
 public final class Win32NativeControlBackend: NativeControlBackend {
-    nonisolated(unsafe) fileprivate static weak var activeBackend: Win32NativeControlBackend?
+    nonisolated(unsafe) static weak var activeBackend: Win32NativeControlBackend?
 
     private var isWindowClassRegistered = false
     private var isViewClassRegistered = false
@@ -62,6 +62,9 @@ public final class Win32NativeControlBackend: NativeControlBackend {
     var cachedFontFamilyNames: [String]?
     var contentScales: [UInt: CGFloat] = [:]
     var richTextHandles: Set<UInt> = []
+    var multilineTextHandles: Set<UInt> = []
+    var windowMinContentSizes: [UInt: NSSize] = [:]
+    var windowMaxContentSizes: [UInt: NSSize] = [:]
     /// Whether Msftedit.dll has been loaded to register rich-edit classes.
     nonisolated(unsafe) static var isRichEditLibraryLoaded = false
     private var defaultControlBackgroundBrush: HBRUSH?

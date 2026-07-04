@@ -270,6 +270,7 @@ extension Win32NativeControlBackend {
         // classic 96 DPI baseline, matching how the backend realizes fonts.
         logFont.lfHeight = -Int32((seed.pointSize * 96 / 72).rounded())
         logFont.lfWeight = Int32(seed.weight.rawValue)
+        logFont.lfItalic = seed.italic ? 1 : 0
         withUnsafeMutableBytes(of: &logFont.lfFaceName) { raw in
             let faceName = raw.bindMemory(to: UInt16.self)
             for (index, unit) in seed.fontName.utf16.prefix(31).enumerated() {
@@ -304,8 +305,8 @@ extension Win32NativeControlBackend {
         }
 
         let pointSize = CGFloat(abs(logFont.lfHeight)) * 72 / 96
-        let weight: NSFont.Weight = logFont.lfWeight >= 600 ? .bold : .regular
-        return NSFont(name: name, size: pointSize > 0 ? pointSize : seed.pointSize, weight: weight)
+        let weight = NSFont.Weight.closest(toLogFontWeight: Int(logFont.lfWeight))
+        return NSFont(name: name, size: pointSize > 0 ? pointSize : seed.pointSize, weight: weight, italic: logFont.lfItalic != 0)
     }
 
     private func messageBoxFlags(for alert: NSAlert) -> UINT {

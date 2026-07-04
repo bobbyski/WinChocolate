@@ -24,6 +24,9 @@ extension Win32NativeControlBackend {
             commandIdentifier: nextCommandID(),
             style: wsChild | wsVisible | wsTabStop | bsAutoCheckBox
         )
+        // Checkboxes paint their label area via WM_CTLCOLORSTATIC; making them
+        // transparent shows the window color instead of a control-face box.
+        transparentBackgroundHandles.insert(handle.rawValue)
         subclassControlForTabKey(handle)
         return handle
     }
@@ -38,6 +41,7 @@ extension Win32NativeControlBackend {
             commandIdentifier: nextCommandID(),
             style: wsChild | wsVisible | wsTabStop | bsAutoRadioButton
         )
+        transparentBackgroundHandles.insert(handle.rawValue)
         subclassControlForTabKey(handle)
         return handle
     }

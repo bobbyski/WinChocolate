@@ -103,7 +103,7 @@ open class NSFontPanel: NSPanel {
         content.addSubview(typefaceLabel)
 
         let typeface = NSPopUpButton(frame: NSMakeRect(208, 32, 96, 24), pullsDown: false)
-        typeface.addItems(withTitles: ["Regular", "Bold"])
+        typeface.addItems(withTitles: ["Regular", "Bold", "Italic", "Bold Italic"])
         typeface.onAction = { [weak self] _ in
             self?.selectionControlsDidChange()
         }
@@ -161,8 +161,11 @@ open class NSFontPanel: NSPanel {
             pointSize = CGFloat(parsed)
         }
 
-        let weight: NSFont.Weight = typefacePopUp?.indexOfSelectedItem == 1 ? .bold : .regular
-        return NSFont(name: familyName, size: pointSize, weight: weight)
+        // Typeface popup order: Regular, Bold, Italic, Bold Italic.
+        let typefaceIndex = typefacePopUp?.indexOfSelectedItem ?? 0
+        let weight: NSFont.Weight = (typefaceIndex == 1 || typefaceIndex == 3) ? .bold : .regular
+        let italic = typefaceIndex >= 2
+        return NSFont(name: familyName, size: pointSize, weight: weight, italic: italic)
     }
 
     /// Moves the panel controls to reflect a font without emitting changes.
@@ -176,7 +179,7 @@ open class NSFontPanel: NSPanel {
             familyTable?.selectRowIndexes([row], byExtendingSelection: false)
             familyTable?.scrollRowToVisible(row)
         }
-        typefacePopUp?.indexOfSelectedItem = font.weight == .bold ? 1 : 0
+        typefacePopUp?.indexOfSelectedItem = (font.weight.isBold ? 1 : 0) + (font.italic ? 2 : 0)
         sizeComboBox?.stringValue = "\(Int(font.pointSize))"
         previewField?.font = font
     }

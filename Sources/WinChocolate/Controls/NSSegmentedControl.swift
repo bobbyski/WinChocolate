@@ -75,6 +75,49 @@ open class NSSegmentedControl: NSControl {
         rebuildSegmentButtons()
     }
 
+    /// Segmented controls take focus so arrow keys can move the selection.
+    open override var acceptsFirstResponder: Bool {
+        trackingMode != .momentary
+    }
+
+    /// Moves the selection with the arrow keys in selection tracking modes.
+    open override func keyDown(with event: NSEvent) {
+        guard trackingMode != .momentary, let keyCode = event.keyCode else {
+            super.keyDown(with: event)
+            return
+        }
+
+        switch keyCode {
+        case 0x25: // Left arrow
+            moveSelection(by: -1)
+        case 0x27: // Right arrow
+            moveSelection(by: 1)
+        default:
+            super.keyDown(with: event)
+        }
+    }
+
+    /// Moves the selection to the next enabled segment in a direction.
+    private func moveSelection(by delta: Int) {
+        guard !segments.isEmpty else {
+            return
+        }
+
+        let start = selectedSegment < 0 ? (delta > 0 ? -1 : segments.count) : selectedSegment
+        var index = start
+        for _ in 0..<segments.count {
+            index += delta
+            guard segments.indices.contains(index) else {
+                return
+            }
+            if segments[index].isEnabled {
+                selectedSegment = index
+                sendAction()
+                return
+            }
+        }
+    }
+
     /// Creates the native container peer.
     open override func createNativePeer(in backend: NativeControlBackend, parent: NativeHandle?) -> NativeHandle {
         backend.createView(frame: frame, parent: parent)
