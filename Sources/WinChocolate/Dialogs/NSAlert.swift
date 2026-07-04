@@ -1,3 +1,17 @@
+/// The methods an alert delegate can implement.
+public protocol NSAlertDelegate: AnyObject {
+    /// Called when the user clicks the alert's help button; return `true` if
+    /// the help request was handled.
+    func alertShowHelp(_ alert: NSAlert) -> Bool
+}
+
+extension NSAlertDelegate {
+    /// Default: help was not handled.
+    public func alertShowHelp(_ alert: NSAlert) -> Bool {
+        false
+    }
+}
+
 /// A modal alert dialog.
 ///
 /// `NSAlert` mirrors AppKit's common alert workflow: configure message text,
@@ -31,6 +45,21 @@ open class NSAlert: NSObject {
 
     /// Whether the alert shows a suppression checkbox.
     open var showsSuppressionButton: Bool = false
+
+    /// Whether the alert shows a help button.
+    open var showsHelp: Bool = false
+
+    /// The help anchor consulted when the help button is clicked.
+    open var helpAnchor: String?
+
+    /// The alert delegate, consulted for help-button clicks.
+    open weak var delegate: NSAlertDelegate?
+
+    /// A fallback help handler used when no delegate handles the help button.
+    open var winHelpButtonAction: (() -> Void)?
+
+    /// A custom icon shown instead of the style badge.
+    open var icon: NSImage?
 
     /// A custom view displayed between the informative text and the buttons.
     ///
@@ -78,7 +107,7 @@ open class NSAlert: NSObject {
         let firstResponder = keyWindow?.firstResponder
 
         let response: NSApplication.ModalResponse
-        if buttonTitles.isEmpty && !showsSuppressionButton && accessoryView == nil {
+        if buttonTitles.isEmpty && !showsSuppressionButton && accessoryView == nil && !showsHelp && icon == nil {
             response = application.nativeBackend.runAlert(self)
         } else {
             response = runComposedPanel(in: application)
@@ -103,7 +132,7 @@ open class NSAlert: NSObject {
     open func beginSheetModal(for window: NSWindow, completionHandler handler: ((NSApplication.ModalResponse) -> Void)? = nil) {
         let application = NSApplication.shared
         let response: NSApplication.ModalResponse
-        if buttonTitles.isEmpty && !showsSuppressionButton && accessoryView == nil {
+        if buttonTitles.isEmpty && !showsSuppressionButton && accessoryView == nil && !showsHelp && icon == nil {
             response = application.nativeBackend.runAlert(self)
         } else {
             response = runComposedPanel(in: application, attachedTo: window)
@@ -123,7 +152,7 @@ open class NSAlert: NSObject {
         let content = NSView(frame: NSMakeRect(0, 0, width, 200))
         content.backgroundColor = .windowBackgroundColor
 
-        let iconView = AlertIconView(style: alertStyle, frame: NSMakeRect(24, 20, 40, 40))
+        let iconView = AlertIconView(style: alertStyle, icon: icon, frame: NSMakeRect(24, 20, 40, 40))
         content.addSubview(iconView)
 
         let messageLabel = NSTextField(string: messageText, frame: NSMakeRect(textLeft, y, width - textLeft - margin, 24))
@@ -168,6 +197,21 @@ open class NSAlert: NSObject {
             buttonRight -= buttonWidth + 8
         }
 
+        // The help button sits at the bottom-left and does not dismiss the
+        // alert, matching AppKit's round "?" help affordance.
+        if showsHelp {
+            let helpButton = NSButton(title: "?", frame: NSMakeRect(margin, y + 8, 28, 28))
+            helpButton.onAction = { [weak self] _ in
+                guard let self else {
+                    return
+                }
+                if self.delegate?.alertShowHelp(self) != true {
+                    self.winHelpButtonAction?()
+                }
+            }
+            content.addSubview(helpButton)
+        }
+
         let contentHeight = y + 52
         content.frame = NSMakeRect(0, 0, width, contentHeight)
         var panelOrigin = NSMakePoint(360, 280)
@@ -198,15 +242,23 @@ open class NSAlert: NSObject {
 /// Draws the alert-style badge shown at the left of composed alert panels.
 private final class AlertIconView: NSView {
     private let style: NSAlert.Style
+    private let icon: NSImage?
 
-    init(style: NSAlert.Style, frame frameRect: NSRect) {
+    init(style: NSAlert.Style, icon: NSImage?, frame frameRect: NSRect) {
         self.style = style
+        self.icon = icon
         super.init(frame: frameRect)
     }
 
     override func draw(_ dirtyRect: NSRect) {
         let width = frame.size.width
         let height = frame.size.height
+
+        // A custom icon replaces the style badge entirely.
+        if let icon {
+            icon.draw(in: NSMakeRect(0, 0, width, height))
+            return
+        }
 
         let glyph: String
         switch style {

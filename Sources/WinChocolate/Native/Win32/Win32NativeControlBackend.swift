@@ -13,6 +13,7 @@ public final class Win32NativeControlBackend: NativeControlBackend {
     var mainMenuWindowHandles: Set<NativeHandle> = []
     var controlActions: [UInt: () -> Void] = [:]
     var textChangeActions: [UInt: (String) -> Void] = [:]
+    var focusChangeActions: [UInt: (Bool) -> Void] = [:]
     var mouseDownActions: [UInt: (NSEvent) -> Void] = [:]
     var mouseUpActions: [UInt: (NSEvent) -> Void] = [:]
     var mouseMovedActions: [UInt: (NSEvent) -> Void] = [:]

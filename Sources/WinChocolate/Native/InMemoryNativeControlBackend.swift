@@ -1282,6 +1282,19 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
         textChangeActions[handle] = action
     }
 
+    /// Registered focus-change actions by handle.
+    public private(set) var focusChangeActions: [NativeHandle: (Bool) -> Void] = [:]
+
+    /// Records a focus-change action.
+    public func registerFocusChangeAction(for handle: NativeHandle, action: @escaping (Bool) -> Void) {
+        focusChangeActions[handle] = action
+    }
+
+    /// Simulates a native focus change for tests.
+    public func simulateFocusChange(gained: Bool, for handle: NativeHandle) {
+        focusChangeActions[handle]?(gained)
+    }
+
     /// Records a mouse-down action.
     public func registerMouseDownAction(for handle: NativeHandle, action: @escaping (NSEvent) -> Void) {
         mouseDownActions[handle] = action

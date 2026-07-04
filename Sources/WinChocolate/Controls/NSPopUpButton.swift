@@ -4,7 +4,12 @@
 /// workflow while keeping native Windows selection messages behind the backend.
 open class NSPopUpButton: NSControl {
     private var titles: [String]
+    private var tags: [Int] = []
     private var isUpdatingSelectionFromNative = false
+
+    /// Whether the button acts as a pull-down menu (fixed title) rather than a
+    /// pop-up that shows the selected item.
+    open private(set) var pullsDown: Bool = false
 
     /// The selected item index, or `-1` when there is no selection.
     open var indexOfSelectedItem: Int {
@@ -42,6 +47,7 @@ open class NSPopUpButton: NSControl {
         self.titles = []
         self.indexOfSelectedItem = -1
         super.init(frame: buttonFrame)
+        self.pullsDown = flag
     }
 
     /// All item titles in display order.
@@ -62,6 +68,7 @@ open class NSPopUpButton: NSControl {
     /// Adds one item title.
     open func addItem(withTitle title: String) {
         titles.append(title)
+        tags.append(0)
         if indexOfSelectedItem < 0 {
             indexOfSelectedItem = 0
         }
@@ -71,6 +78,7 @@ open class NSPopUpButton: NSControl {
     /// Adds multiple item titles.
     open func addItems(withTitles titles: [String]) {
         self.titles.append(contentsOf: titles)
+        self.tags.append(contentsOf: Array(repeating: 0, count: titles.count))
         if indexOfSelectedItem < 0 && !self.titles.isEmpty {
             indexOfSelectedItem = 0
         }
@@ -80,8 +88,45 @@ open class NSPopUpButton: NSControl {
     /// Removes all items.
     open func removeAllItems() {
         titles.removeAll()
+        tags.removeAll()
         indexOfSelectedItem = -1
         syncItemsToNative()
+    }
+
+    /// Sets the tag for an item at an index.
+    open func setTag(_ tag: Int, forItemAt index: Int) {
+        guard tags.indices.contains(index) else {
+            return
+        }
+
+        tags[index] = tag
+    }
+
+    /// The tag of the item at an index, or 0 when absent.
+    open func tag(atIndex index: Int) -> Int {
+        tags.indices.contains(index) ? tags[index] : 0
+    }
+
+    /// The tag of the selected item, or 0 when nothing is selected.
+    open func selectedTag() -> Int {
+        tags.indices.contains(indexOfSelectedItem) ? tags[indexOfSelectedItem] : 0
+    }
+
+    /// The index of the first item with a tag, or -1 when absent.
+    open func indexOfItem(withTag tag: Int) -> Int {
+        tags.firstIndex(of: tag) ?? -1
+    }
+
+    /// Selects the first item with a tag, returning whether one was found.
+    @discardableResult
+    open func selectItem(withTag tag: Int) -> Bool {
+        let index = indexOfItem(withTag: tag)
+        guard index >= 0 else {
+            return false
+        }
+
+        selectItem(at: index)
+        return true
     }
 
     /// Removes an item at an index.
@@ -91,6 +136,9 @@ open class NSPopUpButton: NSControl {
         }
 
         titles.remove(at: index)
+        if tags.indices.contains(index) {
+            tags.remove(at: index)
+        }
         if titles.isEmpty {
             indexOfSelectedItem = -1
         } else if indexOfSelectedItem >= titles.count {

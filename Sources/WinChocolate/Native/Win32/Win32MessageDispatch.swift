@@ -609,6 +609,11 @@ extension Win32NativeControlBackend {
         case wmGetDlgCode:
             let original = callOriginalControlProcedure(hwnd: hwnd, message: message, wParam: wParam, lParam: lParam)
             return original | dlgcWantTab
+        case wmSetFocus, wmKillFocus:
+            if let hwnd, let action = focusChangeActions[actionHandle(from: hwnd).rawValue] {
+                action(message == wmSetFocus)
+            }
+            return nil
         case wmKeyDown, wmSysKeyDown:
             // Menu key equivalents fire even when a native control has
             // focus, matching AppKit's Cmd-key ordering: the main menu sees

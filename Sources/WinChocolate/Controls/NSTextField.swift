@@ -13,11 +13,45 @@ public enum NSTextAlignment: Sendable {
     case natural
 }
 
+/// The methods a text field delegate uses to observe editing.
+public protocol NSTextFieldDelegate: AnyObject {
+    /// Tells the delegate that editing began in the control (focus gained).
+    func controlTextDidBeginEditing(_ obj: NSNotification)
+
+    /// Tells the delegate that the control's text changed.
+    func controlTextDidChange(_ obj: NSNotification)
+
+    /// Tells the delegate that editing ended in the control (focus lost).
+    func controlTextDidEndEditing(_ obj: NSNotification)
+}
+
+extension NSTextFieldDelegate {
+    /// Default no-op so delegates only implement the callbacks they need.
+    public func controlTextDidBeginEditing(_ obj: NSNotification) {}
+
+    /// Default no-op so delegates only implement the callbacks they need.
+    public func controlTextDidChange(_ obj: NSNotification) {}
+
+    /// Default no-op so delegates only implement the callbacks they need.
+    public func controlTextDidEndEditing(_ obj: NSNotification) {}
+}
+
 /// A single-line text entry or label control.
 ///
 /// `NSTextField` maps to a native Windows edit/static control depending on later
 /// style support. This initial API preserves AppKit's `stringValue` property.
 open class NSTextField: NSControl {
+    /// Notification names posted by control text editing, matching AppKit.
+    public static let textDidBeginEditingNotification = "NSControlTextDidBeginEditingNotification"
+
+    /// Posted when the control's text changes during editing.
+    public static let textDidChangeNotification = "NSControlTextDidChangeNotification"
+
+    /// Posted when editing ends in the control.
+    public static let textDidEndEditingNotification = "NSControlTextDidEndEditingNotification"
+
+    /// The delegate notified about editing begin/change/end.
+    open weak var delegate: NSTextFieldDelegate?
     private var isUpdatingFromNative = false
 
     /// The text field's current string value.
@@ -169,6 +203,21 @@ open class NSTextField: NSControl {
             _ = self.window?.makeFirstResponder(self)
             self.updateStringValueFromNative(text)
         }
+        // Editable fields report begin/end editing on focus change so
+        // `NSTextFieldDelegate` and the AppKit editing notifications fire.
+        if isEditable {
+            backend.registerFocusChangeAction(for: handle) { [weak self] gained in
+                guard let self else {
+                    return
+                }
+
+                if gained {
+                    self.delegate?.controlTextDidBeginEditing(self.editingNotification(named: Self.textDidBeginEditingNotification))
+                } else {
+                    self.delegate?.controlTextDidEndEditing(self.editingNotification(named: Self.textDidEndEditingNotification))
+                }
+            }
+        }
         return handle
     }
 
@@ -178,6 +227,11 @@ open class NSTextField: NSControl {
         isUpdatingFromNative = false
         nativeStringValueDidChange()
         onTextChanged?(self)
+        delegate?.controlTextDidChange(editingNotification(named: Self.textDidChangeNotification))
+    }
+
+    func editingNotification(named name: String) -> NSNotification {
+        NSNotification(name: name, object: self)
     }
 
     func nativeStringValueDidChange() {}

@@ -62,6 +62,20 @@ final class DemoPageView: NSView {
     }
 }
 
+/// Adapts `NSTextFieldDelegate` begin/end editing to closures for the demo.
+final class DemoFieldDelegate: NSTextFieldDelegate {
+    var onBegin: (() -> Void)?
+    var onEnd: (() -> Void)?
+
+    func controlTextDidBeginEditing(_ obj: NSNotification) {
+        onBegin?()
+    }
+
+    func controlTextDidEndEditing(_ obj: NSNotification) {
+        onEnd?()
+    }
+}
+
 final class DemoCanvasView: NSView {
     static let palette: [NSColor] = [
         NSColor(calibratedRed: 0.86, green: 0.29, blue: 0.25, alpha: 1),
@@ -1579,6 +1593,10 @@ warningRadio.setButtonType(.radioButton)
 criticalRadio.setButtonType(.radioButton)
 infoRadio.state = .on
 alertStylePopup.addItems(withTitles: ["Info", "Warning", "Critical"])
+// Tag each style so the alert can read the choice by tag, not title.
+alertStylePopup.setTag(0, forItemAt: 0)
+alertStylePopup.setTag(1, forItemAt: 1)
+alertStylePopup.setTag(2, forItemAt: 2)
 alertStylePopup.selectItem(withTitle: "Info")
 let tableNameColumn = NSTableColumn(identifier: "name")
 let tableStatusColumn = NSTableColumn(identifier: "status")
@@ -1707,6 +1725,11 @@ editableTextField.onTextChanged = { field in
         ? "Edit field cleared"
         : "Typed: \(field.stringValue)"
 }
+// NSTextFieldDelegate begin/end editing on focus, shown in the status line.
+let editableFieldDelegate = DemoFieldDelegate()
+editableFieldDelegate.onBegin = { statusLabel.stringValue = "Began editing field" }
+editableFieldDelegate.onEnd = { statusLabel.stringValue = "Ended editing field" }
+editableTextField.delegate = editableFieldDelegate
 
 secureTextField.onTextChanged = { field in
     updateFocusDisplay()
@@ -2109,13 +2132,19 @@ alertButton.onAction = { _ in
     updateFocusDisplay()
     let alert = NSAlert()
     alert.messageText = "WinChocolate is running"
-    alert.informativeText = "This is a native modal NSAlert backed by MessageBoxW."
-    if alertStylePopup.titleOfSelectedItem == "Warning" {
+    alert.informativeText = "This composed NSAlert shows a help button; click ? for help."
+    // Read the style from the popup's tag rather than its title.
+    switch alertStylePopup.selectedTag() {
+    case 1:
         alert.alertStyle = .warning
-    } else if alertStylePopup.titleOfSelectedItem == "Critical" {
+    case 2:
         alert.alertStyle = .critical
-    } else {
+    default:
         alert.alertStyle = .informational
+    }
+    alert.showsHelp = true
+    alert.winHelpButtonAction = {
+        statusLabel.stringValue = "Alert help requested"
     }
     alert.addButton(withTitle: "OK")
     _ = alert.runModal()

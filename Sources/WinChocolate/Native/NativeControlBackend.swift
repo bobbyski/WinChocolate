@@ -559,6 +559,10 @@ public protocol NativeControlBackend: AnyObject {
     /// Registers the action to perform when native text changes.
     func registerTextChangeAction(for handle: NativeHandle, action: @escaping (String) -> Void)
 
+    /// Registers the action to perform when a control gains (`true`) or loses
+    /// (`false`) native keyboard focus.
+    func registerFocusChangeAction(for handle: NativeHandle, action: @escaping (Bool) -> Void)
+
     /// Registers the action to perform when a native view receives a mouse-down event.
     func registerMouseDownAction(for handle: NativeHandle, action: @escaping (NSEvent) -> Void)
 

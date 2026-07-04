@@ -5,6 +5,11 @@ extension Win32NativeControlBackend {
         controlActions[handle.rawValue] = action
     }
 
+    /// Registers the action to perform when a native control gains or loses focus.
+    public func registerFocusChangeAction(for handle: NativeHandle, action: @escaping (Bool) -> Void) {
+        focusChangeActions[handle.rawValue] = action
+    }
+
     /// Registers the action to perform when a native view receives a mouse-down event.
     public func registerMouseDownAction(for handle: NativeHandle, action: @escaping (NSEvent) -> Void) {
         mouseDownActions[handle.rawValue] = action

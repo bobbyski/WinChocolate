@@ -4946,6 +4946,108 @@ final class FontChangeRecordingView: NSView {
     }
 }
 
+final class RecordingTextFieldDelegate: NSTextFieldDelegate {
+    var began = 0
+    var changed = 0
+    var ended = 0
+    var lastChangedText: String?
+
+    func controlTextDidBeginEditing(_ obj: NSNotification) {
+        began += 1
+    }
+
+    func controlTextDidChange(_ obj: NSNotification) {
+        changed += 1
+        lastChangedText = (obj.object as? NSTextField)?.stringValue
+    }
+
+    func controlTextDidEndEditing(_ obj: NSNotification) {
+        ended += 1
+    }
+}
+
+func testTextFieldDelegateEditingCallbacks() {
+    let backend = InMemoryNativeControlBackend()
+    let field = NSTextField(string: "", frame: NSMakeRect(0, 0, 160, 24))
+    field.isEditable = true
+    let delegate = RecordingTextFieldDelegate()
+    field.delegate = delegate
+    let handle = field.realizeNativePeer(in: backend, parent: nil)
+
+    // Focus in → begin editing; native text change → change; focus out → end.
+    backend.simulateFocusChange(gained: true, for: handle)
+    expect(delegate.began == 1, "controlTextDidBeginEditing did not fire on focus.")
+
+    backend.textChangeActions[handle]?("Choc")
+    expect(delegate.changed == 1, "controlTextDidChange did not fire on a native edit.")
+    expect(delegate.lastChangedText == "Choc", "Change notification carried the wrong text.")
+    expect(field.stringValue == "Choc", "Text field did not adopt the edited text.")
+
+    backend.simulateFocusChange(gained: false, for: handle)
+    expect(delegate.ended == 1, "controlTextDidEndEditing did not fire on focus loss.")
+
+    // A non-editable label does not register focus editing callbacks.
+    let label = NSTextField(string: "Label", frame: NSMakeRect(0, 0, 80, 20))
+    let labelDelegate = RecordingTextFieldDelegate()
+    label.delegate = labelDelegate
+    let labelHandle = label.realizeNativePeer(in: backend, parent: nil)
+    expect(backend.focusChangeActions[labelHandle] == nil, "A label registered an editing focus watch.")
+}
+
+func testPopUpButtonTagsAndPullsDown() {
+    let popUp = NSPopUpButton(frame: NSMakeRect(0, 0, 120, 24), pullsDown: true)
+    expect(popUp.pullsDown, "pullsDown flag was not retained from the initializer.")
+
+    popUp.addItems(withTitles: ["Red", "Green", "Blue"])
+    popUp.setTag(10, forItemAt: 0)
+    popUp.setTag(20, forItemAt: 1)
+    popUp.setTag(30, forItemAt: 2)
+
+    expect(popUp.tag(atIndex: 1) == 20, "Item tag did not read back.")
+    expect(popUp.indexOfItem(withTag: 30) == 2, "indexOfItem(withTag:) was wrong.")
+    expect(popUp.indexOfItem(withTag: 99) == -1, "Missing tag did not return -1.")
+
+    expect(popUp.selectItem(withTag: 20), "selectItem(withTag:) did not find the tag.")
+    expect(popUp.indexOfSelectedItem == 1, "selectItem(withTag:) selected the wrong item.")
+    expect(popUp.selectedTag() == 20, "selectedTag() did not match the selection.")
+    expect(!popUp.selectItem(withTag: 99), "selectItem(withTag:) accepted a missing tag.")
+
+    // Removing an item keeps titles and tags aligned.
+    popUp.removeItem(at: 0)
+    expect(popUp.tag(atIndex: 0) == 20, "Tags did not stay aligned with titles after removal.")
+    expect(popUp.indexOfItem(withTag: 10) == -1, "Removed item's tag lingered.")
+}
+
+func testAlertHelpAndIconConfiguration() {
+    let alert = NSAlert()
+    alert.messageText = "Delete the file?"
+    alert.showsHelp = true
+    alert.helpAnchor = "trash-help"
+    expect(alert.showsHelp, "showsHelp was not stored.")
+    expect(alert.helpAnchor == "trash-help", "helpAnchor was not stored.")
+
+    // A delegate that handles help suppresses the fallback closure.
+    final class HelpDelegate: NSAlertDelegate {
+        var asked = 0
+        func alertShowHelp(_ alert: NSAlert) -> Bool {
+            asked += 1
+            return true
+        }
+    }
+    let delegate = HelpDelegate()
+    alert.delegate = delegate
+    expect(alert.delegate?.alertShowHelp(alert) == true, "Alert delegate help routing failed.")
+    expect(delegate.asked == 1, "Help delegate was not consulted.")
+
+    // The default delegate implementation reports help unhandled.
+    final class PlainDelegate: NSAlertDelegate {}
+    expect(PlainDelegate().alertShowHelp(alert) == false, "Default alertShowHelp should be false.")
+
+    // A custom icon is retained for the composed panel.
+    alert.icon = NSImage(named: "custom")
+    expect(alert.icon != nil, "Custom alert icon was not stored.")
+}
+
 func testCommonControlDepthWiresToBackend() {
     let backend = InMemoryNativeControlBackend()
 
@@ -6001,6 +6103,9 @@ testTextViewSelectionInsertionAndDelegate()
 testDocumentChangeCountAndOverridableDefaults()
 testDocumentSavePanelFlowWritesAndReadsBack()
 testDocumentControllerTracksDocumentsRecentsAndOpen()
+testTextFieldDelegateEditingCallbacks()
+testPopUpButtonTagsAndPullsDown()
+testAlertHelpAndIconConfiguration()
 testCommonControlDepthWiresToBackend()
 testSegmentedControlKeyboardSelection()
 testWindowSizeLimitsAndPopoverDismiss()

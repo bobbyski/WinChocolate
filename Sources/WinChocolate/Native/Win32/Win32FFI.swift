@@ -937,6 +937,8 @@ let swpNoZOrder: UINT = 0x0004
 let gwlStyle: Int32 = -16
 let wmActivateApp: UINT = 0x001c
 let wmMouseHWheel: UINT = 0x020e
+let wmSetFocus: UINT = 0x0007
+let wmKillFocus: UINT = 0x0008
 /// Rich edit: EM_SETCHARFORMAT (WM_USER + 68).
 let emSetCharFormat: UINT = wmUser + 68
 /// Rich edit: EM_SETEVENTMASK (WM_USER + 69).
