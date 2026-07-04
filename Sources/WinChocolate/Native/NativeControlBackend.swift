@@ -535,6 +535,14 @@ public protocol NativeControlBackend: AnyObject {
     /// Reads native date-picker value.
     func datePickerDate(for handle: NativeHandle) -> Date?
 
+    /// Sets a native date-picker display format string (nil restores the
+    /// locale default). The format follows the platform date-time format
+    /// syntax the backend understands.
+    func setDatePickerFormat(_ format: String?, for handle: NativeHandle)
+
+    /// Sets a button's image from a file path (nil clears it).
+    func setButtonImage(imagePath: String?, for handle: NativeHandle)
+
     /// Replaces native table rows.
     func setTableRows(_ rows: [[String]], selectedRow: Int, for handle: NativeHandle)
 

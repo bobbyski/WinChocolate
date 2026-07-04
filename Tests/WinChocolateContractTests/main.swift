@@ -4966,6 +4966,58 @@ final class RecordingTextFieldDelegate: NSTextFieldDelegate {
     }
 }
 
+func testDatePickerElementFormats() {
+    let backend = InMemoryNativeControlBackend()
+
+    // Date-only (the default) uses no explicit format.
+    let dateOnly = NSDatePicker(frame: NSMakeRect(0, 0, 160, 24))
+    let dateHandle = dateOnly.realizeNativePeer(in: backend, parent: nil)
+    expect(backend.records[dateHandle]?.datePickerFormat == nil, "Date-only picker set an unexpected format.")
+
+    // Time-only uses the time format.
+    let timeOnly = NSDatePicker(frame: NSMakeRect(0, 0, 160, 24))
+    timeOnly.datePickerElements = [.hourMinuteSecond]
+    let timeHandle = timeOnly.realizeNativePeer(in: backend, parent: nil)
+    expect(backend.records[timeHandle]?.datePickerFormat == "HH':'mm':'ss", "Time picker did not use the time format.")
+
+    // Both elements combine into a date-time format.
+    let both = NSDatePicker(frame: NSMakeRect(0, 0, 200, 24))
+    both.datePickerElements = [.yearMonthDay, .hourMinuteSecond]
+    let bothHandle = both.realizeNativePeer(in: backend, parent: nil)
+    expect(backend.records[bothHandle]?.datePickerFormat == "yyyy'-'MM'-'dd HH':'mm':'ss", "Date-time picker format was wrong.")
+
+    // Changing elements after realization re-applies the format.
+    both.datePickerElements = [.hourMinuteSecond]
+    expect(backend.records[bothHandle]?.datePickerFormat == "HH':'mm':'ss", "Element change did not re-apply the format.")
+}
+
+func testButtonImageAndAlternateTitle() {
+    let backend = InMemoryNativeControlBackend()
+
+    // A toggle button swaps to its alternate title in the on state.
+    let toggle = NSButton(title: "Play", frame: NSMakeRect(0, 0, 100, 28))
+    toggle.setButtonType(.switchButton)
+    toggle.alternateTitle = "Pause"
+    let toggleHandle = toggle.realizeNativePeer(in: backend, parent: nil)
+    expect(backend.records[toggleHandle]?.text == "Play", "Off-state button did not show the base title.")
+
+    toggle.state = .on
+    expect(backend.records[toggleHandle]?.text == "Pause", "On-state button did not swap to the alternate title.")
+    toggle.state = .off
+    expect(backend.records[toggleHandle]?.text == "Play", "Returning off did not restore the base title.")
+
+    // An image reaches the backend by file path.
+    let button = NSButton(title: "Icon", frame: NSMakeRect(0, 0, 80, 28))
+    button.image = NSImage(contentsOfFile: "C:/icons/star.png")
+    button.imagePosition = .imageLeft
+    let handle = button.realizeNativePeer(in: backend, parent: nil)
+    expect(backend.records[handle]?.buttonImagePath == "C:/icons/star.png", "Button image path did not reach the backend.")
+
+    // Clearing the image removes it.
+    button.image = nil
+    expect(backend.records[handle]?.buttonImagePath == nil, "Clearing the button image did not reach the backend.")
+}
+
 func testTextFieldDelegateEditingCallbacks() {
     let backend = InMemoryNativeControlBackend()
     let field = NSTextField(string: "", frame: NSMakeRect(0, 0, 160, 24))
@@ -6103,6 +6155,8 @@ testTextViewSelectionInsertionAndDelegate()
 testDocumentChangeCountAndOverridableDefaults()
 testDocumentSavePanelFlowWritesAndReadsBack()
 testDocumentControllerTracksDocumentsRecentsAndOpen()
+testDatePickerElementFormats()
+testButtonImageAndAlternateTitle()
 testTextFieldDelegateEditingCallbacks()
 testPopUpButtonTagsAndPullsDown()
 testAlertHelpAndIconConfiguration()

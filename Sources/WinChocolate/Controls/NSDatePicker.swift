@@ -51,7 +51,37 @@ open class NSDatePicker: NSControl {
     open var datePickerStyle: Style = .textFieldAndStepper
 
     /// Requested element flags.
-    open var datePickerElements: ElementFlags = [.yearMonthDay]
+    ///
+    /// Controls which fields the picker shows: a date, a time, or both. The
+    /// native picker's display format follows this.
+    open var datePickerElements: ElementFlags = [.yearMonthDay] {
+        didSet {
+            applyDatePickerFormat()
+        }
+    }
+
+    /// The native display format for the current element flags, or `nil` for
+    /// the default date display.
+    private var nativeDateFormat: String? {
+        let showsDate = datePickerElements.contains(.yearMonthDay)
+        let showsTime = datePickerElements.contains(.hourMinuteSecond)
+        switch (showsDate, showsTime) {
+        case (true, true):
+            return "yyyy'-'MM'-'dd HH':'mm':'ss"
+        case (false, true):
+            return "HH':'mm':'ss"
+        default:
+            return nil
+        }
+    }
+
+    private func applyDatePickerFormat() {
+        guard let nativeHandle else {
+            return
+        }
+
+        realizedBackend?.setDatePickerFormat(nativeDateFormat, for: nativeHandle)
+    }
 
     /// Creates a date picker with the current date.
     public override init(frame frameRect: NSRect) {
@@ -79,6 +109,9 @@ open class NSDatePicker: NSControl {
     @discardableResult
     open override func realizeNativePeer(in backend: NativeControlBackend, parent: NativeHandle?) -> NativeHandle {
         let handle = super.realizeNativePeer(in: backend, parent: parent)
+        if let format = nativeDateFormat {
+            backend.setDatePickerFormat(format, for: handle)
+        }
         backend.registerAction(for: handle) { [weak self, weak backend] in
             guard let self, let backend, let nativeHandle = self.nativeHandle else {
                 return

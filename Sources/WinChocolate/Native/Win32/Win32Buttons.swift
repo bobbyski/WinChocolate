@@ -63,6 +63,45 @@ extension Win32NativeControlBackend {
         return handle
     }
 
+    /// Sets a button's image from a file path (nil clears it).
+    ///
+    /// The bitmap is decoded like image views (BMP via `LoadImageW`, other
+    /// formats via GDI+) and attached with `BM_SETIMAGE` after switching the
+    /// button to `BS_BITMAP` so the glyph shows.
+    public func setButtonImage(imagePath: String?, for handle: NativeHandle) {
+        guard let hwnd = hwnd(from: handle) else {
+            return
+        }
+
+        if let bitmap = bitmaps.removeValue(forKey: handle.rawValue) {
+            _ = winSendMessageW(hwnd, bmSetImage, WPARAM(imageBitmap), 0)
+            _ = winDeleteObject(bitmap)
+        }
+
+        guard let imagePath, !imagePath.isEmpty else {
+            var style = winGetWindowLongPtrW(hwnd, gwlStyle)
+            style &= ~LONG_PTR(bsBitmap)
+            _ = winSetWindowLongPtrW(hwnd, gwlStyle, style)
+            invalidate(handle)
+            return
+        }
+
+        let bitmap = withWideString(imagePath) { path in
+            winLoadImageW(nil, path, imageBitmap, 0, 0, lrLoadFromFile | lrCreatedDIBSection)
+        } ?? Win32GdiPlusImageDecoder.decodeBitmap(fromFile: imagePath)?.bitmap
+
+        guard let bitmap else {
+            return
+        }
+
+        bitmaps[handle.rawValue] = bitmap
+        var style = winGetWindowLongPtrW(hwnd, gwlStyle)
+        style |= LONG_PTR(bsBitmap)
+        _ = winSetWindowLongPtrW(hwnd, gwlStyle, style)
+        _ = winSendMessageW(hwnd, bmSetImage, WPARAM(imageBitmap), LPARAM(bitPattern: bitmap))
+        invalidate(handle)
+    }
+
     /// Updates a native button check state.
     public func setButtonState(_ state: NSControl.StateValue, for handle: NativeHandle) {
         guard let hwnd = hwnd(from: handle) else {

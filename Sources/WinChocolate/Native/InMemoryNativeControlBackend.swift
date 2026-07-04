@@ -334,6 +334,12 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
         /// Recorded content scale for custom-drawn views.
         public var contentScale: CGFloat = 1
 
+        /// Recorded date-picker display format.
+        public var datePickerFormat: String?
+
+        /// Recorded button image file path.
+        public var buttonImagePath: String?
+
         /// Whether the recorded text view is rich text.
         public var isRichText: Bool = false
 
@@ -1224,6 +1230,16 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     /// Reads recorded date picker value.
     public func datePickerDate(for handle: NativeHandle) -> Date? {
         records[handle]?.datePickerDate
+    }
+
+    /// Records a date-picker display format.
+    public func setDatePickerFormat(_ format: String?, for handle: NativeHandle) {
+        records[handle]?.datePickerFormat = format
+    }
+
+    /// Records a button image file path.
+    public func setButtonImage(imagePath: String?, for handle: NativeHandle) {
+        records[handle]?.buttonImagePath = imagePath
     }
 
     /// Replaces recorded table rows.

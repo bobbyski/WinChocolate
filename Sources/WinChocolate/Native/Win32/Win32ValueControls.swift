@@ -315,6 +315,21 @@ extension Win32NativeControlBackend {
         }
     }
 
+    /// Sets a native date-picker display format string.
+    ///
+    /// A `nil` format restores the control's default date display; a format
+    /// string (for example `HH':'mm':'ss` for time) switches the fields the
+    /// picker shows without recreating it.
+    public func setDatePickerFormat(_ format: String?, for handle: NativeHandle) {
+        guard let hwnd = hwnd(from: handle) else {
+            return
+        }
+
+        withOptionalWideString(format) { formatPointer in
+            _ = winSendMessageW(hwnd, dtmSetFormatW, 0, Int(bitPattern: formatPointer))
+        }
+    }
+
     /// Reads native date-picker value.
     public func datePickerDate(for handle: NativeHandle) -> Date? {
         guard let hwnd = hwnd(from: handle) else {

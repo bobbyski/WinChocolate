@@ -1390,6 +1390,8 @@ scrollerValueLabel.textColor = .blue
 dateLabel.font = NSFont.boldSystemFont(ofSize: 12)
 datePicker.minDate = Date(timeIntervalSince1970: 1_735_689_600)
 datePicker.maxDate = Date(timeIntervalSince1970: 1_893_456_000)
+// Show both date and time fields (3.1 datePickerElements).
+datePicker.datePickerElements = [.yearMonthDay, .hourMinuteSecond]
 dateValueLabel.textColor = .blue
 dateValueLabel.stringValue = datePicker.stringValue
 pageSelector.addItems(withTitles: ["Controls", "Values", "Tables/Media", "Drawing"])

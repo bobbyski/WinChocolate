@@ -16,15 +16,66 @@ open class NSButton: NSControl {
         case radioButton
     }
 
+    /// Image position relative to the title.
+    public enum ImagePosition: Sendable {
+        /// No image.
+        case noImage
+
+        /// Image only, no title.
+        case imageOnly
+
+        /// Image to the left of the title.
+        case imageLeft
+
+        /// Image to the right of the title.
+        case imageRight
+
+        /// Image above the title.
+        case imageAbove
+
+        /// Image below the title.
+        case imageBelow
+    }
+
     /// The button title.
     open var title: String {
+        didSet {
+            syncDisplayedTitle()
+        }
+    }
+
+    /// The title shown while the button is in its alternate (on) state.
+    open var alternateTitle: String = "" {
+        didSet {
+            syncDisplayedTitle()
+        }
+    }
+
+    /// The button image, when any.
+    open var image: NSImage? {
         didSet {
             guard let nativeHandle else {
                 return
             }
 
-            realizedBackend?.setText(title, for: nativeHandle)
+            realizedBackend?.setButtonImage(imagePath: image?.filePath, for: nativeHandle)
         }
+    }
+
+    /// The image position relative to the title.
+    open var imagePosition: ImagePosition = .noImage
+
+    /// The title currently shown: the alternate title while on, else the title.
+    private var displayedTitle: String {
+        (state == .on && !alternateTitle.isEmpty) ? alternateTitle : title
+    }
+
+    private func syncDisplayedTitle() {
+        guard let nativeHandle else {
+            return
+        }
+
+        realizedBackend?.setText(displayedTitle, for: nativeHandle)
     }
 
     /// Button type.
@@ -45,15 +96,14 @@ open class NSButton: NSControl {
     /// Button state for switch-like buttons.
     open var state: StateValue = .off {
         didSet {
-            guard !isUpdatingStateFromNative else {
-                return
+            if !isUpdatingStateFromNative, let nativeHandle {
+                realizedBackend?.setButtonState(state, for: nativeHandle)
             }
-
-            guard let nativeHandle else {
-                return
+            // The alternate title swaps in on the "on" state, whether the
+            // change came from code or the native toggle.
+            if !alternateTitle.isEmpty {
+                syncDisplayedTitle()
             }
-
-            realizedBackend?.setButtonState(state, for: nativeHandle)
         }
     }
 
@@ -86,6 +136,12 @@ open class NSButton: NSControl {
     open override func realizeNativePeer(in backend: NativeControlBackend, parent: NativeHandle?) -> NativeHandle {
         let handle = super.realizeNativePeer(in: backend, parent: parent)
         backend.setButtonState(state, for: handle)
+        if let image {
+            backend.setButtonImage(imagePath: image.filePath, for: handle)
+        }
+        if !alternateTitle.isEmpty {
+            backend.setText(displayedTitle, for: handle)
+        }
         backend.registerAction(for: handle) { [weak self, weak backend] in
             guard let self else {
                 return
