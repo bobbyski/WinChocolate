@@ -53,6 +53,9 @@ open class NSWindow: NSResponder {
 
         /// Content view fills the whole frame, including under the title bar.
         public static let fullSizeContentView = StyleMask(rawValue: 1 << 5)
+
+        /// A panel that does not become key/activate when shown.
+        public static let nonactivatingPanel = StyleMask(rawValue: 1 << 6)
     }
 
     /// Whether the window shows its title text.
@@ -527,6 +530,7 @@ open class NSWindow: NSResponder {
         applySizeLimits()
         NSApplication.shared.addWindowsItem(self)
         applyTitleVisibility()
+        applyStandardButtonVisibility()
         installToolbarHost()
         layoutToolbarAndContent()
         contentView?.realizeNativePeer(in: nativeBackend, parent: handle)
@@ -561,7 +565,7 @@ open class NSWindow: NSResponder {
             return existing
         }
 
-        let button = NSButton(frame: NSMakeRect(0, 0, 14, 14))
+        let button = StandardWindowButtonProxy(frame: NSMakeRect(0, 0, 14, 14))
         switch type {
         case .closeButton:
             button.title = "Close"
@@ -574,8 +578,27 @@ open class NSWindow: NSResponder {
         case .documentIconButton:
             button.title = ""
         }
+        // Hiding a caption button (close/minimize/zoom) reflects onto the
+        // native title bar.
+        button.onVisibilityChanged = { [weak self] in
+            self?.applyStandardButtonVisibility()
+        }
         standardButtons[type] = button
         return button
+    }
+
+    /// Reflects the standard-button proxies' `isHidden` onto the native caption.
+    private func applyStandardButtonVisibility() {
+        guard let nativeHandle else {
+            return
+        }
+
+        nativeBackend.setWindowButtonsHidden(
+            closeHidden: standardButtons[.closeButton]?.isHidden ?? false,
+            minimizeHidden: standardButtons[.miniaturizeButton]?.isHidden ?? false,
+            zoomHidden: standardButtons[.zoomButton]?.isHidden ?? false,
+            for: nativeHandle
+        )
     }
 
     private func applyMovableByWindowBackground() {
@@ -809,6 +832,18 @@ open class NSWindow: NSResponder {
             current = candidate.superview
         }
         return false
+    }
+}
+
+/// A standard title-bar button proxy that notifies its window when hidden.
+final class StandardWindowButtonProxy: NSButton {
+    /// Called whenever `isHidden` changes so the window updates its caption.
+    var onVisibilityChanged: (() -> Void)?
+
+    override var isHidden: Bool {
+        didSet {
+            onVisibilityChanged?()
+        }
     }
 }
 

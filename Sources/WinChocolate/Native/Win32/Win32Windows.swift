@@ -22,7 +22,11 @@ extension Win32NativeControlBackend {
         // AppKit's contentRect describes the content area; grow the native
         // rect so the client area matches the requested size exactly.
         let style = windowStyle(from: styleMask)
-        let extendedStyle: DWORD = styleMask.contains(.utilityWindow) ? wsExToolWindow : 0
+        var extendedStyle: DWORD = styleMask.contains(.utilityWindow) ? wsExToolWindow : 0
+        if styleMask.contains(.nonactivatingPanel) {
+            // A non-activating panel takes no key focus when shown.
+            extendedStyle |= wsExNoActivate
+        }
         let outerSize = outerWindowSize(forContentSize: frame.size, style: style, hasMenu: usesMainMenu)
         let hwnd = withWideString(winChocolateWindowClassName) { className in
             withWideString(title) { windowTitle in
@@ -145,6 +149,38 @@ extension Win32NativeControlBackend {
 
         _ = winShowWindow(hwnd, swShow)
         _ = winUpdateWindow(hwnd)
+    }
+
+    /// The primary monitor's pixel frame.
+    public func primaryScreenFrame() -> NSRect {
+        NSRect(x: 0, y: 0, width: CGFloat(winGetSystemMetrics(smCxScreen)), height: CGFloat(winGetSystemMetrics(smCyScreen)))
+    }
+
+    /// Reflects hidden standard title-bar buttons onto the native caption.
+    public func setWindowButtonsHidden(closeHidden: Bool, minimizeHidden: Bool, zoomHidden: Bool, for handle: NativeHandle) {
+        guard let hwnd = hwnd(from: handle) else {
+            return
+        }
+
+        var style = winGetWindowLongPtrW(hwnd, gwlStyle)
+        if minimizeHidden {
+            style &= ~LONG_PTR(wsMinimizeBox)
+        } else {
+            style |= LONG_PTR(wsMinimizeBox)
+        }
+        if zoomHidden {
+            style &= ~LONG_PTR(wsMaximizeBox)
+        } else {
+            style |= LONG_PTR(wsMaximizeBox)
+        }
+        _ = winSetWindowLongPtrW(hwnd, gwlStyle, style)
+
+        // The close (X) can't be individually hidden on the classic caption, so
+        // disable the system-menu close command instead (grays the X).
+        if let systemMenu = winGetSystemMenu(hwnd, 0) {
+            _ = winEnableMenuItem(systemMenu, scClose, mfByCommand | (closeHidden ? mfGrayed : mfEnabled))
+        }
+        _ = winSetWindowPos(hwnd, nil, 0, 0, 0, 0, swpNoMove | swpNoSize | swpNoZOrder | swpNoActivate | swpFrameChanged)
     }
 
     /// Shows or hides a native window with a short alpha-blend fade.

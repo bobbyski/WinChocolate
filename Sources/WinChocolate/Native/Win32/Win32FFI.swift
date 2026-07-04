@@ -380,6 +380,18 @@ func winGetWindowRect(_ hwnd: HWND?, _ rect: UnsafeMutablePointer<RECT>) -> Int3
 @_silgen_name("EnableMenuItem")
 func winEnableMenuItem(_ menu: HMENU?, _ identifier: UINT, _ flags: UINT) -> Int32
 
+@_silgen_name("GetSystemMenu")
+func winGetSystemMenu(_ hwnd: HWND?, _ revert: Int32) -> HMENU?
+
+@_silgen_name("GetSystemMetrics")
+func winGetSystemMetrics(_ index: Int32) -> Int32
+
+let smCxScreen: Int32 = 0
+let smCyScreen: Int32 = 1
+
+let scClose: UINT = 0xF060
+let mfByCommand: UINT = 0x0000
+
 @_silgen_name("CheckMenuItem")
 func winCheckMenuItem(_ menu: HMENU?, _ identifier: UINT, _ flags: UINT) -> DWORD
 
@@ -941,6 +953,7 @@ let swShowNoActivate: Int32 = 4
 let gwlExStyle: Int32 = -20
 let wsExClientEdge: DWORD = 0x0000_0200
 let wsExToolWindow: DWORD = 0x0000_0080
+let wsExNoActivate: DWORD = 0x0800_0000
 let swpFrameChanged: UINT = 0x0020
 let swpNoZOrder: UINT = 0x0004
 let gwlStyle: Int32 = -16

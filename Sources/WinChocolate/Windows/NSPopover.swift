@@ -66,6 +66,9 @@ open class NSPopover: NSObject {
     /// Whether the popover is currently shown.
     open private(set) var isShown: Bool = false
 
+    /// The edge actually used after off-screen flipping.
+    public private(set) var winResolvedEdge: NSRectEdge?
+
     /// The popover delegate, notified about show/close lifecycle.
     open weak var delegate: NSPopoverDelegate?
 
@@ -89,7 +92,16 @@ open class NSPopover: NSObject {
         }
         panel.contentView = content
         let handle = panel.realizeNativePeer()
-        panel.setFrame(frame(relativeTo: positioningRect, of: positioningView, preferredEdge: preferredEdge), display: true)
+        // Flip to the opposite edge if the preferred placement would run off the
+        // screen, so the popover stays fully visible.
+        let edge = resolvedEdge(
+            preferred: preferredEdge,
+            positioningRect: positioningRect,
+            of: positioningView,
+            screenFrame: panel.nativeBackend.primaryScreenFrame()
+        )
+        winResolvedEdge = edge
+        panel.setFrame(frame(relativeTo: positioningRect, of: positioningView, preferredEdge: edge), display: true)
         if animates {
             panel.nativeBackend.fadeWindow(handle, visible: true)
         } else {
@@ -149,6 +161,29 @@ open class NSPopover: NSObject {
         newPanel.hidesOnDeactivate = behavior != .applicationDefined
         panel = newPanel
         return newPanel
+    }
+
+    /// Returns the edge to place the popover on, flipping to the opposite edge
+    /// when the preferred placement would extend past the screen.
+    private func resolvedEdge(preferred: NSRectEdge, positioningRect: NSRect, of positioningView: NSView, screenFrame: NSRect) -> NSRectEdge {
+        let rect = frame(relativeTo: positioningRect, of: positioningView, preferredEdge: preferred)
+        let opposite: NSRectEdge
+        let clipped: Bool
+        switch preferred {
+        case .maxY:
+            opposite = .minY
+            clipped = rect.origin.y + rect.size.height > screenFrame.origin.y + screenFrame.size.height
+        case .minY:
+            opposite = .maxY
+            clipped = rect.origin.y < screenFrame.origin.y
+        case .maxX:
+            opposite = .minX
+            clipped = rect.origin.x + rect.size.width > screenFrame.origin.x + screenFrame.size.width
+        case .minX:
+            opposite = .maxX
+            clipped = rect.origin.x < screenFrame.origin.x
+        }
+        return clipped ? opposite : preferred
     }
 
     private func frame(relativeTo positioningRect: NSRect, of positioningView: NSView, preferredEdge: NSRectEdge) -> NSRect {

@@ -528,6 +528,22 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
         records[handle] = record
     }
 
+    /// The screen frame returned to placement logic, settable for tests.
+    public var testScreenFrame = NSRect(x: 0, y: 0, width: 1024, height: 768)
+
+    /// Returns the (test-configurable) primary screen frame.
+    public func primaryScreenFrame() -> NSRect {
+        testScreenFrame
+    }
+
+    /// Hidden standard-button state per window, for tests.
+    public private(set) var windowButtonsHidden: [NativeHandle: (close: Bool, minimize: Bool, zoom: Bool)] = [:]
+
+    /// Records the hidden standard-button state.
+    public func setWindowButtonsHidden(closeHidden: Bool, minimizeHidden: Bool, zoomHidden: Bool, for handle: NativeHandle) {
+        windowButtonsHidden[handle] = (closeHidden, minimizeHidden, zoomHidden)
+    }
+
     /// Records a fade show/hide request and updates visibility.
     public func fadeWindow(_ handle: NativeHandle, visible: Bool) {
         fadedWindows[handle] = visible

@@ -248,6 +248,14 @@ public protocol NativeControlBackend: AnyObject {
     /// Shows or hides a native window with a fade animation.
     func fadeWindow(_ handle: NativeHandle, visible: Bool)
 
+    /// Reflects hidden standard title-bar buttons onto the native caption:
+    /// a hidden minimize/zoom button grays the matching caption box; a hidden
+    /// close button disables the system-menu close command.
+    func setWindowButtonsHidden(closeHidden: Bool, minimizeHidden: Bool, zoomHidden: Bool, for handle: NativeHandle)
+
+    /// The primary screen's pixel frame, used for on-screen placement.
+    func primaryScreenFrame() -> NSRect
+
     /// Closes a previously created native window.
     func closeWindow(_ handle: NativeHandle)
 

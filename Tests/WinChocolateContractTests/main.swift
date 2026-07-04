@@ -113,6 +113,16 @@ func testWindowStandardButtonsAndStyleFlags() {
     // fullSizeContentView is a recognized style option.
     expect(titled.styleMask.contains(.fullSizeContentView), "fullSizeContentView flag was not stored in the style mask.")
 
+    // A non-activating panel carries the style option (applies WS_EX_NOACTIVATE natively).
+    let panel = NSPanel(
+        contentRect: NSMakeRect(0, 0, 120, 80),
+        styleMask: [.titled, .nonactivatingPanel],
+        backing: .buffered,
+        defer: false,
+        nativeBackend: backend
+    )
+    expect(panel.styleMask.contains(.nonactivatingPanel), "nonactivatingPanel flag was not stored in the style mask.")
+
     // Titled windows vend proxy buttons; the same instance is returned each time.
     let close = titled.standardWindowButton(.closeButton)
     expect(close != nil, "Titled window did not vend a close-button proxy.")
@@ -132,6 +142,31 @@ func testWindowStandardButtonsAndStyleFlags() {
         nativeBackend: backend
     )
     expect(borderless.standardWindowButton(.closeButton) == nil, "Borderless window should not vend standard buttons.")
+
+    clearApplicationWindows()
+}
+
+func testWindowStandardButtonHidingReflectsToCaption() {
+    let backend = InMemoryNativeControlBackend()
+    let window = NSWindow(
+        contentRect: NSMakeRect(0, 0, 200, 120),
+        styleMask: [.titled, .closable, .miniaturizable, .resizable],
+        backing: .buffered,
+        defer: false,
+        nativeBackend: backend
+    )
+    let handle = window.realizeNativePeer()
+
+    // Realizing reflects the (all-visible) initial state.
+    expect(backend.windowButtonsHidden[handle]?.minimize == false, "Minimize should start visible.")
+
+    // Hiding a standard-button proxy reflects onto the native caption.
+    window.standardWindowButton(.miniaturizeButton)?.isHidden = true
+    expect(backend.windowButtonsHidden[handle]?.minimize == true, "Hiding the minimize proxy did not reach the caption.")
+    window.standardWindowButton(.closeButton)?.isHidden = true
+    expect(backend.windowButtonsHidden[handle]?.close == true, "Hiding the close proxy did not reach the caption.")
+    window.standardWindowButton(.miniaturizeButton)?.isHidden = false
+    expect(backend.windowButtonsHidden[handle]?.minimize == false, "Showing the minimize proxy did not restore the caption.")
 
     clearApplicationWindows()
 }
@@ -2462,6 +2497,43 @@ func testPopoverShowsClosesAndReopensFromAnchorView() {
 
     expect(popover.isShown, "Popover did not report shown state after reopening.")
     expect(panel.nativeHandle != nil, "Popover host panel did not reopen.")
+}
+
+func testPopoverFlipsWhenClipped() {
+    clearApplicationWindows()
+    let previousBackend = NSApplication.shared.nativeBackend
+    let backend = InMemoryNativeControlBackend()
+    backend.testScreenFrame = NSRect(x: 0, y: 0, width: 400, height: 300)
+    NSApplication.shared.nativeBackend = backend
+    defer {
+        NSApplication.shared.nativeBackend = previousBackend
+        clearApplicationWindows()
+    }
+
+    // Anchor near the bottom of a short screen; a `.maxY` popover would run off.
+    let window = NSWindow(contentRect: NSMakeRect(50, 250, 300, 40), styleMask: [.titled], backing: .buffered, defer: false)
+    let content = NSView(frame: NSMakeRect(0, 0, 300, 40))
+    let anchor = NSButton(title: "A", frame: NSMakeRect(10, 5, 40, 24))
+    content.addSubview(anchor)
+    window.contentView = content
+    window.makeKeyAndOrderFront(nil)
+
+    let popover = NSPopover()
+    popover.behavior = .applicationDefined
+    popover.contentSize = NSMakeSize(200, 200)
+    popover.contentViewController = NSViewController(view: NSView(frame: NSMakeRect(0, 0, 200, 200)))
+    popover.show(relativeTo: anchor.bounds, of: anchor, preferredEdge: .maxY)
+
+    // The 200-tall popover below the anchor exceeds the 300-tall screen, so it flips.
+    expect(popover.winResolvedEdge == .minY, "Popover did not flip an off-screen placement to the opposite edge.")
+
+    // A placement that fits keeps the preferred edge.
+    let popover2 = NSPopover()
+    popover2.behavior = .applicationDefined
+    popover2.contentSize = NSMakeSize(80, 40)
+    popover2.contentViewController = NSViewController(view: NSView(frame: NSMakeRect(0, 0, 80, 40)))
+    popover2.show(relativeTo: anchor.bounds, of: anchor, preferredEdge: .maxX)
+    expect(popover2.winResolvedEdge == .maxX, "Popover flipped a placement that fit on screen.")
 }
 
 func testPopoverAnimatesFadesHost() {
@@ -6705,6 +6777,7 @@ func testAlertBeginSheetModalDeliversResponse() {
 testWindowRealizationCreatesNativeHierarchy()
 testWindowTitleVisibilityBlanksCaption()
 testWindowStandardButtonsAndStyleFlags()
+testWindowStandardButtonHidingReflectsToCaption()
 testViewHierarchyMaintainsSuperviewOwnership()
 testViewInsertionReplacementTagsAndDescendants()
 testViewCompatibilityMetadataStoresValues()
@@ -6790,6 +6863,7 @@ testWindowContentSizeAndCenterUpdateFrame()
 testNativeWindowResizeUpdatesContentAndAutoresizesSubviews()
 testPanelStoresPanelStateAndOrdersFront()
 testPopoverShowsClosesAndReopensFromAnchorView()
+testPopoverFlipsWhenClipped()
 testPopoverAnimatesFadesHost()
 testToolbarStoresItemsAndAttachesToWindow()
 testToolbarVisibilityAndItemActions()
