@@ -642,6 +642,13 @@ let dateValueLabel = NSTextField(string: "2026-06-01", frame: NSMakeRect(328, 38
 let calendarLabel = NSTextField(string: "Calendar:", frame: NSMakeRect(724, 60, 120, 24))
 let calendarPicker = NSDatePicker(date: Date(timeIntervalSince1970: 1_780_272_000), frame: NSMakeRect(724, 88, 224, 168))
 calendarPicker.datePickerStyle = .clockAndCalendar
+let ratingLabel = NSTextField(string: "Rating:", frame: NSMakeRect(724, 268, 60, 24))
+let ratingIndicator = NSLevelIndicator(frame: NSMakeRect(786, 264, 140, 30))
+ratingIndicator.levelIndicatorStyle = .rating
+ratingIndicator.minValue = 0
+ratingIndicator.maxValue = 5
+ratingIndicator.doubleValue = 3
+ratingIndicator.isEditable = true
 let canvasLabel = NSTextField(string: "Canvas:", frame: NSMakeRect(32, 36, 200, 24))
 let canvasView = DemoCanvasView(frame: NSMakeRect(32, 68, 420, 280))
 let canvasHintLabel = NSTextField(string: "Click: fill color   Right-click: outline   Scroll: size   Double-click: reset", frame: NSMakeRect(32, 356, 520, 24))
@@ -2426,6 +2433,8 @@ valuesPage.addSubview(datePicker)
 valuesPage.addSubview(dateValueLabel)
 valuesPage.addSubview(calendarLabel)
 valuesPage.addSubview(calendarPicker)
+valuesPage.addSubview(ratingLabel)
+valuesPage.addSubview(ratingIndicator)
 valuesPage.addSubview(timerTickLabel)
 
 // A repeating run-loop Timer ticking the label once per second.

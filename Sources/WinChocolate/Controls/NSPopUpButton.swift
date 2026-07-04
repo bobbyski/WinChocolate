@@ -6,6 +6,7 @@ open class NSPopUpButton: NSControl {
     private var titles: [String]
     private var tags: [Int] = []
     private var enabledStates: [Bool] = []
+    private var images: [NSImage?] = []
     private var isUpdatingSelectionFromNative = false
 
     /// Whether items are automatically enabled/disabled by menu validation.
@@ -78,6 +79,7 @@ open class NSPopUpButton: NSControl {
         titles.append(title)
         tags.append(0)
         enabledStates.append(true)
+        images.append(nil)
         if indexOfSelectedItem < 0 {
             indexOfSelectedItem = 0
         }
@@ -89,6 +91,7 @@ open class NSPopUpButton: NSControl {
         self.titles.append(contentsOf: titles)
         self.tags.append(contentsOf: Array(repeating: 0, count: titles.count))
         self.enabledStates.append(contentsOf: Array(repeating: true, count: titles.count))
+        self.images.append(contentsOf: Array<NSImage?>(repeating: nil, count: titles.count))
         if indexOfSelectedItem < 0 && !self.titles.isEmpty {
             indexOfSelectedItem = 0
         }
@@ -100,6 +103,7 @@ open class NSPopUpButton: NSControl {
         titles.removeAll()
         tags.removeAll()
         enabledStates.removeAll()
+        images.removeAll()
         indexOfSelectedItem = -1
         syncItemsToNative()
     }
@@ -122,6 +126,24 @@ open class NSPopUpButton: NSControl {
         }
 
         return autoenablesItems ? true : enabledStates[index]
+    }
+
+    /// Sets the image shown beside the item at an index.
+    ///
+    /// The image is stored on the item model. Rendering item icons and graying
+    /// disabled rows inside the native `COMBOBOX` dropdown requires owner-draw
+    /// (the modern-appearance engine); the model/selection behavior is complete.
+    open func setImage(_ image: NSImage?, forItemAt index: Int) {
+        guard images.indices.contains(index) else {
+            return
+        }
+
+        images[index] = image
+    }
+
+    /// Returns the image for the item at an index, if any.
+    open func itemImage(at index: Int) -> NSImage? {
+        images.indices.contains(index) ? images[index] : nil
     }
 
     /// Sets the tag for an item at an index.
@@ -172,6 +194,9 @@ open class NSPopUpButton: NSControl {
         }
         if enabledStates.indices.contains(index) {
             enabledStates.remove(at: index)
+        }
+        if images.indices.contains(index) {
+            images.remove(at: index)
         }
         if titles.isEmpty {
             indexOfSelectedItem = -1

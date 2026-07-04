@@ -322,7 +322,7 @@ public protocol NativeControlBackend: AnyObject {
     func createBox(title: String, frame: NSRect, parent: NativeHandle?) -> NativeHandle
 
     /// Creates a native text field child.
-    func createTextField(text: String, frame: NSRect, parent: NativeHandle?, isEditable: Bool, isBordered: Bool) -> NativeHandle
+    func createTextField(text: String, frame: NSRect, parent: NativeHandle?, isEditable: Bool, isBordered: Bool, isMultiline: Bool) -> NativeHandle
 
     /// Creates a native secure text field child.
     func createSecureTextField(text: String, frame: NSRect, parent: NativeHandle?) -> NativeHandle
@@ -548,6 +548,15 @@ public protocol NativeControlBackend: AnyObject {
 
     /// Reports which part of a scroller the user last actuated.
     func scrollerPart(for handle: NativeHandle) -> NativeScrollerPart
+
+    /// Sets which side of the track a slider's tick marks are drawn on.
+    func setSliderTickMarkPosition(aboveOrLeading: Bool, for handle: NativeHandle)
+
+    /// Renders a push button with a flat (square) bezel or the standard one.
+    func setButtonBezelFlat(_ flat: Bool, for handle: NativeHandle)
+
+    /// Gives a text field a sunken client-edge bezel, or removes it.
+    func setTextFieldBezeled(_ bezeled: Bool, for handle: NativeHandle)
 
     /// Makes a level indicator respond to click/drag as a value setter.
     ///

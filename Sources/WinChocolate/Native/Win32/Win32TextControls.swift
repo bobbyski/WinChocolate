@@ -1,7 +1,13 @@
 #if os(Windows)
 extension Win32NativeControlBackend {
     /// Creates a native static text field child.
-    public func createTextField(text: String, frame: NSRect, parent: NativeHandle?, isEditable: Bool, isBordered: Bool) -> NativeHandle {
+    ///
+    /// A multi-line editable field wraps text with a scrolling `EDIT`
+    /// (`ES_MULTILINE`) instead of the single-line auto-h-scroll style.
+    public func createTextField(text: String, frame: NSRect, parent: NativeHandle?, isEditable: Bool, isBordered: Bool, isMultiline: Bool) -> NativeHandle {
+        let editStyle: DWORD = isMultiline
+            ? esMultiline | esAutoVScroll | esWantReturn | wsVScroll
+            : esAutoHScroll
         let handle = createChildWindow(
             className: isEditable ? "EDIT" : "STATIC",
             text: text,
@@ -9,13 +15,34 @@ extension Win32NativeControlBackend {
             parent: parent,
             commandIdentifier: nil,
             style: isEditable
-                ? wsChild | wsVisible | wsTabStop | (isBordered ? wsBorder : 0) | esAutoHScroll
+                ? wsChild | wsVisible | wsTabStop | (isBordered ? wsBorder : 0) | editStyle
                 : wsChild | wsVisible
         )
         if isEditable {
             subclassControlForTabKey(handle)
+            if isMultiline {
+                // Multi-line edits keep Return for newlines, so default-button
+                // key routing skips them.
+                multilineTextHandles.insert(handle.rawValue)
+            }
         }
         return handle
+    }
+
+    /// Applies (or removes) a sunken client-edge bezel on a text field.
+    public func setTextFieldBezeled(_ bezeled: Bool, for handle: NativeHandle) {
+        guard let hwnd = hwnd(from: handle) else {
+            return
+        }
+
+        var exStyle = winGetWindowLongPtrW(hwnd, gwlExStyle)
+        if bezeled {
+            exStyle |= LONG_PTR(wsExClientEdge)
+        } else {
+            exStyle &= ~LONG_PTR(wsExClientEdge)
+        }
+        _ = winSetWindowLongPtrW(hwnd, gwlExStyle, exStyle)
+        _ = winSetWindowPos(hwnd, nil, 0, 0, 0, 0, swpNoMove | swpNoSize | swpNoZOrder | swpNoActivate | swpFrameChanged)
     }
 
     /// Creates a native secure text field child.

@@ -1183,6 +1183,13 @@ func testSliderStoresRangeValueAndSyncsNativePeer() {
     expect(slider.doubleValue == 20, "Slider did not clamp intValue to minValue.")
     expect(backend.records[handle]?.sliderMinValue == 20, "Slider updated minValue was not synced to native backend.")
     expect(backend.records[handle]?.sliderMaxValue == 80, "Slider updated maxValue was not synced to native backend.")
+
+    // tickMarkPosition moves the ticks to the above/leading edge.
+    expect(backend.sliderTicksAboveOrLeading[handle] == nil || backend.sliderTicksAboveOrLeading[handle] == false, "Default slider ticks should be below/trailing.")
+    slider.tickMarkPosition = .above
+    expect(backend.sliderTicksAboveOrLeading[handle] == true, "tickMarkPosition .above did not move ticks above.")
+    slider.tickMarkPosition = .below
+    expect(backend.sliderTicksAboveOrLeading[handle] == false, "tickMarkPosition .below did not restore ticks below.")
 }
 
 func testSliderNativeActionUpdatesValue() {
@@ -1261,6 +1268,26 @@ func testLevelIndicatorStoresRangeValueAndUsesProgressPeer() {
     expect(!level.acceptsFirstResponder, "Non-editable level indicator should skip key-view traversal.")
 }
 
+func testButtonBezelAndTextFieldBezel() {
+    let backend = InMemoryNativeControlBackend()
+
+    // A square bezel style renders the button flat; rounded stays standard.
+    let button = NSButton(title: "Square", frame: NSMakeRect(0, 0, 80, 30))
+    button.bezelStyle = .regularSquare
+    let buttonHandle = button.realizeNativePeer(in: backend, parent: nil)
+    expect(backend.flatBezelButtons[buttonHandle] == true, "Square bezel style did not flatten the button.")
+    button.bezelStyle = .rounded
+    expect(backend.flatBezelButtons[buttonHandle] == false, "Rounded bezel style did not restore the standard button.")
+
+    // A bezeled text field gets a native client-edge bezel.
+    let field = NSTextField.textField(withString: "x")
+    field.isBezeled = true
+    let fieldHandle = field.realizeNativePeer(in: backend, parent: nil)
+    expect(backend.bezeledTextFields[fieldHandle] == true, "isBezeled did not apply a bezel to the field.")
+    field.isBezeled = false
+    expect(backend.bezeledTextFields[fieldHandle] == false, "Clearing isBezeled did not remove the bezel.")
+}
+
 func testMinorControlCleanups() {
     let backend = InMemoryNativeControlBackend()
 
@@ -1282,6 +1309,12 @@ func testMinorControlCleanups() {
     popup.autoenablesItems = true
     expect(popup.isItemEnabled(at: 1), "autoenablesItems should override per-item state.")
 
+    // Per-item images round-trip on the item model.
+    let popupIcon = NSImage(named: "doc.symbol")
+    popup.setImage(popupIcon, forItemAt: 0)
+    expect(popup.itemImage(at: 0) === popupIcon, "Popup item image was not stored.")
+    expect(popup.itemImage(at: 2) == nil, "Unset popup item image should be nil.")
+
     // NSSlider.altIncrementValue round-trips.
     let slider = NSSlider(frame: NSMakeRect(0, 0, 120, 20))
     slider.altIncrementValue = 5
@@ -1293,6 +1326,23 @@ func testMinorControlCleanups() {
     button.sound = sound
     expect(button.sound === sound, "Button sound did not store.")
     expect(NSSound(named: "") == nil, "Empty sound name should fail init.")
+}
+
+func testLevelIndicatorRatingUsesCustomView() {
+    let backend = InMemoryNativeControlBackend()
+
+    // Rating/discrete/relevancy are framework-drawn on a plain view.
+    let rating = NSLevelIndicator(frame: NSMakeRect(0, 0, 120, 24))
+    rating.levelIndicatorStyle = .rating
+    rating.maxValue = 5
+    rating.doubleValue = 3
+    let handle = rating.realizeNativePeer(in: backend, parent: nil)
+    expect(backend.records[handle]?.kind == "view", "Rating level indicator should use a custom-draw view peer.")
+
+    // Continuous capacity still uses the native progress bar.
+    let bar = NSLevelIndicator(frame: NSMakeRect(0, 0, 120, 24))
+    let barHandle = bar.realizeNativePeer(in: backend, parent: nil)
+    expect(backend.records[barHandle]?.kind == "progressIndicator", "Continuous level indicator should use the progress peer.")
 }
 
 func testLevelIndicatorEditableClickSetsValue() {
@@ -1504,6 +1554,30 @@ func testSegmentedControlPerSegmentImageAndTag() {
     expect(firstButton.image === icon, "Segment image did not reach the composed button.")
     // A labeled segment with an image shows the image beside the label.
     expect(firstButton.imagePosition == .imageLeft, "Labeled segment with image should place the image left.")
+}
+
+func testSegmentedControlPerSegmentMenu() {
+    let backend = InMemoryNativeControlBackend()
+    let segmented = NSSegmentedControl(labels: ["File", "Options"], frame: NSMakeRect(0, 0, 160, 28))
+    let menu = NSMenu(title: "Options")
+    menu.addItem(NSMenuItem(title: "A", action: nil, keyEquivalent: ""))
+    segmented.setMenu(menu, forSegment: 1)
+
+    expect(segmented.menu(forSegment: 1) === menu, "Segment menu was not stored.")
+    expect(segmented.menu(forSegment: 0) == nil, "Segment without a menu should return nil.")
+
+    segmented.realizeNativePeer(in: backend, parent: nil)
+    segmented.selectedSegment = 0
+    let buttons = segmented.subviews.compactMap { $0 as? NSButton }
+
+    // Clicking the menu segment pops its menu instead of changing selection.
+    buttons[1].sendAction()
+    expect(backend.poppedContextMenus.last === menu, "Clicking a menu segment did not pop its menu.")
+    expect(segmented.selectedSegment == 0, "A menu segment should not become the selection.")
+
+    // A plain segment still selects normally.
+    buttons[0].sendAction()
+    expect(segmented.selectedSegment == 0, "Clicking a plain segment should select it.")
 }
 
 func testSegmentedControlActionSelectsSegment() {
@@ -2974,6 +3048,28 @@ func testTextFieldFactoryConstructorsAndCompatibilityProperties() {
     expect(textField.maximumNumberOfLines == 0, "maximumNumberOfLines did not store unlimited.")
 }
 
+func testTextFieldMultilineRealizesMultilineEdit() {
+    let backend = InMemoryNativeControlBackend()
+
+    // A default editable field realizes single-line.
+    let single = NSTextField.textField(withString: "one line")
+    let singleHandle = single.realizeNativePeer(in: backend, parent: nil)
+    expect(backend.multilineTextFields[singleHandle] == false, "Default editable field should realize single-line.")
+
+    // Clearing single-line mode with room for more than one line realizes multi-line.
+    let multi = NSTextField.textField(withString: "wrap me")
+    multi.usesSingleLineMode = false
+    multi.maximumNumberOfLines = 0
+    let multiHandle = multi.realizeNativePeer(in: backend, parent: nil)
+    expect(backend.multilineTextFields[multiHandle] == true, "Field did not realize multi-line when single-line mode was cleared.")
+
+    // A label (non-editable) is never multi-line at the edit-peer level.
+    let label = NSTextField.label(withString: "label")
+    label.usesSingleLineMode = false
+    let labelHandle = label.realizeNativePeer(in: backend, parent: nil)
+    expect(backend.multilineTextFields[labelHandle] == false, "A non-editable label should not use a multi-line edit peer.")
+}
+
 func testFormComposesTextFieldsAndStoresCells() {
     let backend = InMemoryNativeControlBackend()
     let form = NSForm(frame: NSMakeRect(0, 0, 260, 90))
@@ -3237,6 +3333,8 @@ func testComboBoxNativeTextChangeAndActionUpdateState() {
 func testTokenFieldStoresTokensAndTokenizesNativeText() {
     let backend = InMemoryNativeControlBackend()
     let tokenField = NSTokenField(tokens: ["Cocoa", "AppKit"], frame: NSMakeRect(0, 0, 220, 28))
+    // A plain-style token field keeps the native editable text peer.
+    tokenField.tokenStyle = .plain
     var changedTokens: [String] = []
 
     tokenField.onTextChanged = { field in
@@ -3246,7 +3344,7 @@ func testTokenFieldStoresTokensAndTokenizesNativeText() {
     let handle = tokenField.realizeNativePeer(in: backend, parent: nil)
     backend.textChangeActions[handle]?("NSWindow, NSView, NSButton")
 
-    expect(backend.records[handle]?.kind == "editableTextField", "Token field did not use editable text-field peer.")
+    expect(backend.records[handle]?.kind == "editableTextField", "Plain token field did not use editable text-field peer.")
     expect(tokenField.tokens == ["NSWindow", "NSView", "NSButton"], "Token field did not tokenize edited text.")
     expect((tokenField.objectValue as? [String]) == tokenField.tokens, "Token field objectValue did not mirror tokens.")
     expect(changedTokens == tokenField.tokens, "Token field text-change callback did not observe tokens.")
@@ -3257,6 +3355,12 @@ func testTokenFieldStoresTokensAndTokenizesNativeText() {
 
     expect(tokenField.tokens == ["Cocoa", "WinChocolate"], "Token field setTokens did not replace tokens.")
     expect(tokenField.stringValue == "Cocoa; WinChocolate", "Token field setTokens did not honor tokenizing character.")
+
+    // A rounded (default) token field draws chips on a view peer.
+    let chips = NSTokenField(tokens: ["A", "B"], frame: NSMakeRect(0, 0, 200, 28))
+    let chipsHandle = chips.realizeNativePeer(in: backend, parent: nil)
+    expect(backend.records[chipsHandle]?.kind == "view", "Rounded token field should draw chips on a view peer.")
+    expect(chips.tokens == ["A", "B"], "Rounded token field did not keep its token model.")
 }
 
 func testPathControlStoresURLAndPathComponentCells() {
@@ -6636,7 +6740,9 @@ testSliderNativeActionUpdatesValue()
 testProgressIndicatorStoresRangeValueAndSyncsNativePeer()
 testLevelIndicatorStoresRangeValueAndUsesProgressPeer()
 testLevelIndicatorEditableClickSetsValue()
+testLevelIndicatorRatingUsesCustomView()
 testMinorControlCleanups()
+testButtonBezelAndTextFieldBezel()
 testScrollerStoresValueAndSyncsNativePeer()
 testScrollerNativeActionUpdatesValue()
 testScrollerHitPartReflectsGesture()
@@ -6644,6 +6750,7 @@ testDatePickerStoresDateRangeAndSyncsNativePeer()
 testDatePickerClockAndCalendarStyle()
 testSegmentedControlStoresSegmentsAndComposesButtons()
 testSegmentedControlPerSegmentImageAndTag()
+testSegmentedControlPerSegmentMenu()
 testSegmentedControlActionSelectsSegment()
 testStepperStoresRangeIncrementAndSyncsNativePeer()
 testStepperNativeActionUpdatesValue()
@@ -6698,6 +6805,7 @@ testEditableTextFieldUsesEditableNativePeer()
 testSecureTextFieldUsesSecureNativePeer()
 testTextViewUsesMultilineNativePeerAndStoresText()
 testTextFieldFactoryConstructorsAndCompatibilityProperties()
+testTextFieldMultilineRealizesMultilineEdit()
 testFormComposesTextFieldsAndStoresCells()
 testMatrixComposesButtonsAndTracksSelection()
 testSwitchButtonUsesCheckboxNativePeer()

@@ -64,6 +64,34 @@ open class NSSlider: NSControl {
     /// Whether the slider only allows values that fall on a tick mark.
     open var allowsTickMarkValuesOnly: Bool = false
 
+    /// Where tick marks are drawn relative to the slider track.
+    public enum TickMarkPosition: Sendable {
+        /// Below a horizontal slider (default).
+        case below
+        /// Above a horizontal slider.
+        case above
+        /// Leading (left) side of a vertical slider.
+        case leading
+        /// Trailing (right) side of a vertical slider.
+        case trailing
+    }
+
+    /// The side the tick marks are drawn on.
+    open var tickMarkPosition: TickMarkPosition = .below {
+        didSet {
+            guard let nativeHandle else {
+                return
+            }
+
+            realizedBackend?.setSliderTickMarkPosition(aboveOrLeading: ticksAboveOrLeading, for: nativeHandle)
+        }
+    }
+
+    /// Whether ticks sit on the top (horizontal) or left (vertical) edge.
+    private var ticksAboveOrLeading: Bool {
+        tickMarkPosition == .above || tickMarkPosition == .leading
+    }
+
     /// The increment used for Option-modified keyboard/drag steps.
     ///
     /// Stored for source compatibility; the native trackbar owns its own
@@ -135,6 +163,9 @@ open class NSSlider: NSControl {
         backend.setSliderValue(doubleValue, for: handle)
         if numberOfTickMarks > 0 {
             backend.setSliderTickMarks(count: numberOfTickMarks, for: handle)
+        }
+        if ticksAboveOrLeading {
+            backend.setSliderTickMarkPosition(aboveOrLeading: true, for: handle)
         }
         backend.registerAction(for: handle) { [weak self, weak backend] in
             guard let self, let backend, let nativeHandle = self.nativeHandle else {

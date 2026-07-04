@@ -626,8 +626,13 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     }
 
     /// Records a text field creation request.
-    public func createTextField(text: String, frame: NSRect, parent: NativeHandle?, isEditable: Bool, isBordered: Bool) -> NativeHandle {
-        makeHandle(kind: isEditable ? "editableTextField" : "textField", text: text, frame: frame, parent: parent)
+    /// Whether a text-field handle was created multi-line, for tests.
+    public private(set) var multilineTextFields: [NativeHandle: Bool] = [:]
+
+    public func createTextField(text: String, frame: NSRect, parent: NativeHandle?, isEditable: Bool, isBordered: Bool, isMultiline: Bool) -> NativeHandle {
+        let handle = makeHandle(kind: isEditable ? "editableTextField" : "textField", text: text, frame: frame, parent: parent)
+        multilineTextFields[handle] = isMultiline
+        return handle
     }
 
     /// Records a secure text field creation request.
@@ -918,6 +923,30 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     /// Records the slider tick-mark count.
     public func setSliderTickMarks(count: Int, for handle: NativeHandle) {
         records[handle]?.sliderTickMarkCount = count
+    }
+
+    /// Whether slider ticks were placed above/leading, for tests.
+    public private(set) var sliderTicksAboveOrLeading: [NativeHandle: Bool] = [:]
+
+    /// Records the slider tick-mark side.
+    public func setSliderTickMarkPosition(aboveOrLeading: Bool, for handle: NativeHandle) {
+        sliderTicksAboveOrLeading[handle] = aboveOrLeading
+    }
+
+    /// Whether a button was set to a flat bezel, for tests.
+    public private(set) var flatBezelButtons: [NativeHandle: Bool] = [:]
+
+    /// Records a button's flat-bezel state.
+    public func setButtonBezelFlat(_ flat: Bool, for handle: NativeHandle) {
+        flatBezelButtons[handle] = flat
+    }
+
+    /// Whether a text field was given a client-edge bezel, for tests.
+    public private(set) var bezeledTextFields: [NativeHandle: Bool] = [:]
+
+    /// Records a text field's bezel state.
+    public func setTextFieldBezeled(_ bezeled: Bool, for handle: NativeHandle) {
+        bezeledTextFields[handle] = bezeled
     }
 
     /// Records the slider orientation.

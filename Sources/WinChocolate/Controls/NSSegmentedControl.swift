@@ -30,6 +30,7 @@ open class NSSegmentedControl: NSControl {
         var isSelected: Bool
         var image: NSImage?
         var tag: Int
+        var menu: NSMenu?
     }
 
     private var segments: [SegmentState]
@@ -72,7 +73,7 @@ open class NSSegmentedControl: NSControl {
 
     /// Creates a segmented control with labels.
     public init(labels: [String], frame frameRect: NSRect) {
-        self.segments = labels.map { SegmentState(label: $0, width: 0, isEnabled: true, isSelected: false, image: nil, tag: 0) }
+        self.segments = labels.map { SegmentState(label: $0, width: 0, isEnabled: true, isSelected: false, image: nil, tag: 0, menu: nil) }
         super.init(frame: frameRect)
         rebuildSegmentButtons()
     }
@@ -198,6 +199,24 @@ open class NSSegmentedControl: NSControl {
         segments.indices.contains(selectedSegment) ? segments[selectedSegment].tag : 0
     }
 
+    /// Attaches a pop-up menu to a segment. Clicking that segment shows the menu.
+    open func setMenu(_ menu: NSMenu?, forSegment segment: Int) {
+        guard segments.indices.contains(segment) else {
+            return
+        }
+
+        segments[segment].menu = menu
+    }
+
+    /// Returns the pop-up menu attached to a segment, if any.
+    open func menu(forSegment segment: Int) -> NSMenu? {
+        guard segments.indices.contains(segment) else {
+            return nil
+        }
+
+        return segments[segment].menu
+    }
+
     /// Sets a fixed width for a segment. Pass `0` for automatic equal width.
     open func setWidth(_ width: CGFloat, forSegment segment: Int) {
         guard segments.indices.contains(segment) else {
@@ -271,7 +290,7 @@ open class NSSegmentedControl: NSControl {
             segments.removeLast(segments.count - count)
         } else if count > segments.count {
             for _ in segments.count..<count {
-                segments.append(SegmentState(label: "", width: 0, isEnabled: true, isSelected: false, image: nil, tag: 0))
+                segments.append(SegmentState(label: "", width: 0, isEnabled: true, isSelected: false, image: nil, tag: 0, menu: nil))
             }
         }
 
@@ -335,6 +354,14 @@ open class NSSegmentedControl: NSControl {
 
     private func activateSegment(at index: Int) {
         guard segments.indices.contains(index), segments[index].isEnabled else {
+            return
+        }
+
+        // A segment with an attached menu pops it up under the segment instead
+        // of acting as a plain selection.
+        if let menu = segments[index].menu {
+            let origin = segmentButtons.indices.contains(index) ? segmentButtons[index].frame.origin : NSMakePoint(0, 0)
+            _ = menu.popUp(positioning: nil, at: origin, in: self)
             return
         }
 

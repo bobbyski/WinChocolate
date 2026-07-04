@@ -47,6 +47,45 @@ open class NSButton: NSControl {
     /// A sound played when the button is clicked.
     open var sound: NSSound?
 
+    /// Visual bezel appearance of the button.
+    public enum BezelStyle: Sendable {
+        /// The standard rounded push button (default).
+        case rounded
+        /// A flat square-edged bezel (regular/shadowless/textured square).
+        case regularSquare
+        case shadowlessSquare
+        case texturedSquare
+        case smallSquare
+        /// Other AppKit bezels fall back to the standard rounded look.
+        case circular
+        case disclosure
+        case roundedDisclosure
+        case recessed
+        case inline
+    }
+
+    /// The button's bezel style. Square styles render flat; others use the
+    /// standard themed push button (full themed bezels are appearance-phase work).
+    open var bezelStyle: BezelStyle = .rounded {
+        didSet {
+            guard let nativeHandle else {
+                return
+            }
+
+            realizedBackend?.setButtonBezelFlat(isFlatBezel, for: nativeHandle)
+        }
+    }
+
+    /// Whether the bezel style renders as a flat square button.
+    private var isFlatBezel: Bool {
+        switch bezelStyle {
+        case .regularSquare, .shadowlessSquare, .texturedSquare, .smallSquare:
+            return true
+        default:
+            return false
+        }
+    }
+
     /// The title shown while the button is in its alternate (on) state.
     open var alternateTitle: String = "" {
         didSet {
@@ -139,6 +178,9 @@ open class NSButton: NSControl {
     open override func realizeNativePeer(in backend: NativeControlBackend, parent: NativeHandle?) -> NativeHandle {
         let handle = super.realizeNativePeer(in: backend, parent: parent)
         backend.setButtonState(state, for: handle)
+        if isFlatBezel {
+            backend.setButtonBezelFlat(true, for: handle)
+        }
         if let image {
             backend.setButtonImage(imagePath: image.filePath, for: handle)
         }

@@ -120,6 +120,8 @@ open class NSPathControl: NSTextField {
             let label = index == 0 ? cell.title : "\u{203A} \(cell.title)"
             let width = max(24, CGFloat(label.count) * 8 + 16)
             let button = NSButton(title: label, frame: NSMakeRect(x, 0, width, height))
+            // Breadcrumb segments read as flat text, not chunky push buttons.
+            button.isBordered = false
             button.onAction = { [weak self] _ in
                 self?.selectComponentCell(at: index)
             }

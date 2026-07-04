@@ -14,6 +14,22 @@ extension Win32NativeControlBackend {
         return handle
     }
 
+    /// Toggles a push button's flat (square) bezel style.
+    public func setButtonBezelFlat(_ flat: Bool, for handle: NativeHandle) {
+        guard let hwnd = hwnd(from: handle) else {
+            return
+        }
+
+        var style = winGetWindowLongPtrW(hwnd, gwlStyle)
+        if flat {
+            style |= LONG_PTR(bsFlat)
+        } else {
+            style &= ~LONG_PTR(bsFlat)
+        }
+        _ = winSetWindowLongPtrW(hwnd, gwlStyle, style)
+        _ = winInvalidateRect(hwnd, nil, 1)
+    }
+
     /// Creates a native checkbox child.
     public func createCheckbox(title: String, frame: NSRect, parent: NativeHandle?) -> NativeHandle {
         let handle = createChildWindow(

@@ -177,6 +177,23 @@ extension Win32NativeControlBackend {
         _ = winInvalidateRect(hwnd, nil, 1)
     }
 
+    /// Moves a trackbar's tick marks to the top/left edge (or default bottom/right).
+    public func setSliderTickMarkPosition(aboveOrLeading: Bool, for handle: NativeHandle) {
+        guard let hwnd = hwnd(from: handle), trackbarHandles.contains(handle.rawValue) else {
+            return
+        }
+
+        var style = winGetWindowLongPtrW(hwnd, gwlStyle)
+        if aboveOrLeading {
+            style |= LONG_PTR(tbsTop)
+        } else {
+            style &= ~LONG_PTR(tbsTop)
+        }
+        _ = winSetWindowLongPtrW(hwnd, gwlStyle, style)
+        _ = winSetWindowPos(hwnd, nil, 0, 0, 0, 0, swpNoMove | swpNoSize | swpNoZOrder | swpNoActivate | swpFrameChanged)
+        _ = winInvalidateRect(hwnd, nil, 1)
+    }
+
     /// Sets whether a trackbar slider is drawn vertically.
     public func setSliderVertical(_ isVertical: Bool, for handle: NativeHandle) {
         guard let hwnd = hwnd(from: handle), trackbarHandles.contains(handle.rawValue) else {

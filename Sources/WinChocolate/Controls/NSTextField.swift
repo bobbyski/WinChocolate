@@ -135,12 +135,19 @@ open class NSTextField: NSControl {
         case roundedBezel
     }
 
-    /// Whether the field draws a bezel around its editing area.
+    /// Whether the field draws a sunken bezel around its editing area.
     ///
-    /// Stored for source compatibility; the bezel's rounded/square appearance
-    /// is applied with the window/control-appearance work. The native edit
-    /// border is currently driven by `isBordered`.
-    open var isBezeled: Bool = false
+    /// A bezeled field gets a native sunken client-edge border; the rounded vs
+    /// square distinction (`bezelStyle`) is appearance-phase polish.
+    open var isBezeled: Bool = false {
+        didSet {
+            guard let nativeHandle else {
+                return
+            }
+
+            realizedBackend?.setTextFieldBezeled(isBezeled, for: nativeHandle)
+        }
+    }
 
     /// The bezel style used when `isBezeled` is set.
     open var bezelStyle: BezelStyle = .squareBezel
@@ -250,9 +257,15 @@ open class NSTextField: NSControl {
         return field
     }
 
+    /// Whether the field wraps onto multiple lines (a non-single-line mode with
+    /// room for more than one line).
+    var isMultiline: Bool {
+        isEditable && !usesSingleLineMode && maximumNumberOfLines != 1
+    }
+
     /// Creates the native Windows text field peer.
     open override func createNativePeer(in backend: NativeControlBackend, parent: NativeHandle?) -> NativeHandle {
-        backend.createTextField(text: stringValue, frame: frame, parent: parent, isEditable: isEditable, isBordered: isBordered)
+        backend.createTextField(text: stringValue, frame: frame, parent: parent, isEditable: isEditable, isBordered: isBordered, isMultiline: isMultiline)
     }
 
     /// Ensures the text field has a native peer and registers text change dispatch.
@@ -264,6 +277,9 @@ open class NSTextField: NSControl {
         // and any field given a background color stay opaque.
         let showsBackground = (isEditable || backgroundColor != nil) && drawsBackground
         backend.setDrawsBackground(showsBackground, for: handle)
+        if isBezeled {
+            backend.setTextFieldBezeled(true, for: handle)
+        }
         backend.setTextColor(textColor, for: handle)
         backend.setFont(font, for: handle)
         if let placeholderString {
