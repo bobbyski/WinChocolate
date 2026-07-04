@@ -6977,4 +6977,77 @@ testColorPanelFloatsAndAppliesColorsLive()
 testFontPanelLiveApplyThroughFontManager()
 testAlertAccessoryViewJoinsComposedPanel()
 
+func testSourceCompatSurfaceGeometryColorFontImageView() {
+    // Geometry: CoreGraphics aliases and Swift-idiomatic rect members.
+    let rect: CGRect = CGRect(x: 10, y: 20, width: 100, height: 40)
+    expect(rect.midX == 60 && rect.midY == 40, "CGRect midX/midY computed properties are wrong.")
+    expect(rect.insetBy(dx: 10, dy: 5) == NSRect(x: 20, y: 25, width: 80, height: 30), "insetBy(dx:dy:) is wrong.")
+    expect(rect.offsetBy(dx: 5, dy: -5) == NSRect(x: 15, y: 15, width: 100, height: 40), "offsetBy(dx:dy:) is wrong.")
+    expect(rect.contains(CGPoint(x: 15, y: 25)), "contains(point) missed an interior point.")
+    expect(!rect.contains(CGPoint(x: 200, y: 25)), "contains(point) accepted an exterior point.")
+    let a = NSRect(x: 0, y: 0, width: 50, height: 50)
+    let b = NSRect(x: 25, y: 25, width: 50, height: 50)
+    expect(a.intersects(b) && NSIntersectsRect(a, b), "intersects/NSIntersectsRect failed on overlapping rects.")
+    expect(a.intersection(b) == NSRect(x: 25, y: 25, width: 25, height: 25), "intersection produced the wrong overlap.")
+    expect(NSUnionRect(a, b) == NSRect(x: 0, y: 0, width: 75, height: 75), "NSUnionRect produced the wrong bounds.")
+    expect(NSContainsRect(a, NSRect(x: 10, y: 10, width: 5, height: 5)), "NSContainsRect missed a contained rect.")
+    var slice = NSZeroRect, remainder = NSZeroRect
+    NSDivideRect(NSRect(x: 0, y: 0, width: 100, height: 100), &slice, &remainder, 30, .minX)
+    expect(slice == NSRect(x: 0, y: 0, width: 30, height: 100), "NSDivideRect slice is wrong.")
+    expect(remainder == NSRect(x: 30, y: 0, width: 70, height: 100), "NSDivideRect remainder is wrong.")
+    let insets = NSEdgeInsetsMake(1, 2, 3, 4)
+    expect(insets.top == 1 && insets.left == 2 && insets.bottom == 3 && insets.right == 4, "NSEdgeInsetsMake stored the wrong sides.")
+    expect(CGRect.zero == NSZeroRect && CGPoint.zero == NSZeroPoint, "CoreGraphics .zero constants disagree with NSZero*.")
+
+    // Color: constructors, derived colors, component readback, system palette.
+    let gray = NSColor(white: 0.5, alpha: 1)
+    expect(gray.redComponent == 0.5 && gray.greenComponent == 0.5 && gray.blueComponent == 0.5, "NSColor(white:alpha:) did not fill RGB evenly.")
+    expect(NSColor.red.withAlphaComponent(0.25).alphaComponent == 0.25, "withAlphaComponent did not set alpha.")
+    let blend = NSColor.black.blended(withFraction: 0.5, of: .white)
+    expect(blend?.redComponent == 0.5, "blended(withFraction:of:) did not mix halfway.")
+    let hsb = NSColor(hue: 0, saturation: 1, brightness: 1, alpha: 1)
+    expect(hsb.redComponent == 1 && hsb.greenComponent == 0 && hsb.blueComponent == 0, "HSB hue 0 did not resolve to red.")
+    var r: CGFloat = 0, g: CGFloat = 0, bl: CGFloat = 0, al: CGFloat = 0
+    NSColor.systemBlue.getRed(&r, green: &g, blue: &bl, alpha: &al)
+    expect(bl == 1 && al == 1, "getRed(_:green:blue:alpha:) did not read systemBlue back.")
+    expect(NSColor.linkColor == NSColor.systemBlue, "linkColor should alias systemBlue.")
+
+    // Font: named factories, sizes, family accessor.
+    expect(NSFont.systemFontSize == 13 && NSFont.smallSystemFontSize == 11, "System font sizes changed unexpectedly.")
+    expect(NSFont.monospacedSystemFont(ofSize: 12, weight: .regular).fontName == "Consolas", "monospacedSystemFont did not pick a fixed-pitch face.")
+    expect(NSFont.labelFont(ofSize: 11).familyName == "Segoe UI", "labelFont familyName is wrong.")
+
+    // Image: size, template flag, naming.
+    let image = NSImage(size: NSSize(width: 32, height: 24))
+    expect(image.size == NSSize(width: 32, height: 24), "NSImage(size:) did not store the size.")
+    image.isTemplate = true
+    expect(image.isTemplate, "NSImage.isTemplate did not round-trip.")
+    expect(image.setName("badge") && image.name == "badge", "NSImage.setName did not accept and store the name.")
+
+    // View: frame setters, coordinate flags, identity, hit testing, intrinsic size.
+    let view = NSView(frame: NSRect(x: 0, y: 0, width: 10, height: 10))
+    view.setFrameOrigin(NSPoint(x: 5, y: 6))
+    view.setFrameSize(NSSize(width: 20, height: 30))
+    expect(view.frame == NSRect(x: 5, y: 6, width: 20, height: 30), "setFrameOrigin/setFrameSize did not update the frame.")
+    expect(view.isFlipped, "WinChocolate views should report a flipped (top-left) coordinate system.")
+    view.identifier = "canvas"
+    expect(view.identifier == "canvas", "NSView.identifier did not round-trip.")
+    view.alphaValue = 0.4
+    expect(view.alphaValue == 0.4, "NSView.alphaValue did not round-trip.")
+    expect(view.mouse(NSPoint(x: 5, y: 5), in: view.bounds), "mouse(_:in:) missed a point in bounds.")
+    expect(view.intrinsicContentSize.width == NSView.noIntrinsicMetric, "Base view should report no intrinsic width.")
+
+    // Control: highlight flag and default sizeThatFits.
+    let control = NSControl(frame: NSRect(x: 0, y: 0, width: 44, height: 22))
+    control.isHighlighted = true
+    expect(control.isHighlighted, "NSControl.isHighlighted did not round-trip.")
+    expect(control.sizeThatFits(NSSize(width: 999, height: 999)) == control.frame.size, "Default sizeThatFits should return the frame size.")
+
+    // Event: legacy delta aliases.
+    let scroll = NSEvent(type: .scrollWheel, locationInWindow: NSZeroPoint, scrollingDeltaX: 3, scrollingDeltaY: -7)
+    expect(scroll.deltaX == 3 && scroll.deltaY == -7, "NSEvent deltaX/deltaY did not alias the scrolling deltas.")
+}
+
+testSourceCompatSurfaceGeometryColorFontImageView()
+
 print("WinChocolate contract tests passed.")

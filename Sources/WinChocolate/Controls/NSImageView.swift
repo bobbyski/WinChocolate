@@ -3,6 +3,9 @@
 /// This is an initial placeholder for AppKit's `NSImage`. It records a name so
 /// API ports can preserve image-view wiring before bitmap decoding is added.
 open class NSImage: NSObject {
+    /// The type used to name images, matching AppKit's `NSImage.Name`.
+    public typealias Name = String
+
     /// Image name or identifier.
     open var name: String?
 
@@ -15,6 +18,12 @@ open class NSImage: NSObject {
     /// Accessibility description associated with a named system image.
     open var accessibilityDescription: String?
 
+    /// The image's logical size, in points.
+    open var size: NSSize = .zero
+
+    /// Whether the image is a template (tinted to match the context).
+    open var isTemplate: Bool = false
+
     /// Creates an image with an optional name.
     public init(named name: String? = nil) {
         self.name = name
@@ -22,6 +31,23 @@ open class NSImage: NSObject {
         self.data = nil
         self.accessibilityDescription = nil
         super.init()
+    }
+
+    /// Creates an empty image with the given size.
+    public init(size: NSSize) {
+        self.name = nil
+        self.filePath = nil
+        self.data = nil
+        self.accessibilityDescription = nil
+        self.size = size
+        super.init()
+    }
+
+    /// Sets the image's name, returning whether it was accepted.
+    @discardableResult
+    open func setName(_ string: NSImage.Name?) -> Bool {
+        self.name = string
+        return true
     }
 
     /// Creates an image from a system symbol name.
@@ -85,6 +111,39 @@ open class NSImage: NSObject {
 
         context.nativeContext.drawImage(atPath: filePath, in: rect)
     }
+
+    /// Draws the image into a rectangle, ignoring the source crop, compositing
+    /// operation, and fraction (a first source-compatible slice that delegates
+    /// to `draw(in:)`).
+    open func draw(in rect: NSRect, from fromRect: NSRect, operation: NSCompositingOperation, fraction: CGFloat) {
+        draw(in: rect)
+    }
+
+    /// Draws the image at a point, sizing the destination from the source
+    /// rectangle (or the image size when the source is empty).
+    open func draw(at point: NSPoint, from fromRect: NSRect, operation: NSCompositingOperation, fraction: CGFloat) {
+        let destSize = fromRect.size == .zero ? size : fromRect.size
+        draw(in: NSRect(origin: point, size: destSize))
+    }
+}
+
+/// Compositing operations used when drawing images, matching AppKit's
+/// `NSCompositingOperation`. WinChocolate's first drawing slice honors only
+/// `sourceOver`; the cases exist so call sites compile.
+public enum NSCompositingOperation: Int, Sendable {
+    case clear = 0
+    case copy = 1
+    case sourceOver = 2
+    case sourceIn = 3
+    case sourceOut = 4
+    case sourceAtop = 5
+    case destinationOver = 6
+    case destinationIn = 7
+    case destinationOut = 8
+    case destinationAtop = 9
+    case xor = 10
+    case plusDarker = 11
+    case plusLighter = 12
 }
 
 /// A view that displays an image.

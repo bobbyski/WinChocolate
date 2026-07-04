@@ -38,6 +38,19 @@ open class NSControl: NSView {
     /// Whether the control should continuously send actions while tracking.
     open var isContinuous: Bool = false
 
+    /// Whether the control draws itself in a highlighted state.
+    open var isHighlighted: Bool = false
+
+    /// Resizes the control to fit its content. The base control keeps its frame;
+    /// subclasses with measurable content override this.
+    open func sizeToFit() {}
+
+    /// Returns the size the control would prefer for the given size. The base
+    /// implementation returns the current frame size; subclasses refine it.
+    open func sizeThatFits(_ size: NSSize) -> NSSize {
+        frame.size
+    }
+
     /// Whether the control accepts user interaction.
     open var isEnabled: Bool = true {
         didSet {

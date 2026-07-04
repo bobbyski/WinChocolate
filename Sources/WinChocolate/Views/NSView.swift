@@ -137,6 +137,46 @@ open class NSView: NSResponder {
         }
     }
 
+    /// The view's opacity from `0` (transparent) to `1` (opaque).
+    ///
+    /// Stored for source compatibility; the classic backend does not yet composite
+    /// partial view opacity, so the value round-trips but does not blend.
+    open var alphaValue: CGFloat = 1
+
+    /// A string that identifies the view, matching AppKit's identifier.
+    open var identifier: NSUserInterfaceItemIdentifier?
+
+    /// Whether the view is opaque. Subclasses override to opt into opaque drawing.
+    open var isOpaque: Bool { false }
+
+    /// Whether the view uses a flipped (top-left origin) coordinate system.
+    ///
+    /// WinChocolate lays out and draws in top-left coordinates throughout, so
+    /// views report `true` — custom drawing that branches on `isFlipped` gets the
+    /// coordinate convention the backend actually uses.
+    open var isFlipped: Bool { true }
+
+    /// The view's natural size for layout, or `noIntrinsicMetric` when it has none.
+    open var intrinsicContentSize: NSSize {
+        NSSize(width: NSView.noIntrinsicMetric, height: NSView.noIntrinsicMetric)
+    }
+
+    /// Sentinel used by `intrinsicContentSize` when a dimension has no natural size.
+    public static let noIntrinsicMetric: CGFloat = -1
+
+    /// Whether the view has been flagged as needing layout.
+    open var needsLayout: Bool = false
+
+    /// Whether the view's frame is managed by autoresizing rather than constraints.
+    ///
+    /// Stored for source compatibility. WinChocolate uses frame/autoresizing
+    /// layout; a constraint solver is tracked separately (see the plan's Auto
+    /// Layout note), so this defaults to `true` and toggling it is a no-op today.
+    open var translatesAutoresizingMaskIntoConstraints: Bool = true
+
+    /// Lays out the view's subviews. Subclasses override to position children.
+    open func layout() {}
+
     /// Creates a view with a frame.
     public init(frame frameRect: NSRect) {
         self.frame = frameRect

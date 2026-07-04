@@ -63,6 +63,12 @@ public struct NSEvent: Equatable, Sendable {
     /// Vertical scroll amount in wheel lines for scroll events.
     public var scrollingDeltaY: CGFloat
 
+    /// Legacy horizontal scroll delta, aliasing `scrollingDeltaX`.
+    public var deltaX: CGFloat { scrollingDeltaX }
+
+    /// Legacy vertical scroll delta, aliasing `scrollingDeltaY`.
+    public var deltaY: CGFloat { scrollingDeltaY }
+
     /// Keyboard modifier flags.
     public struct ModifierFlags: OptionSet, Sendable {
         /// Raw option value.

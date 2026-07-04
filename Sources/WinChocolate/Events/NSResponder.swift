@@ -112,4 +112,23 @@ open class NSResponder: NSObject {
     open func keyUp(with event: NSEvent) {
         nextResponder?.keyUp(with: event)
     }
+
+    /// Handles a change to the keyboard modifier flags.
+    open func flagsChanged(with event: NSEvent) {
+        nextResponder?.flagsChanged(with: event)
+    }
+
+    /// Handles the cursor entering a tracking area.
+    ///
+    /// The tracking-area delivery machinery is item 3.21 (hover tracking); this
+    /// override point exists so responders that implement it compile and can be
+    /// wired up when tracking areas land.
+    open func mouseEntered(with event: NSEvent) {
+        nextResponder?.mouseEntered(with: event)
+    }
+
+    /// Handles the cursor leaving a tracking area (see `mouseEntered(with:)`).
+    open func mouseExited(with event: NSEvent) {
+        nextResponder?.mouseExited(with: event)
+    }
 }
