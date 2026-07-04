@@ -188,7 +188,7 @@ Checked = landed (see `CONTROL_PARITY.md` for the how). A checked box with a **�
 
 **NSTokenField**
 - [x] token get/set, delegate text callbacks, completion hook
-- [x] visual token chips — the rounded style draws tokens as framework-drawn rounded pills on a view peer (verified live); a `.plain` style keeps the native editable text peer. Inline chip *editing* (AppKit's type-and-tokenize hybrid) is a larger text-engine follow-up
+- [x] visual token chips — the rounded style draws tokens as framework-drawn rounded pills on a view peer (each chip sized to its measured text via `size(withAttributes:)`, text vertically centered; verified live); a `.plain` style keeps the native editable text peer. Inline chip *editing* (AppKit's type-and-tokenize hybrid) is a larger text-engine follow-up
 
 **NSImageView**
 - [x] image display/scaling (the 3.1-level control is complete)

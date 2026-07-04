@@ -90,23 +90,28 @@ open class NSTokenField: NSTextField {
 
         let chipColor = NSColor(calibratedRed: 0.85, green: 0.91, blue: 1.0, alpha: 1)
         let borderColor = NSColor(calibratedRed: 0.40, green: 0.58, blue: 0.85, alpha: 1)
-        let font = NSFont.systemFont(ofSize: 12)
+        let attributes: [NSAttributedString.Key: Any] = [
+            .foregroundColor: NSColor.black,
+            .font: NSFont.systemFont(ofSize: 12)
+        ]
+        let horizontalPadding: CGFloat = 10
         let height = min(bounds.size.height - 4, 22)
         let y = (bounds.size.height - height) / 2
         var x: CGFloat = 2
 
         for token in tokens {
-            let width = CGFloat(token.count) * 7 + 20
+            // Size each chip to its measured text so nothing is clipped.
+            let textSize = token.size(withAttributes: attributes)
+            let width = textSize.width + horizontalPadding * 2
             let chip = NSRect(x: x, y: y, width: width, height: height)
             let path = NSBezierPath(roundedRect: chip, xRadius: height / 2, yRadius: height / 2)
             chipColor.setFill()
             path.fill()
             borderColor.setStroke()
             path.stroke()
-            token.draw(
-                at: NSPoint(x: x + 10, y: y + (height - 14) / 2),
-                withAttributes: [.foregroundColor: NSColor.black, .font: font]
-            )
+            // Center the text within the chip using real text metrics.
+            let textOrigin = NSPoint(x: x + horizontalPadding, y: y + (height - textSize.height) / 2)
+            token.draw(at: textOrigin, withAttributes: attributes)
             x += width + 6
         }
     }
