@@ -590,6 +590,15 @@ let notesTextView = NSTextView(frame: NSMakeRect(152, 286, 360, 96))
 let selectWordButton = NSButton(title: "Select Word", frame: NSMakeRect(528, 286, 120, 34))
 let tokenLabel = NSTextField(string: "Tokens:", frame: NSMakeRect(32, 410, 104, 24))
 let tokenField = NSTokenField(tokens: ["Cocoa", "AppKit", "WinChocolate"], frame: NSMakeRect(152, 408, 360, 28))
+let priceLabel = NSTextField(string: "Price:", frame: NSMakeRect(528, 410, 56, 24))
+let priceField = NSTextField(string: "", frame: NSMakeRect(588, 408, 144, 28))
+priceField.isEditable = true
+priceField.isSelectable = true
+priceField.isBordered = true
+let priceFormatter = NumberFormatter()
+priceFormatter.numberStyle = .currency
+priceField.formatter = priceFormatter
+priceField.objectValue = NSNumber(value: 1234.5)
 let formLabel = NSTextField(string: "Form:", frame: NSMakeRect(744, 120, 80, 24))
 let form = NSForm(frame: NSMakeRect(824, 120, 256, 92))
 let matrixLabel = NSTextField(string: "Matrix:", frame: NSMakeRect(744, 240, 80, 24))
@@ -2356,6 +2365,8 @@ controlsPage.addSubview(notesTextView)
 controlsPage.addSubview(selectWordButton)
 controlsPage.addSubview(tokenLabel)
 controlsPage.addSubview(tokenField)
+controlsPage.addSubview(priceLabel)
+controlsPage.addSubview(priceField)
 controlsPage.addSubview(formLabel)
 controlsPage.addSubview(form)
 controlsPage.addSubview(matrixLabel)

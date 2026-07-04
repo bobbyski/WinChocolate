@@ -136,10 +136,28 @@ open class NSScroller: NSControl {
             }
 
             self.updateValueFromNative(backend.scrollerValue(for: nativeHandle))
-            self.hitPart = .knob
+            self.hitPart = NSScroller.part(from: backend.scrollerPart(for: nativeHandle))
             self.sendAction()
         }
         return handle
+    }
+
+    /// Maps a backend-neutral scroller part to the AppKit `Part`.
+    static func part(from native: NativeScrollerPart) -> Part {
+        switch native {
+        case .none:
+            return .noPart
+        case .decrementLine:
+            return .decrementLine
+        case .decrementPage:
+            return .decrementPage
+        case .knob:
+            return .knob
+        case .incrementPage:
+            return .incrementPage
+        case .incrementLine:
+            return .incrementLine
+        }
     }
 
     private func updateValueFromNative(_ value: Double) {

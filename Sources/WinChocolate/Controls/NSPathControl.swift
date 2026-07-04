@@ -29,6 +29,17 @@ open class NSPathControl: NSTextField {
     /// Component cells derived from `url`.
     open private(set) var pathComponentCells: [NSPathComponentCell] = []
 
+    /// The component cell the user last clicked, when click routing is wired.
+    ///
+    /// Populated by `selectComponentCell(at:)`; live breadcrumb hit-testing over
+    /// the text peer is tracked with the path-control chrome work.
+    open private(set) var clickedPathComponentCell: NSPathComponentCell?
+
+    /// The URL of the last clicked component, if any.
+    open var clickedPathComponentURL: URL? {
+        clickedPathComponentCell?.url
+    }
+
     /// Creates a path control with a frame.
     public override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -50,7 +61,21 @@ open class NSPathControl: NSTextField {
         self.url = url
     }
 
+    /// Selects a component cell by index and points `url` at it, mirroring the
+    /// AppKit click that navigates to a breadcrumb component.
+    @discardableResult
+    open func selectComponentCell(at index: Int) -> Bool {
+        guard pathComponentCells.indices.contains(index) else {
+            return false
+        }
+
+        clickedPathComponentCell = pathComponentCells[index]
+        sendAction()
+        return true
+    }
+
     private func rebuildPathComponentCells() {
+        clickedPathComponentCell = nil
         guard let url else {
             pathComponentCells = []
             return
@@ -59,9 +84,15 @@ open class NSPathControl: NSTextField {
         let components = url.pathComponents.filter { component in
             component != "/" && !component.isEmpty
         }
+        // Each component cell carries the cumulative file URL up to and
+        // including that component, matching AppKit so a clicked breadcrumb
+        // resolves to a real location.
+        var cumulativePath = ""
         pathComponentCells = components.map { component in
+            cumulativePath += "/" + component
             let cell = NSPathComponentCell()
             cell.title = component
+            cell.url = URL(fileURLWithPath: cumulativePath)
             return cell
         }
     }

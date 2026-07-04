@@ -88,8 +88,13 @@ open class NSPopover: NSObject {
             content.backgroundColor = .windowBackgroundColor
         }
         panel.contentView = content
+        let handle = panel.realizeNativePeer()
         panel.setFrame(frame(relativeTo: positioningRect, of: positioningView, preferredEdge: preferredEdge), display: true)
-        panel.orderFrontRegardless()
+        if animates {
+            panel.nativeBackend.fadeWindow(handle, visible: true)
+        } else {
+            panel.orderFrontRegardless()
+        }
         isShown = true
 
         // Transient popovers dismiss on a click outside their bounds.
@@ -115,6 +120,10 @@ open class NSPopover: NSObject {
 
         delegate?.popoverWillClose(notification())
         panel?.nativeBackend.endOutsideClickDismiss()
+        if animates, let panel, let handle = panel.nativeHandle {
+            // Fade out before the window is destroyed.
+            panel.nativeBackend.fadeWindow(handle, visible: false)
+        }
         panel?.close()
         isShown = false
         delegate?.popoverDidClose(notification())

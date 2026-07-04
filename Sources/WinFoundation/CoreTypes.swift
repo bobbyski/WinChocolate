@@ -4,6 +4,13 @@ public typealias TimeInterval = Double
 /// Foundation's sentinel for a missing location or index.
 public let NSNotFound: Int = Int.max
 
+/// Foundation's three-way ordering result, used by `compare(_:)` methods.
+public enum ComparisonResult: Int, Sendable {
+    case orderedAscending = -1
+    case orderedSame = 0
+    case orderedDescending = 1
+}
+
 /// A Foundation-compatible description of a portion of a series, such as
 /// characters in a string.
 public struct NSRange: Equatable, Hashable, Sendable {

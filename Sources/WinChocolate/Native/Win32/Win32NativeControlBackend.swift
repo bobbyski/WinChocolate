@@ -45,6 +45,8 @@ public final class Win32NativeControlBackend: NativeControlBackend {
     var tableClickedColumns: [UInt: Int] = [:]
     var sliderRanges: [UInt: (minValue: Double, maxValue: Double)] = [:]
     var trackbarHandles: Set<UInt> = []
+    var scrollerHandles: Set<UInt> = []
+    var scrollerParts: [UInt: NativeScrollerPart] = [:]
     var scrollViewMetrics: [UInt: (contentSize: NSSize, viewportSize: NSSize, hasVerticalScroller: Bool, hasHorizontalScroller: Bool, offset: NSPoint)] = [:]
     var stepperRanges: [UInt: (minValue: Double, maxValue: Double, increment: Double, value: Double)] = [:]
     var comboBoxHandles: Set<UInt> = []

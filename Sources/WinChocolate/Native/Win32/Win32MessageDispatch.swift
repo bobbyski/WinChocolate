@@ -100,6 +100,12 @@ extension Win32NativeControlBackend {
                 return 0
             }
 
+            // Record which part a standalone scroller reported so
+            // NSScroller.hitPart reflects the actual gesture.
+            if scrollerHandles.contains(handle.rawValue) {
+                scrollerParts[handle.rawValue] = scrollerPart(fromScrollCode: UInt(wParam & 0xffff))
+            }
+
             updateSliderPosition(from: wParam, for: handle)
             guard let action = controlActions[handle.rawValue] else {
                 return nil

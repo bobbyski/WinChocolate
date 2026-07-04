@@ -376,6 +376,9 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     /// Registered control actions by handle.
     public private(set) var actions: [NativeHandle: () -> Void] = [:]
 
+    /// Last actuated scroller part by handle.
+    private var scrollerParts: [NativeHandle: NativeScrollerPart] = [:]
+
     /// Registered text change actions by handle.
     public private(set) var textChangeActions: [NativeHandle: (String) -> Void] = [:]
 
@@ -524,6 +527,20 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
         record.isHidden = false
         records[handle] = record
     }
+
+    /// Records a fade show/hide request and updates visibility.
+    public func fadeWindow(_ handle: NativeHandle, visible: Bool) {
+        fadedWindows[handle] = visible
+        guard var record = records[handle] else {
+            return
+        }
+
+        record.isHidden = !visible
+        records[handle] = record
+    }
+
+    /// Last fade visibility requested per window, for tests.
+    public private(set) var fadedWindows: [NativeHandle: Bool] = [:]
 
     /// Removes a recorded native object.
     public func closeWindow(_ handle: NativeHandle) {
@@ -1198,6 +1215,22 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     /// Reads recorded scroller value.
     public func scrollerValue(for handle: NativeHandle) -> Double {
         records[handle]?.sliderValue ?? 0
+    }
+
+    /// Reads the recorded scroller hit part.
+    public func scrollerPart(for handle: NativeHandle) -> NativeScrollerPart {
+        scrollerParts[handle] ?? .none
+    }
+
+    /// Test helper: pretends the user actuated a scroller part, optionally
+    /// moving the value, and fires the registered action (mirroring the Win32
+    /// scroll-message path).
+    public func simulateScrollerPart(_ part: NativeScrollerPart, value: Double? = nil, for handle: NativeHandle) {
+        scrollerParts[handle] = part
+        if let value {
+            records[handle]?.sliderValue = value
+        }
+        actions[handle]?()
     }
 
     /// Updates recorded stepper range.

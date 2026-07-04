@@ -519,6 +519,14 @@ func winDeleteObject(_ object: HGDIOBJ?) -> Int32
 @_silgen_name("EnableWindow")
 func winEnableWindow(_ hwnd: HWND?, _ enable: Int32) -> Int32
 
+@_silgen_name("AnimateWindow")
+func winAnimateWindow(_ hwnd: HWND?, _ time: UInt32, _ flags: UInt32) -> Int32
+
+/// Fade the window using an alpha blend.
+let awBlend: UInt32 = 0x0008_0000
+/// Hide the window as the animation finishes.
+let awHide: UInt32 = 0x0001_0000
+
 @_silgen_name("DispatchMessageW")
 func winDispatchMessageW(_ message: UnsafePointer<MSG>) -> LRESULT
 

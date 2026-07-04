@@ -23,11 +23,13 @@ open class NSSegmentedControl: NSControl {
         case separated
     }
 
-    private struct SegmentState: Equatable, Sendable {
+    private struct SegmentState {
         var label: String
         var width: CGFloat
         var isEnabled: Bool
         var isSelected: Bool
+        var image: NSImage?
+        var tag: Int
     }
 
     private var segments: [SegmentState]
@@ -70,7 +72,7 @@ open class NSSegmentedControl: NSControl {
 
     /// Creates a segmented control with labels.
     public init(labels: [String], frame frameRect: NSRect) {
-        self.segments = labels.map { SegmentState(label: $0, width: 0, isEnabled: true, isSelected: false) }
+        self.segments = labels.map { SegmentState(label: $0, width: 0, isEnabled: true, isSelected: false, image: nil, tag: 0) }
         super.init(frame: frameRect)
         rebuildSegmentButtons()
     }
@@ -139,6 +141,7 @@ open class NSSegmentedControl: NSControl {
         segments[segment].label = label
         if segmentButtons.indices.contains(segment) {
             segmentButtons[segment].title = label
+            applyImage(to: segmentButtons[segment], segment: segment)
         }
     }
 
@@ -149,6 +152,50 @@ open class NSSegmentedControl: NSControl {
         }
 
         return segments[segment].label
+    }
+
+    /// Sets the image for a segment.
+    open func setImage(_ image: NSImage?, forSegment segment: Int) {
+        guard segments.indices.contains(segment) else {
+            return
+        }
+
+        segments[segment].image = image
+        if segmentButtons.indices.contains(segment) {
+            applyImage(to: segmentButtons[segment], segment: segment)
+        }
+    }
+
+    /// Returns the image for a segment.
+    open func image(forSegment segment: Int) -> NSImage? {
+        guard segments.indices.contains(segment) else {
+            return nil
+        }
+
+        return segments[segment].image
+    }
+
+    /// Sets the tag for a segment.
+    open func setTag(_ tag: Int, forSegment segment: Int) {
+        guard segments.indices.contains(segment) else {
+            return
+        }
+
+        segments[segment].tag = tag
+    }
+
+    /// Returns the tag for a segment, or `0` when absent.
+    open func tag(forSegment segment: Int) -> Int {
+        guard segments.indices.contains(segment) else {
+            return 0
+        }
+
+        return segments[segment].tag
+    }
+
+    /// Returns the tag of the selected segment, or `0` when none is selected.
+    open func selectedSegmentTag() -> Int {
+        segments.indices.contains(selectedSegment) ? segments[selectedSegment].tag : 0
     }
 
     /// Sets a fixed width for a segment. Pass `0` for automatic equal width.
@@ -224,7 +271,7 @@ open class NSSegmentedControl: NSControl {
             segments.removeLast(segments.count - count)
         } else if count > segments.count {
             for _ in segments.count..<count {
-                segments.append(SegmentState(label: "", width: 0, isEnabled: true, isSelected: false))
+                segments.append(SegmentState(label: "", width: 0, isEnabled: true, isSelected: false, image: nil, tag: 0))
             }
         }
 
@@ -242,6 +289,7 @@ open class NSSegmentedControl: NSControl {
             let button = NSButton(title: segments[index].label, frame: NSZeroRect)
             button.state = segments[index].isSelected ? .on : .off
             button.isEnabled = segments[index].isEnabled
+            applyImage(to: button, segment: index)
             button.onAction = { [weak self] _ in
                 self?.activateSegment(at: index)
             }
@@ -271,6 +319,17 @@ open class NSSegmentedControl: NSControl {
                 segmentButtons[index].frame = NSMakeRect(x, 0, width, frame.size.height)
             }
             x += width
+        }
+    }
+
+    /// Applies a segment's image (and the matching image position) to its button.
+    private func applyImage(to button: NSButton, segment: Int) {
+        let state = segments[segment]
+        button.image = state.image
+        if state.image == nil {
+            button.imagePosition = .noImage
+        } else {
+            button.imagePosition = state.label.isEmpty ? .imageOnly : .imageLeft
         }
     }
 

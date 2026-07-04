@@ -147,6 +147,22 @@ extension Win32NativeControlBackend {
         _ = winUpdateWindow(hwnd)
     }
 
+    /// Shows or hides a native window with a short alpha-blend fade.
+    public func fadeWindow(_ handle: NativeHandle, visible: Bool) {
+        guard let hwnd = hwnd(from: handle) else {
+            return
+        }
+
+        let flags = visible ? awBlend : (awBlend | awHide)
+        if winAnimateWindow(hwnd, 140, flags) == 0 {
+            // Fall back to an unanimated show/hide if the animation is refused.
+            _ = winShowWindow(hwnd, visible ? swShow : swHide)
+        }
+        if visible {
+            _ = winUpdateWindow(hwnd)
+        }
+    }
+
     /// Closes a native window.
     public func closeWindow(_ handle: NativeHandle) {
         guard let hwnd = hwnd(from: handle) else {

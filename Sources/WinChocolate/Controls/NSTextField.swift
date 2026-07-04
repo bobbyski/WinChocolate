@@ -54,6 +54,54 @@ open class NSTextField: NSControl {
     open weak var delegate: NSTextFieldDelegate?
     private var isUpdatingFromNative = false
 
+    /// The object value, rendered through `formatter` for display when set.
+    open override var objectValue: Any? {
+        get { super.objectValue }
+        set {
+            super.objectValue = newValue
+            applyFormatterForDisplay()
+        }
+    }
+
+    /// The formatter converting between `objectValue` and the field text.
+    open override var formatter: Formatter? {
+        get { super.formatter }
+        set {
+            super.formatter = newValue
+            applyFormatterForDisplay()
+        }
+    }
+
+    /// Renders `objectValue` through the formatter into the visible text.
+    private func applyFormatterForDisplay() {
+        guard let formatter, let objectValue = super.objectValue,
+              let formatted = formatter.string(for: objectValue) else {
+            return
+        }
+
+        stringValue = formatted
+    }
+
+    /// Parses the edited text back into `objectValue` and re-displays it.
+    ///
+    /// On a successful parse the field shows the canonical formatted string; on
+    /// failure it reverts to the last valid `objectValue`.
+    private func commitFormattedValue() {
+        guard let numberFormatter = formatter as? NumberFormatter else {
+            return
+        }
+
+        if let parsed = numberFormatter.number(from: stringValue) {
+            super.objectValue = parsed
+            if let formatted = numberFormatter.string(from: parsed) {
+                stringValue = formatted
+            }
+        } else if let objectValue = super.objectValue,
+                  let formatted = numberFormatter.string(for: objectValue) {
+            stringValue = formatted
+        }
+    }
+
     /// The text field's current string value.
     open var stringValue: String {
         didSet {
@@ -77,6 +125,35 @@ open class NSTextField: NSControl {
 
     /// Whether the text field draws a border.
     open var isBordered: Bool = true
+
+    /// Bezel appearance for a bezeled text field.
+    public enum BezelStyle: Sendable {
+        /// Square-cornered bezel (default entry field).
+        case squareBezel
+
+        /// Rounded-corner bezel (search/rounded field look).
+        case roundedBezel
+    }
+
+    /// Whether the field draws a bezel around its editing area.
+    ///
+    /// Stored for source compatibility; the bezel's rounded/square appearance
+    /// is applied with the window/control-appearance work. The native edit
+    /// border is currently driven by `isBordered`.
+    open var isBezeled: Bool = false
+
+    /// The bezel style used when `isBezeled` is set.
+    open var bezelStyle: BezelStyle = .squareBezel
+
+    /// Whether the field forces a single line of text.
+    ///
+    /// When cleared together with a `maximumNumberOfLines` other than 1, AppKit
+    /// wraps text; WinChocolate routes true multi-line entry through
+    /// `NSTextView`, so this stores the intent for source compatibility.
+    open var usesSingleLineMode: Bool = true
+
+    /// The maximum number of lines the field lays out (0 means no limit).
+    open var maximumNumberOfLines: Int = 1
 
     /// Whether the text field draws its background.
     open var drawsBackground: Bool = true {
@@ -214,6 +291,9 @@ open class NSTextField: NSControl {
                 if gained {
                     self.delegate?.controlTextDidBeginEditing(self.editingNotification(named: Self.textDidBeginEditingNotification))
                 } else {
+                    // Editing ended: parse the text through the formatter so
+                    // objectValue and the displayed text settle to a valid value.
+                    self.commitFormattedValue()
                     self.delegate?.controlTextDidEndEditing(self.editingNotification(named: Self.textDidEndEditingNotification))
                 }
             }

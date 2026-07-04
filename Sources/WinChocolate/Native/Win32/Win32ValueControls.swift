@@ -47,6 +47,7 @@ extension Win32NativeControlBackend {
             commandIdentifier: nil,
             style: wsChild | wsVisible | (isVertical ? sbsVert : sbsHorz)
         )
+        scrollerHandles.insert(handle.rawValue)
         setSliderRange(minValue: 0, maxValue: 100, for: handle)
         setScrollerValue(value, knobProportion: knobProportion, for: handle)
         return handle
@@ -266,6 +267,29 @@ extension Win32NativeControlBackend {
         }
 
         return min(max(Double(scrollInfo.nPos) / 100, 0), 1)
+    }
+
+    /// Reports the scroller part actuated by the last scroll message.
+    public func scrollerPart(for handle: NativeHandle) -> NativeScrollerPart {
+        scrollerParts[handle.rawValue] ?? .none
+    }
+
+    /// Maps a Win32 scroll notification code to a backend-neutral part.
+    func scrollerPart(fromScrollCode code: UInt) -> NativeScrollerPart {
+        switch code {
+        case sbLineLeft:
+            return .decrementLine
+        case sbLineRight:
+            return .incrementLine
+        case sbPageLeft:
+            return .decrementPage
+        case sbPageRight:
+            return .incrementPage
+        case sbThumbPosition, sbThumbTrack, sbTop, sbBottom:
+            return .knob
+        default:
+            return .none
+        }
     }
 
     /// Updates native stepper range.

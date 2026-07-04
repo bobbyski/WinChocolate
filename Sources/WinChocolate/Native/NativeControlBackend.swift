@@ -1,3 +1,17 @@
+/// Backend-neutral scroller part, mapped from the platform scroll gesture.
+///
+/// This lets the AppKit-facing `NSScroller.hitPart` reflect what the user
+/// actually touched (a line arrow, a page area, or the knob) without the
+/// control layer knowing about Win32 scroll notification codes.
+public enum NativeScrollerPart: Sendable {
+    case none
+    case decrementLine
+    case decrementPage
+    case knob
+    case incrementPage
+    case incrementLine
+}
+
 /// Native toolbar item descriptor used by backend toolbar renderers.
 public struct NativeToolbarItem: Equatable, Sendable {
     /// Stable item identifier.
@@ -230,6 +244,9 @@ public protocol NativeControlBackend: AnyObject {
 
     /// Shows a previously created native window.
     func showWindow(_ handle: NativeHandle)
+
+    /// Shows or hides a native window with a fade animation.
+    func fadeWindow(_ handle: NativeHandle, visible: Bool)
 
     /// Closes a previously created native window.
     func closeWindow(_ handle: NativeHandle)
@@ -525,6 +542,9 @@ public protocol NativeControlBackend: AnyObject {
 
     /// Reads native scroller value.
     func scrollerValue(for handle: NativeHandle) -> Double
+
+    /// Reports which part of a scroller the user last actuated.
+    func scrollerPart(for handle: NativeHandle) -> NativeScrollerPart
 
     /// Updates native stepper range.
     func setStepperRange(minValue: Double, maxValue: Double, increment: Double, for handle: NativeHandle)

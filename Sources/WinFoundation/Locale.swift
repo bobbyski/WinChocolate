@@ -40,12 +40,30 @@ public struct Locale: Equatable, Sendable {
     public var timePattern: String {
         WinLocale.info(windowsName, WinLocale.localeTimeFormat) ?? "h:mm:ss tt"
     }
+
+    /// The decimal separator for the locale (for example `.`).
+    public var decimalSeparator: String {
+        WinLocale.info(windowsName, WinLocale.localeDecimalSeparator) ?? "."
+    }
+
+    /// The thousands/grouping separator for the locale (for example `,`).
+    public var groupingSeparator: String {
+        WinLocale.info(windowsName, WinLocale.localeThousandSeparator) ?? ","
+    }
+
+    /// The currency symbol for the locale (for example `$`).
+    public var currencySymbol: String {
+        WinLocale.info(windowsName, WinLocale.localeCurrencySymbol) ?? "$"
+    }
 }
 
 /// Windows locale/date bridging used by `Locale` and `DateFormatter`.
 enum WinLocale {
     static let localeShortDate: UInt32 = 0x0000_001F
     static let localeTimeFormat: UInt32 = 0x0000_1003
+    static let localeDecimalSeparator: UInt32 = 0x0000_000E
+    static let localeThousandSeparator: UInt32 = 0x0000_000F
+    static let localeCurrencySymbol: UInt32 = 0x0000_0014
 
     static let dateShortDate: UInt32 = 0x0000_0001
     static let dateLongDate: UInt32 = 0x0000_0002

@@ -50,6 +50,27 @@ open class NSWindow: NSResponder {
 
         /// Utility-panel window style with compact tool-window chrome.
         public static let utilityWindow = StyleMask(rawValue: 1 << 4)
+
+        /// Content view fills the whole frame, including under the title bar.
+        public static let fullSizeContentView = StyleMask(rawValue: 1 << 5)
+    }
+
+    /// Whether the window shows its title text.
+    public enum TitleVisibility: Sendable {
+        /// The title is shown in the title bar (default).
+        case visible
+
+        /// The title text is hidden while the title bar remains.
+        case hidden
+    }
+
+    /// The standard title-bar buttons AppKit can vend.
+    public enum ButtonType: Sendable {
+        case closeButton
+        case miniaturizeButton
+        case zoomButton
+        case toolbarButton
+        case documentIconButton
     }
 
     /// Window z-ordering levels matching AppKit names.
@@ -96,13 +117,27 @@ open class NSWindow: NSResponder {
     /// The window title.
     open var title: String = "" {
         didSet {
-            guard let nativeHandle else {
-                return
-            }
-
-            nativeBackend.setText(title, for: nativeHandle)
+            applyTitleVisibility()
         }
     }
+
+    /// Whether the title text is shown in the title bar.
+    ///
+    /// Hiding the title keeps the title bar and its buttons but blanks the
+    /// caption text, matching AppKit windows that show only a toolbar.
+    open var titleVisibility: TitleVisibility = .visible {
+        didSet {
+            applyTitleVisibility()
+        }
+    }
+
+    /// Whether the title bar blends into the content (drawn transparent).
+    ///
+    /// Stored for source compatibility; the transparent-titlebar appearance is
+    /// applied with the window-appearance work.
+    open var titlebarAppearsTransparent: Bool = false
+
+    private var standardButtons: [ButtonType: NSButton] = [:]
 
     /// The window style mask.
     public let styleMask: StyleMask
@@ -491,6 +526,7 @@ open class NSWindow: NSResponder {
         }
         applySizeLimits()
         NSApplication.shared.addWindowsItem(self)
+        applyTitleVisibility()
         installToolbarHost()
         layoutToolbarAndContent()
         contentView?.realizeNativePeer(in: nativeBackend, parent: handle)
@@ -498,6 +534,48 @@ open class NSWindow: NSResponder {
             applyMovableByWindowBackground()
         }
         return handle
+    }
+
+    /// Pushes the effective caption text to the native window, honoring
+    /// `titleVisibility`.
+    private func applyTitleVisibility() {
+        guard let nativeHandle else {
+            return
+        }
+
+        nativeBackend.setText(titleVisibility == .hidden ? "" : title, for: nativeHandle)
+    }
+
+    /// Returns the AppKit-style proxy for a standard title-bar button.
+    ///
+    /// The proxy lets client code query and toggle `isHidden`/`isEnabled` the
+    /// way AppKit apps do. Reflecting the state onto the native Win32 caption
+    /// (which does not separate the caption buttons the way Cocoa does) is
+    /// tracked as later window-chrome work; borderless windows vend no buttons.
+    open func standardWindowButton(_ type: ButtonType) -> NSButton? {
+        guard styleMask.contains(.titled) else {
+            return nil
+        }
+
+        if let existing = standardButtons[type] {
+            return existing
+        }
+
+        let button = NSButton(frame: NSMakeRect(0, 0, 14, 14))
+        switch type {
+        case .closeButton:
+            button.title = "Close"
+        case .miniaturizeButton:
+            button.title = "Minimize"
+        case .zoomButton:
+            button.title = "Zoom"
+        case .toolbarButton:
+            button.title = "Toolbar"
+        case .documentIconButton:
+            button.title = ""
+        }
+        standardButtons[type] = button
+        return button
     }
 
     private func applyMovableByWindowBackground() {

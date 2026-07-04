@@ -74,6 +74,68 @@ func testWindowRealizationCreatesNativeHierarchy() {
     clearApplicationWindows()
 }
 
+func testWindowTitleVisibilityBlanksCaption() {
+    let backend = InMemoryNativeControlBackend()
+    let window = NSWindow(
+        contentRect: NSMakeRect(0, 0, 200, 120),
+        styleMask: [.titled, .closable],
+        backing: .buffered,
+        defer: false,
+        nativeBackend: backend
+    )
+    window.title = "Inspector"
+    let handle = window.realizeNativePeer()
+    expect(backend.records[handle]?.text == "Inspector", "Visible title was not pushed to the native window.")
+
+    // Hiding the title blanks the caption text but keeps the window.
+    window.titleVisibility = .hidden
+    expect(backend.records[handle]?.text == "", "Hidden titleVisibility did not blank the caption.")
+
+    // A title set while hidden stays blank, then reappears when shown.
+    window.title = "Renamed"
+    expect(backend.records[handle]?.text == "", "Title change while hidden should not reveal the caption.")
+    window.titleVisibility = .visible
+    expect(backend.records[handle]?.text == "Renamed", "Restoring visibility did not show the current title.")
+
+    clearApplicationWindows()
+}
+
+func testWindowStandardButtonsAndStyleFlags() {
+    let backend = InMemoryNativeControlBackend()
+    let titled = NSWindow(
+        contentRect: NSMakeRect(0, 0, 200, 120),
+        styleMask: [.titled, .closable, .fullSizeContentView],
+        backing: .buffered,
+        defer: false,
+        nativeBackend: backend
+    )
+
+    // fullSizeContentView is a recognized style option.
+    expect(titled.styleMask.contains(.fullSizeContentView), "fullSizeContentView flag was not stored in the style mask.")
+
+    // Titled windows vend proxy buttons; the same instance is returned each time.
+    let close = titled.standardWindowButton(.closeButton)
+    expect(close != nil, "Titled window did not vend a close-button proxy.")
+    close?.isHidden = true
+    expect(titled.standardWindowButton(.closeButton)?.isHidden == true, "Standard button proxy did not persist its state.")
+
+    // titlebarAppearsTransparent round-trips.
+    titled.titlebarAppearsTransparent = true
+    expect(titled.titlebarAppearsTransparent, "titlebarAppearsTransparent did not store.")
+
+    // Borderless windows vend no standard buttons.
+    let borderless = NSWindow(
+        contentRect: NSMakeRect(0, 0, 100, 60),
+        styleMask: [],
+        backing: .buffered,
+        defer: false,
+        nativeBackend: backend
+    )
+    expect(borderless.standardWindowButton(.closeButton) == nil, "Borderless window should not vend standard buttons.")
+
+    clearApplicationWindows()
+}
+
 func testViewHierarchyMaintainsSuperviewOwnership() {
     let firstParent = NSView(frame: NSMakeRect(0, 0, 100, 100))
     let secondParent = NSView(frame: NSMakeRect(0, 0, 100, 100))
@@ -1235,14 +1297,32 @@ func testScrollerNativeActionUpdatesValue() {
 
         actionCount += 1
         expect(scroller.doubleValue == 0.75, "Scroller action did not read native value.")
-        expect(scroller.hitPart == .knob, "Scroller did not record a coarse hit part.")
+        expect(scroller.hitPart == .knob, "Scroller did not report the knob hit part.")
     }
 
     let handle = scroller.realizeNativePeer(in: backend, parent: nil)
-    backend.setScrollerValue(0.75, knobProportion: 0.2, for: handle)
-    backend.actions[handle]?()
+    backend.simulateScrollerPart(.knob, value: 0.75, for: handle)
 
     expect(actionCount == 1, "Scroller native action was not dispatched.")
+}
+
+func testScrollerHitPartReflectsGesture() {
+    let backend = InMemoryNativeControlBackend()
+    let scroller = NSScroller(frame: NSMakeRect(0, 0, 120, 18))
+    let handle = scroller.realizeNativePeer(in: backend, parent: nil)
+
+    // Each backend part maps to the matching AppKit hit part.
+    let cases: [(NativeScrollerPart, NSScroller.Part)] = [
+        (.decrementLine, .decrementLine),
+        (.incrementLine, .incrementLine),
+        (.decrementPage, .decrementPage),
+        (.incrementPage, .incrementPage),
+        (.knob, .knob),
+    ]
+    for (native, expected) in cases {
+        backend.simulateScrollerPart(native, for: handle)
+        expect(scroller.hitPart == expected, "Scroller hit part did not follow the \(native) gesture.")
+    }
 }
 
 func testDatePickerStoresDateRangeAndSyncsNativePeer() {
@@ -1312,6 +1392,31 @@ func testSegmentedControlStoresSegmentsAndComposesButtons() {
     expect(backend.records[firstHandle]?.text == "First", "First segment label was not synced.")
     expect(backend.records[firstHandle]?.frame.size.width == 90, "First segment width was not synced.")
     expect(backend.records[secondHandle]?.isEnabled == false, "Second segment enabled state was not synced.")
+}
+
+func testSegmentedControlPerSegmentImageAndTag() {
+    let segmented = NSSegmentedControl(labels: ["Grid", "List"], frame: NSMakeRect(0, 0, 160, 28))
+
+    // Per-segment tags round-trip and follow the selection.
+    segmented.setTag(11, forSegment: 0)
+    segmented.setTag(22, forSegment: 1)
+    expect(segmented.tag(forSegment: 0) == 11, "Segment tag was not stored.")
+    expect(segmented.tag(forSegment: 1) == 22, "Second segment tag was not stored.")
+    segmented.selectedSegment = 1
+    expect(segmented.selectedSegmentTag() == 22, "selectedSegmentTag did not follow the selection.")
+
+    // Per-segment images round-trip and reach the composed button.
+    let icon = NSImage(named: "grid.symbol")
+    segmented.setImage(icon, forSegment: 0)
+    expect(segmented.image(forSegment: 0) === icon, "Segment image was not stored.")
+    expect(segmented.image(forSegment: 1) == nil, "Unset segment image should be nil.")
+    guard segmented.subviews.indices.contains(0), let firstButton = segmented.subviews[0] as? NSButton else {
+        expect(false, "Segment button was not composed.")
+        return
+    }
+    expect(firstButton.image === icon, "Segment image did not reach the composed button.")
+    // A labeled segment with an image shows the image beside the label.
+    expect(firstButton.imagePosition == .imageLeft, "Labeled segment with image should place the image left.")
 }
 
 func testSegmentedControlActionSelectsSegment() {
@@ -2165,6 +2270,51 @@ func testPopoverShowsClosesAndReopensFromAnchorView() {
     expect(panel.nativeHandle != nil, "Popover host panel did not reopen.")
 }
 
+func testPopoverAnimatesFadesHost() {
+    clearApplicationWindows()
+
+    let previousBackend = NSApplication.shared.nativeBackend
+    let backend = InMemoryNativeControlBackend()
+    NSApplication.shared.nativeBackend = backend
+    defer {
+        NSApplication.shared.nativeBackend = previousBackend
+        clearApplicationWindows()
+    }
+
+    let window = NSWindow(
+        contentRect: NSMakeRect(100, 120, 400, 300),
+        styleMask: [.titled],
+        backing: .buffered,
+        defer: false
+    )
+    let contentView = NSView(frame: NSMakeRect(0, 0, 400, 300))
+    let anchor = NSButton(title: "Anchor", frame: NSMakeRect(24, 32, 80, 30))
+    contentView.addSubview(anchor)
+    window.contentView = contentView
+    window.makeKeyAndOrderFront(nil)
+
+    let popover = NSPopover()
+    popover.animates = true
+    popover.behavior = .applicationDefined
+    popover.contentSize = NSMakeSize(160, 90)
+    popover.contentViewController = NSViewController(view: NSView(frame: NSMakeRect(0, 0, 160, 90)))
+    popover.show(relativeTo: NSMakeRect(4, 6, 20, 18), of: anchor, preferredEdge: .maxY)
+
+    guard let panel = NSApplication.shared.windows.compactMap({ $0 as? NSPanel }).last,
+          let panelHandle = panel.nativeHandle else {
+        fatalError("Popover did not create a panel host.")
+    }
+
+    // An animated show fades the host in rather than a plain show.
+    expect(backend.fadedWindows[panelHandle] == true, "Animated popover did not fade its host in.")
+    expect(backend.records[panelHandle]?.isHidden == false, "Faded-in popover host should be visible.")
+
+    popover.performClose(nil)
+
+    // An animated close fades the host out before it is destroyed.
+    expect(backend.fadedWindows[panelHandle] == false, "Animated popover did not fade its host out on close.")
+}
+
 func testToolbarStoresItemsAndAttachesToWindow() {
     let window = NSWindow(
         contentRect: NSMakeRect(0, 0, 320, 200),
@@ -2687,6 +2837,21 @@ func testTextFieldFactoryConstructorsAndCompatibilityProperties() {
     expect(secureField.isSelectable, "Secure text field factory did not create selectable field.")
     expect(secureField.isBordered, "Secure text field factory did not create bordered field.")
     expect(secureField.drawsBackground, "Secure text field factory did not draw background.")
+
+    // Bezel and line-mode properties round-trip for AppKit source compatibility.
+    expect(!textField.isBezeled, "isBezeled should default off.")
+    expect(textField.bezelStyle == .squareBezel, "bezelStyle should default to square.")
+    expect(textField.usesSingleLineMode, "usesSingleLineMode should default on.")
+    expect(textField.maximumNumberOfLines == 1, "maximumNumberOfLines should default to 1.")
+
+    textField.isBezeled = true
+    textField.bezelStyle = .roundedBezel
+    textField.usesSingleLineMode = false
+    textField.maximumNumberOfLines = 0
+    expect(textField.isBezeled, "isBezeled did not store.")
+    expect(textField.bezelStyle == .roundedBezel, "bezelStyle did not store rounded.")
+    expect(!textField.usesSingleLineMode, "usesSingleLineMode did not clear.")
+    expect(textField.maximumNumberOfLines == 0, "maximumNumberOfLines did not store unlimited.")
 }
 
 func testFormComposesTextFieldsAndStoresCells() {
@@ -2958,6 +3123,43 @@ func testPathControlStoresURLAndPathComponentCells() {
 
     expect(pathControl.stringValue.hasSuffix("Code"), "Path control setURL did not update visible path.")
     expect(pathControl.pathComponentCells.contains { $0.title == "Code" }, "Path control setURL did not refresh component cells.")
+}
+
+func testPathControlComponentURLsAndSelection() {
+    let pathControl = NSPathControl(
+        url: URL(fileURLWithPath: "C:\\AIResearch\\WinChocolate\\Code"),
+        frame: NSMakeRect(0, 0, 260, 28)
+    )
+
+    // Every component cell carries a cumulative URL ending in its own title.
+    expect(!pathControl.pathComponentCells.isEmpty, "Path control produced no component cells.")
+    for cell in pathControl.pathComponentCells {
+        guard let cellURL = cell.url else {
+            expect(false, "Component cell \(cell.title) had no cumulative URL.")
+            continue
+        }
+        expect(cellURL.lastPathComponent == cell.title, "Component cell URL did not end with its own title.")
+    }
+
+    // Selecting a component records it, exposes its URL, and fires the action.
+    var actionFired = false
+    pathControl.onAction = { _ in actionFired = true }
+    guard let last = pathControl.pathComponentCells.last else {
+        expect(false, "Path control had no last component.")
+        return
+    }
+    let selected = pathControl.selectComponentCell(at: pathControl.pathComponentCells.count - 1)
+    expect(selected, "selectComponentCell did not accept a valid index.")
+    expect(actionFired, "Selecting a component did not fire the control action.")
+    expect(pathControl.clickedPathComponentCell === last, "Clicked component cell was not recorded.")
+    expect(pathControl.clickedPathComponentURL == last.url, "Clicked component URL did not match the cell.")
+
+    // An out-of-range selection is rejected.
+    expect(!pathControl.selectComponentCell(at: 99), "selectComponentCell should reject an out-of-range index.")
+
+    // Changing the URL clears the recorded click.
+    pathControl.setURL(URL(fileURLWithPath: "C:\\AIResearch"))
+    expect(pathControl.clickedPathComponentCell == nil, "Rebuilding components did not clear the clicked cell.")
 }
 
 func testWinFoundationCompatibilitySurface() {
@@ -4966,6 +5168,99 @@ final class RecordingTextFieldDelegate: NSTextFieldDelegate {
     }
 }
 
+func testTextFieldFormatterDisplaysAndParses() {
+    let backend = InMemoryNativeControlBackend()
+    let field = NSTextField(string: "", frame: NSMakeRect(0, 0, 120, 24))
+    field.isEditable = true
+
+    let formatter = NumberFormatter()
+    formatter.numberStyle = .currency
+    field.formatter = formatter
+    field.objectValue = NSNumber(value: 1234.5)
+
+    // Setting objectValue renders it through the formatter for display.
+    expect(field.stringValue == "$1,234.50", "Formatter did not format objectValue for display.")
+
+    let handle = field.realizeNativePeer(in: backend, parent: nil)
+    expect(backend.records[handle]?.text == "$1,234.50", "Field did not realize with formatted text.")
+
+    // The user edits the text, then focus leaves the field (commit point).
+    field.stringValue = "$99.5"
+    backend.simulateFocusChange(gained: false, for: handle)
+
+    // Editing end parses the text into objectValue and re-displays it canonically.
+    expect((field.objectValue as? NSNumber)?.doubleValue == 99.5, "Formatter did not parse edited text into objectValue.")
+    expect(field.stringValue == "$99.50", "Field did not re-display the canonical formatted value.")
+
+    // Unparseable input reverts to the last valid value on commit.
+    field.stringValue = "garbage"
+    backend.simulateFocusChange(gained: false, for: handle)
+    expect(field.stringValue == "$99.50", "Field did not revert unparseable input to the last valid value.")
+}
+
+func testNSNumberBoxing() {
+    // Integers round-trip exactly and read as other widths.
+    let three = NSNumber(value: 3)
+    expect(three.intValue == 3, "NSNumber int value wrong.")
+    expect(three.doubleValue == 3.0, "NSNumber double from int wrong.")
+    expect(three.int64Value == 3, "NSNumber int64 wrong.")
+    expect(three.stringValue == "3", "NSNumber integer stringValue should have no decimal point.")
+    expect(three.boolValue, "NSNumber non-zero boolValue should be true.")
+
+    // Doubles keep their fractional value.
+    let pi = NSNumber(value: 3.5)
+    expect(pi.doubleValue == 3.5, "NSNumber double value wrong.")
+    expect(pi.intValue == 3, "NSNumber int from double should truncate.")
+    expect(pi.stringValue == "3.5", "NSNumber fractional stringValue wrong.")
+
+    // Booleans box and read back.
+    let flag = NSNumber(value: true)
+    expect(flag.boolValue, "NSNumber bool value wrong.")
+    expect(flag.intValue == 1, "NSNumber bool int value wrong.")
+
+    // Equality and hashing compare by numeric value.
+    expect(NSNumber(value: 2) == NSNumber(value: 2.0), "NSNumber equality should compare numeric value.")
+    expect(NSNumber(value: 1).compare(NSNumber(value: 2)) == .orderedAscending, "NSNumber compare wrong.")
+    var seen = Set<NSNumber>()
+    seen.insert(NSNumber(value: 5))
+    expect(seen.contains(NSNumber(value: 5.0)), "NSNumber hashing should match equal values.")
+}
+
+func testNumberFormatterStylesAndParsing() {
+    // Plain style: no grouping, no fraction.
+    let plain = NumberFormatter()
+    plain.numberStyle = .none
+    expect(plain.string(from: NSNumber(value: 1234)) == "1234", "Plain style should not group.")
+
+    // Decimal style groups and keeps up to three fraction digits (US locale).
+    let decimal = NumberFormatter()
+    decimal.numberStyle = .decimal
+    expect(decimal.string(from: NSNumber(value: 1234.5)) == "1,234.5", "Decimal style did not group/format.")
+    expect(decimal.string(from: NSNumber(value: -1234)) == "-1,234", "Decimal negative did not format.")
+
+    // Currency style: symbol, grouping, two fraction digits, sign in front.
+    let currency = NumberFormatter()
+    currency.numberStyle = .currency
+    expect(currency.string(from: NSNumber(value: 1234.5)) == "$1,234.50", "Currency style did not format.")
+    expect(currency.string(from: NSNumber(value: -12.5)) == "-$12.50", "Currency negative did not format.")
+
+    // Percent style multiplies by 100 and appends the symbol.
+    let percent = NumberFormatter()
+    percent.numberStyle = .percent
+    expect(percent.string(from: NSNumber(value: 0.25)) == "25%", "Percent style did not format.")
+
+    // Parsing strips grouping, currency, and percent decoration.
+    expect(currency.number(from: "$1,234.50")?.doubleValue == 1234.5, "Currency parse failed.")
+    expect(decimal.number(from: "1,234.5")?.doubleValue == 1234.5, "Decimal parse failed.")
+    expect(percent.number(from: "25%")?.doubleValue == 0.25, "Percent parse failed.")
+    expect(decimal.number(from: "nonsense") == nil, "Non-numeric parse should be nil.")
+
+    // The base Formatter API formats supported Swift values.
+    expect(decimal.string(for: 1234.5) == "1,234.5", "string(for: Double) failed.")
+    expect(decimal.string(for: 1000) == "1,000", "string(for: Int) failed.")
+    expect(decimal.string(for: "x") == nil, "string(for: unsupported) should be nil.")
+}
+
 func testLocaleSystemPatterns() {
     // The current locale is read from the system and exposes usable patterns.
     let locale = Locale.current
@@ -6142,6 +6437,8 @@ func testAlertBeginSheetModalDeliversResponse() {
 }
 
 testWindowRealizationCreatesNativeHierarchy()
+testWindowTitleVisibilityBlanksCaption()
+testWindowStandardButtonsAndStyleFlags()
 testViewHierarchyMaintainsSuperviewOwnership()
 testViewInsertionReplacementTagsAndDescendants()
 testViewCompatibilityMetadataStoresValues()
@@ -6178,8 +6475,10 @@ testProgressIndicatorStoresRangeValueAndSyncsNativePeer()
 testLevelIndicatorStoresRangeValueAndUsesProgressPeer()
 testScrollerStoresValueAndSyncsNativePeer()
 testScrollerNativeActionUpdatesValue()
+testScrollerHitPartReflectsGesture()
 testDatePickerStoresDateRangeAndSyncsNativePeer()
 testSegmentedControlStoresSegmentsAndComposesButtons()
+testSegmentedControlPerSegmentImageAndTag()
 testSegmentedControlActionSelectsSegment()
 testStepperStoresRangeIncrementAndSyncsNativePeer()
 testStepperNativeActionUpdatesValue()
@@ -6218,6 +6517,7 @@ testWindowContentSizeAndCenterUpdateFrame()
 testNativeWindowResizeUpdatesContentAndAutoresizesSubviews()
 testPanelStoresPanelStateAndOrdersFront()
 testPopoverShowsClosesAndReopensFromAnchorView()
+testPopoverAnimatesFadesHost()
 testToolbarStoresItemsAndAttachesToWindow()
 testToolbarVisibilityAndItemActions()
 testToolbarCustomizationDelegateAndDefaultItems()
@@ -6243,6 +6543,7 @@ testComboBoxStoresItemsTextAndUsesNativePeer()
 testComboBoxNativeTextChangeAndActionUpdateState()
 testTokenFieldStoresTokensAndTokenizesNativeText()
 testPathControlStoresURLAndPathComponentCells()
+testPathControlComponentURLsAndSelection()
 testWinFoundationCompatibilitySurface()
 testImageViewStoresImageAndUsesNativePeer()
 testTabViewStoresItemsSelectionAndUsesNativePeer()
@@ -6300,6 +6601,9 @@ testTextViewSelectionInsertionAndDelegate()
 testDocumentChangeCountAndOverridableDefaults()
 testDocumentSavePanelFlowWritesAndReadsBack()
 testDocumentControllerTracksDocumentsRecentsAndOpen()
+testNSNumberBoxing()
+testNumberFormatterStylesAndParsing()
+testTextFieldFormatterDisplaysAndParses()
 testLocaleSystemPatterns()
 testDateFormatterPatternsAndRoundTrip()
 testWindowMovableByBackgroundAndPanelKeyAndColorWell()

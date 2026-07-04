@@ -28,6 +28,13 @@ open class NSControl: NSView {
     /// Generic object value used by controls that expose value-like state.
     open var objectValue: Any?
 
+    /// A formatter that converts between `objectValue` and the displayed text.
+    ///
+    /// Controls that support formatting (currently `NSTextField`) render
+    /// `objectValue` through this for display and parse edited text back into
+    /// `objectValue` when editing ends.
+    open var formatter: Formatter?
+
     /// Whether the control should continuously send actions while tracking.
     open var isContinuous: Bool = false
 
