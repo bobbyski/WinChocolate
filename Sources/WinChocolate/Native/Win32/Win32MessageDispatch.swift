@@ -71,6 +71,12 @@ extension Win32NativeControlBackend {
             }
 
             action(NSSize(width: CGFloat(max(0, rectangle.right - rectangle.left)), height: CGFloat(max(0, rectangle.bottom - rectangle.top))))
+            // Force a clean repaint of the whole client area and every child
+            // control after relayout. Without this, a drag-resize leaves stale
+            // pixels: child controls repaint promptly while the container view's
+            // background surface lags, so transparent labels show their (focus-
+            // tinted) fill over an unrepainted container.
+            _ = winRedrawWindow(hwnd, nil, nil, rdwInvalidate | rdwErase | rdwAllChildren)
             return 0
         case wmHScroll, wmVScroll:
             guard lParam != 0, let scrollHwnd = HWND(bitPattern: lParam) else {
