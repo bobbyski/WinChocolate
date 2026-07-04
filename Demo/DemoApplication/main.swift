@@ -628,6 +628,7 @@ let levelLabel = NSTextField(string: "Level:", frame: NSMakeRect(32, 226, 88, 24
 let levelIndicator = NSLevelIndicator(frame: NSMakeRect(128, 230, 144, 18))
 let colorWellLabel = NSTextField(string: "Color:", frame: NSMakeRect(288, 226, 56, 24))
 let colorWell = NSColorWell(frame: NSMakeRect(348, 224, 32, 28))
+colorWell.colorWellStyle = .expanded
 let fontButton = NSButton(title: "Font...", frame: NSMakeRect(396, 222, 92, 30))
 let segmentedLabel = NSTextField(string: "Segments:", frame: NSMakeRect(32, 286, 104, 24))
 let segmentedControl = NSSegmentedControl(labels: ["One", "Two", "Three"], frame: NSMakeRect(152, 284, 240, 28))
@@ -638,6 +639,9 @@ let timerTickLabel = NSTextField(string: "Timer: 0s", frame: NSMakeRect(548, 382
 let dateLabel = NSTextField(string: "Date:", frame: NSMakeRect(32, 382, 88, 24))
 let datePicker = NSDatePicker(date: Date(timeIntervalSince1970: 1_780_272_000), frame: NSMakeRect(128, 378, 184, 28))
 let dateValueLabel = NSTextField(string: "2026-06-01", frame: NSMakeRect(328, 382, 192, 24))
+let calendarLabel = NSTextField(string: "Calendar:", frame: NSMakeRect(724, 60, 120, 24))
+let calendarPicker = NSDatePicker(date: Date(timeIntervalSince1970: 1_780_272_000), frame: NSMakeRect(724, 88, 224, 168))
+calendarPicker.datePickerStyle = .clockAndCalendar
 let canvasLabel = NSTextField(string: "Canvas:", frame: NSMakeRect(32, 36, 200, 24))
 let canvasView = DemoCanvasView(frame: NSMakeRect(32, 68, 420, 280))
 let canvasHintLabel = NSTextField(string: "Click: fill color   Right-click: outline   Scroll: size   Double-click: reset", frame: NSMakeRect(32, 356, 520, 24))
@@ -1834,6 +1838,15 @@ datePicker.onAction = { control in
     statusLabel.stringValue = "Date picked: \(picker.stringValue)"
 }
 
+calendarPicker.onAction = { control in
+    guard let picker = control as? NSDatePicker else {
+        return
+    }
+
+    dateValueLabel.stringValue = picker.stringValue
+    statusLabel.stringValue = "Calendar picked: \(picker.stringValue)"
+}
+
 pageSelector.onAction = { control in
     guard let selector = control as? NSPopUpButton else {
         return
@@ -2402,6 +2415,8 @@ valuesPage.addSubview(scrollerValueLabel)
 valuesPage.addSubview(dateLabel)
 valuesPage.addSubview(datePicker)
 valuesPage.addSubview(dateValueLabel)
+valuesPage.addSubview(calendarLabel)
+valuesPage.addSubview(calendarPicker)
 valuesPage.addSubview(timerTickLabel)
 
 // A repeating run-loop Timer ticking the label once per second.

@@ -406,7 +406,10 @@ public protocol NativeControlBackend: AnyObject {
     func createStepper(value: Double, minValue: Double, maxValue: Double, increment: Double, frame: NSRect, parent: NativeHandle?) -> NativeHandle
 
     /// Creates a native date-picker child.
-    func createDatePicker(date: Date, minDate: Date?, maxDate: Date?, frame: NSRect, parent: NativeHandle?) -> NativeHandle
+    ///
+    /// `showsCalendar` selects a month-calendar peer (AppKit's
+    /// clock-and-calendar style) instead of the compact text-field picker.
+    func createDatePicker(date: Date, minDate: Date?, maxDate: Date?, showsCalendar: Bool, frame: NSRect, parent: NativeHandle?) -> NativeHandle
 
     /// Creates a native scroll-view child.
     func createScrollView(frame: NSRect, parent: NativeHandle?, hasVerticalScroller: Bool, hasHorizontalScroller: Bool) -> NativeHandle

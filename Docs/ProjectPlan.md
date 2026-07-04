@@ -34,7 +34,7 @@ Phase 11 · Cross-Platform Test Apps        ░░░░░░░░░░░░
 
 **Status key:** ✅ Done &nbsp;|&nbsp; 🔄 In Progress &nbsp;|&nbsp; ⏳ Pending &nbsp;|&nbsp; ⏸️ Deferred &nbsp;|&nbsp; 🚫 Blocked
 
-**How percentages are computed:** each item carries a completion estimate (✅ = 100%, 🔄 = the `~NN%` shown in its notes, ⏳/⏸️ = 0%); a phase is the average of its items, and Overall is the average across all 91 tracked items (17 ✅). LinChocolate (the Linux port) has its own plan in `Docs/LinChocolatePlan.md` and does not count here. Recomputed 2026-07-01 after enumerating the missing AppKit surfaces — Overall dropped from 64% because tracked scope grew from 55 to 79 items, not because work regressed. 2026-07-02: added 10.7 (per-monitor DPI awareness), growing scope to 80 items; later that day 3.8 moved 70%→90% (floating panels + live apply). 2026-07-03: 3.3 closed (wheel scrolling + magnification) and 3.11 closed (rich text attributes over the rich-edit peer); then, after clarifying that broad AppKit coverage — not the Phase 11 apps — is the target, items 3.16-3.23 and 9.5 were added, and later the same day 3.24 (symbol images, absorbing 6.12) — scope 80→89, dropping Phase 3 from 88% to 55% and Overall from 46% to 41% on scope growth alone. LinChocolate was briefly a Phase 12 here before moving to its own plan. Since then 3.17 (pasteboard), 3.16 (text system objects, ~80%), and 3.20 (font traits) landed, lifting Phase 3 to 66% and Overall to 44%. 2026-07-03 (later): a common-control depth pass advanced 3.1 (slider ticks/vertical, text alignment/placeholder, combo visible-items/completion, button key equivalents, segmented keyboard, level-indicator thresholds) and 3.2 (popover outside-click dismiss/chrome/delegate, window size limits) from 80% to 88% each — Phase 3 to 67%. A second pass added `NSTextFieldDelegate` editing callbacks + `NSPopUpButton` tags (3.1) and `NSAlert` help button + custom icon (3.2), plus a transparent-background default for labels/sliders/checkboxes/radios so controls show the window color — 3.1 to 92%, 3.2 to 88%, Phase 3 to 68%. Then the NSSearchField search chrome (10.8) and sheet animation/window-modal cluster (10.9) were resequenced out of 3.1/3.2 into the Phase 10 cleanup phase — not skipped, just tracked there — growing scope 89→91, so Phase 10 dropped 27%→21% and Overall 44%→43% while the moved work is now explicit rather than buried in 3.1/3.2's remaining. A third pass added `NSDatePicker` element formats (date/time/date+time) and `NSButton` image + alternate title — 3.1 to 94%. 2026-07-04: `NSColorWell` style/border (3.1 → 95%), plus `NSWindow.isMovableByWindowBackground` and `NSPanel.becomesKeyOnlyIfNeeded` enforcement (3.2 → 90%); Phase 3 holds at 68%. Also added a `DateFormatter` shim to WinFoundation (real Foundation still won't build — canary re-confirmed) and routed `NSDatePicker.stringValue` through it, removing the last hand-rolled date math from the control; the picker and its string format through the user's locale (`Locale` + `DateFormatter` over `GetDateFormatEx`/`GetLocaleInfoEx`), so a US machine shows US dates the proper (locale-aware) way rather than a hardcoded pattern. 2026-07-04 (overnight): a depth pass advanced 3.1 (`NSScroller.hitPart` reflects the real line/page/knob gesture via a backend-neutral `NativeScrollerPart`; `NSTextField.isBezeled`/`bezelStyle`/`usesSingleLineMode`/`maximumNumberOfLines` surface → 3.1 ~96%) and 3.2 (`NSWindow.titleVisibility` + `standardWindowButton(_:)` proxies + `fullSizeContentView`/`titlebarAppearsTransparent`; `NSPopover.animates` fade via `AnimateWindow`, verified live → 3.2 ~93%); Phase 3 holds at 68% within rounding. True cross-window modality (and the `worksWhenModal` exemption that depends on it) was folded into the existing 10.9 window-modal cluster rather than being added as new scope, so the count stays 91 items (17 ✅) and Overall holds at 43%. `NSFormatter`/`NumberFormatter` is intentionally left for a design call (needs an `NSNumber` shim + currency/locale scope) and stays tracked in 3.1's remaining. Two more overnight batches followed: `NSSegmentedControl` per-segment `image` + `tag`/`selectedSegmentTag()`, and `NSPathControl` cumulative component-cell URLs + `selectComponentCell(at:)` (records `clickedPathComponentCell`/`clickedPathComponentURL` and fires the action) — all contract-tested. Then, on the user's go-ahead ("the shim is our workaround that lets us work"), the `NSFormatter` gap closed: `NSNumber` (reference-type numeric box), `Formatter` (abstract base), and `NumberFormatter` (none/decimal/currency/percent with locale-derived separators/currency symbol, `string(from:)`/`number(from:)`) shims landed in WinFoundation, `Locale` gained `decimalSeparator`/`groupingSeparator`/`currencySymbol`, and `NSControl.formatter`/`NSTextField` were wired so `objectValue` renders through the formatter and edited text parses back on commit (reverting invalid input) — contract-tested and verified live in the demo's new currency field. This closes 3.1 to ~97% and lifts Phase 7.4 (broader Foundation) from 0% to ~15%, nudging Phase 7 24%→26%; Overall holds at 43% and the item count stays 91.
+**How percentages are computed:** each item carries a completion estimate (✅ = 100%, 🔄 = the `~NN%` shown in its notes, ⏳/⏸️ = 0%); a phase is the average of its items, and Overall is the average across all 91 tracked items (17 ✅). LinChocolate (the Linux port) has its own plan in `Docs/LinChocolatePlan.md` and does not count here. Recomputed 2026-07-01 after enumerating the missing AppKit surfaces — Overall dropped from 64% because tracked scope grew from 55 to 79 items, not because work regressed. 2026-07-02: added 10.7 (per-monitor DPI awareness), growing scope to 80 items; later that day 3.8 moved 70%→90% (floating panels + live apply). 2026-07-03: 3.3 closed (wheel scrolling + magnification) and 3.11 closed (rich text attributes over the rich-edit peer); then, after clarifying that broad AppKit coverage — not the Phase 11 apps — is the target, items 3.16-3.23 and 9.5 were added, and later the same day 3.24 (symbol images, absorbing 6.12) — scope 80→89, dropping Phase 3 from 88% to 55% and Overall from 46% to 41% on scope growth alone. LinChocolate was briefly a Phase 12 here before moving to its own plan. Since then 3.17 (pasteboard), 3.16 (text system objects, ~80%), and 3.20 (font traits) landed, lifting Phase 3 to 66% and Overall to 44%. 2026-07-03 (later): a common-control depth pass advanced 3.1 (slider ticks/vertical, text alignment/placeholder, combo visible-items/completion, button key equivalents, segmented keyboard, level-indicator thresholds) and 3.2 (popover outside-click dismiss/chrome/delegate, window size limits) from 80% to 88% each — Phase 3 to 67%. A second pass added `NSTextFieldDelegate` editing callbacks + `NSPopUpButton` tags (3.1) and `NSAlert` help button + custom icon (3.2), plus a transparent-background default for labels/sliders/checkboxes/radios so controls show the window color — 3.1 to 92%, 3.2 to 88%, Phase 3 to 68%. Then the NSSearchField search chrome (10.8) and sheet animation/window-modal cluster (10.9) were resequenced out of 3.1/3.2 into the Phase 10 cleanup phase — not skipped, just tracked there — growing scope 89→91, so Phase 10 dropped 27%→21% and Overall 44%→43% while the moved work is now explicit rather than buried in 3.1/3.2's remaining. A third pass added `NSDatePicker` element formats (date/time/date+time) and `NSButton` image + alternate title — 3.1 to 94%. 2026-07-04: `NSColorWell` style/border (3.1 → 95%), plus `NSWindow.isMovableByWindowBackground` and `NSPanel.becomesKeyOnlyIfNeeded` enforcement (3.2 → 90%); Phase 3 holds at 68%. Also added a `DateFormatter` shim to WinFoundation (real Foundation still won't build — canary re-confirmed) and routed `NSDatePicker.stringValue` through it, removing the last hand-rolled date math from the control; the picker and its string format through the user's locale (`Locale` + `DateFormatter` over `GetDateFormatEx`/`GetLocaleInfoEx`), so a US machine shows US dates the proper (locale-aware) way rather than a hardcoded pattern. 2026-07-04 (overnight): a depth pass advanced 3.1 (`NSScroller.hitPart` reflects the real line/page/knob gesture via a backend-neutral `NativeScrollerPart`; `NSTextField.isBezeled`/`bezelStyle`/`usesSingleLineMode`/`maximumNumberOfLines` surface → 3.1 ~96%) and 3.2 (`NSWindow.titleVisibility` + `standardWindowButton(_:)` proxies + `fullSizeContentView`/`titlebarAppearsTransparent`; `NSPopover.animates` fade via `AnimateWindow`, verified live → 3.2 ~93%); Phase 3 holds at 68% within rounding. True cross-window modality (and the `worksWhenModal` exemption that depends on it) was folded into the existing 10.9 window-modal cluster rather than being added as new scope, so the count stays 91 items (17 ✅) and Overall holds at 43%. `NSFormatter`/`NumberFormatter` is intentionally left for a design call (needs an `NSNumber` shim + currency/locale scope) and stays tracked in 3.1's remaining. Two more overnight batches followed: `NSSegmentedControl` per-segment `image` + `tag`/`selectedSegmentTag()`, and `NSPathControl` cumulative component-cell URLs + `selectComponentCell(at:)` (records `clickedPathComponentCell`/`clickedPathComponentURL` and fires the action) — all contract-tested. Then, on the user's go-ahead ("the shim is our workaround that lets us work"), the `NSFormatter` gap closed: `NSNumber` (reference-type numeric box), `Formatter` (abstract base), and `NumberFormatter` (none/decimal/currency/percent with locale-derived separators/currency symbol, `string(from:)`/`number(from:)`) shims landed in WinFoundation, `Locale` gained `decimalSeparator`/`groupingSeparator`/`currencySymbol`, and `NSControl.formatter`/`NSTextField` were wired so `objectValue` renders through the formatter and edited text parses back on commit (reverting invalid input) — contract-tested and verified live in the demo's new currency field. This closes 3.1 to ~97% and lifts Phase 7.4 (broader Foundation) from 0% to ~15%, nudging Phase 7 24%→26%; Overall holds at 43% and the item count stays 91. 2026-07-04 (later, "finish 3.1" push): the Phase 3.1/3.2 notes were restructured into scannable per-control **checkbox checklists** below the table (checkboxes don't render in table cells), and cosmetic control-visual items were formally routed to Phase 8.3. Functional closes on the way to finishing 3.1: `NSComboBox` data source (`NSComboBoxDataSource`/`usesDataSource`/`reloadData()`) + `hasVerticalScroller`; `NSDatePicker` clock-and-calendar style (`SysMonthCal32` peer with selection-change notifications, verified live — clicking a day fires the action with the picked date); and `NSColorWell` expanded-style swatch palette (custom-draw swatches in a transient popover + "Show Colors…", verified live). All contract-tested; 3.1 → ~99%. Remaining heavy functional items (`NSLevelIndicator.isEditable`, `NSPathControl` breadcrumb hit-testing) and minor cleanups are queued to close 3.1 to 100%.
 
 ---
 
@@ -91,8 +91,8 @@ Broaden source-compatible AppKit-style APIs while keeping mechanics hidden behin
 
 | # | Item | Status | Notes |
 |---|---|---|---|
-| 3.1 | Common controls | 🔄 In Progress | ~97% — buttons, text, popup/combo, sliders, steppers, date picker, color well, etc. exist with value/action bridges. **Landed 2026-07-04 (overnight):** `NSScroller.hitPart` now reports the real gesture (decrement/increment line, decrement/increment page, knob) mapped from the scroll notification code through a backend-neutral `NativeScrollerPart`, verified by contract test; `NSTextField.isBezeled`/`bezelStyle`/`usesSingleLineMode`/`maximumNumberOfLines` API surface added (multi-line rendering routes through `NSTextView`; bezel visuals fold into the appearance phase); `NSSegmentedControl` per-segment `image` (placed beside or in place of the label on the composed button) and `tag`/`selectedSegmentTag()`, contract-verified; `NSTextField.formatter` now works end to end — `objectValue` renders through the new `NumberFormatter` shim for display and edited text parses back into `objectValue` on commit (reverting invalid input), verified live in the demo's currency field ("$1,234.50" ⇄ typing "2500.9" → "$2,500.90"). **Landed 2026-07-04:** `NSColorWell.colorWellStyle` (default/minimal/expanded) and `isBordered`. **Landed 2026-07-03 (c):** `NSDatePicker.datePickerElements` drives the native display format (date / time `HH:mm:ss` / date+time via `DTM_SETFORMATW`, verified — the demo picker now shows a time field), `datePickerStyle` retained; `NSButton.image`/`imagePosition` (`BM_SETIMAGE`+`BS_BITMAP` over the file-backed `NSImage`) and `alternateTitle` (shown in the on state for toggles). **Landed 2026-07-03 (b):** `NSTextFieldDelegate` (`controlTextDidBeginEditing`/`DidChange`/`DidEndEditing`) over a backend focus-change action (`WM_SETFOCUS`/`WM_KILLFOCUS`), with the AppKit editing notification names; `NSPopUpButton` item tags (`setTag(_:forItemAt:)`/`tag(atIndex:)`/`selectedTag()`/`indexOfItem(withTag:)`/`selectItem(withTag:)`) and a retained `pullsDown` flag. **Landed 2026-07-03 (a):** `NSSlider` tick marks (`numberOfTickMarks`/`allowsTickMarkValuesOnly`/`closestTickMarkValue`, `TBS_AUTOTICKS`+`TBM_SETTICFREQ`) and vertical orientation (`TBS_VERT`); `NSTextField.alignment` (`ES_CENTER`/`ES_RIGHT`, verified) and `placeholderString` (`EM_SETCUEBANNER` — call is correct but the cue only renders once comctl32 v6 visual styles are enabled, tied to 8.x/10.7); `NSComboBox.numberOfVisibleItems` (dropdown height) and `completes` (tested `completedString(forPrefix:)` + commit-time fill; live as-you-type suffix selection over the native combo edit stays future work); `NSButton.keyEquivalent` dispatch (Return/Escape route to default/cancel buttons through the key window's view chain, skipping multiline text views, verified); `NSSegmentedControl` arrow-key selection (skips disabled segments); `NSLevelIndicator.warningValue`/`criticalValue` bar recoloring (`PBM_SETBARCOLOR`, amber/red, verified). **Remaining behavioral depth:** **NSButton** — `bezelStyle`, `sound`. **NSTextField** — `formatter` now works end-to-end (display + parse-on-commit) over the new `NumberFormatter`; remaining is bezel visuals and true in-field multi-line rendering. **NSSecureTextField** — deeper secure paste/autofill. **NSComboBox** — live autocompletion suffix selection, `hasVerticalScroller`, `NSComboBoxDataSource`. **NSSearchField** — search chrome (cancel button, recents dropdown, magnifier icon) moved to cleanup item **10.8** (behaviors already work). **NSTokenField** — visual token chips, completion, delegate. **NSPopUpButton** — pull-down display behavior (flag retained), per-item images, `autoenablesItems`. **NSSlider** — `altIncrementValue`, `tickMarkPosition`. **NSStepper** — `autorepeat` is native-default-on and `valueWraps` works via `stepUp`/`stepDown`; only disabling autorepeat and native-click boundary wrap remain (minor). **NSSegmentedControl** — per-segment `image` and `tag`/`selectedSegmentTag()` now work (image sits beside or replaces the label); visual styles and per-segment `menu` remain. **NSLevelIndicator** — `isEditable`, discrete/rating/relevancy styles, tick marks. **NSDatePicker** — `datePickerStyle` (clock-and-calendar `SysMonthCal32`) and a delegate. **NSScroller** — `hitPart` now reflects the gesture; custom knob/arrow-part styling and overlay style remain. **NSPathControl** — component cells now carry cumulative file URLs and `selectComponentCell(at:)` records the clicked cell (`clickedPathComponentCell`/`clickedPathComponentURL`) and fires the action; live native breadcrumb hit-testing over the text peer remains. **NSImageView** — template/symbol images (ties to 3.24), `isEditable`/drag. **NSColorWell** — expanded-style dropdown behavior (style/border now stored). Detailed per-control status stays in `CONTROL_PARITY.md`. |
-| 3.2 | Windows, panels, popovers, alerts | 🔄 In Progress | ~93% — save/open panels over comdlg32/shell, modal sessions, and sheets (`NSWindow.beginSheet`/`endSheet`, app-modal positioned under the title area as the classic compromise). `NSSavePanel`/`NSOpenPanel.beginSheetModal(for:)` pins the OS file dialog under the parent's title area via a thread-local CBT hook plus a brief timer pin — keeps the modern Explorer style, which an OFN template hook would downgrade. `NSAlert.beginSheetModal` presents a chromeless (borderless) composed panel attached under the title area; borderless top-level windows now map to `WS_POPUP\|WS_BORDER`. **Landed 2026-07-04 (overnight):** `NSWindow.titleVisibility` (`.hidden` blanks the caption text while keeping the bar, contract-verified), `standardWindowButton(_:)` proxies (query/toggle `isHidden`; borderless windows vend none), and the `StyleMask.fullSizeContentView`/`titlebarAppearsTransparent` surface; `NSPopover.animates` fades the host in/out via `AnimateWindow` (`AW_BLEND`), verified live in the demo. **Landed 2026-07-04:** `NSWindow.isMovableByWindowBackground` (a background click drags the window via `ReleaseCapture`+`WM_NCLBUTTONDOWN`/`HTCAPTION`, contract-verified) and `NSPanel.becomesKeyOnlyIfNeeded` enforcement (a key-only panel becomes key only when it hosts an editable view, via `canBecomeKey`). **Landed 2026-07-03 (b):** `NSAlert` help button (`showsHelp`/`helpAnchor`/`NSAlertDelegate.alertShowHelp` + `winHelpButtonAction`; the "?" button fires help without dismissing) and custom `icon` image (replaces the style badge in the composed panel). **Landed 2026-07-03 (a):** `NSPopover` outside-click dismiss for `.transient`/`.semitransient` (a `WH_MOUSE` thread hook, verified via contract test), a solid background chrome, and `NSPopoverDelegate` (`popoverWillShow`/`DidShow`/`WillClose`/`DidClose`); `NSWindow.contentMinSize`/`contentMaxSize`/`minSize`/`maxSize` enforced through `WM_GETMINMAXINFO`. **Remaining by area:** **NSPopover** — arrow/beak drawing, `preferredEdge` flip-when-clipped (`animates` fade now done). **Sheets** — animation, window-modal semantics, dimming, and queueing moved to cleanup item **10.9**, which also now owns true cross-window modality (the current Win32 `runModal` message loop does not disable other windows, so `NSPanel.worksWhenModal` can't yet be meaningfully exempted — the property is stored). **NSAlert** — suppression-state persistence (needs `UserDefaults`, 7.7). **NSWindow** — `.unifiedTitleAndToolbar`; reflecting `standardWindowButton` `isHidden` onto the native caption; `collectionBehavior` (largely a no-op on Windows); transparent-titlebar drawing (flag stored); `isRestorable`/state restoration (`.fullSizeContentView`/`titlebarAppearsTransparent`/`titleVisibility`/standard-button proxies now present). **NSPanel** — `NSOpenPanel`/`NSSavePanel` accessory views, `styleMask` `.nonactivatingPanel`, `.hudWindow` styling. Detailed status stays in `CONTROL_PARITY.md`. |
+| 3.1 | Common controls | 🔄 In Progress | ~99% — buttons, text, popup/combo, sliders, steppers, date picker, color well, etc. with value/action bridges. **See the [3.1 checklist](#31-common-controls--checklist) below** for done/remaining; per-control detail in `CONTROL_PARITY.md`. |
+| 3.2 | Windows, panels, popovers, alerts | 🔄 In Progress | ~93% — windows, panels, popovers, alerts, sheets, and save/open panels over comdlg32/shell. **See the [3.2 checklist](#32-windows-panels-popovers-alerts--checklist) below** for done/remaining; detail in `CONTROL_PARITY.md`. |
 | 3.3 | View composition | ✅ Done | Scroll/clip/split/visual-effect compose. Split dividers track mouse drags (clamped, classic center line, resize cursor, `NSSplitViewDelegate`). Scrolling: `enclosingScrollView`, `scrollToVisible(_:)`, and mouse-wheel content scrolling (`scrollWheel` with `lineScroll` distances, Shift-for-horizontal, `WM_MOUSEHWHEEL`; the wheel walks up to the nearest scrolling ancestor when over a native child). Magnification: `magnification`/`setMagnification(_:centeredAt:)`/`magnify(toFit:)` scale custom-drawn document views through a backend content scale (GDI world transform), with anchored zoom and scaled scrollbar geometry. Known limits, tracked ahead: no zoom gestures (Phase 8), native child controls don't scale, and event locations stay in window coordinates under magnification. |
 | 3.4 | Source compatibility gaps | 🔄 In Progress | ~20% — continue filling AppKit names as demo and ports need them; ongoing by nature. |
 | 3.5 | Custom drawing | ✅ Done | `NSView.draw(_:)` with `NSGraphicsContext.current`, `NSBezierPath`, `NSColor` set/fill/stroke, `NSRectFill`/`NSFrameRect`, `needsDisplay`, `String.draw(at:withAttributes:)`, `NSImage.draw(in:)` via GDI+/StretchBlt, real text metrics via GetTextExtentPoint32W. `NSGradient` (rect and path fills at any angle over a GDI+ rect-with-angle line brush) plus clipping: `NSBezierPath.addClip()`, `NSRectClip`, `NSGraphicsContext.saveGraphicsState`/`restoreGraphicsState` over SaveDC/SelectClipPath/RestoreDC. |
@@ -115,6 +115,116 @@ Broaden source-compatible AppKit-style APIs while keeping mechanics hidden behin
 | 3.22 | Printing basics | ⏳ Pending | First `NSPrintOperation`/`NSPrintInfo`/`NSPrintPanel` slice: the native print dialog plus rendering custom-drawn views into a printer device context. Most document apps expose Print; the UI contract matters more than fidelity at first. |
 | 3.23 | Cocoa bindings | ⏸️ Deferred | `bind(_:to:withKeyPath:options:)`, `NSObjectController`/`NSArrayController`. Needs KVO-like infrastructure that Swift on Windows lacks; many older nib-based apps use bindings, but nib loading itself is out of scope, so programmatic-UI apps rarely need them. Revisit after Phase 9. |
 | 3.24 | System symbol images | ⏳ Pending | An SF Symbols equivalent: `NSImage(systemSymbolName:accessibilityDescription:)` resolves Apple's symbol **names** to WinChocolate's **own original glyph set** — drawn from scratch, never traced or copied from Apple's SF Symbols, so the artwork is copyright-clean while call sites stay source-compatible. Start with a subset covering the common toolbar/menu icons (document, folder, gear, magnifyingglass, plus, minus, trash, pencil, play/pause, arrow.\*, chevron.\*); unknown names return a labeled placeholder so apps never break. Open design questions to settle first: glyph authoring format (path-based drawing vs bundled bitmaps), size/weight variants, template-image tinting (ties into 3.13), and the authoring pipeline. Absorbs the name-mapping half of 6.12; also the seed of a cross-platform asset set LinChocolate (`Docs/LinChocolatePlan.md`) will reuse. |
+
+### Phase 3 detail — remaining checklists
+
+Checked = landed (see `CONTROL_PARITY.md` for the how); unchecked = what's left. Items marked _(cosmetic → 8.x)_ are appearance-phase polish moved under the triage rule; _(→ 10.x)_ items are tracked in the Phase 10 cleanup cluster.
+
+#### 3.1 Common controls — checklist
+
+**NSButton**
+- [x] `title`/`state`/action, `keyEquivalent` dispatch (Return/Escape), `image`/`imagePosition`, `alternateTitle`
+- [ ] `sound` (play on click; needs `NSSound`)
+- [ ] `bezelStyle` _(cosmetic → 8.x)_
+
+**NSTextField**
+- [x] editing + `NSTextFieldDelegate` begin/change/end, `alignment`, `placeholderString`, `textColor`/`font`
+- [x] `formatter` end-to-end (display + parse-on-commit via `NumberFormatter`)
+- [x] `isBezeled`/`bezelStyle`/`usesSingleLineMode`/`maximumNumberOfLines` (API surface)
+- [ ] true in-field multi-line rendering (routes through `NSTextView` today)
+- [ ] bezel visuals (rounded/square) _(cosmetic → 8.x)_
+
+**NSSecureTextField**
+- [x] password entry (`ES_PASSWORD`)
+- [ ] deeper secure paste/autofill
+
+**NSComboBox**
+- [x] `numberOfVisibleItems`, `completes` (`completedString(forPrefix:)` + commit-time fill)
+- [x] `NSComboBoxDataSource`/`usesDataSource`/`reloadData()`, `hasVerticalScroller`
+- [ ] live as-you-type suffix selection _(native combo caret; low priority)_
+
+**NSPopUpButton**
+- [x] item titles/selection, item `tag`s, retained `pullsDown` flag
+- [ ] `autoenablesItems`
+- [ ] per-item images, pull-down display behavior _(needs owner-draw)_
+
+**NSSlider**
+- [x] value/action, tick marks (`numberOfTickMarks`/`allowsTickMarkValuesOnly`/`closestTickMarkValue`), vertical (`TBS_VERT`)
+- [ ] `altIncrementValue`
+- [ ] `tickMarkPosition` _(cosmetic → 8.x)_
+
+**NSStepper**
+- [x] range/increment/value, `valueWraps` via `stepUp`/`stepDown`, autorepeat (native default)
+- [ ] disable autorepeat + native-click boundary wrap _(minor)_
+
+**NSSegmentedControl**
+- [x] segment state/action, arrow-key selection, per-segment `image` + `tag`/`selectedSegmentTag()`
+- [ ] per-segment `menu`
+- [ ] visual styles _(cosmetic → 8.x)_
+
+**NSLevelIndicator**
+- [x] `warningValue`/`criticalValue` bar recoloring (`PBM_SETBARCOLOR`)
+- [ ] `isEditable` (click-to-set)
+- [ ] discrete/rating/relevancy styles, tick marks _(cosmetic → 8.x)_
+
+**NSDatePicker**
+- [x] date/min/max/action, `datePickerElements` → native format, locale-aware `stringValue`
+- [x] `datePickerStyle` clock-and-calendar (`SysMonthCal32`, verified live — selection fires the action)
+- [ ] cell delegate (`validateProposedDateValue`; needs `NSDatePickerCell`)
+
+**NSScroller**
+- [x] value/`knobProportion`, `hitPart` reflects the real gesture
+- [ ] custom knob/arrow-part styling, overlay style _(cosmetic → 8.x)_
+
+**NSPathControl**
+- [x] URL/path display, component cells with cumulative URLs, `selectComponentCell(at:)`
+- [ ] live native breadcrumb hit-testing over the text peer
+
+**NSColorWell**
+- [x] color/action, `colorWellStyle` (default/minimal/expanded), `isBordered`
+- [x] expanded-style swatch palette (custom-draw swatches in a transient popover + "Show Colors…", verified live)
+
+**NSTokenField**
+- [x] token get/set, delegate text callbacks
+- [ ] visual token chips, completion menu _(needs owner-draw)_
+
+**NSImageView**
+- [x] image display/scaling
+- [ ] template/symbol images (ties to 3.24), `isEditable`/drag (ties to 3.18)
+
+**NSSearchField**
+- [x] search text + action behaviors
+- [ ] search chrome (cancel button, recents dropdown, magnifier) _(→ 10.8)_
+
+#### 3.2 Windows, panels, popovers, alerts — checklist
+
+**NSWindow**
+- [x] key/main/title/frame, size limits (`WM_GETMINMAXINFO`), z-order levels, `isMovableByWindowBackground`
+- [x] `titleVisibility`, `standardWindowButton(_:)` proxies, `fullSizeContentView`/`titlebarAppearsTransparent` surface
+- [ ] reflect standard-button `isHidden` onto the native caption
+- [ ] `.unifiedTitleAndToolbar`, `collectionBehavior` (mostly no-op on Windows), transparent-titlebar drawing
+- [ ] `isRestorable`/state restoration
+
+**NSPanel**
+- [x] `isFloatingPanel`, `hidesOnDeactivate`, `becomesKeyOnlyIfNeeded`
+- [ ] accessory views, `.nonactivatingPanel`, `.hudWindow` styling
+- [ ] `worksWhenModal` enforcement _(→ 10.9, needs true modality)_
+
+**NSPopover**
+- [x] transient/semitransient outside-click dismiss, solid chrome, `NSPopoverDelegate`, `animates` fade
+- [ ] arrow/beak drawing, `preferredEdge` flip-when-clipped
+
+**NSAlert**
+- [x] custom buttons, suppression checkbox, style/`icon` badge, help button, `accessoryView`, `beginSheetModal`
+- [ ] suppression-state persistence _(needs `UserDefaults`, 7.7)_
+
+**Sheets**
+- [x] app-modal sheet positioned under the title area (`beginSheet`/`endSheet`)
+- [ ] animation, window-modal semantics, dimming, queueing _(→ 10.9)_
+
+**Save/Open panels**
+- [x] comdlg32/shell dialogs, `beginSheetModal(for:)` pinned under the parent (CBT hook)
+- [ ] accessory views (shared with NSPanel)
 
 ---
 
@@ -201,7 +311,7 @@ Goal: one appearance switch selects either the current classic Win32 look or the
 |---|---|---|---|
 | 8.1 | Appearance strategy | ⏳ Pending | Decide modern backend versus themed wrappers (comctl32 v6 manifest + visual styles) versus hybrid. |
 | 8.2 | Backend/appearance selection API | ⏳ Pending | Public switch to select classic Win32 or modern presentation; app code should not change when switching presentation style. |
-| 8.3 | Modern control visuals | ⏳ Pending | Fluent/WinUI-like look is future work. |
+| 8.3 | Modern control visuals | ⏳ Pending | Fluent/WinUI-like look is future work. **Absorbs the cosmetic control-visual items deferred from 3.1** (under the triage rule — the controls work; only their look is deferred): `NSButton.bezelStyle`, `NSTextField` bezel visuals (rounded/square), `NSSlider.tickMarkPosition`, `NSSegmentedControl` visual styles, `NSLevelIndicator` discrete/rating/relevancy styles + tick marks, `NSScroller` custom knob/arrow-part styling + overlay style. Also the owner-draw-dependent looks: `NSPopUpButton` per-item images / pull-down display, `NSTokenField` visual token chips + completion menu. |
 | 8.4 | Modern look becomes the default | ⏳ Pending | After modern visuals reach control parity, new apps default to the modern look with classic still selectable. |
 | 8.5 | `NSAppearance` and dark mode | ⏳ Pending | Map `NSAppearance` names onto Windows light/dark themes; dynamic system colors respond to theme changes. |
 

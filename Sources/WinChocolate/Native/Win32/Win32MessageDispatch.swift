@@ -373,6 +373,24 @@ extension Win32NativeControlBackend {
                 return 0
             }
 
+            // A month-calendar peer (clock-and-calendar style) reports its
+            // selection through several notification codes that differ across
+            // SDK versions, so fire the action whenever the selection actually
+            // changed rather than matching a specific `MCN_*` code.
+            if let source = header.hwndFrom {
+                let handle = nativeHandle(from: source)
+                if monthCalHandles.contains(handle.rawValue) {
+                    if let current = datePickerDate(for: handle) {
+                        let previous = monthCalDates[handle.rawValue]
+                        if previous == nil || abs(current.timeIntervalSince1970 - previous!.timeIntervalSince1970) >= 1 {
+                            monthCalDates[handle.rawValue] = current
+                            controlActions[handle.rawValue]?()
+                        }
+                    }
+                    return 0
+                }
+            }
+
             let notification = UnsafeRawPointer(bitPattern: lParam)?.assumingMemoryBound(to: NMLISTVIEW.self).pointee
             guard let notification,
                   let source = header.hwndFrom else {

@@ -104,7 +104,7 @@ open class NSDatePicker: NSControl {
 
     /// Creates the native date picker peer.
     open override func createNativePeer(in backend: NativeControlBackend, parent: NativeHandle?) -> NativeHandle {
-        backend.createDatePicker(date: dateValue, minDate: minDate, maxDate: maxDate, frame: frame, parent: parent)
+        backend.createDatePicker(date: dateValue, minDate: minDate, maxDate: maxDate, showsCalendar: datePickerStyle == .clockAndCalendar, frame: frame, parent: parent)
     }
 
     /// Wires native date change notifications into the control action path.

@@ -762,8 +762,8 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     }
 
     /// Records a date picker creation request.
-    public func createDatePicker(date: Date, minDate: Date?, maxDate: Date?, frame: NSRect, parent: NativeHandle?) -> NativeHandle {
-        let handle = makeHandle(kind: "datePicker", text: "", frame: frame, parent: parent)
+    public func createDatePicker(date: Date, minDate: Date?, maxDate: Date?, showsCalendar: Bool, frame: NSRect, parent: NativeHandle?) -> NativeHandle {
+        let handle = makeHandle(kind: showsCalendar ? "calendarDatePicker" : "datePicker", text: "", frame: frame, parent: parent)
         records[handle]?.datePickerDate = date
         records[handle]?.datePickerMinDate = minDate
         records[handle]?.datePickerMaxDate = maxDate

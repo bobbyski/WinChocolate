@@ -1361,6 +1361,29 @@ func testDatePickerStoresDateRangeAndSyncsNativePeer() {
     expect(actionCount == 1, "Date picker native action did not fire.")
 }
 
+func testDatePickerClockAndCalendarStyle() {
+    let backend = InMemoryNativeControlBackend()
+    let initialDate = Date(timeIntervalSince1970: 1_780_272_000)
+    let picker = NSDatePicker(date: initialDate, frame: NSMakeRect(0, 0, 240, 160))
+    picker.datePickerStyle = .clockAndCalendar
+
+    let handle = picker.realizeNativePeer(in: backend, parent: nil)
+
+    // The calendar style requests the month-calendar peer, not the text field.
+    expect(backend.records[handle]?.kind == "calendarDatePicker", "Clock-and-calendar style did not request a calendar peer.")
+    expect(backend.records[handle]?.datePickerDate == initialDate, "Calendar picker did not sync its date.")
+
+    // Value still round-trips through the control.
+    let nextDate = Date(timeIntervalSince1970: 1_783_036_800)
+    picker.dateValue = nextDate
+    expect(backend.records[handle]?.datePickerDate == nextDate, "Calendar picker date change did not sync.")
+
+    // A default-style picker still uses the compact field peer.
+    let field = NSDatePicker(date: initialDate, frame: NSMakeRect(0, 0, 180, 28))
+    let fieldHandle = field.realizeNativePeer(in: backend, parent: nil)
+    expect(backend.records[fieldHandle]?.kind == "datePicker", "Default style should still use the field peer.")
+}
+
 func testSegmentedControlStoresSegmentsAndComposesButtons() {
     let backend = InMemoryNativeControlBackend()
     let segmented = NSSegmentedControl(labels: ["One", "Two"], frame: NSMakeRect(0, 0, 160, 28))
@@ -1552,6 +1575,39 @@ func testColorWellStoresColorAndSendsAction() {
 
     expect(colorWell.isActive, "Color well did not activate on click.")
     expect(actionCount == 1, "Color well did not send action on click.")
+}
+
+func testColorWellExpandedSwatchPalette() {
+    clearApplicationWindows()
+    let previousBackend = NSApplication.shared.nativeBackend
+    let backend = InMemoryNativeControlBackend()
+    NSApplication.shared.nativeBackend = backend
+    defer {
+        NSApplication.shared.nativeBackend = previousBackend
+        clearApplicationWindows()
+    }
+
+    let window = NSWindow(contentRect: NSMakeRect(0, 0, 300, 200), styleMask: [.titled], backing: .buffered, defer: false)
+    let content = NSView(frame: NSMakeRect(0, 0, 300, 200))
+    let well = NSColorWell(frame: NSMakeRect(20, 20, 40, 24))
+    well.colorWellStyle = .expanded
+    well.color = .white
+    content.addSubview(well)
+    window.contentView = content
+    window.makeKeyAndOrderFront(nil)
+
+    var actionCount = 0
+    well.onAction = { _ in actionCount += 1 }
+
+    // The expanded style drops down a swatch palette instead of the panel.
+    well.winShowSwatchPalette()
+    expect(well.winSwatchPopover?.isShown == true, "Expanded well did not show its swatch palette.")
+
+    // Picking a swatch sets the color, fires the action, and closes the palette.
+    well.winSimulateSwatchPick(at: 3) // red, in swatchColors order
+    expect(well.color == .red, "Swatch pick did not set the well color.")
+    expect(actionCount == 1, "Swatch pick did not fire the well action.")
+    expect(well.winSwatchPopover?.isShown == false, "Swatch pick did not close the palette.")
 }
 
 func testTableViewNativePeerReceivesColumnsRowsAndSelection() {
@@ -3054,6 +3110,39 @@ func testComboBoxStoresItemsTextAndUsesNativePeer() {
 
     comboBox.selectItem(at: 0)
     expect(comboBox.stringValue == "Cocoa", "Combo box selection did not update stringValue.")
+}
+
+final class ComboSource: NSComboBoxDataSource {
+    var values: [String]
+    init(_ values: [String]) { self.values = values }
+    func numberOfItems(in comboBox: NSComboBox) -> Int { values.count }
+    func comboBox(_ comboBox: NSComboBox, objectValueForItemAt index: Int) -> Any? { values[index] }
+}
+
+func testComboBoxDataSourceSuppliesItems() {
+    let backend = InMemoryNativeControlBackend()
+    let comboBox = NSComboBox(frame: NSMakeRect(0, 0, 180, 28))
+    let source = ComboSource(["One", "Two", "Three"])
+    comboBox.dataSource = source
+    comboBox.usesDataSource = true
+
+    // Turning on the data source pulls its items.
+    expect(comboBox.numberOfItems == 3, "Data-source combo did not pull item count.")
+    expect(comboBox.objectValues == ["One", "Two", "Three"], "Data-source combo did not pull item values.")
+
+    // The native peer is realized with the data-source items.
+    let handle = comboBox.realizeNativePeer(in: backend, parent: nil)
+    expect(backend.records[handle]?.comboBoxItems == ["One", "Two", "Three"], "Data-source items were not synced to the peer.")
+
+    // reloadData picks up data-source changes and re-syncs.
+    source.values = ["Alpha", "Beta"]
+    comboBox.reloadData()
+    expect(comboBox.numberOfItems == 2, "reloadData did not refresh the item count.")
+    expect(backend.records[handle]?.comboBoxItems == ["Alpha", "Beta"], "reloadData did not re-sync the peer.")
+
+    // hasVerticalScroller round-trips.
+    comboBox.hasVerticalScroller = false
+    expect(!comboBox.hasVerticalScroller, "hasVerticalScroller did not store.")
 }
 
 func testComboBoxNativeTextChangeAndActionUpdateState() {
@@ -6477,6 +6566,7 @@ testScrollerStoresValueAndSyncsNativePeer()
 testScrollerNativeActionUpdatesValue()
 testScrollerHitPartReflectsGesture()
 testDatePickerStoresDateRangeAndSyncsNativePeer()
+testDatePickerClockAndCalendarStyle()
 testSegmentedControlStoresSegmentsAndComposesButtons()
 testSegmentedControlPerSegmentImageAndTag()
 testSegmentedControlActionSelectsSegment()
@@ -6484,6 +6574,7 @@ testStepperStoresRangeIncrementAndSyncsNativePeer()
 testStepperNativeActionUpdatesValue()
 testSearchFieldTracksRecentSearchesAndNativeChanges()
 testColorWellStoresColorAndSendsAction()
+testColorWellExpandedSwatchPalette()
 testTableViewNativePeerReceivesColumnsRowsAndSelection()
 testTableViewNativeSelectionNotifiesDelegateAndAction()
 testTableViewActionCanReadSelectedRowValue()
@@ -6540,6 +6631,7 @@ testPopUpButtonUsesNativePeerAndSelection()
 testPopUpButtonNativeActionUpdatesSelection()
 testPopUpButtonItemLookupAndRemoval()
 testComboBoxStoresItemsTextAndUsesNativePeer()
+testComboBoxDataSourceSuppliesItems()
 testComboBoxNativeTextChangeAndActionUpdateState()
 testTokenFieldStoresTokensAndTokenizesNativeText()
 testPathControlStoresURLAndPathComponentCells()

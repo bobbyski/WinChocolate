@@ -1,3 +1,12 @@
+/// Supplies a data-source-backed combo box with its items.
+public protocol NSComboBoxDataSource: AnyObject {
+    /// Returns how many items the combo box shows.
+    func numberOfItems(in comboBox: NSComboBox) -> Int
+
+    /// Returns the object value for an item index.
+    func comboBox(_ comboBox: NSComboBox, objectValueForItemAt index: Int) -> Any?
+}
+
 /// An editable combo box control.
 ///
 /// `NSComboBox` preserves AppKit's editable text plus item-list shape and maps
@@ -7,6 +16,23 @@ open class NSComboBox: NSTextField {
 
     /// Swift-native callback invoked when native text changes.
     open var onComboBoxTextChanged: ((NSComboBox) -> Void)?
+
+    /// The data source that supplies items when `usesDataSource` is set.
+    open weak var dataSource: NSComboBoxDataSource?
+
+    /// Whether the combo box pulls items from its `dataSource` instead of its
+    /// own added-item list.
+    open var usesDataSource: Bool = false {
+        didSet {
+            if usesDataSource {
+                reloadData()
+            }
+        }
+    }
+
+    /// Whether the dropdown shows a vertical scroller (native combos always do;
+    /// stored for AppKit source compatibility).
+    open var hasVerticalScroller: Bool = true
 
     /// Whether the combo box completes typed text from its item list.
     ///
@@ -55,6 +81,25 @@ open class NSComboBox: NSTextField {
     /// Number of items.
     open var numberOfItems: Int {
         items.count
+    }
+
+    /// Rebuilds the item list from the `dataSource` and syncs it to the peer.
+    ///
+    /// No-ops unless `usesDataSource` is set and a `dataSource` is present.
+    open func reloadData() {
+        pullItemsFromDataSource()
+        syncItemsToNative()
+    }
+
+    private func pullItemsFromDataSource() {
+        guard usesDataSource, let dataSource else {
+            return
+        }
+
+        let count = max(0, dataSource.numberOfItems(in: self))
+        items = (0..<count).map { index in
+            dataSource.comboBox(self, objectValueForItemAt: index).map { String(describing: $0) } ?? ""
+        }
     }
 
     /// Adds one item.
@@ -112,6 +157,9 @@ open class NSComboBox: NSTextField {
     /// Ensures native text and action bridges are registered.
     @discardableResult
     open override func realizeNativePeer(in backend: NativeControlBackend, parent: NativeHandle?) -> NativeHandle {
+        // Populate items from the data source before the peer is created so the
+        // native combo shows them from the start.
+        pullItemsFromDataSource()
         let handle = super.realizeNativePeer(in: backend, parent: parent)
         backend.setComboBoxVisibleItems(numberOfVisibleItems, for: handle)
         backend.registerTextChangeAction(for: handle) { [weak self] text in

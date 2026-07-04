@@ -71,17 +71,24 @@ extension Win32NativeControlBackend {
     }
 
     /// Creates a native date-picker child.
-    public func createDatePicker(date: Date, minDate: Date?, maxDate: Date?, frame: NSRect, parent: NativeHandle?) -> NativeHandle {
+    ///
+    /// A calendar-style picker uses `SysMonthCal32` (AppKit's
+    /// clock-and-calendar); otherwise the compact `SysDateTimePick32` field.
+    public func createDatePicker(date: Date, minDate: Date?, maxDate: Date?, showsCalendar: Bool, frame: NSRect, parent: NativeHandle?) -> NativeHandle {
         initializeDateControls()
         let handle = createChildWindow(
-            className: "SysDateTimePick32",
+            className: showsCalendar ? "SysMonthCal32" : "SysDateTimePick32",
             text: "",
             frame: frame,
             parent: parent,
             commandIdentifier: nil,
             style: wsChild | wsVisible | wsTabStop
         )
-        subclassControlForTabKey(handle)
+        if showsCalendar {
+            monthCalHandles.insert(handle.rawValue)
+        } else {
+            subclassControlForTabKey(handle)
+        }
         setDatePickerDate(date, minDate: minDate, maxDate: maxDate, for: handle)
         return handle
     }
@@ -334,8 +341,16 @@ extension Win32NativeControlBackend {
         }
 
         var systemTime = systemTime(from: date)
+        let isCalendar = monthCalHandles.contains(handle.rawValue)
+        let message = isCalendar ? mcmSetCurSel : dtmSetSystemTime
+        let wParam: WPARAM = isCalendar ? 0 : gdtValid
         withUnsafePointer(to: &systemTime) { pointer in
-            _ = winSendMessageW(hwnd, dtmSetSystemTime, gdtValid, LPARAM(bitPattern: pointer))
+            _ = winSendMessageW(hwnd, message, wParam, LPARAM(bitPattern: pointer))
+        }
+        if isCalendar {
+            // Track the set value so a paint-time notification is not mistaken
+            // for a user selection change.
+            monthCalDates[handle.rawValue] = date
         }
     }
 
@@ -346,6 +361,11 @@ extension Win32NativeControlBackend {
     /// picker shows without recreating it.
     public func setDatePickerFormat(_ format: String?, for handle: NativeHandle) {
         guard let hwnd = hwnd(from: handle) else {
+            return
+        }
+
+        // The month-calendar peer has no field-format string.
+        guard !monthCalHandles.contains(handle.rawValue) else {
             return
         }
 
@@ -361,6 +381,13 @@ extension Win32NativeControlBackend {
         }
 
         var systemTime = SYSTEMTIME()
+        if monthCalHandles.contains(handle.rawValue) {
+            let ok = withUnsafeMutablePointer(to: &systemTime) { pointer in
+                winSendMessageW(hwnd, mcmGetCurSel, 0, LPARAM(bitPattern: pointer))
+            }
+            return ok != 0 ? date(from: systemTime) : nil
+        }
+
         let result = withUnsafeMutablePointer(to: &systemTime) { pointer in
             winSendMessageW(hwnd, dtmGetSystemTime, 0, LPARAM(bitPattern: pointer))
         }
