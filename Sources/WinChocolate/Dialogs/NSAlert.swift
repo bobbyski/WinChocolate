@@ -43,6 +43,12 @@ open class NSAlert: NSObject {
     /// Button titles in display order.
     public private(set) var buttonTitles: [String] = []
 
+    /// The alert's buttons in the order they were added, matching AppKit's
+    /// `buttons`. The first button is the default (rightmost) button. Callers may
+    /// customize a returned/stored button's `keyEquivalent`, `tag`, or `title`
+    /// before running the alert.
+    public private(set) var buttons: [NSButton] = []
+
     /// Whether the alert shows a suppression checkbox.
     open var showsSuppressionButton: Bool = false
 
@@ -88,11 +94,46 @@ open class NSAlert: NSObject {
         super.init()
     }
 
-    /// Adds a button to the alert.
+    /// Creates an alert that describes an error, matching `NSAlert(error:)`.
+    ///
+    /// The error's description becomes the message text and its failure reason,
+    /// when present, the informative text; a single "OK" button dismisses it.
+    public convenience init(error: Error) {
+        self.init()
+        alertStyle = .warning
+        if let nsError = error as? NSError {
+            messageText = nsError.localizedDescription
+            informativeText = nsError.localizedFailureReason ?? ""
+        } else if let localized = error as? LocalizedError {
+            messageText = localized.errorDescription ?? "\(error)"
+            informativeText = localized.failureReason ?? ""
+        } else {
+            messageText = "\(error)"
+        }
+        if messageText.isEmpty {
+            messageText = "An error occurred."
+        }
+        addButton(withTitle: "OK")
+    }
+
+    /// Adds a button to the alert and returns it.
+    ///
+    /// The button carries AppKit's response `tag` (`alertFirstButtonReturn` for
+    /// the first button, incrementing thereafter) and default key equivalents:
+    /// the first button responds to Return, and a "Cancel" button to Escape.
     @discardableResult
     open func addButton(withTitle title: String) -> NSButton {
+        let index = buttons.count
+        let button = NSButton(title: title, frame: NSMakeRect(0, 0, 0, 0))
+        button.tag = NSApplication.ModalResponse.alertFirstButtonReturn.rawValue + index
+        if index == 0 {
+            button.keyEquivalent = "\r"
+        } else if title == "Cancel" {
+            button.keyEquivalent = "\u{1b}"
+        }
+        buttons.append(button)
         buttonTitles.append(title)
-        return NSButton(title: title, frame: NSMakeRect(0, 0, 0, 0))
+        return button
     }
 
     /// Runs the alert modally.
@@ -184,14 +225,21 @@ open class NSAlert: NSObject {
             y += accessoryFrame.size.height + 12
         }
 
+        // An alert always needs a way to dismiss it; synthesize the default
+        // "OK" button when the caller added none, matching AppKit.
+        if buttons.isEmpty {
+            addButton(withTitle: "OK")
+        }
+
         // Buttons flow right to left; the first button is the rightmost
-        // default, matching AppKit.
+        // default, matching AppKit. Each button carries its response as its tag.
         var buttonRight = width - margin
-        for (index, title) in buttonTitles.enumerated() {
-            let buttonWidth = max(76, CGFloat(title.count * 7 + 28))
-            let button = NSButton(title: title, frame: NSMakeRect(buttonRight - buttonWidth, y + 8, buttonWidth, 28))
+        for button in buttons {
+            let buttonWidth = max(76, CGFloat(button.title.count * 7 + 28))
+            button.frame = NSMakeRect(buttonRight - buttonWidth, y + 8, buttonWidth, 28)
+            let code = NSApplication.ModalResponse(rawValue: button.tag)
             button.onAction = { _ in
-                application.stopModal(withCode: NSApplication.ModalResponse(rawValue: NSApplication.ModalResponse.alertFirstButtonReturn.rawValue + index))
+                application.stopModal(withCode: code)
             }
             content.addSubview(button)
             buttonRight -= buttonWidth + 8

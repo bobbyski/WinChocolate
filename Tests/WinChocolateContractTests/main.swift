@@ -7050,4 +7050,48 @@ func testSourceCompatSurfaceGeometryColorFontImageView() {
 
 testSourceCompatSurfaceGeometryColorFontImageView()
 
+func testAlertButtonsCarryTagsKeyEquivalentsAndErrorInit() {
+    // Buttons array holds the real button objects with AppKit response tags and
+    // default key equivalents.
+    let alert = NSAlert()
+    alert.messageText = "Discard changes?"
+    let discard = alert.addButton(withTitle: "Discard")
+    let cancel = alert.addButton(withTitle: "Cancel")
+    expect(alert.buttons.count == 2, "NSAlert.buttons did not retain the added buttons.")
+    expect(alert.buttons[0] === discard && alert.buttons[1] === cancel, "NSAlert.buttons is not the objects addButton returned.")
+    expect(discard.tag == NSApplication.ModalResponse.alertFirstButtonReturn.rawValue, "First alert button did not get the alertFirstButtonReturn tag.")
+    expect(cancel.tag == NSApplication.ModalResponse.alertSecondButtonReturn.rawValue, "Second alert button did not get the incrementing response tag.")
+    expect(discard.keyEquivalent == "\r", "The default alert button should respond to Return.")
+    expect(cancel.keyEquivalent == "\u{1b}", "A Cancel alert button should respond to Escape.")
+    expect(alert.buttonTitles == ["Discard", "Cancel"], "buttonTitles drifted from the added buttons.")
+
+    // NSAlert(error:) reads the error's localized strings and adds one OK button.
+    let error = NSError(domain: "WinChocolate.Test", code: 42, userInfo: [
+        NSLocalizedDescriptionKey: "Could not open the file.",
+        NSLocalizedFailureReasonErrorKey: "The file is locked."
+    ])
+    let errorAlert = NSAlert(error: error)
+    expect(errorAlert.messageText == "Could not open the file.", "NSAlert(error:) did not use the error's localized description.")
+    expect(errorAlert.informativeText == "The file is locked.", "NSAlert(error:) did not use the error's failure reason.")
+    expect(errorAlert.buttons.count == 1 && errorAlert.buttons[0].title == "OK", "NSAlert(error:) did not add a single OK button.")
+
+    // A buttonless alert forced onto the composed panel (here, by a suppression
+    // checkbox) synthesizes a default OK so it can be dismissed.
+    let backend = InMemoryNativeControlBackend()
+    let previousBackend = NSApplication.shared.nativeBackend
+    NSApplication.shared.nativeBackend = backend
+    defer {
+        NSApplication.shared.nativeBackend = previousBackend
+        clearApplicationWindows()
+    }
+    let suppressible = NSAlert()
+    suppressible.messageText = "Heads up"
+    suppressible.showsSuppressionButton = true
+    backend.nextModalResponseCode = NSApplication.ModalResponse.alertFirstButtonReturn.rawValue
+    _ = suppressible.runModal()
+    expect(suppressible.buttons.count == 1 && suppressible.buttons[0].title == "OK", "Buttonless composed alert did not synthesize a default OK button.")
+}
+
+testAlertButtonsCarryTagsKeyEquivalentsAndErrorInit()
+
 print("WinChocolate contract tests passed.")
