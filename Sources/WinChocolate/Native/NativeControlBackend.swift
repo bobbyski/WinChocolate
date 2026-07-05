@@ -827,6 +827,14 @@ public protocol NativeControlBackend: AnyObject {
     /// Requests a repaint of a native control.
     func invalidateControl(_ handle: NativeHandle)
 
+    /// Requests a repaint of a native control and all of its descendant views.
+    ///
+    /// Needed when a custom view's background changes beneath transparent child
+    /// views (e.g. a table selection band under borderless cell labels): the
+    /// children must repaint over the new background, which a plain invalidate
+    /// of only the parent does not trigger.
+    func invalidateControlTree(_ handle: NativeHandle)
+
     /// Registers the action to perform when a native view receives a mouse-dragged event.
     func registerMouseDraggedAction(for handle: NativeHandle, action: @escaping (NSEvent) -> Void)
 

@@ -1779,6 +1779,8 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
 
     /// Handles that requested a repaint, in request order.
     public private(set) var invalidatedHandles: [NativeHandle] = []
+    /// Handles invalidated together with their descendant tree.
+    public private(set) var invalidatedTreeHandles: [NativeHandle] = []
 
     /// Records a right mouse-down action.
     public func registerRightMouseDownAction(for handle: NativeHandle, action: @escaping (NSEvent) -> Void) {
@@ -1813,6 +1815,12 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     /// Records a repaint request.
     public func invalidateControl(_ handle: NativeHandle) {
         invalidatedHandles.append(handle)
+    }
+
+    /// Records a repaint request for a control and its descendants.
+    public func invalidateControlTree(_ handle: NativeHandle) {
+        invalidatedHandles.append(handle)
+        invalidatedTreeHandles.append(handle)
     }
 
     /// Runs a handle's registered draw action and returns the recorded commands.

@@ -603,6 +603,18 @@ final class RecordingTableDelegate: NSTableViewDelegate {
     }
 }
 
+/// A cell-based table delegate: it counts selection changes but vends no cell
+/// view, so the table stays on the native list path (auto-detection only picks
+/// the drawn peer when a delegate vends views).
+final class CellBasedSelectionDelegate: NSTableViewDelegate {
+    var selectionChangeCount = 0
+    var lastObject: AnyObject?
+    func tableViewSelectionDidChange(_ notification: NSNotification) {
+        selectionChangeCount += 1
+        lastObject = notification.object
+    }
+}
+
 final class TabRecordingWindow: NSWindow {
     var nextSelectionCount = 0
     var previousSelectionCount = 0
@@ -1814,7 +1826,10 @@ func testTableViewNativeSelectionNotifiesDelegateAndAction() {
     let backend = InMemoryNativeControlBackend()
     let tableView = NSTableView(frame: NSMakeRect(0, 0, 300, 160))
     let dataSource = RecordingTableDataSource()
-    let delegate = RecordingTableDelegate()
+    // Cell-based delegate (vends no view) so the table uses the native list
+    // path this test exercises — auto-detection only picks the drawn peer when
+    // a delegate vends views.
+    let delegate = CellBasedSelectionDelegate()
     let name = NSTableColumn(identifier: "name")
     var actionCount = 0
     var callbackCount = 0
@@ -7860,5 +7875,103 @@ func testDrawnTableInPlaceEditCommitsToDataSource() {
 }
 
 testDrawnTableInPlaceEditCommitsToDataSource()
+
+/// Vends a cell view (so drawn mode engages) plus a colored row view per row.
+final class RowViewTableDelegate: NSTableViewDelegate {
+    let base = NSColor(white: 0.9, alpha: 1)
+    func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
+        NSTextField(string: "r\(row)", frame: NSMakeRect(0, 0, 100, 20))
+    }
+    func tableView(_ tableView: NSTableView, rowViewFor row: Int) -> NSTableRowView? {
+        let rowView = NSTableRowView(frame: .zero)
+        rowView.backgroundColor = base
+        return rowView
+    }
+}
+
+func testDrawnTableHostsRowViewsWithSelectionFill() {
+    let backend = InMemoryNativeControlBackend()
+    let tableView = NSTableView(frame: NSMakeRect(0, 0, 300, 200))
+    let dataSource = ManyRowTableDataSource(count: 3)
+    let column = NSTableColumn(identifier: "name")
+    column.title = "Name"
+    column.width = 280
+    tableView.addTableColumn(column)
+    tableView.dataSource = dataSource
+    let delegate = RowViewTableDelegate()
+    tableView.delegate = delegate
+    tableView.winUsesViewBasedCells = true
+
+    let handle = tableView.realizeNativePeer(in: backend, parent: nil)
+
+    // One full-width row view is hosted per row, ordered top-to-bottom.
+    let rowViews = tableView.subviews.compactMap { $0 as? NSTableRowView }
+        .sorted { $0.frame.origin.y < $1.frame.origin.y }
+    expect(rowViews.count == 3, "The table did not host one row view per row. Got \(rowViews.count).")
+    expect(rowViews.allSatisfy { $0.frame.size.width == 300 }, "Row views are not full table width.")
+    expect(rowViews[0].frame.origin.y == 24, "Row view 0 not placed below the header. Got \(rowViews[0].frame.origin.y).")
+
+    // Row views layer behind the cell views (the cells host after them).
+    let firstRowIndex = tableView.subviews.firstIndex { $0 === rowViews[0] } ?? -1
+    let firstCellIndex = tableView.subviews.firstIndex { $0 is NSTextField } ?? -1
+    expect(firstRowIndex >= 0 && firstCellIndex > firstRowIndex, "Row views do not layer behind the cell views.")
+
+    // Unselected rows paint their base color natively.
+    expect(backend.records[rowViews[0].nativeHandle!]?.backgroundColor == delegate.base,
+           "Row view did not fill with its base color.")
+
+    // Clicking row 1 flips its selection and swaps its native fill to the
+    // selection color, leaving the others on their base color.
+    backend.mouseDownActions[handle]?(NSEvent(type: .leftMouseDown, locationInWindow: NSMakePoint(10, 24 + 24 + 6)))
+    expect(rowViews[1].isSelected, "Clicking row 1 did not select its row view.")
+    expect(backend.records[rowViews[1].nativeHandle!]?.backgroundColor == NSColor.selectedTextBackgroundColor,
+           "Selected row view did not swap to the selection fill.")
+    expect(rowViews[0].isSelected == false, "Row 0 should not be selected.")
+    expect(backend.records[rowViews[0].nativeHandle!]?.backgroundColor == delegate.base,
+           "Unselected row view lost its base fill.")
+
+    // The click repaints the whole table tree (not just the surface), so the
+    // borderless cell labels redraw over the new selection fill immediately
+    // instead of showing stale pixels until a scroll.
+    expect(backend.invalidatedTreeHandles.contains(handle),
+           "Selecting a row did not invalidate the table's child tree (stale-until-scroll bug).")
+}
+
+testDrawnTableHostsRowViewsWithSelectionFill()
+
+func testTableViewAutoDetectsViewBasedModeFromDelegate() {
+    let backend = InMemoryNativeControlBackend()
+
+    // A delegate that vends a cell view auto-selects the framework-drawn peer —
+    // WITHOUT any explicit `winUsesViewBasedCells` opt-in (AppKit semantics).
+    let viewTable = NSTableView(frame: NSMakeRect(0, 0, 200, 120))
+    let viewSource = ManyRowTableDataSource(count: 3)
+    let viewCol = NSTableColumn(identifier: "name")
+    viewCol.width = 180
+    viewTable.addTableColumn(viewCol)
+    viewTable.dataSource = viewSource
+    let viewDelegate = ViewBasedTableDelegate()
+    viewTable.delegate = viewDelegate
+    // winUsesViewBasedCells intentionally left false.
+    let viewHandle = viewTable.realizeNativePeer(in: backend, parent: nil)
+    expect(backend.records[viewHandle]?.kind == "view",
+           "A view-vending delegate did not auto-select the drawn peer. Got \(backend.records[viewHandle]?.kind ?? "nil").")
+    expect(viewTable.subviews.compactMap { $0 as? NSTextField }.count == 3,
+           "Auto-detected drawn table did not host its cell views.")
+
+    // A cell-based delegate (vends no view) keeps the native list path.
+    let cellTable = NSTableView(frame: NSMakeRect(0, 0, 200, 120))
+    let cellSource = RecordingTableDataSource()
+    let cellCol = NSTableColumn(identifier: "name")
+    cellCol.width = 180
+    cellTable.addTableColumn(cellCol)
+    cellTable.dataSource = cellSource
+    cellTable.delegate = CellBasedSelectionDelegate()
+    let cellHandle = cellTable.realizeNativePeer(in: backend, parent: nil)
+    expect(backend.records[cellHandle]?.kind != "view",
+           "A cell-based table wrongly used the drawn peer. Got \(backend.records[cellHandle]?.kind ?? "nil").")
+}
+
+testTableViewAutoDetectsViewBasedModeFromDelegate()
 
 print("WinChocolate contract tests passed.")

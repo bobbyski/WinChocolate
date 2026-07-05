@@ -18,6 +18,9 @@ public protocol NSTableViewDelegate: AnyObject {
     /// Returns a view for a row/column in view-based table configurations.
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView?
 
+    /// Returns a full-width background/row view for a row in view-based tables.
+    func tableView(_ tableView: NSTableView, rowViewFor row: Int) -> NSTableRowView?
+
     /// Returns a custom height for a row.
     func tableView(_ tableView: NSTableView, heightOfRow row: Int) -> CGFloat
 
@@ -36,6 +39,11 @@ public extension NSTableViewDelegate {
 
     /// Default view-based table hook.
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
+        nil
+    }
+
+    /// Default row-view hook (no custom row view).
+    func tableView(_ tableView: NSTableView, rowViewFor row: Int) -> NSTableRowView? {
         nil
     }
 
@@ -174,13 +182,14 @@ open class NSTableView: NSControl {
     // When the delegate vends cell views, the table realizes a custom-drawn
     // peer that draws the header/grid/selection itself and hosts those views
     // per cell — something the native list-view can't do.
-    /// Opts this table into the framework-drawn, view-based rendering path.
+    /// Forces this table onto the framework-drawn, view-based rendering path.
     ///
-    /// When `true` and the delegate vends cell views, the table draws its own
-    /// header/grid/selection and hosts those views per cell. Left `false` by
-    /// default so text tables keep the native list-view (auto-detection to
-    /// match AppKit's "view-based when the delegate implements `viewFor`" is a
-    /// follow-up once the drawn path reaches parity, e.g. scrolling).
+    /// This is normally unnecessary: the table now auto-detects view-based mode
+    /// the way AppKit does — if the delegate vends a cell view (or a row view),
+    /// it uses the drawn peer that draws its own header/grid/selection and hosts
+    /// those views. Set this `true` only to force the drawn (all-text) peer for
+    /// a table whose delegate vends no views. Cell-based tables (no `viewFor`)
+    /// keep the native list-view.
     open var winUsesViewBasedCells: Bool = false
     var winIsDrawn = false
     var winHostedCellViews: [NSView] = []
@@ -192,6 +201,8 @@ open class NSTableView: NSControl {
     /// Encoded `(row, column)` keys of cells that host a delegate view, so the
     /// drawn paint knows which cells to draw text for instead (mixed tables).
     var winHostedCellKeys: Set<Int> = []
+    /// Delegate-vended full-width row background views, by row.
+    var winHostedRowViews: [Int: NSTableRowView] = [:]
     /// The live in-place editor overlay for a drawn cell, if any.
     var winDrawnEditField: NSTextField?
     var winDrawnEditRow = -1

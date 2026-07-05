@@ -553,6 +553,44 @@ final class DemoViewTableDelegate: NSTableViewDelegate {
     }
 }
 
+/// A small pipeline-status list showcasing `NSTableRowView` hosting: each row
+/// gets a full-width colored row view behind hosted label cells.
+final class DemoStatusRowDataSource: NSTableViewDataSource {
+    let items: [(stage: String, status: String)] = [
+        ("Build", "passing"), ("Unit tests", "passing"), ("Lint", "warning"),
+        ("Deploy", "failed"), ("Docs", "passing"), ("Package", "passing"),
+    ]
+    func numberOfRows(in tableView: NSTableView) -> Int { items.count }
+    func tableView(_ tableView: NSTableView, objectValueFor tableColumn: NSTableColumn?, row: Int) -> Any? {
+        tableColumn?.identifier == "stage" ? items[row].stage : items[row].status
+    }
+}
+
+final class DemoStatusRowDelegate: NSTableViewDelegate {
+    let source: DemoStatusRowDataSource
+    init(source: DemoStatusRowDataSource) { self.source = source }
+
+    func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
+        // Hosted (transparent) labels sit above the colored row view.
+        let text = tableColumn?.identifier == "stage" ? source.items[row].stage : source.items[row].status
+        let field = NSTextField(string: text, frame: NSMakeRect(0, 0, 120, 20))
+        field.isBordered = false
+        field.drawsBackground = false
+        return field
+    }
+
+    func tableView(_ tableView: NSTableView, rowViewFor row: Int) -> NSTableRowView? {
+        let rowView = NSTableRowView(frame: .zero)
+        switch source.items[row].status {
+        case "passing": rowView.backgroundColor = NSColor(red: 0.85, green: 0.95, blue: 0.85, alpha: 1)
+        case "warning": rowView.backgroundColor = NSColor(red: 1.0, green: 0.97, blue: 0.80, alpha: 1)
+        case "failed": rowView.backgroundColor = NSColor(red: 1.0, green: 0.87, blue: 0.87, alpha: 1)
+        default: rowView.backgroundColor = .white
+        }
+        return rowView
+    }
+}
+
 /// A plain-text document demonstrating the NSDocument window-controller flow.
 final class DemoNoteDocument: NSDocument {
     var text = ""
@@ -2866,8 +2904,34 @@ viewTable.gridStyleMask = [.solidHorizontalGridLineMask, .solidVerticalGridLineM
 viewTable.usesAlternatingRowBackgroundColors = true
 viewTable.dataSource = viewTableSource
 viewTable.delegate = viewTableDelegate
-viewTable.winUsesViewBasedCells = true
+// No opt-in flag: the table auto-detects view-based mode because the delegate
+// vends cell views (AppKit semantics).
 viewTableScrollView.documentView = viewTable
+
+// 5.5 — NSTableRowView hosting: full-width colored row views behind hosted
+// label cells (a CI-status list). Placed to the right of the view table.
+let rowViewSectionLabel = showcaseSectionLabel("Row views — full-width row backgrounds (5.5)", NSMakeRect(520, 392, 380, 20))
+let rowViewHint = NSTextField(string: "Each row hosts an NSTableRowView; click a row to see the selection fill.", frame: NSMakeRect(520, 412, 400, 18))
+rowViewHint.isBordered = false
+rowViewHint.drawsBackground = false
+rowViewHint.font = NSFont.systemFont(ofSize: 11)
+let statusRowSource = DemoStatusRowDataSource()
+let statusRowDelegate = DemoStatusRowDelegate(source: statusRowSource)
+let statusRowScrollView = NSScrollView(frame: NSMakeRect(520, 434, 300, 104))
+statusRowScrollView.hasVerticalScroller = true
+let statusRowTable = NSTableView(frame: NSMakeRect(0, 0, 300, 104))
+let stageColumn = NSTableColumn(identifier: "stage")
+stageColumn.title = "Stage"
+stageColumn.width = 170
+let statusColumn = NSTableColumn(identifier: "status")
+statusColumn.title = "Status"
+statusColumn.width = 128
+statusRowTable.addTableColumn(stageColumn)
+statusRowTable.addTableColumn(statusColumn)
+statusRowTable.dataSource = statusRowSource
+statusRowTable.delegate = statusRowDelegate
+// Auto-detected view-based (the delegate vends cell + row views).
+statusRowScrollView.documentView = statusRowTable
 
 showcasePage.addSubview(spinnerSectionLabel)
 showcasePage.addSubview(showcaseSpinner)
@@ -2894,6 +2958,9 @@ showcasePage.addSubview(zoomButton)
 showcasePage.addSubview(viewTableSectionLabel)
 showcasePage.addSubview(viewTableHint)
 showcasePage.addSubview(viewTableScrollView)
+showcasePage.addSubview(rowViewSectionLabel)
+showcasePage.addSubview(rowViewHint)
+showcasePage.addSubview(statusRowScrollView)
 // Document-architecture demo: a New Note window driven by NSDocument,
 // NSWindowController, and the shared NSDocumentController. The window title
 // gains the classic asterisk while the note has unsaved edits.

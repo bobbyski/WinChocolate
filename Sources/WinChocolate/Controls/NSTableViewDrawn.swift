@@ -18,11 +18,23 @@ public final class WinDrawnCellEditor: NSTextFieldDelegate {
 
 extension NSTableView {
     /// Whether the table should draw itself and host view-based cells.
+    ///
+    /// Matches AppKit's rule: a table is *view-based* — and so uses the
+    /// framework-drawn peer that can host per-cell/row views — when its delegate
+    /// vends a cell view for the first cell or a full-width row view for the
+    /// first row. `winUsesViewBasedCells` forces it on for callers that want a
+    /// drawn (all-text) table without vending any view.
     var winShouldUseDrawnCells: Bool {
-        guard winUsesViewBasedCells, numberOfRows > 0, !tableColumns.isEmpty, let delegate else {
+        guard numberOfRows > 0, !tableColumns.isEmpty, let delegate else {
             return false
         }
-        return delegate.tableView(self, viewFor: tableColumns[0], row: 0) != nil
+        if delegate.tableView(self, viewFor: tableColumns[0], row: 0) != nil {
+            return true
+        }
+        if delegate.tableView(self, rowViewFor: 0) != nil {
+            return true
+        }
+        return winUsesViewBasedCells
     }
 
     /// Whether the drawn table hides its header (all columns untitled).
@@ -143,9 +155,21 @@ extension NSTableView {
         }
         winHostedCellViews.removeAll()
         winHostedCellKeys.removeAll()
+        winHostedRowViews.removeAll()
 
+        let width = frame.size.width
         let columnCount = tableColumns.count
         for row in 0..<numberOfRows {
+            // A delegate-vended row view sits full-width behind the cells and
+            // paints the row background/selection. Add it first so cells layer
+            // on top.
+            if let rowView = delegate?.tableView(self, rowViewFor: row) {
+                rowView.frame = NSRect(x: 0, y: winRowY(row), width: width, height: winRowHeightAt(row))
+                rowView.isSelected = selectedRowIndexes.contains(row)
+                addSubview(rowView)
+                winHostedCellViews.append(rowView)
+                winHostedRowViews[row] = rowView
+            }
             for column in tableColumns.indices {
                 guard let cellView = delegate?.tableView(self, viewFor: tableColumns[column], row: row) else {
                     continue
@@ -158,6 +182,24 @@ extension NSTableView {
                 winHostedCellViews.append(cellView)
                 winHostedCellKeys.insert(row * columnCount + column)
             }
+        }
+    }
+
+    /// Repaints the drawn table and all of its hosted child views, so
+    /// transparent cell labels repaint over a changed selection band or row-view
+    /// fill (a plain `needsDisplay` only repaints the table surface, leaving the
+    /// borderless children showing stale pixels until a scroll forces a redraw).
+    func winInvalidateTree() {
+        needsDisplay = true
+        if let nativeHandle {
+            realizedBackend?.invalidateControlTree(nativeHandle)
+        }
+    }
+
+    /// Syncs hosted row views' selection state with the table's selection.
+    func winUpdateHostedRowSelection() {
+        for (row, rowView) in winHostedRowViews {
+            rowView.isSelected = selectedRowIndexes.contains(row)
         }
     }
 
@@ -350,7 +392,8 @@ extension NSTableView {
         } else {
             selectRowIndexes([row], byExtendingSelection: extend)
         }
-        needsDisplay = true
+        winUpdateHostedRowSelection()
+        winInvalidateTree()
         sendAction()
 
         // Double-click a drawn (non-hosted) cell in an editable column → edit.
