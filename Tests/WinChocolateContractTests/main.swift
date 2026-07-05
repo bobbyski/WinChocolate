@@ -7693,4 +7693,43 @@ func testViewBasedTableHostsCellViews() {
 
 testViewBasedTableHostsCellViews()
 
+final class ManyRowTableDataSource: NSTableViewDataSource {
+    let count: Int
+    init(count: Int) { self.count = count }
+    func numberOfRows(in tableView: NSTableView) -> Int { count }
+    func tableView(_ tableView: NSTableView, objectValueFor tableColumn: NSTableColumn?, row: Int) -> Any? { "row \(row)" }
+}
+
+func testDrawnTableScrollsAsScrollViewDocument() {
+    let backend = InMemoryNativeControlBackend()
+    let scrollView = NSScrollView(frame: NSMakeRect(0, 0, 300, 120))
+    scrollView.hasVerticalScroller = true
+    let tableView = NSTableView(frame: NSMakeRect(0, 0, 300, 120))
+    let dataSource = ManyRowTableDataSource(count: 20)
+    let column = NSTableColumn(identifier: "name")
+    column.title = "Name"
+    column.width = 280
+    tableView.addTableColumn(column)
+    tableView.dataSource = dataSource
+    let scrollDelegate = ViewBasedTableDelegate()
+    tableView.delegate = scrollDelegate
+    tableView.winUsesViewBasedCells = true
+    scrollView.documentView = tableView
+
+    _ = scrollView.realizeNativePeer(in: backend, parent: nil)
+
+    // As a scroll-view document view, the drawn table grows to its full
+    // content height (header 24 + 20 rows x 24 = 504) so the scroll view can
+    // scroll it — and hosts a cell view per row.
+    expect(tableView.subviews.count == 20, "Drawn table did not host a cell view per row. Got \(tableView.subviews.count).")
+    expect(tableView.frame.size.height >= 500, "Drawn table did not grow to content height as a document view. Got \(tableView.frame.size.height).")
+
+    // Scrolling repositions the document view up (negative origin), bringing
+    // lower rows into the viewport.
+    scrollView.contentView.scroll(to: NSMakePoint(0, 200))
+    expect(tableView.frame.origin.y <= -150, "Scrolling did not move the drawn document view up. Got \(tableView.frame.origin.y).")
+}
+
+testDrawnTableScrollsAsScrollViewDocument()
+
 print("WinChocolate contract tests passed.")

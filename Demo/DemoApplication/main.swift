@@ -485,8 +485,12 @@ final class DemoPrintSample: NSView {
 
 /// Data source for the showcase's framework-drawn (view-based) table (5.5).
 final class DemoViewTableDataSource: NSTableViewDataSource {
-    var tasks = ["Review the pull request", "Ship the nightly build", "Write the release notes"]
-    var done = [false, false, false]
+    var tasks = [
+        "Review the pull request", "Ship the nightly build", "Write the release notes",
+        "Triage the bug backlog", "Update the changelog", "Refresh the screenshots",
+        "Tag the release", "Post the announcement", "Close the milestone", "Archive the branch",
+    ]
+    var done = Array(repeating: false, count: 10)
 
     func numberOfRows(in tableView: NSTableView) -> Int {
         tasks.count
@@ -2820,7 +2824,9 @@ viewTableHint.font = NSFont.systemFont(ofSize: 11)
 let viewTableSource = DemoViewTableDataSource()
 let viewTableDelegate = DemoViewTableDelegate(source: viewTableSource)
 viewTableDelegate.onEvent = { statusLabel.stringValue = $0 }
-let viewTable = NSTableView(frame: NSMakeRect(24, 434, 470, 104))
+let viewTableScrollView = NSScrollView(frame: NSMakeRect(24, 434, 470, 104))
+viewTableScrollView.hasVerticalScroller = true
+let viewTable = NSTableView(frame: NSMakeRect(0, 0, 470, 104))
 let taskColumn = NSTableColumn(identifier: "task")
 taskColumn.title = "Task"
 taskColumn.width = 300
@@ -2834,6 +2840,7 @@ viewTable.usesAlternatingRowBackgroundColors = true
 viewTable.dataSource = viewTableSource
 viewTable.delegate = viewTableDelegate
 viewTable.winUsesViewBasedCells = true
+viewTableScrollView.documentView = viewTable
 
 showcasePage.addSubview(spinnerSectionLabel)
 showcasePage.addSubview(showcaseSpinner)
@@ -2859,7 +2866,7 @@ showcasePage.addSubview(miniaturizeButton)
 showcasePage.addSubview(zoomButton)
 showcasePage.addSubview(viewTableSectionLabel)
 showcasePage.addSubview(viewTableHint)
-showcasePage.addSubview(viewTable)
+showcasePage.addSubview(viewTableScrollView)
 // Document-architecture demo: a New Note window driven by NSDocument,
 // NSWindowController, and the shared NSDocumentController. The window title
 // gains the classic asterisk while the note has unsaved edits.

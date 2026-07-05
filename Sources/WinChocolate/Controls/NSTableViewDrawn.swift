@@ -50,11 +50,33 @@ extension NSTableView {
         return row < numberOfRows ? row : -1
     }
 
+    /// The full content height of the drawn table (header + all rows).
+    var winContentHeight: CGFloat {
+        winHeaderHeight + CGFloat(numberOfRows) * winDrawnRowHeight
+    }
+
+    /// When the drawn table is a scroll view's document view, grows it to its
+    /// full content height so the scroll view clips and scrolls the extra rows.
+    /// (Standalone drawn tables keep their given frame and clip.)
+    func winSizeToContentIfScrolled() {
+        guard winIsDrawn, let scrollView = enclosingScrollView else {
+            return
+        }
+        let width = max(scrollView.contentView.bounds.size.width, tableColumns.reduce(0) { $0 + max(20, $1.width) })
+        let height = max(scrollView.contentView.bounds.size.height, winContentHeight)
+        if frame.size.width != width || frame.size.height != height {
+            frame = NSRect(x: frame.origin.x, y: frame.origin.y, width: width, height: height)
+        }
+        // Re-sync the scroll view's native scrollbars with the new document size.
+        scrollView.tile()
+    }
+
     /// Rebuilds the hosted cell views for the drawn table.
     func winRebuildHostedViews() {
         guard winIsDrawn else {
             return
         }
+        winSizeToContentIfScrolled()
         for view in winHostedCellViews {
             view.removeFromSuperview()
         }
