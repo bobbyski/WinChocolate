@@ -483,6 +483,50 @@ final class DemoPrintSample: NSView {
     }
 }
 
+/// Data source for the showcase's framework-drawn (view-based) table (5.5).
+final class DemoViewTableDataSource: NSTableViewDataSource {
+    var tasks = ["Review the pull request", "Ship the nightly build", "Write the release notes"]
+    var done = [false, false, false]
+
+    func numberOfRows(in tableView: NSTableView) -> Int {
+        tasks.count
+    }
+
+    func tableView(_ tableView: NSTableView, objectValueFor tableColumn: NSTableColumn?, row: Int) -> Any? {
+        tasks[row]
+    }
+}
+
+/// Delegate that vends a real control per cell so the drawn table hosts them
+/// inside its cells — something a native list view can't do.
+final class DemoViewTableDelegate: NSTableViewDelegate {
+    let source: DemoViewTableDataSource
+    var onEvent: ((String) -> Void)?
+
+    init(source: DemoViewTableDataSource) {
+        self.source = source
+    }
+
+    func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
+        if tableColumn?.identifier == "task" {
+            let field = NSTextField(string: source.tasks[row], frame: NSMakeRect(0, 0, 260, 22))
+            field.isBordered = false
+            field.drawsBackground = false
+            return field
+        }
+        let button = NSButton(title: source.done[row] ? "Done ✓" : "Mark done", frame: NSMakeRect(0, 0, 110, 22))
+        button.onAction = { [weak self, weak tableView] _ in
+            guard let self else {
+                return
+            }
+            self.source.done[row].toggle()
+            self.onEvent?("Row \(row) → \(self.source.done[row] ? "done" : "not done")")
+            tableView?.reloadData()
+        }
+        return button
+    }
+}
+
 /// A plain-text document demonstrating the NSDocument window-controller flow.
 final class DemoNoteDocument: NSDocument {
     var text = ""
@@ -2766,6 +2810,31 @@ zoomButton.onAction = { _ in
     statusLabel.stringValue = window.isZoomed ? "Window zoomed" : "Window restored"
 }
 
+// 5.5 — framework-drawn, view-based table hosting real controls in its cells.
+// Placed in the clear full-width band below the print section (y > 386).
+let viewTableSectionLabel = showcaseSectionLabel("Framework-drawn table — view-based cells (5.5)", NSMakeRect(24, 392, 480, 20))
+let viewTableHint = NSTextField(string: "Each cell hosts a real control (text field / button) — a native table can't.", frame: NSMakeRect(24, 412, 560, 18))
+viewTableHint.isBordered = false
+viewTableHint.drawsBackground = false
+viewTableHint.font = NSFont.systemFont(ofSize: 11)
+let viewTableSource = DemoViewTableDataSource()
+let viewTableDelegate = DemoViewTableDelegate(source: viewTableSource)
+viewTableDelegate.onEvent = { statusLabel.stringValue = $0 }
+let viewTable = NSTableView(frame: NSMakeRect(24, 434, 470, 104))
+let taskColumn = NSTableColumn(identifier: "task")
+taskColumn.title = "Task"
+taskColumn.width = 300
+let actionColumn = NSTableColumn(identifier: "action")
+actionColumn.title = "Action"
+actionColumn.width = 160
+viewTable.addTableColumn(taskColumn)
+viewTable.addTableColumn(actionColumn)
+viewTable.gridStyleMask = [.solidHorizontalGridLineMask, .solidVerticalGridLineMask]
+viewTable.usesAlternatingRowBackgroundColors = true
+viewTable.dataSource = viewTableSource
+viewTable.delegate = viewTableDelegate
+viewTable.winUsesViewBasedCells = true
+
 showcasePage.addSubview(spinnerSectionLabel)
 showcasePage.addSubview(showcaseSpinner)
 showcasePage.addSubview(spinnerStartButton)
@@ -2788,6 +2857,9 @@ showcasePage.addSubview(screenInfoLabel)
 showcasePage.addSubview(workAreaLabel)
 showcasePage.addSubview(miniaturizeButton)
 showcasePage.addSubview(zoomButton)
+showcasePage.addSubview(viewTableSectionLabel)
+showcasePage.addSubview(viewTableHint)
+showcasePage.addSubview(viewTable)
 // Document-architecture demo: a New Note window driven by NSDocument,
 // NSWindowController, and the shared NSDocumentController. The window title
 // gains the classic asterisk while the note has unsaved edits.
@@ -2878,8 +2950,8 @@ editMenuController.textView = notesTextView
 // menu entry.
 let viewMenuItem = NSMenuItem(title: "View", action: nil, keyEquivalent: "")
 let viewMenu = NSMenu(title: "View")
-for (index, pageTitle) in ["Controls Page", "Values Page", "Tables/Media Page", "Drawing Page"].enumerated() {
-    // Ctrl+1...Ctrl+4 switch pages (the .command mask maps onto Ctrl on Windows).
+for (index, pageTitle) in ["Controls Page", "Values Page", "Tables/Media Page", "Drawing Page", "New in 3.x Page"].enumerated() {
+    // Ctrl+1...Ctrl+5 switch pages (the .command mask maps onto Ctrl on Windows).
     let item = NSMenuItem(title: pageTitle, action: nil, keyEquivalent: "\(index + 1)")
     item.onAction = { _ in
         pageSelector.selectItem(at: index)
