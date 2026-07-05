@@ -8,12 +8,20 @@ public protocol NSCollectionViewDataSource: AnyObject {
 
     /// Returns the item view-controller object for an index path.
     func collectionView(_ collectionView: NSCollectionView, itemForRepresentedObjectAt indexPath: IndexPath) -> NSCollectionViewItem
+
+    /// Returns a supplementary view (e.g. a section header) for an index path.
+    func collectionView(_ collectionView: NSCollectionView, viewForSupplementaryElementOfKind kind: String, at indexPath: IndexPath) -> NSView?
 }
 
 public extension NSCollectionViewDataSource {
     /// Most collection views start with one section.
     func numberOfSections(in collectionView: NSCollectionView) -> Int {
         1
+    }
+
+    /// Default: no supplementary views.
+    func collectionView(_ collectionView: NSCollectionView, viewForSupplementaryElementOfKind kind: String, at indexPath: IndexPath) -> NSView? {
+        nil
     }
 }
 
@@ -32,6 +40,21 @@ public extension NSCollectionViewDelegate {
 
     /// Default deselected-items hook.
     func collectionView(_ collectionView: NSCollectionView, didDeselectItemsAt indexPaths: Set<IndexPath>) {}
+}
+
+/// Flow-layout delegate that supplies a per-item size (and, later, per-section
+/// insets/spacing). Matches `NSCollectionViewDelegateFlowLayout`.
+public protocol NSCollectionViewDelegateFlowLayout: NSCollectionViewDelegate {
+    /// The size for the item at an index path. Return `.zero` to fall back to
+    /// the layout's uniform `itemSize`.
+    func collectionView(_ collectionView: NSCollectionView, layout collectionViewLayout: NSCollectionViewLayout, sizeForItemAt indexPath: IndexPath) -> NSSize
+}
+
+public extension NSCollectionViewDelegateFlowLayout {
+    /// Default: use the layout's uniform item size.
+    func collectionView(_ collectionView: NSCollectionView, layout collectionViewLayout: NSCollectionViewLayout, sizeForItemAt indexPath: IndexPath) -> NSSize {
+        .zero
+    }
 }
 
 /// A simple collection-view item.
@@ -90,6 +113,12 @@ open class NSCollectionView: NSControl {
             tile()
         }
     }
+
+    /// The supplementary element kind for a section header.
+    public static let elementKindSectionHeader = "NSCollectionElementKindSectionHeader"
+
+    /// Hosted supplementary (header) views, by section.
+    private var hostedSupplementaryViews: [Int: NSView] = [:]
 
     /// The layout that arranges items. When set, it overrides the built-in
     /// grid; assign an `NSCollectionViewFlowLayout` for AppKit-style flow.
@@ -162,6 +191,7 @@ open class NSCollectionView: NSControl {
                     item.view.frame = attr.frame
                 }
             }
+            layoutSupplementaryViews(with: layout)
             sizeToContentIfScrolled(layout.collectionViewContentSize)
             return
         }
@@ -195,6 +225,27 @@ open class NSCollectionView: NSControl {
             frame = NSRect(x: frame.origin.x, y: frame.origin.y, width: width, height: height)
         }
         scrollView.tile()
+    }
+
+    /// Hosts the section-header supplementary views the layout reserved space
+    /// for and the data source vends, positioned at their layout frames.
+    private func layoutSupplementaryViews(with layout: NSCollectionViewLayout) {
+        for view in hostedSupplementaryViews.values {
+            view.removeFromSuperview()
+        }
+        hostedSupplementaryViews.removeAll()
+
+        let sectionCount = dataSource?.numberOfSections(in: self) ?? 0
+        for section in 0..<sectionCount {
+            let indexPath = IndexPath(item: 0, section: section)
+            guard let attr = layout.layoutAttributesForSupplementaryView(ofKind: Self.elementKindSectionHeader, at: indexPath),
+                  let view = dataSource?.collectionView(self, viewForSupplementaryElementOfKind: Self.elementKindSectionHeader, at: indexPath) else {
+                continue
+            }
+            view.frame = attr.frame
+            addSubview(view)
+            hostedSupplementaryViews[section] = view
+        }
     }
 
     /// Selects a set of items.

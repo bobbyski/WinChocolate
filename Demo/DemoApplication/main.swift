@@ -827,27 +827,51 @@ final class DemoCollectionDataSource: NSCollectionViewDataSource {
     }
 }
 
-/// A larger single-section collection source so the flow layout's wrapping and
-/// re-tiling are dramatic on the Lists page.
+/// A multi-section collection source (with section headers) so the flow
+/// layout's wrapping, re-tiling, and section headers are all demonstrable.
 final class DemoFlowCollectionDataSource: NSCollectionViewDataSource {
-    let values = [
-        "NSView", "NSButton", "NSTextField", "NSTableView", "NSOutlineView", "NSBrowser",
-        "NSImageView", "NSSlider", "NSStepper", "NSComboBox", "NSPopUpButton", "NSDatePicker",
-        "NSColorWell", "NSSegmentedControl", "NSTabView", "NSScrollView", "NSSplitView", "NSBox",
-        "NSProgressIndicator", "NSLevelIndicator", "NSPathControl", "NSTokenField",
+    let sections: [(title: String, items: [String])] = [
+        ("Views", ["NSView", "NSImageView", "NSTextField", "NSButton", "NSSlider", "NSStepper"]),
+        ("Controls", ["NSComboBox", "NSPopUpButton", "NSDatePicker", "NSColorWell", "NSSegmentedControl", "NSLevelIndicator", "NSPathControl", "NSTokenField"]),
+        ("Containers", ["NSTableView", "NSOutlineView", "NSBrowser", "NSScrollView", "NSSplitView", "NSTabView", "NSBox"]),
     ]
 
+    func numberOfSections(in collectionView: NSCollectionView) -> Int {
+        sections.count
+    }
+
     func collectionView(_ collectionView: NSCollectionView, numberOfItemsInSection section: Int) -> Int {
-        values.count
+        sections[section].items.count
     }
 
     func collectionView(_ collectionView: NSCollectionView, itemForRepresentedObjectAt indexPath: IndexPath) -> NSCollectionViewItem {
         let item = NSCollectionViewItem()
-        let title = values[indexPath.item]
+        let title = sections[indexPath.section].items[indexPath.item]
         item.representedObject = title
         let button = NSButton(title: title, frame: NSMakeRect(0, 0, 120, 28))
         item.view = button
         return item
+    }
+
+    func collectionView(_ collectionView: NSCollectionView, viewForSupplementaryElementOfKind kind: String, at indexPath: IndexPath) -> NSView? {
+        guard kind == NSCollectionView.elementKindSectionHeader else {
+            return nil
+        }
+        let header = NSTextField(string: "  \(sections[indexPath.section].title)", frame: .zero)
+        header.isBordered = false
+        header.font = NSFont.boldSystemFont(ofSize: 12)
+        header.backgroundColor = NSColor(red: 0.90, green: 0.93, blue: 0.98, alpha: 1)
+        return header
+    }
+}
+
+/// Sizes each collection item to fit its label, demonstrating per-item flow
+/// sizing (`NSCollectionViewDelegateFlowLayout`).
+final class DemoFlowSizeDelegate: NSCollectionViewDelegateFlowLayout {
+    let source: DemoFlowCollectionDataSource
+    init(_ source: DemoFlowCollectionDataSource) { self.source = source }
+    func collectionView(_ collectionView: NSCollectionView, layout collectionViewLayout: NSCollectionViewLayout, sizeForItemAt indexPath: IndexPath) -> NSSize {
+        NSMakeSize(28 + CGFloat(source.sections[indexPath.section].items[indexPath.item].count) * 8, 28)
     }
 }
 
@@ -3046,7 +3070,8 @@ let listsFlowLayout = NSCollectionViewFlowLayout()
 listsFlowLayout.itemSize = NSMakeSize(120, 28)
 listsFlowLayout.minimumInteritemSpacing = 8
 listsFlowLayout.minimumLineSpacing = 8
-listsFlowLayout.sectionInset = NSEdgeInsetsMake(6, 6, 6, 6)
+listsFlowLayout.sectionInset = NSEdgeInsetsMake(6, 6, 10, 6)
+listsFlowLayout.headerReferenceSize = NSMakeSize(0, 24)
 let listsCollectionScrollView = NSScrollView(frame: NSMakeRect(24, 352, 860, 168))
 listsCollectionScrollView.hasVerticalScroller = true
 let listsCollectionView = NSCollectionView(frame: NSMakeRect(0, 0, 860, 168))
@@ -3085,6 +3110,17 @@ listsDirectionControl.onAction = { _ in
     statusLabel.stringValue = "Collection scroll direction changed"
 }
 
+// Per-item sizing: "By label" installs a flow delegate that sizes each item to
+// its title; "Uniform" clears it so the layout's itemSize applies.
+let listsFlowSizeDelegate = DemoFlowSizeDelegate(listsFlowSource)
+let listsSizeModeControl = NSSegmentedControl(labels: ["Uniform size", "Size by label"], frame: NSMakeRect(680, 316, 220, 26))
+listsSizeModeControl.selectedSegment = 0
+listsSizeModeControl.onAction = { _ in
+    listsCollectionView.delegate = listsSizeModeControl.selectedSegment == 1 ? listsFlowSizeDelegate : nil
+    listsCollectionView.reloadData()
+    statusLabel.stringValue = listsSizeModeControl.selectedSegment == 1 ? "Items sized to their labels" : "Uniform item size"
+}
+
 listsPage.addSubview(listsBrowserLabel)
 listsPage.addSubview(listsBrowserHint)
 listsPage.addSubview(browser)
@@ -3094,6 +3130,7 @@ listsPage.addSubview(listsCollectionHint)
 listsPage.addSubview(listsItemSizeControl)
 listsPage.addSubview(listsSpacingControl)
 listsPage.addSubview(listsDirectionControl)
+listsPage.addSubview(listsSizeModeControl)
 listsPage.addSubview(listsCollectionScrollView)
 // Document-architecture demo: a New Note window driven by NSDocument,
 // NSWindowController, and the shared NSDocumentController. The window title

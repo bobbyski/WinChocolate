@@ -1271,6 +1271,107 @@ func testCollectionViewFlowLayoutArrangesSectionsAndSizesContent() {
     expect(layout.collectionViewContentSize.height == 120, "Flow content height wrong. Got \(layout.collectionViewContentSize.height).")
 }
 
+final class VariableSizeCollectionDataSource: NSCollectionViewDataSource {
+    let sizes = [NSMakeSize(80, 20), NSMakeSize(80, 20), NSMakeSize(80, 30), NSMakeSize(60, 20)]
+    func collectionView(_ collectionView: NSCollectionView, numberOfItemsInSection section: Int) -> Int { sizes.count }
+    func collectionView(_ collectionView: NSCollectionView, itemForRepresentedObjectAt indexPath: IndexPath) -> NSCollectionViewItem {
+        let item = NSCollectionViewItem()
+        item.view = NSView(frame: NSMakeRect(0, 0, sizes[indexPath.item].width, sizes[indexPath.item].height))
+        return item
+    }
+}
+
+final class VariableSizeFlowDelegate: NSCollectionViewDelegateFlowLayout {
+    let sizes: [NSSize]
+    init(_ sizes: [NSSize]) { self.sizes = sizes }
+    func collectionView(_ collectionView: NSCollectionView, layout collectionViewLayout: NSCollectionViewLayout, sizeForItemAt indexPath: IndexPath) -> NSSize {
+        sizes[indexPath.item]
+    }
+}
+
+func testCollectionFlowLayoutHonorsPerItemSizeFromDelegate() {
+    let collectionView = NSCollectionView(frame: NSMakeRect(0, 0, 200, 200))
+    let dataSource = VariableSizeCollectionDataSource()
+    let delegate = VariableSizeFlowDelegate(dataSource.sizes)
+    let layout = NSCollectionViewFlowLayout()
+    layout.minimumInteritemSpacing = 0
+    layout.minimumLineSpacing = 0
+    layout.sectionInset = NSEdgeInsetsMake(0, 0, 0, 0)
+
+    collectionView.dataSource = dataSource
+    collectionView.delegate = delegate
+    collectionView.collectionViewLayout = layout
+    collectionView.reloadData()
+
+    // 200pt wide: items 0,1 (80+80=160) fit on line 0; item 2 (80) overflows to
+    // line 1 (which is 30pt tall because item 2 is taller); item 3 (60) fits beside it.
+    let f0 = layout.layoutAttributesForItem(at: IndexPath(item: 0, section: 0))?.frame
+    let f1 = layout.layoutAttributesForItem(at: IndexPath(item: 1, section: 0))?.frame
+    let f2 = layout.layoutAttributesForItem(at: IndexPath(item: 2, section: 0))?.frame
+    let f3 = layout.layoutAttributesForItem(at: IndexPath(item: 3, section: 0))?.frame
+    expect(f0 == NSMakeRect(0, 0, 80, 20), "Item 0 frame wrong. Got \(f0 ?? .zero).")
+    expect(f1 == NSMakeRect(80, 0, 80, 20), "Item 1 did not pack beside item 0. Got \(f1 ?? .zero).")
+    expect(f2 == NSMakeRect(0, 20, 80, 30), "Item 2 did not wrap to the next line. Got \(f2 ?? .zero).")
+    expect(f3 == NSMakeRect(80, 20, 60, 20), "Item 3 did not pack beside item 2. Got \(f3 ?? .zero).")
+    expect(layout.collectionViewContentSize.height == 50, "Variable-size content height wrong (line0 20 + line1 30). Got \(layout.collectionViewContentSize.height).")
+
+    // The item views were positioned to their variable sizes.
+    expect(collectionView.item(at: IndexPath(item: 2, section: 0))?.view.frame == NSMakeRect(0, 20, 80, 30),
+           "Item 2's view was not positioned at its variable size/frame.")
+}
+
+final class HeaderCollectionDataSource: NSCollectionViewDataSource {
+    var headerViews: [Int: NSView] = [:]
+    func numberOfSections(in collectionView: NSCollectionView) -> Int { 2 }
+    func collectionView(_ collectionView: NSCollectionView, numberOfItemsInSection section: Int) -> Int { 2 }
+    func collectionView(_ collectionView: NSCollectionView, itemForRepresentedObjectAt indexPath: IndexPath) -> NSCollectionViewItem {
+        let item = NSCollectionViewItem()
+        item.view = NSView(frame: NSMakeRect(0, 0, 100, 20))
+        return item
+    }
+    func collectionView(_ collectionView: NSCollectionView, viewForSupplementaryElementOfKind kind: String, at indexPath: IndexPath) -> NSView? {
+        guard kind == NSCollectionView.elementKindSectionHeader else { return nil }
+        let header = NSTextField(string: "Section \(indexPath.section)", frame: .zero)
+        headerViews[indexPath.section] = header
+        return header
+    }
+}
+
+func testCollectionFlowLayoutReservesAndHostsSectionHeaders() {
+    let collectionView = NSCollectionView(frame: NSMakeRect(0, 0, 200, 400))
+    let dataSource = HeaderCollectionDataSource()
+    let layout = NSCollectionViewFlowLayout()
+    layout.itemSize = NSMakeSize(100, 20)
+    layout.minimumInteritemSpacing = 0
+    layout.minimumLineSpacing = 0
+    layout.sectionInset = NSEdgeInsetsMake(0, 0, 0, 0)
+    layout.headerReferenceSize = NSMakeSize(0, 30)
+
+    collectionView.dataSource = dataSource
+    collectionView.collectionViewLayout = layout
+    collectionView.reloadData()
+
+    // Each section reserves a full-width 30pt header at its top; items follow.
+    let h0 = layout.layoutAttributesForSupplementaryView(ofKind: NSCollectionView.elementKindSectionHeader, at: IndexPath(item: 0, section: 0))
+    let h1 = layout.layoutAttributesForSupplementaryView(ofKind: NSCollectionView.elementKindSectionHeader, at: IndexPath(item: 0, section: 1))
+    expect(h0?.frame == NSMakeRect(0, 0, 200, 30), "Section 0 header frame wrong. Got \(h0?.frame ?? .zero).")
+    expect(h1?.frame == NSMakeRect(0, 50, 200, 30), "Section 1 header did not stack below section 0's header+items. Got \(h1?.frame ?? .zero).")
+
+    // Items sit below their section header.
+    expect(layout.layoutAttributesForItem(at: IndexPath(item: 0, section: 0))?.frame.origin.y == 30,
+           "Section 0 items did not start below the header.")
+    expect(layout.layoutAttributesForItem(at: IndexPath(item: 0, section: 1))?.frame.origin.y == 80,
+           "Section 1 items did not start below the section 1 header.")
+
+    // The header views were vended and hosted at their frames.
+    expect(dataSource.headerViews.count == 2, "Two section headers should have been vended. Got \(dataSource.headerViews.count).")
+    expect(dataSource.headerViews[1]?.frame == NSMakeRect(0, 50, 200, 30), "Section 1 header view was not positioned at its layout frame.")
+    expect(collectionView.subviews.contains { $0 === dataSource.headerViews[0] }, "Section 0 header view was not hosted as a subview.")
+
+    // Content spans both sections (header 30 + items 20) x2 = 100.
+    expect(layout.collectionViewContentSize.height == 100, "Header-inclusive content height wrong. Got \(layout.collectionViewContentSize.height).")
+}
+
 func testSliderStoresRangeValueAndSyncsNativePeer() {
     let backend = InMemoryNativeControlBackend()
     let slider = NSSlider(value: 25, minValue: 0, maxValue: 100, target: nil, action: "sliderChanged:")
@@ -6894,6 +6995,8 @@ testIndexPathStoresCollectionComponents()
 testCollectionViewReloadsItemsAndTracksSelection()
 testCollectionViewButtonItemClickSelectsItem()
 testCollectionViewFlowLayoutArrangesSectionsAndSizesContent()
+testCollectionFlowLayoutHonorsPerItemSizeFromDelegate()
+testCollectionFlowLayoutReservesAndHostsSectionHeaders()
 testSliderStoresRangeValueAndSyncsNativePeer()
 testSliderNativeActionUpdatesValue()
 testProgressIndicatorStoresRangeValueAndSyncsNativePeer()
