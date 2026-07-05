@@ -427,6 +427,24 @@ extension Win32NativeControlBackend {
                 }
             }
 
+            // A committed in-place label edit reports through NMLVDISPINFOW,
+            // whose layout differs from NMLISTVIEW, so handle it first.
+            if header.code == lvnEndLabelEditW, let source = header.hwndFrom {
+                let handle = nativeHandle(from: source)
+                let info = UnsafeRawPointer(bitPattern: lParam)?.assumingMemoryBound(to: NMLVDISPINFOW.self).pointee
+                // pszText is nil when the edit was canceled.
+                if let info, let textPointer = info.item.pszText {
+                    var length = 0
+                    while textPointer[length] != 0 {
+                        length += 1
+                    }
+                    let text = String(decoding: UnsafeBufferPointer(start: textPointer, count: length), as: UTF16.self)
+                    tableEditActions[handle.rawValue]?(Int(info.item.iItem), 0, text)
+                    return 1
+                }
+                return 0
+            }
+
             let notification = UnsafeRawPointer(bitPattern: lParam)?.assumingMemoryBound(to: NMLISTVIEW.self).pointee
             guard let notification,
                   let source = header.hwndFrom else {

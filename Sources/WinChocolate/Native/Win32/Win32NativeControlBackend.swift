@@ -47,6 +47,8 @@ public final class Win32NativeControlBackend: NativeControlBackend {
     var tableSuppressedColumnClicks: [UInt: Int] = [:]
     var tableClickedRows: [UInt: Int] = [:]
     var tableClickedColumns: [UInt: Int] = [:]
+    var tableEditableHandles: Set<UInt> = []
+    var tableEditActions: [UInt: (Int, Int, String) -> Void] = [:]
     var sliderRanges: [UInt: (minValue: Double, maxValue: Double)] = [:]
     var trackbarHandles: Set<UInt> = []
     var scrollerHandles: Set<UInt> = []

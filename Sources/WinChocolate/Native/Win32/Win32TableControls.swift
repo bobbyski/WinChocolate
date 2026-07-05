@@ -88,6 +88,128 @@ extension Win32NativeControlBackend {
         }
     }
 
+    /// Updates a single cell's text in place without rebuilding the list.
+    public func setTableCellText(_ text: String, row: Int, column: Int, for handle: NativeHandle) {
+        guard row >= 0, column >= 0, let hwnd = hwnd(from: handle) else {
+            return
+        }
+        setTableCellText(text, row: row, column: column, hwnd: hwnd)
+    }
+
+    /// Enables or disables native multiple-row selection by toggling
+    /// `LVS_SINGLESEL` on the list-view style.
+    public func setTableAllowsMultipleSelection(_ allows: Bool, for handle: NativeHandle) {
+        guard let hwnd = hwnd(from: handle) else {
+            return
+        }
+        var style = winGetWindowLongPtrW(hwnd, gwlStyle)
+        if allows {
+            style &= ~LONG_PTR(lvsSingleSel)
+        } else {
+            style |= LONG_PTR(lvsSingleSel)
+        }
+        _ = winSetWindowLongPtrW(hwnd, gwlStyle, style)
+    }
+
+    /// Replaces the native selection with the given rows (first row focused).
+    public func setTableSelectedRows(_ rows: Set<Int>, for handle: NativeHandle) {
+        guard let hwnd = hwnd(from: handle) else {
+            return
+        }
+        tableClickedColumns[handle.rawValue] = -1
+        tableClickedRows[handle.rawValue] = -1
+
+        let selectedState = lvisSelected | lvisFocused
+        var clearItem = LVITEMW()
+        clearItem.stateMask = selectedState
+        clearItem.state = 0
+        withUnsafePointer(to: clearItem) { itemPointer in
+            _ = winSendMessageW(hwnd, lvmSetItemState, WPARAM.max, Int(bitPattern: itemPointer))
+        }
+
+        for (order, row) in rows.sorted().enumerated() where row >= 0 {
+            var item = LVITEMW()
+            item.stateMask = selectedState
+            // Only the first row takes focus; the rest are selected.
+            item.state = order == 0 ? selectedState : lvisSelected
+            withUnsafePointer(to: item) { itemPointer in
+                _ = winSendMessageW(hwnd, lvmSetItemState, WPARAM(row), Int(bitPattern: itemPointer))
+            }
+        }
+    }
+
+    /// Reads every selected row, in ascending order.
+    public func tableSelectedRows(for handle: NativeHandle) -> [Int] {
+        guard let hwnd = hwnd(from: handle) else {
+            return []
+        }
+        var rows: [Int] = []
+        var start = WPARAM.max
+        while true {
+            let next = Int(winSendMessageW(hwnd, lvmGetNextItem, start, LPARAM(lvniSelected)))
+            if next < 0 {
+                break
+            }
+            rows.append(next)
+            start = WPARAM(next)
+        }
+        return rows.sorted()
+    }
+
+    /// Enables or disables in-place first-column label editing.
+    public func setTableEditable(_ editable: Bool, for handle: NativeHandle) {
+        guard let hwnd = hwnd(from: handle) else {
+            return
+        }
+        var style = winGetWindowLongPtrW(hwnd, gwlStyle)
+        if editable {
+            style |= LONG_PTR(lvsEditLabels)
+            tableEditableHandles.insert(handle.rawValue)
+        } else {
+            style &= ~LONG_PTR(lvsEditLabels)
+            tableEditableHandles.remove(handle.rawValue)
+        }
+        _ = winSetWindowLongPtrW(hwnd, gwlStyle, style)
+    }
+
+    /// Begins editing a cell's label (the native list-view edits the first
+    /// column only, so the column argument selects the row to edit).
+    public func editTableCell(row: Int, column: Int, for handle: NativeHandle) {
+        guard row >= 0, let hwnd = hwnd(from: handle) else {
+            return
+        }
+        _ = winSetFocus(hwnd)
+        _ = winSendMessageW(hwnd, lvmEditLabelW, WPARAM(row), 0)
+    }
+
+    /// Draws (or clears) the ascending/descending sort arrow on a column header.
+    public func setTableSortIndicator(column: Int, ascending: Bool, for handle: NativeHandle) {
+        guard let hwnd = hwnd(from: handle),
+              let headerHwnd = HWND(bitPattern: winSendMessageW(hwnd, lvmGetHeader, 0, 0)) else {
+            return
+        }
+        let columnCount = tableColumnTitles[handle.rawValue]?.count ?? 0
+        for index in 0..<columnCount {
+            var item = HDITEMW()
+            item.mask = hdiFormat
+            withUnsafeMutablePointer(to: &item) { itemPointer in
+                _ = winSendMessageW(headerHwnd, hdmGetItemW, WPARAM(index), Int(bitPattern: itemPointer))
+            }
+            item.fmt &= ~(hdfSortUp | hdfSortDown)
+            if index == column {
+                item.fmt |= ascending ? hdfSortUp : hdfSortDown
+            }
+            withUnsafeMutablePointer(to: &item) { itemPointer in
+                _ = winSendMessageW(headerHwnd, hdmSetItemW, WPARAM(index), Int(bitPattern: itemPointer))
+            }
+        }
+    }
+
+    /// Registers the in-place-edit commit callback.
+    public func registerTableEditAction(for handle: NativeHandle, action: @escaping (Int, Int, String) -> Void) {
+        tableEditActions[handle.rawValue] = action
+    }
+
     /// Scrolls a native table row into view.
     public func scrollTableRowToVisible(_ row: Int, for handle: NativeHandle) {
         guard row >= 0,

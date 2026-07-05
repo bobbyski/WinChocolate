@@ -1584,6 +1584,17 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
         records[handle] = record
     }
 
+    /// Updates a single recorded table cell.
+    public func setTableCellText(_ text: String, row: Int, column: Int, for handle: NativeHandle) {
+        guard var record = records[handle],
+              record.tableRows.indices.contains(row),
+              record.tableRows[row].indices.contains(column) else {
+            return
+        }
+        record.tableRows[row][column] = text
+        records[handle] = record
+    }
+
     /// Updates recorded table selection.
     public func setTableSelectedRow(_ selectedRow: Int, for handle: NativeHandle) {
         guard var record = records[handle] else {
@@ -1591,7 +1602,80 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
         }
 
         record.tableSelectedRow = selectedRow
+        record.tableClickedColumn = -1
         records[handle] = record
+        tableSelectedRowSets[handle] = selectedRow >= 0 ? [selectedRow] : []
+    }
+
+    /// Recorded per-handle table state for multiple selection, editing, sorting.
+    public private(set) var tableSelectedRowSets: [NativeHandle: [Int]] = [:]
+    public private(set) var tableAllowsMultipleSelection: [NativeHandle: Bool] = [:]
+    public private(set) var tableEditableHandles: Set<NativeHandle> = []
+    public private(set) var tableSortIndicators: [NativeHandle: (column: Int, ascending: Bool)] = [:]
+    private var tableEditActionsByHandle: [NativeHandle: (Int, Int, String) -> Void] = [:]
+
+    /// Records native multiple-selection enablement.
+    public func setTableAllowsMultipleSelection(_ allows: Bool, for handle: NativeHandle) {
+        tableAllowsMultipleSelection[handle] = allows
+    }
+
+    /// Records a multiple-row selection.
+    public func setTableSelectedRows(_ rows: Set<Int>, for handle: NativeHandle) {
+        tableSelectedRowSets[handle] = rows.sorted()
+        records[handle]?.tableSelectedRow = rows.min() ?? -1
+        records[handle]?.tableClickedColumn = -1
+    }
+
+    /// Reads the recorded selected rows.
+    public func tableSelectedRows(for handle: NativeHandle) -> [Int] {
+        tableSelectedRowSets[handle] ?? (tableSelectedRow(for: handle) >= 0 ? [tableSelectedRow(for: handle)] : [])
+    }
+
+    /// Records table editability.
+    public func setTableEditable(_ editable: Bool, for handle: NativeHandle) {
+        if editable {
+            tableEditableHandles.insert(handle)
+        } else {
+            tableEditableHandles.remove(handle)
+        }
+    }
+
+    /// No-op edit trigger for the in-memory backend (see `simulateTableEdit`).
+    public func editTableCell(row: Int, column: Int, for handle: NativeHandle) {}
+
+    /// Records a sort indicator (column < 0 clears it).
+    public func setTableSortIndicator(column: Int, ascending: Bool, for handle: NativeHandle) {
+        if column < 0 {
+            tableSortIndicators.removeValue(forKey: handle)
+        } else {
+            tableSortIndicators[handle] = (column, ascending)
+        }
+    }
+
+    /// Records the in-place-edit commit callback.
+    public func registerTableEditAction(for handle: NativeHandle, action: @escaping (Int, Int, String) -> Void) {
+        tableEditActionsByHandle[handle] = action
+    }
+
+    /// Test hook: commits an in-place edit as if the user typed it.
+    public func simulateTableEdit(row: Int, column: Int, text: String, for handle: NativeHandle) {
+        tableEditActionsByHandle[handle]?(row, column, text)
+    }
+
+    /// Test hook: sets the native selection and fires the table action.
+    public func simulateTableSelection(rows: [Int], for handle: NativeHandle) {
+        tableSelectedRowSets[handle] = rows.sorted()
+        records[handle]?.tableSelectedRow = rows.min() ?? -1
+        records[handle]?.tableClickedRow = rows.min() ?? -1
+        records[handle]?.tableClickedColumn = -1
+        actions[handle]?()
+    }
+
+    /// Test hook: fires a header click on a column (no row) and the action.
+    public func simulateTableColumnClick(column: Int, for handle: NativeHandle) {
+        records[handle]?.tableClickedColumn = column
+        records[handle]?.tableClickedRow = -1
+        actions[handle]?()
     }
 
     /// Records a table row visibility request.

@@ -1448,6 +1448,45 @@ let lbnSelChange: UInt = 1
 let nmClick: UINT = 0xfffffffe
 let lvnItemChanged: UINT = 0xffffff9b
 let lvnColumnClick: UINT = 0xffffff94
+/// LVN_BEGINLABELEDITW = LVN_FIRST(-100) - 75.
+let lvnBeginLabelEditW: UINT = 0xffffff51
+/// LVN_ENDLABELEDITW = LVN_FIRST(-100) - 76.
+let lvnEndLabelEditW: UINT = 0xffffff50
+/// LVN_BEGINDRAG = LVN_FIRST(-100) - 9.
+let lvnBeginDrag: UINT = 0xffffff93
+/// LVS_EX_* / label editing.
+let lvsEditLabels: DWORD = 0x0200
+let lvmEditLabelW: UINT = lvmFirst + 118
+/// Header control: get/set item and sort-indicator format bits.
+let hdmGetItemW: UINT = hdmFirst + 11
+let hdmSetItemW: UINT = hdmFirst + 12
+let hdiFormat: UINT = 0x0004
+let hdfSortUp: Int32 = 0x0400
+let hdfSortDown: Int32 = 0x0200
+
+/// Header item (`HDITEMW`); WinChocolate only touches the format field for the
+/// sort indicator, but the full layout must match so `cxy`/`pszText` etc. stay
+/// intact across a get/set round-trip.
+struct HDITEMW {
+    var mask: UINT = 0
+    var cxy: Int32 = 0
+    var pszText: UnsafeMutablePointer<UInt16>?
+    var hbm: UnsafeMutableRawPointer?
+    var cchTextMax: Int32 = 0
+    var fmt: Int32 = 0
+    var lParam: LPARAM = 0
+    var iImage: Int32 = 0
+    var iOrder: Int32 = 0
+    var type: UINT = 0
+    var pvFilter: UnsafeMutableRawPointer?
+    var state: UINT = 0
+}
+
+/// Notification payload for list-view label editing (`NMLVDISPINFOW`).
+struct NMLVDISPINFOW {
+    var hdr: NMHDR = NMHDR()
+    var item: LVITEMW = LVITEMW()
+}
 let hdnItemClickA: UINT = 0xfffffed2
 let hdnItemClickW: UINT = 0xfffffebe
 let udnDeltapos: UINT = 0xfffffd2e

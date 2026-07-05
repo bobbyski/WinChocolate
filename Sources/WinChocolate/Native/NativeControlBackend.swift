@@ -742,8 +742,34 @@ public protocol NativeControlBackend: AnyObject {
     /// Replaces native table rows.
     func setTableRows(_ rows: [[String]], selectedRow: Int, for handle: NativeHandle)
 
+    /// Updates a single native table cell's text in place (no full rebuild).
+    func setTableCellText(_ text: String, row: Int, column: Int, for handle: NativeHandle)
+
     /// Updates native table selection.
     func setTableSelectedRow(_ selectedRow: Int, for handle: NativeHandle)
+
+    /// Enables or disables native multiple-row selection.
+    func setTableAllowsMultipleSelection(_ allows: Bool, for handle: NativeHandle)
+
+    /// Replaces the native table's selected rows with the given set.
+    func setTableSelectedRows(_ rows: Set<Int>, for handle: NativeHandle)
+
+    /// Reads all currently selected native table rows, in ascending order.
+    func tableSelectedRows(for handle: NativeHandle) -> [Int]
+
+    /// Enables or disables in-place editing of native table cells.
+    func setTableEditable(_ editable: Bool, for handle: NativeHandle)
+
+    /// Begins editing a table cell's text in place, when the backend supports it.
+    func editTableCell(row: Int, column: Int, for handle: NativeHandle)
+
+    /// Shows a sort indicator on a table column header (ascending/descending),
+    /// or clears all indicators when `column` is negative.
+    func setTableSortIndicator(column: Int, ascending: Bool, for handle: NativeHandle)
+
+    /// Registers the action invoked when an in-place table-cell edit commits,
+    /// carrying the row, column, and new text.
+    func registerTableEditAction(for handle: NativeHandle, action: @escaping (Int, Int, String) -> Void)
 
     /// Scrolls a native table row into view when possible.
     func scrollTableRowToVisible(_ row: Int, for handle: NativeHandle)

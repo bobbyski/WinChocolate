@@ -7592,4 +7592,105 @@ func testPrintOperationRendersViewDrawing() {
 
 testPrintOperationRendersViewDrawing()
 
+func testTableViewMultipleSelectionEditingAndSorting() {
+    let backend = InMemoryNativeControlBackend()
+    let tableView = NSTableView(frame: NSMakeRect(0, 0, 300, 160))
+    let dataSource = RecordingTableDataSource()
+    let name = NSTableColumn(identifier: "name")
+    name.title = "Name"
+    name.isEditable = true
+    name.sortDescriptorPrototype = NSSortDescriptor(key: "name", ascending: true)
+    let note = NSTableColumn(identifier: "note")
+    note.title = "Note"
+    tableView.addTableColumn(name)
+    tableView.addTableColumn(note)
+    tableView.dataSource = dataSource
+    tableView.allowsMultipleSelection = true
+
+    let handle = tableView.realizeNativePeer(in: backend, parent: nil)
+
+    // Multiple selection reaches the backend and round-trips as a set.
+    expect(backend.tableAllowsMultipleSelection[handle] == true, "allowsMultipleSelection did not reach the backend.")
+    tableView.selectRowIndexes([0, 2], byExtendingSelection: false)
+    expect(tableView.selectedRowIndexes == [0, 2], "selectRowIndexes did not store the multiple selection.")
+    expect(Set(backend.tableSelectedRowSets[handle] ?? []) == [0, 2], "Multiple selection did not sync to the backend.")
+
+    // A native multi-row selection updates the framework's set.
+    backend.simulateTableSelection(rows: [1, 2], for: handle)
+    expect(tableView.selectedRowIndexes == [1, 2], "Native multiple selection did not update the framework set.")
+    expect(tableView.numberOfSelectedRows == 2, "numberOfSelectedRows is wrong after a native multi-select.")
+
+    // First-column editing is enabled; a committed edit writes through the data source.
+    expect(backend.tableEditableHandles.contains(handle), "An editable first column did not enable native editing.")
+    backend.simulateTableEdit(row: 1, column: 0, text: "Grace Hopper", for: handle)
+    expect(dataSource.rows[1][0] == "Grace Hopper", "In-place edit did not write through the data source.")
+    expect(tableView.value(atColumn: 0, row: 1) == "Grace Hopper", "The edited value did not reload.")
+
+    // A partial reload refreshes only the requested cell.
+    dataSource.rows[2][1] = "NASA"
+    tableView.reloadData(forRowIndexes: [2], columnIndexes: [1])
+    expect(tableView.value(atColumn: 1, row: 2) == "NASA", "Partial reload did not refresh the requested cell.")
+    expect(tableView.value(atColumn: 0, row: 2) == "Katherine", "Partial reload should not have touched other cells.")
+
+    // A header click on a sortable column applies the ascending sort + indicator.
+    backend.simulateTableColumnClick(column: 0, for: handle)
+    expect(tableView.sortDescriptors.first?.key == "name" && tableView.sortDescriptors.first?.ascending == true, "Header click did not apply the ascending sort descriptor.")
+    expect(backend.tableSortIndicators[handle]?.column == 0 && backend.tableSortIndicators[handle]?.ascending == true, "Header click did not set the ascending sort indicator.")
+
+    // A second header click toggles the sort (and indicator) to descending.
+    backend.simulateTableColumnClick(column: 0, for: handle)
+    expect(tableView.sortDescriptors.first?.ascending == false, "A second header click did not toggle to descending.")
+    expect(backend.tableSortIndicators[handle]?.ascending == false, "The sort indicator did not flip to descending.")
+}
+
+testTableViewMultipleSelectionEditingAndSorting()
+
+final class ViewBasedTableDelegate: NSTableViewDelegate {
+    func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
+        NSTextField(string: "\(tableColumn?.identifier.rawValue ?? "?")-\(row)", frame: NSMakeRect(0, 0, 100, 20))
+    }
+}
+
+func testViewBasedTableHostsCellViews() {
+    let backend = InMemoryNativeControlBackend()
+    let tableView = NSTableView(frame: NSMakeRect(0, 0, 300, 200))
+    let dataSource = RecordingTableDataSource()
+    let name = NSTableColumn(identifier: "name")
+    name.title = "Name"
+    name.width = 120
+    let note = NSTableColumn(identifier: "note")
+    note.title = "Note"
+    note.width = 120
+    tableView.addTableColumn(name)
+    tableView.addTableColumn(note)
+    tableView.dataSource = dataSource
+    tableView.allowsMultipleSelection = true
+    tableView.winUsesViewBasedCells = true
+    let delegate = ViewBasedTableDelegate()
+    tableView.delegate = delegate
+
+    let handle = tableView.realizeNativePeer(in: backend, parent: nil)
+
+    // A view-based table realizes a custom-drawn peer (not the native list),
+    // and hosts one cell view per (row, column) — 3 rows x 2 columns.
+    expect(backend.records[handle]?.kind == "view", "View-based table did not realize a custom-drawn peer.")
+    expect(tableView.subviews.count == 6, "View-based table did not host a cell view per cell. Got \(tableView.subviews.count).")
+
+    // Cell views are laid out below the header, in the column grid.
+    let topLeftCell = tableView.subviews.min { $0.frame.origin.y < $1.frame.origin.y || ($0.frame.origin.y == $1.frame.origin.y && $0.frame.origin.x < $1.frame.origin.x) }
+    expect((topLeftCell?.frame.origin.y ?? 0) >= 24, "The first cell view is not below the header row.")
+    let secondColumnCells = tableView.subviews.filter { $0.frame.origin.x >= 120 }
+    expect(secondColumnCells.count == 3, "The second column did not host a cell view per row.")
+
+    // Clicking a row hit-tests and selects it.
+    backend.mouseDownActions[handle]?(NSEvent(type: .leftMouseDown, locationInWindow: NSMakePoint(10, 24 + 12)))
+    expect(tableView.selectedRow == 0, "Clicking the first data row did not select it.")
+
+    // Reloading rebuilds the hosted views (no leak / duplication).
+    tableView.reloadData()
+    expect(tableView.subviews.count == 6, "Reload did not rebuild exactly one cell view per cell.")
+}
+
+testViewBasedTableHostsCellViews()
+
 print("WinChocolate contract tests passed.")

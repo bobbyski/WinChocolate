@@ -108,7 +108,14 @@ open class NSTableView: NSControl {
     open weak var delegate: NSTableViewDelegate?
 
     /// Whether multiple rows may be selected.
-    open var allowsMultipleSelection: Bool = false
+    open var allowsMultipleSelection: Bool = false {
+        didSet {
+            guard let nativeHandle else {
+                return
+            }
+            realizedBackend?.setTableAllowsMultipleSelection(allowsMultipleSelection, for: nativeHandle)
+        }
+    }
 
     /// Whether an empty selection is allowed.
     open var allowsEmptySelection: Bool = true
@@ -161,6 +168,24 @@ open class NSTableView: NSControl {
 
     private var rowValues: [[String]] = []
     private var isUpdatingSelectionFromNative = false
+
+    // MARK: - Framework-drawn (view-based) table state
+    //
+    // When the delegate vends cell views, the table realizes a custom-drawn
+    // peer that draws the header/grid/selection itself and hosts those views
+    // per cell — something the native list-view can't do.
+    /// Opts this table into the framework-drawn, view-based rendering path.
+    ///
+    /// When `true` and the delegate vends cell views, the table draws its own
+    /// header/grid/selection and hosts those views per cell. Left `false` by
+    /// default so text tables keep the native list-view (auto-detection to
+    /// match AppKit's "view-based when the delegate implements `viewFor`" is a
+    /// follow-up once the drawn path reaches parity, e.g. scrolling).
+    open var winUsesViewBasedCells: Bool = false
+    var winIsDrawn = false
+    var winHostedCellViews: [NSView] = []
+    var winDrawnRowHeight: CGFloat = 24
+    var winDrawnHeaderHeight: CGFloat = 24
 
     /// Tables handle standard navigation keys as part of their component behavior.
     open override func keyDown(with event: NSEvent) {
@@ -267,19 +292,18 @@ open class NSTableView: NSControl {
             return
         }
 
-        let nextSelection = validIndexes.min() ?? -1
-        guard nextSelection == -1 || rowValues.indices.contains(nextSelection) else {
-            return
-        }
-
         let oldSelection = selectedRowIndexes
-        selectedRowIndexes = allowsMultipleSelection && extend
-            ? selectedRowIndexes.union(validIndexes)
-            : [nextSelection]
+        // With multiple selection, replace with (or extend by) the whole set;
+        // single-selection tables keep only the first index.
+        if allowsMultipleSelection {
+            selectedRowIndexes = extend ? selectedRowIndexes.union(validIndexes) : validIndexes
+        } else {
+            selectedRowIndexes = [validIndexes.min() ?? -1]
+        }
         selectedRow = selectedRowIndexes.min() ?? -1
         selectedColumn = numberOfColumns > 0 ? 0 : -1
         if !isUpdatingSelectionFromNative, let nativeHandle {
-            realizedBackend?.setTableSelectedRow(selectedRow, for: nativeHandle)
+            realizedBackend?.setTableSelectedRows(selectedRowIndexes, for: nativeHandle)
         }
 
         if selectedRowIndexes != oldSelection {
@@ -297,7 +321,7 @@ open class NSTableView: NSControl {
         selectedColumn = -1
         selectedRowIndexes = []
         if let nativeHandle {
-            realizedBackend?.setTableSelectedRow(-1, for: nativeHandle)
+            realizedBackend?.setTableSelectedRows([], for: nativeHandle)
         }
 
         notifySelectionChanged()
@@ -311,7 +335,7 @@ open class NSTableView: NSControl {
         selectedColumn = selectedRow >= 0 && numberOfColumns > 0 ? 0 : -1
 
         if let nativeHandle {
-            realizedBackend?.setTableSelectedRow(selectedRow, for: nativeHandle)
+            realizedBackend?.setTableSelectedRows(selectedRowIndexes, for: nativeHandle)
         }
 
         if selectedRowIndexes != oldSelection {
@@ -334,7 +358,7 @@ open class NSTableView: NSControl {
         selectedColumn = selectedRow >= 0 && numberOfColumns > 0 ? 0 : -1
 
         if let nativeHandle {
-            realizedBackend?.setTableSelectedRow(selectedRow, for: nativeHandle)
+            realizedBackend?.setTableSelectedRows(selectedRowIndexes, for: nativeHandle)
         }
 
         if selectedRowIndexes != oldSelection {
@@ -397,9 +421,20 @@ open class NSTableView: NSControl {
         return value(atColumn: column(withIdentifier: tableColumn.identifier), row: rowIndex)
     }
 
-    /// Reloads part of the table. The first slice refreshes all rows.
+    /// Reloads only the given cells from the data source, updating each in
+    /// place natively instead of rebuilding the whole table.
     open func reloadData(forRowIndexes rowIndexes: Set<Int>, columnIndexes: Set<Int>) {
-        reloadData()
+        let columns = columnIndexes.isEmpty ? Set(tableColumns.indices) : columnIndexes
+        for row in rowIndexes where rowValues.indices.contains(row) {
+            for column in columns where tableColumns.indices.contains(column) {
+                let value = dataSource?.tableView(self, objectValueFor: tableColumns[column], row: row)
+                let text = value.map { String(describing: $0) } ?? ""
+                rowValues[row][column] = text
+                if let nativeHandle {
+                    realizedBackend?.setTableCellText(text, row: row, column: column, for: nativeHandle)
+                }
+            }
+        }
     }
 
     /// Reloads all rows from the data source.
@@ -425,30 +460,105 @@ open class NSTableView: NSControl {
         selectedRowIndexes = selectedRow >= 0 ? [selectedRow] : []
         selectedColumn = selectedRow >= 0 && numberOfColumns > 0 ? max(selectedColumn, 0) : -1
 
-        syncRowsToNative()
+        if winIsDrawn {
+            winRebuildHostedViews()
+            needsDisplay = true
+        } else {
+            syncRowsToNative()
+        }
     }
 
-    /// Creates the native table peer.
+    /// Creates the native table peer (or a custom-drawn view for view-based
+    /// tables that host cell views).
     open override func createNativePeer(in backend: NativeControlBackend, parent: NativeHandle?) -> NativeHandle {
-        backend.createTableView(columns: tableColumns.map(\.title), rows: rowValues, selectedRow: selectedRow, frame: frame, parent: parent)
+        if winIsDrawn {
+            return backend.createView(frame: frame, parent: parent)
+        }
+        return backend.createTableView(columns: tableColumns.map(\.title), rows: rowValues, selectedRow: selectedRow, frame: frame, parent: parent)
+    }
+
+    /// Draws the header/grid/selection for a framework-drawn table.
+    open override func draw(_ dirtyRect: NSRect) {
+        if winIsDrawn {
+            winDrawTable(dirtyRect)
+        } else {
+            super.draw(dirtyRect)
+        }
+    }
+
+    /// Routes clicks in a framework-drawn table to row selection / sorting.
+    open override func mouseDown(with event: NSEvent) {
+        if winIsDrawn {
+            winDrawnMouseDown(event)
+        } else {
+            super.mouseDown(with: event)
+        }
     }
 
     /// Ensures native table state and selection dispatch are wired.
     @discardableResult
     open override func realizeNativePeer(in backend: NativeControlBackend, parent: NativeHandle?) -> NativeHandle {
         reloadData()
+        winIsDrawn = winShouldUseDrawnCells
         let handle = super.realizeNativePeer(in: backend, parent: parent)
+        if winIsDrawn {
+            winRebuildHostedViews()
+            needsDisplay = true
+            return handle
+        }
+        if allowsMultipleSelection {
+            backend.setTableAllowsMultipleSelection(true, for: handle)
+        }
+        // First-column in-place editing when the first column opts in.
+        if tableColumns.first?.isEditable == true {
+            backend.setTableEditable(true, for: handle)
+        }
+        backend.registerTableEditAction(for: handle) { [weak self] row, column, text in
+            self?.commitEdit(row: row, column: column, text: text)
+        }
         backend.registerAction(for: handle) { [weak self, weak backend] in
             guard let self, let backend, let nativeHandle = self.nativeHandle else {
                 return
             }
 
-            self.updateSelectionFromNative(backend.tableSelectedRow(for: nativeHandle))
+            // A header click (column set, no row) sorts by that column.
+            let clickedColumn = backend.tableClickedColumn(for: nativeHandle)
+            let clickedRow = backend.tableClickedRow(for: nativeHandle)
+            if clickedColumn >= 0, clickedRow < 0 {
+                self.handleHeaderClick(column: clickedColumn)
+                return
+            }
+
+            self.updateSelectionFromNative(rows: backend.tableSelectedRows(for: nativeHandle))
             _ = self.window?.makeFirstResponder(self)
             self.sendAction()
             self.notifySelectionChanged()
         }
         return handle
+    }
+
+    /// Begins editing a cell (the classic backend edits the first column).
+    open func editColumn(_ column: Int, row: Int, with event: NSEvent?, select: Bool) {
+        guard let nativeHandle, rowValues.indices.contains(row) else {
+            return
+        }
+        realizedBackend?.editTableCell(row: row, column: column, for: nativeHandle)
+    }
+
+    private func commitEdit(row: Int, column: Int, text: String) {
+        guard rowValues.indices.contains(row) else {
+            return
+        }
+        setObjectValue(text, for: tableColumn(at: column), row: row)
+    }
+
+    private func handleHeaderClick(column: Int) {
+        guard let sort = sortUsingDescriptorPrototype(forColumn: column) else {
+            return
+        }
+        if let nativeHandle {
+            realizedBackend?.setTableSortIndicator(column: column, ascending: sort.ascending, for: nativeHandle)
+        }
     }
 
     private func syncRowsToNative() {
@@ -459,10 +569,11 @@ open class NSTableView: NSControl {
         realizedBackend?.setTableRows(rowValues, selectedRow: selectedRow, for: nativeHandle)
     }
 
-    private func updateSelectionFromNative(_ row: Int) {
+    private func updateSelectionFromNative(rows: [Int]) {
         isUpdatingSelectionFromNative = true
-        selectedRow = rowValues.indices.contains(row) ? row : -1
-        selectedRowIndexes = selectedRow >= 0 ? [selectedRow] : []
+        let valid = Set(rows.filter { rowValues.indices.contains($0) })
+        selectedRowIndexes = valid
+        selectedRow = valid.min() ?? -1
         selectedColumn = selectedRow >= 0 && numberOfColumns > 0 ? 0 : -1
         isUpdatingSelectionFromNative = false
     }
@@ -487,6 +598,9 @@ open class NSTableView: NSControl {
     }
 
     private func notifySelectionChanged() {
+        if winIsDrawn {
+            needsDisplay = true
+        }
         onSelectionChanged?(self)
         delegate?.tableViewSelectionDidChange(NSNotification(name: Self.selectionDidChangeNotification, object: self))
     }
