@@ -156,6 +156,103 @@ extension Win32NativeControlBackend {
         NSRect(x: 0, y: 0, width: CGFloat(winGetSystemMetrics(smCxScreen)), height: CGFloat(winGetSystemMetrics(smCyScreen)))
     }
 
+    /// Enumerates the attached monitors: full frame plus work area, primary first.
+    public func screenDescriptions() -> [NativeScreenDescription] {
+        final class MonitorCollector {
+            var screens: [NativeScreenDescription] = []
+        }
+
+        let collector = MonitorCollector()
+        let context = Unmanaged.passUnretained(collector).toOpaque()
+        _ = winEnumDisplayMonitors(nil, nil, { monitor, _, _, data in
+            var info = MONITORINFOW()
+            info.cbSize = UINT(MemoryLayout<MONITORINFOW>.stride)
+            if winGetMonitorInfoW(monitor, &info) != 0 {
+                let collector = Unmanaged<MonitorCollector>.fromOpaque(UnsafeRawPointer(bitPattern: data)!).takeUnretainedValue()
+                let description = NativeScreenDescription(
+                    frame: NSRect(
+                        x: CGFloat(info.rcMonitor.left),
+                        y: CGFloat(info.rcMonitor.top),
+                        width: CGFloat(info.rcMonitor.right - info.rcMonitor.left),
+                        height: CGFloat(info.rcMonitor.bottom - info.rcMonitor.top)
+                    ),
+                    visibleFrame: NSRect(
+                        x: CGFloat(info.rcWork.left),
+                        y: CGFloat(info.rcWork.top),
+                        width: CGFloat(info.rcWork.right - info.rcWork.left),
+                        height: CGFloat(info.rcWork.bottom - info.rcWork.top)
+                    )
+                )
+                // MONITORINFOF_PRIMARY: keep the primary display first.
+                if info.dwFlags & 1 != 0 {
+                    collector.screens.insert(description, at: 0)
+                } else {
+                    collector.screens.append(description)
+                }
+            }
+            return 1
+        }, LPARAM(Int(bitPattern: context)))
+
+        if collector.screens.isEmpty {
+            let frame = primaryScreenFrame()
+            return [NativeScreenDescription(frame: frame, visibleFrame: frame)]
+        }
+        return collector.screens
+    }
+
+    /// Minimizes or restores a native window.
+    public func setWindowMinimized(_ minimized: Bool, for handle: NativeHandle) {
+        guard let hwnd = hwnd(from: handle) else {
+            return
+        }
+        _ = winShowWindow(hwnd, minimized ? swMinimize : swRestore)
+    }
+
+    /// Toggles a native window between maximized and normal.
+    public func toggleWindowZoom(_ handle: NativeHandle) {
+        guard let hwnd = hwnd(from: handle) else {
+            return
+        }
+        _ = winShowWindow(hwnd, winIsZoomed(hwnd) != 0 ? swRestore : swMaximize)
+    }
+
+    /// Moves a native window to the bottom of the z-order.
+    public func orderWindowBack(_ handle: NativeHandle) {
+        guard let hwnd = hwnd(from: handle) else {
+            return
+        }
+        _ = winSetWindowPos(hwnd, hwndBottom, 0, 0, 0, 0, swpNoMove | swpNoSize | swpNoActivate)
+    }
+
+    /// Whether a native window is shown and not minimized.
+    public func isWindowVisible(_ handle: NativeHandle) -> Bool {
+        guard let hwnd = hwnd(from: handle) else {
+            return false
+        }
+        return winIsWindowVisible(hwnd) != 0 && winIsIconic(hwnd) == 0
+    }
+
+    /// Whether a native window is minimized.
+    public func isWindowMinimized(_ handle: NativeHandle) -> Bool {
+        guard let hwnd = hwnd(from: handle) else {
+            return false
+        }
+        return winIsIconic(hwnd) != 0
+    }
+
+    /// Whether a native window is maximized.
+    public func isWindowZoomed(_ handle: NativeHandle) -> Bool {
+        guard let hwnd = hwnd(from: handle) else {
+            return false
+        }
+        return winIsZoomed(hwnd) != 0
+    }
+
+    /// Registers the action invoked when a native window moves.
+    public func registerWindowMoveAction(for handle: NativeHandle, action: @escaping (NSPoint) -> Void) {
+        windowMoveActions[handle.rawValue] = action
+    }
+
     /// Reflects hidden standard title-bar buttons onto the native caption.
     public func setWindowButtonsHidden(closeHidden: Bool, minimizeHidden: Bool, zoomHidden: Bool, for handle: NativeHandle) {
         guard let hwnd = hwnd(from: handle) else {

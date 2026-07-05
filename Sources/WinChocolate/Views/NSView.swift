@@ -177,6 +177,114 @@ open class NSView: NSResponder {
     /// Lays out the view's subviews. Subclasses override to position children.
     open func layout() {}
 
+    /// The view's mouse-tracking areas.
+    public private(set) var trackingAreas: [NSTrackingArea] = []
+
+    // Tracking areas currently containing the cursor, by object identity.
+    private var hoveredTrackingAreas: Set<ObjectIdentifier> = []
+
+    /// Adds a tracking area to the view.
+    open func addTrackingArea(_ trackingArea: NSTrackingArea) {
+        trackingAreas.append(trackingArea)
+    }
+
+    /// Removes a tracking area from the view.
+    open func removeTrackingArea(_ trackingArea: NSTrackingArea) {
+        trackingAreas.removeAll { $0 === trackingArea }
+        hoveredTrackingAreas.remove(ObjectIdentifier(trackingArea))
+    }
+
+    /// Called when the view's tracking areas need recomputation (resize,
+    /// scroll). Subclasses override to remove and re-add their areas.
+    open func updateTrackingAreas() {}
+
+    /// Whether a tracking area is active for the current window state.
+    private func isTrackingActive(_ area: NSTrackingArea) -> Bool {
+        if area.options.contains(.activeAlways) {
+            return true
+        }
+        if area.options.contains(.activeInKeyWindow) {
+            return window?.isKeyWindow ?? false
+        }
+        // Areas created without an activity option track like key-window ones.
+        return window?.isKeyWindow ?? true
+    }
+
+    /// Resolves hover state against the tracking areas for a mouse position,
+    /// sending `mouseEntered`/`mouseExited` to each area's owner.
+    func resolveTrackingAreas(with event: NSEvent) {
+        guard !trackingAreas.isEmpty else {
+            return
+        }
+
+        let point = convert(event.locationInWindow, from: nil)
+        for area in trackingAreas where area.options.contains(.mouseEnteredAndExited) {
+            let identity = ObjectIdentifier(area)
+            let region = area.options.contains(.inVisibleRect) ? bounds : area.rect
+            let inside = isTrackingActive(area) && region.contains(point)
+            let wasInside = hoveredTrackingAreas.contains(identity)
+            if inside && !wasInside {
+                hoveredTrackingAreas.insert(identity)
+                trackingResponder(for: area)?.mouseEntered(with: NSEvent(type: .mouseEntered, locationInWindow: event.locationInWindow, modifierFlags: event.modifierFlags))
+            } else if !inside && wasInside {
+                hoveredTrackingAreas.remove(identity)
+                trackingResponder(for: area)?.mouseExited(with: NSEvent(type: .mouseExited, locationInWindow: event.locationInWindow, modifierFlags: event.modifierFlags))
+            }
+        }
+    }
+
+    /// Exits every hovered tracking area (the cursor left the view entirely).
+    func exitAllTrackingAreas() {
+        guard !hoveredTrackingAreas.isEmpty else {
+            return
+        }
+
+        for area in trackingAreas where hoveredTrackingAreas.contains(ObjectIdentifier(area)) {
+            hoveredTrackingAreas.remove(ObjectIdentifier(area))
+            trackingResponder(for: area)?.mouseExited(with: NSEvent(type: .mouseExited, locationInWindow: NSPoint(x: -1, y: -1)))
+        }
+    }
+
+    /// The responder that receives an area's tracking events.
+    private func trackingResponder(for area: NSTrackingArea) -> NSResponder? {
+        (area.owner as? NSResponder) ?? self
+    }
+
+    // MARK: - Drag and drop
+
+    /// The drop types the view registered for (see `registerForDraggedTypes`).
+    var winRegisteredDraggedTypes: [NSPasteboard.PasteboardType] = []
+
+    /// The dragging info for the drag currently over the view, when any.
+    var winActiveDragInfo: NSDraggingInfo?
+
+    /// A drag entered the view; return the operation to signal, or `[]` to
+    /// refuse. The default accepts a copy when the view registered types.
+    open func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+        winRegisteredDraggedTypes.isEmpty ? [] : .copy
+    }
+
+    /// The drag moved within the view; defaults to the entry decision.
+    open func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
+        draggingEntered(sender)
+    }
+
+    /// The drag left the view without dropping.
+    open func draggingExited(_ sender: NSDraggingInfo?) {}
+
+    /// Last chance to refuse the drop; defaults to accepting.
+    open func prepareForDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        true
+    }
+
+    /// Performs the drop. Override to read `sender.draggingPasteboard`.
+    open func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        false
+    }
+
+    /// The drop finished successfully.
+    open func concludeDragOperation(_ sender: NSDraggingInfo?) {}
+
     /// Creates a view with a frame.
     public init(frame frameRect: NSRect) {
         self.frame = frameRect
@@ -367,8 +475,13 @@ open class NSView: NSResponder {
             self?.mouseUp(with: event)
         }
         backend.registerMouseMovedAction(for: handle) { [weak self] event in
+            self?.resolveTrackingAreas(with: event)
             self?.mouseMoved(with: event)
         }
+        backend.registerMouseLeftAction(for: handle) { [weak self] in
+            self?.exitAllTrackingAreas()
+        }
+        installDropTargetIfRealized()
         backend.registerMouseDraggedAction(for: handle) { [weak self] event in
             self?.mouseDragged(with: event)
         }

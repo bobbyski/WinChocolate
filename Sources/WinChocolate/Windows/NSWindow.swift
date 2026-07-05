@@ -5,6 +5,18 @@ public protocol NSWindowDelegate: AnyObject {
 
     /// Tells the delegate the window is closing.
     func windowWillClose(_ notification: NSNotification)
+
+    /// Tells the delegate the window was resized (by the user or the system).
+    func windowDidResize(_ notification: NSNotification)
+
+    /// Tells the delegate the window was moved.
+    func windowDidMove(_ notification: NSNotification)
+
+    /// Tells the delegate the window was minimized.
+    func windowDidMiniaturize(_ notification: NSNotification)
+
+    /// Tells the delegate the window was restored from the minimized state.
+    func windowDidDeminiaturize(_ notification: NSNotification)
 }
 
 extension NSWindowDelegate {
@@ -15,6 +27,18 @@ extension NSWindowDelegate {
 
     /// Default no-op so delegates only implement the callbacks they need.
     public func windowWillClose(_ notification: NSNotification) {}
+
+    /// Default no-op so delegates only implement the callbacks they need.
+    public func windowDidResize(_ notification: NSNotification) {}
+
+    /// Default no-op so delegates only implement the callbacks they need.
+    public func windowDidMove(_ notification: NSNotification) {}
+
+    /// Default no-op so delegates only implement the callbacks they need.
+    public func windowDidMiniaturize(_ notification: NSNotification) {}
+
+    /// Default no-op so delegates only implement the callbacks they need.
+    public func windowDidDeminiaturize(_ notification: NSNotification) {}
 }
 
 /// A top-level application window.
@@ -493,12 +517,13 @@ open class NSWindow: NSResponder {
         layoutToolbarAndContent()
     }
 
-    /// Centers the window in a conservative default desktop area.
+    /// Centers the window in the screen's visible (work) area.
     open func center() {
-        let defaultScreen = NSRect(x: 0, y: 0, width: 1024, height: 768)
+        let workArea = nativeBackend.screenDescriptions().first?.visibleFrame
+            ?? NSRect(x: 0, y: 0, width: 1024, height: 768)
         let origin = NSPoint(
-            x: NSMidX(defaultScreen) - frame.size.width / 2,
-            y: NSMidY(defaultScreen) - frame.size.height / 2
+            x: NSMidX(workArea) - frame.size.width / 2,
+            y: NSMidY(workArea) - frame.size.height / 2
         )
         setFrame(NSRect(origin: origin, size: frame.size), display: true)
     }
@@ -523,6 +548,9 @@ open class NSWindow: NSResponder {
         }
         nativeBackend.registerWindowResizeAction(for: handle) { [weak self] size in
             self?.nativeWindowDidResize(to: size)
+        }
+        nativeBackend.registerWindowMoveAction(for: handle) { [weak self] origin in
+            self?.nativeWindowDidMove(to: origin)
         }
         if level != .normal {
             nativeBackend.setWindowLevel(level, for: handle)
@@ -643,6 +671,80 @@ open class NSWindow: NSResponder {
     private func nativeWindowDidResize(to size: NSSize) {
         frame = NSRect(origin: frame.origin, size: size)
         layoutToolbarAndContent()
+        delegate?.windowDidResize(NSNotification(name: "NSWindowDidResizeNotification", object: self))
+    }
+
+    private func nativeWindowDidMove(to origin: NSPoint) {
+        // Track the native origin without pushing it back to the backend.
+        frame.origin = origin
+        delegate?.windowDidMove(NSNotification(name: "NSWindowDidMoveNotification", object: self))
+    }
+
+    // MARK: - Window state
+
+    /// The screen the window is on, approximated by the display whose frame
+    /// intersects the window's frame the most (the primary when none do).
+    open var screen: NSScreen? {
+        let screens = nativeBackend.screenDescriptions().map { NSScreen(frame: $0.frame, visibleFrame: $0.visibleFrame) }
+        let best = screens.max { first, second in
+            intersectionArea(of: first.frame) < intersectionArea(of: second.frame)
+        }
+        return best ?? screens.first
+    }
+
+    private func intersectionArea(of rect: NSRect) -> CGFloat {
+        let overlap = frame.intersection(rect)
+        return overlap.width * overlap.height
+    }
+
+    /// Whether the window is on screen (ordered in and not minimized).
+    open var isVisible: Bool {
+        guard let nativeHandle else {
+            return false
+        }
+        return nativeBackend.isWindowVisible(nativeHandle)
+    }
+
+    /// Whether the window is minimized to the taskbar.
+    open var isMiniaturized: Bool {
+        guard let nativeHandle else {
+            return false
+        }
+        return nativeBackend.isWindowMinimized(nativeHandle)
+    }
+
+    /// Whether the window is zoomed (maximized).
+    open var isZoomed: Bool {
+        guard let nativeHandle else {
+            return false
+        }
+        return nativeBackend.isWindowZoomed(nativeHandle)
+    }
+
+    /// Minimizes the window to the taskbar.
+    open func miniaturize(_ sender: Any?) {
+        let handle = realizeNativePeer()
+        nativeBackend.setWindowMinimized(true, for: handle)
+        delegate?.windowDidMiniaturize(NSNotification(name: "NSWindowDidMiniaturizeNotification", object: self))
+    }
+
+    /// Restores the window from the minimized state.
+    open func deminiaturize(_ sender: Any?) {
+        let handle = realizeNativePeer()
+        nativeBackend.setWindowMinimized(false, for: handle)
+        delegate?.windowDidDeminiaturize(NSNotification(name: "NSWindowDidDeminiaturizeNotification", object: self))
+    }
+
+    /// Toggles the window between zoomed (maximized) and its normal frame.
+    open func zoom(_ sender: Any?) {
+        let handle = realizeNativePeer()
+        nativeBackend.toggleWindowZoom(handle)
+    }
+
+    /// Moves the window to the back of the z-order without activating it.
+    open func orderBack(_ sender: Any?) {
+        let handle = realizeNativePeer()
+        nativeBackend.orderWindowBack(handle)
     }
 
     private func installToolbarHost() {

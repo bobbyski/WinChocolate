@@ -187,6 +187,68 @@ public struct NativeGradientStop: Equatable {
 
 /// Immediate-mode drawing surface handed to views during a native paint pass.
 ///
+/// The payload of a native drag: plain text and/or absolute file paths.
+public struct NativeDropContent: Equatable, Sendable {
+    /// The dragged plain text, when any.
+    public let text: String?
+
+    /// The dragged absolute file paths, when any.
+    public let filePaths: [String]
+
+    /// Creates drop content.
+    public init(text: String?, filePaths: [String]) {
+        self.text = text
+        self.filePaths = filePaths
+    }
+}
+
+/// The callbacks a registered drop target receives during a native drag.
+///
+/// Return `true` from `entered`/`moved`/`performed` to accept (a copy
+/// operation); `false` refuses the drop at that position.
+public struct NativeDropHandler {
+    /// A drag entered the control with this content.
+    public let entered: (NativeDropContent, NSPoint) -> Bool
+
+    /// The drag moved over the control.
+    public let moved: (NSPoint) -> Bool
+
+    /// The drag left the control without dropping.
+    public let exited: () -> Void
+
+    /// The content was dropped on the control.
+    public let performed: (NativeDropContent, NSPoint) -> Bool
+
+    /// Creates a drop handler.
+    public init(
+        entered: @escaping (NativeDropContent, NSPoint) -> Bool,
+        moved: @escaping (NSPoint) -> Bool,
+        exited: @escaping () -> Void,
+        performed: @escaping (NativeDropContent, NSPoint) -> Bool
+    ) {
+        self.entered = entered
+        self.moved = moved
+        self.exited = exited
+        self.performed = performed
+    }
+}
+
+/// One attached display: its full pixel frame and the work-area frame that
+/// excludes the taskbar and docked bars.
+public struct NativeScreenDescription: Equatable, Sendable {
+    /// The display's full frame.
+    public let frame: NSRect
+
+    /// The display's work-area frame.
+    public let visibleFrame: NSRect
+
+    /// Creates a screen description.
+    public init(frame: NSRect, visibleFrame: NSRect) {
+        self.frame = frame
+        self.visibleFrame = visibleFrame
+    }
+}
+
 /// `NSBezierPath` and related AppKit drawing APIs reduce to these primitives
 /// so backends can rasterize with their native graphics stack (GDI paths on
 /// the classic backend, a recording context in tests).
@@ -201,7 +263,10 @@ public protocol NativeDrawingContext: AnyObject {
     func drawText(_ text: String, at point: NSPoint, color: NSColor, fontName: String, fontSize: CGFloat, weight: Int, italic: Bool)
 
     /// Draws an image file scaled to fill a rectangle.
-    func drawImage(atPath path: String, in rect: NSRect)
+    ///
+    /// A non-nil `tint` renders the image as a template: every pixel takes the
+    /// tint color while the image's own alpha shapes the result.
+    func drawImage(atPath path: String, in rect: NSRect, tint: NSColor?)
 
     /// Fills a rectangle with a linear gradient along an angle in degrees.
     ///
@@ -219,6 +284,25 @@ public protocol NativeDrawingContext: AnyObject {
 
     /// Restores the most recently saved drawing state.
     func restoreState()
+}
+
+extension NativeDrawingContext {
+    /// Draws an image file with no tint (the common non-template case).
+    public func drawImage(atPath path: String, in rect: NSRect) {
+        drawImage(atPath: path, in: rect, tint: nil)
+    }
+}
+
+extension NativeControlBackend {
+    /// Updates an image-view bitmap source with no tint.
+    public func setImagePath(_ imagePath: String?, description: String, for handle: NativeHandle) {
+        setImagePath(imagePath, description: description, tint: nil, for: handle)
+    }
+
+    /// Replaces the clipboard with text and data representations, no file list.
+    public func setClipboardContents(text: String?, dataRepresentations: [String: [UInt8]]) {
+        setClipboardContents(text: text, dataRepresentations: dataRepresentations, filePaths: [])
+    }
 }
 
 /// Native control creation and lifetime boundary.
@@ -256,6 +340,48 @@ public protocol NativeControlBackend: AnyObject {
     /// The primary screen's pixel frame, used for on-screen placement.
     func primaryScreenFrame() -> NSRect
 
+    /// Descriptions of every attached display, primary first.
+    func screenDescriptions() -> [NativeScreenDescription]
+
+    /// Minimizes or restores a native window.
+    func setWindowMinimized(_ minimized: Bool, for handle: NativeHandle)
+
+    /// Toggles a native window between zoomed (maximized) and normal.
+    func toggleWindowZoom(_ handle: NativeHandle)
+
+    /// Moves a native window to the bottom of the z-order without activating.
+    func orderWindowBack(_ handle: NativeHandle)
+
+    /// Whether a native window is currently on screen (shown, not minimized).
+    func isWindowVisible(_ handle: NativeHandle) -> Bool
+
+    /// Whether a native window is currently minimized.
+    func isWindowMinimized(_ handle: NativeHandle) -> Bool
+
+    /// Whether a native window is currently zoomed (maximized).
+    func isWindowZoomed(_ handle: NativeHandle) -> Bool
+
+    /// Registers the action to perform when a native window moves; the point
+    /// is the window's new top-left origin in screen coordinates.
+    func registerWindowMoveAction(for handle: NativeHandle, action: @escaping (NSPoint) -> Void)
+
+    /// Makes a control a drop target for native drags (text and file lists),
+    /// routing the drag lifecycle through the handler.
+    func registerDropTarget(for handle: NativeHandle, handler: NativeDropHandler)
+
+    /// Removes a control's drop-target registration.
+    func unregisterDropTarget(for handle: NativeHandle)
+
+    /// Starts a native drag carrying the given content from a control and
+    /// blocks until it completes. Returns `true` when the content was dropped
+    /// on a target, `false` when the drag was canceled.
+    func performDrag(content: NativeDropContent, from handle: NativeHandle) -> Bool
+
+    /// Shows the platform print dialog and, when confirmed, renders a view's
+    /// custom drawing into the printer at point scale. Returns `true` when a
+    /// job was printed and `false` when the dialog was canceled.
+    func runPrintOperation(for handle: NativeHandle, jobName: String, contentSize: NSSize) -> Bool
+
     /// Closes a previously created native window.
     func closeWindow(_ handle: NativeHandle)
 
@@ -278,12 +404,18 @@ public protocol NativeControlBackend: AnyObject {
     /// Replaces the system clipboard contents with plain text.
     func setClipboardString(_ string: String)
 
-    /// Replaces the system clipboard with several representations at once.
+    /// Reads the absolute file paths on the clipboard (a file-copy from the
+    /// system file manager), in order. Empty when no file list is present.
+    func clipboardFilePaths() -> [String]
+
+    /// Replaces the system clipboard with several representations at once —
+    /// text, data, and a file list — as one clipboard update.
     ///
     /// Format names are platform clipboard format identifiers (for example
     /// `"Rich Text Format"` or `"PNG"`); the text, when present, is written
-    /// as the plain-text representation alongside them.
-    func setClipboardContents(text: String?, dataRepresentations: [String: [UInt8]])
+    /// as the plain-text representation alongside them, and the file paths as
+    /// the platform file-list format.
+    func setClipboardContents(text: String?, dataRepresentations: [String: [UInt8]], filePaths: [String])
 
     /// Reads the bytes of a named clipboard format, when present.
     func clipboardData(forFormat formatName: String) -> [UInt8]?
@@ -457,6 +589,10 @@ public protocol NativeControlBackend: AnyObject {
     /// selection is preserved across the formatting change.
     func setTextRangeFormat(font: NSFont?, color: NSColor?, underline: Bool?, strikethrough: Bool?, location: Int, length: Int, for handle: NativeHandle)
 
+    /// Applies paragraph alignment to the paragraphs covering a character
+    /// range of a rich text view.
+    func setTextRangeAlignment(_ alignment: NSTextAlignment, location: Int, length: Int, for handle: NativeHandle)
+
     /// Updates whether a native edit control accepts keyboard editing while
     /// still allowing selection and scrolling.
     func setTextEditable(_ isEditable: Bool, for handle: NativeHandle)
@@ -501,7 +637,9 @@ public protocol NativeControlBackend: AnyObject {
     func setFont(_ font: NSFont?, for handle: NativeHandle)
 
     /// Updates a native image-view bitmap source.
-    func setImagePath(_ imagePath: String?, description: String, for handle: NativeHandle)
+    ///
+    /// A non-nil `tint` renders the image as a template shape in that color.
+    func setImagePath(_ imagePath: String?, description: String, tint: NSColor?, for handle: NativeHandle)
 
     /// Updates a native button check state.
     func setButtonState(_ state: NSControl.StateValue, for handle: NativeHandle)
@@ -637,6 +775,10 @@ public protocol NativeControlBackend: AnyObject {
 
     /// Registers the action to perform when a native view receives a mouse-moved event.
     func registerMouseMovedAction(for handle: NativeHandle, action: @escaping (NSEvent) -> Void)
+
+    /// Registers the action invoked when the cursor leaves a control entirely,
+    /// so hover state (tracking areas) can resolve exits.
+    func registerMouseLeftAction(for handle: NativeHandle, action: @escaping () -> Void)
 
     /// Registers the action to perform when a native view receives a right mouse-down event.
     func registerRightMouseDownAction(for handle: NativeHandle, action: @escaping (NSEvent) -> Void)

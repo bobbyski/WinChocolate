@@ -102,14 +102,17 @@ open class NSImage: NSObject {
 
     /// Draws the image scaled into a rectangle of the current graphics context.
     ///
-    /// First slice: only file-backed images draw; named and data-backed images
-    /// are a no-op until in-memory bitmap decoding lands.
+    /// Template images (`isTemplate`) render as the current fill color shaped
+    /// by the image's alpha, matching AppKit's template drawing; set a color
+    /// (`NSColor.set()`) before drawing to pick the tint (black by default).
+    /// Only file-backed images draw; named and data-backed images are a no-op
+    /// until in-memory bitmap decoding lands.
     open func draw(in rect: NSRect) {
         guard let filePath, let context = NSGraphicsContext.current else {
             return
         }
 
-        context.nativeContext.drawImage(atPath: filePath, in: rect)
+        context.nativeContext.drawImage(atPath: filePath, in: rect, tint: isTemplate ? context.fillColor : nil)
     }
 
     /// Draws the image into a rectangle, ignoring the source crop, compositing
@@ -242,6 +245,24 @@ open class NSImageView: NSControl {
         }
     }
 
+    /// The tint applied when the displayed image is a template.
+    ///
+    /// Matching AppKit, the tint only affects template images (`isTemplate`);
+    /// non-template images ignore it. Templates default to the label color.
+    open var contentTintColor: NSColor? {
+        didSet {
+            updateNativeDescription()
+        }
+    }
+
+    /// The tint the backend should bake into the displayed image, when any.
+    private var resolvedImageTint: NSColor? {
+        guard image?.isTemplate == true else {
+            return nil
+        }
+        return contentTintColor ?? .labelColor
+    }
+
     /// Creates an image view with a frame.
     public override init(frame frameRect: NSRect) {
         self.image = nil
@@ -262,6 +283,17 @@ open class NSImageView: NSControl {
     /// Creates the native placeholder image-view peer.
     open override func createNativePeer(in backend: NativeControlBackend, parent: NativeHandle?) -> NativeHandle {
         backend.createImageView(description: imageDescription, imagePath: image?.filePath, frame: frame, parent: parent)
+    }
+
+    /// Re-syncs the image after realization so a template tint set before the
+    /// peer existed still bakes into the native bitmap.
+    @discardableResult
+    open override func realizeNativePeer(in backend: NativeControlBackend, parent: NativeHandle?) -> NativeHandle {
+        let handle = super.realizeNativePeer(in: backend, parent: parent)
+        if resolvedImageTint != nil {
+            updateNativeDescription()
+        }
+        return handle
     }
 
     private var imageDescription: String {
@@ -309,6 +341,6 @@ open class NSImageView: NSControl {
             return
         }
 
-        realizedBackend?.setImagePath(image?.filePath, description: imageDescription, for: nativeHandle)
+        realizedBackend?.setImagePath(image?.filePath, description: imageDescription, tint: resolvedImageTint, for: nativeHandle)
     }
 }

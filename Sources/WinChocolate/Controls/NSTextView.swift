@@ -123,6 +123,16 @@ open class NSTextView: NSControl {
         realizedBackend?.setTextRangeFormat(font: font, color: nil, underline: nil, strikethrough: nil, location: range.location, length: range.length, for: nativeHandle)
     }
 
+    /// Applies paragraph alignment to the paragraphs covering a character
+    /// range of a rich text view, matching AppKit's `setAlignment(_:range:)`.
+    open func setAlignment(_ alignment: NSTextAlignment, range: NSRange) {
+        guard let nativeHandle else {
+            return
+        }
+
+        realizedBackend?.setTextRangeAlignment(alignment, location: range.location, length: range.length, for: nativeHandle)
+    }
+
     /// Applies a color to a character range of a rich text view.
     ///
     /// A `nil` color leaves the range unchanged in this slice; resetting to
@@ -187,6 +197,9 @@ open class NSTextView: NSControl {
                 length: range.length,
                 for: nativeHandle
             )
+            if let paragraph = attributes[.paragraphStyle] as? NSParagraphStyle, paragraph.alignment != .natural {
+                realizedBackend.setTextRangeAlignment(paragraph.alignment, location: range.location, length: range.length, for: nativeHandle)
+            }
         }
     }
 

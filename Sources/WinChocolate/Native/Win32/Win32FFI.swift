@@ -52,6 +52,202 @@ struct CHARFORMATW {
     )
 }
 
+// MARK: - Printing
+
+/// The print-dialog request/result (`PRINTDLGW`).
+struct PRINTDLGW {
+    var lStructSize: DWORD = 0
+    var padding: UInt32 = 0
+    var hwndOwner: HWND?
+    var hDevMode: UnsafeMutableRawPointer?
+    var hDevNames: UnsafeMutableRawPointer?
+    var hDC: HDC?
+    var flags: DWORD = 0
+    var nFromPage: UInt16 = 0
+    var nToPage: UInt16 = 0
+    var nMinPage: UInt16 = 0
+    var nMaxPage: UInt16 = 0
+    var nCopies: UInt16 = 0
+    var padding2: UInt16 = 0
+    var hInstance: UnsafeMutableRawPointer?
+    var lCustData: LPARAM = 0
+    var lpfnPrintHook: UnsafeMutableRawPointer?
+    var lpfnSetupHook: UnsafeMutableRawPointer?
+    var lpPrintTemplateName: UnsafeMutableRawPointer?
+    var lpSetupTemplateName: UnsafeMutableRawPointer?
+    var hPrintTemplate: UnsafeMutableRawPointer?
+    var hSetupTemplate: UnsafeMutableRawPointer?
+}
+
+/// PrintDlg flags: return a ready printer DC, no selection/page-range UI.
+let pdReturnDC: DWORD = 0x0000_0100
+let pdNoSelection: DWORD = 0x0000_0004
+let pdNoPageNums: DWORD = 0x0000_0008
+let pdUseDevModeCopies: DWORD = 0x0004_0000
+
+/// The document descriptor for `StartDocW`.
+struct DOCINFOW {
+    var cbSize: Int32 = 0
+    var padding: UInt32 = 0
+    var lpszDocName: UnsafePointer<UInt16>?
+    var lpszOutput: UnsafePointer<UInt16>?
+    var lpszDatatype: UnsafePointer<UInt16>?
+    var fwType: DWORD = 0
+}
+
+@_silgen_name("PrintDlgW")
+func winPrintDlgW(_ printDialog: UnsafeMutablePointer<PRINTDLGW>?) -> Int32
+
+@_silgen_name("StartDocW")
+func winStartDocW(_ deviceContext: HDC?, _ documentInfo: UnsafePointer<DOCINFOW>?) -> Int32
+
+@_silgen_name("StartPage")
+func winStartPage(_ deviceContext: HDC?) -> Int32
+
+@_silgen_name("EndPage")
+func winEndPage(_ deviceContext: HDC?) -> Int32
+
+@_silgen_name("EndDoc")
+func winEndDoc(_ deviceContext: HDC?) -> Int32
+
+@_silgen_name("AbortDoc")
+func winAbortDoc(_ deviceContext: HDC?) -> Int32
+
+@_silgen_name("GetDeviceCaps")
+func winGetDeviceCaps(_ deviceContext: HDC?, _ index: Int32) -> Int32
+
+/// GetDeviceCaps indexes: pixels per logical inch.
+let logPixelsX: Int32 = 88
+let logPixelsY: Int32 = 90
+
+// MARK: - OLE drag and drop
+
+/// A COM interface identifier (`IID`/`GUID`).
+struct COMGUID: Equatable {
+    var data1: UInt32 = 0
+    var data2: UInt16 = 0
+    var data3: UInt16 = 0
+    var data4: (UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8) = (0, 0, 0, 0, 0, 0, 0, 0)
+
+    static func == (lhs: COMGUID, rhs: COMGUID) -> Bool {
+        lhs.data1 == rhs.data1 && lhs.data2 == rhs.data2 && lhs.data3 == rhs.data3
+            && lhs.data4.0 == rhs.data4.0 && lhs.data4.1 == rhs.data4.1
+            && lhs.data4.2 == rhs.data4.2 && lhs.data4.3 == rhs.data4.3
+            && lhs.data4.4 == rhs.data4.4 && lhs.data4.5 == rhs.data4.5
+            && lhs.data4.6 == rhs.data4.6 && lhs.data4.7 == rhs.data4.7
+    }
+}
+
+/// IID_IUnknown.
+let iidIUnknown = COMGUID(data1: 0x0000_0000, data2: 0, data3: 0, data4: (0xC0, 0, 0, 0, 0, 0, 0, 0x46))
+/// IID_IDropTarget.
+let iidIDropTarget = COMGUID(data1: 0x0000_0122, data2: 0, data3: 0, data4: (0xC0, 0, 0, 0, 0, 0, 0, 0x46))
+/// IID_IDropSource.
+let iidIDropSource = COMGUID(data1: 0x0000_0121, data2: 0, data3: 0, data4: (0xC0, 0, 0, 0, 0, 0, 0, 0x46))
+/// IID_IDataObject.
+let iidIDataObject = COMGUID(data1: 0x0000_010E, data2: 0, data3: 0, data4: (0xC0, 0, 0, 0, 0, 0, 0, 0x46))
+
+/// `FORMATETC`: which representation of an OLE data object to fetch.
+struct FORMATETC {
+    var cfFormat: UInt16 = 0
+    var padding1: UInt16 = 0
+    var padding2: UInt32 = 0
+    var targetDevice: UnsafeMutableRawPointer?
+    var dwAspect: DWORD = 0
+    var lindex: Int32 = 0
+    var tymed: DWORD = 0
+    var padding3: UInt32 = 0
+}
+
+/// `STGMEDIUM`: the storage carrying a fetched representation.
+struct STGMEDIUM {
+    var tymed: DWORD = 0
+    var padding: UInt32 = 0
+    var handle: UnsafeMutableRawPointer?
+    var pUnkForRelease: UnsafeMutableRawPointer?
+}
+
+/// COM/OLE result codes and constants.
+let comSOk: Int32 = 0
+let comENoInterface: Int32 = Int32(bitPattern: 0x8000_4002)
+let comENotImpl: Int32 = Int32(bitPattern: 0x8000_4001)
+let comDVEFormatEtc: Int32 = Int32(bitPattern: 0x8004_0064)
+let comOleEAdviseNotSupported: Int32 = Int32(bitPattern: 0x8004_0003)
+let comDragDropSDrop: Int32 = 0x0004_0100
+let comDragDropSCancel: Int32 = 0x0004_0101
+let comDragDropSUseDefaultCursors: Int32 = 0x0004_0102
+let dropEffectNone: DWORD = 0
+let dropEffectCopy: DWORD = 1
+let dropEffectMove: DWORD = 2
+let dropEffectLink: DWORD = 4
+let tymedHGlobal: DWORD = 1
+let dvAspectContent: DWORD = 1
+
+@_silgen_name("OleInitialize")
+func winOleInitialize(_ reserved: UnsafeMutableRawPointer?) -> Int32
+
+@_silgen_name("RegisterDragDrop")
+func winRegisterDragDrop(_ hwnd: HWND?, _ dropTarget: UnsafeMutableRawPointer?) -> Int32
+
+@_silgen_name("RevokeDragDrop")
+func winRevokeDragDrop(_ hwnd: HWND?) -> Int32
+
+@_silgen_name("ReleaseStgMedium")
+func winReleaseStgMedium(_ medium: UnsafeMutableRawPointer?)
+
+@_silgen_name("DoDragDrop")
+func winDoDragDrop(
+    _ dataObject: UnsafeMutableRawPointer?,
+    _ dropSource: UnsafeMutableRawPointer?,
+    _ allowedEffects: DWORD,
+    _ effect: UnsafeMutablePointer<DWORD>?
+) -> Int32
+
+@_silgen_name("SHCreateStdEnumFmtEtc")
+func winSHCreateStdEnumFmtEtc(
+    _ count: UINT,
+    _ formats: UnsafeMutableRawPointer?,
+    _ enumerator: UnsafeMutablePointer<UnsafeMutableRawPointer?>?
+) -> Int32
+
+/// Mouse-tracking request (`TRACKMOUSEEVENT`), used for leave notifications.
+struct TRACKMOUSEEVENTW {
+    var cbSize: UINT = 0
+    var dwFlags: DWORD = 0
+    var hwndTrack: HWND?
+    var dwHoverTime: DWORD = 0
+}
+
+/// TrackMouseEvent flag requesting a `WM_MOUSELEAVE` message.
+let tmeLeave: DWORD = 0x0000_0002
+
+@_silgen_name("TrackMouseEvent")
+func winTrackMouseEvent(_ request: UnsafeMutablePointer<TRACKMOUSEEVENTW>?) -> Int32
+
+/// Rich edit paragraph format (`PARAFORMAT`), used for alignment.
+struct PARAFORMATW {
+    var cbSize: UINT = 0
+    var dwMask: DWORD = 0
+    var wNumbering: UInt16 = 0
+    var wReserved: UInt16 = 0
+    var dxStartIndent: Int32 = 0
+    var dxRightIndent: Int32 = 0
+    var dxOffset: Int32 = 0
+    var wAlignment: UInt16 = 0
+    var cTabCount: Int16 = 0
+    var rgxTabs: (
+        Int32, Int32, Int32, Int32, Int32, Int32, Int32, Int32,
+        Int32, Int32, Int32, Int32, Int32, Int32, Int32, Int32,
+        Int32, Int32, Int32, Int32, Int32, Int32, Int32, Int32,
+        Int32, Int32, Int32, Int32, Int32, Int32, Int32, Int32
+    ) = (
+        0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0
+    )
+}
+
 struct XFORM {
     var eM11: Float = 1
     var eM12: Float = 0
@@ -914,6 +1110,64 @@ func winGdipFillRectangle(
 @_silgen_name("GdipDeleteBrush")
 func winGdipDeleteBrush(_ brush: UnsafeMutableRawPointer?) -> Int32
 
+/// GDI+ pixel unit for `GdipDrawImageRectRectI` source rectangles.
+let gdiplusUnitPixel: Int32 = 2
+
+/// GDI+ 32-bit ARGB pixel format (`PixelFormat32bppARGB`).
+let gdiplusPixelFormat32bppARGB: Int32 = 0x26200A
+
+@_silgen_name("GdipCreateImageAttributes")
+func winGdipCreateImageAttributes(_ attributes: UnsafeMutablePointer<UnsafeMutableRawPointer?>?) -> Int32
+
+@_silgen_name("GdipDisposeImageAttributes")
+func winGdipDisposeImageAttributes(_ attributes: UnsafeMutableRawPointer?) -> Int32
+
+// The color matrix parameter is 25 consecutive REALs (a row-major 5x5 matrix),
+// so a Float buffer pointer matches the C `ColorMatrix*` layout exactly.
+@_silgen_name("GdipSetImageAttributesColorMatrix")
+func winGdipSetImageAttributesColorMatrix(
+    _ attributes: UnsafeMutableRawPointer?,
+    _ adjustType: Int32,
+    _ enableFlag: Int32,
+    _ colorMatrix: UnsafePointer<Float>?,
+    _ grayMatrix: UnsafePointer<Float>?,
+    _ flags: Int32
+) -> Int32
+
+@_silgen_name("GdipDrawImageRectRectI")
+func winGdipDrawImageRectRectI(
+    _ graphics: UnsafeMutableRawPointer?,
+    _ image: UnsafeMutableRawPointer?,
+    _ destinationX: Int32,
+    _ destinationY: Int32,
+    _ destinationWidth: Int32,
+    _ destinationHeight: Int32,
+    _ sourceX: Int32,
+    _ sourceY: Int32,
+    _ sourceWidth: Int32,
+    _ sourceHeight: Int32,
+    _ sourceUnit: Int32,
+    _ imageAttributes: UnsafeMutableRawPointer?,
+    _ abortCallback: UnsafeMutableRawPointer?,
+    _ callbackData: UnsafeMutableRawPointer?
+) -> Int32
+
+@_silgen_name("GdipCreateBitmapFromScan0")
+func winGdipCreateBitmapFromScan0(
+    _ width: Int32,
+    _ height: Int32,
+    _ stride: Int32,
+    _ format: Int32,
+    _ scan0: UnsafeMutableRawPointer?,
+    _ bitmap: UnsafeMutablePointer<UnsafeMutableRawPointer?>?
+) -> Int32
+
+@_silgen_name("GdipGetImageGraphicsContext")
+func winGdipGetImageGraphicsContext(
+    _ image: UnsafeMutableRawPointer?,
+    _ graphics: UnsafeMutablePointer<UnsafeMutableRawPointer?>?
+) -> Int32
+
 @_silgen_name("SaveDC")
 func winSaveDC(_ deviceContext: HDC?) -> Int32
 
@@ -950,6 +1204,43 @@ let mbIconError: UINT = 0x00000010
 let swShow: Int32 = 5
 let swHide: Int32 = 0
 let swShowNoActivate: Int32 = 4
+let swMinimize: Int32 = 6
+let swRestore: Int32 = 9
+let swMaximize: Int32 = 3
+/// Window move message; the framework reads the window rect on receipt.
+let wmMove: UINT = 0x0003
+/// SetWindowPos z-order handle placing a window at the bottom.
+var hwndBottom: HWND? { HWND(bitPattern: 1) }
+
+@_silgen_name("IsIconic")
+func winIsIconic(_ hwnd: HWND?) -> Int32
+
+@_silgen_name("IsZoomed")
+func winIsZoomed(_ hwnd: HWND?) -> Int32
+
+/// Monitor description (`MONITORINFO`): full bounds plus the work area.
+struct MONITORINFOW {
+    var cbSize: DWORD = 0
+    var rcMonitor: RECT = RECT()
+    var rcWork: RECT = RECT()
+    var dwFlags: DWORD = 0
+}
+
+// The monitor rect parameter stays a raw pointer: Swift structs (`RECT`) are
+// not representable in a `@convention(c)` signature, and the callback reads
+// the full `MONITORINFOW` via `GetMonitorInfoW` instead.
+typealias MONITORENUMPROC = @convention(c) (UnsafeMutableRawPointer?, HDC?, UnsafeMutableRawPointer?, LPARAM) -> Int32
+
+@_silgen_name("EnumDisplayMonitors")
+func winEnumDisplayMonitors(
+    _ deviceContext: HDC?,
+    _ clip: UnsafeRawPointer?,
+    _ callback: MONITORENUMPROC?,
+    _ data: LPARAM
+) -> Int32
+
+@_silgen_name("GetMonitorInfoW")
+func winGetMonitorInfoW(_ monitor: UnsafeMutableRawPointer?, _ info: UnsafeMutablePointer<MONITORINFOW>?) -> Int32
 let gwlExStyle: Int32 = -20
 let wsExClientEdge: DWORD = 0x0000_0200
 let wsExToolWindow: DWORD = 0x0000_0080
@@ -966,6 +1257,14 @@ let htCaption: Int = 2
 let emSetCharFormat: UINT = wmUser + 68
 /// Rich edit: EM_SETEVENTMASK (WM_USER + 69).
 let emSetEventMask: UINT = wmUser + 69
+/// Rich edit: EM_SETPARAFORMAT (WM_USER + 71).
+let emSetParaFormat: UINT = wmUser + 71
+/// PARAFORMAT mask selecting the alignment field.
+let pfmAlignment: DWORD = 0x0000_0008
+/// PARAFORMAT alignments.
+let pfaLeft: UInt16 = 1
+let pfaRight: UInt16 = 2
+let pfaCenter: UInt16 = 3
 /// Rich edit event mask requesting EN_CHANGE notifications.
 let enmChange: LPARAM = 0x0001
 /// EM_SETCHARFORMAT target: the current selection.
@@ -974,6 +1273,8 @@ let scfSelection: WPARAM = 0x0001
 let scfAll: WPARAM = 0x0004
 /// Clipboard format: UTF-16 text.
 let cfUnicodeText: UINT = 13
+/// Clipboard format: file list (`CF_HDROP`).
+let cfHDrop: UINT = 15
 /// GlobalAlloc movable-memory flag required by SetClipboardData.
 let gmemMoveable: UINT = 0x0002
 let cfmBold: DWORD = 0x0000_0001
@@ -1025,6 +1326,8 @@ let wmSysKeyDown: UINT = 0x0104
 let wmSysKeyUp: UINT = 0x0105
 let wmGetDlgCode: UINT = 0x0087
 let wmMouseMove: UINT = 0x0200
+/// Posted when the cursor leaves a window after `TrackMouseEvent`.
+let wmMouseLeave: UINT = 0x02A3
 let wmLButtonDown: UINT = 0x0201
 let wmLButtonUp: UINT = 0x0202
 let wmLButtonDblClk: UINT = 0x0203

@@ -33,7 +33,7 @@ extension Win32NativeControlBackend {
     ///
     /// One open/empty/write/close cycle keeps the representations together
     /// as a single clipboard update.
-    public func setClipboardContents(text: String?, dataRepresentations: [String: [UInt8]]) {
+    public func setClipboardContents(text: String?, dataRepresentations: [String: [UInt8]], filePaths: [String]) {
         guard winOpenClipboard(nil) != 0 else {
             return
         }
@@ -55,6 +55,84 @@ extension Win32NativeControlBackend {
             }
             writeClipboardBytes(bytes, format: format)
         }
+
+        if !filePaths.isEmpty {
+            writeClipboardBytes(Self.dropFilesBytes(for: filePaths), format: cfHDrop)
+        }
+    }
+
+    /// Reads the absolute file paths of a clipboard file list (`CF_HDROP`).
+    ///
+    /// The `DROPFILES` block is parsed directly: a 20-byte header whose first
+    /// field is the offset to a double-NUL-terminated path list, plus a wide
+    /// flag. Every modern producer writes wide paths; ANSI lists are skipped.
+    public func clipboardFilePaths() -> [String] {
+        guard winIsClipboardFormatAvailable(cfHDrop) != 0, winOpenClipboard(nil) != 0 else {
+            return []
+        }
+        defer {
+            _ = winCloseClipboard()
+        }
+
+        guard let data = winGetClipboardData(cfHDrop), let memory = winGlobalLock(data) else {
+            return []
+        }
+        defer {
+            _ = winGlobalUnlock(data)
+        }
+
+        let byteCount = Int(winGlobalSize(data))
+        guard byteCount > 20 else {
+            return []
+        }
+        let bytes = memory.assumingMemoryBound(to: UInt8.self)
+        let offset = Int(bytes[0]) | (Int(bytes[1]) << 8) | (Int(bytes[2]) << 16) | (Int(bytes[3]) << 24)
+        let wide = bytes[16] != 0
+        guard wide, offset >= 20, offset < byteCount else {
+            return []
+        }
+
+        var paths: [String] = []
+        var units: [UInt16] = []
+        var position = offset
+        while position + 1 < byteCount {
+            let unit = UInt16(bytes[position]) | (UInt16(bytes[position + 1]) << 8)
+            position += 2
+            if unit == 0 {
+                if units.isEmpty {
+                    break
+                }
+                paths.append(String(decoding: units, as: UTF16.self))
+                units.removeAll()
+            } else {
+                units.append(unit)
+            }
+        }
+        return paths
+    }
+
+    /// Builds a wide `DROPFILES` block for a file list (also used by the OLE
+    /// drag-source data object).
+    static func dropFilesBytes(for paths: [String]) -> [UInt8] {
+        // Header: pFiles offset (20), drop point (unused), fNC, fWide = 1.
+        var bytes: [UInt8] = [
+            20, 0, 0, 0,
+            0, 0, 0, 0,
+            0, 0, 0, 0,
+            0, 0, 0, 0,
+            1, 0, 0, 0,
+        ]
+        for path in paths {
+            for unit in path.utf16 {
+                bytes.append(UInt8(unit & 0xff))
+                bytes.append(UInt8(unit >> 8))
+            }
+            bytes.append(0)
+            bytes.append(0)
+        }
+        bytes.append(0)
+        bytes.append(0)
+        return bytes
     }
 
     /// Reads the bytes of a named clipboard format, when present.

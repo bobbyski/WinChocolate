@@ -37,6 +37,12 @@ public struct NSEvent: Equatable, Sendable {
 
         /// A key release.
         case keyUp
+
+        /// The cursor entered a tracking area.
+        case mouseEntered
+
+        /// The cursor left a tracking area.
+        case mouseExited
     }
 
     /// The event category.

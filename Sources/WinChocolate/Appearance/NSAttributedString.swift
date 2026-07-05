@@ -45,6 +45,9 @@ open class NSAttributedString: NSObject {
 
         /// The strikethrough style (`Int`, see `NSUnderlineStyle`).
         public static let strikethroughStyle = Key(rawValue: "NSStrikethrough")
+
+        /// The paragraph style (`NSParagraphStyle`).
+        public static let paragraphStyle = Key(rawValue: "NSParagraphStyle")
     }
 
     /// One contiguous stretch of characters sharing attributes.

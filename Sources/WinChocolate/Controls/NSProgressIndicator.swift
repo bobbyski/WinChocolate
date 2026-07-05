@@ -56,16 +56,33 @@ open class NSProgressIndicator: NSControl {
 
     /// Visual style requested by the app.
     ///
-    /// The classic backend renders `.spinning` as an indeterminate marquee
-    /// bar; the modern appearance will add a true spinner.
+    /// An indicator created with `.spinning` renders a framework-drawn spinner
+    /// (twelve dots sweeping around the center). Switching style after the
+    /// native peer exists keeps the realized peer and renders indeterminately.
     open var style: Style {
         didSet {
             syncIndeterminateToNative()
         }
     }
 
+    /// Whether a stopped spinner stays visible, matching AppKit.
+    open var isDisplayedWhenStopped: Bool = true {
+        didSet {
+            needsDisplay = true
+        }
+    }
+
     /// Whether the indicator is currently animating.
     open private(set) var isAnimating: Bool
+
+    /// Whether this indicator realized the framework-drawn spinner view.
+    private var usesSpinnerPeer = false
+
+    /// The animation phase (leading dot index) for the spinner.
+    private var spinnerPhase = 0
+
+    /// The run-loop timer driving the spinner sweep while animating.
+    private var spinnerTimer: Timer?
 
     /// Creates a progress indicator with a frame.
     public override init(frame frameRect: NSRect) {
@@ -83,12 +100,31 @@ open class NSProgressIndicator: NSControl {
     open func startAnimation(_ sender: Any?) {
         isAnimating = true
         syncIndeterminateToNative()
+        startSpinnerTimerIfNeeded()
     }
 
     /// Stops the indicator animation.
     open func stopAnimation(_ sender: Any?) {
         isAnimating = false
         syncIndeterminateToNative()
+        spinnerTimer?.invalidate()
+        spinnerTimer = nil
+        needsDisplay = true
+    }
+
+    /// Advances the spinner sweep on a run-loop timer while animating.
+    private func startSpinnerTimerIfNeeded() {
+        guard usesSpinnerPeer, spinnerTimer == nil else {
+            return
+        }
+
+        spinnerTimer = Timer.scheduledTimer(withTimeInterval: 0.08, repeats: true) { [weak self] _ in
+            guard let self, self.isAnimating else {
+                return
+            }
+            self.spinnerPhase = (self.spinnerPhase + 1) % 12
+            self.needsDisplay = true
+        }
     }
 
     /// Increments the current value.
@@ -97,18 +133,68 @@ open class NSProgressIndicator: NSControl {
     }
 
     /// Creates the native progress peer.
+    ///
+    /// A `.spinning` indicator realizes a plain view and draws the spinner
+    /// itself, the same framework-drawn pattern as the rating level indicator.
     open override func createNativePeer(in backend: NativeControlBackend, parent: NativeHandle?) -> NativeHandle {
-        backend.createProgressIndicator(value: doubleValue, minValue: minValue, maxValue: maxValue, frame: frame, parent: parent)
+        if style == .spinning {
+            usesSpinnerPeer = true
+            return backend.createView(frame: frame, parent: parent)
+        }
+        return backend.createProgressIndicator(value: doubleValue, minValue: minValue, maxValue: maxValue, frame: frame, parent: parent)
     }
 
     /// Ensures range and value are synced after realization.
     @discardableResult
     open override func realizeNativePeer(in backend: NativeControlBackend, parent: NativeHandle?) -> NativeHandle {
         let handle = super.realizeNativePeer(in: backend, parent: parent)
+        if usesSpinnerPeer {
+            needsDisplay = true
+            startSpinnerTimerIfNeeded()
+            return handle
+        }
         backend.setProgressIndicatorRange(minValue: minValue, maxValue: maxValue, for: handle)
         backend.setProgressIndicatorValue(doubleValue, for: handle)
         backend.setProgressIndicatorIndeterminate(rendersIndeterminate, animating: isAnimating, for: handle)
         return handle
+    }
+
+    /// Unit directions for the twelve spinner dots, clockwise from 12 o'clock.
+    private static let spinnerDirections: [(dx: CGFloat, dy: CGFloat)] = [
+        (0, -1), (0.5, -0.8660254), (0.8660254, -0.5), (1, 0),
+        (0.8660254, 0.5), (0.5, 0.8660254), (0, 1), (-0.5, 0.8660254),
+        (-0.8660254, 0.5), (-1, 0), (-0.8660254, -0.5), (-0.5, -0.8660254),
+    ]
+
+    /// Draws the spinner: twelve dots around the center whose opacity fades
+    /// behind the leading dot, sweeping clockwise while animating.
+    open override func draw(_ dirtyRect: NSRect) {
+        guard usesSpinnerPeer else {
+            super.draw(dirtyRect)
+            return
+        }
+        if !isAnimating && !isDisplayedWhenStopped {
+            return
+        }
+
+        let width = frame.size.width
+        let height = frame.size.height
+        let center = NSPoint(x: width / 2, y: height / 2)
+        let radius = min(width, height) / 2 - 2
+        guard radius > 2 else {
+            return
+        }
+        let dotRadius = max(1.5, radius * 0.18)
+        let orbit = radius - dotRadius
+
+        for (index, direction) in Self.spinnerDirections.enumerated() {
+            // The leading dot is fully opaque; trailing dots fade with age.
+            let age = (index - spinnerPhase + 12) % 12
+            let alpha = isAnimating ? (1.0 - CGFloat(age) * 0.075) : 0.45
+            NSColor(white: 0.35, alpha: alpha).setFill()
+            let dotCenter = NSPoint(x: center.x + direction.dx * orbit, y: center.y + direction.dy * orbit)
+            NSBezierPath(ovalIn: NSMakeRect(dotCenter.x - dotRadius, dotCenter.y - dotRadius, dotRadius * 2, dotRadius * 2)).fill()
+        }
     }
 
     /// Whether the native peer should render the indeterminate style.
@@ -135,5 +221,9 @@ open class NSProgressIndicator: NSControl {
 
     private func clamped(_ value: Double) -> Double {
         min(max(value, minValue), maxValue)
+    }
+
+    deinit {
+        spinnerTimer?.invalidate()
     }
 }

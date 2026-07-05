@@ -85,16 +85,20 @@ internal final class Win32DrawingContext: NativeDrawingContext {
         _ = winSelectObject(deviceContext, previousFont ?? nil)
     }
 
-    /// Draws an image file scaled into a rectangle with a halftone `StretchBlt`.
+    /// Draws an image file scaled into a rectangle.
     ///
-    /// First slice: the bitmap is decoded, blitted, and released on every call.
-    /// A per-path bitmap cache can replace this once repaint traffic warrants it.
-    internal func drawImage(atPath path: String, in rect: NSRect) {
-        guard let decoded = Win32GdiPlusImageDecoder.decodeBitmap(fromFile: path), decoded.width > 0, decoded.height > 0 else {
+    /// Untinted images blit a cache-owned decoded bitmap with a halftone
+    /// `StretchBlt`. A tint renders through a GDI+ color matrix instead, so the
+    /// tint color takes the image's alpha shape and blends over the existing
+    /// pixels — template-image drawing.
+    internal func drawImage(atPath path: String, in rect: NSRect, tint: NSColor?) {
+        if let tint {
+            drawTintedImage(atPath: path, in: rect, tint: tint)
             return
         }
-        defer {
-            _ = winDeleteObject(decoded.bitmap)
+
+        guard let decoded = Win32GdiPlusImageDecoder.cachedBitmap(fromFile: path), decoded.width > 0, decoded.height > 0 else {
+            return
         }
 
         guard let memoryContext = winCreateCompatibleDC(deviceContext) else {
@@ -121,6 +125,70 @@ internal final class Win32DrawingContext: NativeDrawingContext {
         )
         _ = winSetStretchBltMode(deviceContext, previousStretchMode)
         _ = winSelectObject(memoryContext, previousBitmap ?? nil)
+    }
+
+    /// Draws an image tinted through a GDI+ color matrix (template rendering).
+    private func drawTintedImage(atPath path: String, in rect: NSRect, tint: NSColor) {
+        guard Win32GdiPlusImageDecoder.ensureStarted() else {
+            return
+        }
+
+        var image: UnsafeMutableRawPointer?
+        let createStatus = withWideString(path) { widePath in
+            winGdipCreateBitmapFromFile(widePath, &image)
+        }
+        guard createStatus == gdiplusOkStatus, let image else {
+            return
+        }
+        defer {
+            _ = winGdipDisposeImage(image)
+        }
+
+        var width: UINT = 0
+        var height: UINT = 0
+        _ = winGdipGetImageWidth(image, &width)
+        _ = winGdipGetImageHeight(image, &height)
+        guard width > 0, height > 0 else {
+            return
+        }
+
+        var graphics: UnsafeMutableRawPointer?
+        guard winGdipCreateFromHDC(deviceContext, &graphics) == gdiplusOkStatus, let graphics else {
+            return
+        }
+        defer {
+            _ = winGdipDeleteGraphics(graphics)
+        }
+
+        var attributes: UnsafeMutableRawPointer?
+        guard winGdipCreateImageAttributes(&attributes) == gdiplusOkStatus, let attributes else {
+            return
+        }
+        defer {
+            _ = winGdipDisposeImageAttributes(attributes)
+        }
+        let matrix = Win32GdiPlusImageDecoder.tintColorMatrix(
+            red: Float(tint.redComponent),
+            green: Float(tint.greenComponent),
+            blue: Float(tint.blueComponent),
+            alpha: Float(tint.alphaComponent)
+        )
+        let matrixStatus = matrix.withUnsafeBufferPointer { buffer in
+            winGdipSetImageAttributesColorMatrix(attributes, 0, 1, buffer.baseAddress, nil, 0)
+        }
+        guard matrixStatus == gdiplusOkStatus else {
+            return
+        }
+
+        _ = winGdipDrawImageRectRectI(
+            graphics, image,
+            Int32(rect.origin.x.rounded()),
+            Int32(rect.origin.y.rounded()),
+            Int32(rect.size.width.rounded()),
+            Int32(rect.size.height.rounded()),
+            0, 0, Int32(width), Int32(height),
+            gdiplusUnitPixel, attributes, nil, nil
+        )
     }
 
     /// Fills a rectangle with a GDI+ linear gradient along an angle.

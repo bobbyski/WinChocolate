@@ -7094,4 +7094,502 @@ func testAlertButtonsCarryTagsKeyEquivalentsAndErrorInit() {
 
 testAlertButtonsCarryTagsKeyEquivalentsAndErrorInit()
 
+func testColorPanelHSBModeAndAlpha() {
+    let backend = InMemoryNativeControlBackend()
+    let previousBackend = NSApplication.shared.nativeBackend
+    NSApplication.shared.nativeBackend = backend
+    defer {
+        NSApplication.shared.nativeBackend = previousBackend
+        clearApplicationWindows()
+    }
+
+    let panel = NSColorPanel(nativeBackend: backend)
+    panel.makeKeyAndOrderFront(nil)
+
+    expect(panel.mode == .RGB, "Color panel did not default to RGB mode.")
+    expect(panel.alpha == 1, "Alpha should be 1 while the opacity slider is hidden.")
+
+    // Switch to HSB and drive the H/S/B sliders to pure red (H=0, S=100, B=100).
+    panel.mode = .HSB
+    var sliderHandles = backend.records.filter { $0.value.kind == "slider" }.keys.sorted { $0.rawValue < $1.rawValue }
+    expect(sliderHandles.count == 3, "HSB mode should still show three component sliders.")
+    backend.setSliderValue(0, for: sliderHandles[0]); backend.actions[sliderHandles[0]]?()
+    backend.setSliderValue(100, for: sliderHandles[1]); backend.actions[sliderHandles[1]]?()
+    backend.setSliderValue(100, for: sliderHandles[2]); backend.actions[sliderHandles[2]]?()
+    expect(panel.color == NSColor(calibratedRed: 1, green: 0, blue: 0, alpha: 1), "HSB sliders did not recompose pure red.")
+
+    // Enabling alpha adds a fourth slider that drives the color's opacity.
+    panel.showsAlpha = true
+    sliderHandles = backend.records.filter { $0.value.kind == "slider" }.keys.sorted { $0.rawValue < $1.rawValue }
+    expect(sliderHandles.count == 4, "Enabling showsAlpha did not add an opacity slider.")
+    backend.setSliderValue(50, for: sliderHandles[3]); backend.actions[sliderHandles[3]]?()
+    expect(abs(panel.color.alphaComponent - 0.5) < 0.001, "The opacity slider did not set the color's alpha.")
+    expect(abs(panel.alpha - 0.5) < 0.001, "panel.alpha did not reflect the opacity slider.")
+
+    // Switching back to RGB relabels/rescales without losing the color.
+    panel.mode = .RGB
+    expect(panel.mode == .RGB, "Color panel did not switch back to RGB mode.")
+    expect(abs(panel.color.redComponent - 1) < 0.001 && panel.color.greenComponent < 0.001, "Mode switch back to RGB lost the selected color.")
+}
+
+testColorPanelHSBModeAndAlpha()
+
+func testSpinningIndicatorUsesCustomViewAndTimerSweep() {
+    let backend = InMemoryNativeControlBackend()
+    let previousBackend = NSApplication.shared.nativeBackend
+    NSApplication.shared.nativeBackend = backend
+    defer {
+        NSApplication.shared.nativeBackend = previousBackend
+    }
+
+    let spinner = NSProgressIndicator(frame: NSMakeRect(0, 0, 32, 32))
+    spinner.style = .spinning
+    let handle = spinner.realizeNativePeer(in: backend, parent: nil)
+
+    // A creation-time spinning style realizes the framework-drawn view peer,
+    // not a native progress bar.
+    expect(backend.records[handle]?.kind == "view", "Spinning indicator did not realize a custom view peer.")
+
+    // Starting the animation schedules the sweep timer; each tick advances the
+    // phase and invalidates the view.
+    spinner.startAnimation(nil)
+    expect(backend.scheduledTimers.count == 1, "startAnimation did not schedule the spinner sweep timer.")
+    if let timer = backend.scheduledTimers.first {
+        spinner.needsDisplay = false
+        backend.fireTimer(timer.identifier)
+        expect(spinner.needsDisplay, "A spinner timer tick did not invalidate the view.")
+
+        // Stopping cancels the timer.
+        spinner.stopAnimation(nil)
+        expect(backend.canceledTimerIdentifiers.contains(timer.identifier), "stopAnimation did not cancel the sweep timer.")
+    }
+
+    // A bar-style indicator keeps the native progress peer (regression guard).
+    let bar = NSProgressIndicator(frame: NSMakeRect(0, 0, 120, 18))
+    let barHandle = bar.realizeNativePeer(in: backend, parent: nil)
+    expect(backend.records[barHandle]?.kind == "progressIndicator", "Bar indicator no longer realizes a native progress peer.")
+}
+
+testSpinningIndicatorUsesCustomViewAndTimerSweep()
+
+final class TemplateImageDrawingTestView: NSView {
+    override func draw(_ dirtyRect: NSRect) {
+        let template = NSImage(contentsOfFile: "C:\\Art\\gear.png")
+        template?.isTemplate = true
+        NSColor.systemBlue.setFill()
+        template?.draw(in: NSMakeRect(0, 0, 24, 24))
+
+        NSImage(contentsOfFile: "C:\\Art\\photo.png")?.draw(in: NSMakeRect(0, 30, 24, 24))
+    }
+}
+
+func testTemplateImagesTintInDrawAndImageView() {
+    let backend = InMemoryNativeControlBackend()
+
+    // Custom drawing: a template image carries the current fill color as its
+    // tint; a plain image carries none.
+    let view = TemplateImageDrawingTestView(frame: NSMakeRect(0, 0, 60, 60))
+    let handle = view.realizeNativePeer(in: backend, parent: nil)
+    let recording = backend.performDraw(for: handle, in: NSMakeRect(0, 0, 60, 60))
+    expect(recording.images.count == 2, "Draw pass did not record both image commands.")
+    expect(recording.images.first?.tint == NSColor.systemBlue, "Template image draw did not carry the fill-color tint.")
+    expect(recording.images.last?.tint == nil, "Plain image draw should carry no tint.")
+
+    // Image view: a template image bakes the content tint into the native
+    // image; swapping to a non-template image clears it.
+    guard let gear = NSImage(contentsOfFile: "C:\\Art\\gear.png") else {
+        expect(false, "Test image failed to construct.")
+        return
+    }
+    gear.isTemplate = true
+    let imageView = NSImageView(image: gear)
+    imageView.contentTintColor = .systemRed
+    let imageViewHandle = imageView.realizeNativePeer(in: backend, parent: nil)
+    expect(backend.records[imageViewHandle]?.imageTint == NSColor.systemRed, "Template image view did not push its content tint to the backend.")
+
+    imageView.image = NSImage(contentsOfFile: "C:\\Art\\photo.png")
+    expect(backend.records[imageViewHandle]?.imageTint == nil, "Non-template image should not be tinted.")
+}
+
+testTemplateImagesTintInDrawAndImageView()
+
+func testParagraphStyleAlignmentAndRTFRoundTrip() {
+    // Paragraph styles: mutable copy semantics and value equality.
+    let paragraph = NSMutableParagraphStyle()
+    paragraph.alignment = .center
+    paragraph.lineSpacing = 4
+    expect(paragraph.alignment == .center && paragraph.lineSpacing == 4, "NSMutableParagraphStyle did not store its properties.")
+    expect(NSParagraphStyle.default.alignment == .natural, "Default paragraph style should be naturally aligned.")
+
+    // Build a rich string: bold red centered headline + plain body with unicode.
+    let content = NSMutableAttributedString(string: "")
+    content.append(NSAttributedString(string: "Headline\n", attributes: [
+        .font: NSFont.boldSystemFont(ofSize: 16),
+        .foregroundColor: NSColor.red,
+        .paragraphStyle: paragraph,
+    ]))
+    content.append(NSAttributedString(string: "Body Grüße", attributes: [
+        .underlineStyle: NSUnderlineStyle.single.rawValue,
+    ]))
+
+    // Write RTF and read it back.
+    guard let rtfData = content.rtf(from: NSMakeRange(0, content.length)) else {
+        expect(false, "RTF writer produced no data.")
+        return
+    }
+    let rtfString = String(decoding: rtfData, as: UTF8.self)
+    expect(rtfString.contains("\\qc"), "RTF writer did not emit the center-alignment control.")
+
+    guard let readBack = NSAttributedString(rtf: rtfData) else {
+        expect(false, "RTF reader failed on the writer's own output.")
+        return
+    }
+    expect(readBack.string == "Headline\nBody Grüße", "RTF round-trip changed the text. Got: \(readBack.string)")
+
+    let headlineAttributes = readBack.attributes(at: 0, effectiveRange: nil)
+    let headlineFont = headlineAttributes[.font] as? NSFont
+    expect(headlineFont?.weight.isBold == true, "RTF round-trip lost the bold trait.")
+    expect(headlineFont?.pointSize == 16, "RTF round-trip lost the font size.")
+    expect((headlineAttributes[.foregroundColor] as? NSColor) == NSColor.red, "RTF round-trip lost the color.")
+    expect((headlineAttributes[.paragraphStyle] as? NSParagraphStyle)?.alignment == .center, "RTF round-trip lost the paragraph alignment.")
+
+    let bodyAttributes = readBack.attributes(at: readBack.length - 1, effectiveRange: nil)
+    expect((bodyAttributes[.underlineStyle] as? Int) == NSUnderlineStyle.single.rawValue, "RTF round-trip lost the underline.")
+    expect((bodyAttributes[.paragraphStyle] as? NSParagraphStyle) == nil, "Body should carry no paragraph style after \\pard-free left runs.")
+
+    // Native alignment: setAlignment(_:range:) reaches the backend, and the
+    // text-storage sync re-applies paragraph styles.
+    let backend = InMemoryNativeControlBackend()
+    let textView = NSTextView(frame: NSMakeRect(0, 0, 200, 100))
+    textView.isRichText = true
+    let handle = textView.realizeNativePeer(in: backend, parent: nil)
+    textView.setAlignment(.center, range: NSMakeRange(0, 8))
+    expect(backend.textRangeAlignments[handle.rawValue]?.last == InMemoryNativeControlBackend.TextRangeAlignment(alignment: .center, location: 0, length: 8), "setAlignment(_:range:) did not reach the backend.")
+
+    textView.textStorage?.append(content)
+    expect(backend.textRangeAlignments[handle.rawValue]?.last?.alignment == .center, "Text-storage sync did not re-apply the paragraph alignment.")
+}
+
+testParagraphStyleAlignmentAndRTFRoundTrip()
+
+func testPasteboardObjectsAndFileURLs() {
+    let backend = InMemoryNativeControlBackend()
+    let previousBackend = NSApplication.shared.nativeBackend
+    NSApplication.shared.nativeBackend = backend
+    defer {
+        NSApplication.shared.nativeBackend = previousBackend
+    }
+
+    let pasteboard = NSPasteboard.general
+    pasteboard.clearContents()
+
+    // writeObjects with file URLs lands on the platform file list.
+    let urls = [URL(fileURLWithPath: "C:\\Docs\\a.txt"), URL(fileURLWithPath: "C:\\Docs\\b.txt")]
+    expect(pasteboard.writeObjects(urls), "writeObjects rejected file URLs.")
+    expect(backend.clipboardFileList == ["C:\\Docs\\a.txt", "C:\\Docs\\b.txt"] || backend.clipboardFileList == ["C:/Docs/a.txt", "C:/Docs/b.txt"], "File URLs did not reach the clipboard file list. Got: \(backend.clipboardFileList)")
+    expect(pasteboard.types?.contains(.fileURL) == true, "types did not report the file list as .fileURL.")
+
+    // readObjects(forClasses: [NSURL.self]) returns the file URLs.
+    let readURLs = pasteboard.readObjects(forClasses: [NSURL.self]) as? [URL]
+    expect(readURLs?.count == 2, "readObjects did not return both file URLs.")
+    expect(readURLs?.first?.isFileURL == true, "readObjects did not return file URLs.")
+
+    // pasteboardItems: one item per file, each carrying a .fileURL string.
+    let fileItems = pasteboard.pasteboardItems
+    expect(fileItems?.count == 2, "pasteboardItems did not build one item per file.")
+    expect(fileItems?.first?.types == [.fileURL], "File pasteboard item did not carry the .fileURL type.")
+
+    // An attributed string writes text + RTF together; items group them.
+    pasteboard.clearContents()
+    let attributed = NSAttributedString(string: "Rich", attributes: [.font: NSFont.boldSystemFont(ofSize: 13)])
+    expect(pasteboard.writeObjects([attributed]), "writeObjects rejected an attributed string.")
+    expect(backend.clipboardText == "Rich", "Attributed write did not stage the plain text.")
+    expect(backend.clipboardDataRepresentations["Rich Text Format"] != nil, "Attributed write did not stage RTF.")
+
+    let items = pasteboard.pasteboardItems
+    expect(items?.count == 1, "Text+RTF should form a single pasteboard item.")
+    expect(items?.first?.string(forType: .string) == "Rich", "The pasteboard item did not carry the text.")
+    expect(items?.first?.data(forType: .rtf) != nil, "The pasteboard item did not carry the RTF data.")
+
+    // readObjects for attributed strings parses the staged RTF back.
+    let readAttributed = pasteboard.readObjects(forClasses: [NSAttributedString.self])?.first as? NSAttributedString
+    expect(readAttributed?.string == "Rich", "readObjects did not parse the RTF back into an attributed string.")
+    expect((readAttributed?.attributes(at: 0, effectiveRange: nil)[.font] as? NSFont)?.weight.isBold == true, "Read-back attributed string lost the bold trait.")
+
+    pasteboard.clearContents()
+}
+
+testPasteboardObjectsAndFileURLs()
+
+final class HoverRecordingView: NSView {
+    var enteredCount = 0
+    var exitedCount = 0
+
+    override func mouseEntered(with event: NSEvent) {
+        enteredCount += 1
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        exitedCount += 1
+    }
+}
+
+func testTrackingAreasDeliverEnterAndExit() {
+    let backend = InMemoryNativeControlBackend()
+    let view = HoverRecordingView(frame: NSMakeRect(0, 0, 100, 100))
+    let area = NSTrackingArea(rect: NSMakeRect(10, 10, 40, 40), options: [.mouseEnteredAndExited, .activeAlways], owner: view, userInfo: ["zone": "badge"])
+    view.addTrackingArea(area)
+    expect(view.trackingAreas.count == 1, "addTrackingArea did not retain the area.")
+    expect(area.userInfo?["zone"] as? String == "badge", "Tracking area lost its userInfo.")
+
+    let handle = view.realizeNativePeer(in: backend, parent: nil)
+
+    // Move inside the area: one enter, no exit.
+    backend.mouseMovedActions[handle]?(NSEvent(type: .mouseMoved, locationInWindow: NSMakePoint(20, 20)))
+    expect(view.enteredCount == 1 && view.exitedCount == 0, "Entering the area did not send exactly one mouseEntered.")
+
+    // Move within the area: no repeated enter.
+    backend.mouseMovedActions[handle]?(NSEvent(type: .mouseMoved, locationInWindow: NSMakePoint(30, 30)))
+    expect(view.enteredCount == 1, "Moving inside the area re-sent mouseEntered.")
+
+    // Move out of the area (still inside the view): one exit.
+    backend.mouseMovedActions[handle]?(NSEvent(type: .mouseMoved, locationInWindow: NSMakePoint(80, 80)))
+    expect(view.exitedCount == 1, "Leaving the area did not send mouseExited.")
+
+    // Re-enter, then leave the view entirely (native mouse-leave): exit fires.
+    backend.mouseMovedActions[handle]?(NSEvent(type: .mouseMoved, locationInWindow: NSMakePoint(20, 20)))
+    expect(view.enteredCount == 2, "Re-entering the area did not send mouseEntered again.")
+    backend.simulateMouseLeft(for: handle)
+    expect(view.exitedCount == 2, "The native mouse-leave did not exit the hovered area.")
+
+    // removeTrackingArea stops deliveries.
+    view.removeTrackingArea(area)
+    backend.mouseMovedActions[handle]?(NSEvent(type: .mouseMoved, locationInWindow: NSMakePoint(20, 20)))
+    expect(view.enteredCount == 2, "A removed tracking area still delivered events.")
+
+    // inVisibleRect tracks the whole bounds regardless of the area rect.
+    let wholeView = HoverRecordingView(frame: NSMakeRect(0, 0, 50, 50))
+    wholeView.addTrackingArea(NSTrackingArea(rect: NSZeroRect, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: nil))
+    let wholeHandle = wholeView.realizeNativePeer(in: backend, parent: nil)
+    backend.mouseMovedActions[wholeHandle]?(NSEvent(type: .mouseMoved, locationInWindow: NSMakePoint(45, 45)))
+    expect(wholeView.enteredCount == 1, "inVisibleRect did not track the view bounds (owner fallback to the view).")
+}
+
+testTrackingAreasDeliverEnterAndExit()
+
+final class WindowStateRecordingDelegate: NSWindowDelegate {
+    var resized = 0
+    var moved = 0
+    var miniaturized = 0
+    var deminiaturized = 0
+
+    func windowDidResize(_ notification: NSNotification) { resized += 1 }
+    func windowDidMove(_ notification: NSNotification) { moved += 1 }
+    func windowDidMiniaturize(_ notification: NSNotification) { miniaturized += 1 }
+    func windowDidDeminiaturize(_ notification: NSNotification) { deminiaturized += 1 }
+}
+
+func testScreensAndWindowStateDepth() {
+    let backend = InMemoryNativeControlBackend()
+    backend.testScreens = [
+        NativeScreenDescription(
+            frame: NSMakeRect(0, 0, 1920, 1080),
+            visibleFrame: NSMakeRect(0, 0, 1920, 1040)
+        ),
+        NativeScreenDescription(
+            frame: NSMakeRect(1920, 0, 1280, 1024),
+            visibleFrame: NSMakeRect(1920, 0, 1280, 984)
+        ),
+    ]
+    let previousBackend = NSApplication.shared.nativeBackend
+    NSApplication.shared.nativeBackend = backend
+    defer {
+        NSApplication.shared.nativeBackend = previousBackend
+        clearApplicationWindows()
+    }
+
+    // NSScreen reflects the backend's monitors, primary first.
+    expect(NSScreen.screens.count == 2, "NSScreen.screens did not list both displays.")
+    expect(NSScreen.main?.frame == NSMakeRect(0, 0, 1920, 1080), "NSScreen.main is not the primary display.")
+    expect(NSScreen.main?.visibleFrame == NSMakeRect(0, 0, 1920, 1040), "visibleFrame did not exclude the work-area inset.")
+
+    let window = NSWindow(
+        contentRect: NSMakeRect(2000, 100, 400, 300),
+        styleMask: [.titled, .closable, .miniaturizable, .resizable],
+        backing: .buffered,
+        defer: false,
+        nativeBackend: backend
+    )
+    let delegate = WindowStateRecordingDelegate()
+    window.delegate = delegate
+    window.makeKeyAndOrderFront(nil)
+    guard let handle = window.nativeHandle else {
+        expect(false, "Window did not realize a native handle.")
+        return
+    }
+
+    // The window reports the second display (most overlap).
+    expect(window.screen?.frame == NSMakeRect(1920, 0, 1280, 1024), "window.screen did not pick the display with the most overlap.")
+
+    // center() uses the primary work area.
+    window.center()
+    expect(window.frame.origin.x == (1920 - 400) / 2, "center() did not center horizontally in the work area.")
+    expect(window.frame.origin.y == (1040 - 300) / 2, "center() did not center vertically in the work area.")
+
+    // Minimize / restore round-trips with delegate callbacks.
+    expect(window.isVisible, "A shown window should report visible.")
+    window.miniaturize(nil)
+    expect(window.isMiniaturized && !window.isVisible, "miniaturize did not minimize the native window.")
+    expect(delegate.miniaturized == 1, "windowDidMiniaturize did not fire.")
+    window.deminiaturize(nil)
+    expect(!window.isMiniaturized, "deminiaturize did not restore the native window.")
+    expect(delegate.deminiaturized == 1, "windowDidDeminiaturize did not fire.")
+
+    // Zoom toggles; orderBack reaches the backend.
+    window.zoom(nil)
+    expect(window.isZoomed, "zoom did not maximize the window.")
+    window.zoom(nil)
+    expect(!window.isZoomed, "A second zoom did not restore the window.")
+    window.orderBack(nil)
+    expect(backend.windowsOrderedBack.contains(handle), "orderBack did not reach the backend.")
+
+    // A native move updates the frame origin and notifies the delegate.
+    backend.simulateWindowMove(to: NSMakePoint(64, 48), for: handle)
+    expect(window.frame.origin == NSMakePoint(64, 48), "A native move did not update the window frame origin.")
+    expect(delegate.moved == 1, "windowDidMove did not fire.")
+
+    // A native resize notifies the delegate (existing relayout path).
+    backend.windowResizeActions[handle]?(NSSize(width: 500, height: 400))
+    expect(delegate.resized == 1, "windowDidResize did not fire.")
+    expect(window.frame.size == NSSize(width: 500, height: 400), "A native resize did not update the frame size.")
+}
+
+testScreensAndWindowStateDepth()
+
+final class DropRecordingView: NSView {
+    var enteredOperations: [NSDragOperation] = []
+    var exitedCount = 0
+    var droppedTexts: [String] = []
+    var droppedURLs: [URL] = []
+
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+        let operation: NSDragOperation = sender.draggingPasteboard.types?.isEmpty == false ? .copy : []
+        enteredOperations.append(operation)
+        return operation
+    }
+
+    override func draggingExited(_ sender: NSDraggingInfo?) {
+        exitedCount += 1
+    }
+
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        if let text = sender.draggingPasteboard.string(forType: .string) {
+            droppedTexts.append(text)
+        }
+        if let urls = sender.draggingPasteboard.readObjects(forClasses: [NSURL.self]) as? [URL] {
+            droppedURLs.append(contentsOf: urls)
+        }
+        return !droppedTexts.isEmpty || !droppedURLs.isEmpty
+    }
+}
+
+final class TextDragSource: NSDraggingSource {
+    func draggingSession(_ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
+        .copy
+    }
+}
+
+func testDragAndDropDestinationAndSource() {
+    let backend = InMemoryNativeControlBackend()
+
+    // Destination: registering realizes a backend drop target.
+    let view = DropRecordingView(frame: NSMakeRect(0, 0, 200, 100))
+    view.registerForDraggedTypes([.string, .fileURL])
+    let handle = view.realizeNativePeer(in: backend, parent: nil)
+    expect(backend.dropHandlers[handle] != nil, "registerForDraggedTypes did not install a backend drop target.")
+
+    // A file drag enters, is accepted, and drops file URLs.
+    let files = NativeDropContent(text: nil, filePaths: ["C:\\Drop\\one.txt", "C:\\Drop\\two.txt"])
+    expect(backend.simulateDragEnter(content: files, at: NSMakePoint(10, 10), for: handle), "The view did not accept a matching file drag.")
+    expect(view.enteredOperations.last == .copy, "draggingEntered did not report a copy operation.")
+    expect(backend.simulateDrop(content: files, at: NSMakePoint(20, 20), for: handle), "The drop was not performed.")
+    expect(view.droppedURLs.count == 2 && view.droppedURLs.first?.isFileURL == true, "performDragOperation did not read the dropped file URLs.")
+
+    // A text drag delivers through the drag pasteboard.
+    let text = NativeDropContent(text: "Dragged words", filePaths: [])
+    expect(backend.simulateDragEnter(content: text, at: NSMakePoint(5, 5), for: handle), "The view did not accept a matching text drag.")
+    backend.simulateDragExit(for: handle)
+    expect(view.exitedCount == 1, "draggingExited did not fire.")
+    expect(backend.simulateDrop(content: text, at: NSMakePoint(5, 5), for: handle), "The text drop was not performed.")
+    expect(view.droppedTexts == ["Dragged words"], "performDragOperation did not read the dropped text.")
+
+    // Content that matches none of the registered types is refused.
+    let strange = NativeDropContent(text: nil, filePaths: [])
+    expect(!backend.simulateDragEnter(content: strange, at: NSZeroPoint, for: handle), "A drag with no matching content was accepted.")
+
+    // Unregistering removes the backend target.
+    view.unregisterDraggedTypes()
+    expect(backend.dropHandlers[handle] == nil && backend.unregisteredDropTargets.contains(handle), "unregisterDraggedTypes did not remove the drop target.")
+
+    // Source: beginDraggingSession routes the writers into a native drag.
+    backend.nextDragResult = true
+    let items = [
+        NSDraggingItem(pasteboardWriter: "Outbound text"),
+        NSDraggingItem(pasteboardWriter: URL(fileURLWithPath: "C:\\Send\\file.png")),
+    ]
+    let session = view.beginDraggingSession(with: items, event: NSEvent(type: .leftMouseDragged, locationInWindow: NSZeroPoint), source: TextDragSource())
+    expect(session.winDropped, "The dragging session did not report the scripted drop.")
+    expect(backend.performedDrags.count == 1, "beginDraggingSession did not start exactly one native drag.")
+    expect(backend.performedDrags.first?.content.text == "Outbound text", "The outbound drag lost its text writer.")
+    expect(backend.performedDrags.first?.content.filePaths.first?.hasSuffix("file.png") == true, "The outbound drag lost its file writer.")
+}
+
+testDragAndDropDestinationAndSource()
+
+final class PrintableTestView: NSView {
+    override func draw(_ dirtyRect: NSRect) {
+        NSColor.black.setFill()
+        NSBezierPath(rect: NSMakeRect(0, 0, 100, 20)).fill()
+        "Printed line".draw(at: NSMakePoint(4, 2), withAttributes: [.font: NSFont.systemFont(ofSize: 12)])
+    }
+}
+
+func testPrintOperationRendersViewDrawing() {
+    let backend = InMemoryNativeControlBackend()
+    let previousBackend = NSApplication.shared.nativeBackend
+    NSApplication.shared.nativeBackend = backend
+    defer {
+        NSApplication.shared.nativeBackend = previousBackend
+    }
+
+    // Print info carries paper geometry; the imageable bounds inset by margins.
+    let info = NSPrintInfo()
+    info.paperSize = NSSize(width: 612, height: 792)
+    info.leftMargin = 36
+    info.rightMargin = 36
+    info.topMargin = 40
+    info.bottomMargin = 40
+    expect(info.imageablePageBounds == NSMakeRect(36, 40, 540, 712), "imageablePageBounds did not inset the paper by the margins.")
+
+    let view = PrintableTestView(frame: NSMakeRect(0, 0, 300, 200))
+    _ = view.realizeNativePeer(in: backend, parent: nil)
+
+    let operation = NSPrintOperation.printOperation(with: view, printInfo: info)
+    operation.jobTitle = "Test Job"
+    expect(operation.run(), "The print operation did not report success.")
+
+    expect(backend.printJobs.count == 1, "The backend did not record exactly one print job.")
+    expect(backend.printJobs.first?.jobName == "Test Job", "The print job lost its document name.")
+    expect(backend.printJobs.first?.contentSize == NSSize(width: 300, height: 200), "The print job did not use the view size.")
+    expect(backend.printJobs.first?.recording.fills.count == 1, "The view's fill did not render into the print context.")
+    expect(backend.printJobs.first?.recording.texts.first?.text == "Printed line", "The view's text did not render into the print context.")
+
+    // A canceled dialog reports false and records nothing.
+    backend.nextPrintResult = false
+    expect(!operation.run(), "A canceled print dialog should report false.")
+    expect(backend.printJobs.count == 1, "A canceled print dialog should not record a job.")
+}
+
+testPrintOperationRendersViewDrawing()
+
 print("WinChocolate contract tests passed.")

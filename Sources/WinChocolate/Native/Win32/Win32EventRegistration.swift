@@ -34,6 +34,23 @@ extension Win32NativeControlBackend {
         mouseMovedActions[handle.rawValue] = action
     }
 
+    /// Registers the action to perform when the cursor leaves a native view.
+    public func registerMouseLeftAction(for handle: NativeHandle, action: @escaping () -> Void) {
+        mouseLeftActions[handle.rawValue] = action
+    }
+
+    /// Asks the system to post `WM_MOUSELEAVE` when the cursor leaves a window.
+    ///
+    /// Called on every mouse move over windows with a leave action; re-arming
+    /// an already-armed track is a cheap no-op in the system.
+    func requestMouseLeaveNotification(for hwnd: HWND) {
+        var request = TRACKMOUSEEVENTW()
+        request.cbSize = UINT(MemoryLayout<TRACKMOUSEEVENTW>.stride)
+        request.dwFlags = tmeLeave
+        request.hwndTrack = hwnd
+        _ = winTrackMouseEvent(&request)
+    }
+
     /// Registers the action to perform when a native view receives a mouse-dragged event.
     public func registerMouseDraggedAction(for handle: NativeHandle, action: @escaping (NSEvent) -> Void) {
         mouseDraggedActions[handle.rawValue] = action

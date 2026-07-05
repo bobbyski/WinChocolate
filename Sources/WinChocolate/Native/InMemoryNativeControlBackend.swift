@@ -57,6 +57,16 @@ public final class RecordingDrawingContext: NativeDrawingContext {
 
         /// The destination rectangle.
         public let rect: NSRect
+
+        /// The template tint color, when the image was drawn tinted.
+        public let tint: NSColor?
+
+        /// Creates a recorded image command.
+        public init(path: String, rect: NSRect, tint: NSColor? = nil) {
+            self.path = path
+            self.rect = rect
+            self.tint = tint
+        }
     }
 
     /// A recorded linear-gradient command.
@@ -127,8 +137,8 @@ public final class RecordingDrawingContext: NativeDrawingContext {
     }
 
     /// Records an image command.
-    public func drawImage(atPath path: String, in rect: NSRect) {
-        images.append(Image(path: path, rect: rect))
+    public func drawImage(atPath path: String, in rect: NSRect, tint: NSColor?) {
+        images.append(Image(path: path, rect: rect, tint: tint))
     }
 
     /// Records a linear-gradient command.
@@ -192,6 +202,9 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
 
         /// Native image-view file path.
         public var imagePath: String?
+
+        /// Native image-view template tint color, when tinted.
+        public var imageTint: NSColor?
 
         /// Native tab-view items.
         public var tabViewItems: [String]
@@ -489,10 +502,19 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
         setClipboardContents(text: string, dataRepresentations: [:])
     }
 
+    /// Recorded clipboard file paths, when any.
+    public private(set) var clipboardFileList: [String] = []
+
+    /// Reads the recorded clipboard file paths.
+    public func clipboardFilePaths() -> [String] {
+        clipboardFileList
+    }
+
     /// Records a combined clipboard update.
-    public func setClipboardContents(text: String?, dataRepresentations: [String: [UInt8]]) {
+    public func setClipboardContents(text: String?, dataRepresentations: [String: [UInt8]], filePaths: [String]) {
         clipboardText = text
         clipboardDataRepresentations = dataRepresentations
+        clipboardFileList = filePaths
         clipboardChanges += 1
     }
 
@@ -510,6 +532,7 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     public func clearClipboard() {
         clipboardText = nil
         clipboardDataRepresentations = [:]
+        clipboardFileList = []
         clipboardChanges += 1
     }
 
@@ -534,6 +557,159 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     /// Returns the (test-configurable) primary screen frame.
     public func primaryScreenFrame() -> NSRect {
         testScreenFrame
+    }
+
+    /// Test-configurable screen list; defaults to one screen matching
+    /// `testScreenFrame` whose work area equals its full frame.
+    public var testScreens: [NativeScreenDescription]?
+
+    /// Returns the (test-configurable) attached screens.
+    public func screenDescriptions() -> [NativeScreenDescription] {
+        testScreens ?? [NativeScreenDescription(frame: testScreenFrame, visibleFrame: testScreenFrame)]
+    }
+
+    /// Minimized windows, by handle.
+    public private(set) var minimizedWindows: Set<NativeHandle> = []
+
+    /// Zoomed (maximized) windows, by handle.
+    public private(set) var zoomedWindows: Set<NativeHandle> = []
+
+    /// Windows ordered to the back, in request order.
+    public private(set) var windowsOrderedBack: [NativeHandle] = []
+
+    /// Records a window minimize/restore.
+    public func setWindowMinimized(_ minimized: Bool, for handle: NativeHandle) {
+        if minimized {
+            minimizedWindows.insert(handle)
+        } else {
+            minimizedWindows.remove(handle)
+        }
+    }
+
+    /// Records a window zoom toggle.
+    public func toggleWindowZoom(_ handle: NativeHandle) {
+        if zoomedWindows.contains(handle) {
+            zoomedWindows.remove(handle)
+        } else {
+            zoomedWindows.insert(handle)
+        }
+    }
+
+    /// Records a window being sent to the back.
+    public func orderWindowBack(_ handle: NativeHandle) {
+        windowsOrderedBack.append(handle)
+    }
+
+    /// Whether a recorded window is shown and not minimized.
+    public func isWindowVisible(_ handle: NativeHandle) -> Bool {
+        records[handle]?.isHidden == false && !minimizedWindows.contains(handle)
+    }
+
+    /// Whether a recorded window is minimized.
+    public func isWindowMinimized(_ handle: NativeHandle) -> Bool {
+        minimizedWindows.contains(handle)
+    }
+
+    /// Whether a recorded window is zoomed.
+    public func isWindowZoomed(_ handle: NativeHandle) -> Bool {
+        zoomedWindows.contains(handle)
+    }
+
+    /// Registered window-move actions by handle.
+    public private(set) var windowMoveActions: [NativeHandle: (NSPoint) -> Void] = [:]
+
+    /// Records a window-move action.
+    public func registerWindowMoveAction(for handle: NativeHandle, action: @escaping (NSPoint) -> Void) {
+        windowMoveActions[handle] = action
+    }
+
+    /// Simulates a native window move for tests.
+    public func simulateWindowMove(to origin: NSPoint, for handle: NativeHandle) {
+        windowMoveActions[handle]?(origin)
+    }
+
+    /// Registered drop handlers by handle.
+    public private(set) var dropHandlers: [NativeHandle: NativeDropHandler] = [:]
+
+    /// Handles whose drop registration was removed, in order.
+    public private(set) var unregisteredDropTargets: [NativeHandle] = []
+
+    /// Outbound drags requested through `performDrag`, in order.
+    public private(set) var performedDrags: [(content: NativeDropContent, handle: NativeHandle)] = []
+
+    /// The scripted result for the next outbound drag.
+    public var nextDragResult = false
+
+    /// Records a drop-target registration.
+    public func registerDropTarget(for handle: NativeHandle, handler: NativeDropHandler) {
+        dropHandlers[handle] = handler
+    }
+
+    /// Records a drop-target removal.
+    public func unregisterDropTarget(for handle: NativeHandle) {
+        dropHandlers.removeValue(forKey: handle)
+        unregisteredDropTargets.append(handle)
+    }
+
+    /// Records an outbound drag and returns the scripted result.
+    public func performDrag(content: NativeDropContent, from handle: NativeHandle) -> Bool {
+        performedDrags.append((content: content, handle: handle))
+        return nextDragResult
+    }
+
+    /// Simulates a native drag entering a registered target.
+    @discardableResult
+    public func simulateDragEnter(content: NativeDropContent, at location: NSPoint, for handle: NativeHandle) -> Bool {
+        dropHandlers[handle]?.entered(content, location) ?? false
+    }
+
+    /// Simulates a native drag moving over a registered target.
+    @discardableResult
+    public func simulateDragMove(to location: NSPoint, for handle: NativeHandle) -> Bool {
+        dropHandlers[handle]?.moved(location) ?? false
+    }
+
+    /// Simulates a native drag leaving a registered target.
+    public func simulateDragExit(for handle: NativeHandle) {
+        dropHandlers[handle]?.exited()
+    }
+
+    /// Simulates a native drop on a registered target.
+    @discardableResult
+    public func simulateDrop(content: NativeDropContent, at location: NSPoint, for handle: NativeHandle) -> Bool {
+        dropHandlers[handle]?.performed(content, location) ?? false
+    }
+
+    /// A recorded print job.
+    public struct PrintJob {
+        /// The printed control handle.
+        public let handle: NativeHandle
+
+        /// The document name shown in the print queue.
+        public let jobName: String
+
+        /// The printed content size in points.
+        public let contentSize: NSSize
+
+        /// What the view drew into the print context.
+        public let recording: RecordingDrawingContext
+    }
+
+    /// Print jobs run through `runPrintOperation`, oldest first.
+    public private(set) var printJobs: [PrintJob] = []
+
+    /// The scripted print-dialog outcome; `false` simulates a cancel.
+    public var nextPrintResult = true
+
+    /// Records a print job, rendering the view into a recording context.
+    public func runPrintOperation(for handle: NativeHandle, jobName: String, contentSize: NSSize) -> Bool {
+        guard nextPrintResult else {
+            return false
+        }
+        let recording = RecordingDrawingContext()
+        drawActions[handle]?(recording, NSRect(origin: NSZeroPoint, size: contentSize))
+        printJobs.append(PrintJob(handle: handle, jobName: jobName, contentSize: contentSize, recording: recording))
+        return true
     }
 
     /// Hidden standard-button state per window, for tests.
@@ -674,6 +850,33 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
             location: location,
             length: length
         ))
+    }
+
+    /// A recorded paragraph-alignment application.
+    public struct TextRangeAlignment: Equatable {
+        /// The applied alignment.
+        public let alignment: NSTextAlignment
+
+        /// The range start in UTF-16 units.
+        public let location: Int
+
+        /// The range length in UTF-16 units.
+        public let length: Int
+
+        /// Creates a recorded alignment application.
+        public init(alignment: NSTextAlignment, location: Int, length: Int) {
+            self.alignment = alignment
+            self.location = location
+            self.length = length
+        }
+    }
+
+    /// Paragraph-alignment applications per handle, oldest first.
+    public private(set) var textRangeAlignments: [UInt: [TextRangeAlignment]] = [:]
+
+    /// Records a paragraph-alignment application.
+    public func setTextRangeAlignment(_ alignment: NSTextAlignment, location: Int, length: Int, for handle: NativeHandle) {
+        textRangeAlignments[handle.rawValue, default: []].append(TextRangeAlignment(alignment: alignment, location: location, length: length))
     }
 
     /// Records a pop-up button creation request.
@@ -1102,12 +1305,13 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     }
 
     /// Records an image-view bitmap source update.
-    public func setImagePath(_ imagePath: String?, description: String, for handle: NativeHandle) {
+    public func setImagePath(_ imagePath: String?, description: String, tint: NSColor?, for handle: NativeHandle) {
         guard var record = records[handle] else {
             return
         }
 
         record.imagePath = imagePath
+        record.imageTint = tint
         record.text = description
         records[handle] = record
     }
@@ -1453,6 +1657,19 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
         mouseMovedActions[handle] = action
     }
 
+    /// Registered mouse-left actions by handle.
+    public private(set) var mouseLeftActions: [NativeHandle: () -> Void] = [:]
+
+    /// Records a mouse-left action.
+    public func registerMouseLeftAction(for handle: NativeHandle, action: @escaping () -> Void) {
+        mouseLeftActions[handle] = action
+    }
+
+    /// Simulates the cursor leaving a control for tests.
+    public func simulateMouseLeft(for handle: NativeHandle) {
+        mouseLeftActions[handle]?()
+    }
+
     /// Records a mouse-dragged action.
     public func registerMouseDraggedAction(for handle: NativeHandle, action: @escaping (NSEvent) -> Void) {
         mouseDraggedActions[handle] = action
@@ -1724,6 +1941,7 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
             popUpSelectedIndex: -1,
             comboBoxItems: [],
             imagePath: nil,
+            imageTint: nil,
             tabViewItems: [],
             tabViewSelectedIndex: -1,
             toolbarItems: [],

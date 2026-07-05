@@ -32,7 +32,11 @@ extension Win32NativeControlBackend {
     }
 
     /// Updates a native image-view bitmap source.
-    public func setImagePath(_ imagePath: String?, description: String, for handle: NativeHandle) {
+    ///
+    /// A tint bakes a template-rendered bitmap (the tint color shaped by the
+    /// image's alpha) through the GDI+ color matrix before handing it to the
+    /// static control.
+    public func setImagePath(_ imagePath: String?, description: String, tint: NSColor?, for handle: NativeHandle) {
         guard let hwnd = hwnd(from: handle) else {
             return
         }
@@ -47,11 +51,22 @@ extension Win32NativeControlBackend {
             return
         }
 
-        // BMP files keep the fast LoadImageW path; other formats (PNG, JPEG,
-        // GIF, ...) fall back to GDI+ decoding into an equivalent HBITMAP.
-        let bitmap = withWideString(imagePath) { path in
-            winLoadImageW(nil, path, imageBitmap, 0, 0, lrLoadFromFile | lrCreatedDIBSection)
-        } ?? Win32GdiPlusImageDecoder.decodeBitmap(fromFile: imagePath)?.bitmap
+        let bitmap: HBITMAP?
+        if let tint {
+            bitmap = Win32GdiPlusImageDecoder.decodeTintedBitmap(
+                fromFile: imagePath,
+                red: Float(tint.redComponent),
+                green: Float(tint.greenComponent),
+                blue: Float(tint.blueComponent),
+                alpha: Float(tint.alphaComponent)
+            )?.bitmap
+        } else {
+            // BMP files keep the fast LoadImageW path; other formats (PNG,
+            // JPEG, GIF, ...) fall back to GDI+ decoding into an HBITMAP.
+            bitmap = withWideString(imagePath) { path in
+                winLoadImageW(nil, path, imageBitmap, 0, 0, lrLoadFromFile | lrCreatedDIBSection)
+            } ?? Win32GdiPlusImageDecoder.decodeBitmap(fromFile: imagePath)?.bitmap
+        }
 
         guard let bitmap else {
             setText(description, for: handle)

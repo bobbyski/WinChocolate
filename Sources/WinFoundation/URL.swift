@@ -1,3 +1,7 @@
+/// Foundation-compatible alias so AppKit-style `NSURL.self` call sites (for
+/// example `readObjects(forClasses: [NSURL.self])`) compile against the shim.
+public typealias NSURL = URL
+
 /// A Foundation-compatible URL subset for Windows Swift toolchains where
 /// `import Foundation` is temporarily unavailable.
 public struct URL: Equatable, Hashable, Sendable, CustomStringConvertible {

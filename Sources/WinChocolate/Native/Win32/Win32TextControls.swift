@@ -169,6 +169,35 @@ extension Win32NativeControlBackend {
         _ = winSendMessageW(hwnd, emSetSel, WPARAM(savedSelection.location), LPARAM(savedSelection.location + savedSelection.length))
     }
 
+    /// Applies paragraph alignment to the paragraphs covering a range of a
+    /// rich edit control (`EM_SETPARAFORMAT` over a temporary selection).
+    public func setTextRangeAlignment(_ alignment: NSTextAlignment, location: Int, length: Int, for handle: NativeHandle) {
+        guard let hwnd = hwnd(from: handle) else {
+            return
+        }
+
+        let savedSelection = textSelection(for: handle)
+        let start = max(0, location)
+        _ = winSendMessageW(hwnd, emSetSel, WPARAM(start), LPARAM(start + max(0, length)))
+
+        var format = PARAFORMATW()
+        format.cbSize = UINT(MemoryLayout<PARAFORMATW>.stride)
+        format.dwMask = pfmAlignment
+        switch alignment {
+        case .center:
+            format.wAlignment = pfaCenter
+        case .right:
+            format.wAlignment = pfaRight
+        case .left, .natural:
+            format.wAlignment = pfaLeft
+        }
+        withUnsafePointer(to: &format) { pointer in
+            _ = winSendMessageW(hwnd, emSetParaFormat, 0, Int(bitPattern: pointer))
+        }
+
+        _ = winSendMessageW(hwnd, emSetSel, WPARAM(savedSelection.location), LPARAM(savedSelection.location + savedSelection.length))
+    }
+
     /// Registers the action to perform when native text changes.
     public func registerTextChangeAction(for handle: NativeHandle, action: @escaping (String) -> Void) {
         textChangeActions[handle.rawValue] = action

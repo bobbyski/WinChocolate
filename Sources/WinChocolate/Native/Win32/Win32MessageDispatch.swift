@@ -55,6 +55,24 @@ extension Win32NativeControlBackend {
             entry.menu.update()
             rebuildNativeMenu(entry.menu, forRegistryKey: wParam)
             return 0
+        case wmMove:
+            guard let hwnd else {
+                return nil
+            }
+
+            let moveHandle = nativeHandle(from: hwnd)
+            guard windowHandles.contains(moveHandle), let moveAction = windowMoveActions[moveHandle.rawValue] else {
+                return nil
+            }
+
+            // WM_MOVE reports the client origin; the window rect gives the
+            // frame origin the framework tracks.
+            var windowRect = RECT()
+            guard winGetWindowRect(hwnd, &windowRect) != 0 else {
+                return nil
+            }
+            moveAction(NSPoint(x: CGFloat(windowRect.left), y: CGFloat(windowRect.top)))
+            return nil
         case wmSize:
             guard let hwnd else {
                 return nil
@@ -146,6 +164,9 @@ extension Win32NativeControlBackend {
             }
 
             let handle = nativeHandle(from: hwnd)
+            if mouseLeftActions[handle.rawValue] != nil {
+                requestMouseLeaveNotification(for: hwnd)
+            }
             if (wParam & mkLButton) != 0, let action = mouseDraggedActions[handle.rawValue] {
                 action(NSEvent(type: .leftMouseDragged, locationInWindow: mouseLocation(from: lParam, in: hwnd), modifierFlags: currentModifierFlags()))
                 return 0
@@ -156,6 +177,13 @@ extension Win32NativeControlBackend {
             }
 
             action(NSEvent(type: .mouseMoved, locationInWindow: mouseLocation(from: lParam, in: hwnd), modifierFlags: currentModifierFlags()))
+            return 0
+        case wmMouseLeave:
+            guard let hwnd else {
+                return nil
+            }
+
+            mouseLeftActions[nativeHandle(from: hwnd).rawValue]?()
             return 0
         case wmLButtonDown:
             guard let hwnd, let action = mouseDownActions[nativeHandle(from: hwnd).rawValue] else {
@@ -612,6 +640,9 @@ extension Win32NativeControlBackend {
             }
 
             let handle = actionHandle(from: hwnd)
+            if mouseLeftActions[handle.rawValue] != nil {
+                requestMouseLeaveNotification(for: hwnd)
+            }
 
             // A pressed drag over an editable level bar tracks the value.
             if editableLevelHandles.contains(handle.rawValue) {
@@ -636,6 +667,13 @@ extension Win32NativeControlBackend {
             }
 
             action(NSEvent(type: .mouseMoved, locationInWindow: mouseLocation(from: lParam, in: hwnd), modifierFlags: currentModifierFlags()))
+            return nil
+        case wmMouseLeave:
+            guard let hwnd else {
+                return nil
+            }
+
+            mouseLeftActions[actionHandle(from: hwnd).rawValue]?()
             return nil
         case wmEraseBackground:
             guard let hwnd else {

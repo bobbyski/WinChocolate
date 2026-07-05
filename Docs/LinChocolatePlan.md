@@ -23,7 +23,7 @@ This plan is tracked separately from `ProjectPlan.md` (the WinChocolate plan) an
 
 - The `NativeControlBackend` protocol is the substitution point; LinChocolate must not require API-layer changes.
 - The in-memory backend and contract tests are platform-neutral and must pass unchanged on Linux.
-- The symbol-image glyph set (WinChocolate plan, item 3.24) is original, copyright-clean artwork designed to be reused here.
+- The symbol-image glyph set (WinChocolate plan, item 12.2 — a Rev 2.0 issue, formerly 3.24) is original, copyright-clean artwork designed to be reused here.
 
 ---
 
