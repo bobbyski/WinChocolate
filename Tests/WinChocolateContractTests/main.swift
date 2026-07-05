@@ -1053,7 +1053,7 @@ func testOutlineViewFlattensExpandableItems() {
     expect(outlineView.item(atRow: 0) as? String == "Application", "Outline root item was wrong.")
     expect(outlineView.level(forRow: 0) == 0, "Outline root level was wrong.")
     expect(outlineView.row(forItem: "Controls") == 1, "Outline did not find root item row.")
-    expect(outlineView.value(atColumn: 0, row: 0) == "+ Application", "Outline did not mark collapsed group.")
+    expect(outlineView.value(atColumn: 0, row: 0) == "Application", "Outline first-column value should be plain text (disclosure is drawn, not text).")
     expect(outlineView.value(atColumn: 1, row: 0) == "Group", "Outline did not load secondary column value.")
     expect(outlineView.isItemExpandable("Application"), "Outline did not report expandable group.")
     expect(!outlineView.isItemExpandable("NSApplication"), "Outline reported leaf as expandable.")
@@ -1064,8 +1064,12 @@ func testOutlineViewFlattensExpandableItems() {
     expect(outlineView.numberOfRows == 4, "Outline did not add expanded children.")
     expect(outlineView.item(atRow: 1) as? String == "NSApplication", "Outline first child was wrong.")
     expect(outlineView.level(forItem: "NSApplication") == 1, "Outline child level was wrong.")
-    expect(outlineView.value(atColumn: 0, row: 0) == "- Application", "Outline did not mark expanded group.")
-    expect(outlineView.value(atColumn: 0, row: 1) == "    NSApplication", "Outline child indentation text was wrong.")
+    expect(outlineView.value(atColumn: 0, row: 0) == "Application", "Expanded group value should be plain text.")
+    expect(outlineView.value(atColumn: 0, row: 1) == "NSApplication", "Child value should be plain text (indentation is drawn).")
+    // Indentation is expressed as a leading inset: a level-1 child is inset more
+    // than its level-0 parent.
+    expect(outlineView.winDrawnLeadingInset(forRow: 1, column: 0) > outlineView.winDrawnLeadingInset(forRow: 0, column: 0),
+           "Outline child was not indented more than its parent.")
 
     outlineView.collapseItem("Application")
 
@@ -1085,10 +1089,19 @@ func testOutlineViewFlattensExpandableItems() {
 
     expect(!outlineView.isItemExpanded("Controls"), "Outline toggle did not collapse expanded item.")
 
+    // At this point the outline is collapsed again (2 root rows).
     let handle = outlineView.realizeNativePeer(in: backend, parent: nil)
 
-    expect(backend.records[handle]?.kind == "tableView", "Outline view did not use the table backend.")
-    expect(backend.records[handle]?.tableRows.count == 2, "Outline native rows were not synced.")
+    // The outline uses the framework-drawn table so it can draw disclosure
+    // triangles and indentation itself.
+    expect(backend.records[handle]?.kind == "view", "Outline view did not use the framework-drawn table.")
+
+    // Clicking the disclosure triangle on the first root row expands it.
+    // (Header is 24pt tall; the triangle sits at the left of row 0.)
+    expect(outlineView.numberOfRows == 2, "Outline should be collapsed before the disclosure click.")
+    backend.mouseDownActions[handle]?(NSEvent(type: .leftMouseDown, locationInWindow: NSMakePoint(8, 24 + 8)))
+    expect(outlineView.isItemExpanded("Application"), "Clicking the disclosure triangle did not expand the item.")
+    expect(outlineView.numberOfRows == 4, "Disclosure-triangle expand did not reveal child rows.")
 }
 
 func testBrowserLoadsColumnsAndTracksSelection() {
@@ -1124,6 +1137,27 @@ func testBrowserLoadsColumnsAndTracksSelection() {
 
     expect(backend.records[handle]?.kind == "view", "Browser did not create a native host view.")
     expect(browser.subviews.count == 2, "Browser did not compose visible scroll-view columns.")
+}
+
+func testBrowserPathRoundTrips() {
+    let browser = NSBrowser(frame: NSMakeRect(0, 0, 320, 120))
+    let delegate = RecordingBrowserDelegate()
+    browser.delegate = delegate
+    browser.loadColumnZero()
+
+    // Set a path and read it back.
+    expect(browser.setPath("/Application/NSWindow"), "setPath did not resolve a valid path.")
+    expect(browser.path() == "/Application/NSWindow", "path() did not round-trip. Got \(browser.path()).")
+    expect(browser.selectedColumn == 1, "selectedColumn was wrong after setPath. Got \(browser.selectedColumn).")
+    expect(browser.selectedItem(inColumn: 0) as? String == "Application", "setPath did not select the first component.")
+    expect(browser.selectedItem(inColumn: 1) as? String == "NSWindow", "setPath did not select the leaf component.")
+
+    // Re-pathing to a different branch replaces the selection.
+    expect(browser.setPath("/Controls/NSButton"), "setPath did not resolve the second path.")
+    expect(browser.path() == "/Controls/NSButton", "path() did not follow the new selection. Got \(browser.path()).")
+
+    // An unresolved path returns false.
+    expect(!browser.setPath("/Application/DoesNotExist"), "setPath resolved a nonexistent leaf.")
 }
 
 func testIndexPathStoresCollectionComponents() {
@@ -1200,6 +1234,41 @@ func testCollectionViewButtonItemClickSelectsItem() {
 
     expect(collectionView.selectionIndexPaths == [target], "Collection button item click did not select its index path.")
     expect(actionCount == 1, "Collection button item click did not send collection action.")
+}
+
+func testCollectionViewFlowLayoutArrangesSectionsAndSizesContent() {
+    let collectionView = NSCollectionView(frame: NSMakeRect(0, 0, 230, 200))
+    let dataSource = RecordingCollectionDataSource()  // section 0: 3 items, section 1: 2 items
+    let layout = NSCollectionViewFlowLayout()
+    layout.itemSize = NSMakeSize(100, 30)
+    layout.minimumInteritemSpacing = 10
+    layout.minimumLineSpacing = 10
+    layout.sectionInset = NSEdgeInsetsMake(5, 5, 5, 5)
+
+    collectionView.dataSource = dataSource
+    collectionView.collectionViewLayout = layout
+    collectionView.reloadData()
+
+    // Usable width 230-5-5=220 → 2 items per line ((220+10)/(100+10)=2).
+    // Section 0: item0 (5,5), item1 (115,5), item2 wraps to (5,45).
+    let a00 = layout.layoutAttributesForItem(at: IndexPath(item: 0, section: 0))
+    let a01 = layout.layoutAttributesForItem(at: IndexPath(item: 1, section: 0))
+    let a02 = layout.layoutAttributesForItem(at: IndexPath(item: 2, section: 0))
+    expect(a00?.frame == NSMakeRect(5, 5, 100, 30), "Flow item (0,0) frame wrong. Got \(a00?.frame ?? .zero).")
+    expect(a01?.frame == NSMakeRect(115, 5, 100, 30), "Flow item (1,0) did not sit beside the first. Got \(a01?.frame ?? .zero).")
+    expect(a02?.frame == NSMakeRect(5, 45, 100, 30), "Flow item (2,0) did not wrap to the next line. Got \(a02?.frame ?? .zero).")
+
+    // Section 1 starts below section 0 (section 0 used 2 lines = 70pt, + insets).
+    // y after section 0 = 5(top)+70+5(bottom) = 80; section 1 top inset 5 → 85.
+    let a10 = layout.layoutAttributesForItem(at: IndexPath(item: 0, section: 1))
+    expect(a10?.frame == NSMakeRect(5, 85, 100, 30), "Second section did not stack below the first. Got \(a10?.frame ?? .zero).")
+
+    // The item views were positioned to match.
+    expect(collectionView.item(at: IndexPath(item: 2, section: 0))?.view.frame == NSMakeRect(5, 45, 100, 30),
+           "Flow layout did not position the wrapped item's view.")
+
+    // Content grows to the full stacked height (section 1 bottom = 85+30+5 = 120).
+    expect(layout.collectionViewContentSize.height == 120, "Flow content height wrong. Got \(layout.collectionViewContentSize.height).")
 }
 
 func testSliderStoresRangeValueAndSyncsNativePeer() {
@@ -6820,9 +6889,11 @@ testTableViewColumnSelectionAndDoubleActionSurface()
 testTableViewSortDescriptorPrototypeToggle()
 testOutlineViewFlattensExpandableItems()
 testBrowserLoadsColumnsAndTracksSelection()
+testBrowserPathRoundTrips()
 testIndexPathStoresCollectionComponents()
 testCollectionViewReloadsItemsAndTracksSelection()
 testCollectionViewButtonItemClickSelectsItem()
+testCollectionViewFlowLayoutArrangesSectionsAndSizesContent()
 testSliderStoresRangeValueAndSyncsNativePeer()
 testSliderNativeActionUpdatesValue()
 testProgressIndicatorStoresRangeValueAndSyncsNativePeer()
@@ -7872,6 +7943,12 @@ func testDrawnTableInPlaceEditCommitsToDataSource() {
     // A non-editable column does not open an overlay.
     backend.mouseDownActions[handle]?(NSEvent(type: .leftMouseDown, locationInWindow: NSMakePoint(20, 24 + 6), clickCount: 2))
     expect(tableView.subviews.compactMap { $0 as? NSTextField }.isEmpty, "A non-editable/hosted column opened an edit overlay.")
+
+    // Programmatic editColumn opens the overlay on the drawn table too.
+    tableView.editColumn(1, row: 2, with: nil, select: true)
+    let progOverlay = tableView.subviews.compactMap { $0 as? NSTextField }.first
+    expect(progOverlay?.stringValue == "charlie", "editColumn did not open a seeded overlay on row 2. Got \(progOverlay?.stringValue ?? "nil").")
+    expect(tableView.selectedRow == 2, "editColumn did not select the edited row.")
 }
 
 testDrawnTableInPlaceEditCommitsToDataSource()
@@ -7973,5 +8050,85 @@ func testTableViewAutoDetectsViewBasedModeFromDelegate() {
 }
 
 testTableViewAutoDetectsViewBasedModeFromDelegate()
+
+final class ReorderableTableDataSource: NSTableViewDataSource {
+    var items = ["alpha", "bravo", "charlie", "delta"]
+    func numberOfRows(in tableView: NSTableView) -> Int { items.count }
+    func tableView(_ tableView: NSTableView, objectValueFor tableColumn: NSTableColumn?, row: Int) -> Any? { items[row] }
+}
+
+func testDrawnTableRowReorderDragMovesRow() {
+    let backend = InMemoryNativeControlBackend()
+    let tableView = NSTableView(frame: NSMakeRect(0, 0, 200, 300))
+    let dataSource = ReorderableTableDataSource()
+    let column = NSTableColumn(identifier: "name")
+    column.width = 180
+    tableView.addTableColumn(column)
+    tableView.dataSource = dataSource
+    let delegate = ViewBasedTableDelegate()
+    tableView.delegate = delegate
+
+    var reorderCalls: [(from: Int, to: Int)] = []
+    tableView.winRowReorderHandler = { from, to in
+        reorderCalls.append((from, to))
+        var arr = dataSource.items
+        let moved = arr.remove(at: from)
+        arr.insert(moved, at: to > from ? to - 1 : to)
+        dataSource.items = arr
+    }
+
+    let handle = tableView.realizeNativePeer(in: backend, parent: nil)
+    // Header is 24pt (column has a default title); rows are 24pt each below it.
+    // Press row 1 ("bravo"), drag past row 2, drop before row 3 (index 3).
+    let header: CGFloat = 24
+    backend.mouseDownActions[handle]?(NSEvent(type: .leftMouseDown, locationInWindow: NSMakePoint(10, header + 1 * 24 + 6)))
+    backend.mouseDraggedActions[handle]?(NSEvent(type: .leftMouseDragged, locationInWindow: NSMakePoint(10, header + 3 * 24 + 4)))
+    backend.mouseUpActions[handle]?(NSEvent(type: .leftMouseUp, locationInWindow: NSMakePoint(10, header + 3 * 24 + 4)))
+
+    expect(reorderCalls.count == 1, "Reorder handler was not called once. Got \(reorderCalls.count).")
+    expect(reorderCalls.first?.from == 1 && reorderCalls.first?.to == 3,
+           "Reorder handler received wrong indices. Got \(String(describing: reorderCalls.first)).")
+    expect(dataSource.items == ["alpha", "charlie", "bravo", "delta"],
+           "Row reorder did not move 'bravo' after 'charlie'. Got \(dataSource.items).")
+}
+
+func testTableHeaderViewTracksClickedColumnAndGeometry() {
+    let backend = InMemoryNativeControlBackend()
+    let tableView = NSTableView(frame: NSMakeRect(0, 0, 300, 160))
+    let dataSource = ManyRowTableDataSource(count: 3)
+    let colA = NSTableColumn(identifier: "a")
+    colA.title = "A"
+    colA.width = 100
+    colA.sortDescriptorPrototype = NSSortDescriptor(key: "a", ascending: true)
+    let colB = NSTableColumn(identifier: "b")
+    colB.title = "B"
+    colB.width = 120
+    colB.sortDescriptorPrototype = NSSortDescriptor(key: "b", ascending: true)
+    tableView.addTableColumn(colA)
+    tableView.addTableColumn(colB)
+    tableView.dataSource = dataSource
+    let delegate = ViewBasedTableDelegate()
+    tableView.delegate = delegate
+
+    // The header view is auto-created and linked to its table.
+    expect(tableView.headerView != nil, "Table did not auto-create a header view.")
+    expect(tableView.headerView?.tableView === tableView, "Header view was not linked to its table.")
+
+    // Geometry: column B starts after column A's 100pt width.
+    expect(tableView.headerView?.headerRect(ofColumn: 1) == NSMakeRect(100, 0, 120, 24),
+           "Header rect for column 1 was wrong. Got \(tableView.headerView?.headerRect(ofColumn: 1) ?? .zero).")
+    expect(tableView.headerView?.column(at: NSMakePoint(150, 5)) == 1,
+           "columnAtPoint did not resolve to column 1.")
+
+    let handle = tableView.realizeNativePeer(in: backend, parent: nil)
+
+    // Clicking column B's header (y in the 24pt header band) records it.
+    backend.mouseDownActions[handle]?(NSEvent(type: .leftMouseDown, locationInWindow: NSMakePoint(150, 8)))
+    expect(tableView.headerView?.clickedColumn == 1, "Header click did not record clickedColumn. Got \(tableView.headerView?.clickedColumn ?? -99).")
+    expect(tableView.sortDescriptors.first?.key == "b", "Header click did not apply column B's sort prototype.")
+}
+
+testTableHeaderViewTracksClickedColumnAndGeometry()
+testDrawnTableRowReorderDragMovesRow()
 
 print("WinChocolate contract tests passed.")

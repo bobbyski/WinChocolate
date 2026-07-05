@@ -159,8 +159,13 @@ open class NSTableView: NSControl {
         }
     }
 
-    /// Whether the header should be visible.
-    open var headerView: NSView?
+    /// The table's column-header view. Auto-created; set to `nil` to hide the
+    /// header (e.g. inside `NSBrowser` columns).
+    open lazy var headerView: NSTableHeaderView? = {
+        let header = NSTableHeaderView(frame: .zero)
+        header.tableView = self
+        return header
+    }()
 
     /// Swift-native selection callback.
     open var onSelectionChanged: ((NSTableView) -> Void)?
@@ -203,6 +208,15 @@ open class NSTableView: NSControl {
     var winHostedCellKeys: Set<Int> = []
     /// Delegate-vended full-width row background views, by row.
     var winHostedRowViews: [Int: NSTableRowView] = [:]
+
+    /// When set, drawn-table rows can be reordered by dragging: the handler is
+    /// called with the source row and the destination insertion index (0...n)
+    /// on drop. A convenience ahead of the full `NSDraggingSession` protocol.
+    open var winRowReorderHandler: ((_ fromRow: Int, _ toIndex: Int) -> Void)?
+    /// The row currently being dragged for reorder, or `-1`.
+    var winDraggingRow = -1
+    /// The insertion index the drag currently targets, or `-1`.
+    var winDropIndex = -1
     /// The live in-place editor overlay for a drawn cell, if any.
     var winDrawnEditField: NSTextField?
     var winDrawnEditRow = -1
@@ -213,6 +227,28 @@ open class NSTableView: NSControl {
         editor.table = self
         return editor
     }()
+
+    // MARK: Drawn-cell customization hooks (overridable — used by NSOutlineView)
+
+    /// Extra leading inset (points) for a drawn cell's content — e.g. the
+    /// indentation + disclosure-triangle space an outline view needs on its
+    /// first column. Applied to drawn text and to hosted cell-view frames.
+    /// Default 0.
+    open func winDrawnLeadingInset(forRow row: Int, column: Int) -> CGFloat {
+        0
+    }
+
+    /// Draws per-cell decoration (e.g. an outline disclosure triangle) inside a
+    /// drawn cell's rect, above the row background and below the cell text.
+    /// Default no-op.
+    open func winDrawnDrawDecoration(forRow row: Int, column: Int, cellRect: NSRect) {}
+
+    /// Handles a click inside a drawn cell before row selection. Returns `true`
+    /// when the click was consumed (e.g. it toggled a disclosure triangle) and
+    /// the row should therefore not be selected. Default `false`.
+    open func winDrawnHandleDecorationClick(forRow row: Int, column: Int, at point: NSPoint) -> Bool {
+        false
+    }
 
     /// Tables handle standard navigation keys as part of their component behavior.
     open override func keyDown(with event: NSEvent) {
@@ -522,6 +558,24 @@ open class NSTableView: NSControl {
         }
     }
 
+    /// Tracks a reorder drag in a framework-drawn table.
+    open override func mouseDragged(with event: NSEvent) {
+        if winIsDrawn, winDraggingRow >= 0 {
+            winDrawnMouseDragged(event)
+        } else {
+            super.mouseDragged(with: event)
+        }
+    }
+
+    /// Commits a reorder drag in a framework-drawn table.
+    open override func mouseUp(with event: NSEvent) {
+        if winIsDrawn, winDraggingRow >= 0 {
+            winDrawnMouseUp(event)
+        } else {
+            super.mouseUp(with: event)
+        }
+    }
+
     /// Ensures native table state and selection dispatch are wired.
     @discardableResult
     open override func realizeNativePeer(in backend: NativeControlBackend, parent: NativeHandle?) -> NativeHandle {
@@ -564,9 +618,19 @@ open class NSTableView: NSControl {
         return handle
     }
 
-    /// Begins editing a cell (the classic backend edits the first column).
+    /// Begins editing a cell. The framework-drawn table edits any column via the
+    /// overlay editor; the native list edits its first column.
     open func editColumn(_ column: Int, row: Int, with event: NSEvent?, select: Bool) {
-        guard let nativeHandle, rowValues.indices.contains(row) else {
+        guard rowValues.indices.contains(row) else {
+            return
+        }
+        if winIsDrawn {
+            selectRowIndexes([row], byExtendingSelection: false)
+            winUpdateHostedRowSelection()
+            winBeginDrawnEdit(row: row, column: column)
+            return
+        }
+        guard let nativeHandle else {
             return
         }
         realizedBackend?.editTableCell(row: row, column: column, for: nativeHandle)
@@ -580,6 +644,7 @@ open class NSTableView: NSControl {
     }
 
     private func handleHeaderClick(column: Int) {
+        headerView?.clickedColumn = column
         guard let sort = sortUsingDescriptorPrototype(forColumn: column) else {
             return
         }

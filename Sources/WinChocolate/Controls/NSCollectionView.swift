@@ -91,6 +91,15 @@ open class NSCollectionView: NSControl {
         }
     }
 
+    /// The layout that arranges items. When set, it overrides the built-in
+    /// grid; assign an `NSCollectionViewFlowLayout` for AppKit-style flow.
+    open var collectionViewLayout: NSCollectionViewLayout? {
+        didSet {
+            collectionViewLayout?.collectionView = self
+            tile()
+        }
+    }
+
     /// Whether multiple items can be selected.
     open var allowsMultipleSelection: Bool = false
 
@@ -143,8 +152,20 @@ open class NSCollectionView: NSControl {
         tile()
     }
 
-    /// Lays out visible item views.
+    /// Lays out visible item views, delegating to `collectionViewLayout` when
+    /// set (AppKit flow/custom layout) and falling back to the built-in grid.
     open func tile() {
+        if let layout = collectionViewLayout {
+            layout.prepare()
+            for (indexPath, item) in itemsByIndexPath {
+                if let attr = layout.layoutAttributesForItem(at: indexPath) {
+                    item.view.frame = attr.frame
+                }
+            }
+            sizeToContentIfScrolled(layout.collectionViewContentSize)
+            return
+        }
+
         let availableWidth = max(itemSize.width, frame.size.width)
         let stride = max(1, itemSize.width + minimumInteritemSpacing)
         let columns = max(1, Int((availableWidth + minimumInteritemSpacing) / stride))
@@ -160,6 +181,20 @@ open class NSCollectionView: NSControl {
             let y = CGFloat(row) * (itemSize.height + minimumLineSpacing)
             item.view.frame = NSMakeRect(x, y, itemSize.width, itemSize.height)
         }
+    }
+
+    /// When the collection view is a scroll view's document view, grows it to
+    /// the layout's content size so the scroll view can scroll the items.
+    private func sizeToContentIfScrolled(_ contentSize: NSSize) {
+        guard let scrollView = enclosingScrollView else {
+            return
+        }
+        let width = max(scrollView.contentView.bounds.size.width, contentSize.width)
+        let height = max(scrollView.contentView.bounds.size.height, contentSize.height)
+        if frame.size.width != width || frame.size.height != height {
+            frame = NSRect(x: frame.origin.x, y: frame.origin.y, width: width, height: height)
+        }
+        scrollView.tile()
     }
 
     /// Selects a set of items.

@@ -25,16 +25,19 @@ extension NSTableView {
     /// first row. `winUsesViewBasedCells` forces it on for callers that want a
     /// drawn (all-text) table without vending any view.
     var winShouldUseDrawnCells: Bool {
-        guard numberOfRows > 0, !tableColumns.isEmpty, let delegate else {
+        guard numberOfRows > 0, !tableColumns.isEmpty else {
             return false
         }
-        if delegate.tableView(self, viewFor: tableColumns[0], row: 0) != nil {
+        // An explicit opt-in forces the drawn peer even with no delegate (e.g.
+        // an all-text drawn table, or an outline view that draws its own tree).
+        if winUsesViewBasedCells {
             return true
         }
-        if delegate.tableView(self, rowViewFor: 0) != nil {
-            return true
+        guard let delegate else {
+            return false
         }
-        return winUsesViewBasedCells
+        return delegate.tableView(self, viewFor: tableColumns[0], row: 0) != nil
+            || delegate.tableView(self, rowViewFor: 0) != nil
     }
 
     /// Whether the drawn table hides its header (all columns untitled).
@@ -174,9 +177,15 @@ extension NSTableView {
                 guard let cellView = delegate?.tableView(self, viewFor: tableColumns[column], row: row) else {
                     continue
                 }
-                // Inset the cell view slightly so grid lines/selection show.
+                // Inset the cell view slightly so grid lines/selection show,
+                // plus any leading inset (outline indentation/disclosure).
                 var frame = winCellRect(row: row, column: column)
                 frame = frame.insetBy(dx: 1, dy: 1)
+                let lead = winDrawnLeadingInset(forRow: row, column: column)
+                if lead > 0 {
+                    frame.origin.x += lead
+                    frame.size.width = max(0, frame.size.width - lead)
+                }
                 cellView.frame = frame
                 addSubview(cellView)
                 winHostedCellViews.append(cellView)
@@ -285,12 +294,19 @@ extension NSTableView {
             }
         }
 
-        // Text for cells the delegate does not vend a view for (drawn-text
-        // cells in a mixed table). Skip the cell currently being edited.
+        // Per-cell decoration (e.g. outline disclosure triangles) and text for
+        // cells the delegate does not vend a view for (drawn-text cells).
         var textY = winHeaderHeight
         for row in 0..<numberOfRows {
             let h = winRowHeightAt(row)
-            for column in tableColumns.indices where !winCellIsHosted(row: row, column: column) {
+            for column in tableColumns.indices {
+                let cellRect = NSRect(x: winColumnX(column), y: textY,
+                                      width: column < tableColumns.count ? max(20, tableColumns[column].width) : 0,
+                                      height: h)
+                winDrawnDrawDecoration(forRow: row, column: column, cellRect: cellRect)
+                guard !winCellIsHosted(row: row, column: column) else {
+                    continue
+                }
                 if row == winDrawnEditRow, column == winDrawnEditColumn {
                     continue
                 }
@@ -298,15 +314,19 @@ extension NSTableView {
                 guard !text.isEmpty else {
                     continue
                 }
+                let inset = winDrawnLeadingInset(forRow: row, column: column)
                 let color: NSColor = selectedRowIndexes.contains(row)
                     ? .selectedTextColor : NSColor(white: 0.1, alpha: 1)
-                text.draw(at: NSMakePoint(winColumnX(column) + 5, textY + (h - 15) / 2), withAttributes: [
+                text.draw(at: NSMakePoint(winColumnX(column) + 5 + inset, textY + (h - 15) / 2), withAttributes: [
                     .font: NSFont.systemFont(ofSize: 12),
                     .foregroundColor: color,
                 ])
             }
             textY += h
         }
+
+        // Reorder drop-line indicator on top of everything.
+        winDrawDropIndicator()
     }
 
     /// Begins an in-place edit of a drawn (non-hosted) cell in an editable
@@ -372,12 +392,14 @@ extension NSTableView {
         let point = convert(event.locationInWindow, from: nil)
         _ = window?.makeFirstResponder(self)
 
-        // Header click → sort by the hit column.
+        // Header click → record the clicked column and sort by it.
         if !winHeaderHidden, point.y < winDrawnHeaderHeight {
             let column = winColumnAtX(point.x)
-            if column >= 0, let sort = sortUsingDescriptorPrototype(forColumn: column) {
-                _ = sort
-                needsDisplay = true
+            if column >= 0 {
+                headerView?.clickedColumn = column
+                if sortUsingDescriptorPrototype(forColumn: column) != nil {
+                    needsDisplay = true
+                }
             }
             return
         }
@@ -386,6 +408,14 @@ extension NSTableView {
         guard row >= 0 else {
             return
         }
+
+        // A click on an in-cell decoration (e.g. an outline disclosure triangle)
+        // is consumed before selection.
+        let hitColumn = winColumnAtX(point.x)
+        if hitColumn >= 0, winDrawnHandleDecorationClick(forRow: row, column: hitColumn, at: point) {
+            return
+        }
+
         let extend = allowsMultipleSelection && (event.modifierFlags.contains(.shift) || event.modifierFlags.contains(.command))
         if extend, selectedRowIndexes.contains(row) {
             deselectRow(row)
@@ -396,6 +426,12 @@ extension NSTableView {
         winInvalidateTree()
         sendAction()
 
+        // Arm a potential reorder drag from this row.
+        if winRowReorderHandler != nil {
+            winDraggingRow = row
+            winDropIndex = -1
+        }
+
         // Double-click a drawn (non-hosted) cell in an editable column → edit.
         if event.clickCount >= 2 {
             let column = winColumnAtX(point.x)
@@ -403,6 +439,68 @@ extension NSTableView {
                 winBeginDrawnEdit(row: row, column: column)
             }
         }
+    }
+
+    /// The insertion index (0...numberOfRows) a drop at `y` targets.
+    func winDropInsertionIndex(atY y: CGFloat) -> Int {
+        guard y >= winHeaderHeight else {
+            return 0
+        }
+        var cursor = winHeaderHeight
+        for row in 0..<numberOfRows {
+            let h = winRowHeightAt(row)
+            if y < cursor + h / 2 {
+                return row
+            }
+            cursor += h
+        }
+        return numberOfRows
+    }
+
+    /// Updates the drop-insertion indicator as a reorder drag moves.
+    func winDrawnMouseDragged(_ event: NSEvent) {
+        let point = convert(event.locationInWindow, from: nil)
+        let index = winDropInsertionIndex(atY: point.y)
+        if index != winDropIndex {
+            winDropIndex = index
+            winInvalidateTree()
+        }
+    }
+
+    /// Commits a reorder drag: calls the handler with (fromRow, toIndex).
+    func winDrawnMouseUp(_ event: NSEvent) {
+        defer {
+            winDraggingRow = -1
+            winDropIndex = -1
+            winInvalidateTree()
+        }
+        guard let handler = winRowReorderHandler,
+              winDraggingRow >= 0, winDropIndex >= 0 else {
+            return
+        }
+        // A drop just above or just below the source row is a no-op.
+        if winDropIndex == winDraggingRow || winDropIndex == winDraggingRow + 1 {
+            return
+        }
+        handler(winDraggingRow, winDropIndex)
+        reloadData()
+    }
+
+    /// Draws the reorder drop-line indicator, if a drag is active.
+    func winDrawDropIndicator() {
+        guard winDraggingRow >= 0, winDropIndex >= 0 else {
+            return
+        }
+        var y = winHeaderHeight
+        for row in 0..<winDropIndex where row < numberOfRows {
+            y += winRowHeightAt(row)
+        }
+        NSColor.selectedTextBackgroundColor.setStroke()
+        let line = NSBezierPath()
+        line.lineWidth = 2
+        line.move(to: NSMakePoint(0, y))
+        line.line(to: NSMakePoint(frame.size.width, y))
+        line.stroke()
     }
 
     /// The column at an x-coordinate, or `-1`.

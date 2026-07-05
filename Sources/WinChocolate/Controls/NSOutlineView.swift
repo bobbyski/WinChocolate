@@ -22,14 +22,19 @@ public extension NSOutlineViewDataSource {
 
 /// A tree-shaped table view.
 ///
-/// This first slice keeps AppKit's outline data-source shape and flattens the
-/// visible tree into the existing table backend. It does not yet draw disclosure
-/// triangles; indentation is represented in the first column text.
+/// Built on the framework-drawn table: the visible tree is flattened into the
+/// table backend, and the outline draws a real **disclosure triangle** and
+/// per-level indentation on its first column (via the drawn-cell hooks), with
+/// clicks on the triangle expanding/collapsing the item.
 open class NSOutlineView: NSTableView {
     private struct OutlineRow {
         var item: Any
         var level: Int
     }
+
+    /// Horizontal space reserved for the disclosure triangle on the first
+    /// column, ahead of the cell text.
+    private let disclosureWidth: CGFloat = 14
 
     private final class OutlineTableAdapter: NSTableViewDataSource {
         weak var owner: NSOutlineView?
@@ -65,6 +70,9 @@ open class NSOutlineView: NSTableView {
         super.init(frame: frameRect)
         outlineAdapter.owner = self
         dataSource = outlineAdapter
+        // Outlines always use the framework-drawn table so they can draw
+        // disclosure triangles and indentation themselves.
+        winUsesViewBasedCells = true
     }
 
     /// Reloads the visible outline rows.
@@ -193,7 +201,11 @@ open class NSOutlineView: NSTableView {
         let value = outlineDataSource?.outlineView(self, objectValueFor: tableColumn, byItem: outlineRow.item)
             ?? String(describing: outlineRow.item)
 
-        guard showsDisclosureText,
+        // Indentation and the disclosure triangle are drawn (see the hooks
+        // below), so the first column keeps plain text — unless a caller opts
+        // back into legacy text markers via `showsDisclosureText` with the
+        // drawn path disabled.
+        guard showsDisclosureText, !winUsesViewBasedCells,
               tableColumns.first === tableColumn else {
             return value
         }
@@ -211,5 +223,61 @@ open class NSOutlineView: NSTableView {
 
     private func key(for item: Any) -> String {
         String(describing: item)
+    }
+
+    // MARK: Drawn disclosure triangle + indentation
+
+    /// The x of the disclosure triangle's left edge for a row's first column.
+    private func disclosureX(forRow row: Int, cellRect: NSRect) -> CGFloat {
+        cellRect.minX + 4 + CGFloat(visibleRows[row].level) * indentationPerLevel
+    }
+
+    /// First-column content is inset by the level's indentation plus the
+    /// disclosure-triangle column.
+    open override func winDrawnLeadingInset(forRow row: Int, column: Int) -> CGFloat {
+        guard column == 0, visibleRows.indices.contains(row) else {
+            return 0
+        }
+        return CGFloat(visibleRows[row].level) * indentationPerLevel + disclosureWidth
+    }
+
+    /// Draws the disclosure triangle for expandable items on the first column.
+    open override func winDrawnDrawDecoration(forRow row: Int, column: Int, cellRect: NSRect) {
+        guard column == 0, visibleRows.indices.contains(row),
+              isItemExpandable(visibleRows[row].item) else {
+            return
+        }
+        let x = disclosureX(forRow: row, cellRect: cellRect)
+        let cy = cellRect.midY
+        let path = NSBezierPath()
+        if isItemExpanded(visibleRows[row].item) {
+            // Pointing down (expanded).
+            path.move(to: NSMakePoint(x, cy - 2))
+            path.line(to: NSMakePoint(x + 8, cy - 2))
+            path.line(to: NSMakePoint(x + 4, cy + 4))
+        } else {
+            // Pointing right (collapsed).
+            path.move(to: NSMakePoint(x, cy - 4))
+            path.line(to: NSMakePoint(x + 6, cy))
+            path.line(to: NSMakePoint(x, cy + 4))
+        }
+        path.close()
+        NSColor(white: 0.35, alpha: 1).setFill()
+        path.fill()
+    }
+
+    /// A click on the disclosure triangle toggles the item instead of selecting.
+    open override func winDrawnHandleDecorationClick(forRow row: Int, column: Int, at point: NSPoint) -> Bool {
+        guard column == 0, visibleRows.indices.contains(row),
+              isItemExpandable(visibleRows[row].item) else {
+            return false
+        }
+        let cellRect = winCellRect(row: row, column: 0)
+        let x = disclosureX(forRow: row, cellRect: cellRect)
+        if point.x >= x - 3, point.x <= x + 12 {
+            toggleItem(visibleRows[row].item)
+            return true
+        }
+        return false
     }
 }

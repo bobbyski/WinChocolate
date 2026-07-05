@@ -95,6 +95,53 @@ open class NSBrowser: NSControl {
     /// Whether branch rows may be selected.
     open var allowsEmptySelection: Bool = true
 
+    /// The separator used by `path()`/`setPath(_:)`.
+    open var pathSeparator: String = "/"
+
+    /// The rightmost column that currently has a selection, or `-1`.
+    open var selectedColumn: Int {
+        selectedRowsByColumn.keys.max() ?? -1
+    }
+
+    /// The display string for an item (delegate value, else its description).
+    private func displayString(for item: Any?) -> String {
+        if let value = delegate?.browser(self, objectValueForItem: item) {
+            return String(describing: value)
+        }
+        return item.map { String(describing: $0) } ?? ""
+    }
+
+    /// The `pathSeparator`-joined path of selected items through the columns,
+    /// e.g. `/Application/Controls/NSButton`.
+    open func path() -> String {
+        var components: [String] = []
+        var column = 0
+        while let item = selectedItem(inColumn: column) {
+            components.append(displayString(for: item))
+            column += 1
+        }
+        return pathSeparator + components.joined(separator: pathSeparator)
+    }
+
+    /// Selects columns to match a `pathSeparator`-separated path, returning
+    /// whether the whole path resolved.
+    @discardableResult
+    open func setPath(_ path: String) -> Bool {
+        let separator = Character(pathSeparator)
+        let components = path.split(separator: separator).map(String.init)
+        reloadColumn(0)
+        var column = 0
+        for component in components {
+            guard columnItems.indices.contains(column),
+                  let row = columnItems[column].firstIndex(where: { displayString(for: $0) == component }) else {
+                return false
+            }
+            selectRow(row, inColumn: column)
+            column += 1
+        }
+        return true
+    }
+
     /// Creates a browser.
     public override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)

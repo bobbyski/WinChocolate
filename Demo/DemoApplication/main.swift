@@ -1742,9 +1742,13 @@ matrix.selectCell(atRow: 0, column: 0)
 pathLabel.font = NSFont.boldSystemFont(ofSize: 12)
 collectionLabel.font = NSFont.boldSystemFont(ofSize: 12)
 collectionView.dataSource = collectionDataSource
-collectionView.itemSize = NSMakeSize(116, 28)
-collectionView.minimumInteritemSpacing = 8
-collectionView.minimumLineSpacing = 8
+// Drive the collection with a real flow layout (5.4).
+let collectionFlowLayout = NSCollectionViewFlowLayout()
+collectionFlowLayout.itemSize = NSMakeSize(116, 28)
+collectionFlowLayout.minimumInteritemSpacing = 8
+collectionFlowLayout.minimumLineSpacing = 8
+collectionFlowLayout.sectionInset = NSEdgeInsetsMake(4, 4, 4, 4)
+collectionView.collectionViewLayout = collectionFlowLayout
 collectionView.reloadData()
 visualEffectLabel.font = NSFont.boldSystemFont(ofSize: 12)
 visualEffectView.material = visualEffectMaterials[visualEffectIndex].0
@@ -2877,7 +2881,7 @@ zoomButton.onAction = { _ in
 // 5.5 — framework-drawn, view-based table hosting real controls in its cells.
 // Placed in the clear full-width band below the print section (y > 386).
 let viewTableSectionLabel = showcaseSectionLabel("Framework-drawn table — view-based cells (5.5)", NSMakeRect(24, 392, 480, 20))
-let viewTableHint = NSTextField(string: "Hosts real controls (text field / button); double-click a Note to edit it in place.", frame: NSMakeRect(24, 412, 560, 18))
+let viewTableHint = NSTextField(string: "Hosts real controls; double-click a Note to edit, drag a row to reorder.", frame: NSMakeRect(24, 412, 560, 18))
 viewTableHint.isBordered = false
 viewTableHint.drawsBackground = false
 viewTableHint.font = NSFont.systemFont(ofSize: 11)
@@ -2906,6 +2910,18 @@ viewTable.dataSource = viewTableSource
 viewTable.delegate = viewTableDelegate
 // No opt-in flag: the table auto-detects view-based mode because the delegate
 // vends cell views (AppKit semantics).
+// Drag a row to reorder it (5.8): move the parallel model arrays together.
+viewTable.winRowReorderHandler = { [weak viewTable] from, toIndex in
+    let dest = toIndex > from ? toIndex - 1 : toIndex
+    let task = viewTableSource.tasks.remove(at: from)
+    viewTableSource.tasks.insert(task, at: dest)
+    let note = viewTableSource.notes.remove(at: from)
+    viewTableSource.notes.insert(note, at: dest)
+    let done = viewTableSource.done.remove(at: from)
+    viewTableSource.done.insert(done, at: dest)
+    viewTable?.reloadData()
+    statusLabel.stringValue = "Moved row \(from) → \(dest)"
+}
 viewTableScrollView.documentView = viewTable
 
 // 5.5 — NSTableRowView hosting: full-width colored row views behind hosted
