@@ -31,13 +31,54 @@ extension NSTableView {
         tableColumns.prefix(column).reduce(0) { $0 + max(20, $1.width) }
     }
 
+    /// The height of a single row, honoring the delegate's `heightOfRow`.
+    ///
+    /// `heightOfRow` has a protocol-default that returns `rowHeight`, so a value
+    /// equal to `rowHeight` is indistinguishable from "delegate didn't override"
+    /// — in that case we keep the drawn baseline (`winDrawnRowHeight`). A value
+    /// that differs is a genuine per-row customization and is honored.
+    func winRowHeight(_ row: Int) -> CGFloat {
+        if let delegate {
+            let h = delegate.tableView(self, heightOfRow: row)
+            if h > 0, h != rowHeight {
+                return max(16, h)
+            }
+        }
+        return winDrawnRowHeight
+    }
+
+    /// The cached height of a row (from the last rebuild), or a fresh query
+    /// when the cache is stale/empty — so drawing and hit-testing agree.
+    func winRowHeightAt(_ row: Int) -> CGFloat {
+        guard row >= 0 else { return winDrawnRowHeight }
+        if row < winRowHeights.count {
+            return winRowHeights[row]
+        }
+        return winRowHeight(row)
+    }
+
+    /// The y origin of a row: header height plus the sum of the heights of all
+    /// rows above it (variable-height aware).
+    func winRowY(_ row: Int) -> CGFloat {
+        var y = winHeaderHeight
+        for r in 0..<max(0, row) {
+            y += winRowHeightAt(r)
+        }
+        return y
+    }
+
+    /// Recomputes the per-row height cache from the delegate.
+    func winRebuildRowHeights() {
+        winRowHeights = (0..<numberOfRows).map { winRowHeight($0) }
+    }
+
     /// The cell rectangle for a row and column in the drawn table.
     func winCellRect(row: Int, column: Int) -> NSRect {
         NSRect(
             x: winColumnX(column),
-            y: winHeaderHeight + CGFloat(row) * winDrawnRowHeight,
+            y: winRowY(row),
             width: column < tableColumns.count ? max(20, tableColumns[column].width) : 0,
-            height: winDrawnRowHeight
+            height: winRowHeightAt(row)
         )
     }
 
@@ -46,13 +87,23 @@ extension NSTableView {
         guard y >= winHeaderHeight else {
             return -1
         }
-        let row = Int((y - winHeaderHeight) / winDrawnRowHeight)
-        return row < numberOfRows ? row : -1
+        var cursor = winHeaderHeight
+        for row in 0..<numberOfRows {
+            cursor += winRowHeightAt(row)
+            if y < cursor {
+                return row
+            }
+        }
+        return -1
     }
 
     /// The full content height of the drawn table (header + all rows).
     var winContentHeight: CGFloat {
-        winHeaderHeight + CGFloat(numberOfRows) * winDrawnRowHeight
+        var h = winHeaderHeight
+        for row in 0..<numberOfRows {
+            h += winRowHeightAt(row)
+        }
+        return h
     }
 
     /// When the drawn table is a scroll view's document view, grows it to its
@@ -76,6 +127,7 @@ extension NSTableView {
         guard winIsDrawn else {
             return
         }
+        winRebuildRowHeights()
         winSizeToContentIfScrolled()
         for view in winHostedCellViews {
             view.removeFromSuperview()
@@ -106,8 +158,10 @@ extension NSTableView {
         NSBezierPath(rect: bounds).fill()
 
         // Alternating row backgrounds and selection highlight.
+        var rowY = winHeaderHeight
         for row in 0..<numberOfRows {
-            let rowRect = NSRect(x: 0, y: winHeaderHeight + CGFloat(row) * winDrawnRowHeight, width: width, height: winDrawnRowHeight)
+            let h = winRowHeightAt(row)
+            let rowRect = NSRect(x: 0, y: rowY, width: width, height: h)
             if selectedRowIndexes.contains(row) {
                 NSColor.selectedTextBackgroundColor.setFill()
                 NSBezierPath(rect: rowRect).fill()
@@ -115,17 +169,22 @@ extension NSTableView {
                 NSColor(white: 0.96, alpha: 1).setFill()
                 NSBezierPath(rect: rowRect).fill()
             }
+            rowY += h
         }
+        let rowsBottom = rowY
 
         // Grid lines.
         NSColor(white: 0.85, alpha: 1).setStroke()
         if gridStyleMask.contains(.solidHorizontalGridLineMask) {
+            var y = winHeaderHeight
             for row in 0...numberOfRows {
-                let y = winHeaderHeight + CGFloat(row) * winDrawnRowHeight
                 let line = NSBezierPath()
                 line.move(to: NSMakePoint(0, y))
                 line.line(to: NSMakePoint(width, y))
                 line.stroke()
+                if row < numberOfRows {
+                    y += winRowHeightAt(row)
+                }
             }
         }
         if gridStyleMask.contains(.solidVerticalGridLineMask) {
@@ -133,7 +192,7 @@ extension NSTableView {
                 let x = winColumnX(column)
                 let line = NSBezierPath()
                 line.move(to: NSMakePoint(x, winHeaderHeight))
-                line.line(to: NSMakePoint(x, winHeaderHeight + CGFloat(numberOfRows) * winDrawnRowHeight))
+                line.line(to: NSMakePoint(x, rowsBottom))
                 line.stroke()
             }
         }

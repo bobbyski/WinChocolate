@@ -529,6 +529,12 @@ final class DemoViewTableDelegate: NSTableViewDelegate {
         }
         return button
     }
+
+    /// Completed rows render taller — a live demo of the drawn table honoring
+    /// per-row heights (toggle "Mark done" and watch the row grow).
+    func tableView(_ tableView: NSTableView, heightOfRow row: Int) -> CGFloat {
+        source.done[row] ? 44 : 24
+    }
 }
 
 /// A plain-text document demonstrating the NSDocument window-controller flow.

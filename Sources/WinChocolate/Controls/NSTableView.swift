@@ -186,6 +186,9 @@ open class NSTableView: NSControl {
     var winHostedCellViews: [NSView] = []
     var winDrawnRowHeight: CGFloat = 24
     var winDrawnHeaderHeight: CGFloat = 24
+    /// Per-row heights, cached on each rebuild (honors the delegate's
+    /// `heightOfRow`); empty until the first drawn rebuild.
+    var winRowHeights: [CGFloat] = []
 
     /// Tables handle standard navigation keys as part of their component behavior.
     open override func keyDown(with event: NSEvent) {

@@ -7732,4 +7732,54 @@ func testDrawnTableScrollsAsScrollViewDocument() {
 
 testDrawnTableScrollsAsScrollViewDocument()
 
+/// Vends a cell view for every cell and a custom height for the first row.
+final class VariableHeightTableDelegate: NSTableViewDelegate {
+    func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
+        NSTextField(string: "r\(row)", frame: NSMakeRect(0, 0, 100, 20))
+    }
+    func tableView(_ tableView: NSTableView, heightOfRow row: Int) -> CGFloat {
+        row == 0 ? 48 : 24
+    }
+}
+
+func testDrawnTableHonorsVariableRowHeights() {
+    let backend = InMemoryNativeControlBackend()
+    let tableView = NSTableView(frame: NSMakeRect(0, 0, 300, 400))
+    let dataSource = ManyRowTableDataSource(count: 4)
+    let column = NSTableColumn(identifier: "name")
+    column.title = "Name"
+    column.width = 280
+    tableView.addTableColumn(column)
+    tableView.dataSource = dataSource
+    let delegate = VariableHeightTableDelegate()
+    tableView.delegate = delegate
+    tableView.winUsesViewBasedCells = true
+
+    let handle = tableView.realizeNativePeer(in: backend, parent: nil)
+
+    // The hosted cell views prove the geometry honors the variable heights.
+    // Row 0 (48px) sits just below the 24px header (inset ~1px → y≈25); row 1
+    // sits below the tall row 0 at 24 + 48 + 1 = 73 (not 49, which is what a
+    // uniform 24px layout would give).
+    let ys = tableView.subviews.map { $0.frame.origin.y }.sorted()
+    expect(ys.count == 4, "Expected one hosted cell view per row. Got \(ys.count).")
+    expect(abs(ys[0] - 25) < 2, "Row 0 cell view not just below the header. Got \(ys[0]).")
+    expect(abs(ys[1] - 73) < 2, "Row 1 cell view not below the taller row 0 (expected ~73). Got \(ys[1]).")
+    expect(abs(ys[2] - 97) < 2, "Row 2 cell view not at 97. Got \(ys[2]).")
+    expect(abs(ys[3] - 121) < 2, "Row 3 cell view not at 121. Got \(ys[3]).")
+
+    // The row-0 cell view is as tall as its 48px row (minus the 1px inset).
+    let topView = tableView.subviews.min { $0.frame.origin.y < $1.frame.origin.y }
+    expect((topView?.frame.size.height ?? 0) >= 44, "Row 0 cell view did not fill the tall row. Got \(topView?.frame.size.height ?? 0).")
+
+    // Hit-testing honors the variable heights: a click at y=50 lands in the
+    // tall row 0, while y=80 lands in row 1 (a uniform layout would misroute).
+    backend.mouseDownActions[handle]?(NSEvent(type: .leftMouseDown, locationInWindow: NSMakePoint(10, 50)))
+    expect(tableView.selectedRow == 0, "Click in the tall row 0 did not select it. Got \(tableView.selectedRow).")
+    backend.mouseDownActions[handle]?(NSEvent(type: .leftMouseDown, locationInWindow: NSMakePoint(10, 80)))
+    expect(tableView.selectedRow == 1, "Click at y=80 did not select row 1 under variable heights. Got \(tableView.selectedRow).")
+}
+
+testDrawnTableHonorsVariableRowHeights()
+
 print("WinChocolate contract tests passed.")
