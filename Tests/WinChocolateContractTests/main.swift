@@ -7782,4 +7782,83 @@ func testDrawnTableHonorsVariableRowHeights() {
 
 testDrawnTableHonorsVariableRowHeights()
 
+/// Records values written back through the data source, and vends a drawn-text
+/// "name" column (no view) so the drawn table paints and edits it in place.
+final class EditableDrawnDataSource: NSTableViewDataSource {
+    var names = ["alpha", "bravo", "charlie"]
+    var committed: [(row: Int, value: String)] = []
+    func numberOfRows(in tableView: NSTableView) -> Int { names.count }
+    func tableView(_ tableView: NSTableView, objectValueFor tableColumn: NSTableColumn?, row: Int) -> Any? {
+        tableColumn?.identifier == "name" ? names[row] : nil
+    }
+    func tableView(_ tableView: NSTableView, setObjectValue object: Any?, for tableColumn: NSTableColumn?, row: Int) {
+        let text = object.map { String(describing: $0) } ?? ""
+        names[row] = text
+        committed.append((row, text))
+    }
+}
+
+/// Hosts a non-text view (button) in the "flag" column so the only text field
+/// in the table is the in-place edit overlay.
+final class EditableDrawnDelegate: NSTableViewDelegate {
+    func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
+        tableColumn?.identifier == "flag"
+            ? NSButton(title: "•", frame: NSMakeRect(0, 0, 40, 20))
+            : nil
+    }
+}
+
+func testDrawnTableInPlaceEditCommitsToDataSource() {
+    let backend = InMemoryNativeControlBackend()
+    let tableView = NSTableView(frame: NSMakeRect(0, 0, 300, 200))
+    let dataSource = EditableDrawnDataSource()
+    let flag = NSTableColumn(identifier: "flag")
+    flag.title = "Flag"
+    flag.width = 60
+    let nameColumn = NSTableColumn(identifier: "name")
+    nameColumn.title = "Name"
+    nameColumn.width = 200
+    nameColumn.isEditable = true
+    tableView.addTableColumn(flag)
+    tableView.addTableColumn(nameColumn)
+    tableView.dataSource = dataSource
+    let delegate = EditableDrawnDelegate()
+    tableView.delegate = delegate
+    tableView.winUsesViewBasedCells = true
+
+    let handle = tableView.realizeNativePeer(in: backend, parent: nil)
+
+    // Drawn mode: the "flag" column hosts buttons; the "name" column is drawn
+    // text — so there is no text field in the table until an edit begins.
+    expect(backend.records[handle]?.kind == "view", "Editable drawn table did not realize a custom-drawn peer.")
+    expect(tableView.subviews.compactMap { $0 as? NSTextField }.isEmpty, "A text field existed before editing began.")
+
+    // Double-click the drawn "name" cell of row 1 (x in col 1, y in row 1).
+    backend.mouseDownActions[handle]?(NSEvent(type: .leftMouseDown, locationInWindow: NSMakePoint(100, 24 + 24 + 6), clickCount: 2))
+
+    // An editable overlay field appears over the cell, seeded with the value.
+    let overlay = tableView.subviews.compactMap { $0 as? NSTextField }.first
+    expect(overlay != nil, "Double-clicking an editable drawn cell did not open an edit overlay.")
+    expect(overlay?.isEditable == true, "The edit overlay is not editable.")
+    expect(overlay?.stringValue == "bravo", "The overlay was not seeded with the cell's value. Got \(overlay?.stringValue ?? "nil").")
+
+    // Type a new value and commit by ending editing (focus loss).
+    overlay?.stringValue = "bravo-edited"
+    if let overlayHandle = overlay?.nativeHandle {
+        backend.simulateFocusChange(gained: false, for: overlayHandle)
+    }
+
+    // The edit committed through the data source and the overlay tore down.
+    expect(dataSource.committed.contains { $0.row == 1 && $0.value == "bravo-edited" },
+           "The in-place edit did not commit to the data source. Committed: \(dataSource.committed).")
+    expect(dataSource.names[1] == "bravo-edited", "The data source value was not updated.")
+    expect(tableView.subviews.compactMap { $0 as? NSTextField }.isEmpty, "The edit overlay was not removed after committing.")
+
+    // A non-editable column does not open an overlay.
+    backend.mouseDownActions[handle]?(NSEvent(type: .leftMouseDown, locationInWindow: NSMakePoint(20, 24 + 6), clickCount: 2))
+    expect(tableView.subviews.compactMap { $0 as? NSTextField }.isEmpty, "A non-editable/hosted column opened an edit overlay.")
+}
+
+testDrawnTableInPlaceEditCommitsToDataSource()
+
 print("WinChocolate contract tests passed.")

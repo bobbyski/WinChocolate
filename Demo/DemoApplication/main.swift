@@ -491,13 +491,24 @@ final class DemoViewTableDataSource: NSTableViewDataSource {
         "Tag the release", "Post the announcement", "Close the milestone", "Archive the branch",
     ]
     var done = Array(repeating: false, count: 10)
+    var notes = [
+        "high", "nightly", "draft", "backlog", "minor",
+        "1.0", "signed", "blog", "v5", "cleanup",
+    ]
 
     func numberOfRows(in tableView: NSTableView) -> Int {
         tasks.count
     }
 
     func tableView(_ tableView: NSTableView, objectValueFor tableColumn: NSTableColumn?, row: Int) -> Any? {
-        tasks[row]
+        tableColumn?.identifier == "note" ? notes[row] : tasks[row]
+    }
+
+    func tableView(_ tableView: NSTableView, setObjectValue object: Any?, for tableColumn: NSTableColumn?, row: Int) {
+        guard tableColumn?.identifier == "note" else {
+            return
+        }
+        notes[row] = object.map { String(describing: $0) } ?? ""
     }
 }
 
@@ -513,10 +524,15 @@ final class DemoViewTableDelegate: NSTableViewDelegate {
 
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
         if tableColumn?.identifier == "task" {
-            let field = NSTextField(string: source.tasks[row], frame: NSMakeRect(0, 0, 260, 22))
+            let field = NSTextField(string: source.tasks[row], frame: NSMakeRect(0, 0, 200, 22))
             field.isBordered = false
             field.drawsBackground = false
             return field
+        }
+        // The "note" column vends no view → the drawn table paints it as text
+        // and edits it in place (double-click) on this editable column.
+        if tableColumn?.identifier == "note" {
+            return nil
         }
         let button = NSButton(title: source.done[row] ? "Done ✓" : "Mark done", frame: NSMakeRect(0, 0, 110, 22))
         button.onAction = { [weak self, weak tableView] _ in
@@ -2823,7 +2839,7 @@ zoomButton.onAction = { _ in
 // 5.5 — framework-drawn, view-based table hosting real controls in its cells.
 // Placed in the clear full-width band below the print section (y > 386).
 let viewTableSectionLabel = showcaseSectionLabel("Framework-drawn table — view-based cells (5.5)", NSMakeRect(24, 392, 480, 20))
-let viewTableHint = NSTextField(string: "Each cell hosts a real control (text field / button) — a native table can't.", frame: NSMakeRect(24, 412, 560, 18))
+let viewTableHint = NSTextField(string: "Hosts real controls (text field / button); double-click a Note to edit it in place.", frame: NSMakeRect(24, 412, 560, 18))
 viewTableHint.isBordered = false
 viewTableHint.drawsBackground = false
 viewTableHint.font = NSFont.systemFont(ofSize: 11)
@@ -2835,11 +2851,16 @@ viewTableScrollView.hasVerticalScroller = true
 let viewTable = NSTableView(frame: NSMakeRect(0, 0, 470, 104))
 let taskColumn = NSTableColumn(identifier: "task")
 taskColumn.title = "Task"
-taskColumn.width = 300
+taskColumn.width = 210
+let noteColumn = NSTableColumn(identifier: "note")
+noteColumn.title = "Note (dbl-click)"
+noteColumn.width = 130
+noteColumn.isEditable = true
 let actionColumn = NSTableColumn(identifier: "action")
 actionColumn.title = "Action"
-actionColumn.width = 160
+actionColumn.width = 128
 viewTable.addTableColumn(taskColumn)
+viewTable.addTableColumn(noteColumn)
 viewTable.addTableColumn(actionColumn)
 viewTable.gridStyleMask = [.solidHorizontalGridLineMask, .solidVerticalGridLineMask]
 viewTable.usesAlternatingRowBackgroundColors = true

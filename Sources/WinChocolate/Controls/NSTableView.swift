@@ -189,6 +189,19 @@ open class NSTableView: NSControl {
     /// Per-row heights, cached on each rebuild (honors the delegate's
     /// `heightOfRow`); empty until the first drawn rebuild.
     var winRowHeights: [CGFloat] = []
+    /// Encoded `(row, column)` keys of cells that host a delegate view, so the
+    /// drawn paint knows which cells to draw text for instead (mixed tables).
+    var winHostedCellKeys: Set<Int> = []
+    /// The live in-place editor overlay for a drawn cell, if any.
+    var winDrawnEditField: NSTextField?
+    var winDrawnEditRow = -1
+    var winDrawnEditColumn = -1
+    /// Shared delegate that commits the drawn-cell overlay on editing end.
+    lazy var winCellEditor: WinDrawnCellEditor = {
+        let editor = WinDrawnCellEditor()
+        editor.table = self
+        return editor
+    }()
 
     /// Tables handle standard navigation keys as part of their component behavior.
     open override func keyDown(with event: NSEvent) {

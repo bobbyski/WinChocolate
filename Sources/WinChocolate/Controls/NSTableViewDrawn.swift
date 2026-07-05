@@ -7,6 +7,15 @@
 /// same custom-draw approach used for the level indicator and token chips,
 /// scaled to a table. (First slice: no vertical scrolling yet — rows beyond
 /// the frame are clipped; scrolling is a follow-up.)
+/// Commits the drawn table's in-place edit overlay when its field ends editing
+/// (focus loss / Enter), then tears the overlay down.
+public final class WinDrawnCellEditor: NSTextFieldDelegate {
+    weak var table: NSTableView?
+    public func controlTextDidEndEditing(_ obj: NSNotification) {
+        table?.winCommitDrawnEdit()
+    }
+}
+
 extension NSTableView {
     /// Whether the table should draw itself and host view-based cells.
     var winShouldUseDrawnCells: Bool {
@@ -133,7 +142,9 @@ extension NSTableView {
             view.removeFromSuperview()
         }
         winHostedCellViews.removeAll()
+        winHostedCellKeys.removeAll()
 
+        let columnCount = tableColumns.count
         for row in 0..<numberOfRows {
             for column in tableColumns.indices {
                 guard let cellView = delegate?.tableView(self, viewFor: tableColumns[column], row: row) else {
@@ -145,8 +156,14 @@ extension NSTableView {
                 cellView.frame = frame
                 addSubview(cellView)
                 winHostedCellViews.append(cellView)
+                winHostedCellKeys.insert(row * columnCount + column)
             }
         }
+    }
+
+    /// Whether a cell hosts a delegate-vended view (vs. drawn text).
+    func winCellIsHosted(row: Int, column: Int) -> Bool {
+        winHostedCellKeys.contains(row * tableColumns.count + column)
     }
 
     /// Draws the drawn table's header, alternating rows, selection, and grid.
@@ -225,6 +242,86 @@ extension NSTableView {
                 }
             }
         }
+
+        // Text for cells the delegate does not vend a view for (drawn-text
+        // cells in a mixed table). Skip the cell currently being edited.
+        var textY = winHeaderHeight
+        for row in 0..<numberOfRows {
+            let h = winRowHeightAt(row)
+            for column in tableColumns.indices where !winCellIsHosted(row: row, column: column) {
+                if row == winDrawnEditRow, column == winDrawnEditColumn {
+                    continue
+                }
+                let text = value(atColumn: column, row: row) ?? ""
+                guard !text.isEmpty else {
+                    continue
+                }
+                let color: NSColor = selectedRowIndexes.contains(row)
+                    ? .selectedTextColor : NSColor(white: 0.1, alpha: 1)
+                text.draw(at: NSMakePoint(winColumnX(column) + 5, textY + (h - 15) / 2), withAttributes: [
+                    .font: NSFont.systemFont(ofSize: 12),
+                    .foregroundColor: color,
+                ])
+            }
+            textY += h
+        }
+    }
+
+    /// Begins an in-place edit of a drawn (non-hosted) cell in an editable
+    /// column: floats an editable text field over the cell, seeded with the
+    /// current value, and focuses it. Committing writes back via the data source.
+    func winBeginDrawnEdit(row: Int, column: Int) {
+        guard winIsDrawn,
+              tableColumns.indices.contains(column),
+              tableColumns[column].isEditable,
+              !winCellIsHosted(row: row, column: column),
+              row >= 0, row < numberOfRows else {
+            return
+        }
+        winCancelDrawnEdit()
+
+        let rect = winCellRect(row: row, column: column).insetBy(dx: 1, dy: 1)
+        let field = NSTextField(string: value(atColumn: column, row: row) ?? "", frame: rect)
+        field.isEditable = true
+        field.isBordered = true
+        field.drawsBackground = true
+        field.delegate = winCellEditor
+        addSubview(field)
+        winDrawnEditField = field
+        winDrawnEditRow = row
+        winDrawnEditColumn = column
+        needsDisplay = true
+        _ = window?.makeFirstResponder(field)
+    }
+
+    /// Commits the live drawn-cell edit to the data source and tears down the
+    /// overlay. Reentrancy-safe: clears the field reference before committing.
+    func winCommitDrawnEdit() {
+        guard let field = winDrawnEditField else {
+            return
+        }
+        let row = winDrawnEditRow
+        let column = winDrawnEditColumn
+        let text = field.stringValue
+        winDrawnEditField = nil
+        winDrawnEditRow = -1
+        winDrawnEditColumn = -1
+        field.removeFromSuperview()
+        if tableColumns.indices.contains(column), row >= 0, row < numberOfRows {
+            setObjectValue(text, for: tableColumns[column], row: row)
+        }
+        needsDisplay = true
+    }
+
+    /// Removes the drawn-cell edit overlay without committing.
+    func winCancelDrawnEdit() {
+        guard let field = winDrawnEditField else {
+            return
+        }
+        winDrawnEditField = nil
+        winDrawnEditRow = -1
+        winDrawnEditColumn = -1
+        field.removeFromSuperview()
     }
 
     /// Handles a click in the drawn table: selects the hit row, or sorts on a
@@ -255,6 +352,14 @@ extension NSTableView {
         }
         needsDisplay = true
         sendAction()
+
+        // Double-click a drawn (non-hosted) cell in an editable column → edit.
+        if event.clickCount >= 2 {
+            let column = winColumnAtX(point.x)
+            if column >= 0 {
+                winBeginDrawnEdit(row: row, column: column)
+            }
+        }
     }
 
     /// The column at an x-coordinate, or `-1`.
