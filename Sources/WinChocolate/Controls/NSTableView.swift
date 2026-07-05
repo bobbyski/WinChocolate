@@ -217,6 +217,8 @@ open class NSTableView: NSControl {
     var winDraggingRow = -1
     /// The insertion index the drag currently targets, or `-1`.
     var winDropIndex = -1
+    /// The pinned header strip installed on the enclosing scroll view, if any.
+    var winPinnedHeaderStrip: WinDrawnHeaderStrip?
     /// The live in-place editor overlay for a drawn cell, if any.
     var winDrawnEditField: NSTextField?
     var winDrawnEditRow = -1

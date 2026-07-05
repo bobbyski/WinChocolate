@@ -16,6 +16,25 @@ public final class WinDrawnCellEditor: NSTextFieldDelegate {
     }
 }
 
+/// The non-scrolling header strip for a framework-drawn table hosted in a
+/// scroll view. It draws the table's column header and routes header clicks to
+/// sorting, staying pinned while the body scrolls beneath it.
+public final class WinDrawnHeaderStrip: NSView {
+    weak var table: NSTableView?
+
+    public override func draw(_ dirtyRect: NSRect) {
+        table?.winDrawHeaderBar(width: frame.size.width)
+    }
+
+    public override func mouseDown(with event: NSEvent) {
+        guard let table else {
+            return
+        }
+        let point = convert(event.locationInWindow, from: nil)
+        table.winHeaderStripClicked(atX: point.x)
+    }
+}
+
 extension NSTableView {
     /// Whether the table should draw itself and host view-based cells.
     ///
@@ -48,6 +67,20 @@ extension NSTableView {
     /// The header row height (0 when the header is hidden).
     var winHeaderHeight: CGFloat {
         winHeaderHidden ? 0 : winDrawnHeaderHeight
+    }
+
+    /// Whether the drawn table's header is pinned in a non-scrolling strip above
+    /// the scrolling body (true when it's a scroll-view document view with a
+    /// visible header). When pinned, the body excludes the header and the strip
+    /// draws it.
+    var winHeaderIsPinned: Bool {
+        winIsDrawn && !winHeaderHidden && enclosingScrollView != nil
+    }
+
+    /// The header space reserved *within the scrolling body*: 0 when the header
+    /// is pinned (drawn in the strip), else the header height.
+    var winBodyTopInset: CGFloat {
+        winHeaderIsPinned ? 0 : winHeaderHeight
     }
 
     /// The x origin of a drawn column, from cumulative column widths.
@@ -84,7 +117,7 @@ extension NSTableView {
     /// The y origin of a row: header height plus the sum of the heights of all
     /// rows above it (variable-height aware).
     func winRowY(_ row: Int) -> CGFloat {
-        var y = winHeaderHeight
+        var y = winBodyTopInset
         for r in 0..<max(0, row) {
             y += winRowHeightAt(r)
         }
@@ -108,10 +141,10 @@ extension NSTableView {
 
     /// The row at a y-coordinate in the drawn table, or `-1` above the rows.
     func winRowAtY(_ y: CGFloat) -> Int {
-        guard y >= winHeaderHeight else {
+        guard y >= winBodyTopInset else {
             return -1
         }
-        var cursor = winHeaderHeight
+        var cursor = winBodyTopInset
         for row in 0..<numberOfRows {
             cursor += winRowHeightAt(row)
             if y < cursor {
@@ -123,7 +156,7 @@ extension NSTableView {
 
     /// The full content height of the drawn table (header + all rows).
     var winContentHeight: CGFloat {
-        var h = winHeaderHeight
+        var h = winBodyTopInset
         for row in 0..<numberOfRows {
             h += winRowHeightAt(row)
         }
@@ -137,6 +170,9 @@ extension NSTableView {
         guard winIsDrawn, let scrollView = enclosingScrollView else {
             return
         }
+        // Install/refresh the pinned header strip first — it insets the content
+        // clip, which changes the viewport size the document sizes against.
+        winSetupPinnedHeader()
         let width = max(scrollView.contentView.bounds.size.width, tableColumns.reduce(0) { $0 + max(20, $1.width) })
         let height = max(scrollView.contentView.bounds.size.height, winContentHeight)
         if frame.size.width != width || frame.size.height != height {
@@ -226,7 +262,7 @@ extension NSTableView {
         NSBezierPath(rect: bounds).fill()
 
         // Alternating row backgrounds and selection highlight.
-        var rowY = winHeaderHeight
+        var rowY = winBodyTopInset
         for row in 0..<numberOfRows {
             let h = winRowHeightAt(row)
             let rowRect = NSRect(x: 0, y: rowY, width: width, height: h)
@@ -244,7 +280,7 @@ extension NSTableView {
         // Grid lines.
         NSColor(white: 0.85, alpha: 1).setStroke()
         if gridStyleMask.contains(.solidHorizontalGridLineMask) {
-            var y = winHeaderHeight
+            var y = winBodyTopInset
             for row in 0...numberOfRows {
                 let line = NSBezierPath()
                 line.move(to: NSMakePoint(0, y))
@@ -259,44 +295,21 @@ extension NSTableView {
             for column in tableColumns.indices {
                 let x = winColumnX(column)
                 let line = NSBezierPath()
-                line.move(to: NSMakePoint(x, winHeaderHeight))
+                line.move(to: NSMakePoint(x, winBodyTopInset))
                 line.line(to: NSMakePoint(x, rowsBottom))
                 line.stroke()
             }
         }
 
-        // Header row.
-        if !winHeaderHidden {
-            let headerRect = NSRect(x: 0, y: 0, width: width, height: winDrawnHeaderHeight)
-            NSColor(white: 0.93, alpha: 1).setFill()
-            NSBezierPath(rect: headerRect).fill()
-            NSColor(white: 0.75, alpha: 1).setStroke()
-            let base = NSBezierPath()
-            base.move(to: NSMakePoint(0, winDrawnHeaderHeight))
-            base.line(to: NSMakePoint(width, winDrawnHeaderHeight))
-            base.stroke()
-
-            for column in tableColumns.indices {
-                let title = tableColumns[column].title
-                title.draw(at: NSMakePoint(winColumnX(column) + 5, 5), withAttributes: [
-                    .font: NSFont.boldSystemFont(ofSize: 12),
-                    .foregroundColor: NSColor(white: 0.25, alpha: 1),
-                ])
-                // Sort indicator arrow.
-                if let sort = sortDescriptors.first,
-                   sort.key == tableColumns[column].sortDescriptorPrototype?.key {
-                    let arrowX = winColumnX(column) + max(20, tableColumns[column].width) - 14
-                    (sort.ascending ? "▲" : "▼").draw(at: NSMakePoint(arrowX, 6), withAttributes: [
-                        .font: NSFont.systemFont(ofSize: 8),
-                        .foregroundColor: NSColor(white: 0.4, alpha: 1),
-                    ])
-                }
-            }
+        // Header row — drawn in the body only when it is NOT pinned into a
+        // separate strip (see `winDrawHeaderBar`).
+        if !winHeaderIsPinned {
+            winDrawHeaderBar(width: width)
         }
 
         // Per-cell decoration (e.g. outline disclosure triangles) and text for
         // cells the delegate does not vend a view for (drawn-text cells).
-        var textY = winHeaderHeight
+        var textY = winBodyTopInset
         for row in 0..<numberOfRows {
             let h = winRowHeightAt(row)
             for column in tableColumns.indices {
@@ -317,8 +330,10 @@ extension NSTableView {
                 let inset = winDrawnLeadingInset(forRow: row, column: column)
                 let color: NSColor = selectedRowIndexes.contains(row)
                     ? .selectedTextColor : NSColor(white: 0.1, alpha: 1)
-                text.draw(at: NSMakePoint(winColumnX(column) + 5 + inset, textY + (h - 15) / 2), withAttributes: [
-                    .font: NSFont.systemFont(ofSize: 12),
+                // Match the native control font (Segoe UI 9pt → 12px) and center
+                // the text the way the header title is (optically centered).
+                text.draw(at: NSMakePoint(winColumnX(column) + 6 + inset, textY + (h - 24) / 2 + 2), withAttributes: [
+                    .font: NSFont.systemFont(ofSize: 9),
                     .foregroundColor: color,
                 ])
             }
@@ -327,6 +342,94 @@ extension NSTableView {
 
         // Reorder drop-line indicator on top of everything.
         winDrawDropIndicator()
+    }
+
+    /// Draws the column header (background, base line, titles, sort arrows) at
+    /// the top of `width`, `winDrawnHeaderHeight` tall. Used both in-body (when
+    /// the header is not pinned) and by the pinned header strip.
+    func winDrawHeaderBar(width: CGFloat) {
+        guard !winHeaderHidden else {
+            return
+        }
+        let headerRect = NSRect(x: 0, y: 0, width: width, height: winDrawnHeaderHeight)
+        NSColor(white: 0.93, alpha: 1).setFill()
+        NSBezierPath(rect: headerRect).fill()
+        // Bottom base line.
+        NSColor(white: 0.75, alpha: 1).setStroke()
+        let base = NSBezierPath()
+        base.move(to: NSMakePoint(0, winDrawnHeaderHeight))
+        base.line(to: NSMakePoint(width, winDrawnHeaderHeight))
+        base.stroke()
+
+        // Column dividers between header cells (matching the body grid).
+        NSColor(white: 0.80, alpha: 1).setStroke()
+        for column in tableColumns.indices where column > 0 {
+            let x = winColumnX(column)
+            let divider = NSBezierPath()
+            divider.move(to: NSMakePoint(x, 3))
+            divider.line(to: NSMakePoint(x, winDrawnHeaderHeight - 3))
+            divider.stroke()
+        }
+
+        // Title text. `TextOutW` (TA_TOP) anchors the cell top at this y, and the
+        // font's internal leading sits above the glyphs, so the visible text
+        // reads lower than the geometric center — bias the y upward to match the
+        // natively-centered row cells.
+        let titleY: CGFloat = 0
+        for column in tableColumns.indices {
+            let title = tableColumns[column].title
+            title.draw(at: NSMakePoint(winColumnX(column) + 6, titleY), withAttributes: [
+                .font: NSFont.boldSystemFont(ofSize: 12),
+                .foregroundColor: NSColor(white: 0.25, alpha: 1),
+            ])
+            if let sort = sortDescriptors.first,
+               sort.key == tableColumns[column].sortDescriptorPrototype?.key {
+                let arrowX = winColumnX(column) + max(20, tableColumns[column].width) - 14
+                (sort.ascending ? "▲" : "▼").draw(at: NSMakePoint(arrowX, titleY + 3), withAttributes: [
+                    .font: NSFont.systemFont(ofSize: 8),
+                    .foregroundColor: NSColor(white: 0.4, alpha: 1),
+                ])
+            }
+        }
+    }
+
+    /// Installs (or removes) the pinned header strip on the enclosing scroll
+    /// view, matching the current pinned state.
+    func winSetupPinnedHeader() {
+        guard let scrollView = enclosingScrollView else {
+            return
+        }
+        if winHeaderIsPinned {
+            let strip: WinDrawnHeaderStrip
+            if let existing = winPinnedHeaderStrip {
+                strip = existing
+            } else {
+                strip = WinDrawnHeaderStrip(frame: .zero)
+                strip.table = self
+                winPinnedHeaderStrip = strip
+            }
+            if scrollView.winHeaderStripView !== strip {
+                scrollView.winSetHeaderStrip(strip, height: winDrawnHeaderHeight)
+            }
+        } else if winPinnedHeaderStrip != nil {
+            scrollView.winSetHeaderStrip(nil, height: 0)
+            winPinnedHeaderStrip = nil
+        }
+    }
+
+    /// Handles a click in the pinned header strip: sort by the hit column and
+    /// send the table action.
+    func winHeaderStripClicked(atX x: CGFloat) {
+        let column = winColumnAtX(x)
+        guard column >= 0 else {
+            return
+        }
+        headerView?.clickedColumn = column
+        if sortUsingDescriptorPrototype(forColumn: column) != nil {
+            needsDisplay = true
+        }
+        winPinnedHeaderStrip?.needsDisplay = true
+        sendAction()
     }
 
     /// Begins an in-place edit of a drawn (non-hosted) cell in an editable
@@ -393,8 +496,9 @@ extension NSTableView {
         _ = window?.makeFirstResponder(self)
 
         // Header click → record the clicked column, apply its sort, and send
-        // the table action (parity with the native header path).
-        if !winHeaderHidden, point.y < winDrawnHeaderHeight {
+        // the table action (parity with the native header path). When the header
+        // is pinned into a strip, the strip handles clicks instead.
+        if !winHeaderHidden, !winHeaderIsPinned, point.y < winDrawnHeaderHeight {
             let column = winColumnAtX(point.x)
             if column >= 0 {
                 headerView?.clickedColumn = column
@@ -445,10 +549,10 @@ extension NSTableView {
 
     /// The insertion index (0...numberOfRows) a drop at `y` targets.
     func winDropInsertionIndex(atY y: CGFloat) -> Int {
-        guard y >= winHeaderHeight else {
+        guard y >= winBodyTopInset else {
             return 0
         }
-        var cursor = winHeaderHeight
+        var cursor = winBodyTopInset
         for row in 0..<numberOfRows {
             let h = winRowHeightAt(row)
             if y < cursor + h / 2 {

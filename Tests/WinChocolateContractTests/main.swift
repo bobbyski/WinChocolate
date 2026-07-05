@@ -7922,11 +7922,15 @@ func testDrawnTableScrollsAsScrollViewDocument() {
 
     _ = scrollView.realizeNativePeer(in: backend, parent: nil)
 
-    // As a scroll-view document view, the drawn table grows to its full
-    // content height (header 24 + 20 rows x 24 = 504) so the scroll view can
-    // scroll it — and hosts a cell view per row.
+    // The titled header is pinned into a non-scrolling strip on the scroll view;
+    // the document (body) therefore excludes the header and grows to just the
+    // rows (20 x 24 = 480), which the scroll view scrolls. It hosts a cell view
+    // per row.
     expect(tableView.subviews.count == 20, "Drawn table did not host a cell view per row. Got \(tableView.subviews.count).")
-    expect(tableView.frame.size.height >= 500, "Drawn table did not grow to content height as a document view. Got \(tableView.frame.size.height).")
+    expect(scrollView.winHeaderStripView != nil, "The scroll view did not get a pinned header strip.")
+    expect(tableView.frame.size.height == 480, "Body (header-excluded) content height wrong. Got \(tableView.frame.size.height).")
+    // The content clip is inset below the pinned 24pt header strip.
+    expect(scrollView.contentView.frame.origin.y == 24, "The content clip was not inset below the header strip. Got \(scrollView.contentView.frame.origin.y).")
 
     // Scrolling repositions the document view up (negative origin), bringing
     // lower rows into the viewport.
@@ -7935,6 +7939,45 @@ func testDrawnTableScrollsAsScrollViewDocument() {
 }
 
 testDrawnTableScrollsAsScrollViewDocument()
+
+func testDrawnTablePinnedHeaderStaysAndSorts() {
+    let backend = InMemoryNativeControlBackend()
+    let scrollView = NSScrollView(frame: NSMakeRect(0, 0, 300, 120))
+    scrollView.hasVerticalScroller = true
+    let tableView = NSTableView(frame: NSMakeRect(0, 0, 300, 120))
+    let dataSource = ManyRowTableDataSource(count: 20)
+    let column = NSTableColumn(identifier: "name")
+    column.title = "Name"
+    column.width = 280
+    column.sortDescriptorPrototype = NSSortDescriptor(key: "name", ascending: true)
+    tableView.addTableColumn(column)
+    tableView.dataSource = dataSource
+    let delegate = ViewBasedTableDelegate()
+    tableView.delegate = delegate
+    tableView.winUsesViewBasedCells = true
+    scrollView.documentView = tableView
+
+    _ = scrollView.realizeNativePeer(in: backend, parent: nil)
+
+    guard let strip = scrollView.winHeaderStripView else {
+        fatalError("Pinned header strip was not installed.")
+    }
+    expect(strip.frame == NSMakeRect(0, 0, 300, 24), "Header strip is not a full-width top band. Got \(strip.frame).")
+
+    // Scroll the body down — the pinned strip stays fixed while the body moves.
+    scrollView.contentView.scroll(to: NSMakePoint(0, 200))
+    expect(strip.frame == NSMakeRect(0, 0, 300, 24), "Header strip moved when the body scrolled. Got \(strip.frame).")
+    expect(tableView.frame.origin.y < 0, "Body did not scroll beneath the pinned header.")
+
+    // Clicking the pinned header strip applies the sort and fires the action.
+    var headerActions = 0
+    tableView.onAction = { _ in headerActions += 1 }
+    strip.mouseDown(with: NSEvent(type: .leftMouseDown, locationInWindow: NSMakePoint(10, 6)))
+    expect(tableView.sortDescriptors.first?.key == "name", "Clicking the pinned header did not apply the sort descriptor.")
+    expect(headerActions == 1, "Clicking the pinned header did not fire the table action.")
+}
+
+testDrawnTablePinnedHeaderStaysAndSorts()
 
 /// Vends a cell view for every cell and a custom height for the first row.
 final class VariableHeightTableDelegate: NSTableViewDelegate {
