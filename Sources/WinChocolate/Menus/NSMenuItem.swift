@@ -13,11 +13,26 @@ open class NSMenuItem: NSObject {
     /// The keyboard equivalent string.
     open var keyEquivalent: String
 
+    /// Modifier flags used with the keyboard equivalent.
+    open var keyEquivalentModifierMask: NSEvent.ModifierFlags = [.command]
+
     /// The target object for selector-shaped dispatch.
     open weak var target: AnyObject?
 
     /// Whether the menu item can be performed.
     open var isEnabled: Bool = true
+
+    /// An integer the application uses to identify the item.
+    ///
+    /// Find menu items carry `NSTextFinder.Action` raw values here, matching
+    /// AppKit's tag-driven find dispatch.
+    open var tag: Int = 0
+
+    /// Whether the menu item is hidden from native menu construction.
+    open var isHidden: Bool = false
+
+    /// The menu item state for checkmark-like menus.
+    open var state: NSControl.StateValue = .off
 
     /// The submenu opened by this item, if any.
     open var submenu: NSMenu?
@@ -62,5 +77,10 @@ open class NSMenuItem: NSObject {
         let item = NSMenuItem(title: "", action: nil, keyEquivalent: "")
         item.isEnabled = false
         return item
+    }
+
+    /// Whether this item is a separator.
+    open var isSeparatorItem: Bool {
+        title.isEmpty && action == nil && submenu == nil
     }
 }

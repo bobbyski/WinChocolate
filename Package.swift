@@ -6,6 +6,10 @@ let package = Package(
     name: "WinChocolate",
     products: [
         .library(
+            name: "WinFoundation",
+            targets: ["WinFoundation"]
+        ),
+        .library(
             name: "WinChocolate",
             targets: ["WinChocolate"]
         ),
@@ -16,7 +20,28 @@ let package = Package(
     ],
     targets: [
         .target(
-            name: "WinChocolate"
+            name: "WinFoundation",
+            linkerSettings: [
+                .linkedLibrary("Ole32"),
+                .linkedLibrary("Shell32")
+            ]
+        ),
+        .target(
+            name: "WinChocolate",
+            dependencies: ["WinFoundation"],
+            swiftSettings: [
+                .define("USE_WIN_FOUNDATION", .when(platforms: [.windows]))
+            ],
+            linkerSettings: [
+                .linkedLibrary("User32"),
+                .linkedLibrary("Gdi32"),
+                .linkedLibrary("Gdiplus"),
+                .linkedLibrary("Comctl32"),
+                .linkedLibrary("Comdlg32"),
+                .linkedLibrary("Shell32"),
+                .linkedLibrary("Ole32"),
+                .linkedLibrary("Winmm")
+            ]
         ),
         .executableTarget(
             name: "WinChocolateContractTests",
@@ -26,7 +51,14 @@ let package = Package(
         .executableTarget(
             name: "WinChocolateDemo",
             dependencies: ["WinChocolate"],
-            path: "Demo/DemoApplication"
+            path: "Demo/DemoApplication",
+            exclude: ["Resources"],
+            linkerSettings: [
+                .unsafeFlags(
+                    ["-Xlinker", "/SUBSYSTEM:WINDOWS", "-Xlinker", "/ENTRY:mainCRTStartup"],
+                    .when(platforms: [.windows])
+                )
+            ]
         )
     ]
 )
