@@ -854,14 +854,23 @@ final class DemoFlowCollectionDataSource: NSCollectionViewDataSource {
     }
 
     func collectionView(_ collectionView: NSCollectionView, viewForSupplementaryElementOfKind kind: String, at indexPath: IndexPath) -> NSView? {
-        guard kind == NSCollectionView.elementKindSectionHeader else {
-            return nil
+        let section = sections[indexPath.section]
+        if kind == NSCollectionView.elementKindSectionHeader {
+            let header = NSTextField(string: "  \(section.title)", frame: .zero)
+            header.isBordered = false
+            header.font = NSFont.boldSystemFont(ofSize: 12)
+            header.backgroundColor = NSColor(red: 0.90, green: 0.93, blue: 0.98, alpha: 1)
+            return header
         }
-        let header = NSTextField(string: "  \(sections[indexPath.section].title)", frame: .zero)
-        header.isBordered = false
-        header.font = NSFont.boldSystemFont(ofSize: 12)
-        header.backgroundColor = NSColor(red: 0.90, green: 0.93, blue: 0.98, alpha: 1)
-        return header
+        if kind == NSCollectionView.elementKindSectionFooter {
+            let footer = NSTextField(string: "  — \(section.items.count) classes —", frame: .zero)
+            footer.isBordered = false
+            footer.font = NSFont.boldSystemFont(ofSize: 10)
+            footer.textColor = NSColor(white: 0.35, alpha: 1)
+            footer.backgroundColor = NSColor(red: 0.95, green: 0.93, blue: 0.88, alpha: 1)
+            return footer
+        }
+        return nil
     }
 }
 
@@ -3072,6 +3081,7 @@ listsFlowLayout.minimumInteritemSpacing = 8
 listsFlowLayout.minimumLineSpacing = 8
 listsFlowLayout.sectionInset = NSEdgeInsetsMake(6, 6, 10, 6)
 listsFlowLayout.headerReferenceSize = NSMakeSize(0, 24)
+listsFlowLayout.footerReferenceSize = NSMakeSize(0, 16)
 let listsCollectionScrollView = NSScrollView(frame: NSMakeRect(24, 352, 860, 168))
 listsCollectionScrollView.hasVerticalScroller = true
 let listsCollectionView = NSCollectionView(frame: NSMakeRect(0, 0, 860, 168))

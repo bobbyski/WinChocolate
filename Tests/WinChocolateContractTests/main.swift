@@ -1329,12 +1329,108 @@ final class HeaderCollectionDataSource: NSCollectionViewDataSource {
         item.view = NSView(frame: NSMakeRect(0, 0, 100, 20))
         return item
     }
+    var footerViews: [Int: NSView] = [:]
     func collectionView(_ collectionView: NSCollectionView, viewForSupplementaryElementOfKind kind: String, at indexPath: IndexPath) -> NSView? {
-        guard kind == NSCollectionView.elementKindSectionHeader else { return nil }
-        let header = NSTextField(string: "Section \(indexPath.section)", frame: .zero)
-        headerViews[indexPath.section] = header
-        return header
+        if kind == NSCollectionView.elementKindSectionHeader {
+            let header = NSTextField(string: "Section \(indexPath.section)", frame: .zero)
+            headerViews[indexPath.section] = header
+            return header
+        }
+        if kind == NSCollectionView.elementKindSectionFooter {
+            let footer = NSTextField(string: "Footer \(indexPath.section)", frame: .zero)
+            footerViews[indexPath.section] = footer
+            return footer
+        }
+        return nil
     }
+}
+
+final class HorizontalSizeCollectionDataSource: NSCollectionViewDataSource {
+    func collectionView(_ collectionView: NSCollectionView, numberOfItemsInSection section: Int) -> Int { 3 }
+    func collectionView(_ collectionView: NSCollectionView, itemForRepresentedObjectAt indexPath: IndexPath) -> NSCollectionViewItem {
+        let item = NSCollectionViewItem()
+        item.view = NSView(frame: NSMakeRect(0, 0, 30, 40))
+        return item
+    }
+}
+
+func testCollectionFlowLayoutReservesSectionFooters() {
+    let collectionView = NSCollectionView(frame: NSMakeRect(0, 0, 200, 400))
+    let dataSource = HeaderCollectionDataSource()
+    let layout = NSCollectionViewFlowLayout()
+    layout.itemSize = NSMakeSize(100, 20)
+    layout.minimumInteritemSpacing = 0
+    layout.minimumLineSpacing = 0
+    layout.sectionInset = NSEdgeInsetsMake(0, 0, 0, 0)
+    layout.headerReferenceSize = NSMakeSize(0, 30)
+    layout.footerReferenceSize = NSMakeSize(0, 10)
+
+    collectionView.dataSource = dataSource
+    collectionView.collectionViewLayout = layout
+    collectionView.reloadData()
+
+    // Section 0: header 30 + items 20 + footer 10 = 60. Footer sits at y=50.
+    let f0 = layout.layoutAttributesForSupplementaryView(ofKind: NSCollectionView.elementKindSectionFooter, at: IndexPath(item: 0, section: 0))
+    let f1 = layout.layoutAttributesForSupplementaryView(ofKind: NSCollectionView.elementKindSectionFooter, at: IndexPath(item: 0, section: 1))
+    expect(f0?.frame == NSMakeRect(0, 50, 200, 10), "Section 0 footer frame wrong. Got \(f0?.frame ?? .zero).")
+    expect(f1?.frame == NSMakeRect(0, 110, 200, 10), "Section 1 footer did not stack after section 0's footer. Got \(f1?.frame ?? .zero).")
+    expect(layout.collectionViewContentSize.height == 120, "Footer-inclusive content height wrong. Got \(layout.collectionViewContentSize.height).")
+    expect(dataSource.footerViews.count == 2, "Two footers should have been vended. Got \(dataSource.footerViews.count).")
+    expect(collectionView.subviews.contains { $0 === dataSource.footerViews[0] }, "Section 0 footer view was not hosted.")
+}
+
+func testCollectionSupplementaryViewsHostInRealizedScrollView() {
+    // Mirrors the demo: collection is a scroll-view document view, realized.
+    let backend = InMemoryNativeControlBackend()
+    let scrollView = NSScrollView(frame: NSMakeRect(0, 0, 300, 200))
+    scrollView.hasVerticalScroller = true
+    let collectionView = NSCollectionView(frame: NSMakeRect(0, 0, 300, 200))
+    let dataSource = HeaderCollectionDataSource()
+    let layout = NSCollectionViewFlowLayout()
+    layout.itemSize = NSMakeSize(100, 20)
+    layout.headerReferenceSize = NSMakeSize(0, 24)
+    layout.footerReferenceSize = NSMakeSize(0, 16)
+    collectionView.dataSource = dataSource
+    collectionView.collectionViewLayout = layout
+    scrollView.documentView = collectionView
+    collectionView.reloadData()
+
+    _ = scrollView.realizeNativePeer(in: backend, parent: nil)
+
+    // Both the header and footer views are hosted as realized subviews.
+    expect(collectionView.subviews.contains { $0 === dataSource.headerViews[0] }, "Header not hosted in the realized scroll view.")
+    expect(collectionView.subviews.contains { $0 === dataSource.footerViews[0] }, "Footer not hosted in the realized scroll view.")
+    expect(dataSource.footerViews[0]?.nativeHandle != nil, "Footer view was not realized.")
+    // The footer sits below the header + its section's item row.
+    let footerFrame = dataSource.footerViews[0]?.frame ?? .zero
+    expect(footerFrame.origin.y > 24, "Footer was not positioned below the header. Got \(footerFrame).")
+    expect(footerFrame.size.height == 16, "Footer height wrong. Got \(footerFrame.size.height).")
+}
+
+func testCollectionFlowLayoutHorizontalVariableSizePacking() {
+    let collectionView = NSCollectionView(frame: NSMakeRect(0, 0, 200, 100))
+    let dataSource = HorizontalSizeCollectionDataSource()
+    let delegate = VariableSizeFlowDelegate([NSMakeSize(30, 40), NSMakeSize(30, 40), NSMakeSize(30, 40)])
+    let layout = NSCollectionViewFlowLayout()
+    layout.scrollDirection = .horizontal
+    layout.minimumInteritemSpacing = 0
+    layout.minimumLineSpacing = 0
+    layout.sectionInset = NSEdgeInsetsMake(0, 0, 0, 0)
+
+    collectionView.dataSource = dataSource
+    collectionView.delegate = delegate
+    collectionView.collectionViewLayout = layout
+    collectionView.reloadData()
+
+    // Viewport 100 tall: items 0,1 (40+40=80) stack in column 0; item 2 (would
+    // reach 120) wraps to column 1 at x=30.
+    let a0 = layout.layoutAttributesForItem(at: IndexPath(item: 0, section: 0))?.frame
+    let a1 = layout.layoutAttributesForItem(at: IndexPath(item: 1, section: 0))?.frame
+    let a2 = layout.layoutAttributesForItem(at: IndexPath(item: 2, section: 0))?.frame
+    expect(a0 == NSMakeRect(0, 0, 30, 40), "Horizontal item 0 frame wrong. Got \(a0 ?? .zero).")
+    expect(a1 == NSMakeRect(0, 40, 30, 40), "Horizontal item 1 did not stack below item 0. Got \(a1 ?? .zero).")
+    expect(a2 == NSMakeRect(30, 0, 30, 40), "Horizontal item 2 did not wrap to the next column. Got \(a2 ?? .zero).")
+    expect(layout.collectionViewContentSize.width == 60, "Horizontal content width wrong. Got \(layout.collectionViewContentSize.width).")
 }
 
 func testCollectionFlowLayoutReservesAndHostsSectionHeaders() {
@@ -6997,6 +7093,9 @@ testCollectionViewButtonItemClickSelectsItem()
 testCollectionViewFlowLayoutArrangesSectionsAndSizesContent()
 testCollectionFlowLayoutHonorsPerItemSizeFromDelegate()
 testCollectionFlowLayoutReservesAndHostsSectionHeaders()
+testCollectionFlowLayoutReservesSectionFooters()
+testCollectionSupplementaryViewsHostInRealizedScrollView()
+testCollectionFlowLayoutHorizontalVariableSizePacking()
 testSliderStoresRangeValueAndSyncsNativePeer()
 testSliderNativeActionUpdatesValue()
 testProgressIndicatorStoresRangeValueAndSyncsNativePeer()

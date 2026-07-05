@@ -117,6 +117,9 @@ open class NSCollectionView: NSControl {
     /// The supplementary element kind for a section header.
     public static let elementKindSectionHeader = "NSCollectionElementKindSectionHeader"
 
+    /// The supplementary element kind for a section footer.
+    public static let elementKindSectionFooter = "NSCollectionElementKindSectionFooter"
+
     /// Hosted supplementary (header) views, by section.
     private var hostedSupplementaryViews: [Int: NSView] = [:]
 
@@ -238,13 +241,16 @@ open class NSCollectionView: NSControl {
         let sectionCount = dataSource?.numberOfSections(in: self) ?? 0
         for section in 0..<sectionCount {
             let indexPath = IndexPath(item: 0, section: section)
-            guard let attr = layout.layoutAttributesForSupplementaryView(ofKind: Self.elementKindSectionHeader, at: indexPath),
-                  let view = dataSource?.collectionView(self, viewForSupplementaryElementOfKind: Self.elementKindSectionHeader, at: indexPath) else {
-                continue
+            for (offset, kind) in [Self.elementKindSectionHeader, Self.elementKindSectionFooter].enumerated() {
+                guard let attr = layout.layoutAttributesForSupplementaryView(ofKind: kind, at: indexPath),
+                      let view = dataSource?.collectionView(self, viewForSupplementaryElementOfKind: kind, at: indexPath) else {
+                    continue
+                }
+                view.frame = attr.frame
+                addSubview(view)
+                // Key headers and footers into disjoint slots per section.
+                hostedSupplementaryViews[section * 2 + offset] = view
             }
-            view.frame = attr.frame
-            addSubview(view)
-            hostedSupplementaryViews[section] = view
         }
     }
 

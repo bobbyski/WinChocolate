@@ -89,8 +89,14 @@ open class NSCollectionViewFlowLayout: NSCollectionViewLayout {
         didSet { collectionView?.tile() }
     }
 
+    /// The size reserved for each section's footer supplementary view.
+    open var footerReferenceSize: NSSize = .zero {
+        didSet { collectionView?.tile() }
+    }
+
     private var attributes: [IndexPath: NSCollectionViewLayoutAttributes] = [:]
     private var headerAttributes: [Int: NSCollectionViewLayoutAttributes] = [:]
+    private var footerAttributes: [Int: NSCollectionViewLayoutAttributes] = [:]
     private var contentSize: NSSize = .zero
 
     open override var collectionViewContentSize: NSSize {
@@ -102,15 +108,20 @@ open class NSCollectionViewFlowLayout: NSCollectionViewLayout {
     }
 
     open override func layoutAttributesForSupplementaryView(ofKind elementKind: String, at indexPath: IndexPath) -> NSCollectionViewLayoutAttributes? {
-        guard elementKind == NSCollectionView.elementKindSectionHeader else {
+        switch elementKind {
+        case NSCollectionView.elementKindSectionHeader:
+            return headerAttributes[indexPath.section]
+        case NSCollectionView.elementKindSectionFooter:
+            return footerAttributes[indexPath.section]
+        default:
             return nil
         }
-        return headerAttributes[indexPath.section]
     }
 
     open override func prepare() {
         attributes.removeAll()
         headerAttributes.removeAll()
+        footerAttributes.removeAll()
         guard let collectionView, let dataSource = collectionView.dataSource else {
             contentSize = .zero
             return
@@ -170,32 +181,48 @@ open class NSCollectionViewFlowLayout: NSCollectionViewLayout {
                     firstInLine = false
                 }
                 y += lineHeight + sectionInset.bottom
+                // Section footer spans the full width below the items.
+                if footerReferenceSize.height > 0 {
+                    let footer = NSCollectionViewLayoutAttributes(forItemWith: IndexPath(item: 0, section: section))
+                    footer.representedElementKind = NSCollectionView.elementKindSectionFooter
+                    footer.frame = NSMakeRect(0, y, available, footerReferenceSize.height)
+                    footerAttributes[section] = footer
+                    y += footerReferenceSize.height
+                    maxX = max(maxX, available)
+                }
             }
             contentSize = NSMakeSize(max(available, maxX + sectionInset.right), y)
         } else {
+            // Horizontal scroll: pack items top-to-bottom into columns, honoring
+            // per-item sizes, wrapping to a new column on overflow.
             let available = max(itemSize.height, viewport.height)
             var x: CGFloat = 0
             var maxY: CGFloat = 0
             for section in 0..<sectionCount {
                 x += sectionInset.left
                 let count = dataSource.collectionView(collectionView, numberOfItemsInSection: section)
-                let usable = max(itemSize.height, available - sectionInset.top - sectionInset.bottom)
-                let perColumn = max(1, Int((usable + minimumLineSpacing) / (itemSize.height + minimumLineSpacing)))
+                let bottomEdge = available - sectionInset.bottom
+                var y = sectionInset.top
+                var columnWidth: CGFloat = 0
+                var firstInColumn = true
                 for itemIndex in 0..<count {
-                    let row = itemIndex % perColumn
-                    let col = itemIndex / perColumn
-                    let itemX = x + CGFloat(col) * (itemSize.width + minimumInteritemSpacing)
-                    let itemY = sectionInset.top + CGFloat(row) * (itemSize.height + minimumLineSpacing)
-                    let attr = NSCollectionViewLayoutAttributes(forItemWith: IndexPath(item: itemIndex, section: section))
-                    attr.frame = NSMakeRect(itemX, itemY, itemSize.width, itemSize.height)
-                    attributes[attr.indexPath] = attr
-                    maxY = max(maxY, itemY + itemSize.height)
+                    let indexPath = IndexPath(item: itemIndex, section: section)
+                    let itemSize = size(at: indexPath)
+                    if !firstInColumn, y + itemSize.height > bottomEdge {
+                        x += columnWidth + minimumInteritemSpacing
+                        y = sectionInset.top
+                        columnWidth = 0
+                        firstInColumn = true
+                    }
+                    let attr = NSCollectionViewLayoutAttributes(forItemWith: indexPath)
+                    attr.frame = NSMakeRect(x, y, itemSize.width, itemSize.height)
+                    attributes[indexPath] = attr
+                    maxY = max(maxY, y + itemSize.height)
+                    y += itemSize.height + minimumLineSpacing
+                    columnWidth = max(columnWidth, itemSize.width)
+                    firstInColumn = false
                 }
-                let cols = count == 0 ? 0 : (count - 1) / perColumn + 1
-                if cols > 0 {
-                    x += CGFloat(cols) * itemSize.width + CGFloat(cols - 1) * minimumInteritemSpacing
-                }
-                x += sectionInset.right
+                x += columnWidth + sectionInset.right
             }
             contentSize = NSMakeSize(x, max(available, maxY + sectionInset.bottom))
         }
