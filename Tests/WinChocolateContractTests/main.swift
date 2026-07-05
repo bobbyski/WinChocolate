@@ -7979,6 +7979,43 @@ func testDrawnTablePinnedHeaderStaysAndSorts() {
 
 testDrawnTablePinnedHeaderStaysAndSorts()
 
+func testDrawnTableHeaderColumnResize() {
+    let backend = InMemoryNativeControlBackend()
+    let scrollView = NSScrollView(frame: NSMakeRect(0, 0, 320, 120))
+    scrollView.hasVerticalScroller = true
+    let tableView = NSTableView(frame: NSMakeRect(0, 0, 320, 120))
+    let dataSource = ManyRowTableDataSource(count: 6)
+    let colA = NSTableColumn(identifier: "a")
+    colA.title = "A"
+    colA.width = 100
+    let colB = NSTableColumn(identifier: "b")
+    colB.title = "B"
+    colB.width = 100
+    tableView.addTableColumn(colA)
+    tableView.addTableColumn(colB)
+    tableView.dataSource = dataSource
+    let delegate = ViewBasedTableDelegate()
+    tableView.delegate = delegate
+    tableView.winUsesViewBasedCells = true
+    scrollView.documentView = tableView
+
+    _ = scrollView.realizeNativePeer(in: backend, parent: nil)
+
+    guard let strip = scrollView.winHeaderStripView else {
+        fatalError("Pinned header strip was not installed.")
+    }
+
+    // Drag the boundary between column A and B (at x=100) 40pt to the right.
+    strip.mouseDown(with: NSEvent(type: .leftMouseDown, locationInWindow: NSMakePoint(100, 6)))
+    strip.mouseDragged(with: NSEvent(type: .leftMouseDragged, locationInWindow: NSMakePoint(140, 6)))
+    strip.mouseUp(with: NSEvent(type: .leftMouseUp, locationInWindow: NSMakePoint(140, 6)))
+
+    expect(colA.width == 140, "Dragging the header boundary did not widen column A. Got \(colA.width).")
+    expect(colB.width == 100, "Column B width should be unchanged. Got \(colB.width).")
+}
+
+testDrawnTableHeaderColumnResize()
+
 /// Vends a cell view for every cell and a custom height for the first row.
 final class VariableHeightTableDelegate: NSTableViewDelegate {
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {

@@ -158,5 +158,14 @@ extension Win32NativeControlBackend {
 
         _ = winRedrawWindow(hwnd, nil, nil, rdwInvalidate | rdwErase | rdwAllChildren)
     }
+
+    /// Repaints a native control and its children synchronously (mid-gesture).
+    public func redrawControlImmediately(_ handle: NativeHandle) {
+        guard let hwnd = hwnd(from: handle) else {
+            return
+        }
+
+        _ = winRedrawWindow(hwnd, nil, nil, rdwInvalidate | rdwErase | rdwAllChildren | rdwUpdateNow)
+    }
 }
 #endif

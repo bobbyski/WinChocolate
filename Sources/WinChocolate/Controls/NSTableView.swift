@@ -219,6 +219,10 @@ open class NSTableView: NSControl {
     var winDropIndex = -1
     /// The pinned header strip installed on the enclosing scroll view, if any.
     var winPinnedHeaderStrip: WinDrawnHeaderStrip?
+    /// The column being interactively resized from the header, or `-1`.
+    var winResizingColumn = -1
+    var winResizeStartX: CGFloat = 0
+    var winResizeStartWidth: CGFloat = 0
     /// The live in-place editor overlay for a drawn cell, if any.
     var winDrawnEditField: NSTextField?
     var winDrawnEditRow = -1

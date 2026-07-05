@@ -1823,6 +1823,12 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
         invalidatedTreeHandles.append(handle)
     }
 
+    /// Records a synchronous repaint request.
+    public func redrawControlImmediately(_ handle: NativeHandle) {
+        invalidatedHandles.append(handle)
+        invalidatedTreeHandles.append(handle)
+    }
+
     /// Runs a handle's registered draw action and returns the recorded commands.
     @discardableResult
     public func performDraw(for handle: NativeHandle, in rect: NSRect) -> RecordingDrawingContext {

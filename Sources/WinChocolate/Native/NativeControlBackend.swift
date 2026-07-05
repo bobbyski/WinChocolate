@@ -835,6 +835,11 @@ public protocol NativeControlBackend: AnyObject {
     /// of only the parent does not trigger.
     func invalidateControlTree(_ handle: NativeHandle)
 
+    /// Repaints a native control (and its children) **synchronously**, so
+    /// custom-drawn views update mid-gesture instead of waiting for `WM_PAINT`
+    /// to be scheduled (which is starved during a rapid drag).
+    func redrawControlImmediately(_ handle: NativeHandle)
+
     /// Registers the action to perform when a native view receives a mouse-dragged event.
     func registerMouseDraggedAction(for handle: NativeHandle, action: @escaping (NSEvent) -> Void)
 

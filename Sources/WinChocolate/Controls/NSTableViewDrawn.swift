@@ -31,7 +31,19 @@ public final class WinDrawnHeaderStrip: NSView {
             return
         }
         let point = convert(event.locationInWindow, from: nil)
-        table.winHeaderStripClicked(atX: point.x)
+        table.winHeaderMouseDown(atX: point.x)
+    }
+
+    public override func mouseDragged(with event: NSEvent) {
+        guard let table else {
+            return
+        }
+        let point = convert(event.locationInWindow, from: nil)
+        table.winHeaderResizeDrag(toX: point.x)
+    }
+
+    public override func mouseUp(with event: NSEvent) {
+        table?.winHeaderResizeEnd()
     }
 }
 
@@ -415,6 +427,54 @@ extension NSTableView {
             scrollView.winSetHeaderStrip(nil, height: 0)
             winPinnedHeaderStrip = nil
         }
+    }
+
+    /// The column whose right edge is within `tolerance` points of `x`, or nil —
+    /// used to start an interactive column resize from the header.
+    func winColumnBoundary(atX x: CGFloat, tolerance: CGFloat = 4) -> Int? {
+        var edge: CGFloat = 0
+        for column in tableColumns.indices {
+            edge += max(20, tableColumns[column].width)
+            if abs(x - edge) <= tolerance {
+                return column
+            }
+        }
+        return nil
+    }
+
+    /// Header mouse-down: begin a column resize if near a column boundary,
+    /// otherwise sort by (and act on) the clicked column.
+    func winHeaderMouseDown(atX x: CGFloat) {
+        if let column = winColumnBoundary(atX: x) {
+            winResizingColumn = column
+            winResizeStartX = x
+            winResizeStartWidth = max(20, tableColumns[column].width)
+            return
+        }
+        winHeaderStripClicked(atX: x)
+    }
+
+    /// Updates the resized column's width as the header drag moves.
+    func winHeaderResizeDrag(toX x: CGFloat) {
+        guard winResizingColumn >= 0, tableColumns.indices.contains(winResizingColumn) else {
+            return
+        }
+        tableColumns[winResizingColumn].width = max(24, winResizeStartWidth + (x - winResizeStartX))
+        winRebuildHostedViews()
+        // Repaint *synchronously* — a plain invalidate is starved by the rapid
+        // drag, so the drawn grid and the header strip's divider would only
+        // catch up on release. Redraw the whole enclosing scroll view (body clip
+        // + pinned header strip) so both track the cursor live.
+        if let scrollHandle = enclosingScrollView?.nativeHandle {
+            realizedBackend?.redrawControlImmediately(scrollHandle)
+        } else if let nativeHandle {
+            realizedBackend?.redrawControlImmediately(nativeHandle)
+        }
+    }
+
+    /// Ends an interactive column resize.
+    func winHeaderResizeEnd() {
+        winResizingColumn = -1
     }
 
     /// Handles a click in the pinned header strip: sort by the hit column and
