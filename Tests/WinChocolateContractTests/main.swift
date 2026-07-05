@@ -1136,7 +1136,7 @@ func testBrowserLoadsColumnsAndTracksSelection() {
     let handle = browser.realizeNativePeer(in: backend, parent: nil)
 
     expect(backend.records[handle]?.kind == "view", "Browser did not create a native host view.")
-    expect(browser.subviews.count == 2, "Browser did not compose visible scroll-view columns.")
+    expect(browser.subviews.compactMap { $0 as? NSScrollView }.count == 2, "Browser did not compose two visible scroll-view columns.")
 }
 
 func testBrowserPathRoundTrips() {
@@ -1158,6 +1158,32 @@ func testBrowserPathRoundTrips() {
 
     // An unresolved path returns false.
     expect(!browser.setPath("/Application/DoesNotExist"), "setPath resolved a nonexistent leaf.")
+}
+
+func testBrowserColumnTitles() {
+    let browser = NSBrowser(frame: NSMakeRect(0, 0, 320, 120))
+    let delegate = RecordingBrowserDelegate()
+    browser.delegate = delegate
+    browser.loadColumnZero()
+
+    // Column 0 has no default title; each later column is titled by the item
+    // that produced it.
+    expect(browser.title(ofColumn: 0) == "", "Column 0 should have no default title. Got \(browser.title(ofColumn: 0)).")
+    browser.setPath("/Application/NSWindow")
+    expect(browser.title(ofColumn: 1) == "Application", "Column 1 title should be the item selected in column 0. Got \(browser.title(ofColumn: 1)).")
+
+    // A re-path retitles the second column.
+    browser.setPath("/Controls/NSButton")
+    expect(browser.title(ofColumn: 1) == "Controls", "Column 1 title did not follow the new selection. Got \(browser.title(ofColumn: 1)).")
+
+    // A custom title overrides the default.
+    browser.setTitle("Roots", ofColumn: 0)
+    expect(browser.title(ofColumn: 0) == "Roots", "Custom column title was not applied.")
+
+    // Titles are on by default and can be turned off.
+    expect(browser.isTitled, "Browser should be titled by default.")
+    browser.isTitled = false
+    expect(browser.isTitled == false, "isTitled did not turn off.")
 }
 
 func testIndexPathStoresCollectionComponents() {
@@ -7087,6 +7113,7 @@ testTableViewSortDescriptorPrototypeToggle()
 testOutlineViewFlattensExpandableItems()
 testBrowserLoadsColumnsAndTracksSelection()
 testBrowserPathRoundTrips()
+testBrowserColumnTitles()
 testIndexPathStoresCollectionComponents()
 testCollectionViewReloadsItemsAndTracksSelection()
 testCollectionViewButtonItemClickSelectsItem()

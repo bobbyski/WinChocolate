@@ -3054,6 +3054,9 @@ browser.frame = NSMakeRect(24, 66, 520, 150)
 browser.columnWidth = 160
 browser.delegate = browserDataSource
 browser.loadColumnZero()
+// Titled columns: the first is labeled; deeper columns auto-title with the
+// selected parent item.
+browser.setTitle("Frameworks", ofColumn: 0)
 let listsBrowserPathLabel = NSTextField(string: "Path: /", frame: NSMakeRect(24, 224, 720, 22))
 listsBrowserPathLabel.isBordered = false
 listsBrowserPathLabel.drawsBackground = false

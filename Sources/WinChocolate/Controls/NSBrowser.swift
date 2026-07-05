@@ -11,12 +11,20 @@ public protocol NSBrowserDelegate: AnyObject {
 
     /// Returns the value shown for an item.
     func browser(_ browser: NSBrowser, objectValueForItem item: Any?) -> Any?
+
+    /// Returns a custom title for a column, or `nil` to use the default.
+    func browser(_ browser: NSBrowser, titleOfColumn column: Int) -> String?
 }
 
 public extension NSBrowserDelegate {
     /// Default leaf behavior treats items with no children as leaves.
     func browser(_ browser: NSBrowser, isLeafItem item: Any?) -> Bool {
         browser.delegate?.browser(browser, numberOfChildrenOfItem: item) == 0
+    }
+
+    /// Default: no delegate-provided column title.
+    func browser(_ browser: NSBrowser, titleOfColumn column: Int) -> String? {
+        nil
     }
 
     /// Default display value uses item description.
@@ -59,11 +67,17 @@ open class NSBrowser: NSControl {
         let scrollView: NSScrollView
         let tableView: NSTableView
         let dataSource: BrowserColumnDataSource
+        let titleLabel: NSTextField
 
         init(browser: NSBrowser, column: Int, frame: NSRect) {
             scrollView = NSScrollView(frame: frame)
             tableView = NSTableView(frame: NSRect(origin: NSZeroPoint, size: frame.size))
             dataSource = BrowserColumnDataSource(browser: browser, column: column)
+            titleLabel = NSTextField(string: "", frame: .zero)
+            titleLabel.isBordered = false
+            titleLabel.alignment = .center
+            titleLabel.font = NSFont.boldSystemFont(ofSize: 11)
+            titleLabel.backgroundColor = NSColor(white: 0.92, alpha: 1)
         }
     }
 
@@ -71,6 +85,38 @@ open class NSBrowser: NSControl {
     private var columnItems: [[Any]] = []
     private var selectedRowsByColumn: [Int: Int] = [:]
     private var isUpdatingTableSelection = false
+    private var customColumnTitles: [Int: String] = [:]
+
+    /// Whether each column shows a title bar (default `true`).
+    open var isTitled: Bool = true {
+        didSet {
+            tile()
+        }
+    }
+
+    /// The height of a column's title bar when `isTitled`.
+    open var columnTitleHeight: CGFloat = 20
+
+    /// Sets a custom title for a column (overrides the default).
+    open func setTitle(_ title: String, ofColumn column: Int) {
+        customColumnTitles[column] = title
+        tile()
+    }
+
+    /// The title shown for a column: a custom title, else the delegate's, else
+    /// the display name of the item that produced the column (empty for col 0).
+    open func title(ofColumn column: Int) -> String {
+        if let custom = customColumnTitles[column] {
+            return custom
+        }
+        if let delegateTitle = delegate?.browser(self, titleOfColumn: column) {
+            return delegateTitle
+        }
+        guard column > 0, let item = selectedItem(inColumn: column - 1) else {
+            return column == 0 ? "" : ""
+        }
+        return displayString(for: item)
+    }
 
     /// Object that provides browser items.
     open weak var delegate: NSBrowserDelegate? {
@@ -153,14 +199,21 @@ open class NSBrowser: NSControl {
         backend.createView(frame: frame, parent: parent)
     }
 
-    /// Lays out visible columns.
+    /// Lays out visible columns (title bar above each column when titled).
     open func tile() {
         let visibleCount = max(1, columns.count)
         let width = max(1, min(columnWidth, frame.size.width / CGFloat(visibleCount)))
+        let titleHeight = isTitled ? columnTitleHeight : 0
         for (index, column) in columns.enumerated() {
-            let columnFrame = NSMakeRect(CGFloat(index) * width, 0, width, frame.size.height)
-            column.scrollView.frame = columnFrame
-            column.tableView.frame = NSRect(origin: NSZeroPoint, size: columnFrame.size)
+            let x = CGFloat(index) * width
+            column.titleLabel.isHidden = !isTitled
+            if isTitled {
+                column.titleLabel.stringValue = title(ofColumn: index)
+                column.titleLabel.frame = NSMakeRect(x, 0, width, titleHeight)
+            }
+            let scrollFrame = NSMakeRect(x, titleHeight, width, max(1, frame.size.height - titleHeight))
+            column.scrollView.frame = scrollFrame
+            column.tableView.frame = NSRect(origin: NSZeroPoint, size: scrollFrame.size)
             column.scrollView.tile()
         }
     }
@@ -177,7 +230,9 @@ open class NSBrowser: NSControl {
         }
 
         while columns.count > column {
-            columns.removeLast().scrollView.removeFromSuperview()
+            let removed = columns.removeLast()
+            removed.scrollView.removeFromSuperview()
+            removed.titleLabel.removeFromSuperview()
         }
         while columnItems.count > column {
             columnItems.removeLast()
@@ -288,12 +343,15 @@ open class NSBrowser: NSControl {
         column.scrollView.hasHorizontalScroller = false
         column.scrollView.documentView = column.tableView
         columns.append(column)
+        addSubview(column.titleLabel)
         addSubview(column.scrollView)
     }
 
     private func trimColumns(after column: Int) {
         while columns.count > column + 1 {
-            columns.removeLast().scrollView.removeFromSuperview()
+            let removed = columns.removeLast()
+            removed.scrollView.removeFromSuperview()
+            removed.titleLabel.removeFromSuperview()
         }
         while columnItems.count > column + 1 {
             columnItems.removeLast()
