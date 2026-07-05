@@ -21,7 +21,9 @@ let window = NSWindow(
 window.title = "WinChocolate Click Counter"
 // 3.2: constrain how far the user can resize the window.
 window.contentMinSize = NSMakeSize(900, 600)
-window.contentMaxSize = NSMakeSize(1400, 1000)
+// A generous cap: still demonstrates contentMaxSize, but lets the Zoom button
+// on the "New in 3.x" page visibly maximize on large displays.
+window.contentMaxSize = NSMakeSize(4000, 2400)
 
 final class DemoContentView: NSView {
     var onBlankAreaMouseDown: ((NSEvent) -> Void)?
@@ -317,6 +319,170 @@ final class DemoGradientsView: NSView {
     }
 }
 
+// MARK: - "New in 3.x" showcase views
+
+/// A view that highlights while the cursor hovers it, driven by a tracking
+/// area (3.21). Reports enter/exit through `onEvent`.
+final class DemoHoverView: NSView {
+    var onEvent: ((String) -> Void)?
+    private var hovering = false
+
+    override var acceptsFirstResponder: Bool { false }
+
+    override func updateTrackingAreas() {
+        for area in trackingAreas {
+            removeTrackingArea(area)
+        }
+        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        let fill = hovering
+            ? NSColor(calibratedRed: 0.30, green: 0.62, blue: 0.86, alpha: 1)
+            : NSColor(calibratedRed: 0.90, green: 0.92, blue: 0.95, alpha: 1)
+        fill.setFill()
+        let body = NSBezierPath(roundedRect: bounds.insetBy(dx: 1, dy: 1), xRadius: 8, yRadius: 8)
+        body.fill()
+        NSColor(calibratedRed: 0.55, green: 0.58, blue: 0.62, alpha: 1).setStroke()
+        body.stroke()
+
+        let text = hovering ? "Hovering" : "Hover me"
+        text.draw(at: NSMakePoint(14, bounds.size.height / 2 - 8), withAttributes: [
+            .font: NSFont.boldSystemFont(ofSize: 13),
+            .foregroundColor: hovering ? NSColor.white : NSColor(calibratedRed: 0.3, green: 0.3, blue: 0.32, alpha: 1),
+        ])
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        hovering = true
+        needsDisplay = true
+        onEvent?("Hover entered (mouseEntered)")
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        hovering = false
+        needsDisplay = true
+        onEvent?("Hover exited (mouseExited)")
+    }
+}
+
+/// A drag source (3.18): dragging out of it starts a text or file drag.
+final class DemoDragHandle: NSView, NSDraggingSource {
+    var draggedText = "WinChocolate drag payload"
+    var onEvent: ((String) -> Void)?
+
+    override var acceptsFirstResponder: Bool { false }
+
+    override func resetCursorRects() {
+        addCursorRect(bounds, cursor: .pointingHand)
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        NSColor(calibratedRed: 0.22, green: 0.60, blue: 0.35, alpha: 1).setFill()
+        let body = NSBezierPath(roundedRect: bounds.insetBy(dx: 1, dy: 1), xRadius: 8, yRadius: 8)
+        body.fill()
+        "Drag me →".draw(at: NSMakePoint(14, bounds.size.height / 2 - 8), withAttributes: [
+            .font: NSFont.boldSystemFont(ofSize: 13),
+            .foregroundColor: NSColor.white,
+        ])
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        let item = NSDraggingItem(pasteboardWriter: draggedText)
+        item.draggingFrame = bounds
+        onEvent?("Drag started: \"\(draggedText)\"")
+        let session = beginDraggingSession(with: [item], event: event, source: self)
+        onEvent?(session.winDropped ? "Drag dropped on a target" : "Drag canceled")
+    }
+
+    func draggingSession(_ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
+        .copy
+    }
+}
+
+/// A drop destination (3.18): accepts dropped text and files, highlighting
+/// while a drag hovers and reporting what landed.
+final class DemoDropWell: NSView {
+    var onEvent: ((String) -> Void)?
+    private var accepting = false
+    private var lastDrop = "Drop text or files here"
+
+    override var acceptsFirstResponder: Bool { false }
+
+    override func draw(_ dirtyRect: NSRect) {
+        (accepting
+            ? NSColor(calibratedRed: 0.85, green: 0.93, blue: 0.85, alpha: 1)
+            : NSColor(calibratedRed: 0.97, green: 0.97, blue: 0.95, alpha: 1)).setFill()
+        let body = NSBezierPath(roundedRect: bounds.insetBy(dx: 1, dy: 1), xRadius: 8, yRadius: 8)
+        body.fill()
+        (accepting ? NSColor(calibratedRed: 0.22, green: 0.6, blue: 0.35, alpha: 1) : NSColor(calibratedRed: 0.6, green: 0.62, blue: 0.64, alpha: 1)).setStroke()
+        body.lineWidth = accepting ? 2 : 1
+        body.stroke()
+        lastDrop.draw(at: NSMakePoint(14, bounds.size.height / 2 - 8), withAttributes: [
+            .font: NSFont.systemFont(ofSize: 12),
+            .foregroundColor: NSColor(calibratedRed: 0.3, green: 0.3, blue: 0.32, alpha: 1),
+        ])
+    }
+
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+        accepting = true
+        needsDisplay = true
+        return .copy
+    }
+
+    override func draggingExited(_ sender: NSDraggingInfo?) {
+        accepting = false
+        needsDisplay = true
+    }
+
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        accepting = false
+        if let urls = sender.draggingPasteboard.readObjects(forClasses: [NSURL.self]) as? [URL], !urls.isEmpty {
+            lastDrop = "Dropped \(urls.count) file(s): \(urls.map { $0.lastPathComponent }.joined(separator: ", "))"
+        } else if let text = sender.draggingPasteboard.string(forType: .string) {
+            lastDrop = "Dropped text: \"\(text)\""
+        } else {
+            lastDrop = "Dropped (unknown content)"
+        }
+        needsDisplay = true
+        onEvent?(lastDrop)
+        return true
+    }
+}
+
+/// A custom-drawn sample used to demonstrate printing (3.22).
+final class DemoPrintSample: NSView {
+    override var acceptsFirstResponder: Bool { false }
+
+    override func draw(_ dirtyRect: NSRect) {
+        NSColor.white.setFill()
+        NSRectFill(bounds)
+        NSColor(calibratedRed: 0.55, green: 0.58, blue: 0.62, alpha: 1).setStroke()
+        NSFrameRect(bounds)
+
+        "WinChocolate Print Sample".draw(at: NSMakePoint(16, bounds.size.height - 34), withAttributes: [
+            .font: NSFont.boldSystemFont(ofSize: 16),
+            .foregroundColor: NSColor.black,
+        ])
+        "This view renders identically to screen and printer.".draw(at: NSMakePoint(16, bounds.size.height - 58), withAttributes: [
+            .font: NSFont.systemFont(ofSize: 11),
+            .foregroundColor: NSColor(calibratedRed: 0.35, green: 0.35, blue: 0.4, alpha: 1),
+        ])
+
+        let bars: [NSColor] = [
+            NSColor(calibratedRed: 0.86, green: 0.29, blue: 0.25, alpha: 1),
+            NSColor(calibratedRed: 0.30, green: 0.62, blue: 0.86, alpha: 1),
+            NSColor(calibratedRed: 0.22, green: 0.60, blue: 0.35, alpha: 1),
+            NSColor(calibratedRed: 0.94, green: 0.72, blue: 0.25, alpha: 1),
+        ]
+        for (index, color) in bars.enumerated() {
+            color.setFill()
+            let height = CGFloat(20 + index * 16)
+            NSBezierPath(rect: NSMakeRect(16 + CGFloat(index) * 40, 16, 30, height)).fill()
+        }
+    }
+}
+
 /// A plain-text document demonstrating the NSDocument window-controller flow.
 final class DemoNoteDocument: NSDocument {
     var text = ""
@@ -558,9 +724,11 @@ let controlsPage = DemoPageView(frame: NSMakeRect(0, 144, 1120, 560))
 let valuesPage = DemoPageView(frame: NSMakeRect(0, 144, 1120, 560))
 let tablesPage = DemoPageView(frame: NSMakeRect(0, 144, 1120, 560))
 let drawingPage = DemoPageView(frame: NSMakeRect(0, 144, 1120, 560))
+let showcasePage = DemoPageView(frame: NSMakeRect(0, 144, 1120, 560))
 valuesPage.isHidden = true
 tablesPage.isHidden = true
 drawingPage.isHidden = true
+showcasePage.isHidden = true
 let counterLabel = NSTextField(string: "Clicks: 0", frame: NSMakeRect(32, 36, 300, 24))
 let statusLabel = NSTextField(string: "Ready", frame: NSMakeRect(32, 74, 640, 24))
 let focusLabel = NSTextField(string: "Focus: none", frame: NSMakeRect(744, 74, 300, 24))
@@ -628,7 +796,7 @@ let levelLabel = NSTextField(string: "Level:", frame: NSMakeRect(32, 226, 88, 24
 let levelIndicator = NSLevelIndicator(frame: NSMakeRect(128, 230, 144, 18))
 let colorWellLabel = NSTextField(string: "Color:", frame: NSMakeRect(288, 226, 56, 24))
 let colorWell = NSColorWell(frame: NSMakeRect(348, 224, 32, 28))
-colorWell.colorWellStyle = .expanded
+colorWell.colorWellStyle = .default
 let fontButton = NSButton(title: "Font...", frame: NSMakeRect(396, 222, 92, 30))
 let segmentedLabel = NSTextField(string: "Segments:", frame: NSMakeRect(32, 286, 104, 24))
 let segmentedControl = NSSegmentedControl(labels: ["One", "Two", "Three"], frame: NSMakeRect(152, 284, 240, 28))
@@ -1415,7 +1583,7 @@ datePicker.maxDate = Date(timeIntervalSince1970: 1_893_456_000)
 datePicker.datePickerElements = [.yearMonthDay, .hourMinuteSecond]
 dateValueLabel.textColor = .blue
 dateValueLabel.stringValue = datePicker.stringValue
-pageSelector.addItems(withTitles: ["Controls", "Values", "Tables/Media", "Drawing"])
+pageSelector.addItems(withTitles: ["Controls", "Values", "Tables/Media", "Drawing", "New in 3.x"])
 imageLabel.font = NSFont.boldSystemFont(ofSize: 12)
 imageView.image = NSImage(contentsOfFile: demoArtworkPath) ?? NSImage(named: "WinChocolate artwork")
 imageView.imageFrameStyle = .grayBezel
@@ -1606,6 +1774,7 @@ func showDemoPage(_ index: Int) {
     valuesPage.isHidden = index != 1
     tablesPage.isHidden = index != 2
     drawingPage.isHidden = index != 3
+    showcasePage.isHidden = index != 4
     updateFocusDisplay()
 }
 
@@ -1794,13 +1963,14 @@ levelIndicator.onAction = { control in
 
 colorWell.onAction = { _ in
     updateFocusDisplay()
+    // Clicking presents the shared color panel; report and reflect picks on
+    // this well's swatch.
     let panel = NSColorPanel.shared
     panel.winColorDidChange = { color in
-        let red = Int(color.redComponent * 255)
-        let green = Int(color.greenComponent * 255)
-        let blue = Int(color.blueComponent * 255)
-        statusLabel.stringValue = "Color well changed: RGB \(red), \(green), \(blue)"
+        colorWell.color = color
+        statusLabel.stringValue = "Color well changed: RGB \(Int(color.redComponent * 255)), \(Int(color.greenComponent * 255)), \(Int(color.blueComponent * 255))"
     }
+    colorWell.activate(true)
     panel.makeKeyAndOrderFront(colorWell)
 }
 
@@ -2369,6 +2539,7 @@ contentView.addSubview(controlsPage)
 contentView.addSubview(valuesPage)
 contentView.addSubview(tablesPage)
 contentView.addSubview(drawingPage)
+contentView.addSubview(showcasePage)
 
 controlsPage.addSubview(editableLabel)
 controlsPage.addSubview(editableTextField)
@@ -2478,6 +2649,145 @@ tablesPage.addSubview(scrollSelectedButton)
 tablesPage.addSubview(tableScrollView)
 tablesPage.addSubview(outlineLabel)
 tablesPage.addSubview(outlineScrollView)
+
+// MARK: - "New in 3.x" showcase page
+
+@MainActor
+func showcaseSectionLabel(_ text: String, _ frame: NSRect) -> NSTextField {
+    let label = NSTextField(string: text, frame: frame)
+    label.isBordered = false
+    label.drawsBackground = false
+    label.font = NSFont.boldSystemFont(ofSize: 13)
+    return label
+}
+
+// 3.12 — framework-drawn spinner.
+let spinnerSectionLabel = showcaseSectionLabel("Spinner (3.12)", NSMakeRect(24, 16, 320, 20))
+let showcaseSpinner = NSProgressIndicator(frame: NSMakeRect(24, 44, 40, 40))
+showcaseSpinner.style = .spinning
+showcaseSpinner.startAnimation(nil)
+let spinnerStartButton = NSButton(title: "Start", frame: NSMakeRect(76, 48, 72, 30))
+let spinnerStopButton = NSButton(title: "Stop", frame: NSMakeRect(152, 48, 72, 30))
+spinnerStartButton.onAction = { _ in
+    showcaseSpinner.startAnimation(nil)
+    statusLabel.stringValue = "Spinner animating"
+}
+spinnerStopButton.onAction = { _ in
+    showcaseSpinner.stopAnimation(nil)
+    statusLabel.stringValue = "Spinner stopped"
+}
+
+// 3.13 — template image tinting.
+let templateSectionLabel = showcaseSectionLabel("Template image tint (3.13)", NSMakeRect(24, 100, 320, 20))
+let templateImageView = NSImageView(frame: NSMakeRect(24, 128, 48, 48))
+let templateImage = NSImage(contentsOfFile: demoIconPath)
+templateImage?.isTemplate = true
+templateImageView.image = templateImage
+templateImageView.contentTintColor = .systemBlue
+let templateTintWell = NSColorWell(frame: NSMakeRect(84, 134, 44, 36))
+templateTintWell.color = .systemBlue
+templateTintWell.onAction = { _ in
+    // Clicking presents the shared color panel. As its selection changes,
+    // update this well's own swatch and re-tint the glyph.
+    let panel = NSColorPanel.shared
+    panel.winColorDidChange = { color in
+        templateTintWell.color = color
+        templateImageView.contentTintColor = color
+        statusLabel.stringValue = "Template tint changed"
+    }
+    templateTintWell.activate(true)
+    panel.makeKeyAndOrderFront(templateTintWell)
+}
+let templateHintLabel = NSTextField(string: "The glyph takes the well's color.", frame: NSMakeRect(140, 140, 240, 20))
+templateHintLabel.isBordered = false
+templateHintLabel.drawsBackground = false
+templateHintLabel.font = NSFont.systemFont(ofSize: 11)
+
+// 3.21 — hover tracking.
+let hoverSectionLabel = showcaseSectionLabel("Hover tracking (3.21)", NSMakeRect(24, 196, 320, 20))
+let showcaseHoverView = DemoHoverView(frame: NSMakeRect(24, 224, 200, 44))
+showcaseHoverView.onEvent = { statusLabel.stringValue = $0 }
+
+// 3.18 — drag and drop.
+let dragSectionLabel = showcaseSectionLabel("Drag and drop (3.18)", NSMakeRect(400, 16, 360, 20))
+let showcaseDragHandle = DemoDragHandle(frame: NSMakeRect(400, 44, 150, 40))
+showcaseDragHandle.onEvent = { statusLabel.stringValue = $0 }
+let showcaseDropWell = DemoDropWell(frame: NSMakeRect(400, 96, 380, 48))
+showcaseDropWell.onEvent = { statusLabel.stringValue = $0 }
+showcaseDropWell.registerForDraggedTypes([.string, .fileURL])
+
+// 3.22 — printing.
+let printSectionLabel = showcaseSectionLabel("Printing (3.22)", NSMakeRect(400, 168, 360, 20))
+let showcasePrintSample = DemoPrintSample(frame: NSMakeRect(400, 196, 320, 150))
+let printButton = NSButton(title: "Print Sample…", frame: NSMakeRect(400, 356, 140, 30))
+printButton.onAction = { _ in
+    let operation = NSPrintOperation.printOperation(with: showcasePrintSample)
+    operation.jobTitle = "WinChocolate Print Sample"
+    statusLabel.stringValue = operation.run() ? "Printed sample" : "Print canceled"
+}
+
+// 3.7 — NSAlert(error:).
+let errorAlertButton = NSButton(title: "Show Error Alert…", frame: NSMakeRect(560, 356, 160, 30))
+errorAlertButton.onAction = { _ in
+    let error = NSError(domain: "WinChocolate.Demo", code: 42, userInfo: [
+        NSLocalizedDescriptionKey: "The document could not be opened.",
+        NSLocalizedFailureReasonErrorKey: "The file is in use by another application.",
+    ])
+    let alert = NSAlert(error: error)
+    _ = alert.runModal()
+    statusLabel.stringValue = "Error alert dismissed"
+}
+
+// 3.19 — screens and window state.
+let screenSectionLabel = showcaseSectionLabel("Screens & window state (3.19)", NSMakeRect(800, 16, 300, 20))
+let mainScreen = NSScreen.main
+let screenInfoLabel = NSTextField(
+    string: "Screens: \(NSScreen.screens.count)   main \(Int(mainScreen?.frame.size.width ?? 0))×\(Int(mainScreen?.frame.size.height ?? 0))",
+    frame: NSMakeRect(800, 44, 300, 20)
+)
+screenInfoLabel.isBordered = false
+screenInfoLabel.drawsBackground = false
+screenInfoLabel.font = NSFont.systemFont(ofSize: 11)
+let workAreaLabel = NSTextField(
+    string: "work area \(Int(mainScreen?.visibleFrame.size.width ?? 0))×\(Int(mainScreen?.visibleFrame.size.height ?? 0))",
+    frame: NSMakeRect(800, 66, 300, 20)
+)
+workAreaLabel.isBordered = false
+workAreaLabel.drawsBackground = false
+workAreaLabel.font = NSFont.systemFont(ofSize: 11)
+let miniaturizeButton = NSButton(title: "Minimize", frame: NSMakeRect(800, 96, 96, 30))
+let zoomButton = NSButton(title: "Zoom", frame: NSMakeRect(902, 96, 96, 30))
+miniaturizeButton.onAction = { _ in
+    window.miniaturize(nil)
+    statusLabel.stringValue = "Window minimized (restore from the taskbar)"
+}
+zoomButton.onAction = { _ in
+    window.zoom(nil)
+    statusLabel.stringValue = window.isZoomed ? "Window zoomed" : "Window restored"
+}
+
+showcasePage.addSubview(spinnerSectionLabel)
+showcasePage.addSubview(showcaseSpinner)
+showcasePage.addSubview(spinnerStartButton)
+showcasePage.addSubview(spinnerStopButton)
+showcasePage.addSubview(templateSectionLabel)
+showcasePage.addSubview(templateImageView)
+showcasePage.addSubview(templateTintWell)
+showcasePage.addSubview(templateHintLabel)
+showcasePage.addSubview(hoverSectionLabel)
+showcasePage.addSubview(showcaseHoverView)
+showcasePage.addSubview(dragSectionLabel)
+showcasePage.addSubview(showcaseDragHandle)
+showcasePage.addSubview(showcaseDropWell)
+showcasePage.addSubview(printSectionLabel)
+showcasePage.addSubview(showcasePrintSample)
+showcasePage.addSubview(printButton)
+showcasePage.addSubview(errorAlertButton)
+showcasePage.addSubview(screenSectionLabel)
+showcasePage.addSubview(screenInfoLabel)
+showcasePage.addSubview(workAreaLabel)
+showcasePage.addSubview(miniaturizeButton)
+showcasePage.addSubview(zoomButton)
 // Document-architecture demo: a New Note window driven by NSDocument,
 // NSWindowController, and the shared NSDocumentController. The window title
 // gains the classic asterisk while the note has unsaved edits.

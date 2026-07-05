@@ -188,12 +188,15 @@ open class NSProgressIndicator: NSControl {
         let orbit = radius - dotRadius
 
         for (index, direction) in Self.spinnerDirections.enumerated() {
-            // The leading dot is fully opaque; trailing dots fade with age.
+            // GDI fills are opaque, so the sweep is shown with solid gray shades
+            // (and a slightly larger leading dot) rather than alpha fading: the
+            // leading dot is darkest, trailing dots lighten around the ring.
             let age = (index - spinnerPhase + 12) % 12
-            let alpha = isAnimating ? (1.0 - CGFloat(age) * 0.075) : 0.45
-            NSColor(white: 0.35, alpha: alpha).setFill()
+            let shade = isAnimating ? (0.15 + CGFloat(age) / 11 * 0.72) : 0.6
+            NSColor(white: shade, alpha: 1).setFill()
+            let size = isAnimating ? dotRadius * (1.15 - CGFloat(age) / 11 * 0.35) : dotRadius
             let dotCenter = NSPoint(x: center.x + direction.dx * orbit, y: center.y + direction.dy * orbit)
-            NSBezierPath(ovalIn: NSMakeRect(dotCenter.x - dotRadius, dotCenter.y - dotRadius, dotRadius * 2, dotRadius * 2)).fill()
+            NSBezierPath(ovalIn: NSMakeRect(dotCenter.x - size, dotCenter.y - size, size * 2, size * 2)).fill()
         }
     }
 

@@ -270,6 +270,9 @@ open class NSColorPanel: NSPanel {
 
     private func colorDidChange() {
         syncControls()
+        // Update the active well's swatch and notify the change hook. The
+        // demo/app sets `winColorDidChange` when it presents the panel, so the
+        // active control reacts to live picks.
         winActiveColorWell?.color = color
         winColorDidChange?(color)
 

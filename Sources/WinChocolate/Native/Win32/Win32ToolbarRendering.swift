@@ -48,9 +48,12 @@ extension Win32NativeControlBackend {
         }
     }
 
+    /// Paints a custom view through an off-screen bitmap and blits it in one
+    /// step, so continuously-animating views (spinners) never flicker between
+    /// the background erase and the content redraw.
     func drawCustomView(hwnd: HWND?, handle: NativeHandle) {
         var paint = PAINTSTRUCT()
-        guard let deviceContext = winBeginPaint(hwnd, &paint) else {
+        guard let windowContext = winBeginPaint(hwnd, &paint) else {
             return
         }
         defer {
@@ -61,14 +64,41 @@ extension Win32NativeControlBackend {
 
         var rectangle = RECT()
         _ = winGetClientRect(hwnd, &rectangle)
+        let width = rectangle.right - rectangle.left
+        let height = rectangle.bottom - rectangle.top
+
+        // Double-buffer when possible; fall back to painting the window DC
+        // directly if the off-screen surface can't be created.
+        guard width > 0, height > 0,
+              let memoryContext = winCreateCompatibleDC(windowContext),
+              let memoryBitmap = winCreateCompatibleBitmap(windowContext, width, height) else {
+            renderCustomViewContent(into: windowContext, hwnd: hwnd, handle: handle, rectangle: rectangle)
+            return
+        }
+        let previousBitmap = winSelectObject(memoryContext, memoryBitmap)
+        defer {
+            _ = winSelectObject(memoryContext, previousBitmap ?? nil)
+            _ = winDeleteObject(memoryBitmap)
+            _ = winDeleteDC(memoryContext)
+        }
+
+        renderCustomViewContent(into: memoryContext, hwnd: hwnd, handle: handle, rectangle: rectangle)
+        _ = winBitBlt(windowContext, 0, 0, width, height, memoryContext, 0, 0, srcCopyRasterOperation)
+    }
+
+    /// Renders a custom view's background and content into a device context.
+    ///
+    /// The background is always filled so the off-screen bitmap is fully
+    /// covered (an unpainted bitmap holds garbage); a view with no explicit
+    /// background inherits its nearest ancestor's color.
+    private func renderCustomViewContent(into deviceContext: HDC, hwnd: HWND?, handle: NativeHandle, rectangle: RECT) {
         if let brush = backgroundBrushes[handle.rawValue] {
             withUnsafePointer(to: rectangle) { rectanglePointer in
                 _ = winFillRect(deviceContext, rectanglePointer, brush)
             }
-        } else if transparentBackgroundHandles.contains(handle.rawValue) {
-            // Win32 child windows are never truly transparent: skipping the erase
-            // leaves stale pixels behind, so simulate transparency by painting the
-            // nearest ancestor's background color.
+        } else {
+            // Fill with the nearest ancestor's background so views without their
+            // own background blend in (and the buffer is fully painted).
             fillRect(rectangle, color: inheritedBackgroundColor(behind: hwnd), deviceContext: deviceContext)
         }
 

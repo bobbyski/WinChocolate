@@ -1014,6 +1014,22 @@ func winTextOutW(_ deviceContext: HDC?, _ x: Int32, _ y: Int32, _ text: UnsafePo
 @_silgen_name("CreateCompatibleDC")
 func winCreateCompatibleDC(_ deviceContext: HDC?) -> HDC?
 
+@_silgen_name("CreateCompatibleBitmap")
+func winCreateCompatibleBitmap(_ deviceContext: HDC?, _ width: Int32, _ height: Int32) -> HBITMAP?
+
+@_silgen_name("BitBlt")
+func winBitBlt(
+    _ destination: HDC?,
+    _ destinationX: Int32,
+    _ destinationY: Int32,
+    _ width: Int32,
+    _ height: Int32,
+    _ source: HDC?,
+    _ sourceX: Int32,
+    _ sourceY: Int32,
+    _ rasterOperation: DWORD
+) -> Int32
+
 @_silgen_name("DeleteDC")
 func winDeleteDC(_ deviceContext: HDC?) -> Int32
 

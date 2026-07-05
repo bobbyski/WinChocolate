@@ -322,7 +322,9 @@ extension Win32NativeControlBackend {
             }
 
             let handle = nativeHandle(from: hwnd)
-            if transparentBackgroundHandles.contains(handle.rawValue) {
+            // Custom views repaint their whole surface through a double-buffered
+            // WM_PAINT, so skip the erase to avoid a flash before the blit.
+            if transparentBackgroundHandles.contains(handle.rawValue) || customViewHandles.contains(handle.rawValue) {
                 return 1
             }
             guard let brush = backgroundBrushes[handle.rawValue] else {

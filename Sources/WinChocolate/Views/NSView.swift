@@ -482,6 +482,10 @@ open class NSView: NSResponder {
             self?.exitAllTrackingAreas()
         }
         installDropTargetIfRealized()
+        // AppKit calls updateTrackingAreas once a view joins a window; do the
+        // same so views that install tracking areas there start receiving
+        // mouseEntered/mouseExited.
+        updateTrackingAreas()
         backend.registerMouseDraggedAction(for: handle) { [weak self] event in
             self?.mouseDragged(with: event)
         }
