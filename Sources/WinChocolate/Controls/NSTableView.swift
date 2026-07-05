@@ -602,11 +602,14 @@ open class NSTableView: NSControl {
                 return
             }
 
-            // A header click (column set, no row) sorts by that column.
+            // A header click (column set, no row) applies the column's sort
+            // prototype + indicator, then sends the table action so apps that
+            // re-sort their model on the action (reading `sortDescriptors`) run.
             let clickedColumn = backend.tableClickedColumn(for: nativeHandle)
             let clickedRow = backend.tableClickedRow(for: nativeHandle)
             if clickedColumn >= 0, clickedRow < 0 {
                 self.handleHeaderClick(column: clickedColumn)
+                self.sendAction()
                 return
             }
 

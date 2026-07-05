@@ -7727,6 +7727,21 @@ func testTableViewMultipleSelectionEditingAndSorting() {
     backend.simulateTableColumnClick(column: 0, for: handle)
     expect(tableView.sortDescriptors.first?.ascending == false, "A second header click did not toggle to descending.")
     expect(backend.tableSortIndicators[handle]?.ascending == false, "The sort indicator did not flip to descending.")
+
+    // A header click also FIRES the table action so apps that re-sort their
+    // model on the action (reading `sortDescriptors`) actually run.
+    var headerActionCount = 0
+    var descriptorAtAction: NSSortDescriptor?
+    tableView.onAction = { table in
+        guard let table = table as? NSTableView, table.clickedRow < 0, table.clickedColumn >= 0 else {
+            return
+        }
+        headerActionCount += 1
+        descriptorAtAction = table.sortDescriptors.first
+    }
+    backend.simulateTableColumnClick(column: 0, for: handle)
+    expect(headerActionCount == 1, "Header click did not fire the table action. Got \(headerActionCount).")
+    expect(descriptorAtAction?.key == "name", "The action saw the wrong (or no) applied sort descriptor.")
 }
 
 testTableViewMultipleSelectionEditingAndSorting()

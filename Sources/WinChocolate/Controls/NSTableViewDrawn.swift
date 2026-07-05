@@ -392,7 +392,8 @@ extension NSTableView {
         let point = convert(event.locationInWindow, from: nil)
         _ = window?.makeFirstResponder(self)
 
-        // Header click → record the clicked column and sort by it.
+        // Header click → record the clicked column, apply its sort, and send
+        // the table action (parity with the native header path).
         if !winHeaderHidden, point.y < winDrawnHeaderHeight {
             let column = winColumnAtX(point.x)
             if column >= 0 {
@@ -400,6 +401,7 @@ extension NSTableView {
                 if sortUsingDescriptorPrototype(forColumn: column) != nil {
                     needsDisplay = true
                 }
+                sendAction()
             }
             return
         }
@@ -495,12 +497,17 @@ extension NSTableView {
         for row in 0..<winDropIndex where row < numberOfRows {
             y += winRowHeightAt(row)
         }
-        NSColor.selectedTextBackgroundColor.setStroke()
+        let width = frame.size.width
+        let accent = NSColor(red: 0.0, green: 0.48, blue: 1.0, alpha: 1)
+        // A bold insertion bar with a round cap on the left, like AppKit's.
+        accent.setStroke()
         let line = NSBezierPath()
-        line.lineWidth = 2
-        line.move(to: NSMakePoint(0, y))
-        line.line(to: NSMakePoint(frame.size.width, y))
+        line.lineWidth = 3
+        line.move(to: NSMakePoint(4, y))
+        line.line(to: NSMakePoint(width, y))
         line.stroke()
+        accent.setFill()
+        NSBezierPath(ovalIn: NSRect(x: 0, y: y - 4, width: 8, height: 8)).fill()
     }
 
     /// The column at an x-coordinate, or `-1`.

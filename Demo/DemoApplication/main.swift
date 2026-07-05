@@ -827,16 +827,42 @@ final class DemoCollectionDataSource: NSCollectionViewDataSource {
     }
 }
 
+/// A larger single-section collection source so the flow layout's wrapping and
+/// re-tiling are dramatic on the Lists page.
+final class DemoFlowCollectionDataSource: NSCollectionViewDataSource {
+    let values = [
+        "NSView", "NSButton", "NSTextField", "NSTableView", "NSOutlineView", "NSBrowser",
+        "NSImageView", "NSSlider", "NSStepper", "NSComboBox", "NSPopUpButton", "NSDatePicker",
+        "NSColorWell", "NSSegmentedControl", "NSTabView", "NSScrollView", "NSSplitView", "NSBox",
+        "NSProgressIndicator", "NSLevelIndicator", "NSPathControl", "NSTokenField",
+    ]
+
+    func collectionView(_ collectionView: NSCollectionView, numberOfItemsInSection section: Int) -> Int {
+        values.count
+    }
+
+    func collectionView(_ collectionView: NSCollectionView, itemForRepresentedObjectAt indexPath: IndexPath) -> NSCollectionViewItem {
+        let item = NSCollectionViewItem()
+        let title = values[indexPath.item]
+        item.representedObject = title
+        let button = NSButton(title: title, frame: NSMakeRect(0, 0, 120, 28))
+        item.view = button
+        return item
+    }
+}
+
 let contentView = DemoContentView(frame: NSMakeRect(0, 0, 1120, 760))
 let controlsPage = DemoPageView(frame: NSMakeRect(0, 144, 1120, 560))
 let valuesPage = DemoPageView(frame: NSMakeRect(0, 144, 1120, 560))
 let tablesPage = DemoPageView(frame: NSMakeRect(0, 144, 1120, 560))
 let drawingPage = DemoPageView(frame: NSMakeRect(0, 144, 1120, 560))
 let showcasePage = DemoPageView(frame: NSMakeRect(0, 144, 1120, 560))
+let listsPage = DemoPageView(frame: NSMakeRect(0, 144, 1120, 560))
 valuesPage.isHidden = true
 tablesPage.isHidden = true
 drawingPage.isHidden = true
 showcasePage.isHidden = true
+listsPage.isHidden = true
 let counterLabel = NSTextField(string: "Clicks: 0", frame: NSMakeRect(32, 36, 300, 24))
 let statusLabel = NSTextField(string: "Ready", frame: NSMakeRect(32, 74, 640, 24))
 let focusLabel = NSTextField(string: "Focus: none", frame: NSMakeRect(744, 74, 300, 24))
@@ -1691,7 +1717,7 @@ datePicker.maxDate = Date(timeIntervalSince1970: 1_893_456_000)
 datePicker.datePickerElements = [.yearMonthDay, .hourMinuteSecond]
 dateValueLabel.textColor = .blue
 dateValueLabel.stringValue = datePicker.stringValue
-pageSelector.addItems(withTitles: ["Controls", "Values", "Tables/Media", "Drawing", "New in 3.x"])
+pageSelector.addItems(withTitles: ["Controls", "Values", "Tables/Media", "Drawing", "New in 3.x", "Lists (5.x)"])
 imageLabel.font = NSFont.boldSystemFont(ofSize: 12)
 imageView.image = NSImage(contentsOfFile: demoArtworkPath) ?? NSImage(named: "WinChocolate artwork")
 imageView.imageFrameStyle = .grayBezel
@@ -1887,6 +1913,7 @@ func showDemoPage(_ index: Int) {
     tablesPage.isHidden = index != 2
     drawingPage.isHidden = index != 3
     showcasePage.isHidden = index != 4
+    listsPage.isHidden = index != 5
     updateFocusDisplay()
 }
 
@@ -2585,7 +2612,9 @@ tableView.onAction = { control in
     updateFocusDisplay()
     suppressNextTableSelectionStatus = true
     if let columnSummary = tableColumnSummary(table) {
-        if let sortDescriptor = table.sortUsingDescriptorPrototype(forColumn: table.clickedColumn) {
+        // The framework already applied the column's sort prototype on the
+        // header click; re-sort the model with the resulting descriptor.
+        if let sortDescriptor = table.sortDescriptors.first {
             let selectedValues = selectedTableRowValues(table)
             tableDataSource.sort(using: sortDescriptor)
             NSApp.nativeBackend.dispatchAsync {
@@ -2652,6 +2681,7 @@ contentView.addSubview(valuesPage)
 contentView.addSubview(tablesPage)
 contentView.addSubview(drawingPage)
 contentView.addSubview(showcasePage)
+contentView.addSubview(listsPage)
 
 controlsPage.addSubview(editableLabel)
 controlsPage.addSubview(editableTextField)
@@ -2977,6 +3007,94 @@ showcasePage.addSubview(viewTableScrollView)
 showcasePage.addSubview(rowViewSectionLabel)
 showcasePage.addSubview(rowViewHint)
 showcasePage.addSubview(statusRowScrollView)
+
+// MARK: - "Lists (5.x)" page — NSBrowser path + NSCollectionView flow layout
+// A dedicated page so both are laid out with room and are directly clickable.
+
+// 5.3 — column browser with a live path readout.
+let listsBrowserLabel = showcaseSectionLabel("Column browser — NSBrowser (5.3)", NSMakeRect(24, 20, 500, 20))
+let listsBrowserHint = NSTextField(string: "Click through the columns; the path below updates via NSBrowser.path().", frame: NSMakeRect(24, 42, 620, 18))
+listsBrowserHint.isBordered = false
+listsBrowserHint.drawsBackground = false
+listsBrowserHint.font = NSFont.systemFont(ofSize: 11)
+browser.frame = NSMakeRect(24, 66, 520, 150)
+browser.columnWidth = 160
+browser.delegate = browserDataSource
+browser.loadColumnZero()
+let listsBrowserPathLabel = NSTextField(string: "Path: /", frame: NSMakeRect(24, 224, 720, 22))
+listsBrowserPathLabel.isBordered = false
+listsBrowserPathLabel.drawsBackground = false
+listsBrowserPathLabel.font = NSFont.boldSystemFont(ofSize: 12)
+listsBrowserPathLabel.textColor = .blue
+browser.onAction = { [weak browser] _ in
+    guard let browser else {
+        return
+    }
+    listsBrowserPathLabel.stringValue = "Path: \(browser.path())"
+    statusLabel.stringValue = "Browser path: \(browser.path())"
+}
+
+// 5.4 — collection flow layout with live re-tiling controls.
+let listsCollectionLabel = showcaseSectionLabel("Collection view — NSCollectionViewFlowLayout (5.4)", NSMakeRect(24, 268, 600, 20))
+let listsCollectionHint = NSTextField(string: "Change item size, spacing, or direction — the items re-flow live.", frame: NSMakeRect(24, 290, 620, 18))
+listsCollectionHint.isBordered = false
+listsCollectionHint.drawsBackground = false
+listsCollectionHint.font = NSFont.systemFont(ofSize: 11)
+
+let listsFlowSource = DemoFlowCollectionDataSource()
+let listsFlowLayout = NSCollectionViewFlowLayout()
+listsFlowLayout.itemSize = NSMakeSize(120, 28)
+listsFlowLayout.minimumInteritemSpacing = 8
+listsFlowLayout.minimumLineSpacing = 8
+listsFlowLayout.sectionInset = NSEdgeInsetsMake(6, 6, 6, 6)
+let listsCollectionScrollView = NSScrollView(frame: NSMakeRect(24, 352, 860, 168))
+listsCollectionScrollView.hasVerticalScroller = true
+let listsCollectionView = NSCollectionView(frame: NSMakeRect(0, 0, 860, 168))
+listsCollectionView.dataSource = listsFlowSource
+listsCollectionView.collectionViewLayout = listsFlowLayout
+listsCollectionScrollView.documentView = listsCollectionView
+listsCollectionView.reloadData()
+
+let listsItemSizeControl = NSSegmentedControl(labels: ["Small", "Medium", "Large"], frame: NSMakeRect(24, 316, 210, 26))
+listsItemSizeControl.selectedSegment = 1
+listsItemSizeControl.onAction = { _ in
+    switch listsItemSizeControl.selectedSegment {
+    case 0: listsFlowLayout.itemSize = NSMakeSize(90, 24)
+    case 2: listsFlowLayout.itemSize = NSMakeSize(170, 40)
+    default: listsFlowLayout.itemSize = NSMakeSize(120, 28)
+    }
+    listsCollectionView.reloadData()
+    statusLabel.stringValue = "Collection item size changed"
+}
+let listsSpacingControl = NSSegmentedControl(labels: ["Tight", "Normal", "Loose"], frame: NSMakeRect(246, 316, 210, 26))
+listsSpacingControl.selectedSegment = 1
+listsSpacingControl.onAction = { _ in
+    let gap: CGFloat = listsSpacingControl.selectedSegment == 0 ? 2 : (listsSpacingControl.selectedSegment == 2 ? 24 : 8)
+    listsFlowLayout.minimumInteritemSpacing = gap
+    listsFlowLayout.minimumLineSpacing = gap
+    listsCollectionView.reloadData()
+    statusLabel.stringValue = "Collection spacing changed"
+}
+let listsDirectionControl = NSSegmentedControl(labels: ["Vertical", "Horizontal"], frame: NSMakeRect(468, 316, 200, 26))
+listsDirectionControl.selectedSegment = 0
+listsDirectionControl.onAction = { _ in
+    listsFlowLayout.scrollDirection = listsDirectionControl.selectedSegment == 1 ? .horizontal : .vertical
+    listsCollectionScrollView.hasVerticalScroller = listsDirectionControl.selectedSegment == 0
+    listsCollectionScrollView.hasHorizontalScroller = listsDirectionControl.selectedSegment == 1
+    listsCollectionView.reloadData()
+    statusLabel.stringValue = "Collection scroll direction changed"
+}
+
+listsPage.addSubview(listsBrowserLabel)
+listsPage.addSubview(listsBrowserHint)
+listsPage.addSubview(browser)
+listsPage.addSubview(listsBrowserPathLabel)
+listsPage.addSubview(listsCollectionLabel)
+listsPage.addSubview(listsCollectionHint)
+listsPage.addSubview(listsItemSizeControl)
+listsPage.addSubview(listsSpacingControl)
+listsPage.addSubview(listsDirectionControl)
+listsPage.addSubview(listsCollectionScrollView)
 // Document-architecture demo: a New Note window driven by NSDocument,
 // NSWindowController, and the shared NSDocumentController. The window title
 // gains the classic asterisk while the note has unsaved edits.
@@ -3067,7 +3185,7 @@ editMenuController.textView = notesTextView
 // menu entry.
 let viewMenuItem = NSMenuItem(title: "View", action: nil, keyEquivalent: "")
 let viewMenu = NSMenu(title: "View")
-for (index, pageTitle) in ["Controls Page", "Values Page", "Tables/Media Page", "Drawing Page", "New in 3.x Page"].enumerated() {
+for (index, pageTitle) in ["Controls Page", "Values Page", "Tables/Media Page", "Drawing Page", "New in 3.x Page", "Lists Page"].enumerated() {
     // Ctrl+1...Ctrl+5 switch pages (the .command mask maps onto Ctrl on Windows).
     let item = NSMenuItem(title: pageTitle, action: nil, keyEquivalent: "\(index + 1)")
     item.onAction = { _ in
