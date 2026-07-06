@@ -39,11 +39,15 @@ public final class WinDrawnHeaderStrip: NSView {
             return
         }
         let point = convert(event.locationInWindow, from: nil)
-        table.winHeaderResizeDrag(toX: point.x)
+        table.winHeaderMouseDragged(toX: point.x)
     }
 
     public override func mouseUp(with event: NSEvent) {
-        table?.winHeaderResizeEnd()
+        guard let table else {
+            return
+        }
+        let point = convert(event.locationInWindow, from: nil)
+        table.winHeaderMouseUp(atX: point.x)
     }
 }
 
@@ -403,6 +407,17 @@ extension NSTableView {
                 ])
             }
         }
+
+        // Reorder drop indicator: a heavy insertion bar at the target boundary.
+        if winHeaderDropIndex >= 0 {
+            let x = winColumnX(min(winHeaderDropIndex, tableColumns.count))
+            NSColor(calibratedRed: 0.15, green: 0.45, blue: 0.85, alpha: 1).setStroke()
+            let marker = NSBezierPath()
+            marker.lineWidth = 2
+            marker.move(to: NSMakePoint(x, 1))
+            marker.line(to: NSMakePoint(x, winDrawnHeaderHeight - 1))
+            marker.stroke()
+        }
     }
 
     /// Installs (or removes) the pinned header strip on the enclosing scroll
@@ -442,8 +457,21 @@ extension NSTableView {
         return nil
     }
 
-    /// Header mouse-down: begin a column resize if near a column boundary,
-    /// otherwise sort by (and act on) the clicked column.
+    /// The column insertion index (0...count) a reorder drop at `x` targets.
+    func winColumnDropIndex(atX x: CGFloat) -> Int {
+        var edge: CGFloat = 0
+        for column in tableColumns.indices {
+            let width = max(20, tableColumns[column].width)
+            if x < edge + width / 2 {
+                return column
+            }
+            edge += width
+        }
+        return tableColumns.count
+    }
+
+    /// Header mouse-down: begin a column resize near a boundary; otherwise record
+    /// a potential column-reorder drag / header click (resolved on mouse-up).
     func winHeaderMouseDown(atX x: CGFloat) {
         if let column = winColumnBoundary(atX: x) {
             winResizingColumn = column
@@ -451,30 +479,66 @@ extension NSTableView {
             winResizeStartWidth = max(20, tableColumns[column].width)
             return
         }
-        winHeaderStripClicked(atX: x)
+        winHeaderDragColumn = winColumnAtX(x)
+        winHeaderDragStartX = x
+        winHeaderDropIndex = -1
     }
 
-    /// Updates the resized column's width as the header drag moves.
-    func winHeaderResizeDrag(toX x: CGFloat) {
-        guard winResizingColumn >= 0, tableColumns.indices.contains(winResizingColumn) else {
+    /// Header mouse-drag: resize the column, or (when `allowsColumnReordering`)
+    /// track a column-reorder drop target past a small threshold.
+    func winHeaderMouseDragged(toX x: CGFloat) {
+        if winResizingColumn >= 0, tableColumns.indices.contains(winResizingColumn) {
+            tableColumns[winResizingColumn].width = max(24, winResizeStartWidth + (x - winResizeStartX))
+            winRebuildHostedViews()
+            winRedrawHeaderAndBodyNow()
             return
         }
-        tableColumns[winResizingColumn].width = max(24, winResizeStartWidth + (x - winResizeStartX))
-        winRebuildHostedViews()
-        // Repaint *synchronously* — a plain invalidate is starved by the rapid
-        // drag, so the drawn grid and the header strip's divider would only
-        // catch up on release. Redraw the whole enclosing scroll view (body clip
-        // + pinned header strip) so both track the cursor live.
+        if allowsColumnReordering, winHeaderDragColumn >= 0, abs(x - winHeaderDragStartX) > 6 {
+            winHeaderDropIndex = winColumnDropIndex(atX: x)
+            winRedrawHeaderAndBodyNow()
+        }
+    }
+
+    /// Header mouse-up: finish a resize, commit a column reorder, or (if neither
+    /// dragged) sort by the pressed column.
+    func winHeaderMouseUp(atX x: CGFloat) {
+        defer {
+            winResizingColumn = -1
+            winHeaderDragColumn = -1
+            winHeaderDropIndex = -1
+        }
+        if winResizingColumn >= 0 {
+            return
+        }
+        if winHeaderDropIndex >= 0, winHeaderDragColumn >= 0 {
+            // A reorder drag occurred. `winHeaderDropIndex` is an *insertion point*
+            // (0...count) in the current column order; `moveColumn` wants the
+            // final index after the dragged column is removed, so shift down when
+            // the drop is to the right of the source. Dropping just before or
+            // after the column itself is a no-op.
+            if winHeaderDropIndex != winHeaderDragColumn, winHeaderDropIndex != winHeaderDragColumn + 1 {
+                let finalIndex = winHeaderDropIndex > winHeaderDragColumn
+                    ? winHeaderDropIndex - 1 : winHeaderDropIndex
+                moveColumn(winHeaderDragColumn, toColumn: finalIndex)
+                winRebuildHostedViews()
+                winRedrawHeaderAndBodyNow()
+            }
+            return
+        }
+        // No drag: treat as a header click → sort.
+        if winHeaderDragColumn >= 0 {
+            winHeaderStripClicked(atX: winHeaderDragStartX)
+        }
+    }
+
+    /// Repaints the body surface and the header strip synchronously so a live
+    /// header drag (resize/reorder) tracks the cursor rather than snapping on up.
+    func winRedrawHeaderAndBodyNow() {
         if let scrollHandle = enclosingScrollView?.nativeHandle {
             realizedBackend?.redrawControlImmediately(scrollHandle)
         } else if let nativeHandle {
             realizedBackend?.redrawControlImmediately(nativeHandle)
         }
-    }
-
-    /// Ends an interactive column resize.
-    func winHeaderResizeEnd() {
-        winResizingColumn = -1
     }
 
     /// Handles a click in the pinned header strip: sort by the hit column and

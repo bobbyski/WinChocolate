@@ -63,15 +63,52 @@ open class NSBrowser: NSControl {
         }
     }
 
+    /// A browser column's list, drawn by the framework table so each row can
+    /// paint an `NSBrowserCell`-style branch indicator (a trailing chevron on
+    /// non-leaf rows). Leaf rows draw no indicator.
+    private final class BrowserColumnTableView: NSTableView {
+        weak var browser: NSBrowser?
+        let columnIndex: Int
+
+        init(browser: NSBrowser, columnIndex: Int, frame: NSRect) {
+            self.browser = browser
+            self.columnIndex = columnIndex
+            super.init(frame: frame)
+            // Always draw via the framework table so the branch chevron can be
+            // painted per row.
+            winUsesViewBasedCells = true
+        }
+
+        /// Draws the branch chevron (right-pointing triangle) at the trailing
+        /// edge of non-leaf rows, matching AppKit's `NSBrowserCell` branch mark.
+        override func winDrawnDrawDecoration(forRow row: Int, column: Int, cellRect: NSRect) {
+            guard let browser,
+                  let item = browser.item(atRow: row, inColumn: columnIndex),
+                  browser.delegate?.browser(browser, isLeafItem: item) == false else {
+                return
+            }
+            let x = cellRect.maxX - 12
+            let cy = cellRect.midY
+            let path = NSBezierPath()
+            path.move(to: NSMakePoint(x, cy - 4))
+            path.line(to: NSMakePoint(x + 5, cy))
+            path.line(to: NSMakePoint(x, cy + 4))
+            path.close()
+            NSColor(white: 0.45, alpha: 1).setFill()
+            path.fill()
+        }
+    }
+
     private final class BrowserColumn {
         let scrollView: NSScrollView
-        let tableView: NSTableView
+        let tableView: BrowserColumnTableView
         let dataSource: BrowserColumnDataSource
         let titleLabel: NSTextField
 
         init(browser: NSBrowser, column: Int, frame: NSRect) {
             scrollView = NSScrollView(frame: frame)
-            tableView = NSTableView(frame: NSRect(origin: NSZeroPoint, size: frame.size))
+            tableView = BrowserColumnTableView(browser: browser, columnIndex: column,
+                                               frame: NSRect(origin: NSZeroPoint, size: frame.size))
             dataSource = BrowserColumnDataSource(browser: browser, column: column)
             titleLabel = NSTextField(string: "", frame: .zero)
             titleLabel.isBordered = false

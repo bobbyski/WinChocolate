@@ -2944,7 +2944,7 @@ zoomButton.onAction = { _ in
 // 5.5 — framework-drawn, view-based table hosting real controls in its cells.
 // Placed in the clear full-width band below the print section (y > 386).
 let viewTableSectionLabel = showcaseSectionLabel("Framework-drawn table — view-based cells (5.5)", NSMakeRect(24, 392, 480, 20))
-let viewTableHint = NSTextField(string: "Hosts real controls; double-click a Note to edit, drag a row to reorder.", frame: NSMakeRect(24, 412, 560, 18))
+let viewTableHint = NSTextField(string: "Hosts real controls; double-click a Note to edit, drag a row to reorder, drag a header to move a column.", frame: NSMakeRect(24, 412, 620, 18))
 viewTableHint.isBordered = false
 viewTableHint.drawsBackground = false
 viewTableHint.font = NSFont.systemFont(ofSize: 11)
@@ -2994,6 +2994,8 @@ viewTable.winRowReorderHandler = { [weak viewTable] fromRows, toIndex in
 }
 // Multi-row reorder needs multiple selection.
 viewTable.allowsMultipleSelection = true
+// Drag a column header past another to reorder the columns (5.7).
+viewTable.allowsColumnReordering = true
 viewTableScrollView.documentView = viewTable
 
 // 5.5 — NSTableRowView hosting: full-width colored row views behind hosted

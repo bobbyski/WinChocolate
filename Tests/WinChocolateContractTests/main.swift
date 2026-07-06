@@ -1186,6 +1186,58 @@ func testBrowserColumnTitles() {
     expect(browser.isTitled == false, "isTitled did not turn off.")
 }
 
+/// A browser tree whose root column mixes one branch and one leaf, for the
+/// branch-indicator test.
+final class LeafBranchBrowserDelegate: NSBrowserDelegate {
+    // "Folder" is a branch (has a child); "File" is a leaf (no children).
+    func browser(_ browser: NSBrowser, numberOfChildrenOfItem item: Any?) -> Int {
+        switch item.map({ String(describing: $0) }) {
+        case .none: return 2          // root: Folder, File
+        case "Folder": return 1       // Folder → Document
+        default: return 0             // File and Document are leaves
+        }
+    }
+    func browser(_ browser: NSBrowser, child index: Int, ofItem item: Any?) -> Any {
+        switch item.map({ String(describing: $0) }) {
+        case .none: return ["Folder", "File"][index]
+        case "Folder": return "Document"
+        default: return ""
+        }
+    }
+    func browser(_ browser: NSBrowser, isLeafItem item: Any?) -> Bool {
+        switch item.map({ String(describing: $0) }) {
+        case "Folder": return false
+        default: return true
+        }
+    }
+}
+
+func testBrowserDrawsBranchIndicatorOnNonLeafRows() {
+    let backend = InMemoryNativeControlBackend()
+    let browser = NSBrowser(frame: NSMakeRect(0, 0, 320, 120))
+    let delegate = LeafBranchBrowserDelegate()
+    browser.delegate = delegate
+    browser.columnWidth = 150
+    browser.loadColumnZero()
+    _ = browser.realizeNativePeer(in: backend, parent: nil)
+
+    // Reach column 0's drawn list (the scroll view's document view).
+    guard let column0 = browser.subviews.compactMap({ $0 as? NSScrollView }).first,
+          let table = column0.documentView as? NSTableView,
+          let handle = table.nativeHandle else {
+        fatalError("Browser column 0 table was not realized.")
+    }
+
+    // The branch chevron is a 3-point triangle → a 4-segment (move/line/line/close)
+    // filled path. Row backgrounds and selection are rectangles (5 segments), so
+    // 4-segment fills count the branch indicators exactly. Column 0 has one branch
+    // ("Folder") and one leaf ("File") → exactly one chevron.
+    let recording = backend.performDraw(for: handle, in: table.bounds)
+    let chevrons = recording.fills.filter { $0.segments.count == 4 }
+    expect(chevrons.count == 1,
+           "Column 0 should draw exactly one branch chevron (Folder, not File). Got \(chevrons.count).")
+}
+
 func testIndexPathStoresCollectionComponents() {
     let indexPath = IndexPath(item: 3, section: 2)
     let appended = IndexPath(indexes: [1, 4]).appending(9)
@@ -7114,6 +7166,7 @@ testOutlineViewFlattensExpandableItems()
 testBrowserLoadsColumnsAndTracksSelection()
 testBrowserPathRoundTrips()
 testBrowserColumnTitles()
+testBrowserDrawsBranchIndicatorOnNonLeafRows()
 testIndexPathStoresCollectionComponents()
 testCollectionViewReloadsItemsAndTracksSelection()
 testCollectionViewButtonItemClickSelectsItem()
@@ -8095,10 +8148,12 @@ func testDrawnTablePinnedHeaderStaysAndSorts() {
     expect(strip.frame == NSMakeRect(0, 0, 300, 24), "Header strip moved when the body scrolled. Got \(strip.frame).")
     expect(tableView.frame.origin.y < 0, "Body did not scroll beneath the pinned header.")
 
-    // Clicking the pinned header strip applies the sort and fires the action.
+    // Clicking the pinned header strip (press + release, no drag) applies the
+    // sort and fires the action on mouse-up.
     var headerActions = 0
     tableView.onAction = { _ in headerActions += 1 }
     strip.mouseDown(with: NSEvent(type: .leftMouseDown, locationInWindow: NSMakePoint(10, 6)))
+    strip.mouseUp(with: NSEvent(type: .leftMouseUp, locationInWindow: NSMakePoint(10, 6)))
     expect(tableView.sortDescriptors.first?.key == "name", "Clicking the pinned header did not apply the sort descriptor.")
     expect(headerActions == 1, "Clicking the pinned header did not fire the table action.")
 }
@@ -8141,6 +8196,52 @@ func testDrawnTableHeaderColumnResize() {
 }
 
 testDrawnTableHeaderColumnResize()
+
+func testDrawnTableHeaderColumnReorder() {
+    func makeTable() -> (NSScrollView, NSTableView, NSView) {
+        let backend = InMemoryNativeControlBackend()
+        let scrollView = NSScrollView(frame: NSMakeRect(0, 0, 320, 120))
+        scrollView.hasVerticalScroller = true
+        let tableView = NSTableView(frame: NSMakeRect(0, 0, 320, 120))
+        let dataSource = ManyRowTableDataSource(count: 6)
+        for id in ["a", "b", "c"] {
+            let col = NSTableColumn(identifier: NSUserInterfaceItemIdentifier(id))
+            col.title = id.uppercased()
+            col.width = 100
+            tableView.addTableColumn(col)
+        }
+        tableView.dataSource = dataSource
+        let delegate = ViewBasedTableDelegate()
+        tableView.delegate = delegate
+        tableView.winUsesViewBasedCells = true
+        scrollView.documentView = tableView
+        _ = scrollView.realizeNativePeer(in: backend, parent: nil)
+        guard let strip = scrollView.winHeaderStripView else {
+            fatalError("Pinned header strip was not installed.")
+        }
+        return (scrollView, tableView, strip)
+    }
+
+    // With reordering enabled, dragging column A's header past column B drops it
+    // into the second slot: [A,B,C] -> [B,A,C].
+    let (_, tableView, strip) = makeTable()
+    tableView.allowsColumnReordering = true
+    strip.mouseDown(with: NSEvent(type: .leftMouseDown, locationInWindow: NSMakePoint(50, 6)))
+    strip.mouseDragged(with: NSEvent(type: .leftMouseDragged, locationInWindow: NSMakePoint(180, 6)))
+    strip.mouseUp(with: NSEvent(type: .leftMouseUp, locationInWindow: NSMakePoint(180, 6)))
+    expect(tableView.tableColumns.map { $0.identifier.rawValue } == ["b", "a", "c"],
+           "Column reorder drag did not move A after B. Got \(tableView.tableColumns.map { $0.identifier.rawValue }).")
+
+    // With reordering disabled (the default), the same drag leaves order intact.
+    let (_, lockedTable, lockedStrip) = makeTable()
+    lockedStrip.mouseDown(with: NSEvent(type: .leftMouseDown, locationInWindow: NSMakePoint(50, 6)))
+    lockedStrip.mouseDragged(with: NSEvent(type: .leftMouseDragged, locationInWindow: NSMakePoint(180, 6)))
+    lockedStrip.mouseUp(with: NSEvent(type: .leftMouseUp, locationInWindow: NSMakePoint(180, 6)))
+    expect(lockedTable.tableColumns.map { $0.identifier.rawValue } == ["a", "b", "c"],
+           "Column reorder happened even though allowsColumnReordering is false. Got \(lockedTable.tableColumns.map { $0.identifier.rawValue }).")
+}
+
+testDrawnTableHeaderColumnReorder()
 
 /// Vends a cell view for every cell and a custom height for the first row.
 final class VariableHeightTableDelegate: NSTableViewDelegate {

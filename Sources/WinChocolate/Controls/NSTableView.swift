@@ -227,6 +227,12 @@ open class NSTableView: NSControl {
     var winPinnedHeaderStrip: WinDrawnHeaderStrip?
     /// The column being interactively resized from the header, or `-1`.
     var winResizingColumn = -1
+    /// The column pressed for a potential reorder drag, or `-1`.
+    var winHeaderDragColumn = -1
+    /// The x where the header press began (for the reorder drag threshold).
+    var winHeaderDragStartX: CGFloat = 0
+    /// The column insertion index a reorder drag currently targets, or `-1`.
+    var winHeaderDropIndex = -1
     var winResizeStartX: CGFloat = 0
     var winResizeStartWidth: CGFloat = 0
     /// The live in-place editor overlay for a drawn cell, if any.
