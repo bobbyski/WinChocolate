@@ -212,11 +212,17 @@ open class NSTableView: NSControl {
     /// When set, drawn-table rows can be reordered by dragging: the handler is
     /// called with the source row and the destination insertion index (0...n)
     /// on drop. A convenience ahead of the full `NSDraggingSession` protocol.
-    open var winRowReorderHandler: ((_ fromRow: Int, _ toIndex: Int) -> Void)?
-    /// The row currently being dragged for reorder, or `-1`.
+    open var winRowReorderHandler: ((_ fromRows: IndexSet, _ toIndex: Int) -> Void)?
+    /// The row the reorder drag started on, or `-1`.
     var winDraggingRow = -1
+    /// The set of rows being dragged (the pressed row, or the whole selection
+    /// when the pressed row is part of a multi-row selection).
+    var winDraggingRows: IndexSet = IndexSet()
     /// The insertion index the drag currently targets, or `-1`.
     var winDropIndex = -1
+    /// A row whose selection collapse was deferred to mouse-up (AppKit lets you
+    /// drag a multi-row selection by not collapsing on mouse-down), or `-1`.
+    var winPendingCollapseRow = -1
     /// The pinned header strip installed on the enclosing scroll view, if any.
     var winPinnedHeaderStrip: WinDrawnHeaderStrip?
     /// The column being interactively resized from the header, or `-1`.

@@ -2974,17 +2974,26 @@ viewTable.delegate = viewTableDelegate
 // No opt-in flag: the table auto-detects view-based mode because the delegate
 // vends cell views (AppKit semantics).
 // Drag a row to reorder it (5.8): move the parallel model arrays together.
-viewTable.winRowReorderHandler = { [weak viewTable] from, toIndex in
-    let dest = toIndex > from ? toIndex - 1 : toIndex
-    let task = viewTableSource.tasks.remove(at: from)
-    viewTableSource.tasks.insert(task, at: dest)
-    let note = viewTableSource.notes.remove(at: from)
-    viewTableSource.notes.insert(note, at: dest)
-    let done = viewTableSource.done.remove(at: from)
-    viewTableSource.done.insert(done, at: dest)
+viewTable.winRowReorderHandler = { [weak viewTable] fromRows, toIndex in
+    // Move one or many selected rows (parallel model arrays) to the drop index.
+    let sortedRows = fromRows.sorted()
+    let dest = toIndex - sortedRows.filter { $0 < toIndex }.count
+    let movedTasks = sortedRows.map { viewTableSource.tasks[$0] }
+    let movedNotes = sortedRows.map { viewTableSource.notes[$0] }
+    let movedDone = sortedRows.map { viewTableSource.done[$0] }
+    for row in sortedRows.reversed() {
+        viewTableSource.tasks.remove(at: row)
+        viewTableSource.notes.remove(at: row)
+        viewTableSource.done.remove(at: row)
+    }
+    viewTableSource.tasks.insert(contentsOf: movedTasks, at: dest)
+    viewTableSource.notes.insert(contentsOf: movedNotes, at: dest)
+    viewTableSource.done.insert(contentsOf: movedDone, at: dest)
     viewTable?.reloadData()
-    statusLabel.stringValue = "Moved row \(from) → \(dest)"
+    statusLabel.stringValue = "Moved \(fromRows.count) row(s) → \(dest)"
 }
+// Multi-row reorder needs multiple selection.
+viewTable.allowsMultipleSelection = true
 viewTableScrollView.documentView = viewTable
 
 // 5.5 — NSTableRowView hosting: full-width colored row views behind hosted

@@ -13,6 +13,11 @@ public struct IndexSet: Equatable, Hashable, Sendable, Sequence {
         self.storage = [integer]
     }
 
+    /// Creates a set from any sequence of indexes (e.g. a `Set<Int>` or array).
+    public init<S: Sequence>(_ indexes: S) where S.Element == Int {
+        self.storage = Set(indexes)
+    }
+
     /// Creates a set containing a range of indexes.
     public init(integersIn range: Range<Int>) {
         self.storage = Set(range)

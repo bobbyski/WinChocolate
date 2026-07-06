@@ -8392,13 +8392,14 @@ func testDrawnTableRowReorderDragMovesRow() {
     let delegate = ViewBasedTableDelegate()
     tableView.delegate = delegate
 
-    var reorderCalls: [(from: Int, to: Int)] = []
-    tableView.winRowReorderHandler = { from, to in
-        reorderCalls.append((from, to))
-        var arr = dataSource.items
-        let moved = arr.remove(at: from)
-        arr.insert(moved, at: to > from ? to - 1 : to)
-        dataSource.items = arr
+    var reorderCalls: [(rows: IndexSet, to: Int)] = []
+    tableView.winRowReorderHandler = { rows, to in
+        reorderCalls.append((rows, to))
+        let sorted = rows.sorted()
+        let dest = to - sorted.filter { $0 < to }.count
+        let moving = sorted.map { dataSource.items[$0] }
+        for r in sorted.reversed() { dataSource.items.remove(at: r) }
+        dataSource.items.insert(contentsOf: moving, at: dest)
     }
 
     let handle = tableView.realizeNativePeer(in: backend, parent: nil)
@@ -8410,10 +8411,43 @@ func testDrawnTableRowReorderDragMovesRow() {
     backend.mouseUpActions[handle]?(NSEvent(type: .leftMouseUp, locationInWindow: NSMakePoint(10, header + 3 * 24 + 4)))
 
     expect(reorderCalls.count == 1, "Reorder handler was not called once. Got \(reorderCalls.count).")
-    expect(reorderCalls.first?.from == 1 && reorderCalls.first?.to == 3,
+    expect(reorderCalls.first?.rows == IndexSet(integer: 1) && reorderCalls.first?.to == 3,
            "Reorder handler received wrong indices. Got \(String(describing: reorderCalls.first)).")
     expect(dataSource.items == ["alpha", "charlie", "bravo", "delta"],
            "Row reorder did not move 'bravo' after 'charlie'. Got \(dataSource.items).")
+}
+
+func testDrawnTableMultiRowReorderMovesSelection() {
+    let backend = InMemoryNativeControlBackend()
+    let tableView = NSTableView(frame: NSMakeRect(0, 0, 200, 300))
+    let dataSource = ReorderableTableDataSource()  // alpha, bravo, charlie, delta
+    let column = NSTableColumn(identifier: "name")
+    column.width = 180
+    tableView.addTableColumn(column)
+    tableView.dataSource = dataSource
+    tableView.allowsMultipleSelection = true
+    let delegate = ViewBasedTableDelegate()
+    tableView.delegate = delegate
+    tableView.winRowReorderHandler = { rows, to in
+        let sorted = rows.sorted()
+        let dest = to - sorted.filter { $0 < to }.count
+        let moving = sorted.map { dataSource.items[$0] }
+        for r in sorted.reversed() { dataSource.items.remove(at: r) }
+        dataSource.items.insert(contentsOf: moving, at: dest)
+    }
+
+    let handle = tableView.realizeNativePeer(in: backend, parent: nil)
+    // Select rows 0 and 1 (alpha, bravo), then drag from row 0 (no modifier —
+    // the selection must survive so all selected rows drag together) to the end.
+    tableView.selectRowIndexes([0, 1], byExtendingSelection: false)
+    let header: CGFloat = 24
+    backend.mouseDownActions[handle]?(NSEvent(type: .leftMouseDown, locationInWindow: NSMakePoint(10, header + 0 * 24 + 6)))
+    backend.mouseDraggedActions[handle]?(NSEvent(type: .leftMouseDragged, locationInWindow: NSMakePoint(10, header + 4 * 24)))
+    backend.mouseUpActions[handle]?(NSEvent(type: .leftMouseUp, locationInWindow: NSMakePoint(10, header + 4 * 24)))
+
+    // Both selected rows move to the end, keeping their order.
+    expect(dataSource.items == ["charlie", "delta", "alpha", "bravo"],
+           "Multi-row reorder did not move the selection to the end. Got \(dataSource.items).")
 }
 
 func testTableHeaderViewTracksClickedColumnAndGeometry() {
@@ -8454,5 +8488,6 @@ func testTableHeaderViewTracksClickedColumnAndGeometry() {
 
 testTableHeaderViewTracksClickedColumnAndGeometry()
 testDrawnTableRowReorderDragMovesRow()
+testDrawnTableMultiRowReorderMovesSelection()
 
 print("WinChocolate contract tests passed.")

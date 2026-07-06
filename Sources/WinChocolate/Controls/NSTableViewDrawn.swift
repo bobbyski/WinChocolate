@@ -583,6 +583,19 @@ extension NSTableView {
         }
 
         let extend = allowsMultipleSelection && (event.modifierFlags.contains(.shift) || event.modifierFlags.contains(.command))
+
+        // Pressing an already-selected row of a multi-selection (no modifier)
+        // must not collapse the selection yet — that would prevent dragging all
+        // of them. Defer the collapse to mouse-up (only if no drag happens) and
+        // arm a multi-row drag now. (AppKit's mouse-down-and-drag behavior.)
+        if !extend, winRowReorderHandler != nil, selectedRowIndexes.contains(row), selectedRowIndexes.count > 1 {
+            winDraggingRow = row
+            winDraggingRows = IndexSet(selectedRowIndexes)
+            winDropIndex = -1
+            winPendingCollapseRow = row
+            return
+        }
+
         if extend, selectedRowIndexes.contains(row) {
             deselectRow(row)
         } else {
@@ -592,10 +605,12 @@ extension NSTableView {
         winInvalidateTree()
         sendAction()
 
-        // Arm a potential reorder drag from this row.
+        // Arm a single-row reorder drag from this row.
         if winRowReorderHandler != nil {
             winDraggingRow = row
+            winDraggingRows = IndexSet(integer: row)
             winDropIndex = -1
+            winPendingCollapseRow = -1
         }
 
         // Double-click a drawn (non-hosted) cell in an editable column → edit.
@@ -633,22 +648,33 @@ extension NSTableView {
         }
     }
 
-    /// Commits a reorder drag: calls the handler with (fromRow, toIndex).
+    /// Commits a reorder drag: calls the handler with (fromRows, toIndex). If no
+    /// drag occurred but a selection collapse was deferred, applies it now.
     func winDrawnMouseUp(_ event: NSEvent) {
         defer {
             winDraggingRow = -1
+            winDraggingRows = IndexSet()
             winDropIndex = -1
+            winPendingCollapseRow = -1
             winInvalidateTree()
         }
-        guard let handler = winRowReorderHandler,
-              winDraggingRow >= 0, winDropIndex >= 0 else {
+        // No drag happened (mouse never moved to set a drop index).
+        if winDropIndex < 0 {
+            if winPendingCollapseRow >= 0 {
+                selectRowIndexes([winPendingCollapseRow], byExtendingSelection: false)
+                winUpdateHostedRowSelection()
+                sendAction()
+            }
             return
         }
-        // A drop just above or just below the source row is a no-op.
-        if winDropIndex == winDraggingRow || winDropIndex == winDraggingRow + 1 {
+        guard let handler = winRowReorderHandler, winDraggingRow >= 0, !winDraggingRows.isEmpty else {
             return
         }
-        handler(winDraggingRow, winDropIndex)
+        // A single-row drop just above or below its own row is a no-op.
+        if winDraggingRows.count == 1, winDropIndex == winDraggingRow || winDropIndex == winDraggingRow + 1 {
+            return
+        }
+        handler(winDraggingRows, winDropIndex)
         reloadData()
     }
 
