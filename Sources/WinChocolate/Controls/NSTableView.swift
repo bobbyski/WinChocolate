@@ -14,6 +14,13 @@ public protocol NSTableViewDataSource: AnyObject {
     /// `nil` if the row is not draggable — matching AppKit's
     /// `tableView(_:pasteboardWriterForRow:)`.
     func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> Any?
+
+    /// Accepts a drop of external (or cross-view) content at a target row,
+    /// returning whether it was consumed — matching AppKit's
+    /// `tableView(_:acceptDrop:row:dropOperation:)`. Read the payload from
+    /// `info.draggingPasteboard`. The table must be registered for the dragged
+    /// types (`registerForDraggedTypes`).
+    func tableView(_ tableView: NSTableView, acceptDrop info: NSDraggingInfo, row: Int) -> Bool
 }
 
 /// Delegate for table-view notifications.
@@ -41,6 +48,11 @@ public extension NSTableViewDataSource {
     /// Default: rows are not draggable out of the table.
     func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> Any? {
         nil
+    }
+
+    /// Default: the table refuses external drops.
+    func tableView(_ tableView: NSTableView, acceptDrop info: NSDraggingInfo, row: Int) -> Bool {
+        false
     }
 }
 
@@ -267,6 +279,13 @@ open class NSTableView: NSControl {
     /// first column. Applied to drawn text and to hosted cell-view frames.
     /// Default 0.
     open func winDrawnLeadingInset(forRow row: Int, column: Int) -> CGFloat {
+        0
+    }
+
+    /// Extra trailing inset (points) for a drawn cell's content — space reserved
+    /// at the cell's right edge so drawn text is clipped short of it (e.g. an
+    /// `NSBrowser` branch chevron). Default 0.
+    open func winDrawnTrailingInset(forRow row: Int, column: Int) -> CGFloat {
         0
     }
 
@@ -629,6 +648,17 @@ open class NSTableView: NSControl {
         } else {
             super.mouseUp(with: event)
         }
+    }
+
+    /// Accepts an external (or cross-view) drop: computes the target row from the
+    /// drop location and forwards to the data source's `acceptDrop` hook. The
+    /// table must be registered for the dragged types to receive the drop.
+    open override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        guard let dataSource else {
+            return false
+        }
+        let row = winIsDrawn ? winDropInsertionIndex(atY: sender.draggingLocation.y) : numberOfRows
+        return dataSource.tableView(self, acceptDrop: sender, row: row)
     }
 
     /// Ensures native table state and selection dispatch are wired.

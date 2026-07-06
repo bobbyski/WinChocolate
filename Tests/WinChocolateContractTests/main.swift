@@ -1338,6 +1338,40 @@ func testBrowserDrawsBranchIndicatorOnNonLeafRows() {
            "Turning cell icons off did not release the leading inset.")
 }
 
+/// A browser whose single leaf item carries a delegate-provided cell image.
+final class ImageBrowserDelegate: NSBrowserDelegate {
+    static let iconPath = "C:/icons/file.png"
+    func browser(_ browser: NSBrowser, numberOfChildrenOfItem item: Any?) -> Int {
+        item == nil ? 1 : 0
+    }
+    func browser(_ browser: NSBrowser, child index: Int, ofItem item: Any?) -> Any { "File" }
+    func browser(_ browser: NSBrowser, isLeafItem item: Any?) -> Bool { item != nil }
+    func browser(_ browser: NSBrowser, imageForItem item: Any?) -> NSImage? {
+        NSImage(contentsOfFile: Self.iconPath)
+    }
+}
+
+func testBrowserDrawsDelegateCellImage() {
+    let backend = InMemoryNativeControlBackend()
+    let browser = NSBrowser(frame: NSMakeRect(0, 0, 320, 120))
+    let delegate = ImageBrowserDelegate()
+    browser.delegate = delegate
+    browser.columnWidth = 150
+    browser.loadColumnZero()
+    _ = browser.realizeNativePeer(in: backend, parent: nil)
+
+    guard let column0 = browser.subviews.compactMap({ $0 as? NSScrollView }).first,
+          let table = column0.documentView as? NSTableView,
+          let handle = table.nativeHandle else {
+        fatalError("Browser column 0 table was not realized.")
+    }
+
+    // The single leaf row's cell draws the delegate image (not the built-in glyph).
+    let recording = backend.performDraw(for: handle, in: table.bounds)
+    expect(recording.images.contains { $0.path == ImageBrowserDelegate.iconPath },
+           "Browser did not draw the delegate-provided cell image. Got \(recording.images.map { $0.path }).")
+}
+
 func testIndexPathStoresCollectionComponents() {
     let indexPath = IndexPath(item: 3, section: 2)
     let appended = IndexPath(indexes: [1, 4]).appending(9)
@@ -7310,6 +7344,7 @@ testBrowserLoadsColumnsAndTracksSelection()
 testBrowserPathRoundTrips()
 testBrowserColumnTitles()
 testBrowserDrawsBranchIndicatorOnNonLeafRows()
+testBrowserDrawsDelegateCellImage()
 testIndexPathStoresCollectionComponents()
 testCollectionViewReloadsItemsAndTracksSelection()
 testCollectionViewRecyclesItemsViaMakeItem()
@@ -8227,6 +8262,33 @@ final class ManyRowTableDataSource: NSTableViewDataSource {
     func tableView(_ tableView: NSTableView, objectValueFor tableColumn: NSTableColumn?, row: Int) -> Any? { "row \(row)" }
 }
 
+func testDrawnTableClipsCellTextToColumns() {
+    let backend = InMemoryNativeControlBackend()
+    let tableView = NSTableView(frame: NSMakeRect(0, 0, 200, 200))
+    let dataSource = ManyRowTableDataSource(count: 2)
+    let colA = NSTableColumn(identifier: "a")
+    colA.title = "A"
+    colA.width = 80
+    let colB = NSTableColumn(identifier: "b")
+    colB.title = "B"
+    colB.width = 80
+    tableView.addTableColumn(colA)
+    tableView.addTableColumn(colB)
+    tableView.dataSource = dataSource
+    tableView.winUsesViewBasedCells = true  // all-text drawn cells (no hosted views)
+
+    let handle = tableView.realizeNativePeer(in: backend, parent: nil)
+    let recording = backend.performDraw(for: handle, in: tableView.bounds)
+
+    // Each of the 2×2 drawn-text cells clips its text to the cell rect, so a long
+    // value can't spill into the next column. A rect clip is 5 path segments.
+    let cellClips = recording.clips.filter { $0.segments.count == 5 }
+    expect(cellClips.count == 4, "Drawn table did not clip each text cell to its column. Got \(cellClips.count).")
+
+    // The default trailing inset is zero (only decorated columns reserve space).
+    expect(tableView.winDrawnTrailingInset(forRow: 0, column: 0) == 0, "Default trailing inset should be zero.")
+}
+
 func testDrawnTableScrollsAsScrollViewDocument() {
     let backend = InMemoryNativeControlBackend()
     let scrollView = NSScrollView(frame: NSMakeRect(0, 0, 300, 120))
@@ -8262,6 +8324,7 @@ func testDrawnTableScrollsAsScrollViewDocument() {
 }
 
 testDrawnTableScrollsAsScrollViewDocument()
+testDrawnTableClipsCellTextToColumns()
 
 func testDrawnTablePinnedHeaderStaysAndSorts() {
     let backend = InMemoryNativeControlBackend()
@@ -8676,6 +8739,54 @@ final class ReorderableTableDataSource: NSTableViewDataSource {
     func tableView(_ tableView: NSTableView, objectValueFor tableColumn: NSTableColumn?, row: Int) -> Any? { items[row] }
 }
 
+/// A table that accepts an external text drop as a new row at the drop index.
+final class DropTargetTableDataSource: NSTableViewDataSource {
+    var items = ["alpha", "bravo"]
+    func numberOfRows(in tableView: NSTableView) -> Int { items.count }
+    func tableView(_ tableView: NSTableView, objectValueFor tableColumn: NSTableColumn?, row: Int) -> Any? { items[row] }
+    func tableView(_ tableView: NSTableView, acceptDrop info: NSDraggingInfo, row: Int) -> Bool {
+        guard let text = info.draggingPasteboard.string(forType: .string) else { return false }
+        items.insert(text, at: max(0, min(row, items.count)))
+        return true
+    }
+}
+
+func testDrawnTableAcceptsExternalRowDrop() {
+    let backend = InMemoryNativeControlBackend()
+    let tableView = NSTableView(frame: NSMakeRect(0, 0, 200, 200))
+    let dataSource = DropTargetTableDataSource()
+    let column = NSTableColumn(identifier: "name")
+    column.width = 180
+    tableView.addTableColumn(column)
+    tableView.dataSource = dataSource
+    tableView.winUsesViewBasedCells = true
+
+    let handle = tableView.realizeNativePeer(in: backend, parent: nil)
+    tableView.registerForDraggedTypes([.string])
+
+    // Drop "charlie" at the very top → inserted as the new first row.
+    let dropped = backend.simulateDrop(content: NativeDropContent(text: "charlie", filePaths: []),
+                                       at: NSMakePoint(20, 2), for: handle)
+    expect(dropped, "External drop was not accepted by the table.")
+    expect(dataSource.items == ["charlie", "alpha", "bravo"],
+           "Dropped text was not inserted at the drop row. Got \(dataSource.items).")
+
+    // A table not registered for the dragged type refuses the drop.
+    let backend2 = InMemoryNativeControlBackend()
+    let plain = NSTableView(frame: NSMakeRect(0, 0, 200, 200))
+    let ds2 = DropTargetTableDataSource()
+    let col2 = NSTableColumn(identifier: "n")
+    col2.width = 180
+    plain.addTableColumn(col2)
+    plain.dataSource = ds2
+    plain.winUsesViewBasedCells = true
+    let handle2 = plain.realizeNativePeer(in: backend2, parent: nil)
+    let refused = backend2.simulateDrop(content: NativeDropContent(text: "x", filePaths: []),
+                                        at: NSMakePoint(20, 2), for: handle2)
+    expect(!refused, "A table not registered for drops accepted one.")
+    expect(ds2.items == ["alpha", "bravo"], "A refused drop still mutated the model.")
+}
+
 /// A read-only table whose rows drag out as their text (a pasteboard writer).
 final class PasteboardRowDataSource: NSTableViewDataSource {
     let items = ["alpha", "bravo", "charlie", "delta"]
@@ -8831,5 +8942,6 @@ testTableHeaderViewTracksClickedColumnAndGeometry()
 testDrawnTableRowReorderDragMovesRow()
 testDrawnTableMultiRowReorderMovesSelection()
 testDrawnTableRowDragsOutViaPasteboardWriter()
+testDrawnTableAcceptsExternalRowDrop()
 
 print("WinChocolate contract tests passed.")

@@ -14,6 +14,11 @@ public protocol NSBrowserDelegate: AnyObject {
 
     /// Returns a custom title for a column, or `nil` to use the default.
     func browser(_ browser: NSBrowser, titleOfColumn column: Int) -> String?
+
+    /// Returns a leading cell image for an item, or `nil` to use the built-in
+    /// folder (branch) / document (leaf) glyph. Matches an `NSBrowserCell`
+    /// carrying an image.
+    func browser(_ browser: NSBrowser, imageForItem item: Any?) -> NSImage?
 }
 
 public extension NSBrowserDelegate {
@@ -24,6 +29,11 @@ public extension NSBrowserDelegate {
 
     /// Default: no delegate-provided column title.
     func browser(_ browser: NSBrowser, titleOfColumn column: Int) -> String? {
+        nil
+    }
+
+    /// Default: no per-cell image (the built-in folder/document glyph is used).
+    func browser(_ browser: NSBrowser, imageForItem item: Any?) -> NSImage? {
         nil
     }
 
@@ -87,6 +97,12 @@ open class NSBrowser: NSControl {
             browser?.showsCellIcons == true ? iconInset : 0
         }
 
+        /// Reserve trailing space so a long title is clipped short of the branch
+        /// chevron rather than drawing under it.
+        override func winDrawnTrailingInset(forRow row: Int, column: Int) -> CGFloat {
+            18
+        }
+
         /// Draws the leading icon (folder/document) and the trailing branch
         /// chevron, matching AppKit's `NSBrowserCell` decoration.
         override func winDrawnDrawDecoration(forRow row: Int, column: Int, cellRect: NSRect) {
@@ -96,7 +112,8 @@ open class NSBrowser: NSControl {
             }
             let isLeaf = browser.delegate?.browser(browser, isLeafItem: item) ?? true
             if browser.showsCellIcons {
-                drawCellIcon(isLeaf: isLeaf, in: cellRect)
+                let image = browser.delegate?.browser(browser, imageForItem: item)
+                drawCellIcon(image: image, isLeaf: isLeaf, in: cellRect)
             }
             if !isLeaf {
                 drawBranchChevron(in: cellRect)
@@ -116,12 +133,17 @@ open class NSBrowser: NSControl {
             path.fill()
         }
 
-        /// A simple, original folder (branch) or document (leaf) glyph at the
-        /// leading edge — drawn from rects/lines so it never collides with the
-        /// chevron's triangle in fill-shape tests.
-        private func drawCellIcon(isLeaf: Bool, in cellRect: NSRect) {
+        /// Draws the leading cell icon: a delegate-provided image when present,
+        /// otherwise a simple, original folder (branch) or document (leaf) glyph
+        /// drawn from rects/lines so it never collides with the chevron's
+        /// triangle in fill-shape tests.
+        private func drawCellIcon(image: NSImage?, isLeaf: Bool, in cellRect: NSRect) {
             let cy = cellRect.midY
             let left = cellRect.minX + 4
+            if let image {
+                image.draw(in: NSRect(x: left, y: cy - 7, width: 14, height: 14))
+                return
+            }
             if isLeaf {
                 // Document: a page with two text lines.
                 let page = NSRect(x: left + 1, y: cy - 6, width: 11, height: 13)

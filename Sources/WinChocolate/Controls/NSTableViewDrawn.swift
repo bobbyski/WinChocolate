@@ -344,14 +344,24 @@ extension NSTableView {
                     continue
                 }
                 let inset = winDrawnLeadingInset(forRow: row, column: column)
+                let trailing = winDrawnTrailingInset(forRow: row, column: column)
                 let color: NSColor = selectedRowIndexes.contains(row)
                     ? .selectedTextColor : NSColor(white: 0.1, alpha: 1)
+                // Clip the text to the cell (minus any reserved trailing space)
+                // so a long value can't spill into the next column or under a
+                // trailing decoration like a browser chevron.
+                let columnWidth = max(20, tableColumns[column].width)
+                let clipRect = NSRect(x: winColumnX(column), y: textY,
+                                      width: max(0, columnWidth - trailing), height: h)
+                NSGraphicsContext.saveGraphicsState()
+                NSRectClip(clipRect)
                 // Match the native control font (Segoe UI 9pt → 12px) and center
                 // the text the way the header title is (optically centered).
                 text.draw(at: NSMakePoint(winColumnX(column) + 6 + inset, textY + (h - 24) / 2 + 2), withAttributes: [
                     .font: NSFont.systemFont(ofSize: 9),
                     .foregroundColor: color,
                 ])
+                NSGraphicsContext.restoreGraphicsState()
             }
             textY += h
         }
