@@ -65,6 +65,10 @@ open class NSCollectionViewItem: NSObject {
     /// Application object represented by the item.
     open var representedObject: Any?
 
+    /// The reuse identifier the item was made with (set by `makeItem`), used to
+    /// return it to the correct recycling pool.
+    open var identifier: NSUserInterfaceItemIdentifier?
+
     /// Whether the item is currently selected.
     open var isSelected: Bool = false {
         didSet {
@@ -74,10 +78,18 @@ open class NSCollectionViewItem: NSObject {
         }
     }
 
-    /// Creates an item with a default view.
-    public override init() {
+    /// Creates an item with a default view. `required` so the collection view
+    /// can instantiate a registered item class for recycling.
+    public required override init() {
         self.view = NSView(frame: NSMakeRect(0, 0, 96, 32))
         super.init()
+    }
+
+    /// Called before a recycled item is handed back out. Subclasses reset any
+    /// per-use state here (matching AppKit's `NSCollectionViewItem`).
+    open func prepareForReuse() {
+        isSelected = false
+        representedObject = nil
     }
 }
 
@@ -144,6 +156,11 @@ open class NSCollectionView: NSControl {
     private var itemsByIndexPath: [IndexPath: NSCollectionViewItem] = [:]
     private var orderedIndexPaths: [IndexPath] = []
 
+    /// Item classes registered for a reuse identifier (for `makeItem`).
+    private var itemClassesByIdentifier: [String: NSCollectionViewItem.Type] = [:]
+    /// Recycled items available for reuse, keyed by their reuse identifier.
+    private var reusePool: [String: [NSCollectionViewItem]] = [:]
+
     /// Creates a collection view.
     public override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -154,11 +171,50 @@ open class NSCollectionView: NSControl {
         backend.createView(frame: frame, parent: parent)
     }
 
-    /// Reloads all collection items from the data source.
-    open func reloadData() {
+    /// Registers an item class to instantiate for a reuse identifier. Passing
+    /// `nil` unregisters the identifier. Matches AppKit's
+    /// `register(_:forItemWithIdentifier:)`.
+    open func register(_ itemClass: NSCollectionViewItem.Type?, forItemWithIdentifier identifier: NSUserInterfaceItemIdentifier) {
+        if let itemClass {
+            itemClassesByIdentifier[identifier.rawValue] = itemClass
+        } else {
+            itemClassesByIdentifier.removeValue(forKey: identifier.rawValue)
+            reusePool.removeValue(forKey: identifier.rawValue)
+        }
+    }
+
+    /// Returns a recycled item for the identifier if one is available, otherwise
+    /// instantiates the registered class (or a base `NSCollectionViewItem`). The
+    /// data source calls this inside `itemForRepresentedObjectAt`, exactly as in
+    /// AppKit's `makeItem(withIdentifier:for:)`.
+    open func makeItem(withIdentifier identifier: NSUserInterfaceItemIdentifier, for indexPath: IndexPath) -> NSCollectionViewItem {
+        if var pooled = reusePool[identifier.rawValue], let reused = pooled.popLast() {
+            reusePool[identifier.rawValue] = pooled
+            reused.prepareForReuse()
+            reused.identifier = identifier
+            return reused
+        }
+        let itemClass = itemClassesByIdentifier[identifier.rawValue] ?? NSCollectionViewItem.self
+        let item = itemClass.init()
+        item.identifier = identifier
+        return item
+    }
+
+    /// Moves the current items into the reuse pool (keyed by identifier) so the
+    /// next `makeItem` can hand them back instead of allocating.
+    private func recycleCurrentItems() {
         for item in itemsByIndexPath.values {
             item.view.removeFromSuperview()
+            guard let key = item.identifier?.rawValue else {
+                continue
+            }
+            reusePool[key, default: []].append(item)
         }
+    }
+
+    /// Reloads all collection items from the data source.
+    open func reloadData() {
+        recycleCurrentItems()
 
         itemsByIndexPath.removeAll()
         orderedIndexPaths.removeAll()

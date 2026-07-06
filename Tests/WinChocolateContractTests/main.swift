@@ -1122,6 +1122,42 @@ func testOutlineViewFlattensExpandableItems() {
     expect(outlineView.numberOfRows == 4, "Disclosure-triangle expand did not reveal child rows.")
 }
 
+/// An outline delegate that hosts a text field per cell for the first column.
+final class HostingOutlineDelegate: NSOutlineViewDelegate {
+    func outlineView(_ outlineView: NSOutlineView, viewFor tableColumn: NSTableColumn?, item: Any) -> NSView? {
+        guard tableColumn?.identifier.rawValue == "name" else { return nil }
+        return NSTextField(string: "cell-\(item)", frame: NSMakeRect(0, 0, 80, 18))
+    }
+}
+
+func testOutlineViewHostsDelegateCellViews() {
+    let backend = InMemoryNativeControlBackend()
+    let outline = NSOutlineView(frame: NSMakeRect(0, 0, 240, 160))
+    let name = NSTableColumn(identifier: "name")
+    name.title = "Name"
+    name.width = 160
+    let kind = NSTableColumn(identifier: "kind")
+    kind.title = "Kind"
+    kind.width = 60
+    outline.addTableColumn(name)
+    outline.addTableColumn(kind)
+    let dataSource = RecordingOutlineDataSource()
+    outline.outlineDataSource = dataSource
+    let delegate = HostingOutlineDelegate()
+    outline.outlineDelegate = delegate
+    outline.reloadData()
+    _ = outline.realizeNativePeer(in: backend, parent: nil)
+
+    // Two root rows → the first column hosts a text field per row; the second
+    // column (no delegate view) stays drawn text.
+    let hosted = outline.subviews.compactMap { $0 as? NSTextField }
+    expect(hosted.count == 2, "Outline did not host a delegate cell view per root row. Got \(hosted.count).")
+    expect(hosted.contains { $0.stringValue == "cell-Application" },
+           "Outline hosted view was not seeded from its item.")
+    expect(hosted.contains { $0.stringValue == "cell-Controls" },
+           "Outline hosted view for the second root row was missing.")
+}
+
 func testOutlineViewSiblingReorderMovesItem() {
     let outline = NSOutlineView(frame: NSMakeRect(0, 0, 240, 160))
     let name = NSTableColumn(identifier: "name")
@@ -1291,6 +1327,15 @@ func testBrowserDrawsBranchIndicatorOnNonLeafRows() {
     let chevrons = recording.fills.filter { $0.segments.count == 4 }
     expect(chevrons.count == 1,
            "Column 0 should draw exactly one branch chevron (Folder, not File). Got \(chevrons.count).")
+
+    // Cell icons are on by default and reserve a leading inset so the title
+    // clears them; turning them off zeroes the inset.
+    expect(browser.showsCellIcons, "Browser cell icons should be on by default.")
+    expect(table.winDrawnLeadingInset(forRow: 0, column: 0) > 0,
+           "Cell icons did not reserve a leading inset for the title.")
+    browser.showsCellIcons = false
+    expect(table.winDrawnLeadingInset(forRow: 0, column: 0) == 0,
+           "Turning cell icons off did not release the leading inset.")
 }
 
 func testIndexPathStoresCollectionComponents() {
@@ -1345,6 +1390,47 @@ func testCollectionViewReloadsItemsAndTracksSelection() {
 
     expect(collectionView.selectionIndexPaths.isEmpty, "Collection view did not deselect item.")
     expect(delegate.deselected.contains(secondSection), "Collection delegate did not receive deselection.")
+}
+
+/// A collection data source that dequeues recycled items via `makeItem`.
+final class ReusingCollectionDataSource: NSCollectionViewDataSource {
+    static let cellID = NSUserInterfaceItemIdentifier("cell")
+    let count: Int
+    init(count: Int) { self.count = count }
+    func numberOfSections(in collectionView: NSCollectionView) -> Int { 1 }
+    func collectionView(_ cv: NSCollectionView, numberOfItemsInSection section: Int) -> Int { count }
+    func collectionView(_ cv: NSCollectionView, itemForRepresentedObjectAt ip: IndexPath) -> NSCollectionViewItem {
+        let item = cv.makeItem(withIdentifier: Self.cellID, for: ip)
+        item.representedObject = "item\(ip.item)"
+        return item
+    }
+}
+
+func testCollectionViewRecyclesItemsViaMakeItem() {
+    let cv = NSCollectionView(frame: NSMakeRect(0, 0, 260, 200))
+    cv.register(NSCollectionViewItem.self, forItemWithIdentifier: ReusingCollectionDataSource.cellID)
+    let ds = ReusingCollectionDataSource(count: 3)
+    cv.dataSource = ds
+
+    cv.reloadData()
+    let firstPass = (0..<3).compactMap { cv.item(at: IndexPath(item: $0, section: 0)) }
+    expect(firstPass.count == 3, "First reload did not create 3 items.")
+    expect(firstPass.allSatisfy { $0.identifier == ReusingCollectionDataSource.cellID },
+           "makeItem did not stamp the reuse identifier on new items.")
+    let firstIDs = Set(firstPass.map { ObjectIdentifier($0) })
+
+    cv.reloadData()
+    let secondPass = (0..<3).compactMap { cv.item(at: IndexPath(item: $0, section: 0)) }
+    let secondIDs = Set(secondPass.map { ObjectIdentifier($0) })
+
+    // The three items are recycled into the pool on the second reload and
+    // dequeued again — the same instances, no fresh allocations.
+    expect(secondIDs == firstIDs, "Collection items were not recycled across reloads. first=\(firstIDs.count) second=\(secondIDs.count) shared=\(firstIDs.intersection(secondIDs).count)")
+    // The recycled views are re-hosted, and the data source repopulated them
+    // (after prepareForReuse cleared the represented object).
+    expect(cv.subviews.count == 3, "Recycled item views were not re-hosted. Got \(cv.subviews.count).")
+    expect(secondPass.allSatisfy { ($0.representedObject as? String)?.hasPrefix("item") == true },
+           "Recycled items were not repopulated by the data source.")
 }
 
 func testCollectionViewButtonItemClickSelectsItem() {
@@ -7218,6 +7304,7 @@ testTableViewKeyboardExtendedSelection()
 testTableViewColumnSelectionAndDoubleActionSurface()
 testTableViewSortDescriptorPrototypeToggle()
 testOutlineViewFlattensExpandableItems()
+testOutlineViewHostsDelegateCellViews()
 testOutlineViewSiblingReorderMovesItem()
 testBrowserLoadsColumnsAndTracksSelection()
 testBrowserPathRoundTrips()
@@ -7225,6 +7312,7 @@ testBrowserColumnTitles()
 testBrowserDrawsBranchIndicatorOnNonLeafRows()
 testIndexPathStoresCollectionComponents()
 testCollectionViewReloadsItemsAndTracksSelection()
+testCollectionViewRecyclesItemsViaMakeItem()
 testCollectionViewButtonItemClickSelectsItem()
 testCollectionViewFlowLayoutArrangesSectionsAndSizesContent()
 testCollectionFlowLayoutHonorsPerItemSizeFromDelegate()
@@ -8588,6 +8676,52 @@ final class ReorderableTableDataSource: NSTableViewDataSource {
     func tableView(_ tableView: NSTableView, objectValueFor tableColumn: NSTableColumn?, row: Int) -> Any? { items[row] }
 }
 
+/// A read-only table whose rows drag out as their text (a pasteboard writer).
+final class PasteboardRowDataSource: NSTableViewDataSource {
+    let items = ["alpha", "bravo", "charlie", "delta"]
+    func numberOfRows(in tableView: NSTableView) -> Int { items.count }
+    func tableView(_ tableView: NSTableView, objectValueFor tableColumn: NSTableColumn?, row: Int) -> Any? { items[row] }
+    func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> Any? { items[row] }
+}
+
+func testDrawnTableRowDragsOutViaPasteboardWriter() {
+    let backend = InMemoryNativeControlBackend()
+    let tableView = NSTableView(frame: NSMakeRect(0, 0, 200, 300))
+    let dataSource = PasteboardRowDataSource()
+    let column = NSTableColumn(identifier: "name")
+    column.width = 180
+    tableView.addTableColumn(column)
+    tableView.dataSource = dataSource
+    let delegate = ViewBasedTableDelegate()
+    tableView.delegate = delegate
+    // No winRowReorderHandler → a row drag goes out as a system/OLE drag.
+
+    let handle = tableView.realizeNativePeer(in: backend, parent: nil)
+    // Press row 1 (arms the external drag) then move to start it.
+    let header: CGFloat = 24
+    backend.mouseDownActions[handle]?(NSEvent(type: .leftMouseDown, locationInWindow: NSMakePoint(20, header + 1 * 24 + 6)))
+    backend.mouseDraggedActions[handle]?(NSEvent(type: .leftMouseDragged, locationInWindow: NSMakePoint(60, header + 1 * 24 + 6)))
+
+    expect(backend.performedDrags.count == 1,
+           "Dragging a row with a pasteboard writer did not start a system drag. Got \(backend.performedDrags.count).")
+    expect(backend.performedDrags.first?.content.text == "bravo",
+           "The row drag carried the wrong pasteboard text. Got \(String(describing: backend.performedDrags.first?.content.text)).")
+
+    // A table whose data source vends no writer does not start a drag.
+    let backend2 = InMemoryNativeControlBackend()
+    let plain = NSTableView(frame: NSMakeRect(0, 0, 200, 300))
+    let plainSource = ReorderableTableDataSource()
+    let col2 = NSTableColumn(identifier: "n")
+    col2.width = 180
+    plain.addTableColumn(col2)
+    plain.dataSource = plainSource
+    plain.delegate = delegate
+    let handle2 = plain.realizeNativePeer(in: backend2, parent: nil)
+    backend2.mouseDownActions[handle2]?(NSEvent(type: .leftMouseDown, locationInWindow: NSMakePoint(20, header + 6)))
+    backend2.mouseDraggedActions[handle2]?(NSEvent(type: .leftMouseDragged, locationInWindow: NSMakePoint(60, header + 6)))
+    expect(backend2.performedDrags.isEmpty, "A row with no pasteboard writer should not start a system drag.")
+}
+
 func testDrawnTableRowReorderDragMovesRow() {
     let backend = InMemoryNativeControlBackend()
     let tableView = NSTableView(frame: NSMakeRect(0, 0, 200, 300))
@@ -8696,5 +8830,6 @@ func testTableHeaderViewTracksClickedColumnAndGeometry() {
 testTableHeaderViewTracksClickedColumnAndGeometry()
 testDrawnTableRowReorderDragMovesRow()
 testDrawnTableMultiRowReorderMovesSelection()
+testDrawnTableRowDragsOutViaPasteboardWriter()
 
 print("WinChocolate contract tests passed.")

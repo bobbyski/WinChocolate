@@ -64,29 +64,47 @@ open class NSBrowser: NSControl {
     }
 
     /// A browser column's list, drawn by the framework table so each row can
-    /// paint an `NSBrowserCell`-style branch indicator (a trailing chevron on
-    /// non-leaf rows). Leaf rows draw no indicator.
+    /// paint an `NSBrowserCell`-style leading icon (a folder for branches, a
+    /// document for leaves) plus a trailing branch chevron on non-leaf rows.
     private final class BrowserColumnTableView: NSTableView {
         weak var browser: NSBrowser?
         let columnIndex: Int
+
+        /// Leading space reserved for the cell icon (matches `iconInset`).
+        private let iconInset: CGFloat = 20
 
         init(browser: NSBrowser, columnIndex: Int, frame: NSRect) {
             self.browser = browser
             self.columnIndex = columnIndex
             super.init(frame: frame)
-            // Always draw via the framework table so the branch chevron can be
+            // Always draw via the framework table so the icon + chevron can be
             // painted per row.
             winUsesViewBasedCells = true
         }
 
-        /// Draws the branch chevron (right-pointing triangle) at the trailing
-        /// edge of non-leaf rows, matching AppKit's `NSBrowserCell` branch mark.
+        /// Reserve leading space for the cell icon so the drawn title clears it.
+        override func winDrawnLeadingInset(forRow row: Int, column: Int) -> CGFloat {
+            browser?.showsCellIcons == true ? iconInset : 0
+        }
+
+        /// Draws the leading icon (folder/document) and the trailing branch
+        /// chevron, matching AppKit's `NSBrowserCell` decoration.
         override func winDrawnDrawDecoration(forRow row: Int, column: Int, cellRect: NSRect) {
             guard let browser,
-                  let item = browser.item(atRow: row, inColumn: columnIndex),
-                  browser.delegate?.browser(browser, isLeafItem: item) == false else {
+                  let item = browser.item(atRow: row, inColumn: columnIndex) else {
                 return
             }
+            let isLeaf = browser.delegate?.browser(browser, isLeafItem: item) ?? true
+            if browser.showsCellIcons {
+                drawCellIcon(isLeaf: isLeaf, in: cellRect)
+            }
+            if !isLeaf {
+                drawBranchChevron(in: cellRect)
+            }
+        }
+
+        /// A right-pointing triangle at the trailing edge (branch mark).
+        private func drawBranchChevron(in cellRect: NSRect) {
             let x = cellRect.maxX - 12
             let cy = cellRect.midY
             let path = NSBezierPath()
@@ -96,6 +114,41 @@ open class NSBrowser: NSControl {
             path.close()
             NSColor(white: 0.45, alpha: 1).setFill()
             path.fill()
+        }
+
+        /// A simple, original folder (branch) or document (leaf) glyph at the
+        /// leading edge — drawn from rects/lines so it never collides with the
+        /// chevron's triangle in fill-shape tests.
+        private func drawCellIcon(isLeaf: Bool, in cellRect: NSRect) {
+            let cy = cellRect.midY
+            let left = cellRect.minX + 4
+            if isLeaf {
+                // Document: a page with two text lines.
+                let page = NSRect(x: left + 1, y: cy - 6, width: 11, height: 13)
+                NSColor.white.setFill()
+                NSBezierPath(rect: page).fill()
+                NSColor(white: 0.55, alpha: 1).setStroke()
+                let border = NSBezierPath(rect: page)
+                border.lineWidth = 1
+                border.stroke()
+                NSColor(white: 0.7, alpha: 1).setStroke()
+                for dy in [3, 7] {
+                    let line = NSBezierPath()
+                    line.move(to: NSMakePoint(page.minX + 2, page.minY + CGFloat(dy)))
+                    line.line(to: NSMakePoint(page.maxX - 2, page.minY + CGFloat(dy)))
+                    line.stroke()
+                }
+            } else {
+                // Folder: a body with a small tab on the top-left.
+                let manila = NSColor(calibratedRed: 0.90, green: 0.78, blue: 0.44, alpha: 1)
+                manila.setFill()
+                NSBezierPath(rect: NSRect(x: left, y: cy + 3, width: 6, height: 2)).fill()
+                NSBezierPath(rect: NSRect(x: left, y: cy - 5, width: 14, height: 9)).fill()
+                NSColor(calibratedRed: 0.72, green: 0.60, blue: 0.28, alpha: 1).setStroke()
+                let outline = NSBezierPath(rect: NSRect(x: left, y: cy - 5, width: 14, height: 9))
+                outline.lineWidth = 1
+                outline.stroke()
+            }
         }
     }
 
@@ -128,6 +181,17 @@ open class NSBrowser: NSControl {
     open var isTitled: Bool = true {
         didSet {
             tile()
+        }
+    }
+
+    /// Whether browser cells draw a leading icon (folder for branches, document
+    /// for leaves), matching Finder's `NSBrowserCell` look (default `true`).
+    open var showsCellIcons: Bool = true {
+        didSet {
+            guard oldValue != showsCellIcons else { return }
+            for column in columns {
+                column.tableView.needsDisplay = true
+            }
         }
     }
 

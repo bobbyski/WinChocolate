@@ -691,12 +691,16 @@ extension NSTableView {
         winInvalidateTree()
         sendAction()
 
-        // Arm a single-row reorder drag from this row.
+        // Arm a single-row reorder drag from this row, or — when the table
+        // isn't reorderable but the data source vends a pasteboard writer for
+        // the row — an external (system/OLE) drag out of the table.
         if winRowReorderHandler != nil {
             winDraggingRow = row
             winDraggingRows = IndexSet(integer: row)
             winDropIndex = -1
             winPendingCollapseRow = -1
+        } else if dataSource?.tableView(self, pasteboardWriterForRow: row) != nil {
+            winExternalDragRow = row
         }
 
         // Double-click a drawn (non-hosted) cell in an editable column → edit.
@@ -724,14 +728,34 @@ extension NSTableView {
         return numberOfRows
     }
 
-    /// Updates the drop-insertion indicator as a reorder drag moves.
+    /// Updates the drop-insertion indicator as a reorder drag moves, or begins
+    /// an external drag when one is armed.
     func winDrawnMouseDragged(_ event: NSEvent) {
+        if winExternalDragRow >= 0 {
+            winStartExternalRowDrag(event)
+            return
+        }
         let point = convert(event.locationInWindow, from: nil)
         let index = winDropInsertionIndex(atY: point.y)
         if index != winDropIndex {
             winDropIndex = index
             winInvalidateTree()
         }
+    }
+
+    /// Begins a system/OLE drag carrying the armed row's pasteboard writer. The
+    /// classic backend runs the drag loop synchronously, so this returns once
+    /// the drop (or cancel) completes.
+    func winStartExternalRowDrag(_ event: NSEvent) {
+        let row = winExternalDragRow
+        winExternalDragRow = -1
+        guard row >= 0, row < numberOfRows,
+              let writer = dataSource?.tableView(self, pasteboardWriterForRow: row) else {
+            return
+        }
+        let item = NSDraggingItem(pasteboardWriter: writer)
+        item.draggingFrame = winCellRect(row: row, column: 0)
+        beginDraggingSession(with: [item], event: event, source: self)
     }
 
     /// Commits a reorder drag: calls the handler with (fromRows, toIndex). If no
@@ -742,6 +766,7 @@ extension NSTableView {
             winDraggingRows = IndexSet()
             winDropIndex = -1
             winPendingCollapseRow = -1
+            winExternalDragRow = -1
             winInvalidateTree()
         }
         // No drag happened (mouse never moved to set a drop index).

@@ -20,6 +20,20 @@ public extension NSOutlineViewDataSource {
     }
 }
 
+/// Delegate that can vend per-column cell views for an outline's items,
+/// matching AppKit's `NSOutlineViewDelegate` view-based hook.
+public protocol NSOutlineViewDelegate: AnyObject {
+    /// Returns a view to host for a column and item, or `nil` for drawn text.
+    func outlineView(_ outlineView: NSOutlineView, viewFor tableColumn: NSTableColumn?, item: Any) -> NSView?
+}
+
+public extension NSOutlineViewDelegate {
+    /// Default: no hosted view (the outline draws text for the cell).
+    func outlineView(_ outlineView: NSOutlineView, viewFor tableColumn: NSTableColumn?, item: Any) -> NSView? {
+        nil
+    }
+}
+
 /// A tree-shaped table view.
 ///
 /// Built on the framework-drawn table: the visible tree is flattened into the
@@ -37,7 +51,7 @@ open class NSOutlineView: NSTableView {
     /// column, ahead of the cell text.
     private let disclosureWidth: CGFloat = 14
 
-    private final class OutlineTableAdapter: NSTableViewDataSource {
+    private final class OutlineTableAdapter: NSTableViewDataSource, NSTableViewDelegate {
         weak var owner: NSOutlineView?
 
         func numberOfRows(in tableView: NSTableView) -> Int {
@@ -46,6 +60,12 @@ open class NSOutlineView: NSTableView {
 
         func tableView(_ tableView: NSTableView, objectValueFor tableColumn: NSTableColumn?, row: Int) -> Any? {
             owner?.objectValue(for: tableColumn, row: row)
+        }
+
+        /// Bridges the drawn table's per-cell view request to the outline
+        /// delegate's item-based hook.
+        func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
+            owner?.hostedView(for: tableColumn, row: row)
         }
     }
 
@@ -60,6 +80,22 @@ open class NSOutlineView: NSTableView {
         }
     }
 
+    /// Object that can vend per-column cell views for items (view-based outline).
+    open weak var outlineDelegate: NSOutlineViewDelegate? {
+        didSet {
+            reloadData()
+        }
+    }
+
+    /// Bridges a drawn-cell view request (column, row) to the outline delegate's
+    /// item-based hook. Returns `nil` — drawn text — when no delegate view.
+    func hostedView(for tableColumn: NSTableColumn?, row: Int) -> NSView? {
+        guard let outlineDelegate, visibleRows.indices.contains(row) else {
+            return nil
+        }
+        return outlineDelegate.outlineView(self, viewFor: tableColumn, item: visibleRows[row].item)
+    }
+
     /// Width used for each indentation level in the first column.
     open var indentationPerLevel: CGFloat = 16
 
@@ -71,6 +107,9 @@ open class NSOutlineView: NSTableView {
         super.init(frame: frameRect)
         outlineAdapter.owner = self
         dataSource = outlineAdapter
+        // The adapter is also the table delegate: it bridges per-cell view
+        // requests to the outline delegate's item-based hook.
+        delegate = outlineAdapter
         // Outlines always use the framework-drawn table so they can draw
         // disclosure triangles and indentation themselves.
         winUsesViewBasedCells = true

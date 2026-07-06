@@ -8,6 +8,12 @@ public protocol NSTableViewDataSource: AnyObject {
 
     /// Updates the model after an editable value changes.
     func tableView(_ tableView: NSTableView, setObjectValue object: Any?, for tableColumn: NSTableColumn?, row: Int)
+
+    /// Returns the object that supplies a row's pasteboard representation for a
+    /// drag out of the table (a `String`, file `URL`, or `NSPasteboardItem`), or
+    /// `nil` if the row is not draggable — matching AppKit's
+    /// `tableView(_:pasteboardWriterForRow:)`.
+    func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> Any?
 }
 
 /// Delegate for table-view notifications.
@@ -31,6 +37,11 @@ public protocol NSTableViewDelegate: AnyObject {
 public extension NSTableViewDataSource {
     /// Default no-op setter for read-only tables.
     func tableView(_ tableView: NSTableView, setObjectValue object: Any?, for tableColumn: NSTableColumn?, row: Int) {}
+
+    /// Default: rows are not draggable out of the table.
+    func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> Any? {
+        nil
+    }
 }
 
 public extension NSTableViewDelegate {
@@ -223,6 +234,9 @@ open class NSTableView: NSControl {
     /// A row whose selection collapse was deferred to mouse-up (AppKit lets you
     /// drag a multi-row selection by not collapsing on mouse-down), or `-1`.
     var winPendingCollapseRow = -1
+    /// A row armed to begin an external (system/OLE) drag on the next drag move,
+    /// or `-1`. Used when the data source vends a pasteboard writer for the row.
+    var winExternalDragRow = -1
     /// The pinned header strip installed on the enclosing scroll view, if any.
     var winPinnedHeaderStrip: WinDrawnHeaderStrip?
     /// The column being interactively resized from the header, or `-1`.
@@ -599,9 +613,9 @@ open class NSTableView: NSControl {
         }
     }
 
-    /// Tracks a reorder drag in a framework-drawn table.
+    /// Tracks a reorder drag (or starts an external drag) in a drawn table.
     open override func mouseDragged(with event: NSEvent) {
-        if winIsDrawn, winDraggingRow >= 0 {
+        if winIsDrawn, winDraggingRow >= 0 || winExternalDragRow >= 0 {
             winDrawnMouseDragged(event)
         } else {
             super.mouseDragged(with: event)
@@ -610,7 +624,7 @@ open class NSTableView: NSControl {
 
     /// Commits a reorder drag in a framework-drawn table.
     open override func mouseUp(with event: NSEvent) {
-        if winIsDrawn, winDraggingRow >= 0 {
+        if winIsDrawn, winDraggingRow >= 0 || winExternalDragRow >= 0 {
             winDrawnMouseUp(event)
         } else {
             super.mouseUp(with: event)
@@ -744,3 +758,11 @@ open class NSTableView: NSControl {
 
 /// AppKit-compatible table selection notification name.
 public let NSTableViewSelectionDidChangeNotification = NSTableView.selectionDidChangeNotification
+
+extension NSTableView: NSDraggingSource {
+    /// The operations the table permits when dragging a row out. A reorder-
+    /// enabled table moves; otherwise it copies the row's pasteboard content.
+    public func draggingSession(_ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
+        winRowReorderHandler != nil ? .move : .copy
+    }
+}
