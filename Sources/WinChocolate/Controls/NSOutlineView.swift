@@ -207,16 +207,18 @@ open class NSOutlineView: NSTableView {
         level(forRow: row(forItem: item))
     }
 
-    // MARK: Drag reordering (sibling)
+    // MARK: Drag reordering
 
-    /// Set to enable drag-to-reorder of outline rows among their siblings. On a
-    /// drop, the outline reports the dragged item, its parent, and the proposed
-    /// child index under that parent (AppKit's `acceptDrop` shape); the handler
-    /// moves the item in the backing model and the outline reloads.
+    /// Set to enable drag-to-reorder of outline rows. On a drop, the outline
+    /// reports the dragged item, the proposed target parent, and the child index
+    /// under that parent (AppKit's `acceptDrop` shape); the handler moves the
+    /// item in the backing model and the outline reloads.
     ///
-    /// This slice supports reordering within one parent (the common case). A
-    /// drop whose nearest neighbours belong to a different parent is resolved to
-    /// the dragged item's own parent, so cross-level moves are not performed.
+    /// The target parent is derived from the row just above the drop, so drops
+    /// can **reparent** (cross-level), not just reorder siblings: dropping right
+    /// below an expanded branch inserts as that branch's first child; otherwise
+    /// the drop joins the parent of the row above it. A drop that would move an
+    /// item into itself or its own subtree is rejected.
     open var winOutlineReorderHandler: ((_ movedItem: Any, _ parent: Any?, _ childIndex: Int) -> Void)? {
         didSet { installOutlineReorderBridge() }
     }
@@ -238,17 +240,53 @@ open class NSOutlineView: NSTableView {
             return
         }
         let moved = visibleRows[fromRow]
-        let parentKey = moved.parent.map { key(for: $0) }
-        // Visible-row indices of the dragged item's siblings, in order — these
-        // map one-to-one to child indices under the shared parent.
+
+        // Derive the target parent from the row just above the drop position.
+        // Dropping directly under an expanded branch reparents into it; anything
+        // else joins the parent of the row above (the root when at the top).
+        let targetParent: Any?
+        if toIndex <= 0 {
+            targetParent = nil
+        } else {
+            let above = visibleRows[min(toIndex, visibleRows.count) - 1]
+            if isItemExpandable(above.item), isItemExpanded(above.item) {
+                targetParent = above.item
+            } else {
+                targetParent = above.parent
+            }
+        }
+
+        // Never move an item into itself or its own subtree.
+        if let targetParent, isItem(targetParent, descendantOfOrEqualTo: moved.item) {
+            return
+        }
+
+        // The proposed child index is the count of the target parent's visible
+        // direct children that sit strictly above the drop position. (All direct
+        // children — expanded or collapsed — appear in `visibleRows`, so this is
+        // the true model child index.)
+        let parentKey = targetParent.map { key(for: $0) }
         let siblingRows = visibleRows.indices.filter { idx in
             visibleRows[idx].parent.map { key(for: $0) } == parentKey
         }
-        // The proposed child index is the count of siblings that sit strictly
-        // above the flattened drop position.
         let targetChildIndex = siblingRows.filter { $0 < toIndex }.count
-        handler(moved.item, moved.parent, targetChildIndex)
+        handler(moved.item, targetParent, targetChildIndex)
         reloadData()
+    }
+
+    /// Whether `candidate` is `ancestor` itself or sits within its subtree, by
+    /// walking the visible parent chain up from `candidate`.
+    private func isItem(_ candidate: Any, descendantOfOrEqualTo ancestor: Any) -> Bool {
+        let ancestorKey = key(for: ancestor)
+        var current: Any? = candidate
+        while let node = current {
+            if key(for: node) == ancestorKey {
+                return true
+            }
+            let nodeKey = key(for: node)
+            current = visibleRows.first { key(for: $0.item) == nodeKey }?.parent
+        }
+        return false
     }
 
     private func rebuildVisibleRows() {

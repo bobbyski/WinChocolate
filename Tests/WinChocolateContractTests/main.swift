@@ -1158,6 +1158,59 @@ func testOutlineViewHostsDelegateCellViews() {
            "Outline hosted view for the second root row was missing.")
 }
 
+/// A small tree: "Folder" (branch → [A]) and "Loose" (leaf), for the
+/// cross-level reparenting-drop test.
+final class TreeOutlineDataSource: NSOutlineViewDataSource {
+    func outlineView(_ outlineView: NSOutlineView, numberOfChildrenOfItem item: Any?) -> Int {
+        switch item.map({ String(describing: $0) }) {
+        case .none: return 2        // Folder, Loose
+        case "Folder": return 1     // Folder → A
+        default: return 0
+        }
+    }
+    func outlineView(_ outlineView: NSOutlineView, child index: Int, ofItem item: Any?) -> Any {
+        switch item.map({ String(describing: $0) }) {
+        case .none: return ["Folder", "Loose"][index]
+        case "Folder": return "A"
+        default: return ""
+        }
+    }
+    func outlineView(_ outlineView: NSOutlineView, isItemExpandable item: Any) -> Bool {
+        String(describing: item) == "Folder"
+    }
+    func outlineView(_ outlineView: NSOutlineView, objectValueFor tableColumn: NSTableColumn?, byItem item: Any?) -> Any? {
+        item.map { String(describing: $0) }
+    }
+}
+
+func testOutlineViewCrossLevelDropTargetsParent() {
+    let outline = NSOutlineView(frame: NSMakeRect(0, 0, 240, 160))
+    let name = NSTableColumn(identifier: "name")
+    name.title = "Name"
+    name.width = 220
+    outline.addTableColumn(name)
+    let source = TreeOutlineDataSource()
+    outline.outlineDataSource = source
+    outline.expandItem("Folder")  // visible: Folder(0), A(1, parent Folder), Loose(2)
+
+    var received: (item: String, parent: String?, childIndex: Int)?
+    outline.winOutlineReorderHandler = { movedItem, parent, childIndex in
+        received = (String(describing: movedItem), parent.map { String(describing: $0) }, childIndex)
+    }
+
+    // Drop "Loose" (row 2) directly under the expanded "Folder" header (drop
+    // index 1, before its child A) → reparents Loose into Folder at index 0.
+    outline.winRowReorderHandler?(IndexSet(integer: 2), 1)
+    expect(received?.item == "Loose" && received?.parent == "Folder" && received?.childIndex == 0,
+           "Cross-level drop did not reparent into the expanded branch. Got \(String(describing: received)).")
+
+    // Dropping "Folder" (row 0) into its own child A (drop index 2, just under A)
+    // is rejected — you can't move an item into its own subtree.
+    received = nil
+    outline.winRowReorderHandler?(IndexSet(integer: 0), 2)
+    expect(received == nil, "Dropping a branch into its own subtree was not rejected. Got \(String(describing: received)).")
+}
+
 func testOutlineViewSiblingReorderMovesItem() {
     let outline = NSOutlineView(frame: NSMakeRect(0, 0, 240, 160))
     let name = NSTableColumn(identifier: "name")
@@ -7385,6 +7438,7 @@ testTableViewSortDescriptorPrototypeToggle()
 testOutlineViewFlattensExpandableItems()
 testOutlineViewHostsDelegateCellViews()
 testOutlineViewSiblingReorderMovesItem()
+testOutlineViewCrossLevelDropTargetsParent()
 testBrowserLoadsColumnsAndTracksSelection()
 testBrowserPathRoundTrips()
 testBrowserColumnTitles()

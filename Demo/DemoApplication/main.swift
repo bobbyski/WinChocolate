@@ -744,22 +744,30 @@ final class DemoOutlineDataSource: NSOutlineViewDataSource {
         "Tables": ["NSTableView", "NSOutlineView", "NSTableColumn"]
     ]
 
-    /// Moves `item` to `childIndex` among the siblings under `parent` (nil = the
-    /// root list), adjusting for the removal — used by the outline reorder drag.
+    /// Moves `item` to `childIndex` under `parent` (nil = the root list),
+    /// supporting **reparenting** — the item is pulled out of wherever it
+    /// currently lives (root or any branch) and inserted under the target,
+    /// adjusting the index when it moved down within the same list.
     func moveItem(_ item: String, under parent: Any?, to childIndex: Int) {
-        let apply: (inout [String]) -> Void = { list in
-            guard let current = list.firstIndex(of: item) else { return }
-            list.remove(at: current)
-            let dest = childIndex > current ? childIndex - 1 : childIndex
-            list.insert(item, at: min(max(0, dest), list.count))
+        let targetKey = parent.map { String(describing: $0) }
+        var adjust = 0
+        if let idx = roots.firstIndex(of: item) {
+            if targetKey == nil, idx < childIndex { adjust = 1 }
+            roots.remove(at: idx)
         }
-        if let parent {
-            let key = String(describing: parent)
-            var list = children[key] ?? []
-            apply(&list)
-            children[key] = list
+        for key in children.keys {
+            if let idx = children[key]?.firstIndex(of: item) {
+                if targetKey == key, idx < childIndex { adjust = 1 }
+                children[key]?.remove(at: idx)
+            }
+        }
+        let dest = max(0, childIndex - adjust)
+        if let targetKey {
+            var list = children[targetKey] ?? []
+            list.insert(item, at: min(dest, list.count))
+            children[targetKey] = list
         } else {
-            apply(&roots)
+            roots.insert(item, at: min(dest, roots.count))
         }
     }
 
