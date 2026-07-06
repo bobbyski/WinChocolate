@@ -347,20 +347,36 @@ extension NSTableView {
                 let trailing = winDrawnTrailingInset(forRow: row, column: column)
                 let color: NSColor = selectedRowIndexes.contains(row)
                     ? .selectedTextColor : NSColor(white: 0.1, alpha: 1)
-                // Clip the text to the cell (minus any reserved trailing space)
-                // so a long value can't spill into the next column or under a
-                // trailing decoration like a browser chevron.
+                // Match the native control font (Segoe UI 9pt → 12px) and center
+                // the text the way the header title is (optically centered).
+                let attributes: [NSAttributedString.Key: Any] = [
+                    .font: NSFont.systemFont(ofSize: 9),
+                    .foregroundColor: color,
+                ]
+                // Truncate with an ellipsis to the content width (column minus the
+                // leading offset, trailing decoration space, and a small pad), and
+                // clip as a hard safety net so nothing spills into the next column.
                 let columnWidth = max(20, tableColumns[column].width)
+                let contentWidth = max(0, columnWidth - 6 - inset - trailing - 2)
+                let origin = NSMakePoint(winColumnX(column) + 6 + inset, textY + (h - 24) / 2 + 2)
                 let clipRect = NSRect(x: winColumnX(column), y: textY,
                                       width: max(0, columnWidth - trailing), height: h)
                 NSGraphicsContext.saveGraphicsState()
                 NSRectClip(clipRect)
-                // Match the native control font (Segoe UI 9pt → 12px) and center
-                // the text the way the header title is (optically centered).
-                text.draw(at: NSMakePoint(winColumnX(column) + 6 + inset, textY + (h - 24) / 2 + 2), withAttributes: [
-                    .font: NSFont.systemFont(ofSize: 9),
-                    .foregroundColor: color,
-                ])
+                if let attributed = winAttributedValue(atColumn: column, row: row), attributed.length > 0 {
+                    // A data-source `NSAttributedString`: draw with the value's
+                    // own attributes (single dominant style at its start), unless
+                    // the row is selected (then use the selection color).
+                    var cellAttributes = attributed.attributes(at: 0, effectiveRange: nil)
+                    if selectedRowIndexes.contains(row) {
+                        cellAttributes[.foregroundColor] = NSColor.selectedTextColor
+                    }
+                    let shown = winTruncatedText(attributed.string, toWidth: contentWidth, attributes: cellAttributes)
+                    shown.draw(at: origin, withAttributes: cellAttributes)
+                } else {
+                    let shown = winTruncatedText(text, toWidth: contentWidth, attributes: attributes)
+                    shown.draw(at: origin, withAttributes: attributes)
+                }
                 NSGraphicsContext.restoreGraphicsState()
             }
             textY += h
@@ -368,6 +384,28 @@ extension NSTableView {
 
         // Reorder drop-line indicator on top of everything.
         winDrawDropIndicator()
+    }
+
+    /// Returns `text` truncated with a trailing ellipsis so it fits within
+    /// `width` when drawn with `attributes`, or `text` unchanged when it already
+    /// fits. `width <= 0` yields the empty string.
+    func winTruncatedText(_ text: String, toWidth width: CGFloat, attributes: [NSAttributedString.Key: Any]) -> String {
+        guard width > 0 else {
+            return ""
+        }
+        if text.isEmpty || text.size(withAttributes: attributes).width <= width {
+            return text
+        }
+        let ellipsis = "…"
+        var truncated = text
+        while !truncated.isEmpty {
+            truncated.removeLast()
+            let candidate = truncated + ellipsis
+            if candidate.size(withAttributes: attributes).width <= width {
+                return candidate
+            }
+        }
+        return ellipsis
     }
 
     /// Draws the column header (background, base line, titles, sort arrows) at

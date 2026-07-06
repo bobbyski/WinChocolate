@@ -203,7 +203,29 @@ open class NSTableView: NSControl {
     public private(set) var selectedRowIndexes: Set<Int> = []
 
     private var rowValues: [[String]] = []
+    /// The raw object values behind `rowValues`, kept in parallel so the drawn
+    /// table can render an `NSAttributedString` cell with its own attributes.
+    private var rowRawValues: [[Any?]] = []
     private var isUpdatingSelectionFromNative = false
+
+    /// The plain display string for a data-source object value (an
+    /// `NSAttributedString`'s `.string`, else the value's description).
+    func winDisplayString(from value: Any?) -> String {
+        if let attributed = value as? NSAttributedString {
+            return attributed.string
+        }
+        return value.map { String(describing: $0) } ?? ""
+    }
+
+    /// The `NSAttributedString` behind a drawn cell, when the data source vended
+    /// one — used to render the cell with the attributed value's own attributes.
+    func winAttributedValue(atColumn columnIndex: Int, row rowIndex: Int) -> NSAttributedString? {
+        guard rowRawValues.indices.contains(rowIndex),
+              rowRawValues[rowIndex].indices.contains(columnIndex) else {
+            return nil
+        }
+        return rowRawValues[rowIndex][columnIndex] as? NSAttributedString
+    }
 
     // MARK: - Framework-drawn (view-based) table state
     //
@@ -565,8 +587,11 @@ open class NSTableView: NSControl {
         for row in rowIndexes where rowValues.indices.contains(row) {
             for column in columns where tableColumns.indices.contains(column) {
                 let value = dataSource?.tableView(self, objectValueFor: tableColumns[column], row: row)
-                let text = value.map { String(describing: $0) } ?? ""
+                let text = winDisplayString(from: value)
                 rowValues[row][column] = text
+                if rowRawValues.indices.contains(row), rowRawValues[row].indices.contains(column) {
+                    rowRawValues[row][column] = value
+                }
                 if let nativeHandle {
                     realizedBackend?.setTableCellText(text, row: row, column: column, for: nativeHandle)
                 }
@@ -578,19 +603,22 @@ open class NSTableView: NSControl {
     open func reloadData() {
         let count = dataSource?.numberOfRows(in: self) ?? 0
         var nextRows: [[String]] = []
+        var nextRaw: [[Any?]] = []
 
         for row in 0..<count {
-            let values = tableColumns.map { column -> String in
-                guard let value = dataSource?.tableView(self, objectValueFor: column, row: row) else {
-                    return ""
-                }
-
-                return String(describing: value)
+            var strings: [String] = []
+            var raws: [Any?] = []
+            for column in tableColumns {
+                let value = dataSource?.tableView(self, objectValueFor: column, row: row)
+                raws.append(value)
+                strings.append(winDisplayString(from: value))
             }
-            nextRows.append(values)
+            nextRows.append(strings)
+            nextRaw.append(raws)
         }
 
         rowValues = nextRows
+        rowRawValues = nextRaw
         if selectedRow >= rowValues.count {
             selectedRow = rowValues.isEmpty ? -1 : rowValues.count - 1
         }

@@ -8289,6 +8289,71 @@ func testDrawnTableClipsCellTextToColumns() {
     expect(tableView.winDrawnTrailingInset(forRow: 0, column: 0) == 0, "Default trailing inset should be zero.")
 }
 
+/// A drawn table with a single very long cell value (for the ellipsis test).
+final class LongTextTableDataSource: NSTableViewDataSource {
+    func numberOfRows(in tableView: NSTableView) -> Int { 1 }
+    func tableView(_ tableView: NSTableView, objectValueFor tableColumn: NSTableColumn?, row: Int) -> Any? {
+        "ThisIsAVeryLongCellValueThatMustTruncate"
+    }
+}
+
+func testDrawnTableTruncatesLongCellTextWithEllipsis() {
+    // Use the in-memory backend for text measurement so truncation is
+    // deterministic (width = characters × pointSize × 0.55).
+    let previousBackend = NSApplication.shared.nativeBackend
+    NSApplication.shared.nativeBackend = InMemoryNativeControlBackend()
+    defer { NSApplication.shared.nativeBackend = previousBackend }
+
+    let backend = InMemoryNativeControlBackend()
+    let tableView = NSTableView(frame: NSMakeRect(0, 0, 80, 100))
+    let column = NSTableColumn(identifier: "name")
+    column.title = ""  // untitled → no header, so the first drawn text is the cell
+    column.width = 40  // narrow: the 40-char value cannot fit
+    tableView.addTableColumn(column)
+    let dataSource = LongTextTableDataSource()
+    tableView.dataSource = dataSource
+    tableView.winUsesViewBasedCells = true
+
+    let handle = tableView.realizeNativePeer(in: backend, parent: nil)
+    let recording = backend.performDraw(for: handle, in: tableView.bounds)
+
+    guard let drawn = recording.texts.first?.text else {
+        fatalError("Drawn table recorded no cell text.")
+    }
+    expect(drawn.hasSuffix("…"), "Long cell text was not truncated with an ellipsis. Got \(drawn).")
+    expect(drawn.count < 40, "Truncated text was not shorter than the 40-char original. Got \(drawn).")
+}
+
+/// A drawn table whose single cell value is an attributed (colored) string.
+final class AttributedCellTableDataSource: NSTableViewDataSource {
+    func numberOfRows(in tableView: NSTableView) -> Int { 1 }
+    func tableView(_ tableView: NSTableView, objectValueFor tableColumn: NSTableColumn?, row: Int) -> Any? {
+        NSAttributedString(string: "Alert", attributes: [.foregroundColor: NSColor.red])
+    }
+}
+
+func testDrawnTableRendersAttributedCellValue() {
+    let backend = InMemoryNativeControlBackend()
+    let tableView = NSTableView(frame: NSMakeRect(0, 0, 120, 100))
+    let column = NSTableColumn(identifier: "c")
+    column.title = ""  // no header, so the first drawn text is the cell
+    column.width = 100
+    tableView.addTableColumn(column)
+    let dataSource = AttributedCellTableDataSource()
+    tableView.dataSource = dataSource
+    tableView.winUsesViewBasedCells = true
+
+    let handle = tableView.realizeNativePeer(in: backend, parent: nil)
+    let recording = backend.performDraw(for: handle, in: tableView.bounds)
+
+    // The cell renders the attributed value's text with its own color, and its
+    // plain string flows through the model too.
+    let cell = recording.texts.first { $0.text == "Alert" }
+    expect(cell != nil, "Attributed cell value was not drawn. Got \(recording.texts.map { $0.text }).")
+    expect(cell?.color == .red, "Attributed cell was not drawn with its own color. Got \(String(describing: cell?.color)).")
+    expect(tableView.value(atColumn: 0, row: 0) == "Alert", "Attributed value's plain string was not cached.")
+}
+
 func testDrawnTableScrollsAsScrollViewDocument() {
     let backend = InMemoryNativeControlBackend()
     let scrollView = NSScrollView(frame: NSMakeRect(0, 0, 300, 120))
@@ -8325,6 +8390,8 @@ func testDrawnTableScrollsAsScrollViewDocument() {
 
 testDrawnTableScrollsAsScrollViewDocument()
 testDrawnTableClipsCellTextToColumns()
+testDrawnTableTruncatesLongCellTextWithEllipsis()
+testDrawnTableRendersAttributedCellValue()
 
 func testDrawnTablePinnedHeaderStaysAndSorts() {
     let backend = InMemoryNativeControlBackend()
