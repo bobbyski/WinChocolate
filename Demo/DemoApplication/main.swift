@@ -737,12 +737,31 @@ final class DemoTableDataSource: NSTableViewDataSource {
 }
 
 final class DemoOutlineDataSource: NSOutlineViewDataSource {
-    let roots = ["Application", "Controls", "Tables"]
-    let children: [String: [String]] = [
+    var roots = ["Application", "Controls", "Tables"]
+    var children: [String: [String]] = [
         "Application": ["NSApplication", "NSWindow", "NSMenu"],
         "Controls": ["NSButton", "NSTextField", "NSMatrix"],
         "Tables": ["NSTableView", "NSOutlineView", "NSTableColumn"]
     ]
+
+    /// Moves `item` to `childIndex` among the siblings under `parent` (nil = the
+    /// root list), adjusting for the removal — used by the outline reorder drag.
+    func moveItem(_ item: String, under parent: Any?, to childIndex: Int) {
+        let apply: (inout [String]) -> Void = { list in
+            guard let current = list.firstIndex(of: item) else { return }
+            list.remove(at: current)
+            let dest = childIndex > current ? childIndex - 1 : childIndex
+            list.insert(item, at: min(max(0, dest), list.count))
+        }
+        if let parent {
+            let key = String(describing: parent)
+            var list = children[key] ?? []
+            apply(&list)
+            children[key] = list
+        } else {
+            apply(&roots)
+        }
+    }
 
     func outlineView(_ outlineView: NSOutlineView, numberOfChildrenOfItem item: Any?) -> Int {
         guard let item else {
@@ -1989,6 +2008,12 @@ outlineStatusColumn.width = 88
 outlineView.addTableColumn(outlineNameColumn)
 outlineView.addTableColumn(outlineStatusColumn)
 outlineView.outlineDataSource = outlineDataSource
+// Drag a row to reorder it among its siblings (5.2).
+outlineView.winOutlineReorderHandler = { [weak outlineView] movedItem, parent, childIndex in
+    outlineDataSource.moveItem(String(describing: movedItem), under: parent, to: childIndex)
+    outlineView?.reloadData()
+    statusLabel.stringValue = "Moved \(movedItem) → index \(childIndex)"
+}
 outlineView.expandItem("Application")
 outlineView.expandItem("Controls")
 outlineView.reloadData()

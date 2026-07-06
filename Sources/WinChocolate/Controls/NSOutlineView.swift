@@ -30,6 +30,7 @@ open class NSOutlineView: NSTableView {
     private struct OutlineRow {
         var item: Any
         var level: Int
+        var parent: Any?
     }
 
     /// Horizontal space reserved for the disclosure triangle on the first
@@ -167,6 +168,50 @@ open class NSOutlineView: NSTableView {
         level(forRow: row(forItem: item))
     }
 
+    // MARK: Drag reordering (sibling)
+
+    /// Set to enable drag-to-reorder of outline rows among their siblings. On a
+    /// drop, the outline reports the dragged item, its parent, and the proposed
+    /// child index under that parent (AppKit's `acceptDrop` shape); the handler
+    /// moves the item in the backing model and the outline reloads.
+    ///
+    /// This slice supports reordering within one parent (the common case). A
+    /// drop whose nearest neighbours belong to a different parent is resolved to
+    /// the dragged item's own parent, so cross-level moves are not performed.
+    open var winOutlineReorderHandler: ((_ movedItem: Any, _ parent: Any?, _ childIndex: Int) -> Void)? {
+        didSet { installOutlineReorderBridge() }
+    }
+
+    private func installOutlineReorderBridge() {
+        guard winOutlineReorderHandler != nil else {
+            winRowReorderHandler = nil
+            return
+        }
+        winRowReorderHandler = { [weak self] fromRows, toIndex in
+            self?.handleOutlineReorder(fromRows: fromRows, toIndex: toIndex)
+        }
+    }
+
+    private func handleOutlineReorder(fromRows: IndexSet, toIndex: Int) {
+        guard let fromRow = fromRows.first,
+              visibleRows.indices.contains(fromRow),
+              let handler = winOutlineReorderHandler else {
+            return
+        }
+        let moved = visibleRows[fromRow]
+        let parentKey = moved.parent.map { key(for: $0) }
+        // Visible-row indices of the dragged item's siblings, in order — these
+        // map one-to-one to child indices under the shared parent.
+        let siblingRows = visibleRows.indices.filter { idx in
+            visibleRows[idx].parent.map { key(for: $0) } == parentKey
+        }
+        // The proposed child index is the count of siblings that sit strictly
+        // above the flattened drop position.
+        let targetChildIndex = siblingRows.filter { $0 < toIndex }.count
+        handler(moved.item, moved.parent, targetChildIndex)
+        reloadData()
+    }
+
     private func rebuildVisibleRows() {
         visibleRows.removeAll()
         appendChildren(of: nil, level: 0)
@@ -184,7 +229,7 @@ open class NSOutlineView: NSTableView {
 
         for index in 0..<count {
             let child = outlineDataSource.outlineView(self, child: index, ofItem: item)
-            visibleRows.append(OutlineRow(item: child, level: level))
+            visibleRows.append(OutlineRow(item: child, level: level, parent: item))
             if outlineDataSource.outlineView(self, isItemExpandable: child),
                expandedItemKeys.contains(key(for: child)) {
                 appendChildren(of: child, level: level + 1)

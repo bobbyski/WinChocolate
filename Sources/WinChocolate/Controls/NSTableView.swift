@@ -268,6 +268,22 @@ open class NSTableView: NSControl {
         false
     }
 
+    /// Windows virtual-key codes for the keys `keyDown` interprets, as delivered
+    /// in `NSEvent.keyCode`. Named so the switch below reads by intent rather
+    /// than by magic hex. (Case patterns need constants, not locals, so these
+    /// live here as static values.)
+    private enum TableKeyCode {
+        static let tab: UInt16 = 0x09
+        static let `return`: UInt16 = 0x0d
+        static let space: UInt16 = 0x20
+        static let pageUp: UInt16 = 0x21
+        static let pageDown: UInt16 = 0x22
+        static let end: UInt16 = 0x23
+        static let home: UInt16 = 0x24
+        static let upArrow: UInt16 = 0x26
+        static let downArrow: UInt16 = 0x28
+    }
+
     /// Tables handle standard navigation keys as part of their component behavior.
     open override func keyDown(with event: NSEvent) {
         guard let keyCode = event.keyCode else {
@@ -276,21 +292,28 @@ open class NSTableView: NSControl {
         }
 
         switch keyCode {
-        case 0x09:
+        case TableKeyCode.tab:
             moveFocusWithTab(event)
-        case 0x26:
+        case TableKeyCode.upArrow:
             moveSelection(by: -1, extending: event.modifierFlags.contains(.shift))
-        case 0x28:
+        case TableKeyCode.downArrow:
             moveSelection(by: 1, extending: event.modifierFlags.contains(.shift))
-        case 0x21:
+        case TableKeyCode.pageUp:
             moveSelection(by: -10, extending: event.modifierFlags.contains(.shift))
-        case 0x22:
+        case TableKeyCode.pageDown:
             moveSelection(by: 10, extending: event.modifierFlags.contains(.shift))
-        case 0x24:
+        case TableKeyCode.home:
             selectKeyboardRow(0, extending: event.modifierFlags.contains(.shift))
-        case 0x23:
+        case TableKeyCode.end:
             selectKeyboardRow(max(0, numberOfRows - 1), extending: event.modifierFlags.contains(.shift))
-        case 0x20, 0x0d:
+        case TableKeyCode.return:
+            // Return begins editing the selected row's first editable drawn cell
+            // (AppKit convention); if nothing is editable, it acts as the row
+            // action instead.
+            if !winBeginEditSelectedRow() {
+                sendAction()
+            }
+        case TableKeyCode.space:
             sendAction()
         default:
             super.keyDown(with: event)

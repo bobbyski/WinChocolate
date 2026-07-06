@@ -556,6 +556,28 @@ extension NSTableView {
         sendAction()
     }
 
+    /// The first editable, non-hosted (drawn-text) column of a row, or `nil` —
+    /// the target for keyboard-driven (Return) edit-begin.
+    func winFirstEditableDrawnColumn(forRow row: Int) -> Int? {
+        tableColumns.indices.first { column in
+            tableColumns[column].isEditable && !winCellIsHosted(row: row, column: column)
+        }
+    }
+
+    /// AppKit's Return-to-edit: begins editing the first editable drawn cell of
+    /// the selected row. Returns whether an edit actually started (so the caller
+    /// can fall back to sending the table action).
+    @discardableResult
+    func winBeginEditSelectedRow() -> Bool {
+        guard winIsDrawn, selectedRow >= 0,
+              winDrawnEditField == nil,
+              let column = winFirstEditableDrawnColumn(forRow: selectedRow) else {
+            return false
+        }
+        winBeginDrawnEdit(row: selectedRow, column: column)
+        return true
+    }
+
     /// Begins an in-place edit of a drawn (non-hosted) cell in an editable
     /// column: floats an editable text field over the cell, seeded with the
     /// current value, and focuses it. Committing writes back via the data source.

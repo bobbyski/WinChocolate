@@ -508,6 +508,24 @@ final class RecordingOutlineDataSource: NSOutlineViewDataSource {
     }
 }
 
+/// A mutable flat outline (top-level leaves) for the sibling-reorder test.
+final class MutableOutlineDataSource: NSOutlineViewDataSource {
+    var roots: [String]
+    init(_ roots: [String]) { self.roots = roots }
+
+    func outlineView(_ outlineView: NSOutlineView, numberOfChildrenOfItem item: Any?) -> Int {
+        guard item == nil else { return 0 }
+        return roots.count
+    }
+    func outlineView(_ outlineView: NSOutlineView, child index: Int, ofItem item: Any?) -> Any {
+        roots[index]
+    }
+    func outlineView(_ outlineView: NSOutlineView, isItemExpandable item: Any) -> Bool { false }
+    func outlineView(_ outlineView: NSOutlineView, objectValueFor tableColumn: NSTableColumn?, byItem item: Any?) -> Any? {
+        item.map { String(describing: $0) }
+    }
+}
+
 final class RecordingBrowserDelegate: NSBrowserDelegate {
     let roots = ["Application", "Controls"]
     let children: [String: [String]] = [
@@ -1102,6 +1120,43 @@ func testOutlineViewFlattensExpandableItems() {
     backend.mouseDownActions[handle]?(NSEvent(type: .leftMouseDown, locationInWindow: NSMakePoint(8, 24 + 8)))
     expect(outlineView.isItemExpanded("Application"), "Clicking the disclosure triangle did not expand the item.")
     expect(outlineView.numberOfRows == 4, "Disclosure-triangle expand did not reveal child rows.")
+}
+
+func testOutlineViewSiblingReorderMovesItem() {
+    let outline = NSOutlineView(frame: NSMakeRect(0, 0, 240, 160))
+    let name = NSTableColumn(identifier: "name")
+    name.title = "Name"
+    name.width = 220
+    outline.addTableColumn(name)
+    let source = MutableOutlineDataSource(["Alpha", "Bravo", "Charlie"])
+    outline.outlineDataSource = source
+
+    var received: (item: String, parentIsNil: Bool, childIndex: Int)?
+    outline.winOutlineReorderHandler = { movedItem, parent, childIndex in
+        received = (String(describing: movedItem), parent == nil, childIndex)
+        // Standard AppKit move: adjust the insert index for the earlier removal.
+        let movedName = String(describing: movedItem)
+        guard let current = source.roots.firstIndex(of: movedName) else { return }
+        source.roots.remove(at: current)
+        let dest = childIndex > current ? childIndex - 1 : childIndex
+        source.roots.insert(movedName, at: min(max(0, dest), source.roots.count))
+    }
+
+    // Setting the handler wires the drawn row-reorder bridge; invoke it as the
+    // drop would: drag "Charlie" (row 2) to the top (flattened drop index 0).
+    outline.winRowReorderHandler?(IndexSet(integer: 2), 0)
+
+    expect(received?.item == "Charlie" && received?.parentIsNil == true && received?.childIndex == 0,
+           "Outline reorder reported the wrong drop. Got \(String(describing: received)).")
+    expect(source.roots == ["Charlie", "Alpha", "Bravo"],
+           "Outline sibling reorder did not move Charlie to the top. Got \(source.roots).")
+    expect(outline.item(atRow: 0) as? String == "Charlie",
+           "Outline did not reload with the new order after the reorder.")
+
+    // Move it back down to the end (flattened drop index 3).
+    outline.winRowReorderHandler?(IndexSet(integer: 0), 3)
+    expect(source.roots == ["Alpha", "Bravo", "Charlie"],
+           "Outline sibling reorder did not move Charlie to the end. Got \(source.roots).")
 }
 
 func testBrowserLoadsColumnsAndTracksSelection() {
@@ -7163,6 +7218,7 @@ testTableViewKeyboardExtendedSelection()
 testTableViewColumnSelectionAndDoubleActionSurface()
 testTableViewSortDescriptorPrototypeToggle()
 testOutlineViewFlattensExpandableItems()
+testOutlineViewSiblingReorderMovesItem()
 testBrowserLoadsColumnsAndTracksSelection()
 testBrowserPathRoundTrips()
 testBrowserColumnTitles()
@@ -8377,6 +8433,56 @@ func testDrawnTableInPlaceEditCommitsToDataSource() {
 }
 
 testDrawnTableInPlaceEditCommitsToDataSource()
+
+func testDrawnTableReturnKeyBeginsEditingSelectedRow() {
+    let backend = InMemoryNativeControlBackend()
+    let tableView = NSTableView(frame: NSMakeRect(0, 0, 300, 200))
+    let dataSource = EditableDrawnDataSource()
+    let flag = NSTableColumn(identifier: "flag")
+    flag.title = "Flag"
+    flag.width = 60
+    let nameColumn = NSTableColumn(identifier: "name")
+    nameColumn.title = "Name"
+    nameColumn.width = 200
+    nameColumn.isEditable = true
+    tableView.addTableColumn(flag)
+    tableView.addTableColumn(nameColumn)
+    tableView.dataSource = dataSource
+    let delegate = EditableDrawnDelegate()
+    tableView.delegate = delegate
+    tableView.winUsesViewBasedCells = true
+
+    _ = tableView.realizeNativePeer(in: backend, parent: nil)
+
+    // Select row 1, then press Return: editing begins on the first editable,
+    // non-hosted column ("name"), seeded with that cell's value.
+    tableView.selectRowIndexes([1], byExtendingSelection: false)
+    tableView.keyDown(with: NSEvent(type: .keyDown, locationInWindow: NSZeroPoint, keyCode: 0x0d))
+
+    let overlay = tableView.subviews.compactMap { $0 as? NSTextField }.first
+    expect(overlay != nil, "Return did not begin editing the selected row.")
+    expect(overlay?.stringValue == "bravo", "Return-edit overlay was not seeded with the cell value. Got \(overlay?.stringValue ?? "nil").")
+
+    // A separate table with no selection: Return sends the action instead.
+    let backend2 = InMemoryNativeControlBackend()
+    let plainTable = NSTableView(frame: NSMakeRect(0, 0, 300, 200))
+    let dataSource2 = EditableDrawnDataSource()
+    let nameOnly = NSTableColumn(identifier: "name")
+    nameOnly.title = "Name"
+    nameOnly.width = 200
+    nameOnly.isEditable = true
+    plainTable.addTableColumn(nameOnly)
+    plainTable.dataSource = dataSource2
+    plainTable.winUsesViewBasedCells = true
+    _ = plainTable.realizeNativePeer(in: backend2, parent: nil)
+    var actions = 0
+    plainTable.onAction = { _ in actions += 1 }
+    plainTable.keyDown(with: NSEvent(type: .keyDown, locationInWindow: NSZeroPoint, keyCode: 0x0d))
+    expect(plainTable.subviews.compactMap { $0 as? NSTextField }.isEmpty, "Return opened an editor with no selection.")
+    expect(actions == 1, "Return with no editable target did not fall back to the row action.")
+}
+
+testDrawnTableReturnKeyBeginsEditingSelectedRow()
 
 /// Vends a cell view (so drawn mode engages) plus a colored row view per row.
 final class RowViewTableDelegate: NSTableViewDelegate {
