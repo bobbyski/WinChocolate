@@ -140,6 +140,9 @@ open class NSCollectionView: NSControl {
     open var collectionViewLayout: NSCollectionViewLayout? {
         didSet {
             collectionViewLayout?.collectionView = self
+            // The set of supplementary views is layout-driven, so (re)build them
+            // when the layout changes; `tile()` then only repositions.
+            rebuildSupplementaryViews()
             tile()
         }
     }
@@ -237,6 +240,7 @@ open class NSCollectionView: NSControl {
 
         selectionIndexPaths = selectionIndexPaths.filter { itemsByIndexPath[$0] != nil }
         updateItemSelectionState()
+        rebuildSupplementaryViews()
         tile()
     }
 
@@ -250,7 +254,7 @@ open class NSCollectionView: NSControl {
                     item.view.frame = attr.frame
                 }
             }
-            layoutSupplementaryViews(with: layout)
+            positionSupplementaryViews(with: layout)
             sizeToContentIfScrolled(layout.collectionViewContentSize)
             return
         }
@@ -286,26 +290,55 @@ open class NSCollectionView: NSControl {
         scrollView.tile()
     }
 
-    /// Hosts the section-header supplementary views the layout reserved space
-    /// for and the data source vends, positioned at their layout frames.
-    private func layoutSupplementaryViews(with layout: NSCollectionViewLayout) {
+    /// (Re)builds the hosted supplementary views the data source vends, keyed by
+    /// a per-section header/footer slot. Called only when the *set* of views can
+    /// change (`reloadData`, layout swap) — NOT on every `tile()`. Between
+    /// rebuilds the views are reused and merely repositioned, so re-layout
+    /// (item-size/spacing changes, scrolling) never re-asks the data source or
+    /// re-allocates supplementary views.
+    ///
+    /// NOTE: this is the interim "option C" recycling. AppKit's real
+    /// `register(_:forSupplementaryViewOfKind:withIdentifier:)` /
+    /// `makeSupplementaryView(...)` API is deferred to Rev 2.0 — see
+    /// `Docs/Rev2-SupplementaryViewRecycling.md`. When that lands, delete this
+    /// method and `positionSupplementaryViews`, and drive supplementary views
+    /// through the reuse pool exactly like `makeItem`.
+    private func rebuildSupplementaryViews() {
         for view in hostedSupplementaryViews.values {
             view.removeFromSuperview()
         }
         hostedSupplementaryViews.removeAll()
 
+        // Supplementary views are layout-driven; the built-in grid has none.
+        guard collectionViewLayout != nil else {
+            return
+        }
+
         let sectionCount = dataSource?.numberOfSections(in: self) ?? 0
         for section in 0..<sectionCount {
             let indexPath = IndexPath(item: 0, section: section)
             for (offset, kind) in [Self.elementKindSectionHeader, Self.elementKindSectionFooter].enumerated() {
-                guard let attr = layout.layoutAttributesForSupplementaryView(ofKind: kind, at: indexPath),
-                      let view = dataSource?.collectionView(self, viewForSupplementaryElementOfKind: kind, at: indexPath) else {
+                guard let view = dataSource?.collectionView(self, viewForSupplementaryElementOfKind: kind, at: indexPath) else {
                     continue
                 }
-                view.frame = attr.frame
                 addSubview(view)
                 // Key headers and footers into disjoint slots per section.
                 hostedSupplementaryViews[section * 2 + offset] = view
+            }
+        }
+    }
+
+    /// Repositions the already-hosted supplementary views to their current
+    /// layout frames. A view the layout no longer reserves space for collapses
+    /// to a zero frame (kept alive for reuse rather than destroyed).
+    private func positionSupplementaryViews(with layout: NSCollectionViewLayout) {
+        for (key, view) in hostedSupplementaryViews {
+            let section = key / 2
+            let kind = (key % 2 == 0) ? Self.elementKindSectionHeader : Self.elementKindSectionFooter
+            if let attr = layout.layoutAttributesForSupplementaryView(ofKind: kind, at: IndexPath(item: 0, section: section)) {
+                view.frame = attr.frame
+            } else {
+                view.frame = .zero
             }
         }
     }

@@ -1598,6 +1598,51 @@ final class HeaderCollectionDataSource: NSCollectionViewDataSource {
     }
 }
 
+/// A collection data source that counts how often it is asked to vend a
+/// supplementary view — for the recycling test.
+final class CountingSupplementaryDataSource: NSCollectionViewDataSource {
+    private(set) var vendCount = 0
+    func numberOfSections(in collectionView: NSCollectionView) -> Int { 2 }
+    func collectionView(_ collectionView: NSCollectionView, numberOfItemsInSection section: Int) -> Int { 2 }
+    func collectionView(_ collectionView: NSCollectionView, itemForRepresentedObjectAt indexPath: IndexPath) -> NSCollectionViewItem {
+        let item = NSCollectionViewItem()
+        item.view = NSView(frame: NSMakeRect(0, 0, 100, 20))
+        return item
+    }
+    func collectionView(_ collectionView: NSCollectionView, viewForSupplementaryElementOfKind kind: String, at indexPath: IndexPath) -> NSView? {
+        vendCount += 1
+        return NSTextField(string: "\(kind)-\(indexPath.section)", frame: .zero)
+    }
+}
+
+func testCollectionRecyclesSupplementaryViewsAcrossRelayout() {
+    let backend = InMemoryNativeControlBackend()
+    let collectionView = NSCollectionView(frame: NSMakeRect(0, 0, 240, 200))
+    let dataSource = CountingSupplementaryDataSource()
+    collectionView.dataSource = dataSource
+    let layout = NSCollectionViewFlowLayout()
+    layout.itemSize = NSMakeSize(100, 20)
+    layout.headerReferenceSize = NSMakeSize(0, 18)
+    layout.footerReferenceSize = NSMakeSize(0, 14)
+    collectionView.collectionViewLayout = layout
+    _ = collectionView.realizeNativePeer(in: backend, parent: nil)
+    collectionView.reloadData()
+
+    let afterReload = dataSource.vendCount
+    expect(afterReload > 0, "Supplementary views were not vended on reload. Got \(afterReload).")
+
+    // A re-layout (item-size change → tile, not reloadData) must NOT re-ask the
+    // data source: the supplementary views are recycled and merely repositioned.
+    collectionView.itemSize = NSMakeSize(80, 24)
+    collectionView.minimumLineSpacing = 12
+    expect(dataSource.vendCount == afterReload,
+           "Re-layout re-vended supplementary views instead of recycling them. \(afterReload) → \(dataSource.vendCount).")
+
+    // A reloadData rebuilds them (a fresh vend).
+    collectionView.reloadData()
+    expect(dataSource.vendCount > afterReload, "reloadData did not rebuild supplementary views.")
+}
+
 final class HorizontalSizeCollectionDataSource: NSCollectionViewDataSource {
     func collectionView(_ collectionView: NSCollectionView, numberOfItemsInSection section: Int) -> Int { 3 }
     func collectionView(_ collectionView: NSCollectionView, itemForRepresentedObjectAt indexPath: IndexPath) -> NSCollectionViewItem {
@@ -7352,6 +7397,7 @@ testCollectionViewButtonItemClickSelectsItem()
 testCollectionViewFlowLayoutArrangesSectionsAndSizesContent()
 testCollectionFlowLayoutHonorsPerItemSizeFromDelegate()
 testCollectionFlowLayoutReservesAndHostsSectionHeaders()
+testCollectionRecyclesSupplementaryViewsAcrossRelayout()
 testCollectionFlowLayoutReservesSectionFooters()
 testCollectionSupplementaryViewsHostInRealizedScrollView()
 testCollectionFlowLayoutHorizontalVariableSizePacking()
