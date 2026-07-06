@@ -205,12 +205,20 @@ extension NSTableView {
         }
         winRebuildRowHeights()
         winSizeToContentIfScrolled()
+        // Recycle the outgoing hosted views: move those with a reuse identifier
+        // into the pool so a delegate that calls `makeView(withIdentifier:owner:)`
+        // gets the same instance back instead of allocating a new one.
+        winCellViewReusePool.removeAll()
         for view in winHostedCellViews {
             view.removeFromSuperview()
+            if let key = view.identifier?.rawValue {
+                winCellViewReusePool[key, default: []].append(view)
+            }
         }
         winHostedCellViews.removeAll()
         winHostedCellKeys.removeAll()
         winHostedRowViews.removeAll()
+        defer { winCellViewReusePool.removeAll() }
 
         let width = frame.size.width
         let columnCount = tableColumns.count

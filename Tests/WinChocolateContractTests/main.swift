@@ -8424,6 +8424,52 @@ func testDrawnTableTruncatesLongCellTextWithEllipsis() {
     expect(drawn.count < 40, "Truncated text was not shorter than the 40-char original. Got \(drawn).")
 }
 
+/// A delegate that dequeues its cell view via `makeView(withIdentifier:owner:)`,
+/// creating a fresh one (stamped with the reuse identifier) only on a miss.
+final class RecyclingCellDelegate: NSTableViewDelegate {
+    static let cellID = NSUserInterfaceItemIdentifier("recycle-cell")
+    private(set) var madeFresh = 0
+    func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
+        if let reused = tableView.makeView(withIdentifier: Self.cellID, owner: nil) as? NSTextField {
+            reused.stringValue = "r\(row)"
+            return reused
+        }
+        madeFresh += 1
+        let field = NSTextField(string: "r\(row)", frame: NSMakeRect(0, 0, 100, 20))
+        field.identifier = Self.cellID
+        return field
+    }
+}
+
+func testDrawnTableRecyclesCellViewsViaMakeView() {
+    let backend = InMemoryNativeControlBackend()
+    let tableView = NSTableView(frame: NSMakeRect(0, 0, 200, 200))
+    let dataSource = ManyRowTableDataSource(count: 3)
+    let column = NSTableColumn(identifier: "name")
+    column.width = 180
+    tableView.addTableColumn(column)
+    tableView.dataSource = dataSource
+    let delegate = RecyclingCellDelegate()
+    tableView.delegate = delegate
+
+    _ = tableView.realizeNativePeer(in: backend, parent: nil)
+
+    // First build hosts 3 cell views. (Fresh count may include one extra from
+    // the view-based auto-detection probe, which isn't hosted — so assert on the
+    // hosted set and the reload delta, not the absolute fresh count.)
+    let firstViews = Set(tableView.subviews.compactMap { $0 as? NSTextField }.map { ObjectIdentifier($0) })
+    expect(firstViews.count == 3, "First build did not host 3 cell views. Got \(firstViews.count).")
+    let freshAfterFirst = delegate.madeFresh
+
+    // Reload: the outgoing views are pooled and handed back through makeView, so
+    // no fresh views are allocated and the same instances are re-hosted.
+    tableView.reloadData()
+    let secondViews = Set(tableView.subviews.compactMap { $0 as? NSTextField }.map { ObjectIdentifier($0) })
+    expect(secondViews == firstViews, "Cell views were not recycled across reloadData.")
+    expect(delegate.madeFresh == freshAfterFirst,
+           "reloadData allocated fresh cell views instead of recycling. \(freshAfterFirst) → \(delegate.madeFresh).")
+}
+
 /// A drawn table whose single cell value is an attributed (colored) string.
 final class AttributedCellTableDataSource: NSTableViewDataSource {
     func numberOfRows(in tableView: NSTableView) -> Int { 1 }
@@ -8452,6 +8498,45 @@ func testDrawnTableRendersAttributedCellValue() {
     expect(cell != nil, "Attributed cell value was not drawn. Got \(recording.texts.map { $0.text }).")
     expect(cell?.color == .red, "Attributed cell was not drawn with its own color. Got \(String(describing: cell?.color)).")
     expect(tableView.value(atColumn: 0, row: 0) == "Alert", "Attributed value's plain string was not cached.")
+}
+
+func testTableColumnAutoresizing() {
+    let backend = InMemoryNativeControlBackend()
+    let tableView = NSTableView(frame: NSMakeRect(0, 0, 300, 100))
+    let colA = NSTableColumn(identifier: "a")
+    colA.title = "A"
+    colA.width = 80
+    let colB = NSTableColumn(identifier: "b")
+    colB.title = "B"
+    colB.width = 80
+    tableView.addTableColumn(colA)
+    tableView.addTableColumn(colB)
+    let dataSource = ManyRowTableDataSource(count: 3)
+    tableView.dataSource = dataSource
+    tableView.winUsesViewBasedCells = true
+    _ = tableView.realizeNativePeer(in: backend, parent: nil)
+
+    // sizeLastColumnToFit: the last column fills the remaining width
+    // (300 − 3pt intercell spacing − colA 80 = 217); others unchanged.
+    tableView.sizeLastColumnToFit()
+    expect(colA.width == 80, "sizeLastColumnToFit changed a non-last column. Got \(colA.width).")
+    expect(colB.width == 217, "sizeLastColumnToFit did not fill the last column. Got \(colB.width).")
+
+    // Uniform sizeToFit shares the deficit equally: available 297, current 160,
+    // delta 137 → +68.5 each.
+    colA.width = 80
+    colB.width = 80
+    tableView.columnAutoresizingStyle = .uniformColumnAutoresizingStyle
+    tableView.sizeToFit()
+    expect(colA.width == 148.5 && colB.width == 148.5,
+           "Uniform sizeToFit did not share the width equally. Got \(colA.width), \(colB.width).")
+
+    // With autoresizing off, sizeToFit is a no-op.
+    colA.width = 50
+    colB.width = 50
+    tableView.columnAutoresizingStyle = .noColumnAutoresizing
+    tableView.sizeToFit()
+    expect(colA.width == 50 && colB.width == 50, "sizeToFit resized columns with autoresizing off.")
 }
 
 func testDrawnTableScrollsAsScrollViewDocument() {
@@ -8492,6 +8577,8 @@ testDrawnTableScrollsAsScrollViewDocument()
 testDrawnTableClipsCellTextToColumns()
 testDrawnTableTruncatesLongCellTextWithEllipsis()
 testDrawnTableRendersAttributedCellValue()
+testDrawnTableRecyclesCellViewsViaMakeView()
+testTableColumnAutoresizing()
 
 func testDrawnTablePinnedHeaderStaysAndSorts() {
     let backend = InMemoryNativeControlBackend()

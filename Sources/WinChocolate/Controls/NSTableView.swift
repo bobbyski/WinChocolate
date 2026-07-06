@@ -172,8 +172,68 @@ open class NSTableView: NSControl {
     /// Selection highlight style.
     open var selectionHighlightStyle: SelectionHighlightStyle = .regular
 
-    /// Column autoresizing style.
+    /// Column autoresizing style. Applied when `sizeToFit()` runs (AppKit also
+    /// applies it during live resize; here it is driven explicitly).
     open var columnAutoresizingStyle: ColumnAutoresizingStyle = .uniformColumnAutoresizingStyle
+
+    /// Clamps a proposed column width to the column's `minWidth`/`maxWidth`
+    /// (`maxWidth <= 0` means unbounded).
+    private func winClampedColumnWidth(_ width: CGFloat, for column: NSTableColumn) -> CGFloat {
+        var w = max(width, column.minWidth)
+        if column.maxWidth > 0 {
+            w = min(w, column.maxWidth)
+        }
+        return w
+    }
+
+    /// Reflows the drawn table after column widths change (a no-op for the
+    /// native-list peer, whose column widths are fixed at creation — the same
+    /// boundary as interactive resize).
+    private func winApplyColumnWidths() {
+        if winIsDrawn {
+            winRebuildHostedViews()
+            needsDisplay = true
+        }
+    }
+
+    /// Resizes the last column so the columns exactly fill the table's width,
+    /// clamped to that column's min/max — AppKit's `sizeLastColumnToFit()`.
+    open func sizeLastColumnToFit() {
+        guard let lastIndex = tableColumns.indices.last else {
+            return
+        }
+        let spacing = intercellSpacing.width * CGFloat(max(0, tableColumns.count - 1))
+        let others = tableColumns.dropLast().reduce(0) { $0 + $1.width }
+        let target = frame.size.width - spacing - others
+        tableColumns[lastIndex].width = winClampedColumnWidth(target, for: tableColumns[lastIndex])
+        winApplyColumnWidths()
+    }
+
+    /// Resizes columns to fill the table's width per `columnAutoresizingStyle`,
+    /// clamped to each column's min/max — AppKit's `sizeToFit()`.
+    open override func sizeToFit() {
+        guard !tableColumns.isEmpty else {
+            return
+        }
+        switch columnAutoresizingStyle {
+        case .noColumnAutoresizing:
+            return
+        case .lastColumnOnlyAutoresizingStyle:
+            sizeLastColumnToFit()
+        case .uniformColumnAutoresizingStyle:
+            let spacing = intercellSpacing.width * CGFloat(max(0, tableColumns.count - 1))
+            let current = tableColumns.reduce(0) { $0 + $1.width }
+            let delta = frame.size.width - spacing - current
+            guard abs(delta) > 0.5 else {
+                return
+            }
+            let share = delta / CGFloat(tableColumns.count)
+            for index in tableColumns.indices {
+                tableColumns[index].width = winClampedColumnWidth(tableColumns[index].width + share, for: tableColumns[index])
+            }
+            winApplyColumnWidths()
+        }
+    }
 
     /// Current table sort descriptors.
     open var sortDescriptors: [NSSortDescriptor] = [] {
@@ -243,6 +303,24 @@ open class NSTableView: NSControl {
     open var winUsesViewBasedCells: Bool = false
     var winIsDrawn = false
     var winHostedCellViews: [NSView] = []
+    /// Recycled hosted cell/row views available for reuse, keyed by identifier —
+    /// populated from the outgoing views at the start of each drawn rebuild and
+    /// drained by `makeView(withIdentifier:owner:)`.
+    var winCellViewReusePool: [String: [NSView]] = [:]
+
+    /// Returns a recycled hosted view previously created with `identifier`, or
+    /// `nil` when none is available — matching AppKit's
+    /// `makeView(withIdentifier:owner:)` for a view-based table with no nib/class
+    /// registered (the delegate creates a fresh view, stamping its `identifier`,
+    /// on a `nil` result). Reused views are handed back during a drawn rebuild.
+    open func makeView(withIdentifier identifier: NSUserInterfaceItemIdentifier, owner: Any?) -> NSView? {
+        guard var pooled = winCellViewReusePool[identifier.rawValue], let reused = pooled.popLast() else {
+            return nil
+        }
+        winCellViewReusePool[identifier.rawValue] = pooled
+        reused.identifier = identifier
+        return reused
+    }
     var winDrawnRowHeight: CGFloat = 24
     var winDrawnHeaderHeight: CGFloat = 24
     /// Per-row heights, cached on each rebuild (honors the delegate's
