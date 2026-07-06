@@ -1697,7 +1697,12 @@ func focusName() -> String {
 func updateFocusDisplay() {
     let name = focusName()
     focusLabel.stringValue = "Focus: \(name)"
-    contentView.backgroundColor = name == "content" ? contentFocusColor : normalContentColor
+    // The content view is the container for every page, so tinting its whole
+    // background on focus turns the entire app blue (and shows through/around the
+    // pages on resize and tab switches, reading as a repaint bug). Keep the
+    // container at its normal color and show content focus only via the label
+    // above; the small input controls below still demo their own focus tint.
+    contentView.backgroundColor = normalContentColor
     editableTextField.backgroundColor = name == "text field"
         ? controlFocusColor
         : normalTextFieldColor
