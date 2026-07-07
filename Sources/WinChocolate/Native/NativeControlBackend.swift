@@ -337,6 +337,14 @@ public protocol NativeControlBackend: AnyObject {
     /// close button disables the system-menu close command.
     func setWindowButtonsHidden(closeHidden: Bool, minimizeHidden: Bool, zoomHidden: Bool, for handle: NativeHandle)
 
+    /// Whether the user's system theme prefers a dark appearance (Windows
+    /// "dark mode" for applications). Drives `NSAppearance` resolution.
+    func systemPrefersDarkAppearance() -> Bool
+
+    /// The user's system accent color, or `nil` when unavailable. Drives
+    /// `NSColor.controlAccentColor` and the selection tints (plan 8.3).
+    func systemAccentColor() -> NSColor?
+
     /// The primary screen's pixel frame, used for on-screen placement.
     func primaryScreenFrame() -> NSRect
 
@@ -826,6 +834,19 @@ public protocol NativeControlBackend: AnyObject {
 
     /// Requests a repaint of a native control.
     func invalidateControl(_ handle: NativeHandle)
+
+    /// Requests a repaint of a native control and all of its descendant views.
+    ///
+    /// Needed when a custom view's background changes beneath transparent child
+    /// views (e.g. a table selection band under borderless cell labels): the
+    /// children must repaint over the new background, which a plain invalidate
+    /// of only the parent does not trigger.
+    func invalidateControlTree(_ handle: NativeHandle)
+
+    /// Repaints a native control (and its children) **synchronously**, so
+    /// custom-drawn views update mid-gesture instead of waiting for `WM_PAINT`
+    /// to be scheduled (which is starved during a rapid drag).
+    func redrawControlImmediately(_ handle: NativeHandle)
 
     /// Registers the action to perform when a native view receives a mouse-dragged event.
     func registerMouseDraggedAction(for handle: NativeHandle, action: @escaping (NSEvent) -> Void)

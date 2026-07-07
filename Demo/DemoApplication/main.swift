@@ -1,6 +1,24 @@
 import WinChocolate
 
+// The framework defaults to the modern presentation (ComCtl32 v6 visual
+// styles, plan 8.4); pass --classic to compare against the unthemed classic
+// look. Must be selected before the application (and its backend) is
+// created — the binding is one-way for the process.
+if CommandLine.arguments.contains("--classic") {
+    WinPresentation.selected = .classic
+}
+
 let app = NSApplication.shared
+
+// The demo follows the Windows system theme by default (AppKit's behavior:
+// no override means the effective appearance tracks the system). --light and
+// --dark force one appearance for side-by-side QA. Like the presentation,
+// appearance-derived visuals resolve at creation.
+if CommandLine.arguments.contains("--dark") {
+    app.appearance = NSAppearance(named: .darkAqua)
+} else if CommandLine.arguments.contains("--light") {
+    app.appearance = NSAppearance(named: .aqua)
+}
 
 let menuBar = NSMenu()
 let appMenuItem = NSMenuItem(title: "WinChocolate", action: nil, keyEquivalent: "")
@@ -483,6 +501,114 @@ final class DemoPrintSample: NSView {
     }
 }
 
+/// Data source for the showcase's framework-drawn (view-based) table (5.5).
+final class DemoViewTableDataSource: NSTableViewDataSource {
+    var tasks = [
+        "Review the pull request", "Ship the nightly build", "Write the release notes",
+        "Triage the bug backlog", "Update the changelog", "Refresh the screenshots",
+        "Tag the release", "Post the announcement", "Close the milestone", "Archive the branch",
+    ]
+    var done = Array(repeating: false, count: 10)
+    var notes = [
+        "high", "nightly", "draft", "backlog", "minor",
+        "1.0", "signed", "blog", "v5", "cleanup",
+    ]
+
+    func numberOfRows(in tableView: NSTableView) -> Int {
+        tasks.count
+    }
+
+    func tableView(_ tableView: NSTableView, objectValueFor tableColumn: NSTableColumn?, row: Int) -> Any? {
+        tableColumn?.identifier == "note" ? notes[row] : tasks[row]
+    }
+
+    func tableView(_ tableView: NSTableView, setObjectValue object: Any?, for tableColumn: NSTableColumn?, row: Int) {
+        guard tableColumn?.identifier == "note" else {
+            return
+        }
+        notes[row] = object.map { String(describing: $0) } ?? ""
+    }
+}
+
+/// Delegate that vends a real control per cell so the drawn table hosts them
+/// inside its cells — something a native list view can't do.
+final class DemoViewTableDelegate: NSTableViewDelegate {
+    let source: DemoViewTableDataSource
+    var onEvent: ((String) -> Void)?
+
+    init(source: DemoViewTableDataSource) {
+        self.source = source
+    }
+
+    func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
+        if tableColumn?.identifier == "task" {
+            let field = NSTextField(string: source.tasks[row], frame: NSMakeRect(0, 0, 200, 22))
+            field.isBordered = false
+            field.drawsBackground = false
+            return field
+        }
+        // The "note" column vends no view → the drawn table paints it as text
+        // and edits it in place (double-click) on this editable column.
+        if tableColumn?.identifier == "note" {
+            return nil
+        }
+        let button = NSButton(title: source.done[row] ? "Done ✓" : "Mark done", frame: NSMakeRect(0, 0, 110, 22))
+        button.onAction = { [weak self, weak tableView] _ in
+            guard let self else {
+                return
+            }
+            self.source.done[row].toggle()
+            self.onEvent?("Row \(row) → \(self.source.done[row] ? "done" : "not done")")
+            tableView?.reloadData()
+        }
+        return button
+    }
+
+    /// Completed rows render taller — a live demo of the drawn table honoring
+    /// per-row heights (toggle "Mark done" and watch the row grow).
+    func tableView(_ tableView: NSTableView, heightOfRow row: Int) -> CGFloat {
+        source.done[row] ? 44 : 24
+    }
+}
+
+/// A small pipeline-status list showcasing `NSTableRowView` hosting: each row
+/// gets a full-width colored row view behind hosted label cells.
+final class DemoStatusRowDataSource: NSTableViewDataSource {
+    let items: [(stage: String, status: String)] = [
+        ("Build", "passing"), ("Unit tests", "passing"), ("Lint", "warning"),
+        ("Deploy", "failed"), ("Docs", "passing"), ("Package", "passing"),
+    ]
+    func numberOfRows(in tableView: NSTableView) -> Int { items.count }
+    func tableView(_ tableView: NSTableView, objectValueFor tableColumn: NSTableColumn?, row: Int) -> Any? {
+        tableColumn?.identifier == "stage" ? items[row].stage : items[row].status
+    }
+}
+
+final class DemoStatusRowDelegate: NSTableViewDelegate {
+    let source: DemoStatusRowDataSource
+    init(source: DemoStatusRowDataSource) { self.source = source }
+
+    func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
+        // Hosted (transparent) labels sit above the colored row view.
+        let text = tableColumn?.identifier == "stage" ? source.items[row].stage : source.items[row].status
+        let field = NSTextField(string: text, frame: NSMakeRect(0, 0, 120, 20))
+        field.isBordered = false
+        field.drawsBackground = false
+        return field
+    }
+
+    func tableView(_ tableView: NSTableView, rowViewFor row: Int) -> NSTableRowView? {
+        let rowView = NSTableRowView(frame: .zero)
+        switch source.items[row].status {
+        case "passing": rowView.backgroundColor = NSColor(red: 0.85, green: 0.95, blue: 0.85, alpha: 1)
+        case "warning": rowView.backgroundColor = NSColor(red: 1.0, green: 0.97, blue: 0.80, alpha: 1)
+        case "failed": rowView.backgroundColor = NSColor(red: 1.0, green: 0.87, blue: 0.87, alpha: 1)
+        default: rowView.backgroundColor = .white
+        }
+        return rowView
+    }
+}
+
 /// A plain-text document demonstrating the NSDocument window-controller flow.
 final class DemoNoteDocument: NSDocument {
     var text = ""
@@ -629,12 +755,39 @@ final class DemoTableDataSource: NSTableViewDataSource {
 }
 
 final class DemoOutlineDataSource: NSOutlineViewDataSource {
-    let roots = ["Application", "Controls", "Tables"]
-    let children: [String: [String]] = [
+    var roots = ["Application", "Controls", "Tables"]
+    var children: [String: [String]] = [
         "Application": ["NSApplication", "NSWindow", "NSMenu"],
         "Controls": ["NSButton", "NSTextField", "NSMatrix"],
         "Tables": ["NSTableView", "NSOutlineView", "NSTableColumn"]
     ]
+
+    /// Moves `item` to `childIndex` under `parent` (nil = the root list),
+    /// supporting **reparenting** — the item is pulled out of wherever it
+    /// currently lives (root or any branch) and inserted under the target,
+    /// adjusting the index when it moved down within the same list.
+    func moveItem(_ item: String, under parent: Any?, to childIndex: Int) {
+        let targetKey = parent.map { String(describing: $0) }
+        var adjust = 0
+        if let idx = roots.firstIndex(of: item) {
+            if targetKey == nil, idx < childIndex { adjust = 1 }
+            roots.remove(at: idx)
+        }
+        for key in children.keys {
+            if let idx = children[key]?.firstIndex(of: item) {
+                if targetKey == key, idx < childIndex { adjust = 1 }
+                children[key]?.remove(at: idx)
+            }
+        }
+        let dest = max(0, childIndex - adjust)
+        if let targetKey {
+            var list = children[targetKey] ?? []
+            list.insert(item, at: min(dest, list.count))
+            children[targetKey] = list
+        } else {
+            roots.insert(item, at: min(dest, roots.count))
+        }
+    }
 
     func outlineView(_ outlineView: NSOutlineView, numberOfChildrenOfItem item: Any?) -> Int {
         guard let item else {
@@ -719,16 +872,75 @@ final class DemoCollectionDataSource: NSCollectionViewDataSource {
     }
 }
 
+/// A multi-section collection source (with section headers) so the flow
+/// layout's wrapping, re-tiling, and section headers are all demonstrable.
+final class DemoFlowCollectionDataSource: NSCollectionViewDataSource {
+    let sections: [(title: String, items: [String])] = [
+        ("Views", ["NSView", "NSImageView", "NSTextField", "NSButton", "NSSlider", "NSStepper"]),
+        ("Controls", ["NSComboBox", "NSPopUpButton", "NSDatePicker", "NSColorWell", "NSSegmentedControl", "NSLevelIndicator", "NSPathControl", "NSTokenField"]),
+        ("Containers", ["NSTableView", "NSOutlineView", "NSBrowser", "NSScrollView", "NSSplitView", "NSTabView", "NSBox"]),
+    ]
+
+    func numberOfSections(in collectionView: NSCollectionView) -> Int {
+        sections.count
+    }
+
+    func collectionView(_ collectionView: NSCollectionView, numberOfItemsInSection section: Int) -> Int {
+        sections[section].items.count
+    }
+
+    func collectionView(_ collectionView: NSCollectionView, itemForRepresentedObjectAt indexPath: IndexPath) -> NSCollectionViewItem {
+        let item = NSCollectionViewItem()
+        let title = sections[indexPath.section].items[indexPath.item]
+        item.representedObject = title
+        let button = NSButton(title: title, frame: NSMakeRect(0, 0, 120, 28))
+        item.view = button
+        return item
+    }
+
+    func collectionView(_ collectionView: NSCollectionView, viewForSupplementaryElementOfKind kind: String, at indexPath: IndexPath) -> NSView? {
+        let section = sections[indexPath.section]
+        if kind == NSCollectionView.elementKindSectionHeader {
+            let header = NSTextField(string: "  \(section.title)", frame: .zero)
+            header.isBordered = false
+            header.font = NSFont.boldSystemFont(ofSize: 12)
+            header.backgroundColor = NSColor(red: 0.90, green: 0.93, blue: 0.98, alpha: 1)
+            return header
+        }
+        if kind == NSCollectionView.elementKindSectionFooter {
+            let footer = NSTextField(string: "  — \(section.items.count) classes —", frame: .zero)
+            footer.isBordered = false
+            footer.font = NSFont.boldSystemFont(ofSize: 10)
+            footer.textColor = NSColor(white: 0.35, alpha: 1)
+            footer.backgroundColor = NSColor(red: 0.95, green: 0.93, blue: 0.88, alpha: 1)
+            return footer
+        }
+        return nil
+    }
+}
+
+/// Sizes each collection item to fit its label, demonstrating per-item flow
+/// sizing (`NSCollectionViewDelegateFlowLayout`).
+final class DemoFlowSizeDelegate: NSCollectionViewDelegateFlowLayout {
+    let source: DemoFlowCollectionDataSource
+    init(_ source: DemoFlowCollectionDataSource) { self.source = source }
+    func collectionView(_ collectionView: NSCollectionView, layout collectionViewLayout: NSCollectionViewLayout, sizeForItemAt indexPath: IndexPath) -> NSSize {
+        NSMakeSize(28 + CGFloat(source.sections[indexPath.section].items[indexPath.item].count) * 8, 28)
+    }
+}
+
 let contentView = DemoContentView(frame: NSMakeRect(0, 0, 1120, 760))
 let controlsPage = DemoPageView(frame: NSMakeRect(0, 144, 1120, 560))
 let valuesPage = DemoPageView(frame: NSMakeRect(0, 144, 1120, 560))
 let tablesPage = DemoPageView(frame: NSMakeRect(0, 144, 1120, 560))
 let drawingPage = DemoPageView(frame: NSMakeRect(0, 144, 1120, 560))
 let showcasePage = DemoPageView(frame: NSMakeRect(0, 144, 1120, 560))
+let listsPage = DemoPageView(frame: NSMakeRect(0, 144, 1120, 560))
 valuesPage.isHidden = true
 tablesPage.isHidden = true
 drawingPage.isHidden = true
 showcasePage.isHidden = true
+listsPage.isHidden = true
 let counterLabel = NSTextField(string: "Clicks: 0", frame: NSMakeRect(32, 36, 300, 24))
 let statusLabel = NSTextField(string: "Ready", frame: NSMakeRect(32, 74, 640, 24))
 let focusLabel = NSTextField(string: "Focus: none", frame: NSMakeRect(744, 74, 300, 24))
@@ -885,8 +1097,14 @@ let toggleToolbarItem = NSToolbarItem(itemIdentifier: "toggleToolbar")
 let customizeToolbarItem = NSToolbarItem(itemIdentifier: "customizeToolbar")
 let contentFocusColor = NSColor(calibratedRed: 0.92, green: 0.97, blue: 1.0, alpha: 1.0)
 let normalContentColor = NSColor.windowBackgroundColor
-let controlFocusColor = NSColor(calibratedRed: 1.0, green: 0.96, blue: 0.72, alpha: 1.0)
-let normalTextFieldColor = NSColor.white
+// The focus tint and resting field face follow the appearance so the focus
+// demo reads correctly in dark mode too (resolved once at launch, matching
+// the process-wide appearance binding).
+let isDarkDemo = NSApplication.shared.effectiveAppearance.winIsDark
+let controlFocusColor = isDarkDemo
+    ? NSColor(calibratedRed: 0.35, green: 0.32, blue: 0.12, alpha: 1.0)
+    : NSColor(calibratedRed: 1.0, green: 0.96, blue: 0.72, alpha: 1.0)
+let normalTextFieldColor = NSColor.controlBackgroundColor
 var clickCount = 0
 var isClickEnabled = true
 var isCounterHidden = false
@@ -1503,7 +1721,12 @@ func focusName() -> String {
 func updateFocusDisplay() {
     let name = focusName()
     focusLabel.stringValue = "Focus: \(name)"
-    contentView.backgroundColor = name == "content" ? contentFocusColor : normalContentColor
+    // The content view is the container for every page, so tinting its whole
+    // background on focus turns the entire app blue (and shows through/around the
+    // pages on resize and tab switches, reading as a repaint bug). Keep the
+    // container at its normal color and show content focus only via the label
+    // above; the small input controls below still demo their own focus tint.
+    contentView.backgroundColor = normalContentColor
     editableTextField.backgroundColor = name == "text field"
         ? controlFocusColor
         : normalTextFieldColor
@@ -1583,7 +1806,7 @@ datePicker.maxDate = Date(timeIntervalSince1970: 1_893_456_000)
 datePicker.datePickerElements = [.yearMonthDay, .hourMinuteSecond]
 dateValueLabel.textColor = .blue
 dateValueLabel.stringValue = datePicker.stringValue
-pageSelector.addItems(withTitles: ["Controls", "Values", "Tables/Media", "Drawing", "New in 3.x"])
+pageSelector.addItems(withTitles: ["Controls", "Values", "Tables/Media", "Drawing", "New in 3.x", "Lists (5.x)"])
 imageLabel.font = NSFont.boldSystemFont(ofSize: 12)
 imageView.image = NSImage(contentsOfFile: demoArtworkPath) ?? NSImage(named: "WinChocolate artwork")
 imageView.imageFrameStyle = .grayBezel
@@ -1634,9 +1857,13 @@ matrix.selectCell(atRow: 0, column: 0)
 pathLabel.font = NSFont.boldSystemFont(ofSize: 12)
 collectionLabel.font = NSFont.boldSystemFont(ofSize: 12)
 collectionView.dataSource = collectionDataSource
-collectionView.itemSize = NSMakeSize(116, 28)
-collectionView.minimumInteritemSpacing = 8
-collectionView.minimumLineSpacing = 8
+// Drive the collection with a real flow layout (5.4).
+let collectionFlowLayout = NSCollectionViewFlowLayout()
+collectionFlowLayout.itemSize = NSMakeSize(116, 28)
+collectionFlowLayout.minimumInteritemSpacing = 8
+collectionFlowLayout.minimumLineSpacing = 8
+collectionFlowLayout.sectionInset = NSEdgeInsetsMake(4, 4, 4, 4)
+collectionView.collectionViewLayout = collectionFlowLayout
 collectionView.reloadData()
 visualEffectLabel.font = NSFont.boldSystemFont(ofSize: 12)
 visualEffectView.material = visualEffectMaterials[visualEffectIndex].0
@@ -1690,7 +1917,12 @@ let demoToolbarDelegate = DemoToolbarDelegate(
         .separator,
         .flexibleSpace,
         "toggleToolbar",
-        "customizeToolbar"
+        "customizeToolbar",
+        // Standard Apple items — synthesized by the framework (6.6): the
+        // delegate returns nil for these and the built-in behaviors kick in.
+        .showColors,
+        .showFonts,
+        .print
     ],
     defaultIdentifiers: [
         "open",
@@ -1727,6 +1959,10 @@ let demoToolbarDelegate = DemoToolbarDelegate(
 )
 demoToolbar.displayMode = .iconAndLabel
 demoToolbar.allowsUserCustomization = true
+// Customizations persist across launches (6.8): the configuration autosaves
+// to UserDefaults under AppKit's "NSToolbar Configuration <id>" key and is
+// restored when the toolbar attaches to the window.
+demoToolbar.autosavesConfiguration = true
 demoToolbar.delegate = demoToolbarDelegate
 demoToolbar.addItem(openToolbarItem)
 demoToolbar.addItem(saveToolbarItem)
@@ -1775,6 +2011,7 @@ func showDemoPage(_ index: Int) {
     tablesPage.isHidden = index != 2
     drawingPage.isHidden = index != 3
     showcasePage.isHidden = index != 4
+    listsPage.isHidden = index != 5
     updateFocusDisplay()
 }
 
@@ -1817,6 +2054,12 @@ outlineStatusColumn.width = 88
 outlineView.addTableColumn(outlineNameColumn)
 outlineView.addTableColumn(outlineStatusColumn)
 outlineView.outlineDataSource = outlineDataSource
+// Drag a row to reorder it among its siblings (5.2).
+outlineView.winOutlineReorderHandler = { [weak outlineView] movedItem, parent, childIndex in
+    outlineDataSource.moveItem(String(describing: movedItem), under: parent, to: childIndex)
+    outlineView?.reloadData()
+    statusLabel.stringValue = "Moved \(movedItem) → index \(childIndex)"
+}
 outlineView.expandItem("Application")
 outlineView.expandItem("Controls")
 outlineView.reloadData()
@@ -2473,7 +2716,9 @@ tableView.onAction = { control in
     updateFocusDisplay()
     suppressNextTableSelectionStatus = true
     if let columnSummary = tableColumnSummary(table) {
-        if let sortDescriptor = table.sortUsingDescriptorPrototype(forColumn: table.clickedColumn) {
+        // The framework already applied the column's sort prototype on the
+        // header click; re-sort the model with the resulting descriptor.
+        if let sortDescriptor = table.sortDescriptors.first {
             let selectedValues = selectedTableRowValues(table)
             tableDataSource.sort(using: sortDescriptor)
             NSApp.nativeBackend.dispatchAsync {
@@ -2540,6 +2785,7 @@ contentView.addSubview(valuesPage)
 contentView.addSubview(tablesPage)
 contentView.addSubview(drawingPage)
 contentView.addSubview(showcasePage)
+contentView.addSubview(listsPage)
 
 controlsPage.addSubview(editableLabel)
 controlsPage.addSubview(editableTextField)
@@ -2766,6 +3012,88 @@ zoomButton.onAction = { _ in
     statusLabel.stringValue = window.isZoomed ? "Window zoomed" : "Window restored"
 }
 
+// 5.5 — framework-drawn, view-based table hosting real controls in its cells.
+// Placed in the clear full-width band below the print section (y > 386).
+let viewTableSectionLabel = showcaseSectionLabel("Framework-drawn table — view-based cells (5.5)", NSMakeRect(24, 392, 480, 20))
+let viewTableHint = NSTextField(string: "Hosts real controls; double-click a Note to edit, drag a row to reorder, drag a header to move a column.", frame: NSMakeRect(24, 412, 620, 18))
+viewTableHint.isBordered = false
+viewTableHint.drawsBackground = false
+viewTableHint.font = NSFont.systemFont(ofSize: 11)
+let viewTableSource = DemoViewTableDataSource()
+let viewTableDelegate = DemoViewTableDelegate(source: viewTableSource)
+viewTableDelegate.onEvent = { statusLabel.stringValue = $0 }
+let viewTableScrollView = NSScrollView(frame: NSMakeRect(24, 434, 470, 104))
+viewTableScrollView.hasVerticalScroller = true
+let viewTable = NSTableView(frame: NSMakeRect(0, 0, 470, 104))
+let taskColumn = NSTableColumn(identifier: "task")
+taskColumn.title = "Task"
+taskColumn.width = 210
+let noteColumn = NSTableColumn(identifier: "note")
+noteColumn.title = "Note (dbl-click)"
+noteColumn.width = 130
+noteColumn.isEditable = true
+let actionColumn = NSTableColumn(identifier: "action")
+actionColumn.title = "Action"
+actionColumn.width = 128
+viewTable.addTableColumn(taskColumn)
+viewTable.addTableColumn(noteColumn)
+viewTable.addTableColumn(actionColumn)
+viewTable.gridStyleMask = [.solidHorizontalGridLineMask, .solidVerticalGridLineMask]
+viewTable.usesAlternatingRowBackgroundColors = true
+viewTable.dataSource = viewTableSource
+viewTable.delegate = viewTableDelegate
+// No opt-in flag: the table auto-detects view-based mode because the delegate
+// vends cell views (AppKit semantics).
+// Drag a row to reorder it (5.8): move the parallel model arrays together.
+viewTable.winRowReorderHandler = { [weak viewTable] fromRows, toIndex in
+    // Move one or many selected rows (parallel model arrays) to the drop index.
+    let sortedRows = fromRows.sorted()
+    let dest = toIndex - sortedRows.filter { $0 < toIndex }.count
+    let movedTasks = sortedRows.map { viewTableSource.tasks[$0] }
+    let movedNotes = sortedRows.map { viewTableSource.notes[$0] }
+    let movedDone = sortedRows.map { viewTableSource.done[$0] }
+    for row in sortedRows.reversed() {
+        viewTableSource.tasks.remove(at: row)
+        viewTableSource.notes.remove(at: row)
+        viewTableSource.done.remove(at: row)
+    }
+    viewTableSource.tasks.insert(contentsOf: movedTasks, at: dest)
+    viewTableSource.notes.insert(contentsOf: movedNotes, at: dest)
+    viewTableSource.done.insert(contentsOf: movedDone, at: dest)
+    viewTable?.reloadData()
+    statusLabel.stringValue = "Moved \(fromRows.count) row(s) → \(dest)"
+}
+// Multi-row reorder needs multiple selection.
+viewTable.allowsMultipleSelection = true
+// Drag a column header past another to reorder the columns (5.7).
+viewTable.allowsColumnReordering = true
+viewTableScrollView.documentView = viewTable
+
+// 5.5 — NSTableRowView hosting: full-width colored row views behind hosted
+// label cells (a CI-status list). Placed to the right of the view table.
+let rowViewSectionLabel = showcaseSectionLabel("Row views — full-width row backgrounds (5.5)", NSMakeRect(520, 392, 380, 20))
+let rowViewHint = NSTextField(string: "Each row hosts an NSTableRowView; click a row to see the selection fill.", frame: NSMakeRect(520, 412, 400, 18))
+rowViewHint.isBordered = false
+rowViewHint.drawsBackground = false
+rowViewHint.font = NSFont.systemFont(ofSize: 11)
+let statusRowSource = DemoStatusRowDataSource()
+let statusRowDelegate = DemoStatusRowDelegate(source: statusRowSource)
+let statusRowScrollView = NSScrollView(frame: NSMakeRect(520, 434, 300, 104))
+statusRowScrollView.hasVerticalScroller = true
+let statusRowTable = NSTableView(frame: NSMakeRect(0, 0, 300, 104))
+let stageColumn = NSTableColumn(identifier: "stage")
+stageColumn.title = "Stage"
+stageColumn.width = 170
+let statusColumn = NSTableColumn(identifier: "status")
+statusColumn.title = "Status"
+statusColumn.width = 128
+statusRowTable.addTableColumn(stageColumn)
+statusRowTable.addTableColumn(statusColumn)
+statusRowTable.dataSource = statusRowSource
+statusRowTable.delegate = statusRowDelegate
+// Auto-detected view-based (the delegate vends cell + row views).
+statusRowScrollView.documentView = statusRowTable
+
 showcasePage.addSubview(spinnerSectionLabel)
 showcasePage.addSubview(showcaseSpinner)
 showcasePage.addSubview(spinnerStartButton)
@@ -2788,6 +3116,117 @@ showcasePage.addSubview(screenInfoLabel)
 showcasePage.addSubview(workAreaLabel)
 showcasePage.addSubview(miniaturizeButton)
 showcasePage.addSubview(zoomButton)
+showcasePage.addSubview(viewTableSectionLabel)
+showcasePage.addSubview(viewTableHint)
+showcasePage.addSubview(viewTableScrollView)
+showcasePage.addSubview(rowViewSectionLabel)
+showcasePage.addSubview(rowViewHint)
+showcasePage.addSubview(statusRowScrollView)
+
+// MARK: - "Lists (5.x)" page — NSBrowser path + NSCollectionView flow layout
+// A dedicated page so both are laid out with room and are directly clickable.
+
+// 5.3 — column browser with a live path readout.
+let listsBrowserLabel = showcaseSectionLabel("Column browser — NSBrowser (5.3)", NSMakeRect(24, 20, 500, 20))
+let listsBrowserHint = NSTextField(string: "Click through the columns; the path below updates via NSBrowser.path().", frame: NSMakeRect(24, 42, 620, 18))
+listsBrowserHint.isBordered = false
+listsBrowserHint.drawsBackground = false
+listsBrowserHint.font = NSFont.systemFont(ofSize: 11)
+browser.frame = NSMakeRect(24, 66, 520, 150)
+browser.columnWidth = 160
+browser.delegate = browserDataSource
+browser.loadColumnZero()
+// Titled columns: the first is labeled; deeper columns auto-title with the
+// selected parent item.
+browser.setTitle("Frameworks", ofColumn: 0)
+let listsBrowserPathLabel = NSTextField(string: "Path: /", frame: NSMakeRect(24, 224, 720, 22))
+listsBrowserPathLabel.isBordered = false
+listsBrowserPathLabel.drawsBackground = false
+listsBrowserPathLabel.font = NSFont.boldSystemFont(ofSize: 12)
+listsBrowserPathLabel.textColor = .blue
+browser.onAction = { [weak browser] _ in
+    guard let browser else {
+        return
+    }
+    listsBrowserPathLabel.stringValue = "Path: \(browser.path())"
+    statusLabel.stringValue = "Browser path: \(browser.path())"
+}
+
+// 5.4 — collection flow layout with live re-tiling controls.
+let listsCollectionLabel = showcaseSectionLabel("Collection view — NSCollectionViewFlowLayout (5.4)", NSMakeRect(24, 268, 600, 20))
+let listsCollectionHint = NSTextField(string: "Change item size, spacing, or direction — the items re-flow live.", frame: NSMakeRect(24, 290, 620, 18))
+listsCollectionHint.isBordered = false
+listsCollectionHint.drawsBackground = false
+listsCollectionHint.font = NSFont.systemFont(ofSize: 11)
+
+let listsFlowSource = DemoFlowCollectionDataSource()
+let listsFlowLayout = NSCollectionViewFlowLayout()
+listsFlowLayout.itemSize = NSMakeSize(120, 28)
+listsFlowLayout.minimumInteritemSpacing = 8
+listsFlowLayout.minimumLineSpacing = 8
+listsFlowLayout.sectionInset = NSEdgeInsetsMake(6, 6, 10, 6)
+listsFlowLayout.headerReferenceSize = NSMakeSize(0, 24)
+listsFlowLayout.footerReferenceSize = NSMakeSize(0, 16)
+let listsCollectionScrollView = NSScrollView(frame: NSMakeRect(24, 352, 860, 168))
+listsCollectionScrollView.hasVerticalScroller = true
+let listsCollectionView = NSCollectionView(frame: NSMakeRect(0, 0, 860, 168))
+listsCollectionView.dataSource = listsFlowSource
+listsCollectionView.collectionViewLayout = listsFlowLayout
+listsCollectionScrollView.documentView = listsCollectionView
+listsCollectionView.reloadData()
+
+let listsItemSizeControl = NSSegmentedControl(labels: ["Small", "Medium", "Large"], frame: NSMakeRect(24, 316, 210, 26))
+listsItemSizeControl.selectedSegment = 1
+listsItemSizeControl.onAction = { _ in
+    switch listsItemSizeControl.selectedSegment {
+    case 0: listsFlowLayout.itemSize = NSMakeSize(90, 24)
+    case 2: listsFlowLayout.itemSize = NSMakeSize(170, 40)
+    default: listsFlowLayout.itemSize = NSMakeSize(120, 28)
+    }
+    listsCollectionView.reloadData()
+    statusLabel.stringValue = "Collection item size changed"
+}
+let listsSpacingControl = NSSegmentedControl(labels: ["Tight", "Normal", "Loose"], frame: NSMakeRect(246, 316, 210, 26))
+listsSpacingControl.selectedSegment = 1
+listsSpacingControl.onAction = { _ in
+    let gap: CGFloat = listsSpacingControl.selectedSegment == 0 ? 2 : (listsSpacingControl.selectedSegment == 2 ? 24 : 8)
+    listsFlowLayout.minimumInteritemSpacing = gap
+    listsFlowLayout.minimumLineSpacing = gap
+    listsCollectionView.reloadData()
+    statusLabel.stringValue = "Collection spacing changed"
+}
+let listsDirectionControl = NSSegmentedControl(labels: ["Vertical", "Horizontal"], frame: NSMakeRect(468, 316, 200, 26))
+listsDirectionControl.selectedSegment = 0
+listsDirectionControl.onAction = { _ in
+    listsFlowLayout.scrollDirection = listsDirectionControl.selectedSegment == 1 ? .horizontal : .vertical
+    listsCollectionScrollView.hasVerticalScroller = listsDirectionControl.selectedSegment == 0
+    listsCollectionScrollView.hasHorizontalScroller = listsDirectionControl.selectedSegment == 1
+    listsCollectionView.reloadData()
+    statusLabel.stringValue = "Collection scroll direction changed"
+}
+
+// Per-item sizing: "By label" installs a flow delegate that sizes each item to
+// its title; "Uniform" clears it so the layout's itemSize applies.
+let listsFlowSizeDelegate = DemoFlowSizeDelegate(listsFlowSource)
+let listsSizeModeControl = NSSegmentedControl(labels: ["Uniform size", "Size by label"], frame: NSMakeRect(680, 316, 220, 26))
+listsSizeModeControl.selectedSegment = 0
+listsSizeModeControl.onAction = { _ in
+    listsCollectionView.delegate = listsSizeModeControl.selectedSegment == 1 ? listsFlowSizeDelegate : nil
+    listsCollectionView.reloadData()
+    statusLabel.stringValue = listsSizeModeControl.selectedSegment == 1 ? "Items sized to their labels" : "Uniform item size"
+}
+
+listsPage.addSubview(listsBrowserLabel)
+listsPage.addSubview(listsBrowserHint)
+listsPage.addSubview(browser)
+listsPage.addSubview(listsBrowserPathLabel)
+listsPage.addSubview(listsCollectionLabel)
+listsPage.addSubview(listsCollectionHint)
+listsPage.addSubview(listsItemSizeControl)
+listsPage.addSubview(listsSpacingControl)
+listsPage.addSubview(listsDirectionControl)
+listsPage.addSubview(listsSizeModeControl)
+listsPage.addSubview(listsCollectionScrollView)
 // Document-architecture demo: a New Note window driven by NSDocument,
 // NSWindowController, and the shared NSDocumentController. The window title
 // gains the classic asterisk while the note has unsaved edits.
@@ -2878,8 +3317,8 @@ editMenuController.textView = notesTextView
 // menu entry.
 let viewMenuItem = NSMenuItem(title: "View", action: nil, keyEquivalent: "")
 let viewMenu = NSMenu(title: "View")
-for (index, pageTitle) in ["Controls Page", "Values Page", "Tables/Media Page", "Drawing Page"].enumerated() {
-    // Ctrl+1...Ctrl+4 switch pages (the .command mask maps onto Ctrl on Windows).
+for (index, pageTitle) in ["Controls Page", "Values Page", "Tables/Media Page", "Drawing Page", "New in 3.x Page", "Lists Page"].enumerated() {
+    // Ctrl+1...Ctrl+5 switch pages (the .command mask maps onto Ctrl on Windows).
     let item = NSMenuItem(title: pageTitle, action: nil, keyEquivalent: "\(index + 1)")
     item.onAction = { _ in
         pageSelector.selectItem(at: index)
@@ -2888,6 +3327,21 @@ for (index, pageTitle) in ["Controls Page", "Values Page", "Tables/Media Page", 
     }
     viewMenu.addItem(item)
 }
+viewMenu.addItem(NSMenuItem.separator())
+// AppKit's standard View-menu toolbar actions (6.2) + the Apple looks (6.10).
+let toggleToolbarMenuItem = NSMenuItem(title: "Show/Hide Toolbar", action: nil, keyEquivalent: "")
+toggleToolbarMenuItem.onAction = { _ in
+    window.toggleToolbarShown(nil)
+}
+viewMenu.addItem(toggleToolbarMenuItem)
+let metallicMenuItem = NSMenuItem(title: "Use Metallic Toolbar", action: nil, keyEquivalent: "")
+metallicMenuItem.onAction = { item in
+    let metallic = demoToolbar.winAppleLook == .metallic
+    demoToolbar.winAppleLook = metallic ? .unified : .metallic
+    item.state = metallic ? .off : .on
+    statusLabel.stringValue = "Toolbar look: \(metallic ? "unified" : "metallic")"
+}
+viewMenu.addItem(metallicMenuItem)
 viewMenuItem.submenu = viewMenu
 menuBar.addItem(viewMenuItem)
 app.mainMenu = menuBar

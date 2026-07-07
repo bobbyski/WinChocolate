@@ -2,6 +2,22 @@
 
 This document defines the Apple AppKit toolbar API surface WinChocolate should mirror. It is intentionally about AppKit names, responsibilities, and behavior only. Windows implementation details belong in a later design document.
 
+## Implementation Status (2026-07-06)
+
+A concise map of the inventory below to WinChocolate's implementation. Everything here is contract-tested unless noted.
+
+| Area | Status |
+|---|---|
+| `NSToolbar` model | **Implemented**: identifier, `init()`/`init(identifier:)`, items, `visibleItems` (overflow-aware), `displayMode`/`sizeMode`, `isVisible`, `allowsUserCustomization`, `selectedItemIdentifier` (validated against the selectable set), `customizationPaletteIsRunning`, `centeredItemIdentifiers` (stored), insert/remove by index or identifier, `validateVisibleItems()` (drives item validation). |
+| `NSToolbarItem` model | **Implemented**: identifier, `label`/`paletteLabel`/`title`, `toolTip`, `image`, `view`, target/action + `onAction`, `isEnabled`, min/max size, `tag`, `menuFormRepresentation` (consumed by overflow), `visibilityPriority` (drives overflow), `autovalidates`, `isBordered` (renders as a native button), `validate()` via `NSToolbarItemValidation` on the target. |
+| `NSToolbarDelegate` | **Implemented (complete)**: allowed/default/selectable identifiers, `toolbar(_:itemForItemIdentifier:willBeInsertedIntoToolbar:)`, `toolbarWillAddItem`/`toolbarDidRemoveItem` (item under `userInfo["item"]`) plus `willAddItemNotification`/`didRemoveItemNotification` through `NotificationCenter.default`. |
+| Standard identifiers | **Implemented**: space, flexible space, separator; `.print`/`.showColors`/`.showFonts`/`.customizeToolbar` synthesize built-in items with Mac behaviors; `.toggleSidebar` (label-only; app wires the action), sidebar/inspector tracking separators (render as gaps). Boundary: responder-chain `printDocument:`/`toggleSidebar:` need ObjC selector dispatch. |
+| Autosave | **Implemented**: `configurationDictionary`/`setConfiguration(_:)` in the `TB *` dictionary shape, autosaved under `"NSToolbar Configuration <identifier>"` (UserDefaults) and restored on window attach. |
+| Overflow | **Implemented**: lowest-`visibilityPriority` items collapse into a » chevron menu built from `menuFormRepresentation`/labels. Remaining: elastic shrink of custom-view items before overflow. |
+| Customization sheet | **Implemented**: Apple-layout panel with drag insert/reorder/remove, default-set restore, duplicate rules, display-mode popup, palette dimming for in-toolbar items, drag preview + drop-position insertion indicator. Remaining: drag-to-the-real-toolbar (plan 6.13). |
+| `NSToolbarItemGroup` | **Not implemented** (tracked in the plan as renderer/model depth). |
+| `NSValidatedUserInterfaceItem`/`NSUserInterfaceValidations` | **Boundary**: the generalized command-validation protocols need ObjC selector dispatch; `NSToolbarItemValidation` covers the toolbar case. |
+
 Reference surfaces:
 
 - Apple Developer Documentation: `NSToolbar`

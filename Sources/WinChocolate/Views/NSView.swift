@@ -74,6 +74,10 @@ open class NSView: NSResponder {
         }
     }
 
+    /// The view's appearance override; `nil` inherits from the ancestor
+    /// chain (see `effectiveAppearance` in NSAppearance.swift).
+    public var appearance: NSAppearance?
+
     /// The view's parent view.
     public private(set) weak var superview: NSView?
 
@@ -517,7 +521,12 @@ open class NSView: NSResponder {
 
             self.needsDisplay = false
             NSGraphicsContext(nativeContext: nativeContext).asCurrent {
-                self.draw(dirtyRect)
+                // The view's effective appearance is current for the draw
+                // pass, so appearance-sensitive code (dynamic colors read
+                // through `NSAppearance.currentDrawing()`) resolves per view.
+                NSAppearance.winWithCurrentDrawing(self.effectiveAppearance) {
+                    self.draw(dirtyRect)
+                }
             }
         }
         updateCursorRegions()

@@ -114,9 +114,32 @@ open class NSScrollView: NSView {
         return handle
     }
 
-    /// Updates the clip view to match the scroll view's bounds.
+    /// A non-scrolling view pinned to the top of the scroll view, above the
+    /// content clip (used for a table's column header). It stays fixed while the
+    /// document scrolls beneath it.
+    public private(set) var winHeaderStripView: NSView?
+    private var winHeaderStripHeight: CGFloat = 0
+
+    /// Installs (or clears) the pinned top strip and re-tiles so the content
+    /// clip is inset below it. Passing `nil` removes any existing strip.
+    open func winSetHeaderStrip(_ view: NSView?, height: CGFloat) {
+        if winHeaderStripView !== view {
+            winHeaderStripView?.removeFromSuperview()
+            winHeaderStripView = view
+            if let view {
+                addSubview(view)
+            }
+        }
+        winHeaderStripHeight = view != nil ? max(0, height) : 0
+        tile()
+    }
+
+    /// Updates the clip view to match the scroll view's bounds, reserving the
+    /// top strip for a pinned header when one is installed.
     open func tile() {
-        contentView.frame = bounds
+        let strip = winHeaderStripView != nil ? winHeaderStripHeight : 0
+        winHeaderStripView?.frame = NSRect(x: 0, y: 0, width: bounds.size.width, height: strip)
+        contentView.frame = NSRect(x: 0, y: strip, width: bounds.size.width, height: max(0, bounds.size.height - strip))
         syncNativeScrollState()
     }
 

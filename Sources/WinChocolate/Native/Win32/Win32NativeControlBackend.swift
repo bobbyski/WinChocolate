@@ -97,6 +97,12 @@ public final class Win32NativeControlBackend: NativeControlBackend {
     /// Creates a Win32 backend.
     public init() {
         Self.activeBackend = self
+        // The modern presentation (plan 8.2) binds ComCtl32 v6 visual styles
+        // before any window class or common control exists; classic keeps the
+        // unthemed v5 look. One-way for the process lifetime.
+        if WinPresentation.selected == .modern {
+            Self.enableModernVisualStyles()
+        }
     }
 
     /// Starts the native Windows event loop.
@@ -245,7 +251,11 @@ public final class Win32NativeControlBackend: NativeControlBackend {
             windowClass.lpfnWndProc = winChocolateWindowProcedure
             windowClass.hInstance = winGetModuleHandleW(nil)
             windowClass.hCursor = winLoadCursorW(nil, systemResourcePointer(32_512))
-            windowClass.hbrBackground = HBRUSH(bitPattern: 6)
+            // The view surface erases with the dynamic window background so a
+            // dark effective appearance yields dark view surfaces (the class
+            // registers on first control creation, after the appearance is
+            // decided — the same one-way binding as WinPresentation).
+            windowClass.hbrBackground = winCreateSolidBrush(colorRef(from: .windowBackgroundColor))
             windowClass.lpszClassName = className
 
             withUnsafePointer(to: windowClass) { windowClassPointer in
@@ -367,6 +377,17 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         // give every control the standard UI font unless `setFont` overrides.
         if let font = defaultUIFont() {
             _ = winSendMessageW(childHwnd, wmSetFont, UInt(bitPattern: font), 1)
+        }
+
+        // A dark effective appearance opts native controls into the system's
+        // dark control themes (the same undocumented-but-stable subclasses
+        // Explorer and the common dialogs use). Best-effort: classes without
+        // a dark theme part keep their light rendering — tracked in 8.5.
+        if NSApplication.shared.effectiveAppearance.winIsDark {
+            let theme = className.uppercased() == "COMBOBOX" ? "DarkMode_CFD" : "DarkMode_Explorer"
+            _ = withWideString(theme) { themeName in
+                winSetWindowTheme(childHwnd, themeName, nil)
+            }
         }
 
         return nativeHandle(from: childHwnd)

@@ -93,6 +93,12 @@ extension Win32NativeControlBackend {
                 if !isEditable {
                     _ = winSendMessageW(hwnd, emSetReadOnly, 1, 0)
                 }
+                // Rich edit ignores WM_CTLCOLOR; under a dark appearance the
+                // face and default text follow the dynamic palette directly.
+                if NSApplication.shared.effectiveAppearance.winIsDark {
+                    _ = winSendMessageW(hwnd, emSetBkgndColor, 0, LPARAM(colorRef(from: .controlBackgroundColor)))
+                    setTextColor(.textColor, for: handle)
+                }
             }
         }
         if isEditable || isRichText {

@@ -164,6 +164,10 @@ open class NSWindow: NSResponder {
     /// applied with the window-appearance work.
     open var titlebarAppearsTransparent: Bool = false
 
+    /// The window's appearance override; `nil` inherits the application's
+    /// effective appearance (see `effectiveAppearance` in NSAppearance.swift).
+    open var appearance: NSAppearance?
+
     private var standardButtons: [ButtonType: NSButton] = [:]
 
     /// The window style mask.
@@ -250,6 +254,18 @@ open class NSWindow: NSResponder {
             installToolbarHost()
             layoutToolbarAndContent()
         }
+    }
+
+    /// Toggles the toolbar's visibility, matching AppKit's
+    /// `toggleToolbarShown(_:)` (the View menu's Show/Hide Toolbar action).
+    open func toggleToolbarShown(_ sender: Any?) {
+        toolbar?.isVisible.toggle()
+    }
+
+    /// Opens the toolbar customization palette, matching AppKit's
+    /// `runToolbarCustomizationPalette(_:)`.
+    open func runToolbarCustomizationPalette(_ sender: Any?) {
+        toolbar?.runCustomizationPalette(sender)
     }
 
     /// Height reserved for the window-owned toolbar strip.

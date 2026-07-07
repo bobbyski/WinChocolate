@@ -8,12 +8,20 @@ public protocol NSCollectionViewDataSource: AnyObject {
 
     /// Returns the item view-controller object for an index path.
     func collectionView(_ collectionView: NSCollectionView, itemForRepresentedObjectAt indexPath: IndexPath) -> NSCollectionViewItem
+
+    /// Returns a supplementary view (e.g. a section header) for an index path.
+    func collectionView(_ collectionView: NSCollectionView, viewForSupplementaryElementOfKind kind: String, at indexPath: IndexPath) -> NSView?
 }
 
 public extension NSCollectionViewDataSource {
     /// Most collection views start with one section.
     func numberOfSections(in collectionView: NSCollectionView) -> Int {
         1
+    }
+
+    /// Default: no supplementary views.
+    func collectionView(_ collectionView: NSCollectionView, viewForSupplementaryElementOfKind kind: String, at indexPath: IndexPath) -> NSView? {
+        nil
     }
 }
 
@@ -34,6 +42,21 @@ public extension NSCollectionViewDelegate {
     func collectionView(_ collectionView: NSCollectionView, didDeselectItemsAt indexPaths: Set<IndexPath>) {}
 }
 
+/// Flow-layout delegate that supplies a per-item size (and, later, per-section
+/// insets/spacing). Matches `NSCollectionViewDelegateFlowLayout`.
+public protocol NSCollectionViewDelegateFlowLayout: NSCollectionViewDelegate {
+    /// The size for the item at an index path. Return `.zero` to fall back to
+    /// the layout's uniform `itemSize`.
+    func collectionView(_ collectionView: NSCollectionView, layout collectionViewLayout: NSCollectionViewLayout, sizeForItemAt indexPath: IndexPath) -> NSSize
+}
+
+public extension NSCollectionViewDelegateFlowLayout {
+    /// Default: use the layout's uniform item size.
+    func collectionView(_ collectionView: NSCollectionView, layout collectionViewLayout: NSCollectionViewLayout, sizeForItemAt indexPath: IndexPath) -> NSSize {
+        .zero
+    }
+}
+
 /// A simple collection-view item.
 open class NSCollectionViewItem: NSObject {
     /// The item's root view.
@@ -41,6 +64,10 @@ open class NSCollectionViewItem: NSObject {
 
     /// Application object represented by the item.
     open var representedObject: Any?
+
+    /// The reuse identifier the item was made with (set by `makeItem`), used to
+    /// return it to the correct recycling pool.
+    open var identifier: NSUserInterfaceItemIdentifier?
 
     /// Whether the item is currently selected.
     open var isSelected: Bool = false {
@@ -51,10 +78,18 @@ open class NSCollectionViewItem: NSObject {
         }
     }
 
-    /// Creates an item with a default view.
-    public override init() {
+    /// Creates an item with a default view. `required` so the collection view
+    /// can instantiate a registered item class for recycling.
+    public required override init() {
         self.view = NSView(frame: NSMakeRect(0, 0, 96, 32))
         super.init()
+    }
+
+    /// Called before a recycled item is handed back out. Subclasses reset any
+    /// per-use state here (matching AppKit's `NSCollectionViewItem`).
+    open func prepareForReuse() {
+        isSelected = false
+        representedObject = nil
     }
 }
 
@@ -91,6 +126,27 @@ open class NSCollectionView: NSControl {
         }
     }
 
+    /// The supplementary element kind for a section header.
+    public static let elementKindSectionHeader = "NSCollectionElementKindSectionHeader"
+
+    /// The supplementary element kind for a section footer.
+    public static let elementKindSectionFooter = "NSCollectionElementKindSectionFooter"
+
+    /// Hosted supplementary (header) views, by section.
+    private var hostedSupplementaryViews: [Int: NSView] = [:]
+
+    /// The layout that arranges items. When set, it overrides the built-in
+    /// grid; assign an `NSCollectionViewFlowLayout` for AppKit-style flow.
+    open var collectionViewLayout: NSCollectionViewLayout? {
+        didSet {
+            collectionViewLayout?.collectionView = self
+            // The set of supplementary views is layout-driven, so (re)build them
+            // when the layout changes; `tile()` then only repositions.
+            rebuildSupplementaryViews()
+            tile()
+        }
+    }
+
     /// Whether multiple items can be selected.
     open var allowsMultipleSelection: Bool = false
 
@@ -103,6 +159,11 @@ open class NSCollectionView: NSControl {
     private var itemsByIndexPath: [IndexPath: NSCollectionViewItem] = [:]
     private var orderedIndexPaths: [IndexPath] = []
 
+    /// Item classes registered for a reuse identifier (for `makeItem`).
+    private var itemClassesByIdentifier: [String: NSCollectionViewItem.Type] = [:]
+    /// Recycled items available for reuse, keyed by their reuse identifier.
+    private var reusePool: [String: [NSCollectionViewItem]] = [:]
+
     /// Creates a collection view.
     public override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -113,11 +174,50 @@ open class NSCollectionView: NSControl {
         backend.createView(frame: frame, parent: parent)
     }
 
-    /// Reloads all collection items from the data source.
-    open func reloadData() {
+    /// Registers an item class to instantiate for a reuse identifier. Passing
+    /// `nil` unregisters the identifier. Matches AppKit's
+    /// `register(_:forItemWithIdentifier:)`.
+    open func register(_ itemClass: NSCollectionViewItem.Type?, forItemWithIdentifier identifier: NSUserInterfaceItemIdentifier) {
+        if let itemClass {
+            itemClassesByIdentifier[identifier.rawValue] = itemClass
+        } else {
+            itemClassesByIdentifier.removeValue(forKey: identifier.rawValue)
+            reusePool.removeValue(forKey: identifier.rawValue)
+        }
+    }
+
+    /// Returns a recycled item for the identifier if one is available, otherwise
+    /// instantiates the registered class (or a base `NSCollectionViewItem`). The
+    /// data source calls this inside `itemForRepresentedObjectAt`, exactly as in
+    /// AppKit's `makeItem(withIdentifier:for:)`.
+    open func makeItem(withIdentifier identifier: NSUserInterfaceItemIdentifier, for indexPath: IndexPath) -> NSCollectionViewItem {
+        if var pooled = reusePool[identifier.rawValue], let reused = pooled.popLast() {
+            reusePool[identifier.rawValue] = pooled
+            reused.prepareForReuse()
+            reused.identifier = identifier
+            return reused
+        }
+        let itemClass = itemClassesByIdentifier[identifier.rawValue] ?? NSCollectionViewItem.self
+        let item = itemClass.init()
+        item.identifier = identifier
+        return item
+    }
+
+    /// Moves the current items into the reuse pool (keyed by identifier) so the
+    /// next `makeItem` can hand them back instead of allocating.
+    private func recycleCurrentItems() {
         for item in itemsByIndexPath.values {
             item.view.removeFromSuperview()
+            guard let key = item.identifier?.rawValue else {
+                continue
+            }
+            reusePool[key, default: []].append(item)
         }
+    }
+
+    /// Reloads all collection items from the data source.
+    open func reloadData() {
+        recycleCurrentItems()
 
         itemsByIndexPath.removeAll()
         orderedIndexPaths.removeAll()
@@ -140,11 +240,25 @@ open class NSCollectionView: NSControl {
 
         selectionIndexPaths = selectionIndexPaths.filter { itemsByIndexPath[$0] != nil }
         updateItemSelectionState()
+        rebuildSupplementaryViews()
         tile()
     }
 
-    /// Lays out visible item views.
+    /// Lays out visible item views, delegating to `collectionViewLayout` when
+    /// set (AppKit flow/custom layout) and falling back to the built-in grid.
     open func tile() {
+        if let layout = collectionViewLayout {
+            layout.prepare()
+            for (indexPath, item) in itemsByIndexPath {
+                if let attr = layout.layoutAttributesForItem(at: indexPath) {
+                    item.view.frame = attr.frame
+                }
+            }
+            positionSupplementaryViews(with: layout)
+            sizeToContentIfScrolled(layout.collectionViewContentSize)
+            return
+        }
+
         let availableWidth = max(itemSize.width, frame.size.width)
         let stride = max(1, itemSize.width + minimumInteritemSpacing)
         let columns = max(1, Int((availableWidth + minimumInteritemSpacing) / stride))
@@ -159,6 +273,73 @@ open class NSCollectionView: NSControl {
             let x = CGFloat(column) * (itemSize.width + minimumInteritemSpacing)
             let y = CGFloat(row) * (itemSize.height + minimumLineSpacing)
             item.view.frame = NSMakeRect(x, y, itemSize.width, itemSize.height)
+        }
+    }
+
+    /// When the collection view is a scroll view's document view, grows it to
+    /// the layout's content size so the scroll view can scroll the items.
+    private func sizeToContentIfScrolled(_ contentSize: NSSize) {
+        guard let scrollView = enclosingScrollView else {
+            return
+        }
+        let width = max(scrollView.contentView.bounds.size.width, contentSize.width)
+        let height = max(scrollView.contentView.bounds.size.height, contentSize.height)
+        if frame.size.width != width || frame.size.height != height {
+            frame = NSRect(x: frame.origin.x, y: frame.origin.y, width: width, height: height)
+        }
+        scrollView.tile()
+    }
+
+    /// (Re)builds the hosted supplementary views the data source vends, keyed by
+    /// a per-section header/footer slot. Called only when the *set* of views can
+    /// change (`reloadData`, layout swap) — NOT on every `tile()`. Between
+    /// rebuilds the views are reused and merely repositioned, so re-layout
+    /// (item-size/spacing changes, scrolling) never re-asks the data source or
+    /// re-allocates supplementary views.
+    ///
+    /// NOTE: this is the interim "option C" recycling. AppKit's real
+    /// `register(_:forSupplementaryViewOfKind:withIdentifier:)` /
+    /// `makeSupplementaryView(...)` API is deferred to Rev 2.0 — see
+    /// `Docs/Rev2-SupplementaryViewRecycling.md`. When that lands, delete this
+    /// method and `positionSupplementaryViews`, and drive supplementary views
+    /// through the reuse pool exactly like `makeItem`.
+    private func rebuildSupplementaryViews() {
+        for view in hostedSupplementaryViews.values {
+            view.removeFromSuperview()
+        }
+        hostedSupplementaryViews.removeAll()
+
+        // Supplementary views are layout-driven; the built-in grid has none.
+        guard collectionViewLayout != nil else {
+            return
+        }
+
+        let sectionCount = dataSource?.numberOfSections(in: self) ?? 0
+        for section in 0..<sectionCount {
+            let indexPath = IndexPath(item: 0, section: section)
+            for (offset, kind) in [Self.elementKindSectionHeader, Self.elementKindSectionFooter].enumerated() {
+                guard let view = dataSource?.collectionView(self, viewForSupplementaryElementOfKind: kind, at: indexPath) else {
+                    continue
+                }
+                addSubview(view)
+                // Key headers and footers into disjoint slots per section.
+                hostedSupplementaryViews[section * 2 + offset] = view
+            }
+        }
+    }
+
+    /// Repositions the already-hosted supplementary views to their current
+    /// layout frames. A view the layout no longer reserves space for collapses
+    /// to a zero frame (kept alive for reuse rather than destroyed).
+    private func positionSupplementaryViews(with layout: NSCollectionViewLayout) {
+        for (key, view) in hostedSupplementaryViews {
+            let section = key / 2
+            let kind = (key % 2 == 0) ? Self.elementKindSectionHeader : Self.elementKindSectionFooter
+            if let attr = layout.layoutAttributesForSupplementaryView(ofKind: kind, at: IndexPath(item: 0, section: section)) {
+                view.frame = attr.frame
+            } else {
+                view.frame = .zero
+            }
         }
     }
 

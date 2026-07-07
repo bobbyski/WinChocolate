@@ -28,14 +28,24 @@ public struct NSColor: Equatable, Sendable {
         self.init(calibratedRed: red, green: green, blue: blue, alpha: alpha)
     }
 
+    /// Resolves a dynamic system color: the light value under `.aqua`, the
+    /// dark value under `.darkAqua` (per the application's effective
+    /// appearance — the drawing context's appearance is a documented 8.5
+    /// boundary; the appearance binding is process-wide).
+    static func winDynamic(light: NSColor, dark: NSColor) -> NSColor {
+        NSApplication.shared.effectiveAppearance.winIsDark ? dark : light
+    }
+
     /// Standard text color.
     public static var textColor: NSColor {
-        NSColor(calibratedRed: 0, green: 0, blue: 0, alpha: 1)
+        winDynamic(light: NSColor(calibratedRed: 0, green: 0, blue: 0, alpha: 1),
+                   dark: NSColor(calibratedRed: 1, green: 1, blue: 1, alpha: 1))
     }
 
     /// Standard window background color.
     public static var windowBackgroundColor: NSColor {
-        NSColor(calibratedRed: 1, green: 1, blue: 1, alpha: 1)
+        winDynamic(light: NSColor(calibratedRed: 1, green: 1, blue: 1, alpha: 1),
+                   dark: NSColor(white: 0.13, alpha: 1))
     }
 
     /// Standard label color.

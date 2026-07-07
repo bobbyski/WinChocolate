@@ -148,5 +148,24 @@ extension Win32NativeControlBackend {
 
         _ = winInvalidateRect(hwnd, nil, 1)
     }
+
+    /// Requests a repaint of a native control and all of its child windows, so
+    /// transparent children repaint over a changed custom-view background.
+    public func invalidateControlTree(_ handle: NativeHandle) {
+        guard let hwnd = hwnd(from: handle) else {
+            return
+        }
+
+        _ = winRedrawWindow(hwnd, nil, nil, rdwInvalidate | rdwErase | rdwAllChildren)
+    }
+
+    /// Repaints a native control and its children synchronously (mid-gesture).
+    public func redrawControlImmediately(_ handle: NativeHandle) {
+        guard let hwnd = hwnd(from: handle) else {
+            return
+        }
+
+        _ = winRedrawWindow(hwnd, nil, nil, rdwInvalidate | rdwErase | rdwAllChildren | rdwUpdateNow)
+    }
 }
 #endif

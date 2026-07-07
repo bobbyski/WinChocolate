@@ -6,6 +6,18 @@ func expect(_ condition: @autoclosure () -> Bool, _ message: String) {
     }
 }
 
+// Pin the suite to the light appearance: dynamic system colors resolve
+// through the effective appearance, and without a pin they would follow the
+// *test machine's* Windows theme, making color assertions machine-dependent.
+// Tests that exercise dark behavior override this locally and restore it.
+NSApplication.shared.appearance = NSAppearance(named: .aqua)
+
+// The framework defaults to the modern presentation (8.4) — asserted here,
+// then pinned to classic so the suite's classic-baseline assertions hold;
+// tests that exercise modern behavior override locally and restore the pin.
+expect(WinPresentation.selected == .modern, "The presentation should default to modern (8.4).")
+WinPresentation.selected = .classic
+
 func clearApplicationWindows() {
     for window in NSApplication.shared.windows {
         NSApplication.shared.removeWindowsItem(window)
@@ -508,6 +520,24 @@ final class RecordingOutlineDataSource: NSOutlineViewDataSource {
     }
 }
 
+/// A mutable flat outline (top-level leaves) for the sibling-reorder test.
+final class MutableOutlineDataSource: NSOutlineViewDataSource {
+    var roots: [String]
+    init(_ roots: [String]) { self.roots = roots }
+
+    func outlineView(_ outlineView: NSOutlineView, numberOfChildrenOfItem item: Any?) -> Int {
+        guard item == nil else { return 0 }
+        return roots.count
+    }
+    func outlineView(_ outlineView: NSOutlineView, child index: Int, ofItem item: Any?) -> Any {
+        roots[index]
+    }
+    func outlineView(_ outlineView: NSOutlineView, isItemExpandable item: Any) -> Bool { false }
+    func outlineView(_ outlineView: NSOutlineView, objectValueFor tableColumn: NSTableColumn?, byItem item: Any?) -> Any? {
+        item.map { String(describing: $0) }
+    }
+}
+
 final class RecordingBrowserDelegate: NSBrowserDelegate {
     let roots = ["Application", "Controls"]
     let children: [String: [String]] = [
@@ -600,6 +630,18 @@ final class RecordingTableDelegate: NSTableViewDelegate {
 
     func tableView(_ tableView: NSTableView, sortDescriptorsDidChange oldDescriptors: [NSSortDescriptor]) {
         oldSortDescriptorCount = oldDescriptors.count
+    }
+}
+
+/// A cell-based table delegate: it counts selection changes but vends no cell
+/// view, so the table stays on the native list path (auto-detection only picks
+/// the drawn peer when a delegate vends views).
+final class CellBasedSelectionDelegate: NSTableViewDelegate {
+    var selectionChangeCount = 0
+    var lastObject: AnyObject?
+    func tableViewSelectionDidChange(_ notification: NSNotification) {
+        selectionChangeCount += 1
+        lastObject = notification.object
     }
 }
 
@@ -1041,7 +1083,7 @@ func testOutlineViewFlattensExpandableItems() {
     expect(outlineView.item(atRow: 0) as? String == "Application", "Outline root item was wrong.")
     expect(outlineView.level(forRow: 0) == 0, "Outline root level was wrong.")
     expect(outlineView.row(forItem: "Controls") == 1, "Outline did not find root item row.")
-    expect(outlineView.value(atColumn: 0, row: 0) == "+ Application", "Outline did not mark collapsed group.")
+    expect(outlineView.value(atColumn: 0, row: 0) == "Application", "Outline first-column value should be plain text (disclosure is drawn, not text).")
     expect(outlineView.value(atColumn: 1, row: 0) == "Group", "Outline did not load secondary column value.")
     expect(outlineView.isItemExpandable("Application"), "Outline did not report expandable group.")
     expect(!outlineView.isItemExpandable("NSApplication"), "Outline reported leaf as expandable.")
@@ -1052,8 +1094,12 @@ func testOutlineViewFlattensExpandableItems() {
     expect(outlineView.numberOfRows == 4, "Outline did not add expanded children.")
     expect(outlineView.item(atRow: 1) as? String == "NSApplication", "Outline first child was wrong.")
     expect(outlineView.level(forItem: "NSApplication") == 1, "Outline child level was wrong.")
-    expect(outlineView.value(atColumn: 0, row: 0) == "- Application", "Outline did not mark expanded group.")
-    expect(outlineView.value(atColumn: 0, row: 1) == "    NSApplication", "Outline child indentation text was wrong.")
+    expect(outlineView.value(atColumn: 0, row: 0) == "Application", "Expanded group value should be plain text.")
+    expect(outlineView.value(atColumn: 0, row: 1) == "NSApplication", "Child value should be plain text (indentation is drawn).")
+    // Indentation is expressed as a leading inset: a level-1 child is inset more
+    // than its level-0 parent.
+    expect(outlineView.winDrawnLeadingInset(forRow: 1, column: 0) > outlineView.winDrawnLeadingInset(forRow: 0, column: 0),
+           "Outline child was not indented more than its parent.")
 
     outlineView.collapseItem("Application")
 
@@ -1073,10 +1119,145 @@ func testOutlineViewFlattensExpandableItems() {
 
     expect(!outlineView.isItemExpanded("Controls"), "Outline toggle did not collapse expanded item.")
 
+    // At this point the outline is collapsed again (2 root rows).
     let handle = outlineView.realizeNativePeer(in: backend, parent: nil)
 
-    expect(backend.records[handle]?.kind == "tableView", "Outline view did not use the table backend.")
-    expect(backend.records[handle]?.tableRows.count == 2, "Outline native rows were not synced.")
+    // The outline uses the framework-drawn table so it can draw disclosure
+    // triangles and indentation itself.
+    expect(backend.records[handle]?.kind == "view", "Outline view did not use the framework-drawn table.")
+
+    // Clicking the disclosure triangle on the first root row expands it.
+    // (Header is 24pt tall; the triangle sits at the left of row 0.)
+    expect(outlineView.numberOfRows == 2, "Outline should be collapsed before the disclosure click.")
+    backend.mouseDownActions[handle]?(NSEvent(type: .leftMouseDown, locationInWindow: NSMakePoint(8, 24 + 8)))
+    expect(outlineView.isItemExpanded("Application"), "Clicking the disclosure triangle did not expand the item.")
+    expect(outlineView.numberOfRows == 4, "Disclosure-triangle expand did not reveal child rows.")
+}
+
+/// An outline delegate that hosts a text field per cell for the first column.
+final class HostingOutlineDelegate: NSOutlineViewDelegate {
+    func outlineView(_ outlineView: NSOutlineView, viewFor tableColumn: NSTableColumn?, item: Any) -> NSView? {
+        guard tableColumn?.identifier.rawValue == "name" else { return nil }
+        return NSTextField(string: "cell-\(item)", frame: NSMakeRect(0, 0, 80, 18))
+    }
+}
+
+func testOutlineViewHostsDelegateCellViews() {
+    let backend = InMemoryNativeControlBackend()
+    let outline = NSOutlineView(frame: NSMakeRect(0, 0, 240, 160))
+    let name = NSTableColumn(identifier: "name")
+    name.title = "Name"
+    name.width = 160
+    let kind = NSTableColumn(identifier: "kind")
+    kind.title = "Kind"
+    kind.width = 60
+    outline.addTableColumn(name)
+    outline.addTableColumn(kind)
+    let dataSource = RecordingOutlineDataSource()
+    outline.outlineDataSource = dataSource
+    let delegate = HostingOutlineDelegate()
+    outline.outlineDelegate = delegate
+    outline.reloadData()
+    _ = outline.realizeNativePeer(in: backend, parent: nil)
+
+    // Two root rows → the first column hosts a text field per row; the second
+    // column (no delegate view) stays drawn text.
+    let hosted = outline.subviews.compactMap { $0 as? NSTextField }
+    expect(hosted.count == 2, "Outline did not host a delegate cell view per root row. Got \(hosted.count).")
+    expect(hosted.contains { $0.stringValue == "cell-Application" },
+           "Outline hosted view was not seeded from its item.")
+    expect(hosted.contains { $0.stringValue == "cell-Controls" },
+           "Outline hosted view for the second root row was missing.")
+}
+
+/// A small tree: "Folder" (branch → [A]) and "Loose" (leaf), for the
+/// cross-level reparenting-drop test.
+final class TreeOutlineDataSource: NSOutlineViewDataSource {
+    func outlineView(_ outlineView: NSOutlineView, numberOfChildrenOfItem item: Any?) -> Int {
+        switch item.map({ String(describing: $0) }) {
+        case .none: return 2        // Folder, Loose
+        case "Folder": return 1     // Folder → A
+        default: return 0
+        }
+    }
+    func outlineView(_ outlineView: NSOutlineView, child index: Int, ofItem item: Any?) -> Any {
+        switch item.map({ String(describing: $0) }) {
+        case .none: return ["Folder", "Loose"][index]
+        case "Folder": return "A"
+        default: return ""
+        }
+    }
+    func outlineView(_ outlineView: NSOutlineView, isItemExpandable item: Any) -> Bool {
+        String(describing: item) == "Folder"
+    }
+    func outlineView(_ outlineView: NSOutlineView, objectValueFor tableColumn: NSTableColumn?, byItem item: Any?) -> Any? {
+        item.map { String(describing: $0) }
+    }
+}
+
+func testOutlineViewCrossLevelDropTargetsParent() {
+    let outline = NSOutlineView(frame: NSMakeRect(0, 0, 240, 160))
+    let name = NSTableColumn(identifier: "name")
+    name.title = "Name"
+    name.width = 220
+    outline.addTableColumn(name)
+    let source = TreeOutlineDataSource()
+    outline.outlineDataSource = source
+    outline.expandItem("Folder")  // visible: Folder(0), A(1, parent Folder), Loose(2)
+
+    var received: (item: String, parent: String?, childIndex: Int)?
+    outline.winOutlineReorderHandler = { movedItem, parent, childIndex in
+        received = (String(describing: movedItem), parent.map { String(describing: $0) }, childIndex)
+    }
+
+    // Drop "Loose" (row 2) directly under the expanded "Folder" header (drop
+    // index 1, before its child A) → reparents Loose into Folder at index 0.
+    outline.winRowReorderHandler?(IndexSet(integer: 2), 1)
+    expect(received?.item == "Loose" && received?.parent == "Folder" && received?.childIndex == 0,
+           "Cross-level drop did not reparent into the expanded branch. Got \(String(describing: received)).")
+
+    // Dropping "Folder" (row 0) into its own child A (drop index 2, just under A)
+    // is rejected — you can't move an item into its own subtree.
+    received = nil
+    outline.winRowReorderHandler?(IndexSet(integer: 0), 2)
+    expect(received == nil, "Dropping a branch into its own subtree was not rejected. Got \(String(describing: received)).")
+}
+
+func testOutlineViewSiblingReorderMovesItem() {
+    let outline = NSOutlineView(frame: NSMakeRect(0, 0, 240, 160))
+    let name = NSTableColumn(identifier: "name")
+    name.title = "Name"
+    name.width = 220
+    outline.addTableColumn(name)
+    let source = MutableOutlineDataSource(["Alpha", "Bravo", "Charlie"])
+    outline.outlineDataSource = source
+
+    var received: (item: String, parentIsNil: Bool, childIndex: Int)?
+    outline.winOutlineReorderHandler = { movedItem, parent, childIndex in
+        received = (String(describing: movedItem), parent == nil, childIndex)
+        // Standard AppKit move: adjust the insert index for the earlier removal.
+        let movedName = String(describing: movedItem)
+        guard let current = source.roots.firstIndex(of: movedName) else { return }
+        source.roots.remove(at: current)
+        let dest = childIndex > current ? childIndex - 1 : childIndex
+        source.roots.insert(movedName, at: min(max(0, dest), source.roots.count))
+    }
+
+    // Setting the handler wires the drawn row-reorder bridge; invoke it as the
+    // drop would: drag "Charlie" (row 2) to the top (flattened drop index 0).
+    outline.winRowReorderHandler?(IndexSet(integer: 2), 0)
+
+    expect(received?.item == "Charlie" && received?.parentIsNil == true && received?.childIndex == 0,
+           "Outline reorder reported the wrong drop. Got \(String(describing: received)).")
+    expect(source.roots == ["Charlie", "Alpha", "Bravo"],
+           "Outline sibling reorder did not move Charlie to the top. Got \(source.roots).")
+    expect(outline.item(atRow: 0) as? String == "Charlie",
+           "Outline did not reload with the new order after the reorder.")
+
+    // Move it back down to the end (flattened drop index 3).
+    outline.winRowReorderHandler?(IndexSet(integer: 0), 3)
+    expect(source.roots == ["Alpha", "Bravo", "Charlie"],
+           "Outline sibling reorder did not move Charlie to the end. Got \(source.roots).")
 }
 
 func testBrowserLoadsColumnsAndTracksSelection() {
@@ -1111,7 +1292,149 @@ func testBrowserLoadsColumnsAndTracksSelection() {
     let handle = browser.realizeNativePeer(in: backend, parent: nil)
 
     expect(backend.records[handle]?.kind == "view", "Browser did not create a native host view.")
-    expect(browser.subviews.count == 2, "Browser did not compose visible scroll-view columns.")
+    expect(browser.subviews.compactMap { $0 as? NSScrollView }.count == 2, "Browser did not compose two visible scroll-view columns.")
+}
+
+func testBrowserPathRoundTrips() {
+    let browser = NSBrowser(frame: NSMakeRect(0, 0, 320, 120))
+    let delegate = RecordingBrowserDelegate()
+    browser.delegate = delegate
+    browser.loadColumnZero()
+
+    // Set a path and read it back.
+    expect(browser.setPath("/Application/NSWindow"), "setPath did not resolve a valid path.")
+    expect(browser.path() == "/Application/NSWindow", "path() did not round-trip. Got \(browser.path()).")
+    expect(browser.selectedColumn == 1, "selectedColumn was wrong after setPath. Got \(browser.selectedColumn).")
+    expect(browser.selectedItem(inColumn: 0) as? String == "Application", "setPath did not select the first component.")
+    expect(browser.selectedItem(inColumn: 1) as? String == "NSWindow", "setPath did not select the leaf component.")
+
+    // Re-pathing to a different branch replaces the selection.
+    expect(browser.setPath("/Controls/NSButton"), "setPath did not resolve the second path.")
+    expect(browser.path() == "/Controls/NSButton", "path() did not follow the new selection. Got \(browser.path()).")
+
+    // An unresolved path returns false.
+    expect(!browser.setPath("/Application/DoesNotExist"), "setPath resolved a nonexistent leaf.")
+}
+
+func testBrowserColumnTitles() {
+    let browser = NSBrowser(frame: NSMakeRect(0, 0, 320, 120))
+    let delegate = RecordingBrowserDelegate()
+    browser.delegate = delegate
+    browser.loadColumnZero()
+
+    // Column 0 has no default title; each later column is titled by the item
+    // that produced it.
+    expect(browser.title(ofColumn: 0) == "", "Column 0 should have no default title. Got \(browser.title(ofColumn: 0)).")
+    browser.setPath("/Application/NSWindow")
+    expect(browser.title(ofColumn: 1) == "Application", "Column 1 title should be the item selected in column 0. Got \(browser.title(ofColumn: 1)).")
+
+    // A re-path retitles the second column.
+    browser.setPath("/Controls/NSButton")
+    expect(browser.title(ofColumn: 1) == "Controls", "Column 1 title did not follow the new selection. Got \(browser.title(ofColumn: 1)).")
+
+    // A custom title overrides the default.
+    browser.setTitle("Roots", ofColumn: 0)
+    expect(browser.title(ofColumn: 0) == "Roots", "Custom column title was not applied.")
+
+    // Titles are on by default and can be turned off.
+    expect(browser.isTitled, "Browser should be titled by default.")
+    browser.isTitled = false
+    expect(browser.isTitled == false, "isTitled did not turn off.")
+}
+
+/// A browser tree whose root column mixes one branch and one leaf, for the
+/// branch-indicator test.
+final class LeafBranchBrowserDelegate: NSBrowserDelegate {
+    // "Folder" is a branch (has a child); "File" is a leaf (no children).
+    func browser(_ browser: NSBrowser, numberOfChildrenOfItem item: Any?) -> Int {
+        switch item.map({ String(describing: $0) }) {
+        case .none: return 2          // root: Folder, File
+        case "Folder": return 1       // Folder → Document
+        default: return 0             // File and Document are leaves
+        }
+    }
+    func browser(_ browser: NSBrowser, child index: Int, ofItem item: Any?) -> Any {
+        switch item.map({ String(describing: $0) }) {
+        case .none: return ["Folder", "File"][index]
+        case "Folder": return "Document"
+        default: return ""
+        }
+    }
+    func browser(_ browser: NSBrowser, isLeafItem item: Any?) -> Bool {
+        switch item.map({ String(describing: $0) }) {
+        case "Folder": return false
+        default: return true
+        }
+    }
+}
+
+func testBrowserDrawsBranchIndicatorOnNonLeafRows() {
+    let backend = InMemoryNativeControlBackend()
+    let browser = NSBrowser(frame: NSMakeRect(0, 0, 320, 120))
+    let delegate = LeafBranchBrowserDelegate()
+    browser.delegate = delegate
+    browser.columnWidth = 150
+    browser.loadColumnZero()
+    _ = browser.realizeNativePeer(in: backend, parent: nil)
+
+    // Reach column 0's drawn list (the scroll view's document view).
+    guard let column0 = browser.subviews.compactMap({ $0 as? NSScrollView }).first,
+          let table = column0.documentView as? NSTableView,
+          let handle = table.nativeHandle else {
+        fatalError("Browser column 0 table was not realized.")
+    }
+
+    // The branch chevron is a 3-point triangle → a 4-segment (move/line/line/close)
+    // filled path. Row backgrounds and selection are rectangles (5 segments), so
+    // 4-segment fills count the branch indicators exactly. Column 0 has one branch
+    // ("Folder") and one leaf ("File") → exactly one chevron.
+    let recording = backend.performDraw(for: handle, in: table.bounds)
+    let chevrons = recording.fills.filter { $0.segments.count == 4 }
+    expect(chevrons.count == 1,
+           "Column 0 should draw exactly one branch chevron (Folder, not File). Got \(chevrons.count).")
+
+    // Cell icons are on by default and reserve a leading inset so the title
+    // clears them; turning them off zeroes the inset.
+    expect(browser.showsCellIcons, "Browser cell icons should be on by default.")
+    expect(table.winDrawnLeadingInset(forRow: 0, column: 0) > 0,
+           "Cell icons did not reserve a leading inset for the title.")
+    browser.showsCellIcons = false
+    expect(table.winDrawnLeadingInset(forRow: 0, column: 0) == 0,
+           "Turning cell icons off did not release the leading inset.")
+}
+
+/// A browser whose single leaf item carries a delegate-provided cell image.
+final class ImageBrowserDelegate: NSBrowserDelegate {
+    static let iconPath = "C:/icons/file.png"
+    func browser(_ browser: NSBrowser, numberOfChildrenOfItem item: Any?) -> Int {
+        item == nil ? 1 : 0
+    }
+    func browser(_ browser: NSBrowser, child index: Int, ofItem item: Any?) -> Any { "File" }
+    func browser(_ browser: NSBrowser, isLeafItem item: Any?) -> Bool { item != nil }
+    func browser(_ browser: NSBrowser, imageForItem item: Any?) -> NSImage? {
+        NSImage(contentsOfFile: Self.iconPath)
+    }
+}
+
+func testBrowserDrawsDelegateCellImage() {
+    let backend = InMemoryNativeControlBackend()
+    let browser = NSBrowser(frame: NSMakeRect(0, 0, 320, 120))
+    let delegate = ImageBrowserDelegate()
+    browser.delegate = delegate
+    browser.columnWidth = 150
+    browser.loadColumnZero()
+    _ = browser.realizeNativePeer(in: backend, parent: nil)
+
+    guard let column0 = browser.subviews.compactMap({ $0 as? NSScrollView }).first,
+          let table = column0.documentView as? NSTableView,
+          let handle = table.nativeHandle else {
+        fatalError("Browser column 0 table was not realized.")
+    }
+
+    // The single leaf row's cell draws the delegate image (not the built-in glyph).
+    let recording = backend.performDraw(for: handle, in: table.bounds)
+    expect(recording.images.contains { $0.path == ImageBrowserDelegate.iconPath },
+           "Browser did not draw the delegate-provided cell image. Got \(recording.images.map { $0.path }).")
 }
 
 func testIndexPathStoresCollectionComponents() {
@@ -1168,6 +1491,47 @@ func testCollectionViewReloadsItemsAndTracksSelection() {
     expect(delegate.deselected.contains(secondSection), "Collection delegate did not receive deselection.")
 }
 
+/// A collection data source that dequeues recycled items via `makeItem`.
+final class ReusingCollectionDataSource: NSCollectionViewDataSource {
+    static let cellID = NSUserInterfaceItemIdentifier("cell")
+    let count: Int
+    init(count: Int) { self.count = count }
+    func numberOfSections(in collectionView: NSCollectionView) -> Int { 1 }
+    func collectionView(_ cv: NSCollectionView, numberOfItemsInSection section: Int) -> Int { count }
+    func collectionView(_ cv: NSCollectionView, itemForRepresentedObjectAt ip: IndexPath) -> NSCollectionViewItem {
+        let item = cv.makeItem(withIdentifier: Self.cellID, for: ip)
+        item.representedObject = "item\(ip.item)"
+        return item
+    }
+}
+
+func testCollectionViewRecyclesItemsViaMakeItem() {
+    let cv = NSCollectionView(frame: NSMakeRect(0, 0, 260, 200))
+    cv.register(NSCollectionViewItem.self, forItemWithIdentifier: ReusingCollectionDataSource.cellID)
+    let ds = ReusingCollectionDataSource(count: 3)
+    cv.dataSource = ds
+
+    cv.reloadData()
+    let firstPass = (0..<3).compactMap { cv.item(at: IndexPath(item: $0, section: 0)) }
+    expect(firstPass.count == 3, "First reload did not create 3 items.")
+    expect(firstPass.allSatisfy { $0.identifier == ReusingCollectionDataSource.cellID },
+           "makeItem did not stamp the reuse identifier on new items.")
+    let firstIDs = Set(firstPass.map { ObjectIdentifier($0) })
+
+    cv.reloadData()
+    let secondPass = (0..<3).compactMap { cv.item(at: IndexPath(item: $0, section: 0)) }
+    let secondIDs = Set(secondPass.map { ObjectIdentifier($0) })
+
+    // The three items are recycled into the pool on the second reload and
+    // dequeued again — the same instances, no fresh allocations.
+    expect(secondIDs == firstIDs, "Collection items were not recycled across reloads. first=\(firstIDs.count) second=\(secondIDs.count) shared=\(firstIDs.intersection(secondIDs).count)")
+    // The recycled views are re-hosted, and the data source repopulated them
+    // (after prepareForReuse cleared the represented object).
+    expect(cv.subviews.count == 3, "Recycled item views were not re-hosted. Got \(cv.subviews.count).")
+    expect(secondPass.allSatisfy { ($0.representedObject as? String)?.hasPrefix("item") == true },
+           "Recycled items were not repopulated by the data source.")
+}
+
 func testCollectionViewButtonItemClickSelectsItem() {
     let collectionView = NSCollectionView(frame: NSMakeRect(0, 0, 260, 96))
     let dataSource = RecordingCollectionDataSource()
@@ -1188,6 +1552,283 @@ func testCollectionViewButtonItemClickSelectsItem() {
 
     expect(collectionView.selectionIndexPaths == [target], "Collection button item click did not select its index path.")
     expect(actionCount == 1, "Collection button item click did not send collection action.")
+}
+
+func testCollectionViewFlowLayoutArrangesSectionsAndSizesContent() {
+    let collectionView = NSCollectionView(frame: NSMakeRect(0, 0, 230, 200))
+    let dataSource = RecordingCollectionDataSource()  // section 0: 3 items, section 1: 2 items
+    let layout = NSCollectionViewFlowLayout()
+    layout.itemSize = NSMakeSize(100, 30)
+    layout.minimumInteritemSpacing = 10
+    layout.minimumLineSpacing = 10
+    layout.sectionInset = NSEdgeInsetsMake(5, 5, 5, 5)
+
+    collectionView.dataSource = dataSource
+    collectionView.collectionViewLayout = layout
+    collectionView.reloadData()
+
+    // Usable width 230-5-5=220 → 2 items per line ((220+10)/(100+10)=2).
+    // Section 0: item0 (5,5), item1 (115,5), item2 wraps to (5,45).
+    let a00 = layout.layoutAttributesForItem(at: IndexPath(item: 0, section: 0))
+    let a01 = layout.layoutAttributesForItem(at: IndexPath(item: 1, section: 0))
+    let a02 = layout.layoutAttributesForItem(at: IndexPath(item: 2, section: 0))
+    expect(a00?.frame == NSMakeRect(5, 5, 100, 30), "Flow item (0,0) frame wrong. Got \(a00?.frame ?? .zero).")
+    expect(a01?.frame == NSMakeRect(115, 5, 100, 30), "Flow item (1,0) did not sit beside the first. Got \(a01?.frame ?? .zero).")
+    expect(a02?.frame == NSMakeRect(5, 45, 100, 30), "Flow item (2,0) did not wrap to the next line. Got \(a02?.frame ?? .zero).")
+
+    // Section 1 starts below section 0 (section 0 used 2 lines = 70pt, + insets).
+    // y after section 0 = 5(top)+70+5(bottom) = 80; section 1 top inset 5 → 85.
+    let a10 = layout.layoutAttributesForItem(at: IndexPath(item: 0, section: 1))
+    expect(a10?.frame == NSMakeRect(5, 85, 100, 30), "Second section did not stack below the first. Got \(a10?.frame ?? .zero).")
+
+    // The item views were positioned to match.
+    expect(collectionView.item(at: IndexPath(item: 2, section: 0))?.view.frame == NSMakeRect(5, 45, 100, 30),
+           "Flow layout did not position the wrapped item's view.")
+
+    // Content grows to the full stacked height (section 1 bottom = 85+30+5 = 120).
+    expect(layout.collectionViewContentSize.height == 120, "Flow content height wrong. Got \(layout.collectionViewContentSize.height).")
+}
+
+final class VariableSizeCollectionDataSource: NSCollectionViewDataSource {
+    let sizes = [NSMakeSize(80, 20), NSMakeSize(80, 20), NSMakeSize(80, 30), NSMakeSize(60, 20)]
+    func collectionView(_ collectionView: NSCollectionView, numberOfItemsInSection section: Int) -> Int { sizes.count }
+    func collectionView(_ collectionView: NSCollectionView, itemForRepresentedObjectAt indexPath: IndexPath) -> NSCollectionViewItem {
+        let item = NSCollectionViewItem()
+        item.view = NSView(frame: NSMakeRect(0, 0, sizes[indexPath.item].width, sizes[indexPath.item].height))
+        return item
+    }
+}
+
+final class VariableSizeFlowDelegate: NSCollectionViewDelegateFlowLayout {
+    let sizes: [NSSize]
+    init(_ sizes: [NSSize]) { self.sizes = sizes }
+    func collectionView(_ collectionView: NSCollectionView, layout collectionViewLayout: NSCollectionViewLayout, sizeForItemAt indexPath: IndexPath) -> NSSize {
+        sizes[indexPath.item]
+    }
+}
+
+func testCollectionFlowLayoutHonorsPerItemSizeFromDelegate() {
+    let collectionView = NSCollectionView(frame: NSMakeRect(0, 0, 200, 200))
+    let dataSource = VariableSizeCollectionDataSource()
+    let delegate = VariableSizeFlowDelegate(dataSource.sizes)
+    let layout = NSCollectionViewFlowLayout()
+    layout.minimumInteritemSpacing = 0
+    layout.minimumLineSpacing = 0
+    layout.sectionInset = NSEdgeInsetsMake(0, 0, 0, 0)
+
+    collectionView.dataSource = dataSource
+    collectionView.delegate = delegate
+    collectionView.collectionViewLayout = layout
+    collectionView.reloadData()
+
+    // 200pt wide: items 0,1 (80+80=160) fit on line 0; item 2 (80) overflows to
+    // line 1 (which is 30pt tall because item 2 is taller); item 3 (60) fits beside it.
+    let f0 = layout.layoutAttributesForItem(at: IndexPath(item: 0, section: 0))?.frame
+    let f1 = layout.layoutAttributesForItem(at: IndexPath(item: 1, section: 0))?.frame
+    let f2 = layout.layoutAttributesForItem(at: IndexPath(item: 2, section: 0))?.frame
+    let f3 = layout.layoutAttributesForItem(at: IndexPath(item: 3, section: 0))?.frame
+    expect(f0 == NSMakeRect(0, 0, 80, 20), "Item 0 frame wrong. Got \(f0 ?? .zero).")
+    expect(f1 == NSMakeRect(80, 0, 80, 20), "Item 1 did not pack beside item 0. Got \(f1 ?? .zero).")
+    expect(f2 == NSMakeRect(0, 20, 80, 30), "Item 2 did not wrap to the next line. Got \(f2 ?? .zero).")
+    expect(f3 == NSMakeRect(80, 20, 60, 20), "Item 3 did not pack beside item 2. Got \(f3 ?? .zero).")
+    expect(layout.collectionViewContentSize.height == 50, "Variable-size content height wrong (line0 20 + line1 30). Got \(layout.collectionViewContentSize.height).")
+
+    // The item views were positioned to their variable sizes.
+    expect(collectionView.item(at: IndexPath(item: 2, section: 0))?.view.frame == NSMakeRect(0, 20, 80, 30),
+           "Item 2's view was not positioned at its variable size/frame.")
+}
+
+final class HeaderCollectionDataSource: NSCollectionViewDataSource {
+    var headerViews: [Int: NSView] = [:]
+    func numberOfSections(in collectionView: NSCollectionView) -> Int { 2 }
+    func collectionView(_ collectionView: NSCollectionView, numberOfItemsInSection section: Int) -> Int { 2 }
+    func collectionView(_ collectionView: NSCollectionView, itemForRepresentedObjectAt indexPath: IndexPath) -> NSCollectionViewItem {
+        let item = NSCollectionViewItem()
+        item.view = NSView(frame: NSMakeRect(0, 0, 100, 20))
+        return item
+    }
+    var footerViews: [Int: NSView] = [:]
+    func collectionView(_ collectionView: NSCollectionView, viewForSupplementaryElementOfKind kind: String, at indexPath: IndexPath) -> NSView? {
+        if kind == NSCollectionView.elementKindSectionHeader {
+            let header = NSTextField(string: "Section \(indexPath.section)", frame: .zero)
+            headerViews[indexPath.section] = header
+            return header
+        }
+        if kind == NSCollectionView.elementKindSectionFooter {
+            let footer = NSTextField(string: "Footer \(indexPath.section)", frame: .zero)
+            footerViews[indexPath.section] = footer
+            return footer
+        }
+        return nil
+    }
+}
+
+/// A collection data source that counts how often it is asked to vend a
+/// supplementary view — for the recycling test.
+final class CountingSupplementaryDataSource: NSCollectionViewDataSource {
+    private(set) var vendCount = 0
+    func numberOfSections(in collectionView: NSCollectionView) -> Int { 2 }
+    func collectionView(_ collectionView: NSCollectionView, numberOfItemsInSection section: Int) -> Int { 2 }
+    func collectionView(_ collectionView: NSCollectionView, itemForRepresentedObjectAt indexPath: IndexPath) -> NSCollectionViewItem {
+        let item = NSCollectionViewItem()
+        item.view = NSView(frame: NSMakeRect(0, 0, 100, 20))
+        return item
+    }
+    func collectionView(_ collectionView: NSCollectionView, viewForSupplementaryElementOfKind kind: String, at indexPath: IndexPath) -> NSView? {
+        vendCount += 1
+        return NSTextField(string: "\(kind)-\(indexPath.section)", frame: .zero)
+    }
+}
+
+func testCollectionRecyclesSupplementaryViewsAcrossRelayout() {
+    let backend = InMemoryNativeControlBackend()
+    let collectionView = NSCollectionView(frame: NSMakeRect(0, 0, 240, 200))
+    let dataSource = CountingSupplementaryDataSource()
+    collectionView.dataSource = dataSource
+    let layout = NSCollectionViewFlowLayout()
+    layout.itemSize = NSMakeSize(100, 20)
+    layout.headerReferenceSize = NSMakeSize(0, 18)
+    layout.footerReferenceSize = NSMakeSize(0, 14)
+    collectionView.collectionViewLayout = layout
+    _ = collectionView.realizeNativePeer(in: backend, parent: nil)
+    collectionView.reloadData()
+
+    let afterReload = dataSource.vendCount
+    expect(afterReload > 0, "Supplementary views were not vended on reload. Got \(afterReload).")
+
+    // A re-layout (item-size change → tile, not reloadData) must NOT re-ask the
+    // data source: the supplementary views are recycled and merely repositioned.
+    collectionView.itemSize = NSMakeSize(80, 24)
+    collectionView.minimumLineSpacing = 12
+    expect(dataSource.vendCount == afterReload,
+           "Re-layout re-vended supplementary views instead of recycling them. \(afterReload) → \(dataSource.vendCount).")
+
+    // A reloadData rebuilds them (a fresh vend).
+    collectionView.reloadData()
+    expect(dataSource.vendCount > afterReload, "reloadData did not rebuild supplementary views.")
+}
+
+final class HorizontalSizeCollectionDataSource: NSCollectionViewDataSource {
+    func collectionView(_ collectionView: NSCollectionView, numberOfItemsInSection section: Int) -> Int { 3 }
+    func collectionView(_ collectionView: NSCollectionView, itemForRepresentedObjectAt indexPath: IndexPath) -> NSCollectionViewItem {
+        let item = NSCollectionViewItem()
+        item.view = NSView(frame: NSMakeRect(0, 0, 30, 40))
+        return item
+    }
+}
+
+func testCollectionFlowLayoutReservesSectionFooters() {
+    let collectionView = NSCollectionView(frame: NSMakeRect(0, 0, 200, 400))
+    let dataSource = HeaderCollectionDataSource()
+    let layout = NSCollectionViewFlowLayout()
+    layout.itemSize = NSMakeSize(100, 20)
+    layout.minimumInteritemSpacing = 0
+    layout.minimumLineSpacing = 0
+    layout.sectionInset = NSEdgeInsetsMake(0, 0, 0, 0)
+    layout.headerReferenceSize = NSMakeSize(0, 30)
+    layout.footerReferenceSize = NSMakeSize(0, 10)
+
+    collectionView.dataSource = dataSource
+    collectionView.collectionViewLayout = layout
+    collectionView.reloadData()
+
+    // Section 0: header 30 + items 20 + footer 10 = 60. Footer sits at y=50.
+    let f0 = layout.layoutAttributesForSupplementaryView(ofKind: NSCollectionView.elementKindSectionFooter, at: IndexPath(item: 0, section: 0))
+    let f1 = layout.layoutAttributesForSupplementaryView(ofKind: NSCollectionView.elementKindSectionFooter, at: IndexPath(item: 0, section: 1))
+    expect(f0?.frame == NSMakeRect(0, 50, 200, 10), "Section 0 footer frame wrong. Got \(f0?.frame ?? .zero).")
+    expect(f1?.frame == NSMakeRect(0, 110, 200, 10), "Section 1 footer did not stack after section 0's footer. Got \(f1?.frame ?? .zero).")
+    expect(layout.collectionViewContentSize.height == 120, "Footer-inclusive content height wrong. Got \(layout.collectionViewContentSize.height).")
+    expect(dataSource.footerViews.count == 2, "Two footers should have been vended. Got \(dataSource.footerViews.count).")
+    expect(collectionView.subviews.contains { $0 === dataSource.footerViews[0] }, "Section 0 footer view was not hosted.")
+}
+
+func testCollectionSupplementaryViewsHostInRealizedScrollView() {
+    // Mirrors the demo: collection is a scroll-view document view, realized.
+    let backend = InMemoryNativeControlBackend()
+    let scrollView = NSScrollView(frame: NSMakeRect(0, 0, 300, 200))
+    scrollView.hasVerticalScroller = true
+    let collectionView = NSCollectionView(frame: NSMakeRect(0, 0, 300, 200))
+    let dataSource = HeaderCollectionDataSource()
+    let layout = NSCollectionViewFlowLayout()
+    layout.itemSize = NSMakeSize(100, 20)
+    layout.headerReferenceSize = NSMakeSize(0, 24)
+    layout.footerReferenceSize = NSMakeSize(0, 16)
+    collectionView.dataSource = dataSource
+    collectionView.collectionViewLayout = layout
+    scrollView.documentView = collectionView
+    collectionView.reloadData()
+
+    _ = scrollView.realizeNativePeer(in: backend, parent: nil)
+
+    // Both the header and footer views are hosted as realized subviews.
+    expect(collectionView.subviews.contains { $0 === dataSource.headerViews[0] }, "Header not hosted in the realized scroll view.")
+    expect(collectionView.subviews.contains { $0 === dataSource.footerViews[0] }, "Footer not hosted in the realized scroll view.")
+    expect(dataSource.footerViews[0]?.nativeHandle != nil, "Footer view was not realized.")
+    // The footer sits below the header + its section's item row.
+    let footerFrame = dataSource.footerViews[0]?.frame ?? .zero
+    expect(footerFrame.origin.y > 24, "Footer was not positioned below the header. Got \(footerFrame).")
+    expect(footerFrame.size.height == 16, "Footer height wrong. Got \(footerFrame.size.height).")
+}
+
+func testCollectionFlowLayoutHorizontalVariableSizePacking() {
+    let collectionView = NSCollectionView(frame: NSMakeRect(0, 0, 200, 100))
+    let dataSource = HorizontalSizeCollectionDataSource()
+    let delegate = VariableSizeFlowDelegate([NSMakeSize(30, 40), NSMakeSize(30, 40), NSMakeSize(30, 40)])
+    let layout = NSCollectionViewFlowLayout()
+    layout.scrollDirection = .horizontal
+    layout.minimumInteritemSpacing = 0
+    layout.minimumLineSpacing = 0
+    layout.sectionInset = NSEdgeInsetsMake(0, 0, 0, 0)
+
+    collectionView.dataSource = dataSource
+    collectionView.delegate = delegate
+    collectionView.collectionViewLayout = layout
+    collectionView.reloadData()
+
+    // Viewport 100 tall: items 0,1 (40+40=80) stack in column 0; item 2 (would
+    // reach 120) wraps to column 1 at x=30.
+    let a0 = layout.layoutAttributesForItem(at: IndexPath(item: 0, section: 0))?.frame
+    let a1 = layout.layoutAttributesForItem(at: IndexPath(item: 1, section: 0))?.frame
+    let a2 = layout.layoutAttributesForItem(at: IndexPath(item: 2, section: 0))?.frame
+    expect(a0 == NSMakeRect(0, 0, 30, 40), "Horizontal item 0 frame wrong. Got \(a0 ?? .zero).")
+    expect(a1 == NSMakeRect(0, 40, 30, 40), "Horizontal item 1 did not stack below item 0. Got \(a1 ?? .zero).")
+    expect(a2 == NSMakeRect(30, 0, 30, 40), "Horizontal item 2 did not wrap to the next column. Got \(a2 ?? .zero).")
+    expect(layout.collectionViewContentSize.width == 60, "Horizontal content width wrong. Got \(layout.collectionViewContentSize.width).")
+}
+
+func testCollectionFlowLayoutReservesAndHostsSectionHeaders() {
+    let collectionView = NSCollectionView(frame: NSMakeRect(0, 0, 200, 400))
+    let dataSource = HeaderCollectionDataSource()
+    let layout = NSCollectionViewFlowLayout()
+    layout.itemSize = NSMakeSize(100, 20)
+    layout.minimumInteritemSpacing = 0
+    layout.minimumLineSpacing = 0
+    layout.sectionInset = NSEdgeInsetsMake(0, 0, 0, 0)
+    layout.headerReferenceSize = NSMakeSize(0, 30)
+
+    collectionView.dataSource = dataSource
+    collectionView.collectionViewLayout = layout
+    collectionView.reloadData()
+
+    // Each section reserves a full-width 30pt header at its top; items follow.
+    let h0 = layout.layoutAttributesForSupplementaryView(ofKind: NSCollectionView.elementKindSectionHeader, at: IndexPath(item: 0, section: 0))
+    let h1 = layout.layoutAttributesForSupplementaryView(ofKind: NSCollectionView.elementKindSectionHeader, at: IndexPath(item: 0, section: 1))
+    expect(h0?.frame == NSMakeRect(0, 0, 200, 30), "Section 0 header frame wrong. Got \(h0?.frame ?? .zero).")
+    expect(h1?.frame == NSMakeRect(0, 50, 200, 30), "Section 1 header did not stack below section 0's header+items. Got \(h1?.frame ?? .zero).")
+
+    // Items sit below their section header.
+    expect(layout.layoutAttributesForItem(at: IndexPath(item: 0, section: 0))?.frame.origin.y == 30,
+           "Section 0 items did not start below the header.")
+    expect(layout.layoutAttributesForItem(at: IndexPath(item: 0, section: 1))?.frame.origin.y == 80,
+           "Section 1 items did not start below the section 1 header.")
+
+    // The header views were vended and hosted at their frames.
+    expect(dataSource.headerViews.count == 2, "Two section headers should have been vended. Got \(dataSource.headerViews.count).")
+    expect(dataSource.headerViews[1]?.frame == NSMakeRect(0, 50, 200, 30), "Section 1 header view was not positioned at its layout frame.")
+    expect(collectionView.subviews.contains { $0 === dataSource.headerViews[0] }, "Section 0 header view was not hosted as a subview.")
+
+    // Content spans both sections (header 30 + items 20) x2 = 100.
+    expect(layout.collectionViewContentSize.height == 100, "Header-inclusive content height wrong. Got \(layout.collectionViewContentSize.height).")
 }
 
 func testSliderStoresRangeValueAndSyncsNativePeer() {
@@ -1814,7 +2455,10 @@ func testTableViewNativeSelectionNotifiesDelegateAndAction() {
     let backend = InMemoryNativeControlBackend()
     let tableView = NSTableView(frame: NSMakeRect(0, 0, 300, 160))
     let dataSource = RecordingTableDataSource()
-    let delegate = RecordingTableDelegate()
+    // Cell-based delegate (vends no view) so the table uses the native list
+    // path this test exercises — auto-detection only picks the drawn peer when
+    // a delegate vends views.
+    let delegate = CellBasedSelectionDelegate()
     let name = NSTableColumn(identifier: "name")
     var actionCount = 0
     var callbackCount = 0
@@ -2832,7 +3476,10 @@ func testToolbarViewComposesItemsAndDispatchesActions() {
     expect(backend.records[handle]?.kind == "view", "Toolbar view did not request a composed native host view.")
     expect(backend.records[handle]?.toolbarItems.isEmpty == true, "Composed toolbar host should not install native toolbar item descriptors.")
 
-    expect(toolbarView.subviews.count == 5, "Composed toolbar did not create one top-level view per toolbar item plus the chrome hairline.")
+    // Spaces and flexible spaces host NO child window — the strip surface
+    // (flat or gradient chrome) shows through the gap directly — so the
+    // subviews are: open item, separator bar, save item, chrome hairline.
+    expect(toolbarView.subviews.count == 4, "Composed toolbar did not create one view per visible item (gaps host none) plus the chrome hairline. Got \(toolbarView.subviews.count).")
     expect(toolbarView.subviews[0].subviews.isEmpty, "Composed toolbar open item should be one self-contained view.")
     expect(toolbarView.subviews[0].backgroundColor == nil, "Composed toolbar item should let the toolbar background show through.")
     if let openHandle = toolbarView.subviews[0].nativeHandle {
@@ -2842,12 +3489,9 @@ func testToolbarViewComposesItemsAndDispatchesActions() {
     if let separatorHandle = toolbarView.subviews[1].nativeHandle {
         expect(backend.records[separatorHandle]?.drawsBackground == false, "Composed toolbar separator should request a clear native background.")
     }
-    if let flexibleSpaceHandle = toolbarView.subviews[2].nativeHandle {
-        expect(backend.records[flexibleSpaceHandle]?.drawsBackground == false, "Composed toolbar space should request a clear native background.")
-    }
-    expect(toolbarView.subviews[3].subviews.isEmpty, "Composed toolbar save item should be one self-contained view.")
-    expect(toolbarView.subviews[3].backgroundColor == nil, "Composed toolbar item should not draw its own background.")
-    if let saveHandle = toolbarView.subviews[3].nativeHandle {
+    expect(toolbarView.subviews[2].subviews.isEmpty, "Composed toolbar save item should be one self-contained view.")
+    expect(toolbarView.subviews[2].backgroundColor == nil, "Composed toolbar item should not draw its own background.")
+    if let saveHandle = toolbarView.subviews[2].nativeHandle {
         expect(backend.records[saveHandle]?.drawsBackground == false, "Composed toolbar item should keep its native background clear.")
     }
 
@@ -2862,20 +3506,20 @@ func testToolbarViewComposesItemsAndDispatchesActions() {
     )
 
     let firstPoint = toolbarView.subviews[0].convert(NSMakePoint(4, 4), to: nil)
-    let lastPoint = toolbarView.subviews[3].convert(NSMakePoint(4, 4), to: nil)
+    let lastPoint = toolbarView.subviews[2].convert(NSMakePoint(4, 4), to: nil)
     toolbarView.subviews[0].mouseDown(with: NSEvent(type: .leftMouseDown, locationInWindow: firstPoint))
     toolbarView.subviews[0].mouseUp(with: NSEvent(type: .leftMouseUp, locationInWindow: firstPoint))
-    toolbarView.subviews[3].mouseDown(with: NSEvent(type: .leftMouseDown, locationInWindow: lastPoint))
-    toolbarView.subviews[3].mouseUp(with: NSEvent(type: .leftMouseUp, locationInWindow: lastPoint))
+    toolbarView.subviews[2].mouseDown(with: NSEvent(type: .leftMouseDown, locationInWindow: lastPoint))
+    toolbarView.subviews[2].mouseUp(with: NSEvent(type: .leftMouseUp, locationInWindow: lastPoint))
 
     expect(firedIdentifiers == ["open"], "Composed toolbar dispatch did not honor enabled item actions.")
 
     saveItem.isEnabled = true
     toolbarView.reloadItems()
 
-    let enabledPoint = toolbarView.subviews[3].convert(NSMakePoint(4, 4), to: nil)
-    toolbarView.subviews[3].mouseDown(with: NSEvent(type: .leftMouseDown, locationInWindow: enabledPoint))
-    toolbarView.subviews[3].mouseUp(with: NSEvent(type: .leftMouseUp, locationInWindow: enabledPoint))
+    let enabledPoint = toolbarView.subviews[2].convert(NSMakePoint(4, 4), to: nil)
+    toolbarView.subviews[2].mouseDown(with: NSEvent(type: .leftMouseDown, locationInWindow: enabledPoint))
+    toolbarView.subviews[2].mouseUp(with: NSEvent(type: .leftMouseUp, locationInWindow: enabledPoint))
     expect(firedIdentifiers == ["open", "save"], "Toolbar reload did not update enabled state.")
 
     toolbar.displayMode = .iconOnly
@@ -2914,7 +3558,9 @@ func testToolbarViewHostsCustomItemView() {
 
     expect(selector.superview === toolbarView, "Toolbar custom item view was not hosted by toolbar view.")
     expect(selector.nativeHandle != nil, "Toolbar custom item view did not realize a native peer.")
-    expect(selector.frame == NSMakeRect(8, 6, 140, 28), "Toolbar custom item view was not positioned in the toolbar strip.")
+    // Popups center by their ~24pt visible closed-combo height (the declared
+    // 28pt only sizes the dropdown), so they align with neighboring fields.
+    expect(selector.frame == NSMakeRect(8, 8, 140, 24), "Toolbar custom item view was not positioned in the toolbar strip. Got \(selector.frame).")
     expect(selector.backgroundColor == nil, "Toolbar custom item view should let the toolbar background show through.")
     if let selectorHandle = selector.nativeHandle {
         expect(backend.records[selectorHandle]?.drawsBackground == false, "Toolbar custom control should request a clear native background.")
@@ -2949,6 +3595,1053 @@ func testToolbarItemCreatesCompositeImageLabelView() {
     expect(separatorView.backgroundColor != nil, "Toolbar separator view should draw its own bar color.")
     expect(backend.records[separatorHandle]?.text.contains("separator") == true, "Toolbar separator view did not carry a separator image key.")
     expect(backend.records[separatorHandle]?.drawsBackground == false, "Toolbar separator view should request a clear native background.")
+}
+
+func testUserDefaultsRoundTripsPlistValues() {
+    // Pure store logic (no disk).
+    let memory = UserDefaults(persistsToDisk: false)
+    memory.set("hello", forKey: "s")
+    memory.set(42, forKey: "i")
+    memory.set(true, forKey: "b")
+    memory.set(["a", "b"], forKey: "list")
+    memory.set(["nested": ["x", "y"], "n": 7] as [String: Any], forKey: "dict")
+    expect(memory.string(forKey: "s") == "hello", "UserDefaults did not round-trip a string.")
+    expect(memory.integer(forKey: "i") == 42, "UserDefaults did not round-trip an integer.")
+    expect(memory.bool(forKey: "b"), "UserDefaults did not round-trip a boolean.")
+    expect(memory.stringArray(forKey: "list") == ["a", "b"], "UserDefaults did not round-trip a string array.")
+    expect((memory.dictionary(forKey: "dict")?["n"] as? Int) == 7, "UserDefaults did not round-trip a nested dictionary.")
+    memory.removeObject(forKey: "s")
+    expect(memory.string(forKey: "s") == nil, "UserDefaults removeObject did not delete the value.")
+    memory.register(defaults: ["fallback": "reg"])
+    expect(memory.string(forKey: "fallback") == "reg", "UserDefaults registration domain was not consulted.")
+
+    // Real persistence: write through one instance, read through a fresh one.
+    let writer = UserDefaults()
+    writer.set(["one", "two"], forKey: "WinChocolateTestMarker")
+    writer.set(3.5, forKey: "WinChocolateTestDouble")
+    let reader = UserDefaults()
+    expect(reader.stringArray(forKey: "WinChocolateTestMarker") == ["one", "two"],
+           "UserDefaults did not persist an array to disk and back.")
+    expect(reader.double(forKey: "WinChocolateTestDouble") == 3.5,
+           "UserDefaults did not persist a double to disk and back.")
+    writer.removeObject(forKey: "WinChocolateTestMarker")
+    writer.removeObject(forKey: "WinChocolateTestDouble")
+}
+
+/// A toolbar target that decides item enabling, for the validation test.
+final class ToolbarValidationTarget: NSToolbarItemValidation {
+    var allows = false
+    func validateToolbarItem(_ item: NSToolbarItem) -> Bool {
+        allows
+    }
+}
+
+func testToolbarItemValidationAndMenuForm() {
+    let toolbar = NSToolbar(identifier: "validation")
+    let item = NSToolbarItem(itemIdentifier: "save")
+    item.tag = 7
+    let menuForm = NSMenuItem(title: "Save Document", action: nil, keyEquivalent: "")
+    item.menuFormRepresentation = menuForm
+    expect(item.tag == 7, "Toolbar item tag was not stored.")
+    expect(item.menuFormRepresentation?.title == "Save Document", "menuFormRepresentation was not stored.")
+
+    let target = ToolbarValidationTarget()
+    item.target = target
+    toolbar.addItem(item)
+
+    // validateVisibleItems consults the target's NSToolbarItemValidation.
+    target.allows = false
+    toolbar.validateVisibleItems()
+    expect(!item.isEnabled, "validate() did not disable the item per its validation target.")
+    target.allows = true
+    toolbar.validateVisibleItems()
+    expect(item.isEnabled, "validate() did not re-enable the item per its validation target.")
+
+    // autovalidates=false leaves the item alone.
+    item.autovalidates = false
+    target.allows = false
+    toolbar.validateVisibleItems()
+    expect(item.isEnabled, "An autovalidates=false item was validated anyway.")
+}
+
+/// Records selection/lifecycle delegate callbacks for the toolbar parity test.
+final class SelectionToolbarDelegate: NSToolbarDelegate {
+    var added: [NSToolbarItem] = []
+    var removed: [NSToolbarItem] = []
+    func toolbarSelectableItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
+        ["inbox", "sent"]
+    }
+    func toolbarWillAddItem(_ notification: NSNotification) {
+        if let item = notification.userInfo?["item"] as? NSToolbarItem {
+            added.append(item)
+        }
+    }
+    func toolbarDidRemoveItem(_ notification: NSNotification) {
+        if let item = notification.userInfo?["item"] as? NSToolbarItem {
+            removed.append(item)
+        }
+    }
+}
+
+func testToolbarSelectionAndDelegateCallbacks() {
+    let toolbar = NSToolbar(identifier: "selection")
+    let delegate = SelectionToolbarDelegate()
+    toolbar.delegate = delegate
+
+    // The add/remove lifecycle also posts through NotificationCenter.default
+    // (AppKit's willAddItemNotification), filtered to this toolbar.
+    var centerPostCount = 0
+    let observer = NotificationCenter.default.addObserver(
+        forName: NSToolbar.willAddItemNotification,
+        object: toolbar,
+        queue: nil
+    ) { notification in
+        if notification.userInfo?["item"] is NSToolbarItem {
+            centerPostCount += 1
+        }
+    }
+    defer { NotificationCenter.default.removeObserver(observer) }
+
+    let inbox = NSToolbarItem(itemIdentifier: "inbox")
+    let drafts = NSToolbarItem(itemIdentifier: "drafts")
+    toolbar.addItem(inbox)
+    toolbar.addItem(drafts)
+
+    // Will-add fired for both, carrying the item under "item".
+    expect(delegate.added.count == 2 && delegate.added[0] === inbox,
+           "toolbarWillAddItem did not deliver the added items. Got \(delegate.added.count).")
+    expect(centerPostCount == 2,
+           "willAddItemNotification did not post through NotificationCenter. Got \(centerPostCount).")
+
+    // A selectable identifier sticks; a non-selectable one clears the selection.
+    toolbar.selectedItemIdentifier = "inbox"
+    expect(toolbar.selectedItemIdentifier == "inbox", "A selectable identifier did not stick.")
+    toolbar.selectedItemIdentifier = "drafts"
+    expect(toolbar.selectedItemIdentifier == nil, "A non-selectable identifier was not cleared.")
+
+    // Did-remove fires with the removed item.
+    _ = toolbar.removeItem(at: 1)
+    expect(delegate.removed.count == 1 && delegate.removed[0] === drafts,
+           "toolbarDidRemoveItem did not deliver the removed item.")
+
+    // With nothing overflowed, visibleItems mirrors items.
+    expect(toolbar.visibleItems?.map(\.itemIdentifier) == ["inbox"], "visibleItems did not mirror items.")
+    expect(!toolbar.customizationPaletteIsRunning, "The customization palette should not report running by default.")
+}
+
+func testToolbarStandardItemIdentifiers() {
+    let toolbar = NSToolbar(identifier: "standard")
+    // No delegate: standard Apple identifiers synthesize their built-in items.
+    toolbar.setVisibleItemIdentifiers([.showColors, .showFonts, .print, .customizeToolbar])
+    let labels = toolbar.items.map(\.label)
+    expect(labels == ["Colors", "Fonts", "Print", "Customize"],
+           "Standard toolbar identifiers did not synthesize Mac-labeled items. Got \(labels).")
+    expect(toolbar.item(withIdentifier: .showColors)?.paletteLabel == "Colors",
+           "Standard item palette label was not set.")
+}
+
+/// Vends fresh a/b items so a restoring toolbar can resolve identifiers.
+final class AutosaveToolbarDelegate: NSToolbarDelegate {
+    func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
+        ["a", "b"]
+    }
+    func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
+        ["a", "b"]
+    }
+    func toolbar(
+        _ toolbar: NSToolbar,
+        itemForItemIdentifier itemIdentifier: NSToolbarItem.Identifier,
+        willBeInsertedIntoToolbar flag: Bool
+    ) -> NSToolbarItem? {
+        NSToolbarItem(itemIdentifier: itemIdentifier)
+    }
+}
+
+func testToolbarAutosaveRoundTripsConfiguration() {
+    let autosaveKey = "NSToolbar Configuration WinChocolateAutosaveTest"
+    UserDefaults.standard.removeObject(forKey: autosaveKey)
+    let delegate = AutosaveToolbarDelegate()
+
+    // Customize a toolbar with autosave on: the configuration lands in defaults
+    // under AppKit's key with AppKit's dictionary shape.
+    let toolbar = NSToolbar(identifier: "WinChocolateAutosaveTest")
+    toolbar.delegate = delegate
+    toolbar.autosavesConfiguration = true
+    toolbar.displayMode = .iconOnly
+    toolbar.setVisibleItemIdentifiers(["b"])
+    let saved = UserDefaults.standard.dictionary(forKey: autosaveKey)
+    expect((saved?["TB Item Identifiers"] as? [Any])?.compactMap { $0 as? String } == ["b"],
+           "Autosave did not persist the visible identifiers. Got \(String(describing: saved)).")
+    expect((saved?["TB Display Mode"] as? Int) == 2, "Autosave did not persist the display mode.")
+
+    // A fresh toolbar with the same identifier restores on window attach.
+    let window = NSWindow(
+        contentRect: NSMakeRect(0, 0, 320, 200),
+        styleMask: [.titled],
+        backing: .buffered,
+        defer: false,
+        nativeBackend: InMemoryNativeControlBackend()
+    )
+    let restored = NSToolbar(identifier: "WinChocolateAutosaveTest")
+    restored.delegate = delegate
+    restored.setVisibleItemIdentifiers(["a", "b"])
+    restored.autosavesConfiguration = true
+    window.toolbar = restored
+    expect(restored.items.map(\.itemIdentifier) == ["b"],
+           "Attaching did not restore the autosaved item set. Got \(restored.items.map(\.itemIdentifier)).")
+    expect(restored.displayMode == .iconOnly, "Attaching did not restore the autosaved display mode.")
+
+    UserDefaults.standard.removeObject(forKey: autosaveKey)
+}
+
+func testToolbarBorderedItemRendersAsButton() {
+    let backend = InMemoryNativeControlBackend()
+    let toolbar = NSToolbar(identifier: "bordered")
+    let item = NSToolbarItem(itemIdentifier: "run")
+    item.label = "Run"
+    item.title = "Run Task"
+    item.isBordered = true
+    var fired = 0
+    item.onAction = { _ in fired += 1 }
+    toolbar.addItem(item)
+
+    let toolbarView = NSToolbarView(frame: NSMakeRect(0, 0, 300, 40))
+    toolbarView.toolbar = toolbar
+    _ = toolbarView.realizeNativePeer(in: backend, parent: nil)
+
+    // The bordered item renders as a real button carrying the title, and
+    // clicking it performs the item's action.
+    guard let button = toolbarView.subviews.compactMap({ $0 as? NSButton }).first else {
+        expect(false, "A bordered toolbar item did not render as a button.")
+        return
+    }
+    expect(button.title == "Run Task", "The bordered item button did not carry the item title. Got \(button.title).")
+    button.sendAction()
+    expect(fired == 1, "Clicking the bordered item button did not perform the item action.")
+}
+
+func testToolbarCustomizationPaletteDimsInToolbarItems() {
+    clearApplicationWindows()
+
+    let toolbar = NSToolbar(identifier: "dimming")
+    let openItem = NSToolbarItem(itemIdentifier: "open")
+    openItem.label = "Open"
+    toolbar.allowsUserCustomization = true
+    toolbar.addItem(openItem)
+
+    let delegate = DimmingToolbarDelegate()
+    toolbar.delegate = delegate
+
+    toolbar.runCustomizationPalette(nil)
+    guard let panel = NSApplication.shared.windows.compactMap({ $0 as? NSPanel }).last,
+          let contentView = panel.contentView else {
+        expect(false, "Toolbar customization palette did not create a panel.")
+        return
+    }
+
+    // Palette tiles in allowed-identifier order: [open, flexibleSpace].
+    let dimFill = NSColor(calibratedRed: 0.90, green: 0.90, blue: 0.89, alpha: 1.0)
+    let palette = contentView.subviews.first { $0.tag == 1_101 }
+    let paletteTiles = (palette?.subviews ?? [])
+        .filter { $0.toolTip == "Drag into the toolbar." }
+        .sorted { $0.frame.origin.x < $1.frame.origin.x }
+    guard paletteTiles.count == 2 else {
+        expect(false, "The palette did not build a tile per allowed identifier. Got \(paletteTiles.count).")
+        return
+    }
+
+    // "Open" is in the toolbar and can't be duplicated → dimmed in the palette;
+    // "Flexible Space" is structural (duplicable) → stays enabled.
+    expect(paletteTiles[0].backgroundColor == dimFill,
+           "The palette tile for an in-toolbar item was not dimmed.")
+    expect(paletteTiles[1].backgroundColor != dimFill,
+           "A duplicable structural palette tile was dimmed.")
+
+    // A dimmed tile refuses drags: dragging "Open" into the strip changes nothing.
+    let dimStart = paletteTiles[0].convert(NSMakePoint(10, 10), to: nil)
+    let stripPoint = contentView.convert(NSMakePoint(30, 20), to: nil)
+    paletteTiles[0].mouseDown(with: NSEvent(type: .leftMouseDown, locationInWindow: dimStart))
+    paletteTiles[0].mouseDragged(with: NSEvent(type: .leftMouseDragged, locationInWindow: stripPoint))
+    paletteTiles[0].mouseUp(with: NSEvent(type: .leftMouseUp, locationInWindow: stripPoint))
+    expect(toolbar.items.map(\.itemIdentifier) == ["open"], "A dimmed palette tile still mutated the toolbar.")
+
+    // Drag "Open" out of the mirrored strip (removal) → the palette tile
+    // re-enables live.
+    let strip = contentView.subviews.first { $0.tag == 1_103 }
+    guard let openTile = (strip?.subviews ?? []).first(where: { $0.toolTip == "Drag to reorder or drag out to remove." }) else {
+        expect(false, "The mirrored strip did not build a tile for the toolbar item.")
+        return
+    }
+    let start = openTile.convert(NSMakePoint(openTile.bounds.size.width / 2, openTile.bounds.size.height / 2), to: nil)
+    let outside = contentView.convert(NSMakePoint(contentView.frame.size.width / 2, 220), to: nil)
+    openTile.mouseDown(with: NSEvent(type: .leftMouseDown, locationInWindow: start))
+    openTile.mouseDragged(with: NSEvent(type: .leftMouseDragged, locationInWindow: outside))
+    openTile.mouseUp(with: NSEvent(type: .leftMouseUp, locationInWindow: outside))
+
+    expect(toolbar.items.isEmpty, "Dragging the item out of the strip did not remove it.")
+    expect(paletteTiles[0].backgroundColor != dimFill,
+           "The palette tile did not re-enable after its item left the toolbar.")
+
+    clearApplicationWindows()
+}
+
+/// Allows open + flexible space in the palette for the dimming test.
+final class DimmingToolbarDelegate: NSToolbarDelegate {
+    func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
+        ["open", .flexibleSpace]
+    }
+    func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
+        ["open"]
+    }
+}
+
+func testToolbarCustomizationDragShowsInsertionIndicator() {
+    clearApplicationWindows()
+
+    let toolbar = NSToolbar(identifier: "indicator")
+    for name in ["one", "two", "three"] {
+        let item = NSToolbarItem(itemIdentifier: NSToolbarItem.Identifier(rawValue: name))
+        item.label = name
+        toolbar.addItem(item)
+    }
+    toolbar.allowsUserCustomization = true
+    toolbar.runCustomizationPalette(nil)
+
+    guard let panel = NSApplication.shared.windows.compactMap({ $0 as? NSPanel }).last,
+          let contentView = panel.contentView else {
+        expect(false, "Toolbar customization palette did not create a panel.")
+        return
+    }
+
+    let accent = NSColor(calibratedRed: 0.16, green: 0.45, blue: 0.85, alpha: 1.0)
+    func indicator() -> NSView? {
+        contentView.subviews.first { $0.backgroundColor == accent }
+    }
+    expect(indicator()?.isHidden == true, "The insertion indicator should start hidden.")
+
+    // Drag the first strip tile over the strip: the indicator appears at a
+    // boundary; releasing hides it and the drop lands at the indicated slot.
+    let strip = contentView.subviews.first { $0.tag == 1_103 }
+    let tiles = (strip?.subviews ?? [])
+        .filter { $0.toolTip == "Drag to reorder or drag out to remove." }
+        .sorted { $0.frame.origin.x < $1.frame.origin.x }
+    guard let firstTile = tiles.first else {
+        expect(false, "The mirrored strip did not build tiles.")
+        return
+    }
+    let start = firstTile.convert(NSMakePoint(firstTile.bounds.size.width / 2, firstTile.bounds.size.height / 2), to: nil)
+    let overStrip = contentView.convert(NSMakePoint(contentView.frame.size.width - 40, 20), to: nil)
+    firstTile.mouseDown(with: NSEvent(type: .leftMouseDown, locationInWindow: start))
+    firstTile.mouseDragged(with: NSEvent(type: .leftMouseDragged, locationInWindow: overStrip))
+    expect(indicator()?.isHidden == false, "The insertion indicator did not appear during a strip drag.")
+    firstTile.mouseUp(with: NSEvent(type: .leftMouseUp, locationInWindow: overStrip))
+    expect(indicator()?.isHidden == true, "The insertion indicator did not hide after the drop.")
+    expect(toolbar.items.map(\.itemIdentifier) == ["two", "three", "one"],
+           "The drop did not land where the indicator showed. Got \(toolbar.items.map(\.itemIdentifier)).")
+
+    clearApplicationWindows()
+}
+
+func testToolbarModernIdentifiersRenderAsGaps() {
+    let backend = InMemoryNativeControlBackend()
+    let toolbar = NSToolbar(identifier: "modern")
+    toolbar.setVisibleItemIdentifiers([.toggleSidebar, .sidebarTrackingSeparator, .inspectorTrackingSeparator])
+
+    // The synthesized items exist with Mac shapes.
+    expect(toolbar.item(withIdentifier: .toggleSidebar)?.label == "Sidebar",
+           "toggleSidebar did not synthesize a labeled item.")
+
+    let toolbarView = NSToolbarView(frame: NSMakeRect(0, 0, 300, 40))
+    toolbarView.toolbar = toolbar
+    _ = toolbarView.realizeNativePeer(in: backend, parent: nil)
+
+    // Tracking separators render as plain gaps — no composite item text
+    // carrying their identifiers lands in the backend.
+    let allTexts = backend.records.values.map(\.text).joined(separator: "|")
+    expect(!allTexts.contains("SidebarTrackingSeparator") && !allTexts.contains("InspectorTrackingSeparator"),
+           "Tracking separators rendered as labeled items instead of gaps.")
+}
+
+func testToolbarRightClickPopsContextMenu() {
+    clearApplicationWindows()
+
+    let backend = InMemoryNativeControlBackend()
+    let toolbar = NSToolbar(identifier: "context")
+    let item = NSToolbarItem(itemIdentifier: "doc")
+    item.label = "Doc"
+    toolbar.addItem(item)
+    toolbar.allowsUserCustomization = true
+    toolbar.displayMode = .iconAndLabel
+
+    let toolbarView = NSToolbarView(frame: NSMakeRect(0, 0, 300, 40))
+    toolbarView.toolbar = toolbar
+    _ = toolbarView.realizeNativePeer(in: backend, parent: nil)
+
+    // Right-click pops the Mac context menu: three display modes (current one
+    // checked) + separator + Customize Toolbar….
+    toolbarView.rightMouseDown(with: NSEvent(type: .rightMouseDown, locationInWindow: NSMakePoint(150, 20)))
+    guard let menu = backend.poppedContextMenus.last else {
+        expect(false, "Right-clicking the toolbar did not pop a context menu.")
+        return
+    }
+    let titles = menu.items.map(\.title)
+    expect(titles == ["Icon and Text", "Icon Only", "Text Only", "", "Customize Toolbar…"],
+           "The toolbar context menu did not carry the Mac entries. Got \(titles).")
+    expect(menu.items[0].state == .on && menu.items[1].state == .off,
+           "The current display mode was not checked in the context menu.")
+
+    // Choosing "Text Only" switches the display mode.
+    backend.nextContextMenuSelection = 2
+    toolbarView.rightMouseDown(with: NSEvent(type: .rightMouseDown, locationInWindow: NSMakePoint(150, 20)))
+    expect(toolbar.displayMode == .labelOnly, "Choosing Text Only did not switch the display mode.")
+
+    // The re-popped menu checks the new mode.
+    backend.nextContextMenuSelection = -1
+    toolbarView.rightMouseDown(with: NSEvent(type: .rightMouseDown, locationInWindow: NSMakePoint(150, 20)))
+    expect(backend.poppedContextMenus.last?.items[2].state == .on,
+           "The re-popped menu did not check the newly selected mode.")
+
+    // Choosing Customize Toolbar… opens the customization palette.
+    backend.nextContextMenuSelection = 4
+    toolbarView.rightMouseDown(with: NSEvent(type: .rightMouseDown, locationInWindow: NSMakePoint(150, 20)))
+    expect(toolbar.customizationPaletteIsRunning, "Choosing Customize Toolbar… did not open the palette.")
+
+    // A non-customizable toolbar's menu omits the Customize entry.
+    backend.nextContextMenuSelection = -1
+    toolbar.allowsUserCustomization = false
+    toolbarView.rightMouseDown(with: NSEvent(type: .rightMouseDown, locationInWindow: NSMakePoint(150, 20)))
+    expect(backend.poppedContextMenus.last?.items.map(\.title) == ["Icon and Text", "Icon Only", "Text Only"],
+           "A non-customizable toolbar's context menu should omit Customize Toolbar….")
+
+    clearApplicationWindows()
+}
+
+func testToolbarItemRightClickAddsRemoveItem() {
+    let backend = InMemoryNativeControlBackend()
+    let toolbar = NSToolbar(identifier: "removable")
+    let doc = NSToolbarItem(itemIdentifier: "doc")
+    doc.label = "Doc"
+    toolbar.addItem(doc)
+    toolbar.allowsUserCustomization = true
+
+    let toolbarView = NSToolbarView(frame: NSMakeRect(0, 0, 300, 40))
+    toolbarView.toolbar = toolbar
+    _ = toolbarView.realizeNativePeer(in: backend, parent: nil)
+
+    // Right-click on the item (near the leading edge): the menu leads with
+    // Remove Item.
+    toolbarView.rightMouseDown(with: NSEvent(type: .rightMouseDown, locationInWindow: NSMakePoint(20, 20)))
+    expect(backend.poppedContextMenus.last?.items.first?.title == "Remove Item",
+           "Right-clicking an item did not offer Remove Item. Got \(backend.poppedContextMenus.last?.items.map(\.title) ?? []).")
+
+    // Right-click on empty space: no Remove Item entry.
+    toolbarView.rightMouseDown(with: NSEvent(type: .rightMouseDown, locationInWindow: NSMakePoint(250, 20)))
+    expect(backend.poppedContextMenus.last?.items.first?.title == "Icon and Text",
+           "Right-clicking empty space should not offer Remove Item.")
+
+    // Choosing Remove Item removes the clicked item.
+    backend.nextContextMenuSelection = 0
+    toolbarView.rightMouseDown(with: NSEvent(type: .rightMouseDown, locationInWindow: NSMakePoint(20, 20)))
+    backend.nextContextMenuSelection = -1
+    expect(toolbar.items.isEmpty, "Remove Item did not remove the clicked toolbar item.")
+}
+
+func testToolbarCenteredItemsLayOutCentered() {
+    let backend = InMemoryNativeControlBackend()
+    let toolbar = NSToolbar(identifier: "centered")
+    for name in ["alpha", "mid", "omega"] {
+        let item = NSToolbarItem(itemIdentifier: NSToolbarItem.Identifier(rawValue: name))
+        item.label = name
+        toolbar.addItem(item)
+    }
+    toolbar.centeredItemIdentifiers = ["mid"]
+
+    let toolbarView = NSToolbarView(frame: NSMakeRect(0, 0, 600, 40))
+    toolbarView.toolbar = toolbar
+    _ = toolbarView.realizeNativePeer(in: backend, parent: nil)
+
+    // The centered item's rendered tile sits at the strip's midpoint.
+    let midTile = toolbarView.subviews.first { view in
+        guard let handle = view.nativeHandle, let record = backend.records[handle] else {
+            return false
+        }
+        return record.text.contains("\tmid\t")
+    }
+    guard let midTile else {
+        expect(false, "The centered item's tile was not rendered.")
+        return
+    }
+    let midX = midTile.frame.origin.x + midTile.frame.size.width / 2
+    expect(abs(midX - 300) <= 4, "The centered item was not centered. midX = \(midX).")
+}
+
+func testToolbarCustomViewItemsShrinkBeforeOverflow() {
+    let backend = InMemoryNativeControlBackend()
+    let toolbar = NSToolbar(identifier: "elastic")
+    let search = NSToolbarItem(itemIdentifier: "search")
+    search.label = "Search"
+    search.view = NSTextField(string: "", frame: NSMakeRect(0, 0, 200, 24))
+    search.minSize = NSMakeSize(40, 24)
+    search.maxSize = NSMakeSize(200, 24)
+    toolbar.addItem(search)
+    for name in ["one", "two"] {
+        let item = NSToolbarItem(itemIdentifier: NSToolbarItem.Identifier(rawValue: name))
+        item.label = name
+        toolbar.addItem(item)
+    }
+
+    // 220pt can't fit a 200pt search field + two items, but fits when the
+    // field shrinks toward its minimum — nothing overflows.
+    let toolbarView = NSToolbarView(frame: NSMakeRect(0, 0, 220, 40))
+    toolbarView.toolbar = toolbar
+    _ = toolbarView.realizeNativePeer(in: backend, parent: nil)
+
+    expect(toolbar.visibleItems?.count == 3,
+           "Elastic shrink did not prevent overflow. Visible: \(toolbar.visibleItems?.count ?? -1).")
+    guard let fieldView = search.view else {
+        expect(false, "The custom view disappeared.")
+        return
+    }
+    expect(fieldView.frame.size.width < 200 && fieldView.frame.size.width >= 40,
+           "The custom view did not shrink between min and max. Got \(fieldView.frame.size.width).")
+}
+
+func testToolbarItemGroupSelectsAndFires() {
+    let backend = InMemoryNativeControlBackend()
+    let toolbar = NSToolbar(identifier: "grouped")
+    let group = NSToolbarItemGroup(
+        itemIdentifier: "align",
+        titles: ["Left", "Center", "Right"],
+        selectionMode: .selectOne
+    )
+    var fired = 0
+    group.onAction = { _ in fired += 1 }
+    toolbar.addItem(group)
+
+    expect(group.subitems.count == 3, "The titles convenience init did not build subitems.")
+    expect(group.subitems[1].label == "Center", "Subitem labels were not derived from titles.")
+
+    let toolbarView = NSToolbarView(frame: NSMakeRect(0, 0, 400, 40))
+    toolbarView.toolbar = toolbar
+    _ = toolbarView.realizeNativePeer(in: backend, parent: nil)
+
+    // The group renders one tile per subitem.
+    func tile(containing text: String) -> NSView? {
+        toolbarView.subviews.first { view in
+            guard let handle = view.nativeHandle, let record = backend.records[handle] else {
+                return false
+            }
+            return record.text.contains("\t\(text)\t")
+        }
+    }
+    guard let centerTile = tile(containing: "Center") else {
+        expect(false, "The group did not render a tile per subitem.")
+        return
+    }
+
+    // Clicking a subitem selects it (selectOne) and fires the group action.
+    centerTile.mouseUp(with: NSEvent(type: .leftMouseUp, locationInWindow: NSZeroPoint))
+    expect(group.selectedIndex == 1, "Clicking a subitem did not select it. Got \(group.selectedIndex).")
+    expect(group.isSelected(at: 1) && !group.isSelected(at: 0),
+           "selectOne did not keep exactly one selection.")
+    expect(fired == 1, "Activating a subitem did not fire the group action.")
+
+    // selectOne: choosing another subitem moves the selection.
+    tile(containing: "Left")?.mouseUp(with: NSEvent(type: .leftMouseUp, locationInWindow: NSZeroPoint))
+    expect(group.selectedIndex == 0 && !group.isSelected(at: 1),
+           "selectOne did not move the selection.")
+
+    // selectAny: activation toggles; momentary: no persistent selection.
+    group.selectionMode = .selectAny
+    group.setSelected(false, at: 0)
+    tile(containing: "Right")?.mouseUp(with: NSEvent(type: .leftMouseUp, locationInWindow: NSZeroPoint))
+    tile(containing: "Left")?.mouseUp(with: NSEvent(type: .leftMouseUp, locationInWindow: NSZeroPoint))
+    expect(group.isSelected(at: 2) && group.isSelected(at: 0), "selectAny did not accumulate selections.")
+    tile(containing: "Right")?.mouseUp(with: NSEvent(type: .leftMouseUp, locationInWindow: NSZeroPoint))
+    expect(!group.isSelected(at: 2), "selectAny did not toggle off on re-activation.")
+}
+
+func testWindowToolbarActions() {
+    clearApplicationWindows()
+
+    let window = NSWindow(
+        contentRect: NSMakeRect(0, 0, 320, 200),
+        styleMask: [.titled],
+        backing: .buffered,
+        defer: false,
+        nativeBackend: InMemoryNativeControlBackend()
+    )
+    let toolbar = NSToolbar(identifier: "windowActions")
+    toolbar.allowsUserCustomization = true
+    window.toolbar = toolbar
+
+    // AppKit's View-menu action toggles visibility both ways.
+    expect(toolbar.isVisible, "Toolbars start visible.")
+    window.toggleToolbarShown(nil)
+    expect(!toolbar.isVisible, "toggleToolbarShown did not hide the toolbar.")
+    window.toggleToolbarShown(nil)
+    expect(toolbar.isVisible, "toggleToolbarShown did not re-show the toolbar.")
+
+    // The window-level customize action opens the palette.
+    window.runToolbarCustomizationPalette(nil)
+    expect(toolbar.customizationPaletteIsRunning, "runToolbarCustomizationPalette did not open the palette.")
+
+    clearApplicationWindows()
+}
+
+func testToolbarMetallicLookDrawsGradientChrome() {
+    let backend = InMemoryNativeControlBackend()
+    let toolbar = NSToolbar(identifier: "looks")
+    let item = NSToolbarItem(itemIdentifier: "doc")
+    item.label = "Doc"
+    toolbar.addItem(item)
+
+    let toolbarView = NSToolbarView(frame: NSMakeRect(0, 0, 300, 40))
+    toolbarView.toolbar = toolbar
+    let handle = toolbarView.realizeNativePeer(in: backend, parent: nil)
+
+    // Unified (default): flat chrome, no gradient, window-colored strip.
+    let unified = backend.performDraw(for: handle, in: toolbarView.bounds)
+    expect(unified.gradients.isEmpty, "The unified look should not draw gradient chrome.")
+    expect(toolbarView.backgroundColor == .windowBackgroundColor,
+           "The unified strip should keep the window background color.")
+
+    // Metallic: the classic brushed gradient fills the strip.
+    toolbar.winAppleLook = .metallic
+    let metallic = backend.performDraw(for: handle, in: toolbarView.bounds)
+    expect(!metallic.gradients.isEmpty, "The metallic look did not draw its gradient chrome.")
+
+    // Regression guard (transparent child windows flashed white over the
+    // chrome): in metallic the strip's own background — what transparent
+    // children erase with — must be the gradient midtone, never white…
+    expect(toolbarView.backgroundColor != .windowBackgroundColor && toolbarView.backgroundColor != nil,
+           "The metallic strip background (the children's erase color) stayed white.")
+
+    // …and the item tile itself paints its slice of the chrome gradient.
+    let itemTile = toolbarView.subviews.first { view in
+        guard let tileHandle = view.nativeHandle, let record = backend.records[tileHandle] else {
+            return false
+        }
+        return record.text.hasPrefix("__WinChocolateToolbarItem")
+    }
+    guard let itemTile, let tileHandle = itemTile.nativeHandle else {
+        expect(false, "The metallic toolbar did not render an item tile.")
+        return
+    }
+    let tileDraw = backend.performDraw(for: tileHandle, in: itemTile.bounds)
+    expect(!tileDraw.gradients.isEmpty,
+           "The item tile did not paint its chrome gradient slice (it would erase white over the metal).")
+
+    // Switching back to unified clears the slice rendering.
+    toolbar.winAppleLook = .unified
+    if let unifiedTile = toolbarView.subviews.first(where: { view in
+        guard let h = view.nativeHandle, let record = backend.records[h] else {
+            return false
+        }
+        return record.text.hasPrefix("__WinChocolateToolbarItem")
+    }), let unifiedTileHandle = unifiedTile.nativeHandle {
+        let unifiedTileDraw = backend.performDraw(for: unifiedTileHandle, in: unifiedTile.bounds)
+        expect(unifiedTileDraw.gradients.isEmpty, "A unified item tile should not paint gradient slices.")
+    }
+}
+
+func testToolbarCustomizationDragOutTintsPreviewForRemoval() {
+    clearApplicationWindows()
+
+    let toolbar = NSToolbar(identifier: "removalTint")
+    for name in ["one", "two"] {
+        let item = NSToolbarItem(itemIdentifier: NSToolbarItem.Identifier(rawValue: name))
+        item.label = name
+        toolbar.addItem(item)
+    }
+    toolbar.allowsUserCustomization = true
+    toolbar.runCustomizationPalette(nil)
+
+    guard let panel = NSApplication.shared.windows.compactMap({ $0 as? NSPanel }).last,
+          let contentView = panel.contentView else {
+        expect(false, "Toolbar customization palette did not create a panel.")
+        return
+    }
+
+    let previewBlue = NSColor(calibratedRed: 0.84, green: 0.89, blue: 0.96, alpha: 1.0)
+    let removalRed = NSColor(calibratedRed: 0.96, green: 0.85, blue: 0.84, alpha: 1.0)
+    func preview() -> NSView? {
+        contentView.subviews.first { !$0.isHidden && ($0.backgroundColor == previewBlue || $0.backgroundColor == removalRed) }
+    }
+
+    let strip = contentView.subviews.first { $0.tag == 1_103 }
+    guard let tile = (strip?.subviews ?? []).first(where: { $0.toolTip == "Drag to reorder or drag out to remove." }) else {
+        expect(false, "The mirrored strip did not build tiles.")
+        return
+    }
+    let start = tile.convert(NSMakePoint(tile.bounds.size.width / 2, tile.bounds.size.height / 2), to: nil)
+    let overStrip = contentView.convert(NSMakePoint(contentView.frame.size.width - 40, 20), to: nil)
+    let outside = contentView.convert(NSMakePoint(contentView.frame.size.width / 2, 220), to: nil)
+
+    // Over the strip: the standard blue preview. Outside: the removal tint.
+    tile.mouseDown(with: NSEvent(type: .leftMouseDown, locationInWindow: start))
+    tile.mouseDragged(with: NSEvent(type: .leftMouseDragged, locationInWindow: overStrip))
+    expect(preview()?.backgroundColor == previewBlue, "The in-strip drag preview should use the standard tint.")
+    tile.mouseDragged(with: NSEvent(type: .leftMouseDragged, locationInWindow: outside))
+    expect(preview()?.backgroundColor == removalRed, "Dragging out of the strip did not tint the preview for removal.")
+    tile.mouseUp(with: NSEvent(type: .leftMouseUp, locationInWindow: outside))
+    expect(toolbar.items.count == 1, "The drag-out did not remove the item.")
+
+    clearApplicationWindows()
+}
+
+func testToolbarPopupAndFieldItemsAlignVertically() {
+    let backend = InMemoryNativeControlBackend()
+    let toolbar = NSToolbar(identifier: "alignment")
+
+    // A popup declared 28pt tall next to a 24pt field: the native closed
+    // combo only renders ~24pt anchored to its frame top, so the layout must
+    // center it by its visible height or it reads high next to the field.
+    let popupItem = NSToolbarItem(itemIdentifier: "pages")
+    let popup = NSPopUpButton(frame: NSMakeRect(0, 0, 168, 28), pullsDown: false)
+    popupItem.view = popup
+    popupItem.minSize = NSMakeSize(168, 28)
+    popupItem.maxSize = NSMakeSize(168, 28)
+    toolbar.addItem(popupItem)
+
+    let fieldItem = NSToolbarItem(itemIdentifier: "search")
+    let field = NSTextField(string: "", frame: NSMakeRect(0, 0, 160, 24))
+    fieldItem.view = field
+    fieldItem.minSize = NSMakeSize(160, 24)
+    fieldItem.maxSize = NSMakeSize(160, 24)
+    toolbar.addItem(fieldItem)
+
+    let toolbarView = NSToolbarView(frame: NSMakeRect(0, 0, 500, 40))
+    toolbarView.toolbar = toolbar
+    _ = toolbarView.realizeNativePeer(in: backend, parent: nil)
+
+    let popupMidY = popup.frame.origin.y + popup.frame.size.height / 2
+    let fieldMidY = field.frame.origin.y + field.frame.size.height / 2
+    expect(abs(popupMidY - fieldMidY) <= 1,
+           "The popup and field are not vertically aligned. popup midY \(popupMidY), field midY \(fieldMidY).")
+    expect(popup.frame.size.height <= 25,
+           "The popup's layout height should match its visible closed-combo height. Got \(popup.frame.size.height).")
+}
+
+func testWinPresentationSelectionAndModernSeparators() {
+    // The modern default (8.4) is asserted at suite startup, before the
+    // classic pin; here the pin should be in effect.
+    expect(WinPresentation.selected == .classic, "The suite should be pinned to the classic presentation.")
+
+    func separatorViews(in toolbarView: NSToolbarView) -> Int {
+        toolbarView.subviews.filter { $0 is NSToolbarSeparatorView }.count
+    }
+    func makeToolbarView() -> NSToolbarView {
+        let toolbar = NSToolbar(identifier: "presentation")
+        let item = NSToolbarItem(itemIdentifier: "doc")
+        item.label = "Doc"
+        toolbar.addItem(item)
+        toolbar.addItem(NSToolbarItem(itemIdentifier: .separator))
+        let toolbarView = NSToolbarView(frame: NSMakeRect(0, 0, 300, 40))
+        toolbarView.toolbar = toolbar
+        return toolbarView
+    }
+
+    // Classic: an .automatic separator renders as a vertical bar.
+    expect(separatorViews(in: makeToolbarView()) == 1,
+           "The classic presentation should render an automatic separator bar.")
+
+    // Modern: it resolves to a blank gap (no bar view), like current Apple
+    // toolbars.
+    WinPresentation.selected = .modern
+    defer { WinPresentation.selected = .classic }
+    expect(separatorViews(in: makeToolbarView()) == 0,
+           "The modern presentation should render automatic separators as gaps.")
+}
+
+func testDarkAppearanceDrivesDynamicColorsAndDrawnTable() {
+    // Route the app through a scriptable backend reporting a dark system
+    // theme, with no appearance override (drop the suite's light pin).
+    let appBackend = InMemoryNativeControlBackend()
+    appBackend.simulatedDarkAppearance = true
+    let previousBackend = NSApplication.shared.nativeBackend
+    NSApplication.shared.nativeBackend = appBackend
+    NSApplication.shared.appearance = nil
+    defer {
+        NSApplication.shared.nativeBackend = previousBackend
+        NSApplication.shared.appearance = NSAppearance(named: .aqua)
+    }
+
+    // Dynamic system colors resolve to the dark palette...
+    expect(NSColor.windowBackgroundColor.whiteComponent < 0.3,
+           "The dark window background should be dark.")
+    expect(NSColor.textColor.whiteComponent > 0.8,
+           "The dark text color should be light.")
+    expect(NSColor.selectedTextColor == .white,
+           "Dark selections should use light text.")
+
+    // ...and flip back with an explicit light override.
+    NSApplication.shared.appearance = NSAppearance(named: .aqua)
+    expect(NSColor.windowBackgroundColor == .white,
+           "The light window background should be white.")
+    NSApplication.shared.appearance = nil
+
+    // The drawn table renders its dark skin: a dark body fill and light
+    // header-title/cell text.
+    let backend = InMemoryNativeControlBackend()
+    let tableView = NSTableView(frame: NSMakeRect(0, 0, 200, 100))
+    let column = NSTableColumn(identifier: "a")
+    column.title = "Alpha"
+    column.width = 80
+    tableView.addTableColumn(column)
+    let dataSource = ManyRowTableDataSource(count: 1)
+    tableView.dataSource = dataSource
+    tableView.winUsesViewBasedCells = true
+    let handle = tableView.realizeNativePeer(in: backend, parent: nil)
+    let recording = backend.performDraw(for: handle, in: tableView.bounds)
+    guard let bodyFill = recording.fills.first?.color else {
+        fatalError("The dark drawn table recorded no body fill.")
+    }
+    expect(bodyFill.whiteComponent < 0.3, "The dark drawn table body should be dark.")
+    guard let title = recording.texts.first(where: { $0.text == "Alpha" }) else {
+        fatalError("The dark drawn table recorded no header title.")
+    }
+    expect(title.color.whiteComponent > 0.5, "The dark header title should be light.")
+}
+
+/// Records the current-drawing appearance seen inside `draw(_:)`.
+final class AppearanceProbeView: NSView {
+    var drawnAppearance: NSAppearance.Name?
+    override func draw(_ dirtyRect: NSRect) {
+        drawnAppearance = NSAppearance.currentDrawing().name
+    }
+}
+
+func testCurrentDrawingAppearanceFollowsTheDrawingView() {
+    // Outside a draw pass, currentDrawing falls back to the application's
+    // effective appearance (the suite's light pin).
+    expect(NSAppearance.currentDrawing().name == .aqua,
+           "Outside a draw pass currentDrawing should be the app appearance.")
+
+    // During a draw pass it is the drawing view's effective appearance —
+    // here an explicit per-view dark override on a light app.
+    let backend = InMemoryNativeControlBackend()
+    let view = AppearanceProbeView(frame: NSMakeRect(0, 0, 40, 40))
+    view.appearance = NSAppearance(named: .darkAqua)
+    let handle = view.realizeNativePeer(in: backend, parent: nil)
+    _ = backend.performDraw(for: handle, in: view.bounds)
+    expect(view.drawnAppearance == .darkAqua,
+           "currentDrawing inside draw should be the view's effective appearance.")
+    expect(NSAppearance.currentDrawing().name == .aqua,
+           "currentDrawing should restore after the draw pass.")
+}
+
+func testToolbarStripGoesDarkUnderDarkAppearance() {
+    NSApplication.shared.appearance = NSAppearance(named: .darkAqua)
+    defer { NSApplication.shared.appearance = NSAppearance(named: .aqua) }
+
+    let toolbar = NSToolbar(identifier: "dark-strip")
+    let item = NSToolbarItem(itemIdentifier: "doc")
+    item.label = "Doc"
+    toolbar.addItem(item)
+    let toolbarView = NSToolbarView(frame: NSMakeRect(0, 0, 300, 40))
+    toolbarView.toolbar = toolbar
+
+    guard let strip = toolbarView.backgroundColor else {
+        fatalError("The toolbar strip should have a background color.")
+    }
+    expect(strip.whiteComponent < 0.3,
+           "The unified toolbar strip should be dark under the dark appearance. Got \(strip).")
+}
+
+func testSystemAccentColorDrivesAccentAndSelection() {
+    let backend = InMemoryNativeControlBackend()
+    let previous = NSApplication.shared.nativeBackend
+    NSApplication.shared.nativeBackend = backend
+    defer { NSApplication.shared.nativeBackend = previous }
+
+    // No system accent → the blue base and the stock selection pair.
+    expect(NSColor.controlAccentColor == .systemBlue,
+           "Without a system accent the control accent should be the blue base.")
+    let stockSelection = NSColor.selectedTextBackgroundColor
+
+    // A scripted accent drives the accent color and tints the selection.
+    let accent = NSColor(calibratedRed: 0.8, green: 0.2, blue: 0.4, alpha: 1)
+    backend.simulatedAccentColor = accent
+    expect(NSColor.controlAccentColor == accent,
+           "The control accent should be the system accent color.")
+    let tinted = NSColor.selectedTextBackgroundColor
+    expect(tinted != stockSelection,
+           "The selection background should follow the accent color.")
+    expect(tinted.redComponent > tinted.blueComponent,
+           "The selection tint should keep the accent's hue balance.")
+    expect(tinted.whiteComponent > accent.whiteComponent,
+           "The light-appearance selection tint should be lighter than the accent.")
+}
+
+func testStringEncodingIORoundTrips() {
+    let sample = "Héllo, 世界 – ¡ok!"
+
+    // UTF-8 round trip; invalid UTF-8 fails to decode.
+    guard let utf8 = sample.data(using: .utf8) else {
+        fatalError("UTF-8 encoding failed.")
+    }
+    expect(String(data: utf8, encoding: .utf8) == sample, "UTF-8 did not round-trip.")
+    expect(String(data: Data([0xC3, 0x28]), encoding: .utf8) == nil,
+           "Invalid UTF-8 bytes should fail to decode.")
+
+    // .utf16 writes a little-endian BOM and round-trips; the explicit
+    // endian variants round-trip without one.
+    guard let utf16 = sample.data(using: .utf16) else {
+        fatalError("UTF-16 encoding failed.")
+    }
+    expect(Array(utf16.array.prefix(2)) == [0xFF, 0xFE], "UTF-16 should lead with the LE BOM.")
+    expect(String(data: utf16, encoding: .utf16) == sample, "UTF-16 did not round-trip.")
+    guard let utf16be = sample.data(using: .utf16BigEndian) else {
+        fatalError("UTF-16BE encoding failed.")
+    }
+    expect(String(data: utf16be, encoding: .utf16BigEndian) == sample,
+           "UTF-16BE did not round-trip.")
+
+    // ASCII is strict; lossy conversion substitutes '?'.
+    expect(sample.data(using: .ascii) == nil, "Accented text should not encode as strict ASCII.")
+    expect("é!".data(using: .ascii, allowLossyConversion: true)?.array == [UInt8(ascii: "?"), UInt8(ascii: "!")],
+           "Lossy ASCII should substitute '?'.")
+
+    // Latin-1 is one byte per character across its repertoire.
+    guard let latin = "café".data(using: .isoLatin1) else {
+        fatalError("Latin-1 encoding failed.")
+    }
+    expect(latin.count == 4 && String(data: latin, encoding: .isoLatin1) == "café",
+           "Latin-1 did not round-trip.")
+
+    // File round trip, including BOM detection on the encoding-less read.
+    let url = FileManager.default.temporaryDirectory
+        .appendingPathComponent("winchocolate-stringio-test.txt")
+    do {
+        try sample.write(to: url, atomically: true, encoding: .utf16)
+        let sniffed = try String(contentsOf: url)
+        expect(sniffed == sample, "The BOM-sniffing read did not recover the UTF-16 file.")
+        try sample.write(to: url, atomically: false, encoding: .utf8)
+        let reread = try String(contentsOf: url, encoding: .utf8)
+        expect(reread == sample, "The UTF-8 file round trip failed.")
+    } catch {
+        fatalError("String file I/O threw: \(error)")
+    }
+    try? FileManager.default.removeItem(atPath: url.path)
+}
+
+func testAppearanceResolvesSystemThemeAndOverrides() {
+    let backend = InMemoryNativeControlBackend()
+    let previousBackend = NSApplication.shared.nativeBackend
+    NSApplication.shared.nativeBackend = backend
+    // Drop the suite's light pin so the system-follow path is exercised
+    // against the scriptable backend; restore the pin on the way out.
+    NSApplication.shared.appearance = nil
+    defer {
+        NSApplication.shared.nativeBackend = previousBackend
+        NSApplication.shared.appearance = NSAppearance(named: .aqua)
+    }
+
+    // Standard names resolve to shared appearance objects; unknown names fail.
+    expect(NSAppearance(named: .aqua)?.name == .aqua, "The aqua appearance should resolve.")
+    expect(NSAppearance(named: .darkAqua)?.winIsDark == true, "darkAqua should report as dark.")
+    expect(NSAppearance(named: NSAppearance.Name("NSAppearanceNameNeon")) == nil,
+           "An unknown appearance name should not resolve.")
+
+    // With no overrides the effective appearance follows the system theme.
+    expect(NSApplication.shared.effectiveAppearance.name == .aqua,
+           "A light system theme should resolve to aqua.")
+    backend.simulatedDarkAppearance = true
+    expect(NSApplication.shared.effectiveAppearance.name == .darkAqua,
+           "A dark system theme should resolve to darkAqua.")
+
+    // The chain flows app → view for an unattached view...
+    let view = NSView(frame: NSMakeRect(0, 0, 10, 10))
+    expect(view.effectiveAppearance.name == .darkAqua,
+           "A view should inherit the application's effective appearance.")
+
+    // ...an application override beats the system theme...
+    NSApplication.shared.appearance = NSAppearance(named: .aqua)
+    expect(view.effectiveAppearance.name == .aqua,
+           "The application appearance override should win over the system theme.")
+
+    // ...and a view override wins and flows down to its subviews.
+    view.appearance = NSAppearance(named: .darkAqua)
+    let child = NSView(frame: NSMakeRect(0, 0, 5, 5))
+    view.addSubview(child)
+    expect(child.effectiveAppearance.name == .darkAqua,
+           "A subview should inherit its ancestor's appearance override.")
+
+    // bestMatch: exact name first, dark falls back to the light base.
+    expect(NSAppearance(named: .darkAqua)?.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua,
+           "bestMatch should prefer the exact name.")
+    expect(NSAppearance(named: .darkAqua)?.bestMatch(from: [.aqua]) == .aqua,
+           "bestMatch should fall dark back to the light base.")
+}
+
+func testDrawnTableModernPresentationRestylesHeaderChrome() {
+    // Renders a one-column drawn table and returns the header chrome the draw
+    // pass recorded: the header slab's fill color and the title's font weight.
+    func headerChrome() -> (fill: NSColor?, titleWeight: Int?) {
+        let backend = InMemoryNativeControlBackend()
+        let tableView = NSTableView(frame: NSMakeRect(0, 0, 200, 100))
+        let column = NSTableColumn(identifier: "a")
+        column.title = "Alpha"
+        column.width = 80
+        tableView.addTableColumn(column)
+        let dataSource = ManyRowTableDataSource(count: 1)
+        tableView.dataSource = dataSource
+        tableView.winUsesViewBasedCells = true
+        let handle = tableView.realizeNativePeer(in: backend, parent: nil)
+        let recording = backend.performDraw(for: handle, in: tableView.bounds)
+        // Draw order: full-bounds background first, then (no row highlights for
+        // a single unselected row) the header slab.
+        let headerFill = recording.fills.count > 1 ? recording.fills[1].color : nil
+        let title = recording.texts.first { $0.text == "Alpha" }
+        return (headerFill, title?.weight)
+    }
+
+    // Classic: the native-look gray header slab with a bold title.
+    let classic = headerChrome()
+    expect(classic.fill == NSColor(white: 0.93, alpha: 1),
+           "The classic drawn header should paint the gray slab.")
+    expect(classic.titleWeight == NSFont.Weight.bold.rawValue,
+           "The classic drawn header title should be bold.")
+
+    // Modern: a flat header on the body background with a regular-weight title
+    // (the themed Windows list-view look).
+    WinPresentation.selected = .modern
+    defer { WinPresentation.selected = .classic }
+    let modern = headerChrome()
+    expect(modern.fill == .white,
+           "The modern drawn header should be flat on the body background.")
+    expect(modern.titleWeight == NSFont.Weight.regular.rawValue,
+           "The modern drawn header title should be regular weight.")
+}
+
+func testToolbarOverflowCollapsesLowPriorityItems() {
+    func makeToolbar() -> NSToolbar {
+        let toolbar = NSToolbar(identifier: "overflow")
+        for name in ["alpha", "beta", "gamma", "delta"] {
+            let item = NSToolbarItem(itemIdentifier: NSToolbarItem.Identifier(rawValue: name))
+            item.label = name
+            toolbar.addItem(item)
+        }
+        toolbar.item(withIdentifier: "beta")?.visibilityPriority = .low
+        return toolbar
+    }
+
+    // Narrow strip: the low-priority item collapses into the overflow menu first.
+    let narrowView = NSToolbarView(frame: NSMakeRect(0, 0, 150, 36))
+    let narrowToolbar = makeToolbar()
+    narrowView.toolbar = narrowToolbar
+    let visible = narrowToolbar.visibleItems?.map(\.itemIdentifier.rawValue) ?? []
+    expect(!visible.contains("beta"),
+           "The low-priority item did not overflow first. Visible: \(visible).")
+    expect(visible.count < 4, "A 150pt strip should not fit all four items.")
+
+    // Wide strip: everything fits, nothing overflows.
+    let wideView = NSToolbarView(frame: NSMakeRect(0, 0, 600, 36))
+    let wideToolbar = makeToolbar()
+    wideView.toolbar = wideToolbar
+    expect(wideToolbar.visibleItems?.count == 4,
+           "A wide strip overflowed items it could fit. Visible: \(wideToolbar.visibleItems?.count ?? -1).")
 }
 
 func testWindowToolbarCreatesDockedComposedHostAndReservesContent() {
@@ -6804,10 +8497,25 @@ testTableViewKeyboardExtendedSelection()
 testTableViewColumnSelectionAndDoubleActionSurface()
 testTableViewSortDescriptorPrototypeToggle()
 testOutlineViewFlattensExpandableItems()
+testOutlineViewHostsDelegateCellViews()
+testOutlineViewSiblingReorderMovesItem()
+testOutlineViewCrossLevelDropTargetsParent()
 testBrowserLoadsColumnsAndTracksSelection()
+testBrowserPathRoundTrips()
+testBrowserColumnTitles()
+testBrowserDrawsBranchIndicatorOnNonLeafRows()
+testBrowserDrawsDelegateCellImage()
 testIndexPathStoresCollectionComponents()
 testCollectionViewReloadsItemsAndTracksSelection()
+testCollectionViewRecyclesItemsViaMakeItem()
 testCollectionViewButtonItemClickSelectsItem()
+testCollectionViewFlowLayoutArrangesSectionsAndSizesContent()
+testCollectionFlowLayoutHonorsPerItemSizeFromDelegate()
+testCollectionFlowLayoutReservesAndHostsSectionHeaders()
+testCollectionRecyclesSupplementaryViewsAcrossRelayout()
+testCollectionFlowLayoutReservesSectionFooters()
+testCollectionSupplementaryViewsHostInRealizedScrollView()
+testCollectionFlowLayoutHorizontalVariableSizePacking()
 testSliderStoresRangeValueAndSyncsNativePeer()
 testSliderNativeActionUpdatesValue()
 testProgressIndicatorStoresRangeValueAndSyncsNativePeer()
@@ -6874,6 +8582,33 @@ testToolbarCustomizationMovesExistingItemToEnd()
 testToolbarViewComposesItemsAndDispatchesActions()
 testToolbarViewHostsCustomItemView()
 testToolbarItemCreatesCompositeImageLabelView()
+testUserDefaultsRoundTripsPlistValues()
+testToolbarItemValidationAndMenuForm()
+testToolbarSelectionAndDelegateCallbacks()
+testToolbarStandardItemIdentifiers()
+testToolbarAutosaveRoundTripsConfiguration()
+testToolbarOverflowCollapsesLowPriorityItems()
+testToolbarBorderedItemRendersAsButton()
+testToolbarCustomizationPaletteDimsInToolbarItems()
+testToolbarCustomizationDragShowsInsertionIndicator()
+testToolbarModernIdentifiersRenderAsGaps()
+testToolbarRightClickPopsContextMenu()
+testToolbarItemRightClickAddsRemoveItem()
+testToolbarCenteredItemsLayOutCentered()
+testToolbarCustomViewItemsShrinkBeforeOverflow()
+testToolbarItemGroupSelectsAndFires()
+testWindowToolbarActions()
+testToolbarMetallicLookDrawsGradientChrome()
+testToolbarCustomizationDragOutTintsPreviewForRemoval()
+testToolbarPopupAndFieldItemsAlignVertically()
+testWinPresentationSelectionAndModernSeparators()
+testDrawnTableModernPresentationRestylesHeaderChrome()
+testAppearanceResolvesSystemThemeAndOverrides()
+testDarkAppearanceDrivesDynamicColorsAndDrawnTable()
+testToolbarStripGoesDarkUnderDarkAppearance()
+testCurrentDrawingAppearanceFollowsTheDrawingView()
+testSystemAccentColorDrivesAccentAndSelection()
+testStringEncodingIORoundTrips()
 testWindowToolbarCreatesDockedComposedHostAndReservesContent()
 testEditableTextFieldUsesEditableNativePeer()
 testSecureTextFieldUsesSecureNativePeer()
@@ -7641,6 +9376,21 @@ func testTableViewMultipleSelectionEditingAndSorting() {
     backend.simulateTableColumnClick(column: 0, for: handle)
     expect(tableView.sortDescriptors.first?.ascending == false, "A second header click did not toggle to descending.")
     expect(backend.tableSortIndicators[handle]?.ascending == false, "The sort indicator did not flip to descending.")
+
+    // A header click also FIRES the table action so apps that re-sort their
+    // model on the action (reading `sortDescriptors`) actually run.
+    var headerActionCount = 0
+    var descriptorAtAction: NSSortDescriptor?
+    tableView.onAction = { table in
+        guard let table = table as? NSTableView, table.clickedRow < 0, table.clickedColumn >= 0 else {
+            return
+        }
+        headerActionCount += 1
+        descriptorAtAction = table.sortDescriptors.first
+    }
+    backend.simulateTableColumnClick(column: 0, for: handle)
+    expect(headerActionCount == 1, "Header click did not fire the table action. Got \(headerActionCount).")
+    expect(descriptorAtAction?.key == "name", "The action saw the wrong (or no) applied sort descriptor.")
 }
 
 testTableViewMultipleSelectionEditingAndSorting()
@@ -7692,5 +9442,848 @@ func testViewBasedTableHostsCellViews() {
 }
 
 testViewBasedTableHostsCellViews()
+
+final class ManyRowTableDataSource: NSTableViewDataSource {
+    let count: Int
+    init(count: Int) { self.count = count }
+    func numberOfRows(in tableView: NSTableView) -> Int { count }
+    func tableView(_ tableView: NSTableView, objectValueFor tableColumn: NSTableColumn?, row: Int) -> Any? { "row \(row)" }
+}
+
+func testDrawnTableClipsCellTextToColumns() {
+    let backend = InMemoryNativeControlBackend()
+    let tableView = NSTableView(frame: NSMakeRect(0, 0, 200, 200))
+    let dataSource = ManyRowTableDataSource(count: 2)
+    let colA = NSTableColumn(identifier: "a")
+    colA.title = "A"
+    colA.width = 80
+    let colB = NSTableColumn(identifier: "b")
+    colB.title = "B"
+    colB.width = 80
+    tableView.addTableColumn(colA)
+    tableView.addTableColumn(colB)
+    tableView.dataSource = dataSource
+    tableView.winUsesViewBasedCells = true  // all-text drawn cells (no hosted views)
+
+    let handle = tableView.realizeNativePeer(in: backend, parent: nil)
+    let recording = backend.performDraw(for: handle, in: tableView.bounds)
+
+    // Each of the 2×2 drawn-text cells clips its text to the cell rect, so a long
+    // value can't spill into the next column. A rect clip is 5 path segments.
+    let cellClips = recording.clips.filter { $0.segments.count == 5 }
+    expect(cellClips.count == 4, "Drawn table did not clip each text cell to its column. Got \(cellClips.count).")
+
+    // The default trailing inset is zero (only decorated columns reserve space).
+    expect(tableView.winDrawnTrailingInset(forRow: 0, column: 0) == 0, "Default trailing inset should be zero.")
+}
+
+/// A drawn table with a single very long cell value (for the ellipsis test).
+final class LongTextTableDataSource: NSTableViewDataSource {
+    func numberOfRows(in tableView: NSTableView) -> Int { 1 }
+    func tableView(_ tableView: NSTableView, objectValueFor tableColumn: NSTableColumn?, row: Int) -> Any? {
+        "ThisIsAVeryLongCellValueThatMustTruncate"
+    }
+}
+
+func testDrawnTableTruncatesLongCellTextWithEllipsis() {
+    // Use the in-memory backend for text measurement so truncation is
+    // deterministic (width = characters × pointSize × 0.55).
+    let previousBackend = NSApplication.shared.nativeBackend
+    NSApplication.shared.nativeBackend = InMemoryNativeControlBackend()
+    defer { NSApplication.shared.nativeBackend = previousBackend }
+
+    let backend = InMemoryNativeControlBackend()
+    let tableView = NSTableView(frame: NSMakeRect(0, 0, 80, 100))
+    let column = NSTableColumn(identifier: "name")
+    column.title = ""  // untitled → no header, so the first drawn text is the cell
+    column.width = 40  // narrow: the 40-char value cannot fit
+    tableView.addTableColumn(column)
+    let dataSource = LongTextTableDataSource()
+    tableView.dataSource = dataSource
+    tableView.winUsesViewBasedCells = true
+
+    let handle = tableView.realizeNativePeer(in: backend, parent: nil)
+    let recording = backend.performDraw(for: handle, in: tableView.bounds)
+
+    guard let drawn = recording.texts.first?.text else {
+        fatalError("Drawn table recorded no cell text.")
+    }
+    expect(drawn.hasSuffix("…"), "Long cell text was not truncated with an ellipsis. Got \(drawn).")
+    expect(drawn.count < 40, "Truncated text was not shorter than the 40-char original. Got \(drawn).")
+}
+
+/// A delegate that dequeues its cell view via `makeView(withIdentifier:owner:)`,
+/// creating a fresh one (stamped with the reuse identifier) only on a miss.
+final class RecyclingCellDelegate: NSTableViewDelegate {
+    static let cellID = NSUserInterfaceItemIdentifier("recycle-cell")
+    private(set) var madeFresh = 0
+    func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
+        if let reused = tableView.makeView(withIdentifier: Self.cellID, owner: nil) as? NSTextField {
+            reused.stringValue = "r\(row)"
+            return reused
+        }
+        madeFresh += 1
+        let field = NSTextField(string: "r\(row)", frame: NSMakeRect(0, 0, 100, 20))
+        field.identifier = Self.cellID
+        return field
+    }
+}
+
+func testDrawnTableRecyclesCellViewsViaMakeView() {
+    let backend = InMemoryNativeControlBackend()
+    let tableView = NSTableView(frame: NSMakeRect(0, 0, 200, 200))
+    let dataSource = ManyRowTableDataSource(count: 3)
+    let column = NSTableColumn(identifier: "name")
+    column.width = 180
+    tableView.addTableColumn(column)
+    tableView.dataSource = dataSource
+    let delegate = RecyclingCellDelegate()
+    tableView.delegate = delegate
+
+    _ = tableView.realizeNativePeer(in: backend, parent: nil)
+
+    // First build hosts 3 cell views. (Fresh count may include one extra from
+    // the view-based auto-detection probe, which isn't hosted — so assert on the
+    // hosted set and the reload delta, not the absolute fresh count.)
+    let firstViews = Set(tableView.subviews.compactMap { $0 as? NSTextField }.map { ObjectIdentifier($0) })
+    expect(firstViews.count == 3, "First build did not host 3 cell views. Got \(firstViews.count).")
+    let freshAfterFirst = delegate.madeFresh
+
+    // Reload: the outgoing views are pooled and handed back through makeView, so
+    // no fresh views are allocated and the same instances are re-hosted.
+    tableView.reloadData()
+    let secondViews = Set(tableView.subviews.compactMap { $0 as? NSTextField }.map { ObjectIdentifier($0) })
+    expect(secondViews == firstViews, "Cell views were not recycled across reloadData.")
+    expect(delegate.madeFresh == freshAfterFirst,
+           "reloadData allocated fresh cell views instead of recycling. \(freshAfterFirst) → \(delegate.madeFresh).")
+}
+
+/// A drawn table whose single cell value is an attributed (colored) string.
+final class AttributedCellTableDataSource: NSTableViewDataSource {
+    func numberOfRows(in tableView: NSTableView) -> Int { 1 }
+    func tableView(_ tableView: NSTableView, objectValueFor tableColumn: NSTableColumn?, row: Int) -> Any? {
+        NSAttributedString(string: "Alert", attributes: [.foregroundColor: NSColor.red])
+    }
+}
+
+func testDrawnTableRendersAttributedCellValue() {
+    let backend = InMemoryNativeControlBackend()
+    let tableView = NSTableView(frame: NSMakeRect(0, 0, 120, 100))
+    let column = NSTableColumn(identifier: "c")
+    column.title = ""  // no header, so the first drawn text is the cell
+    column.width = 100
+    tableView.addTableColumn(column)
+    let dataSource = AttributedCellTableDataSource()
+    tableView.dataSource = dataSource
+    tableView.winUsesViewBasedCells = true
+
+    let handle = tableView.realizeNativePeer(in: backend, parent: nil)
+    let recording = backend.performDraw(for: handle, in: tableView.bounds)
+
+    // The cell renders the attributed value's text with its own color, and its
+    // plain string flows through the model too.
+    let cell = recording.texts.first { $0.text == "Alert" }
+    expect(cell != nil, "Attributed cell value was not drawn. Got \(recording.texts.map { $0.text }).")
+    expect(cell?.color == .red, "Attributed cell was not drawn with its own color. Got \(String(describing: cell?.color)).")
+    expect(tableView.value(atColumn: 0, row: 0) == "Alert", "Attributed value's plain string was not cached.")
+}
+
+func testTableColumnAutoresizing() {
+    let backend = InMemoryNativeControlBackend()
+    let tableView = NSTableView(frame: NSMakeRect(0, 0, 300, 100))
+    let colA = NSTableColumn(identifier: "a")
+    colA.title = "A"
+    colA.width = 80
+    let colB = NSTableColumn(identifier: "b")
+    colB.title = "B"
+    colB.width = 80
+    tableView.addTableColumn(colA)
+    tableView.addTableColumn(colB)
+    let dataSource = ManyRowTableDataSource(count: 3)
+    tableView.dataSource = dataSource
+    tableView.winUsesViewBasedCells = true
+    _ = tableView.realizeNativePeer(in: backend, parent: nil)
+
+    // sizeLastColumnToFit: the last column fills the remaining width
+    // (300 − 3pt intercell spacing − colA 80 = 217); others unchanged.
+    tableView.sizeLastColumnToFit()
+    expect(colA.width == 80, "sizeLastColumnToFit changed a non-last column. Got \(colA.width).")
+    expect(colB.width == 217, "sizeLastColumnToFit did not fill the last column. Got \(colB.width).")
+
+    // Uniform sizeToFit shares the deficit equally: available 297, current 160,
+    // delta 137 → +68.5 each.
+    colA.width = 80
+    colB.width = 80
+    tableView.columnAutoresizingStyle = .uniformColumnAutoresizingStyle
+    tableView.sizeToFit()
+    expect(colA.width == 148.5 && colB.width == 148.5,
+           "Uniform sizeToFit did not share the width equally. Got \(colA.width), \(colB.width).")
+
+    // With autoresizing off, sizeToFit is a no-op.
+    colA.width = 50
+    colB.width = 50
+    tableView.columnAutoresizingStyle = .noColumnAutoresizing
+    tableView.sizeToFit()
+    expect(colA.width == 50 && colB.width == 50, "sizeToFit resized columns with autoresizing off.")
+}
+
+func testDrawnTableScrollsAsScrollViewDocument() {
+    let backend = InMemoryNativeControlBackend()
+    let scrollView = NSScrollView(frame: NSMakeRect(0, 0, 300, 120))
+    scrollView.hasVerticalScroller = true
+    let tableView = NSTableView(frame: NSMakeRect(0, 0, 300, 120))
+    let dataSource = ManyRowTableDataSource(count: 20)
+    let column = NSTableColumn(identifier: "name")
+    column.title = "Name"
+    column.width = 280
+    tableView.addTableColumn(column)
+    tableView.dataSource = dataSource
+    let scrollDelegate = ViewBasedTableDelegate()
+    tableView.delegate = scrollDelegate
+    tableView.winUsesViewBasedCells = true
+    scrollView.documentView = tableView
+
+    _ = scrollView.realizeNativePeer(in: backend, parent: nil)
+
+    // The titled header is pinned into a non-scrolling strip on the scroll view;
+    // the document (body) therefore excludes the header and grows to just the
+    // rows (20 x 24 = 480), which the scroll view scrolls. It hosts a cell view
+    // per row.
+    expect(tableView.subviews.count == 20, "Drawn table did not host a cell view per row. Got \(tableView.subviews.count).")
+    expect(scrollView.winHeaderStripView != nil, "The scroll view did not get a pinned header strip.")
+    expect(tableView.frame.size.height == 480, "Body (header-excluded) content height wrong. Got \(tableView.frame.size.height).")
+    // The content clip is inset below the pinned 24pt header strip.
+    expect(scrollView.contentView.frame.origin.y == 24, "The content clip was not inset below the header strip. Got \(scrollView.contentView.frame.origin.y).")
+
+    // Scrolling repositions the document view up (negative origin), bringing
+    // lower rows into the viewport.
+    scrollView.contentView.scroll(to: NSMakePoint(0, 200))
+    expect(tableView.frame.origin.y <= -150, "Scrolling did not move the drawn document view up. Got \(tableView.frame.origin.y).")
+}
+
+testDrawnTableScrollsAsScrollViewDocument()
+testDrawnTableClipsCellTextToColumns()
+testDrawnTableTruncatesLongCellTextWithEllipsis()
+testDrawnTableRendersAttributedCellValue()
+testDrawnTableRecyclesCellViewsViaMakeView()
+testTableColumnAutoresizing()
+
+func testDrawnTablePinnedHeaderStaysAndSorts() {
+    let backend = InMemoryNativeControlBackend()
+    let scrollView = NSScrollView(frame: NSMakeRect(0, 0, 300, 120))
+    scrollView.hasVerticalScroller = true
+    let tableView = NSTableView(frame: NSMakeRect(0, 0, 300, 120))
+    let dataSource = ManyRowTableDataSource(count: 20)
+    let column = NSTableColumn(identifier: "name")
+    column.title = "Name"
+    column.width = 280
+    column.sortDescriptorPrototype = NSSortDescriptor(key: "name", ascending: true)
+    tableView.addTableColumn(column)
+    tableView.dataSource = dataSource
+    let delegate = ViewBasedTableDelegate()
+    tableView.delegate = delegate
+    tableView.winUsesViewBasedCells = true
+    scrollView.documentView = tableView
+
+    _ = scrollView.realizeNativePeer(in: backend, parent: nil)
+
+    guard let strip = scrollView.winHeaderStripView else {
+        fatalError("Pinned header strip was not installed.")
+    }
+    expect(strip.frame == NSMakeRect(0, 0, 300, 24), "Header strip is not a full-width top band. Got \(strip.frame).")
+
+    // Scroll the body down — the pinned strip stays fixed while the body moves.
+    scrollView.contentView.scroll(to: NSMakePoint(0, 200))
+    expect(strip.frame == NSMakeRect(0, 0, 300, 24), "Header strip moved when the body scrolled. Got \(strip.frame).")
+    expect(tableView.frame.origin.y < 0, "Body did not scroll beneath the pinned header.")
+
+    // Clicking the pinned header strip (press + release, no drag) applies the
+    // sort and fires the action on mouse-up.
+    var headerActions = 0
+    tableView.onAction = { _ in headerActions += 1 }
+    strip.mouseDown(with: NSEvent(type: .leftMouseDown, locationInWindow: NSMakePoint(10, 6)))
+    strip.mouseUp(with: NSEvent(type: .leftMouseUp, locationInWindow: NSMakePoint(10, 6)))
+    expect(tableView.sortDescriptors.first?.key == "name", "Clicking the pinned header did not apply the sort descriptor.")
+    expect(headerActions == 1, "Clicking the pinned header did not fire the table action.")
+}
+
+testDrawnTablePinnedHeaderStaysAndSorts()
+
+func testDrawnTableHeaderColumnResize() {
+    let backend = InMemoryNativeControlBackend()
+    let scrollView = NSScrollView(frame: NSMakeRect(0, 0, 320, 120))
+    scrollView.hasVerticalScroller = true
+    let tableView = NSTableView(frame: NSMakeRect(0, 0, 320, 120))
+    let dataSource = ManyRowTableDataSource(count: 6)
+    let colA = NSTableColumn(identifier: "a")
+    colA.title = "A"
+    colA.width = 100
+    let colB = NSTableColumn(identifier: "b")
+    colB.title = "B"
+    colB.width = 100
+    tableView.addTableColumn(colA)
+    tableView.addTableColumn(colB)
+    tableView.dataSource = dataSource
+    let delegate = ViewBasedTableDelegate()
+    tableView.delegate = delegate
+    tableView.winUsesViewBasedCells = true
+    scrollView.documentView = tableView
+
+    _ = scrollView.realizeNativePeer(in: backend, parent: nil)
+
+    guard let strip = scrollView.winHeaderStripView else {
+        fatalError("Pinned header strip was not installed.")
+    }
+
+    // Drag the boundary between column A and B (at x=100) 40pt to the right.
+    strip.mouseDown(with: NSEvent(type: .leftMouseDown, locationInWindow: NSMakePoint(100, 6)))
+    strip.mouseDragged(with: NSEvent(type: .leftMouseDragged, locationInWindow: NSMakePoint(140, 6)))
+    strip.mouseUp(with: NSEvent(type: .leftMouseUp, locationInWindow: NSMakePoint(140, 6)))
+
+    expect(colA.width == 140, "Dragging the header boundary did not widen column A. Got \(colA.width).")
+    expect(colB.width == 100, "Column B width should be unchanged. Got \(colB.width).")
+}
+
+testDrawnTableHeaderColumnResize()
+
+func testDrawnTableHeaderColumnReorder() {
+    func makeTable() -> (NSScrollView, NSTableView, NSView) {
+        let backend = InMemoryNativeControlBackend()
+        let scrollView = NSScrollView(frame: NSMakeRect(0, 0, 320, 120))
+        scrollView.hasVerticalScroller = true
+        let tableView = NSTableView(frame: NSMakeRect(0, 0, 320, 120))
+        let dataSource = ManyRowTableDataSource(count: 6)
+        for id in ["a", "b", "c"] {
+            let col = NSTableColumn(identifier: NSUserInterfaceItemIdentifier(id))
+            col.title = id.uppercased()
+            col.width = 100
+            tableView.addTableColumn(col)
+        }
+        tableView.dataSource = dataSource
+        let delegate = ViewBasedTableDelegate()
+        tableView.delegate = delegate
+        tableView.winUsesViewBasedCells = true
+        scrollView.documentView = tableView
+        _ = scrollView.realizeNativePeer(in: backend, parent: nil)
+        guard let strip = scrollView.winHeaderStripView else {
+            fatalError("Pinned header strip was not installed.")
+        }
+        return (scrollView, tableView, strip)
+    }
+
+    // With reordering enabled, dragging column A's header past column B drops it
+    // into the second slot: [A,B,C] -> [B,A,C].
+    let (_, tableView, strip) = makeTable()
+    tableView.allowsColumnReordering = true
+    strip.mouseDown(with: NSEvent(type: .leftMouseDown, locationInWindow: NSMakePoint(50, 6)))
+    strip.mouseDragged(with: NSEvent(type: .leftMouseDragged, locationInWindow: NSMakePoint(180, 6)))
+    strip.mouseUp(with: NSEvent(type: .leftMouseUp, locationInWindow: NSMakePoint(180, 6)))
+    expect(tableView.tableColumns.map { $0.identifier.rawValue } == ["b", "a", "c"],
+           "Column reorder drag did not move A after B. Got \(tableView.tableColumns.map { $0.identifier.rawValue }).")
+
+    // With reordering disabled (the default), the same drag leaves order intact.
+    let (_, lockedTable, lockedStrip) = makeTable()
+    lockedStrip.mouseDown(with: NSEvent(type: .leftMouseDown, locationInWindow: NSMakePoint(50, 6)))
+    lockedStrip.mouseDragged(with: NSEvent(type: .leftMouseDragged, locationInWindow: NSMakePoint(180, 6)))
+    lockedStrip.mouseUp(with: NSEvent(type: .leftMouseUp, locationInWindow: NSMakePoint(180, 6)))
+    expect(lockedTable.tableColumns.map { $0.identifier.rawValue } == ["a", "b", "c"],
+           "Column reorder happened even though allowsColumnReordering is false. Got \(lockedTable.tableColumns.map { $0.identifier.rawValue }).")
+}
+
+testDrawnTableHeaderColumnReorder()
+
+/// Vends a cell view for every cell and a custom height for the first row.
+final class VariableHeightTableDelegate: NSTableViewDelegate {
+    func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
+        NSTextField(string: "r\(row)", frame: NSMakeRect(0, 0, 100, 20))
+    }
+    func tableView(_ tableView: NSTableView, heightOfRow row: Int) -> CGFloat {
+        row == 0 ? 48 : 24
+    }
+}
+
+func testDrawnTableHonorsVariableRowHeights() {
+    let backend = InMemoryNativeControlBackend()
+    let tableView = NSTableView(frame: NSMakeRect(0, 0, 300, 400))
+    let dataSource = ManyRowTableDataSource(count: 4)
+    let column = NSTableColumn(identifier: "name")
+    column.title = "Name"
+    column.width = 280
+    tableView.addTableColumn(column)
+    tableView.dataSource = dataSource
+    let delegate = VariableHeightTableDelegate()
+    tableView.delegate = delegate
+    tableView.winUsesViewBasedCells = true
+
+    let handle = tableView.realizeNativePeer(in: backend, parent: nil)
+
+    // The hosted cell views prove the geometry honors the variable heights.
+    // Row 0 (48px) sits just below the 24px header (inset ~1px → y≈25); row 1
+    // sits below the tall row 0 at 24 + 48 + 1 = 73 (not 49, which is what a
+    // uniform 24px layout would give).
+    let ys = tableView.subviews.map { $0.frame.origin.y }.sorted()
+    expect(ys.count == 4, "Expected one hosted cell view per row. Got \(ys.count).")
+    expect(abs(ys[0] - 25) < 2, "Row 0 cell view not just below the header. Got \(ys[0]).")
+    expect(abs(ys[1] - 73) < 2, "Row 1 cell view not below the taller row 0 (expected ~73). Got \(ys[1]).")
+    expect(abs(ys[2] - 97) < 2, "Row 2 cell view not at 97. Got \(ys[2]).")
+    expect(abs(ys[3] - 121) < 2, "Row 3 cell view not at 121. Got \(ys[3]).")
+
+    // The row-0 cell view is as tall as its 48px row (minus the 1px inset).
+    let topView = tableView.subviews.min { $0.frame.origin.y < $1.frame.origin.y }
+    expect((topView?.frame.size.height ?? 0) >= 44, "Row 0 cell view did not fill the tall row. Got \(topView?.frame.size.height ?? 0).")
+
+    // Hit-testing honors the variable heights: a click at y=50 lands in the
+    // tall row 0, while y=80 lands in row 1 (a uniform layout would misroute).
+    backend.mouseDownActions[handle]?(NSEvent(type: .leftMouseDown, locationInWindow: NSMakePoint(10, 50)))
+    expect(tableView.selectedRow == 0, "Click in the tall row 0 did not select it. Got \(tableView.selectedRow).")
+    backend.mouseDownActions[handle]?(NSEvent(type: .leftMouseDown, locationInWindow: NSMakePoint(10, 80)))
+    expect(tableView.selectedRow == 1, "Click at y=80 did not select row 1 under variable heights. Got \(tableView.selectedRow).")
+}
+
+testDrawnTableHonorsVariableRowHeights()
+
+/// Records values written back through the data source, and vends a drawn-text
+/// "name" column (no view) so the drawn table paints and edits it in place.
+final class EditableDrawnDataSource: NSTableViewDataSource {
+    var names = ["alpha", "bravo", "charlie"]
+    var committed: [(row: Int, value: String)] = []
+    func numberOfRows(in tableView: NSTableView) -> Int { names.count }
+    func tableView(_ tableView: NSTableView, objectValueFor tableColumn: NSTableColumn?, row: Int) -> Any? {
+        tableColumn?.identifier == "name" ? names[row] : nil
+    }
+    func tableView(_ tableView: NSTableView, setObjectValue object: Any?, for tableColumn: NSTableColumn?, row: Int) {
+        let text = object.map { String(describing: $0) } ?? ""
+        names[row] = text
+        committed.append((row, text))
+    }
+}
+
+/// Hosts a non-text view (button) in the "flag" column so the only text field
+/// in the table is the in-place edit overlay.
+final class EditableDrawnDelegate: NSTableViewDelegate {
+    func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
+        tableColumn?.identifier == "flag"
+            ? NSButton(title: "•", frame: NSMakeRect(0, 0, 40, 20))
+            : nil
+    }
+}
+
+func testDrawnTableInPlaceEditCommitsToDataSource() {
+    let backend = InMemoryNativeControlBackend()
+    let tableView = NSTableView(frame: NSMakeRect(0, 0, 300, 200))
+    let dataSource = EditableDrawnDataSource()
+    let flag = NSTableColumn(identifier: "flag")
+    flag.title = "Flag"
+    flag.width = 60
+    let nameColumn = NSTableColumn(identifier: "name")
+    nameColumn.title = "Name"
+    nameColumn.width = 200
+    nameColumn.isEditable = true
+    tableView.addTableColumn(flag)
+    tableView.addTableColumn(nameColumn)
+    tableView.dataSource = dataSource
+    let delegate = EditableDrawnDelegate()
+    tableView.delegate = delegate
+    tableView.winUsesViewBasedCells = true
+
+    let handle = tableView.realizeNativePeer(in: backend, parent: nil)
+
+    // Drawn mode: the "flag" column hosts buttons; the "name" column is drawn
+    // text — so there is no text field in the table until an edit begins.
+    expect(backend.records[handle]?.kind == "view", "Editable drawn table did not realize a custom-drawn peer.")
+    expect(tableView.subviews.compactMap { $0 as? NSTextField }.isEmpty, "A text field existed before editing began.")
+
+    // Double-click the drawn "name" cell of row 1 (x in col 1, y in row 1).
+    backend.mouseDownActions[handle]?(NSEvent(type: .leftMouseDown, locationInWindow: NSMakePoint(100, 24 + 24 + 6), clickCount: 2))
+
+    // An editable overlay field appears over the cell, seeded with the value.
+    let overlay = tableView.subviews.compactMap { $0 as? NSTextField }.first
+    expect(overlay != nil, "Double-clicking an editable drawn cell did not open an edit overlay.")
+    expect(overlay?.isEditable == true, "The edit overlay is not editable.")
+    expect(overlay?.stringValue == "bravo", "The overlay was not seeded with the cell's value. Got \(overlay?.stringValue ?? "nil").")
+
+    // Type a new value and commit by ending editing (focus loss).
+    overlay?.stringValue = "bravo-edited"
+    if let overlayHandle = overlay?.nativeHandle {
+        backend.simulateFocusChange(gained: false, for: overlayHandle)
+    }
+
+    // The edit committed through the data source and the overlay tore down.
+    expect(dataSource.committed.contains { $0.row == 1 && $0.value == "bravo-edited" },
+           "The in-place edit did not commit to the data source. Committed: \(dataSource.committed).")
+    expect(dataSource.names[1] == "bravo-edited", "The data source value was not updated.")
+    expect(tableView.subviews.compactMap { $0 as? NSTextField }.isEmpty, "The edit overlay was not removed after committing.")
+
+    // A non-editable column does not open an overlay.
+    backend.mouseDownActions[handle]?(NSEvent(type: .leftMouseDown, locationInWindow: NSMakePoint(20, 24 + 6), clickCount: 2))
+    expect(tableView.subviews.compactMap { $0 as? NSTextField }.isEmpty, "A non-editable/hosted column opened an edit overlay.")
+
+    // Programmatic editColumn opens the overlay on the drawn table too.
+    tableView.editColumn(1, row: 2, with: nil, select: true)
+    let progOverlay = tableView.subviews.compactMap { $0 as? NSTextField }.first
+    expect(progOverlay?.stringValue == "charlie", "editColumn did not open a seeded overlay on row 2. Got \(progOverlay?.stringValue ?? "nil").")
+    expect(tableView.selectedRow == 2, "editColumn did not select the edited row.")
+}
+
+testDrawnTableInPlaceEditCommitsToDataSource()
+
+func testDrawnTableReturnKeyBeginsEditingSelectedRow() {
+    let backend = InMemoryNativeControlBackend()
+    let tableView = NSTableView(frame: NSMakeRect(0, 0, 300, 200))
+    let dataSource = EditableDrawnDataSource()
+    let flag = NSTableColumn(identifier: "flag")
+    flag.title = "Flag"
+    flag.width = 60
+    let nameColumn = NSTableColumn(identifier: "name")
+    nameColumn.title = "Name"
+    nameColumn.width = 200
+    nameColumn.isEditable = true
+    tableView.addTableColumn(flag)
+    tableView.addTableColumn(nameColumn)
+    tableView.dataSource = dataSource
+    let delegate = EditableDrawnDelegate()
+    tableView.delegate = delegate
+    tableView.winUsesViewBasedCells = true
+
+    _ = tableView.realizeNativePeer(in: backend, parent: nil)
+
+    // Select row 1, then press Return: editing begins on the first editable,
+    // non-hosted column ("name"), seeded with that cell's value.
+    tableView.selectRowIndexes([1], byExtendingSelection: false)
+    tableView.keyDown(with: NSEvent(type: .keyDown, locationInWindow: NSZeroPoint, keyCode: 0x0d))
+
+    let overlay = tableView.subviews.compactMap { $0 as? NSTextField }.first
+    expect(overlay != nil, "Return did not begin editing the selected row.")
+    expect(overlay?.stringValue == "bravo", "Return-edit overlay was not seeded with the cell value. Got \(overlay?.stringValue ?? "nil").")
+
+    // A separate table with no selection: Return sends the action instead.
+    let backend2 = InMemoryNativeControlBackend()
+    let plainTable = NSTableView(frame: NSMakeRect(0, 0, 300, 200))
+    let dataSource2 = EditableDrawnDataSource()
+    let nameOnly = NSTableColumn(identifier: "name")
+    nameOnly.title = "Name"
+    nameOnly.width = 200
+    nameOnly.isEditable = true
+    plainTable.addTableColumn(nameOnly)
+    plainTable.dataSource = dataSource2
+    plainTable.winUsesViewBasedCells = true
+    _ = plainTable.realizeNativePeer(in: backend2, parent: nil)
+    var actions = 0
+    plainTable.onAction = { _ in actions += 1 }
+    plainTable.keyDown(with: NSEvent(type: .keyDown, locationInWindow: NSZeroPoint, keyCode: 0x0d))
+    expect(plainTable.subviews.compactMap { $0 as? NSTextField }.isEmpty, "Return opened an editor with no selection.")
+    expect(actions == 1, "Return with no editable target did not fall back to the row action.")
+}
+
+testDrawnTableReturnKeyBeginsEditingSelectedRow()
+
+/// Vends a cell view (so drawn mode engages) plus a colored row view per row.
+final class RowViewTableDelegate: NSTableViewDelegate {
+    let base = NSColor(white: 0.9, alpha: 1)
+    func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
+        NSTextField(string: "r\(row)", frame: NSMakeRect(0, 0, 100, 20))
+    }
+    func tableView(_ tableView: NSTableView, rowViewFor row: Int) -> NSTableRowView? {
+        let rowView = NSTableRowView(frame: .zero)
+        rowView.backgroundColor = base
+        return rowView
+    }
+}
+
+func testDrawnTableHostsRowViewsWithSelectionFill() {
+    let backend = InMemoryNativeControlBackend()
+    let tableView = NSTableView(frame: NSMakeRect(0, 0, 300, 200))
+    let dataSource = ManyRowTableDataSource(count: 3)
+    let column = NSTableColumn(identifier: "name")
+    column.title = "Name"
+    column.width = 280
+    tableView.addTableColumn(column)
+    tableView.dataSource = dataSource
+    let delegate = RowViewTableDelegate()
+    tableView.delegate = delegate
+    tableView.winUsesViewBasedCells = true
+
+    let handle = tableView.realizeNativePeer(in: backend, parent: nil)
+
+    // One full-width row view is hosted per row, ordered top-to-bottom.
+    let rowViews = tableView.subviews.compactMap { $0 as? NSTableRowView }
+        .sorted { $0.frame.origin.y < $1.frame.origin.y }
+    expect(rowViews.count == 3, "The table did not host one row view per row. Got \(rowViews.count).")
+    expect(rowViews.allSatisfy { $0.frame.size.width == 300 }, "Row views are not full table width.")
+    expect(rowViews[0].frame.origin.y == 24, "Row view 0 not placed below the header. Got \(rowViews[0].frame.origin.y).")
+
+    // Row views layer behind the cell views (the cells host after them).
+    let firstRowIndex = tableView.subviews.firstIndex { $0 === rowViews[0] } ?? -1
+    let firstCellIndex = tableView.subviews.firstIndex { $0 is NSTextField } ?? -1
+    expect(firstRowIndex >= 0 && firstCellIndex > firstRowIndex, "Row views do not layer behind the cell views.")
+
+    // Unselected rows paint their base color natively.
+    expect(backend.records[rowViews[0].nativeHandle!]?.backgroundColor == delegate.base,
+           "Row view did not fill with its base color.")
+
+    // Clicking row 1 flips its selection and swaps its native fill to the
+    // selection color, leaving the others on their base color.
+    backend.mouseDownActions[handle]?(NSEvent(type: .leftMouseDown, locationInWindow: NSMakePoint(10, 24 + 24 + 6)))
+    expect(rowViews[1].isSelected, "Clicking row 1 did not select its row view.")
+    expect(backend.records[rowViews[1].nativeHandle!]?.backgroundColor == NSColor.selectedTextBackgroundColor,
+           "Selected row view did not swap to the selection fill.")
+    expect(rowViews[0].isSelected == false, "Row 0 should not be selected.")
+    expect(backend.records[rowViews[0].nativeHandle!]?.backgroundColor == delegate.base,
+           "Unselected row view lost its base fill.")
+
+    // The click repaints the whole table tree (not just the surface), so the
+    // borderless cell labels redraw over the new selection fill immediately
+    // instead of showing stale pixels until a scroll.
+    expect(backend.invalidatedTreeHandles.contains(handle),
+           "Selecting a row did not invalidate the table's child tree (stale-until-scroll bug).")
+}
+
+testDrawnTableHostsRowViewsWithSelectionFill()
+
+func testTableViewAutoDetectsViewBasedModeFromDelegate() {
+    let backend = InMemoryNativeControlBackend()
+
+    // A delegate that vends a cell view auto-selects the framework-drawn peer —
+    // WITHOUT any explicit `winUsesViewBasedCells` opt-in (AppKit semantics).
+    let viewTable = NSTableView(frame: NSMakeRect(0, 0, 200, 120))
+    let viewSource = ManyRowTableDataSource(count: 3)
+    let viewCol = NSTableColumn(identifier: "name")
+    viewCol.width = 180
+    viewTable.addTableColumn(viewCol)
+    viewTable.dataSource = viewSource
+    let viewDelegate = ViewBasedTableDelegate()
+    viewTable.delegate = viewDelegate
+    // winUsesViewBasedCells intentionally left false.
+    let viewHandle = viewTable.realizeNativePeer(in: backend, parent: nil)
+    expect(backend.records[viewHandle]?.kind == "view",
+           "A view-vending delegate did not auto-select the drawn peer. Got \(backend.records[viewHandle]?.kind ?? "nil").")
+    expect(viewTable.subviews.compactMap { $0 as? NSTextField }.count == 3,
+           "Auto-detected drawn table did not host its cell views.")
+
+    // A cell-based delegate (vends no view) keeps the native list path.
+    let cellTable = NSTableView(frame: NSMakeRect(0, 0, 200, 120))
+    let cellSource = RecordingTableDataSource()
+    let cellCol = NSTableColumn(identifier: "name")
+    cellCol.width = 180
+    cellTable.addTableColumn(cellCol)
+    cellTable.dataSource = cellSource
+    cellTable.delegate = CellBasedSelectionDelegate()
+    let cellHandle = cellTable.realizeNativePeer(in: backend, parent: nil)
+    expect(backend.records[cellHandle]?.kind != "view",
+           "A cell-based table wrongly used the drawn peer. Got \(backend.records[cellHandle]?.kind ?? "nil").")
+}
+
+testTableViewAutoDetectsViewBasedModeFromDelegate()
+
+final class ReorderableTableDataSource: NSTableViewDataSource {
+    var items = ["alpha", "bravo", "charlie", "delta"]
+    func numberOfRows(in tableView: NSTableView) -> Int { items.count }
+    func tableView(_ tableView: NSTableView, objectValueFor tableColumn: NSTableColumn?, row: Int) -> Any? { items[row] }
+}
+
+/// A table that accepts an external text drop as a new row at the drop index.
+final class DropTargetTableDataSource: NSTableViewDataSource {
+    var items = ["alpha", "bravo"]
+    func numberOfRows(in tableView: NSTableView) -> Int { items.count }
+    func tableView(_ tableView: NSTableView, objectValueFor tableColumn: NSTableColumn?, row: Int) -> Any? { items[row] }
+    func tableView(_ tableView: NSTableView, acceptDrop info: NSDraggingInfo, row: Int) -> Bool {
+        guard let text = info.draggingPasteboard.string(forType: .string) else { return false }
+        items.insert(text, at: max(0, min(row, items.count)))
+        return true
+    }
+}
+
+func testDrawnTableAcceptsExternalRowDrop() {
+    let backend = InMemoryNativeControlBackend()
+    let tableView = NSTableView(frame: NSMakeRect(0, 0, 200, 200))
+    let dataSource = DropTargetTableDataSource()
+    let column = NSTableColumn(identifier: "name")
+    column.width = 180
+    tableView.addTableColumn(column)
+    tableView.dataSource = dataSource
+    tableView.winUsesViewBasedCells = true
+
+    let handle = tableView.realizeNativePeer(in: backend, parent: nil)
+    tableView.registerForDraggedTypes([.string])
+
+    // Drop "charlie" at the very top → inserted as the new first row.
+    let dropped = backend.simulateDrop(content: NativeDropContent(text: "charlie", filePaths: []),
+                                       at: NSMakePoint(20, 2), for: handle)
+    expect(dropped, "External drop was not accepted by the table.")
+    expect(dataSource.items == ["charlie", "alpha", "bravo"],
+           "Dropped text was not inserted at the drop row. Got \(dataSource.items).")
+
+    // A table not registered for the dragged type refuses the drop.
+    let backend2 = InMemoryNativeControlBackend()
+    let plain = NSTableView(frame: NSMakeRect(0, 0, 200, 200))
+    let ds2 = DropTargetTableDataSource()
+    let col2 = NSTableColumn(identifier: "n")
+    col2.width = 180
+    plain.addTableColumn(col2)
+    plain.dataSource = ds2
+    plain.winUsesViewBasedCells = true
+    let handle2 = plain.realizeNativePeer(in: backend2, parent: nil)
+    let refused = backend2.simulateDrop(content: NativeDropContent(text: "x", filePaths: []),
+                                        at: NSMakePoint(20, 2), for: handle2)
+    expect(!refused, "A table not registered for drops accepted one.")
+    expect(ds2.items == ["alpha", "bravo"], "A refused drop still mutated the model.")
+}
+
+/// A read-only table whose rows drag out as their text (a pasteboard writer).
+final class PasteboardRowDataSource: NSTableViewDataSource {
+    let items = ["alpha", "bravo", "charlie", "delta"]
+    func numberOfRows(in tableView: NSTableView) -> Int { items.count }
+    func tableView(_ tableView: NSTableView, objectValueFor tableColumn: NSTableColumn?, row: Int) -> Any? { items[row] }
+    func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> Any? { items[row] }
+}
+
+func testDrawnTableRowDragsOutViaPasteboardWriter() {
+    let backend = InMemoryNativeControlBackend()
+    let tableView = NSTableView(frame: NSMakeRect(0, 0, 200, 300))
+    let dataSource = PasteboardRowDataSource()
+    let column = NSTableColumn(identifier: "name")
+    column.width = 180
+    tableView.addTableColumn(column)
+    tableView.dataSource = dataSource
+    let delegate = ViewBasedTableDelegate()
+    tableView.delegate = delegate
+    // No winRowReorderHandler → a row drag goes out as a system/OLE drag.
+
+    let handle = tableView.realizeNativePeer(in: backend, parent: nil)
+    // Press row 1 (arms the external drag) then move to start it.
+    let header: CGFloat = 24
+    backend.mouseDownActions[handle]?(NSEvent(type: .leftMouseDown, locationInWindow: NSMakePoint(20, header + 1 * 24 + 6)))
+    backend.mouseDraggedActions[handle]?(NSEvent(type: .leftMouseDragged, locationInWindow: NSMakePoint(60, header + 1 * 24 + 6)))
+
+    expect(backend.performedDrags.count == 1,
+           "Dragging a row with a pasteboard writer did not start a system drag. Got \(backend.performedDrags.count).")
+    expect(backend.performedDrags.first?.content.text == "bravo",
+           "The row drag carried the wrong pasteboard text. Got \(String(describing: backend.performedDrags.first?.content.text)).")
+
+    // A table whose data source vends no writer does not start a drag.
+    let backend2 = InMemoryNativeControlBackend()
+    let plain = NSTableView(frame: NSMakeRect(0, 0, 200, 300))
+    let plainSource = ReorderableTableDataSource()
+    let col2 = NSTableColumn(identifier: "n")
+    col2.width = 180
+    plain.addTableColumn(col2)
+    plain.dataSource = plainSource
+    plain.delegate = delegate
+    let handle2 = plain.realizeNativePeer(in: backend2, parent: nil)
+    backend2.mouseDownActions[handle2]?(NSEvent(type: .leftMouseDown, locationInWindow: NSMakePoint(20, header + 6)))
+    backend2.mouseDraggedActions[handle2]?(NSEvent(type: .leftMouseDragged, locationInWindow: NSMakePoint(60, header + 6)))
+    expect(backend2.performedDrags.isEmpty, "A row with no pasteboard writer should not start a system drag.")
+}
+
+func testDrawnTableRowReorderDragMovesRow() {
+    let backend = InMemoryNativeControlBackend()
+    let tableView = NSTableView(frame: NSMakeRect(0, 0, 200, 300))
+    let dataSource = ReorderableTableDataSource()
+    let column = NSTableColumn(identifier: "name")
+    column.width = 180
+    tableView.addTableColumn(column)
+    tableView.dataSource = dataSource
+    let delegate = ViewBasedTableDelegate()
+    tableView.delegate = delegate
+
+    var reorderCalls: [(rows: IndexSet, to: Int)] = []
+    tableView.winRowReorderHandler = { rows, to in
+        reorderCalls.append((rows, to))
+        let sorted = rows.sorted()
+        let dest = to - sorted.filter { $0 < to }.count
+        let moving = sorted.map { dataSource.items[$0] }
+        for r in sorted.reversed() { dataSource.items.remove(at: r) }
+        dataSource.items.insert(contentsOf: moving, at: dest)
+    }
+
+    let handle = tableView.realizeNativePeer(in: backend, parent: nil)
+    // Header is 24pt (column has a default title); rows are 24pt each below it.
+    // Press row 1 ("bravo"), drag past row 2, drop before row 3 (index 3).
+    let header: CGFloat = 24
+    backend.mouseDownActions[handle]?(NSEvent(type: .leftMouseDown, locationInWindow: NSMakePoint(10, header + 1 * 24 + 6)))
+    backend.mouseDraggedActions[handle]?(NSEvent(type: .leftMouseDragged, locationInWindow: NSMakePoint(10, header + 3 * 24 + 4)))
+    backend.mouseUpActions[handle]?(NSEvent(type: .leftMouseUp, locationInWindow: NSMakePoint(10, header + 3 * 24 + 4)))
+
+    expect(reorderCalls.count == 1, "Reorder handler was not called once. Got \(reorderCalls.count).")
+    expect(reorderCalls.first?.rows == IndexSet(integer: 1) && reorderCalls.first?.to == 3,
+           "Reorder handler received wrong indices. Got \(String(describing: reorderCalls.first)).")
+    expect(dataSource.items == ["alpha", "charlie", "bravo", "delta"],
+           "Row reorder did not move 'bravo' after 'charlie'. Got \(dataSource.items).")
+}
+
+func testDrawnTableMultiRowReorderMovesSelection() {
+    let backend = InMemoryNativeControlBackend()
+    let tableView = NSTableView(frame: NSMakeRect(0, 0, 200, 300))
+    let dataSource = ReorderableTableDataSource()  // alpha, bravo, charlie, delta
+    let column = NSTableColumn(identifier: "name")
+    column.width = 180
+    tableView.addTableColumn(column)
+    tableView.dataSource = dataSource
+    tableView.allowsMultipleSelection = true
+    let delegate = ViewBasedTableDelegate()
+    tableView.delegate = delegate
+    tableView.winRowReorderHandler = { rows, to in
+        let sorted = rows.sorted()
+        let dest = to - sorted.filter { $0 < to }.count
+        let moving = sorted.map { dataSource.items[$0] }
+        for r in sorted.reversed() { dataSource.items.remove(at: r) }
+        dataSource.items.insert(contentsOf: moving, at: dest)
+    }
+
+    let handle = tableView.realizeNativePeer(in: backend, parent: nil)
+    // Select rows 0 and 1 (alpha, bravo), then drag from row 0 (no modifier —
+    // the selection must survive so all selected rows drag together) to the end.
+    tableView.selectRowIndexes([0, 1], byExtendingSelection: false)
+    let header: CGFloat = 24
+    backend.mouseDownActions[handle]?(NSEvent(type: .leftMouseDown, locationInWindow: NSMakePoint(10, header + 0 * 24 + 6)))
+    backend.mouseDraggedActions[handle]?(NSEvent(type: .leftMouseDragged, locationInWindow: NSMakePoint(10, header + 4 * 24)))
+    backend.mouseUpActions[handle]?(NSEvent(type: .leftMouseUp, locationInWindow: NSMakePoint(10, header + 4 * 24)))
+
+    // Both selected rows move to the end, keeping their order.
+    expect(dataSource.items == ["charlie", "delta", "alpha", "bravo"],
+           "Multi-row reorder did not move the selection to the end. Got \(dataSource.items).")
+}
+
+func testTableHeaderViewTracksClickedColumnAndGeometry() {
+    let backend = InMemoryNativeControlBackend()
+    let tableView = NSTableView(frame: NSMakeRect(0, 0, 300, 160))
+    let dataSource = ManyRowTableDataSource(count: 3)
+    let colA = NSTableColumn(identifier: "a")
+    colA.title = "A"
+    colA.width = 100
+    colA.sortDescriptorPrototype = NSSortDescriptor(key: "a", ascending: true)
+    let colB = NSTableColumn(identifier: "b")
+    colB.title = "B"
+    colB.width = 120
+    colB.sortDescriptorPrototype = NSSortDescriptor(key: "b", ascending: true)
+    tableView.addTableColumn(colA)
+    tableView.addTableColumn(colB)
+    tableView.dataSource = dataSource
+    let delegate = ViewBasedTableDelegate()
+    tableView.delegate = delegate
+
+    // The header view is auto-created and linked to its table.
+    expect(tableView.headerView != nil, "Table did not auto-create a header view.")
+    expect(tableView.headerView?.tableView === tableView, "Header view was not linked to its table.")
+
+    // Geometry: column B starts after column A's 100pt width.
+    expect(tableView.headerView?.headerRect(ofColumn: 1) == NSMakeRect(100, 0, 120, 24),
+           "Header rect for column 1 was wrong. Got \(tableView.headerView?.headerRect(ofColumn: 1) ?? .zero).")
+    expect(tableView.headerView?.column(at: NSMakePoint(150, 5)) == 1,
+           "columnAtPoint did not resolve to column 1.")
+
+    let handle = tableView.realizeNativePeer(in: backend, parent: nil)
+
+    // Clicking column B's header (y in the 24pt header band) records it.
+    backend.mouseDownActions[handle]?(NSEvent(type: .leftMouseDown, locationInWindow: NSMakePoint(150, 8)))
+    expect(tableView.headerView?.clickedColumn == 1, "Header click did not record clickedColumn. Got \(tableView.headerView?.clickedColumn ?? -99).")
+    expect(tableView.sortDescriptors.first?.key == "b", "Header click did not apply column B's sort prototype.")
+}
+
+testTableHeaderViewTracksClickedColumnAndGeometry()
+testDrawnTableRowReorderDragMovesRow()
+testDrawnTableMultiRowReorderMovesSelection()
+testDrawnTableRowDragsOutViaPasteboardWriter()
+testDrawnTableAcceptsExternalRowDrop()
 
 print("WinChocolate contract tests passed.")

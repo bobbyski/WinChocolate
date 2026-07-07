@@ -20,18 +20,38 @@ public extension NSOutlineViewDataSource {
     }
 }
 
+/// Delegate that can vend per-column cell views for an outline's items,
+/// matching AppKit's `NSOutlineViewDelegate` view-based hook.
+public protocol NSOutlineViewDelegate: AnyObject {
+    /// Returns a view to host for a column and item, or `nil` for drawn text.
+    func outlineView(_ outlineView: NSOutlineView, viewFor tableColumn: NSTableColumn?, item: Any) -> NSView?
+}
+
+public extension NSOutlineViewDelegate {
+    /// Default: no hosted view (the outline draws text for the cell).
+    func outlineView(_ outlineView: NSOutlineView, viewFor tableColumn: NSTableColumn?, item: Any) -> NSView? {
+        nil
+    }
+}
+
 /// A tree-shaped table view.
 ///
-/// This first slice keeps AppKit's outline data-source shape and flattens the
-/// visible tree into the existing table backend. It does not yet draw disclosure
-/// triangles; indentation is represented in the first column text.
+/// Built on the framework-drawn table: the visible tree is flattened into the
+/// table backend, and the outline draws a real **disclosure triangle** and
+/// per-level indentation on its first column (via the drawn-cell hooks), with
+/// clicks on the triangle expanding/collapsing the item.
 open class NSOutlineView: NSTableView {
     private struct OutlineRow {
         var item: Any
         var level: Int
+        var parent: Any?
     }
 
-    private final class OutlineTableAdapter: NSTableViewDataSource {
+    /// Horizontal space reserved for the disclosure triangle on the first
+    /// column, ahead of the cell text.
+    private let disclosureWidth: CGFloat = 14
+
+    private final class OutlineTableAdapter: NSTableViewDataSource, NSTableViewDelegate {
         weak var owner: NSOutlineView?
 
         func numberOfRows(in tableView: NSTableView) -> Int {
@@ -40,6 +60,12 @@ open class NSOutlineView: NSTableView {
 
         func tableView(_ tableView: NSTableView, objectValueFor tableColumn: NSTableColumn?, row: Int) -> Any? {
             owner?.objectValue(for: tableColumn, row: row)
+        }
+
+        /// Bridges the drawn table's per-cell view request to the outline
+        /// delegate's item-based hook.
+        func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
+            owner?.hostedView(for: tableColumn, row: row)
         }
     }
 
@@ -54,6 +80,22 @@ open class NSOutlineView: NSTableView {
         }
     }
 
+    /// Object that can vend per-column cell views for items (view-based outline).
+    open weak var outlineDelegate: NSOutlineViewDelegate? {
+        didSet {
+            reloadData()
+        }
+    }
+
+    /// Bridges a drawn-cell view request (column, row) to the outline delegate's
+    /// item-based hook. Returns `nil` — drawn text — when no delegate view.
+    func hostedView(for tableColumn: NSTableColumn?, row: Int) -> NSView? {
+        guard let outlineDelegate, visibleRows.indices.contains(row) else {
+            return nil
+        }
+        return outlineDelegate.outlineView(self, viewFor: tableColumn, item: visibleRows[row].item)
+    }
+
     /// Width used for each indentation level in the first column.
     open var indentationPerLevel: CGFloat = 16
 
@@ -65,6 +107,12 @@ open class NSOutlineView: NSTableView {
         super.init(frame: frameRect)
         outlineAdapter.owner = self
         dataSource = outlineAdapter
+        // The adapter is also the table delegate: it bridges per-cell view
+        // requests to the outline delegate's item-based hook.
+        delegate = outlineAdapter
+        // Outlines always use the framework-drawn table so they can draw
+        // disclosure triangles and indentation themselves.
+        winUsesViewBasedCells = true
     }
 
     /// Reloads the visible outline rows.
@@ -159,6 +207,88 @@ open class NSOutlineView: NSTableView {
         level(forRow: row(forItem: item))
     }
 
+    // MARK: Drag reordering
+
+    /// Set to enable drag-to-reorder of outline rows. On a drop, the outline
+    /// reports the dragged item, the proposed target parent, and the child index
+    /// under that parent (AppKit's `acceptDrop` shape); the handler moves the
+    /// item in the backing model and the outline reloads.
+    ///
+    /// The target parent is derived from the row just above the drop, so drops
+    /// can **reparent** (cross-level), not just reorder siblings: dropping right
+    /// below an expanded branch inserts as that branch's first child; otherwise
+    /// the drop joins the parent of the row above it. A drop that would move an
+    /// item into itself or its own subtree is rejected.
+    open var winOutlineReorderHandler: ((_ movedItem: Any, _ parent: Any?, _ childIndex: Int) -> Void)? {
+        didSet { installOutlineReorderBridge() }
+    }
+
+    private func installOutlineReorderBridge() {
+        guard winOutlineReorderHandler != nil else {
+            winRowReorderHandler = nil
+            return
+        }
+        winRowReorderHandler = { [weak self] fromRows, toIndex in
+            self?.handleOutlineReorder(fromRows: fromRows, toIndex: toIndex)
+        }
+    }
+
+    private func handleOutlineReorder(fromRows: IndexSet, toIndex: Int) {
+        guard let fromRow = fromRows.first,
+              visibleRows.indices.contains(fromRow),
+              let handler = winOutlineReorderHandler else {
+            return
+        }
+        let moved = visibleRows[fromRow]
+
+        // Derive the target parent from the row just above the drop position.
+        // Dropping directly under an expanded branch reparents into it; anything
+        // else joins the parent of the row above (the root when at the top).
+        let targetParent: Any?
+        if toIndex <= 0 {
+            targetParent = nil
+        } else {
+            let above = visibleRows[min(toIndex, visibleRows.count) - 1]
+            if isItemExpandable(above.item), isItemExpanded(above.item) {
+                targetParent = above.item
+            } else {
+                targetParent = above.parent
+            }
+        }
+
+        // Never move an item into itself or its own subtree.
+        if let targetParent, isItem(targetParent, descendantOfOrEqualTo: moved.item) {
+            return
+        }
+
+        // The proposed child index is the count of the target parent's visible
+        // direct children that sit strictly above the drop position. (All direct
+        // children — expanded or collapsed — appear in `visibleRows`, so this is
+        // the true model child index.)
+        let parentKey = targetParent.map { key(for: $0) }
+        let siblingRows = visibleRows.indices.filter { idx in
+            visibleRows[idx].parent.map { key(for: $0) } == parentKey
+        }
+        let targetChildIndex = siblingRows.filter { $0 < toIndex }.count
+        handler(moved.item, targetParent, targetChildIndex)
+        reloadData()
+    }
+
+    /// Whether `candidate` is `ancestor` itself or sits within its subtree, by
+    /// walking the visible parent chain up from `candidate`.
+    private func isItem(_ candidate: Any, descendantOfOrEqualTo ancestor: Any) -> Bool {
+        let ancestorKey = key(for: ancestor)
+        var current: Any? = candidate
+        while let node = current {
+            if key(for: node) == ancestorKey {
+                return true
+            }
+            let nodeKey = key(for: node)
+            current = visibleRows.first { key(for: $0.item) == nodeKey }?.parent
+        }
+        return false
+    }
+
     private func rebuildVisibleRows() {
         visibleRows.removeAll()
         appendChildren(of: nil, level: 0)
@@ -176,7 +306,7 @@ open class NSOutlineView: NSTableView {
 
         for index in 0..<count {
             let child = outlineDataSource.outlineView(self, child: index, ofItem: item)
-            visibleRows.append(OutlineRow(item: child, level: level))
+            visibleRows.append(OutlineRow(item: child, level: level, parent: item))
             if outlineDataSource.outlineView(self, isItemExpandable: child),
                expandedItemKeys.contains(key(for: child)) {
                 appendChildren(of: child, level: level + 1)
@@ -193,7 +323,11 @@ open class NSOutlineView: NSTableView {
         let value = outlineDataSource?.outlineView(self, objectValueFor: tableColumn, byItem: outlineRow.item)
             ?? String(describing: outlineRow.item)
 
-        guard showsDisclosureText,
+        // Indentation and the disclosure triangle are drawn (see the hooks
+        // below), so the first column keeps plain text — unless a caller opts
+        // back into legacy text markers via `showsDisclosureText` with the
+        // drawn path disabled.
+        guard showsDisclosureText, !winUsesViewBasedCells,
               tableColumns.first === tableColumn else {
             return value
         }
@@ -211,5 +345,61 @@ open class NSOutlineView: NSTableView {
 
     private func key(for item: Any) -> String {
         String(describing: item)
+    }
+
+    // MARK: Drawn disclosure triangle + indentation
+
+    /// The x of the disclosure triangle's left edge for a row's first column.
+    private func disclosureX(forRow row: Int, cellRect: NSRect) -> CGFloat {
+        cellRect.minX + 4 + CGFloat(visibleRows[row].level) * indentationPerLevel
+    }
+
+    /// First-column content is inset by the level's indentation plus the
+    /// disclosure-triangle column.
+    open override func winDrawnLeadingInset(forRow row: Int, column: Int) -> CGFloat {
+        guard column == 0, visibleRows.indices.contains(row) else {
+            return 0
+        }
+        return CGFloat(visibleRows[row].level) * indentationPerLevel + disclosureWidth
+    }
+
+    /// Draws the disclosure triangle for expandable items on the first column.
+    open override func winDrawnDrawDecoration(forRow row: Int, column: Int, cellRect: NSRect) {
+        guard column == 0, visibleRows.indices.contains(row),
+              isItemExpandable(visibleRows[row].item) else {
+            return
+        }
+        let x = disclosureX(forRow: row, cellRect: cellRect)
+        let cy = cellRect.midY
+        let path = NSBezierPath()
+        if isItemExpanded(visibleRows[row].item) {
+            // Pointing down (expanded).
+            path.move(to: NSMakePoint(x, cy - 2))
+            path.line(to: NSMakePoint(x + 8, cy - 2))
+            path.line(to: NSMakePoint(x + 4, cy + 4))
+        } else {
+            // Pointing right (collapsed).
+            path.move(to: NSMakePoint(x, cy - 4))
+            path.line(to: NSMakePoint(x + 6, cy))
+            path.line(to: NSMakePoint(x, cy + 4))
+        }
+        path.close()
+        NSColor(white: 0.35, alpha: 1).setFill()
+        path.fill()
+    }
+
+    /// A click on the disclosure triangle toggles the item instead of selecting.
+    open override func winDrawnHandleDecorationClick(forRow row: Int, column: Int, at point: NSPoint) -> Bool {
+        guard column == 0, visibleRows.indices.contains(row),
+              isItemExpandable(visibleRows[row].item) else {
+            return false
+        }
+        let cellRect = winCellRect(row: row, column: 0)
+        let x = disclosureX(forRow: row, cellRect: cellRect)
+        if point.x >= x - 3, point.x <= x + 12 {
+            toggleItem(visibleRows[row].item)
+            return true
+        }
+        return false
     }
 }

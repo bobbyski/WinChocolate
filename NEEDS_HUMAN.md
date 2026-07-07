@@ -2,6 +2,7 @@
 
 | Item | Reason | Reviewed | Human Accepted |
 |---|---|---:|---:|
+| WinFoundation downstream API freeze (WinSwiftData) | The external WinSwiftData project consumes the `WinFoundation` library product via a read-only path dependency. Since 7.10 the package is the standalone `Code/WinChocolate/WinFoundation/` (WinSwiftData must re-point its path dependency there — one line; coordinate via the user). Keep stable: that package location, the `WinFoundation` product name, and `Date.timeIntervalSince1970`/`Date(timeIntervalSince1970:)`, `UUID.uuidString`/`UUID(uuidString:)`, `Data.array`/`Data(_ sequence:)`. Renames/removals need coordination through the user. | [ ] | [ ] |
 | Win32 native backend FFI | The backend now uses manual User32/Gdi32 declarations because this ARM64 Swift toolchain cannot import `WinSDK`; the declarations should be reviewed before broadening the API surface. | [ ] | [ ] |
 | Keyboard modifiers on real hardware | VM and remote keyboard layers can remap Command/Windows/Alt into Control or system shortcuts before WinChocolate sees them; modifier behavior should be checked on a real Windows PC. | [ ] | [ ] |
 | Alert focus recovery after native MessageBoxW | After dismissing the demo `NSAlert`, keyboard focus can stop moving until the user clicks back in the window. `NSAlert.runModal()` now restores AppKit-side key/main window and first responder, but the classic Win32 `MessageBoxW` path still appears to need a native activation/focus-message fix or a custom alert dialog backend. | [ ] | [ ] |

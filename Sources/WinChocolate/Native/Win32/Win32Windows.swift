@@ -52,6 +52,30 @@ extension Win32NativeControlBackend {
             return NativeHandle(rawValue: 0)
         }
 
+        // A dark effective appearance gets the dark (immersive) title bar and
+        // opts the process's popup menus into the system dark menu theme.
+        // Resolved at creation, like every appearance-derived visual.
+        if NSApplication.shared.effectiveAppearance.winIsDark {
+            var enabled: Int32 = 1
+            _ = winDwmSetWindowAttribute(
+                hwnd, winDWMWAUseImmersiveDarkMode,
+                &enabled, DWORD(MemoryLayout<Int32>.size)
+            )
+            Self.enableDarkMenusIfNeeded()
+        }
+
+        // The modern presentation asks Windows 11 for Fluent rounded corners
+        // on every top-level window — framed windows already have them, and
+        // this extends the look to borderless framework popups (popovers,
+        // panels). A quiet no-op on Windows 10.
+        if WinPresentation.selected == .modern {
+            var corner = winDWMWCPRound
+            _ = winDwmSetWindowAttribute(
+                hwnd, winDWMWAWindowCornerPreference,
+                &corner, DWORD(MemoryLayout<Int32>.size)
+            )
+        }
+
         let handle = nativeHandle(from: hwnd)
         windowHandles.insert(handle)
         windowStyles[handle.rawValue] = style

@@ -554,6 +554,23 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     /// The screen frame returned to placement logic, settable for tests.
     public var testScreenFrame = NSRect(x: 0, y: 0, width: 1024, height: 768)
 
+    /// Scripted system theme: set to simulate Windows dark mode in tests.
+    public var simulatedDarkAppearance = false
+
+    /// Returns the scripted system theme preference.
+    public func systemPrefersDarkAppearance() -> Bool {
+        simulatedDarkAppearance
+    }
+
+    /// Scripted system accent color; `nil` (the default) keeps the fallback
+    /// palette so color assertions stay machine-independent.
+    public var simulatedAccentColor: NSColor?
+
+    /// Returns the scripted accent color.
+    public func systemAccentColor() -> NSColor? {
+        simulatedAccentColor
+    }
+
     /// Returns the (test-configurable) primary screen frame.
     public func primaryScreenFrame() -> NSRect {
         testScreenFrame
@@ -1779,6 +1796,8 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
 
     /// Handles that requested a repaint, in request order.
     public private(set) var invalidatedHandles: [NativeHandle] = []
+    /// Handles invalidated together with their descendant tree.
+    public private(set) var invalidatedTreeHandles: [NativeHandle] = []
 
     /// Records a right mouse-down action.
     public func registerRightMouseDownAction(for handle: NativeHandle, action: @escaping (NSEvent) -> Void) {
@@ -1813,6 +1832,18 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     /// Records a repaint request.
     public func invalidateControl(_ handle: NativeHandle) {
         invalidatedHandles.append(handle)
+    }
+
+    /// Records a repaint request for a control and its descendants.
+    public func invalidateControlTree(_ handle: NativeHandle) {
+        invalidatedHandles.append(handle)
+        invalidatedTreeHandles.append(handle)
+    }
+
+    /// Records a synchronous repaint request.
+    public func redrawControlImmediately(_ handle: NativeHandle) {
+        invalidatedHandles.append(handle)
+        invalidatedTreeHandles.append(handle)
     }
 
     /// Runs a handle's registered draw action and returns the recorded commands.
