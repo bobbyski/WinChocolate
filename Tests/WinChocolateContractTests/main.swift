@@ -4404,6 +4404,33 @@ func testDarkAppearanceDrivesDynamicColorsAndDrawnTable() {
     expect(title.color.whiteComponent > 0.5, "The dark header title should be light.")
 }
 
+/// Records the current-drawing appearance seen inside `draw(_:)`.
+final class AppearanceProbeView: NSView {
+    var drawnAppearance: NSAppearance.Name?
+    override func draw(_ dirtyRect: NSRect) {
+        drawnAppearance = NSAppearance.currentDrawing().name
+    }
+}
+
+func testCurrentDrawingAppearanceFollowsTheDrawingView() {
+    // Outside a draw pass, currentDrawing falls back to the application's
+    // effective appearance (the suite's light pin).
+    expect(NSAppearance.currentDrawing().name == .aqua,
+           "Outside a draw pass currentDrawing should be the app appearance.")
+
+    // During a draw pass it is the drawing view's effective appearance —
+    // here an explicit per-view dark override on a light app.
+    let backend = InMemoryNativeControlBackend()
+    let view = AppearanceProbeView(frame: NSMakeRect(0, 0, 40, 40))
+    view.appearance = NSAppearance(named: .darkAqua)
+    let handle = view.realizeNativePeer(in: backend, parent: nil)
+    _ = backend.performDraw(for: handle, in: view.bounds)
+    expect(view.drawnAppearance == .darkAqua,
+           "currentDrawing inside draw should be the view's effective appearance.")
+    expect(NSAppearance.currentDrawing().name == .aqua,
+           "currentDrawing should restore after the draw pass.")
+}
+
 func testToolbarStripGoesDarkUnderDarkAppearance() {
     NSApplication.shared.appearance = NSAppearance(named: .darkAqua)
     defer { NSApplication.shared.appearance = NSAppearance(named: .aqua) }
@@ -4420,6 +4447,31 @@ func testToolbarStripGoesDarkUnderDarkAppearance() {
     }
     expect(strip.whiteComponent < 0.3,
            "The unified toolbar strip should be dark under the dark appearance. Got \(strip).")
+}
+
+func testSystemAccentColorDrivesAccentAndSelection() {
+    let backend = InMemoryNativeControlBackend()
+    let previous = NSApplication.shared.nativeBackend
+    NSApplication.shared.nativeBackend = backend
+    defer { NSApplication.shared.nativeBackend = previous }
+
+    // No system accent → the blue base and the stock selection pair.
+    expect(NSColor.controlAccentColor == .systemBlue,
+           "Without a system accent the control accent should be the blue base.")
+    let stockSelection = NSColor.selectedTextBackgroundColor
+
+    // A scripted accent drives the accent color and tints the selection.
+    let accent = NSColor(calibratedRed: 0.8, green: 0.2, blue: 0.4, alpha: 1)
+    backend.simulatedAccentColor = accent
+    expect(NSColor.controlAccentColor == accent,
+           "The control accent should be the system accent color.")
+    let tinted = NSColor.selectedTextBackgroundColor
+    expect(tinted != stockSelection,
+           "The selection background should follow the accent color.")
+    expect(tinted.redComponent > tinted.blueComponent,
+           "The selection tint should keep the accent's hue balance.")
+    expect(tinted.whiteComponent > accent.whiteComponent,
+           "The light-appearance selection tint should be lighter than the accent.")
 }
 
 func testStringEncodingIORoundTrips() {
@@ -8554,6 +8606,8 @@ testDrawnTableModernPresentationRestylesHeaderChrome()
 testAppearanceResolvesSystemThemeAndOverrides()
 testDarkAppearanceDrivesDynamicColorsAndDrawnTable()
 testToolbarStripGoesDarkUnderDarkAppearance()
+testCurrentDrawingAppearanceFollowsTheDrawingView()
+testSystemAccentColorDrivesAccentAndSelection()
 testStringEncodingIORoundTrips()
 testWindowToolbarCreatesDockedComposedHostAndReservesContent()
 testEditableTextFieldUsesEditableNativePeer()

@@ -158,16 +158,27 @@ extension NSColor {
     }
     /// Link color.
     public static var linkColor: NSColor { systemBlue }
-    /// The control accent color.
-    public static var controlAccentColor: NSColor { systemBlue }
+    /// The control accent color: the user's Windows accent color when the
+    /// system provides one (the Fluent look, plan 8.3), else the blue base.
+    public static var controlAccentColor: NSColor {
+        NSApplication.shared.nativeBackend.systemAccentColor() ?? systemBlue
+    }
     /// Selected text color.
     public static var selectedTextColor: NSColor {
         winDynamic(light: black, dark: white)
     }
-    /// Selected text background color.
+    /// Selected text background color: a light/dark tint of the user's
+    /// accent color when available, else the fallback blue pair.
     public static var selectedTextBackgroundColor: NSColor {
-        winDynamic(light: NSColor(red: 0.70, green: 0.85, blue: 1.0, alpha: 1),
-                   dark: NSColor(red: 0.15, green: 0.32, blue: 0.55, alpha: 1))
+        if let accent = NSApplication.shared.nativeBackend.systemAccentColor() {
+            let tinted = winDynamic(
+                light: accent.blended(withFraction: 0.72, of: white) ?? accent,
+                dark: accent.blended(withFraction: 0.5, of: black) ?? accent
+            )
+            return tinted
+        }
+        return winDynamic(light: NSColor(red: 0.70, green: 0.85, blue: 1.0, alpha: 1),
+                          dark: NSColor(red: 0.15, green: 0.32, blue: 0.55, alpha: 1))
     }
     /// Control background color.
     public static var controlBackgroundColor: NSColor {

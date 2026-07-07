@@ -101,9 +101,14 @@ extension Win32NativeControlBackend {
                     let height = max(Int32(frame.size.height.rounded()), minHeight)
                     _ = winSetWindowPos(hwnd, nil, 0, 0, width, height, swpNoMove | swpNoZOrder | swpNoActivate)
                 }
+                applyDarkCalendarColorsIfNeeded(hwnd)
             }
         } else {
             subclassControlForTabKey(handle)
+            // The drop-down calendar honors the same explicit palette.
+            if let hwnd = hwnd(from: handle) {
+                applyDarkDropDownCalendarColorsIfNeeded(hwnd)
+            }
         }
         setDatePickerDate(date, minDate: minDate, maxDate: maxDate, for: handle)
         return handle

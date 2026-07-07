@@ -64,6 +64,18 @@ extension Win32NativeControlBackend {
             Self.enableDarkMenusIfNeeded()
         }
 
+        // The modern presentation asks Windows 11 for Fluent rounded corners
+        // on every top-level window — framed windows already have them, and
+        // this extends the look to borderless framework popups (popovers,
+        // panels). A quiet no-op on Windows 10.
+        if WinPresentation.selected == .modern {
+            var corner = winDWMWCPRound
+            _ = winDwmSetWindowAttribute(
+                hwnd, winDWMWAWindowCornerPreference,
+                &corner, DWORD(MemoryLayout<Int32>.size)
+            )
+        }
+
         let handle = nativeHandle(from: hwnd)
         windowHandles.insert(handle)
         windowStyles[handle.rawValue] = style

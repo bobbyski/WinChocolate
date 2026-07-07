@@ -562,6 +562,15 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
         simulatedDarkAppearance
     }
 
+    /// Scripted system accent color; `nil` (the default) keeps the fallback
+    /// palette so color assertions stay machine-independent.
+    public var simulatedAccentColor: NSColor?
+
+    /// Returns the scripted accent color.
+    public func systemAccentColor() -> NSColor? {
+        simulatedAccentColor
+    }
+
     /// Returns the (test-configurable) primary screen frame.
     public func primaryScreenFrame() -> NSRect {
         testScreenFrame

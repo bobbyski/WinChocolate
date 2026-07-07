@@ -612,6 +612,10 @@ func winDwmSetWindowAttribute(
 /// `DWMWA_USE_IMMERSIVE_DARK_MODE` (Windows 10 20H1+).
 let winDWMWAUseImmersiveDarkMode: DWORD = 20
 
+/// `DWMWA_WINDOW_CORNER_PREFERENCE` (Windows 11) and `DWMWCP_ROUND`.
+let winDWMWAWindowCornerPreference: DWORD = 33
+let winDWMWCPRound: Int32 = 2
+
 // Visual-styles subclass selection (UxTheme) — used for dark control themes.
 @_silgen_name("SetWindowTheme")
 func winSetWindowTheme(
@@ -619,6 +623,104 @@ func winSetWindowTheme(
     _ subAppName: UnsafePointer<UInt16>?,
     _ subIdList: UnsafePointer<UInt16>?
 ) -> Int32
+
+// MARK: - Dark menu-bar owner draw (undocumented UAH messages)
+
+/// `WM_UAHDRAWMENU`: sent to draw the menu-bar background.
+let wmUAHDrawMenu: UINT = 0x0091
+/// `WM_UAHDRAWMENUITEM`: sent to draw one menu-bar item.
+let wmUAHDrawMenuItem: UINT = 0x0092
+
+/// The `DRAWITEMSTRUCT` layout embedded in `UAHDRAWMENUITEM`.
+struct DRAWITEMSTRUCT {
+    var CtlType: UINT = 0
+    var CtlID: UINT = 0
+    var itemID: UINT = 0
+    var itemAction: UINT = 0
+    var itemState: UINT = 0
+    var hwndItem: HWND?
+    var hDC: HDC?
+    var rcItem: RECT = RECT()
+    var itemData: UInt = 0
+}
+
+/// `UAHMENU` (undocumented): the menu and DC for a UAH draw message.
+///
+/// The trailing padding field is load-bearing: C sizes this struct to 24
+/// bytes (8-byte alignment), but Swift lays out an embedded struct by its
+/// 20-byte *size*, which would shift every `UAHMENUITEM` field that follows
+/// it in `UAHDRAWMENUITEM` by 4 bytes (the "every menu item draws the first
+/// title" bug).
+struct UAHMENU {
+    var hmenu: HMENU?
+    var hdc: HDC?
+    var dwFlags: DWORD = 0
+    var winTailPadding: DWORD = 0
+}
+
+/// `UAHMENUITEMMETRICS` (undocumented): four size pairs.
+struct UAHMENUITEMMETRICS {
+    var rgSizes: (DWORD, DWORD, DWORD, DWORD, DWORD, DWORD, DWORD, DWORD) = (0, 0, 0, 0, 0, 0, 0, 0)
+}
+
+/// `UAHMENUPOPUPMETRICS` (undocumented).
+struct UAHMENUPOPUPMETRICS {
+    var rgcx: (DWORD, DWORD, DWORD, DWORD) = (0, 0, 0, 0)
+    var fUpdateMaxWidths: DWORD = 0
+}
+
+/// `UAHMENUITEM` (undocumented): the item position and metrics.
+struct UAHMENUITEM {
+    var iPosition: Int32 = 0
+    var umim = UAHMENUITEMMETRICS()
+    var umpm = UAHMENUPOPUPMETRICS()
+}
+
+/// `UAHDRAWMENUITEM` (undocumented): the `WM_UAHDRAWMENUITEM` payload.
+struct UAHDRAWMENUITEM {
+    var dis = DRAWITEMSTRUCT()
+    var um = UAHMENU()
+    var umi = UAHMENUITEM()
+}
+
+/// `MENUBARINFO` for `GetMenuBarInfo`.
+struct MENUBARINFO {
+    var cbSize: DWORD = 0
+    var rcBar: RECT = RECT()
+    var hMenu: HMENU?
+    var hwndMenu: HWND?
+    var fFlags: DWORD = 0
+}
+
+/// `OBJID_MENU` for `GetMenuBarInfo`.
+let winObjIdMenu: Int32 = -3
+
+@_silgen_name("GetMenuBarInfo")
+func winGetMenuBarInfo(_ hwnd: HWND?, _ idObject: Int32, _ idItem: Int32, _ info: UnsafeMutablePointer<MENUBARINFO>) -> Int32
+
+@_silgen_name("GetMenuStringW")
+func winGetMenuStringW(_ menu: HMENU?, _ item: UINT, _ buffer: UnsafeMutablePointer<UInt16>?, _ maxCount: Int32, _ flags: UINT) -> Int32
+
+@_silgen_name("GetWindowDC")
+func winGetWindowDC(_ hwnd: HWND?) -> HDC?
+
+// Owner-draw item states used by the dark menu bar.
+let odsSelected: UINT = 0x0001
+let odsGrayed: UINT = 0x0002
+let odsHotlight: UINT = 0x0040
+let odsInactive: UINT = 0x0080
+let odsNoAccel: UINT = 0x0100
+
+/// `DT_HIDEPREFIX` for `DrawTextW`.
+let dtHidePrefix: UINT = 0x0010_0000
+
+/// `WM_NCPAINT` / `WM_NCACTIVATE` — intercepted under dark to cover the
+/// light line the non-client paint leaves under the owner-drawn menu bar.
+let wmNcPaint: UINT = 0x0085
+let wmNcActivate: UINT = 0x0086
+
+@_silgen_name("MapWindowPoints")
+func winMapWindowPoints(_ from: HWND?, _ to: HWND?, _ points: UnsafeMutableRawPointer?, _ count: UINT) -> Int32
 
 let smCxScreen: Int32 = 0
 let smCyScreen: Int32 = 1
@@ -1553,6 +1655,16 @@ let mcmFirst: UINT = 0x1000
 let mcmGetCurSel: UINT = mcmFirst + 1
 let mcmSetCurSel: UINT = mcmFirst + 2
 let mcmGetMinReqRect: UINT = mcmFirst + 9
+/// `MCM_SETCOLOR` and its color-part indexes (dark calendar palette).
+let mcmSetColor: UINT = mcmFirst + 10
+let mcscBackground: Int = 0
+let mcscText: Int = 1
+let mcscTitleBk: Int = 2
+let mcscTitleText: Int = 3
+let mcscMonthBk: Int = 4
+let mcscTrailingText: Int = 5
+/// `DTM_SETMCCOLOR` (the date-time picker's drop-down calendar palette).
+let dtmSetMCColor: UINT = 0x1006
 let bmSetImage: UINT = 0x00f7
 let bsBitmap: DWORD = 0x0080
 let udsWrap: DWORD = 0x0001

@@ -341,6 +341,10 @@ public protocol NativeControlBackend: AnyObject {
     /// "dark mode" for applications). Drives `NSAppearance` resolution.
     func systemPrefersDarkAppearance() -> Bool
 
+    /// The user's system accent color, or `nil` when unavailable. Drives
+    /// `NSColor.controlAccentColor` and the selection tints (plan 8.3).
+    func systemAccentColor() -> NSColor?
+
     /// The primary screen's pixel frame, used for on-screen placement.
     func primaryScreenFrame() -> NSRect
 

@@ -521,7 +521,12 @@ open class NSView: NSResponder {
 
             self.needsDisplay = false
             NSGraphicsContext(nativeContext: nativeContext).asCurrent {
-                self.draw(dirtyRect)
+                // The view's effective appearance is current for the draw
+                // pass, so appearance-sensitive code (dynamic colors read
+                // through `NSAppearance.currentDrawing()`) resolves per view.
+                NSAppearance.winWithCurrentDrawing(self.effectiveAppearance) {
+                    self.draw(dirtyRect)
+                }
             }
         }
         updateCursorRegions()

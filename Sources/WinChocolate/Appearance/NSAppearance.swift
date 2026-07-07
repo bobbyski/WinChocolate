@@ -66,6 +66,26 @@ public final class NSAppearance: Sendable {
     public var winIsDark: Bool {
         name == .darkAqua
     }
+
+    /// The appearance in effect for the current draw pass.
+    nonisolated(unsafe) private static var winCurrentDrawing: NSAppearance?
+
+    /// Returns the appearance active for the drawing code currently running:
+    /// inside `draw(_:)` this is the view's effective appearance; elsewhere it
+    /// falls back to the application's.
+    public static func currentDrawing() -> NSAppearance {
+        winCurrentDrawing ?? NSApplication.shared.effectiveAppearance
+    }
+
+    /// Runs `body` with `appearance` as the current-drawing appearance,
+    /// restoring the previous one afterward (draw passes can nest when a
+    /// hosted child paints during its parent's pass).
+    static func winWithCurrentDrawing(_ appearance: NSAppearance, _ body: () -> Void) {
+        let previous = winCurrentDrawing
+        winCurrentDrawing = appearance
+        defer { winCurrentDrawing = previous }
+        body()
+    }
 }
 
 // MARK: - Effective-appearance inheritance (view → window → app → system)
