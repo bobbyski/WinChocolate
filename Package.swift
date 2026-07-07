@@ -6,10 +6,6 @@ let package = Package(
     name: "WinChocolate",
     products: [
         .library(
-            name: "WinFoundation",
-            targets: ["WinFoundation"]
-        ),
-        .library(
             name: "WinChocolate",
             targets: ["WinChocolate"]
         ),
@@ -18,17 +14,18 @@ let package = Package(
             targets: ["WinChocolateDemo"]
         )
     ],
+    dependencies: [
+        // WinFoundation is a standalone nested package (plan 7.10) so
+        // downstream projects can depend on it without pulling in the
+        // AppKit layer. WinSwiftData path-depends on it directly.
+        .package(path: "WinFoundation")
+    ],
     targets: [
         .target(
-            name: "WinFoundation",
-            linkerSettings: [
-                .linkedLibrary("Ole32"),
-                .linkedLibrary("Shell32")
-            ]
-        ),
-        .target(
             name: "WinChocolate",
-            dependencies: ["WinFoundation"],
+            dependencies: [
+                .product(name: "WinFoundation", package: "WinFoundation")
+            ],
             swiftSettings: [
                 .define("USE_WIN_FOUNDATION", .when(platforms: [.windows]))
             ],
