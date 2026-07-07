@@ -55,6 +55,11 @@ public final class Win32NativeControlBackend: NativeControlBackend {
     var scrollerParts: [UInt: NativeScrollerPart] = [:]
     var monthCalHandles: Set<UInt> = []
     var monthCalDates: [UInt: Date] = [:]
+    /// Compact date pickers (`SysDateTimePick32`) whose closed field is
+    /// owner-drawn dark — the control has no dark theme part and no color API,
+    /// so the resting field is painted by the framework under a dark
+    /// appearance (plan 8.5).
+    var darkDatePickerFieldHandles: Set<UInt> = []
     var editableLevelHandles: Set<UInt> = []
     var levelIndicatorRanges: [UInt: (minValue: Double, maxValue: Double)] = [:]
     var levelIndicatorValues: [UInt: Double] = [:]

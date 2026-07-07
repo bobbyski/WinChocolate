@@ -26,6 +26,9 @@ extension Win32NativeControlBackend {
             if let headerHwnd = HWND(bitPattern: winSendMessageW(hwnd, lvmGetHeader, 0, 0)) {
                 tableHeaderOwners[UInt(bitPattern: headerHwnd)] = handle
             }
+            // `DarkMode_Explorer` (applied at creation) themes the selection
+            // and scrollbar; the row background/text need explicit colors.
+            applyDarkListViewColorsIfNeeded(hwnd)
         }
         setTableRows(rows, selectedRow: selectedRow, for: handle)
         return handle

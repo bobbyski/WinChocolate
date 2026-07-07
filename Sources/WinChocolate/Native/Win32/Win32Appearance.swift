@@ -101,6 +101,84 @@ extension Win32NativeControlBackend {
         _ = winSendMessageW(hwnd, dtmSetMCColor, WPARAM(mcscTitleText), text)
     }
 
+    /// Gives a native list view (`SysListView32`) the dark row background and
+    /// light text under a dark appearance. `DarkMode_Explorer` (applied at
+    /// creation) themes the selection band and scrollbar but not the row
+    /// colors, which the list view exposes through explicit color messages.
+    /// The header control is de-themed so its dynamic caption color applies.
+    func applyDarkListViewColorsIfNeeded(_ hwnd: HWND) {
+        guard NSApplication.shared.effectiveAppearance.winIsDark else {
+            return
+        }
+        let face = colorRef(from: .controlBackgroundColor)
+        let text = colorRef(from: .textColor)
+        _ = winSendMessageW(hwnd, lvmSetBkColor, 0, LPARAM(face))
+        _ = winSendMessageW(hwnd, lvmSetTextBkColor, 0, LPARAM(face))
+        _ = winSendMessageW(hwnd, lvmSetTextColor, 0, LPARAM(text))
+        if let header = HWND(bitPattern: winSendMessageW(hwnd, lvmGetHeader, 0, 0)) {
+            _ = withWideString("DarkMode_ItemsView") { themeName in
+                winSetWindowTheme(header, themeName, nil)
+            }
+        }
+    }
+
+    /// Owner-draws a compact date picker's closed field under a dark
+    /// appearance: a dark face with a hairline border, the displayed date in
+    /// the dynamic light text color, and a drop-down chevron on the trailing
+    /// edge. `SysDateTimePick32` has no color API and its `DarkMode_CFD` theme
+    /// only darkens the hot/open states, so the resting field needs this.
+    func drawDarkDatePickerField(_ hwnd: HWND) {
+        var paint = PAINTSTRUCT()
+        guard let deviceContext = winBeginPaint(hwnd, &paint) else {
+            return
+        }
+        defer {
+            withUnsafePointer(to: paint) { _ = winEndPaint(hwnd, $0) }
+        }
+
+        var bounds = RECT()
+        _ = winGetClientRect(hwnd, &bounds)
+        let width = bounds.right - bounds.left
+        let height = bounds.bottom - bounds.top
+
+        // Hairline border, then the dark face inset by one pixel.
+        fillRect(bounds, color: colorRef(from: .separatorColor), deviceContext: deviceContext)
+        let faceRect = RECT(left: bounds.left + 1, top: bounds.top + 1,
+                            right: bounds.right - 1, bottom: bounds.bottom - 1)
+        fillRect(faceRect, color: colorRef(from: .controlBackgroundColor), deviceContext: deviceContext)
+
+        // The drop-down chevron column on the trailing edge.
+        let chevronWidth: Int32 = 18
+        let chevronCenterX = bounds.right - chevronWidth / 2 - 2
+        let chevronCenterY = bounds.top + height / 2
+        if let pen = winCreatePen(psSolid, 1, colorRef(from: .textColor)) {
+            let previousPen = winSelectObject(deviceContext, pen)
+            _ = winMoveToEx(deviceContext, chevronCenterX - 3, chevronCenterY - 1, nil)
+            _ = winLineTo(deviceContext, chevronCenterX, chevronCenterY + 2)
+            _ = winLineTo(deviceContext, chevronCenterX + 4, chevronCenterY - 2)
+            _ = winSelectObject(deviceContext, previousPen ?? nil)
+            _ = winDeleteObject(pen)
+        }
+
+        // The displayed date text, left-aligned and vertically centered.
+        var textBuffer = [UInt16](repeating: 0, count: 128)
+        let length = winGetWindowTextW(hwnd, &textBuffer, Int32(textBuffer.count))
+        if length > 0 {
+            _ = winSetBkMode(deviceContext, transparentBkMode)
+            _ = winSetTextColor(deviceContext, colorRef(from: .textColor))
+            let font = winSendMessageW(hwnd, wmGetFont, 0, 0)
+            let previousFont = font != 0 ? winSelectObject(deviceContext, HFONT(bitPattern: font)) : nil
+            var textRect = RECT(left: bounds.left + 6, top: bounds.top,
+                                right: bounds.right - chevronWidth, bottom: bounds.bottom)
+            _ = winDrawTextW(deviceContext, textBuffer, length, &textRect,
+                             dtVCenter | dtSingleLine | dtEndEllipsis)
+            if font != 0 {
+                _ = winSelectObject(deviceContext, previousFont ?? nil)
+            }
+        }
+        _ = width
+    }
+
     /// The user's Windows accent color from the DWM colorization key
     /// (`AccentColor`, stored ABGR), or `nil` when the value is absent.
     public func systemAccentColor() -> NSColor? {

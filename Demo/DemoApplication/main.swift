@@ -120,10 +120,15 @@ final class DemoCanvasView: NSView {
 
     override func draw(_ dirtyRect: NSRect) {
         let inset = NSMakeRect(4, 4, frame.size.width - 8, frame.size.height - 8)
-        NSColor(calibratedRed: 0.98, green: 0.98, blue: 0.96, alpha: 1).setFill()
+        // The artboard follows the appearance (light paper / dark board) so
+        // the canvas doesn't read as a white slab in dark mode.
+        let dark = NSAppearance.currentDrawing().winIsDark
+        (dark ? NSColor(calibratedRed: 0.17, green: 0.17, blue: 0.18, alpha: 1)
+              : NSColor(calibratedRed: 0.98, green: 0.98, blue: 0.96, alpha: 1)).setFill()
         let backdrop = NSBezierPath(roundedRect: inset, xRadius: 10, yRadius: 10)
         backdrop.fill()
-        NSColor(calibratedRed: 0.55, green: 0.55, blue: 0.55, alpha: 1).setStroke()
+        (dark ? NSColor(calibratedRed: 0.40, green: 0.40, blue: 0.42, alpha: 1)
+              : NSColor(calibratedRed: 0.55, green: 0.55, blue: 0.55, alpha: 1)).setStroke()
         backdrop.stroke()
 
         Self.palette[strokeColorIndex].setStroke()
