@@ -347,6 +347,20 @@ extension Win32NativeControlBackend {
                 return nil
             }
 
+            // A date picker's drop-down calendar is created lazily when it
+            // opens, so the dark palette is applied at drop time: de-theme
+            // the fresh calendar (explicit colors only work unthemed) and
+            // hand it the dynamic palette.
+            if header.code == dtnDropDown,
+               NSApplication.shared.effectiveAppearance.winIsDark,
+               let picker = header.hwndFrom {
+                let calendar = HWND(bitPattern: winSendMessageW(picker, dtmGetMonthCal, 0, 0))
+                if let calendar {
+                    applyDarkCalendarColorsIfNeeded(calendar)
+                }
+                return nil
+            }
+
             if header.code == hdnItemClickA || header.code == hdnItemClickW {
                 guard let source = header.hwndFrom,
                       let handle = tableHeaderOwners[UInt(bitPattern: source)],

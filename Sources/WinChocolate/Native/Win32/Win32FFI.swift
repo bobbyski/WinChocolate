@@ -1667,6 +1667,10 @@ let mcscMonthBk: Int = 4
 let mcscTrailingText: Int = 5
 /// `DTM_SETMCCOLOR` (the date-time picker's drop-down calendar palette).
 let dtmSetMCColor: UINT = 0x1006
+/// `DTM_GETMONTHCAL`: the live drop-down calendar's window, while dropped.
+let dtmGetMonthCal: UINT = 0x1008
+/// `DTN_DROPDOWN`: the picker's calendar is about to appear.
+let dtnDropDown: UINT = UInt32(bitPattern: -754)
 let bmSetImage: UINT = 0x00f7
 let bsBitmap: DWORD = 0x0080
 let udsWrap: DWORD = 0x0001
