@@ -4474,6 +4474,21 @@ func testSystemAccentColorDrivesAccentAndSelection() {
            "The light-appearance selection tint should be lighter than the accent.")
 }
 
+func testControlFontAppliesToButtons() {
+    // AppKit declares `font` on NSControl, so buttons take it — set before
+    // realization it applies at realize; set after, it applies immediately.
+    let backend = InMemoryNativeControlBackend()
+    let button = NSButton(title: "Bold", frame: NSMakeRect(0, 0, 80, 24))
+    button.font = NSFont.boldSystemFont(ofSize: 16)
+    let handle = button.realizeNativePeer(in: backend, parent: nil)
+    expect(backend.records[handle]?.font == NSFont.boldSystemFont(ofSize: 16),
+           "A pre-realize control font should apply at realize.")
+
+    button.font = NSFont.systemFont(ofSize: 11)
+    expect(backend.records[handle]?.font == NSFont.systemFont(ofSize: 11),
+           "A post-realize control font should apply immediately.")
+}
+
 func testStringEncodingIORoundTrips() {
     let sample = "Héllo, 世界 – ¡ok!"
 
@@ -8608,6 +8623,7 @@ testDarkAppearanceDrivesDynamicColorsAndDrawnTable()
 testToolbarStripGoesDarkUnderDarkAppearance()
 testCurrentDrawingAppearanceFollowsTheDrawingView()
 testSystemAccentColorDrivesAccentAndSelection()
+testControlFontAppliesToButtons()
 testStringEncodingIORoundTrips()
 testWindowToolbarCreatesDockedComposedHostAndReservesContent()
 testEditableTextFieldUsesEditableNativePeer()

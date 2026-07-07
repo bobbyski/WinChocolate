@@ -66,6 +66,9 @@ public final class Win32NativeControlBackend: NativeControlBackend {
     var customViewHandles: Set<UInt> = []
     var textColors: [UInt: DWORD] = [:]
     var backgroundColors: [UInt: DWORD] = [:]
+    /// Explicit rich-edit text colors, restored after WM_SETTEXT resets the
+    /// control's default character format.
+    var richEditTextColors: [UInt: DWORD] = [:]
     var backgroundBrushes: [UInt: HBRUSH] = [:]
     var transparentBackgroundHandles: Set<UInt> = []
     private var isComInitialized = false
@@ -383,7 +386,11 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         // dark control themes (the same undocumented-but-stable subclasses
         // Explorer and the common dialogs use). Best-effort: classes without
         // a dark theme part keep their light rendering — tracked in 8.5.
-        if NSApplication.shared.effectiveAppearance.winIsDark {
+        // Rich edit is excluded: the dark theme dims its text rendering while
+        // the control already takes explicit colors (EM_SETBKGNDCOLOR + char
+        // formats), which the dark path applies directly.
+        if NSApplication.shared.effectiveAppearance.winIsDark,
+           !className.uppercased().hasPrefix("RICHEDIT") {
             let theme = className.uppercased() == "COMBOBOX" ? "DarkMode_CFD" : "DarkMode_Explorer"
             _ = withWideString(theme) { themeName in
                 winSetWindowTheme(childHwnd, themeName, nil)

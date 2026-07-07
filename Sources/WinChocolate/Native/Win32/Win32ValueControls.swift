@@ -105,9 +105,17 @@ extension Win32NativeControlBackend {
             }
         } else {
             subclassControlForTabKey(handle)
-            // The drop-down calendar honors the same explicit palette.
             if let hwnd = hwnd(from: handle) {
+                // The drop-down calendar honors the same explicit palette,
+                // and the closed field takes the combo-face dark theme
+                // (`DarkMode_CFD`) — the closest match Windows offers for a
+                // date-time picker, which has no color API of its own.
                 applyDarkDropDownCalendarColorsIfNeeded(hwnd)
+                if NSApplication.shared.effectiveAppearance.winIsDark {
+                    _ = withWideString("DarkMode_CFD") { themeName in
+                        winSetWindowTheme(hwnd, themeName, nil)
+                    }
+                }
             }
         }
         setDatePickerDate(date, minDate: minDate, maxDate: maxDate, for: handle)

@@ -189,7 +189,11 @@ open class NSBrowser: NSControl {
             titleLabel.isBordered = false
             titleLabel.alignment = .center
             titleLabel.font = NSFont.boldSystemFont(ofSize: 11)
-            titleLabel.backgroundColor = NSColor(white: 0.92, alpha: 1)
+            // The title strip follows the appearance so its text stays
+            // legible (light band on light, header tone on dark).
+            titleLabel.backgroundColor = NSApplication.shared.effectiveAppearance.winIsDark
+                ? NSColor(white: 0.24, alpha: 1)
+                : NSColor(white: 0.92, alpha: 1)
         }
     }
 

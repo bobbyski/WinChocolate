@@ -88,16 +88,7 @@ open class NSTextView: NSControl {
         }
     }
 
-    /// The text font, when explicitly set.
-    open var font: NSFont? {
-        didSet {
-            guard let nativeHandle else {
-                return
-            }
-
-            realizedBackend?.setFont(font, for: nativeHandle)
-        }
-    }
+    // `font` is inherited from `NSControl` (AppKit's declaration point).
 
     /// Applies a live font panel change.
     ///

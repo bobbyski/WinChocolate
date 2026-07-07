@@ -90,11 +90,27 @@ open class NSControl: NSView {
         }
     }
 
+    /// The control's font, when explicitly set (AppKit declares this on
+    /// `NSControl`, so buttons, popups, and fields all take it). `nil` keeps
+    /// the standard control font.
+    open var font: NSFont? {
+        didSet {
+            guard let nativeHandle else {
+                return
+            }
+
+            realizedBackend?.setFont(font, for: nativeHandle)
+        }
+    }
+
     /// Ensures the control has a native peer and registers its action bridge.
     @discardableResult
     open override func realizeNativePeer(in backend: NativeControlBackend, parent: NativeHandle?) -> NativeHandle {
         let handle = super.realizeNativePeer(in: backend, parent: parent)
         backend.setEnabled(isEnabled, for: handle)
+        if font != nil {
+            backend.setFont(font, for: handle)
+        }
         backend.registerAction(for: handle) { [weak self] in
             guard let self else {
                 return

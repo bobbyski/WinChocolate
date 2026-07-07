@@ -444,6 +444,11 @@ extension Win32NativeControlBackend {
         withWideString(text) { value in
             _ = winSetWindowTextW(hwnd, value)
         }
+        // WM_SETTEXT resets a rich edit's character formatting to the default
+        // (black); restore the control's chosen or appearance-derived color.
+        if richTextHandles.contains(handle.rawValue) {
+            applyRichEditTextColor(hwnd, handle: handle)
+        }
         invalidate(handle)
     }
 

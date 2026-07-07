@@ -1412,6 +1412,8 @@ let wmMouseHWheel: UINT = 0x020e
 let wmSetFocus: UINT = 0x0007
 let wmKillFocus: UINT = 0x0008
 let htCaption: Int = 2
+/// Rich edit: EM_GETCHARFORMAT (WM_USER + 58).
+let emGetCharFormat: UINT = wmUser + 58
 /// Rich edit: EM_SETBKGNDCOLOR (WM_USER + 67).
 let emSetBkgndColor: UINT = wmUser + 67
 /// Rich edit: EM_SETCHARFORMAT (WM_USER + 68).

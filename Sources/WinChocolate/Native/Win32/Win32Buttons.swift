@@ -44,6 +44,7 @@ extension Win32NativeControlBackend {
         // transparent shows the window color instead of a control-face box.
         transparentBackgroundHandles.insert(handle.rawValue)
         subclassControlForTabKey(handle)
+        deThemeCaptionButtonIfDark(handle)
         return handle
     }
 
@@ -59,7 +60,22 @@ extension Win32NativeControlBackend {
         )
         transparentBackgroundHandles.insert(handle.rawValue)
         subclassControlForTabKey(handle)
+        deThemeCaptionButtonIfDark(handle)
         return handle
+    }
+
+    /// Radio/checkbox theme parts have no dark variant, so a themed caption
+    /// draws in the light theme's (dark) text color, ignoring `WM_CTLCOLOR` —
+    /// unreadable on the dark surface. De-theming under dark lets the dynamic
+    /// light caption color apply (the glyph reverts to the classic drawing).
+    private func deThemeCaptionButtonIfDark(_ handle: NativeHandle) {
+        guard NSApplication.shared.effectiveAppearance.winIsDark,
+              let hwnd = hwnd(from: handle) else {
+            return
+        }
+        _ = withWideString("") { empty in
+            winSetWindowTheme(hwnd, empty, empty)
+        }
     }
 
     /// Creates a native box child.
@@ -76,6 +92,14 @@ extension Win32NativeControlBackend {
         // Subclassed so the box can erase its own interior; see the
         // WM_ERASEBKGND group-box handling in the control dispatch.
         subclassControlForTabKey(handle)
+        // A themed group box draws its caption in the theme's (dark-on-light)
+        // text color, ignoring WM_CTLCOLOR; under a dark appearance the box
+        // is de-themed so the dynamic light caption color applies.
+        if NSApplication.shared.effectiveAppearance.winIsDark, let hwnd = hwnd(from: handle) {
+            _ = withWideString("") { empty in
+                winSetWindowTheme(hwnd, empty, empty)
+            }
+        }
         return handle
     }
 

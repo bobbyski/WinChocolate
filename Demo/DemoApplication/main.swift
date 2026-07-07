@@ -904,15 +904,20 @@ final class DemoFlowCollectionDataSource: NSCollectionViewDataSource {
             let header = NSTextField(string: "  \(section.title)", frame: .zero)
             header.isBordered = false
             header.font = NSFont.boldSystemFont(ofSize: 12)
-            header.backgroundColor = NSColor(red: 0.90, green: 0.93, blue: 0.98, alpha: 1)
+            // Appearance-aware band so the dynamic label color stays legible.
+            header.backgroundColor = isDarkDemo
+                ? NSColor(red: 0.16, green: 0.22, blue: 0.34, alpha: 1)
+                : NSColor(red: 0.90, green: 0.93, blue: 0.98, alpha: 1)
             return header
         }
         if kind == NSCollectionView.elementKindSectionFooter {
             let footer = NSTextField(string: "  — \(section.items.count) classes —", frame: .zero)
             footer.isBordered = false
             footer.font = NSFont.boldSystemFont(ofSize: 10)
-            footer.textColor = NSColor(white: 0.35, alpha: 1)
-            footer.backgroundColor = NSColor(red: 0.95, green: 0.93, blue: 0.88, alpha: 1)
+            footer.textColor = isDarkDemo ? NSColor(white: 0.75, alpha: 1) : NSColor(white: 0.35, alpha: 1)
+            footer.backgroundColor = isDarkDemo
+                ? NSColor(red: 0.30, green: 0.27, blue: 0.20, alpha: 1)
+                : NSColor(red: 0.95, green: 0.93, blue: 0.88, alpha: 1)
             return footer
         }
         return nil
@@ -1105,6 +1110,11 @@ let controlFocusColor = isDarkDemo
     ? NSColor(calibratedRed: 0.35, green: 0.32, blue: 0.12, alpha: 1.0)
     : NSColor(calibratedRed: 1.0, green: 0.96, blue: 0.72, alpha: 1.0)
 let normalTextFieldColor = NSColor.controlBackgroundColor
+// Value/echo labels: the classic demo blue is illegible on the dark surface,
+// so dark mode lightens it (labels on explicit light bands keep plain blue).
+let demoValueTextColor = isDarkDemo
+    ? NSColor(calibratedRed: 0.45, green: 0.68, blue: 1.0, alpha: 1.0)
+    : NSColor.blue
 var clickCount = 0
 var isClickEnabled = true
 var isCounterHidden = false
@@ -1748,14 +1758,14 @@ contentView.backgroundColor = normalContentColor
 counterLabel.font = NSFont.boldSystemFont(ofSize: 14)
 counterLabel.textColor = .green
 statusLabel.font = NSFont.systemFont(ofSize: 13)
-statusLabel.textColor = .blue
+statusLabel.textColor = .blue  // sits on its own light-blue band in both appearances
 statusLabel.backgroundColor = NSColor(calibratedRed: 0.94, green: 0.97, blue: 1.0, alpha: 1.0)
 focusLabel.font = NSFont.boldSystemFont(ofSize: 12)
 focusLabel.textColor = .black
 focusLabel.backgroundColor = NSColor(calibratedRed: 1.0, green: 0.98, blue: 0.86, alpha: 1.0)
 slider.frame = NSMakeRect(120, 28, 184, 28)
 sliderLabel.font = NSFont.boldSystemFont(ofSize: 12)
-sliderValueLabel.textColor = .blue
+sliderValueLabel.textColor = demoValueTextColor
 progressLabel.font = NSFont.boldSystemFont(ofSize: 12)
 progressIndicator.minValue = 0
 progressIndicator.maxValue = 100
@@ -1765,7 +1775,7 @@ stepper.minValue = 0
 stepper.maxValue = 100
 stepper.increment = 1
 stepper.doubleValue = 50
-stepperValueLabel.textColor = .blue
+stepperValueLabel.textColor = demoValueTextColor
 comboLabel.font = NSFont.boldSystemFont(ofSize: 12)
 comboBox.addItems(withObjectValues: ["Cocoa", "AppKit", "WinChocolate", "Windows", "Wingding"])
 comboBox.completes = true
@@ -1798,20 +1808,20 @@ segmentedControl.selectedSegment = 0
 scrollerLabel.font = NSFont.boldSystemFont(ofSize: 12)
 scroller.doubleValue = 0
 scroller.knobProportion = 0.25
-scrollerValueLabel.textColor = .blue
+scrollerValueLabel.textColor = demoValueTextColor
 dateLabel.font = NSFont.boldSystemFont(ofSize: 12)
 datePicker.minDate = Date(timeIntervalSince1970: 1_735_689_600)
 datePicker.maxDate = Date(timeIntervalSince1970: 1_893_456_000)
 // Show both date and time fields (3.1 datePickerElements).
 datePicker.datePickerElements = [.yearMonthDay, .hourMinuteSecond]
-dateValueLabel.textColor = .blue
+dateValueLabel.textColor = demoValueTextColor
 dateValueLabel.stringValue = datePicker.stringValue
 pageSelector.addItems(withTitles: ["Controls", "Values", "Tables/Media", "Drawing", "New in 3.x", "Lists (5.x)"])
 imageLabel.font = NSFont.boldSystemFont(ofSize: 12)
 imageView.image = NSImage(contentsOfFile: demoArtworkPath) ?? NSImage(named: "WinChocolate artwork")
 imageView.imageFrameStyle = .grayBezel
 clipLabel.font = NSFont.boldSystemFont(ofSize: 12)
-clipOriginLabel.textColor = .blue
+clipOriginLabel.textColor = demoValueTextColor
 clipView.backgroundColor = .white
 clipDocumentView.backgroundColor = NSColor(calibratedRed: 0.97, green: 0.97, blue: 0.97, alpha: 1.0)
 clipTopLeftPane.backgroundColor = NSColor(calibratedRed: 0.84, green: 0.92, blue: 1.0, alpha: 1.0)
@@ -3143,7 +3153,7 @@ let listsBrowserPathLabel = NSTextField(string: "Path: /", frame: NSMakeRect(24,
 listsBrowserPathLabel.isBordered = false
 listsBrowserPathLabel.drawsBackground = false
 listsBrowserPathLabel.font = NSFont.boldSystemFont(ofSize: 12)
-listsBrowserPathLabel.textColor = .blue
+listsBrowserPathLabel.textColor = demoValueTextColor
 browser.onAction = { [weak browser] _ in
     guard let browser else {
         return
