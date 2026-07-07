@@ -462,5 +462,50 @@ extension Win32NativeControlBackend {
         _ = winSelectObject(deviceContext, previousFont ?? nil)
         return NSMakeSize(CGFloat(size.cx), CGFloat(size.cy))
     }
+
+    /// Measures a word-wrapped run: `DrawTextW` with `DT_CALCRECT | DT_WORDBREAK`
+    /// into a `maxWidth`-wide rect returns the height for every wrapped line and
+    /// the widest line's width.
+    public func measureText(_ text: String, fontName: String, fontSize: CGFloat, weight: Int, italic: Bool, wrappingAt maxWidth: CGFloat) -> NSSize {
+        guard maxWidth > 0 else {
+            return measureText(text, fontName: fontName, fontSize: fontSize, weight: weight, italic: italic)
+        }
+        guard let deviceContext = winGetDC(nil) else {
+            return NSMakeSize(0, 0)
+        }
+        defer {
+            _ = winReleaseDC(nil, deviceContext)
+        }
+
+        let font = withWideString(fontName) { faceName in
+            winCreateFontW(
+                -Int32(max((fontSize * 96.0 / 72.0).rounded(), 1)),
+                0, 0, 0, Int32(weight), italic ? 1 : 0, 0, 0,
+                defaultCharset, defaultPrecision, defaultPrecision,
+                defaultQuality, defaultPitchAndFamily, faceName
+            )
+        }
+        guard let font else {
+            return NSMakeSize(0, 0)
+        }
+        defer {
+            _ = winDeleteObject(font)
+        }
+
+        let previousFont = winSelectObject(deviceContext, font)
+        defer {
+            _ = winSelectObject(deviceContext, previousFont ?? nil)
+        }
+
+        var rectangle = RECT(left: 0, top: 0, right: Int32(maxWidth.rounded()), bottom: 0)
+        let characters = Array(text.utf16)
+        characters.withUnsafeBufferPointer { buffer in
+            withUnsafeMutablePointer(to: &rectangle) { rectanglePointer in
+                _ = winDrawTextW(deviceContext, buffer.baseAddress, Int32(buffer.count), rectanglePointer,
+                                 dtCalcRect | dtWordBreak | dtNoPrefix)
+            }
+        }
+        return NSMakeSize(CGFloat(rectangle.right - rectangle.left), CGFloat(rectangle.bottom - rectangle.top))
+    }
 }
 #endif

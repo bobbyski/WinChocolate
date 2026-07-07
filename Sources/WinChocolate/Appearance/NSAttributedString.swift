@@ -443,4 +443,20 @@ extension String {
             italic: font?.italic ?? false
         )
     }
+
+    /// Returns the bounding size of the string word-wrapped at `maxWidth`: the
+    /// height covers every wrapped line and the width is the widest line
+    /// (≤ `maxWidth`). Lets layout size a multiline label before a control
+    /// exists. A non-positive `maxWidth` measures as a single line.
+    public func size(withAttributes attributes: [NSAttributedString.Key: Any]? = nil, maxWidth: CGFloat) -> NSSize {
+        let font = attributes?[.font] as? NSFont
+        return NSApplication.shared.nativeBackend.measureText(
+            self,
+            fontName: font?.fontName ?? "Segoe UI",
+            fontSize: font?.pointSize ?? 12,
+            weight: font?.weight.rawValue ?? NSFont.Weight.regular.rawValue,
+            italic: font?.italic ?? false,
+            wrappingAt: maxWidth
+        )
+    }
 }

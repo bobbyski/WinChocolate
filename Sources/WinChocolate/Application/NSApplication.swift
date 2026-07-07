@@ -201,3 +201,23 @@ extension NSApplication: @unchecked Sendable {}
 
 /// AppKit-compatible global application alias.
 public let NSApp = NSApplication.shared
+
+/// Starts the application: wires the delegate (if given) and runs the shared
+/// `NSApplication`'s lifecycle and native event loop. The AppKit-shaped entry
+/// point for `@main` apps (a `SwiftUI`-style `App.main()` or an
+/// `NSApplicationDelegate` `main()` can call this instead of hand-rolling
+/// `NSApplication.shared` + `run()`). Returns 0 like AppKit's variant.
+///
+/// There is no `Info.plist` principal-class lookup here (Windows has no such
+/// bundle), so the delegate is passed explicitly rather than read from the
+/// bundle; a `nil` delegate runs the app with whatever delegate is already
+/// set on `NSApplication.shared`.
+@discardableResult
+public func NSApplicationMain(delegate: NSApplicationDelegate? = nil) -> Int32 {
+    let application = NSApplication.shared
+    if let delegate {
+        application.delegate = delegate
+    }
+    application.run()
+    return 0
+}

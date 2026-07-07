@@ -4474,6 +4474,45 @@ func testSystemAccentColorDrivesAccentAndSelection() {
            "The light-appearance selection tint should be lighter than the accent.")
 }
 
+func testWrappedTextMeasurementBreaksIntoLines() {
+    let backend = InMemoryNativeControlBackend()
+    let text = "The quick brown fox jumps over the lazy dog"
+    let single = backend.measureText(text, fontName: "Segoe UI", fontSize: 12, weight: 400, italic: false)
+
+    // Wrapping at a narrow width produces several lines: the height grows past
+    // one line and the width stays within the cap.
+    let narrow = backend.measureText(text, fontName: "Segoe UI", fontSize: 12, weight: 400, italic: false, wrappingAt: 80)
+    expect(narrow.height > single.height, "Wrapped text should be taller than a single line.")
+    expect(narrow.width <= 80 + 0.5, "Wrapped width should not exceed the wrap width. Got \(narrow.width).")
+    expect(narrow.height.truncatingRemainder(dividingBy: single.height) < 0.01,
+           "Wrapped height should be a whole multiple of the line height.")
+
+    // A generous width keeps it a single line (same height as unwrapped).
+    let wide = backend.measureText(text, fontName: "Segoe UI", fontSize: 12, weight: 400, italic: false, wrappingAt: 4000)
+    expect(abs(wide.height - single.height) < 0.01, "Text fitting the wrap width should stay one line.")
+
+    // A non-positive wrap width falls back to single-line measurement.
+    let zero = backend.measureText(text, fontName: "Segoe UI", fontSize: 12, weight: 400, italic: false, wrappingAt: 0)
+    expect(abs(zero.width - single.width) < 0.01 && abs(zero.height - single.height) < 0.01,
+           "A non-positive wrap width should measure as a single line.")
+}
+
+func testFireDueTimersPumpsScheduledTimers() {
+    let backend = InMemoryNativeControlBackend()
+    var firedA = 0
+    var firedB = 0
+    let idA = backend.scheduleNativeTimer(intervalMilliseconds: 16) { firedA += 1 }
+    _ = backend.scheduleNativeTimer(intervalMilliseconds: 32) { firedB += 1 }
+
+    // fireTimer pumps one specific scheduled timer (the coalesced-path hook).
+    backend.fireTimer(idA)
+    expect(firedA == 1 && firedB == 0, "fireTimer should fire only the named timer.")
+
+    // fireDueTimers pumps every scheduled timer once (a whole tick).
+    backend.fireDueTimers()
+    expect(firedA == 2 && firedB == 1, "fireDueTimers should fire every scheduled timer once.")
+}
+
 func testControlFontAppliesToButtons() {
     // AppKit declares `font` on NSControl, so buttons take it — set before
     // realization it applies at realize; set after, it applies immediately.
@@ -8623,6 +8662,8 @@ testDarkAppearanceDrivesDynamicColorsAndDrawnTable()
 testToolbarStripGoesDarkUnderDarkAppearance()
 testCurrentDrawingAppearanceFollowsTheDrawingView()
 testSystemAccentColorDrivesAccentAndSelection()
+testWrappedTextMeasurementBreaksIntoLines()
+testFireDueTimersPumpsScheduledTimers()
 testControlFontAppliesToButtons()
 testStringEncodingIORoundTrips()
 testWindowToolbarCreatesDockedComposedHostAndReservesContent()
