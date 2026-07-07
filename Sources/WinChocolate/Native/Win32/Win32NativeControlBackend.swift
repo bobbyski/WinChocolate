@@ -97,6 +97,12 @@ public final class Win32NativeControlBackend: NativeControlBackend {
     /// Creates a Win32 backend.
     public init() {
         Self.activeBackend = self
+        // The modern presentation (plan 8.2) binds ComCtl32 v6 visual styles
+        // before any window class or common control exists; classic keeps the
+        // unthemed v5 look. One-way for the process lifetime.
+        if WinPresentation.selected == .modern {
+            Self.enableModernVisualStyles()
+        }
     }
 
     /// Starts the native Windows event loop.

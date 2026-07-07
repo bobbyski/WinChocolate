@@ -4311,6 +4311,36 @@ func testToolbarPopupAndFieldItemsAlignVertically() {
            "The popup's layout height should match its visible closed-combo height. Got \(popup.frame.size.height).")
 }
 
+func testWinPresentationSelectionAndModernSeparators() {
+    // The framework defaults to the classic presentation until 8.4.
+    expect(WinPresentation.selected == .classic, "The presentation should default to classic.")
+
+    func separatorViews(in toolbarView: NSToolbarView) -> Int {
+        toolbarView.subviews.filter { $0 is NSToolbarSeparatorView }.count
+    }
+    func makeToolbarView() -> NSToolbarView {
+        let toolbar = NSToolbar(identifier: "presentation")
+        let item = NSToolbarItem(itemIdentifier: "doc")
+        item.label = "Doc"
+        toolbar.addItem(item)
+        toolbar.addItem(NSToolbarItem(itemIdentifier: .separator))
+        let toolbarView = NSToolbarView(frame: NSMakeRect(0, 0, 300, 40))
+        toolbarView.toolbar = toolbar
+        return toolbarView
+    }
+
+    // Classic: an .automatic separator renders as a vertical bar.
+    expect(separatorViews(in: makeToolbarView()) == 1,
+           "The classic presentation should render an automatic separator bar.")
+
+    // Modern: it resolves to a blank gap (no bar view), like current Apple
+    // toolbars.
+    WinPresentation.selected = .modern
+    defer { WinPresentation.selected = .classic }
+    expect(separatorViews(in: makeToolbarView()) == 0,
+           "The modern presentation should render automatic separators as gaps.")
+}
+
 func testToolbarOverflowCollapsesLowPriorityItems() {
     func makeToolbar() -> NSToolbar {
         let toolbar = NSToolbar(identifier: "overflow")
@@ -8297,6 +8327,7 @@ testWindowToolbarActions()
 testToolbarMetallicLookDrawsGradientChrome()
 testToolbarCustomizationDragOutTintsPreviewForRemoval()
 testToolbarPopupAndFieldItemsAlignVertically()
+testWinPresentationSelectionAndModernSeparators()
 testWindowToolbarCreatesDockedComposedHostAndReservesContent()
 testEditableTextFieldUsesEditableNativePeer()
 testSecureTextFieldUsesSecureNativePeer()

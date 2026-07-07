@@ -580,8 +580,9 @@ open class NSToolbarView: NSView {
         case .space:
             return .space
         case .automatic:
-            // Classic Win32 presentation; the modern look will resolve to `.space`.
-            return .bar
+            // Classic Win32 renders a vertical bar; the modern presentation
+            // renders a blank gap, matching current Apple toolbars.
+            return WinPresentation.selected == .modern ? .space : .bar
         }
     }
 
