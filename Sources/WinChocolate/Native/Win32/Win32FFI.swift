@@ -1679,4 +1679,25 @@ func withWideString<Result>(_ string: String, _ body: (UnsafePointer<UInt16>?) -
 func systemResourcePointer(_ identifier: Int) -> UnsafePointer<UInt16>? {
     UnsafePointer<UInt16>(bitPattern: identifier)
 }
+
+// MARK: - Activation contexts (ComCtl32 v6 visual styles, plan 8.2)
+
+/// Activation-context descriptor for `CreateActCtxW`.
+struct ACTCTXW {
+    var cbSize: DWORD = 0
+    var dwFlags: DWORD = 0
+    var lpSource: UnsafePointer<UInt16>?
+    var wProcessorArchitecture: UInt16 = 0
+    var wLangId: UInt16 = 0
+    var lpAssemblyDirectory: UnsafePointer<UInt16>?
+    var lpResourceName: UnsafePointer<UInt16>?
+    var lpApplicationName: UnsafePointer<UInt16>?
+    var hModule: HINSTANCE?
+}
+
+@_silgen_name("CreateActCtxW")
+func winCreateActCtxW(_ activationContext: UnsafePointer<ACTCTXW>) -> UnsafeMutableRawPointer?
+
+@_silgen_name("ActivateActCtx")
+func winActivateActCtx(_ activationContext: UnsafeMutableRawPointer?, _ cookie: UnsafeMutablePointer<UInt>) -> Int32
 #endif

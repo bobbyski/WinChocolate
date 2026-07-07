@@ -3464,7 +3464,10 @@ func testToolbarViewComposesItemsAndDispatchesActions() {
     expect(backend.records[handle]?.kind == "view", "Toolbar view did not request a composed native host view.")
     expect(backend.records[handle]?.toolbarItems.isEmpty == true, "Composed toolbar host should not install native toolbar item descriptors.")
 
-    expect(toolbarView.subviews.count == 5, "Composed toolbar did not create one top-level view per toolbar item plus the chrome hairline.")
+    // Spaces and flexible spaces host NO child window — the strip surface
+    // (flat or gradient chrome) shows through the gap directly — so the
+    // subviews are: open item, separator bar, save item, chrome hairline.
+    expect(toolbarView.subviews.count == 4, "Composed toolbar did not create one view per visible item (gaps host none) plus the chrome hairline. Got \(toolbarView.subviews.count).")
     expect(toolbarView.subviews[0].subviews.isEmpty, "Composed toolbar open item should be one self-contained view.")
     expect(toolbarView.subviews[0].backgroundColor == nil, "Composed toolbar item should let the toolbar background show through.")
     if let openHandle = toolbarView.subviews[0].nativeHandle {
@@ -3474,12 +3477,9 @@ func testToolbarViewComposesItemsAndDispatchesActions() {
     if let separatorHandle = toolbarView.subviews[1].nativeHandle {
         expect(backend.records[separatorHandle]?.drawsBackground == false, "Composed toolbar separator should request a clear native background.")
     }
-    if let flexibleSpaceHandle = toolbarView.subviews[2].nativeHandle {
-        expect(backend.records[flexibleSpaceHandle]?.drawsBackground == false, "Composed toolbar space should request a clear native background.")
-    }
-    expect(toolbarView.subviews[3].subviews.isEmpty, "Composed toolbar save item should be one self-contained view.")
-    expect(toolbarView.subviews[3].backgroundColor == nil, "Composed toolbar item should not draw its own background.")
-    if let saveHandle = toolbarView.subviews[3].nativeHandle {
+    expect(toolbarView.subviews[2].subviews.isEmpty, "Composed toolbar save item should be one self-contained view.")
+    expect(toolbarView.subviews[2].backgroundColor == nil, "Composed toolbar item should not draw its own background.")
+    if let saveHandle = toolbarView.subviews[2].nativeHandle {
         expect(backend.records[saveHandle]?.drawsBackground == false, "Composed toolbar item should keep its native background clear.")
     }
 
@@ -3494,20 +3494,20 @@ func testToolbarViewComposesItemsAndDispatchesActions() {
     )
 
     let firstPoint = toolbarView.subviews[0].convert(NSMakePoint(4, 4), to: nil)
-    let lastPoint = toolbarView.subviews[3].convert(NSMakePoint(4, 4), to: nil)
+    let lastPoint = toolbarView.subviews[2].convert(NSMakePoint(4, 4), to: nil)
     toolbarView.subviews[0].mouseDown(with: NSEvent(type: .leftMouseDown, locationInWindow: firstPoint))
     toolbarView.subviews[0].mouseUp(with: NSEvent(type: .leftMouseUp, locationInWindow: firstPoint))
-    toolbarView.subviews[3].mouseDown(with: NSEvent(type: .leftMouseDown, locationInWindow: lastPoint))
-    toolbarView.subviews[3].mouseUp(with: NSEvent(type: .leftMouseUp, locationInWindow: lastPoint))
+    toolbarView.subviews[2].mouseDown(with: NSEvent(type: .leftMouseDown, locationInWindow: lastPoint))
+    toolbarView.subviews[2].mouseUp(with: NSEvent(type: .leftMouseUp, locationInWindow: lastPoint))
 
     expect(firedIdentifiers == ["open"], "Composed toolbar dispatch did not honor enabled item actions.")
 
     saveItem.isEnabled = true
     toolbarView.reloadItems()
 
-    let enabledPoint = toolbarView.subviews[3].convert(NSMakePoint(4, 4), to: nil)
-    toolbarView.subviews[3].mouseDown(with: NSEvent(type: .leftMouseDown, locationInWindow: enabledPoint))
-    toolbarView.subviews[3].mouseUp(with: NSEvent(type: .leftMouseUp, locationInWindow: enabledPoint))
+    let enabledPoint = toolbarView.subviews[2].convert(NSMakePoint(4, 4), to: nil)
+    toolbarView.subviews[2].mouseDown(with: NSEvent(type: .leftMouseDown, locationInWindow: enabledPoint))
+    toolbarView.subviews[2].mouseUp(with: NSEvent(type: .leftMouseUp, locationInWindow: enabledPoint))
     expect(firedIdentifiers == ["open", "save"], "Toolbar reload did not update enabled state.")
 
     toolbar.displayMode = .iconOnly

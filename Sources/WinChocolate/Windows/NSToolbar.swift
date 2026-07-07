@@ -844,8 +844,11 @@ open class NSToolbarView: NSView {
                 separatorView.frame = entry.frame
                 addRenderedSubview(separatorView)
             case .space:
-                let spaceView = NSView(frame: entry.frame)
-                addRenderedSubview(spaceView)
+                // Gaps host no child window at all: the strip surface (flat
+                // background or gradient chrome) shows through directly in
+                // every look — a child view would erase a flat patch over the
+                // metallic gradient.
+                break
             }
         }
 
