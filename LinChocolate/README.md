@@ -1,0 +1,82 @@
+# LinChocolate — Ring 1 Harness (Mac + Docker + XQuartz)
+
+This is the Phase L2.2/L2.3 harness from [`../Docs/LinChocolatePlan.md`](../Docs/LinChocolatePlan.md):
+a reproducible **inner loop** where Swift + GTK4 build and run inside a Linux
+container, and GUI windows display on the Mac desktop through XQuartz (X11).
+
+It currently contains only a hello-world **spike** (`GTKHelloSpike`) that proves
+the loop works — validation spikes **S1/S2** from
+[`../Docs/LinChocolateSubstrate.md`](../Docs/LinChocolateSubstrate.md). The
+framework itself lands in Phase L3; this package grows into it.
+
+> **Note on location.** This lives nested under `WinChocolate/LinChocolate/`
+> for now (same pattern as the nested `WinFoundation/` package) so it rides the
+> `feature/LinChocolate` branch. When it graduates (plan L2.5) it can move to a
+> true sibling directory next to WinChocolate.
+
+## What the rings are
+
+| Ring | Where | Covers | Not covered |
+|---|---|---|---|
+| **1 (this harness)** | Mac + Docker + XQuartz | build, contract tests, **X11** rendering, event bridge | Wayland, real GPU, packaging |
+| 2 | Linux VMs | X11 **and** Wayland, packaging | Pi hardware limits |
+| 3 | Raspberry Pi | real GPU/RAM, Pi compositor, perf | — |
+
+A green run here is **necessary but not sufficient**: XQuartz is X11-only, so
+Wayland is never proven here (that's Rings 2–3).
+
+## One-time setup
+
+```sh
+brew install --cask docker xquartz
+```
+
+Start **Docker Desktop** (the harness targets the running daemon). That's it —
+`run-linux.sh` handles the rest of XQuartz for you: it enables TCP listening
+(`nolisten_tcp=false`), restarts XQuartz if needed, authorizes the connection
+(`xhost +`), and points `DISPLAY` at your Mac's LAN IP.
+
+On Apple Silicon the container builds **arm64/aarch64**, matching the Pi.
+
+> **Why LAN IP and `xhost +`, not `host.docker.internal`?** The container's X
+> connection arrives from Docker's internal NAT address, so per-IP `xhost` rules
+> don't match — access control is disabled for the session (re-tighten with
+> `DISPLAY=:0 xhost -`). And `host.docker.internal` resolved IPv6-only and was
+> unreachable here, so the script dials the host's `en0`/`en1` IPv4 address.
+
+## Run it
+
+```sh
+./run-linux.sh                 # build the image, then `swift run GTKHelloSpike`
+./run-linux.sh --shell         # interactive container shell
+./run-linux.sh SomeExecutable  # run a different executable target
+```
+
+Expected result: a small GTK4 window titled **"Hello LinChocolate"** appears on
+your Mac. That is S1 (interop builds) and S2 (renders over XQuartz) both proven.
+
+The script authorizes XQuartz (`xhost + 127.0.0.1`), builds the image, then runs
+the container with `DISPLAY=host.docker.internal:0` and the source bind-mounted
+at `/work` for incremental rebuilds.
+
+## Troubleshooting
+
+| Symptom | Cause / fix |
+|---|---|
+| `cannot open display` / `Broken pipe` | XQuartz not running, or "Allow connections from network clients" is off. Enable it, restart XQuartz, re-run. |
+| `libEGL warning: DRI3 ...` / `glx: failed to create drisw screen` | **Benign.** GTK probes GL when opening the X display; XQuartz's GLX is limited, so the probe fails and GTK falls back to the Cairo renderer (which draws the window). Safe to ignore. |
+| Window is blank or fails with a GL error | The GL renderer over XQuartz. The harness already forces `GSK_RENDERER=cairo`; confirm it's set (`./run-linux.sh --shell` then `echo $GSK_RENDERER`). |
+| `xhost: unable to open display ""` | XQuartz hadn't finished launching. The script retries; if it persists, `open -a XQuartz` manually first. |
+| `pkg-config gtk4 not found` during build | The image build failed to install `libgtk-4-dev`; re-run `docker build` and check network. |
+| Very slow first run | First build downloads the Swift base image + GTK. Subsequent runs are cached. |
+
+## Files
+
+```
+Package.swift              SwiftPM manifest (CGTK system lib + spike executable)
+Dockerfile                 Swift 6 + GTK4 on Ubuntu Noble (arm64 on Apple Silicon)
+run-linux.sh               XQuartz bridge + build + run
+docker-compose.yml         Same loop via `docker compose run`
+Sources/CGTK/              Hand-written GTK4 module map (pkg-config gtk4)
+Sources/GTKHelloSpike/     The S1/S2 spike
+```
