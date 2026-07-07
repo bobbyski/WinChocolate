@@ -8,6 +8,16 @@ WinPresentation.selected = CommandLine.arguments.contains("--classic") ? .classi
 
 let app = NSApplication.shared
 
+// The demo follows the Windows system theme by default (AppKit's behavior:
+// no override means the effective appearance tracks the system). --light and
+// --dark force one appearance for side-by-side QA. Like the presentation,
+// appearance-derived visuals resolve at creation.
+if CommandLine.arguments.contains("--dark") {
+    app.appearance = NSAppearance(named: .darkAqua)
+} else if CommandLine.arguments.contains("--light") {
+    app.appearance = NSAppearance(named: .aqua)
+}
+
 let menuBar = NSMenu()
 let appMenuItem = NSMenuItem(title: "WinChocolate", action: nil, keyEquivalent: "")
 let appMenu = NSMenu(title: "WinChocolate")
@@ -1085,8 +1095,14 @@ let toggleToolbarItem = NSToolbarItem(itemIdentifier: "toggleToolbar")
 let customizeToolbarItem = NSToolbarItem(itemIdentifier: "customizeToolbar")
 let contentFocusColor = NSColor(calibratedRed: 0.92, green: 0.97, blue: 1.0, alpha: 1.0)
 let normalContentColor = NSColor.windowBackgroundColor
-let controlFocusColor = NSColor(calibratedRed: 1.0, green: 0.96, blue: 0.72, alpha: 1.0)
-let normalTextFieldColor = NSColor.white
+// The focus tint and resting field face follow the appearance so the focus
+// demo reads correctly in dark mode too (resolved once at launch, matching
+// the process-wide appearance binding).
+let isDarkDemo = NSApplication.shared.effectiveAppearance.winIsDark
+let controlFocusColor = isDarkDemo
+    ? NSColor(calibratedRed: 0.35, green: 0.32, blue: 0.12, alpha: 1.0)
+    : NSColor(calibratedRed: 1.0, green: 0.96, blue: 0.72, alpha: 1.0)
+let normalTextFieldColor = NSColor.controlBackgroundColor
 var clickCount = 0
 var isClickEnabled = true
 var isCounterHidden = false

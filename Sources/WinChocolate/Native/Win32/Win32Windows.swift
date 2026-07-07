@@ -52,6 +52,16 @@ extension Win32NativeControlBackend {
             return NativeHandle(rawValue: 0)
         }
 
+        // A dark effective appearance gets the dark (immersive) title bar.
+        // Resolved at creation, like every appearance-derived visual.
+        if NSApplication.shared.effectiveAppearance.winIsDark {
+            var enabled: Int32 = 1
+            _ = winDwmSetWindowAttribute(
+                hwnd, winDWMWAUseImmersiveDarkMode,
+                &enabled, DWORD(MemoryLayout<Int32>.size)
+            )
+        }
+
         let handle = nativeHandle(from: hwnd)
         windowHandles.insert(handle)
         windowStyles[handle.rawValue] = style

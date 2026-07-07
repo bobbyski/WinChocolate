@@ -6,6 +6,12 @@ func expect(_ condition: @autoclosure () -> Bool, _ message: String) {
     }
 }
 
+// Pin the suite to the light appearance: dynamic system colors resolve
+// through the effective appearance, and without a pin they would follow the
+// *test machine's* Windows theme, making color assertions machine-dependent.
+// Tests that exercise dark behavior override this locally and restore it.
+NSApplication.shared.appearance = NSAppearance(named: .aqua)
+
 func clearApplicationWindows() {
     for window in NSApplication.shared.windows {
         NSApplication.shared.removeWindowsItem(window)
@@ -4341,6 +4347,74 @@ func testWinPresentationSelectionAndModernSeparators() {
            "The modern presentation should render automatic separators as gaps.")
 }
 
+func testDarkAppearanceDrivesDynamicColorsAndDrawnTable() {
+    // Route the app through a scriptable backend reporting a dark system
+    // theme, with no appearance override (drop the suite's light pin).
+    let appBackend = InMemoryNativeControlBackend()
+    appBackend.simulatedDarkAppearance = true
+    let previousBackend = NSApplication.shared.nativeBackend
+    NSApplication.shared.nativeBackend = appBackend
+    NSApplication.shared.appearance = nil
+    defer {
+        NSApplication.shared.nativeBackend = previousBackend
+        NSApplication.shared.appearance = NSAppearance(named: .aqua)
+    }
+
+    // Dynamic system colors resolve to the dark palette...
+    expect(NSColor.windowBackgroundColor.whiteComponent < 0.3,
+           "The dark window background should be dark.")
+    expect(NSColor.textColor.whiteComponent > 0.8,
+           "The dark text color should be light.")
+    expect(NSColor.selectedTextColor == .white,
+           "Dark selections should use light text.")
+
+    // ...and flip back with an explicit light override.
+    NSApplication.shared.appearance = NSAppearance(named: .aqua)
+    expect(NSColor.windowBackgroundColor == .white,
+           "The light window background should be white.")
+    NSApplication.shared.appearance = nil
+
+    // The drawn table renders its dark skin: a dark body fill and light
+    // header-title/cell text.
+    let backend = InMemoryNativeControlBackend()
+    let tableView = NSTableView(frame: NSMakeRect(0, 0, 200, 100))
+    let column = NSTableColumn(identifier: "a")
+    column.title = "Alpha"
+    column.width = 80
+    tableView.addTableColumn(column)
+    let dataSource = ManyRowTableDataSource(count: 1)
+    tableView.dataSource = dataSource
+    tableView.winUsesViewBasedCells = true
+    let handle = tableView.realizeNativePeer(in: backend, parent: nil)
+    let recording = backend.performDraw(for: handle, in: tableView.bounds)
+    guard let bodyFill = recording.fills.first?.color else {
+        fatalError("The dark drawn table recorded no body fill.")
+    }
+    expect(bodyFill.whiteComponent < 0.3, "The dark drawn table body should be dark.")
+    guard let title = recording.texts.first(where: { $0.text == "Alpha" }) else {
+        fatalError("The dark drawn table recorded no header title.")
+    }
+    expect(title.color.whiteComponent > 0.5, "The dark header title should be light.")
+}
+
+func testToolbarStripGoesDarkUnderDarkAppearance() {
+    NSApplication.shared.appearance = NSAppearance(named: .darkAqua)
+    defer { NSApplication.shared.appearance = NSAppearance(named: .aqua) }
+
+    let toolbar = NSToolbar(identifier: "dark-strip")
+    let item = NSToolbarItem(itemIdentifier: "doc")
+    item.label = "Doc"
+    toolbar.addItem(item)
+    let toolbarView = NSToolbarView(frame: NSMakeRect(0, 0, 300, 40))
+    toolbarView.toolbar = toolbar
+
+    guard let strip = toolbarView.backgroundColor else {
+        fatalError("The toolbar strip should have a background color.")
+    }
+    expect(strip.whiteComponent < 0.3,
+           "The unified toolbar strip should be dark under the dark appearance. Got \(strip).")
+}
+
 func testStringEncodingIORoundTrips() {
     let sample = "Héllo, 世界 – ¡ok!"
 
@@ -4397,9 +4471,12 @@ func testAppearanceResolvesSystemThemeAndOverrides() {
     let backend = InMemoryNativeControlBackend()
     let previousBackend = NSApplication.shared.nativeBackend
     NSApplication.shared.nativeBackend = backend
+    // Drop the suite's light pin so the system-follow path is exercised
+    // against the scriptable backend; restore the pin on the way out.
+    NSApplication.shared.appearance = nil
     defer {
         NSApplication.shared.nativeBackend = previousBackend
-        NSApplication.shared.appearance = nil
+        NSApplication.shared.appearance = NSAppearance(named: .aqua)
     }
 
     // Standard names resolve to shared appearance objects; unknown names fail.
@@ -8468,6 +8545,8 @@ testToolbarPopupAndFieldItemsAlignVertically()
 testWinPresentationSelectionAndModernSeparators()
 testDrawnTableModernPresentationRestylesHeaderChrome()
 testAppearanceResolvesSystemThemeAndOverrides()
+testDarkAppearanceDrivesDynamicColorsAndDrawnTable()
+testToolbarStripGoesDarkUnderDarkAppearance()
 testStringEncodingIORoundTrips()
 testWindowToolbarCreatesDockedComposedHostAndReservesContent()
 testEditableTextFieldUsesEditableNativePeer()

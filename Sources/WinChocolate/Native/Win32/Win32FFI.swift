@@ -600,6 +600,26 @@ nonisolated(unsafe) let winHKEYCurrentUser = UnsafeMutableRawPointer(bitPattern:
 /// `RRF_RT_REG_DWORD` for `RegGetValueW`.
 let winRRFRtRegDword: UInt32 = 0x0000_0010
 
+// Window-attribute write (Dwmapi) — used for the dark title bar.
+@_silgen_name("DwmSetWindowAttribute")
+func winDwmSetWindowAttribute(
+    _ hwnd: HWND?,
+    _ attribute: DWORD,
+    _ value: UnsafeRawPointer?,
+    _ valueSize: DWORD
+) -> Int32
+
+/// `DWMWA_USE_IMMERSIVE_DARK_MODE` (Windows 10 20H1+).
+let winDWMWAUseImmersiveDarkMode: DWORD = 20
+
+// Visual-styles subclass selection (UxTheme) — used for dark control themes.
+@_silgen_name("SetWindowTheme")
+func winSetWindowTheme(
+    _ hwnd: HWND?,
+    _ subAppName: UnsafePointer<UInt16>?,
+    _ subIdList: UnsafePointer<UInt16>?
+) -> Int32
+
 let smCxScreen: Int32 = 0
 let smCyScreen: Int32 = 1
 
@@ -1287,6 +1307,8 @@ let wmMouseHWheel: UINT = 0x020e
 let wmSetFocus: UINT = 0x0007
 let wmKillFocus: UINT = 0x0008
 let htCaption: Int = 2
+/// Rich edit: EM_SETBKGNDCOLOR (WM_USER + 67).
+let emSetBkgndColor: UINT = wmUser + 67
 /// Rich edit: EM_SETCHARFORMAT (WM_USER + 68).
 let emSetCharFormat: UINT = wmUser + 68
 /// Rich edit: EM_SETEVENTMASK (WM_USER + 69).

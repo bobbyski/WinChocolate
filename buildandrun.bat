@@ -32,7 +32,7 @@ if errorlevel 1 (
 
 echo.
 echo Checking native demo window creation...
-"%DEMO_EXE%" --diagnose
+"%DEMO_EXE%" --diagnose %*
 if errorlevel 1 (
     echo.
     echo Demo native window creation failed.
@@ -43,6 +43,9 @@ if errorlevel 1 (
 echo.
 echo Launching WinChocolate demo window...
 if not exist "%RUN_DIR%" mkdir "%RUN_DIR%"
+rem Remove stale staged copies from earlier runs so an old build can't be
+rem launched by mistake (copies still running are skipped silently).
+del /q "%RUN_DIR%\WinChocolateDemo-*.exe" >nul 2>&1
 if not exist "%RUN_DIR%\Resources" mkdir "%RUN_DIR%\Resources"
 set "RUN_DEMO_EXE=%RUN_DIR%\WinChocolateDemo-%RANDOM%-%RANDOM%.exe"
 copy /y "%DEMO_EXE%" "%RUN_DEMO_EXE%" >nul
@@ -67,7 +70,7 @@ if errorlevel 1 (
     exit /b 1
 )
 
-start "" "%RUN_DEMO_EXE%"
+start "" "%RUN_DEMO_EXE%" %*
 if errorlevel 1 (
     echo.
     echo Demo launch failed.

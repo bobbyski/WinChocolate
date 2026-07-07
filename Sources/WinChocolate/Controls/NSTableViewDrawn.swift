@@ -21,9 +21,15 @@ struct WinDrawnTableStyle {
     let headerTitleColor: NSColor
     let sortArrowColor: NSColor
     let gridColor: NSColor
+    let bodyFill: NSColor
+    let alternatingRowFill: NSColor
+    let cellTextColor: NSColor
 
     static var current: WinDrawnTableStyle {
-        WinPresentation.selected == .modern ? modern : classic
+        if NSApplication.shared.effectiveAppearance.winIsDark {
+            return dark
+        }
+        return WinPresentation.selected == .modern ? modern : classic
     }
 
     static let classic = WinDrawnTableStyle(
@@ -33,7 +39,10 @@ struct WinDrawnTableStyle {
         headerTitleFont: NSFont.boldSystemFont(ofSize: 12),
         headerTitleColor: NSColor(white: 0.25, alpha: 1),
         sortArrowColor: NSColor(white: 0.4, alpha: 1),
-        gridColor: NSColor(white: 0.85, alpha: 1)
+        gridColor: NSColor(white: 0.85, alpha: 1),
+        bodyFill: .white,
+        alternatingRowFill: NSColor(white: 0.96, alpha: 1),
+        cellTextColor: NSColor(white: 0.1, alpha: 1)
     )
 
     static let modern = WinDrawnTableStyle(
@@ -43,7 +52,25 @@ struct WinDrawnTableStyle {
         headerTitleFont: NSFont.systemFont(ofSize: 12),
         headerTitleColor: NSColor(white: 0.35, alpha: 1),
         sortArrowColor: NSColor(white: 0.45, alpha: 1),
-        gridColor: NSColor(white: 0.92, alpha: 1)
+        gridColor: NSColor(white: 0.92, alpha: 1),
+        bodyFill: .white,
+        alternatingRowFill: NSColor(white: 0.96, alpha: 1),
+        cellTextColor: NSColor(white: 0.1, alpha: 1)
+    )
+
+    /// The dark skin (one skin serves both presentations; a dark *classic*
+    /// look has no Windows precedent to imitate).
+    static let dark = WinDrawnTableStyle(
+        headerFill: NSColor(white: 0.16, alpha: 1),
+        headerBaseline: NSColor(white: 0.30, alpha: 1),
+        headerDivider: NSColor(white: 0.26, alpha: 1),
+        headerTitleFont: NSFont.systemFont(ofSize: 12),
+        headerTitleColor: NSColor(white: 0.80, alpha: 1),
+        sortArrowColor: NSColor(white: 0.65, alpha: 1),
+        gridColor: NSColor(white: 0.26, alpha: 1),
+        bodyFill: NSColor(white: 0.14, alpha: 1),
+        alternatingRowFill: NSColor(white: 0.17, alpha: 1),
+        cellTextColor: NSColor(white: 0.88, alpha: 1)
     )
 }
 
@@ -320,9 +347,10 @@ extension NSTableView {
     /// Draws the drawn table's header, alternating rows, selection, and grid.
     func winDrawTable(_ dirtyRect: NSRect) {
         let width = frame.size.width
+        let style = WinDrawnTableStyle.current
 
         // Background.
-        NSColor.white.setFill()
+        style.bodyFill.setFill()
         NSBezierPath(rect: bounds).fill()
 
         // Alternating row backgrounds and selection highlight.
@@ -334,7 +362,7 @@ extension NSTableView {
                 NSColor.selectedTextBackgroundColor.setFill()
                 NSBezierPath(rect: rowRect).fill()
             } else if usesAlternatingRowBackgroundColors, row % 2 == 1 {
-                NSColor(white: 0.96, alpha: 1).setFill()
+                style.alternatingRowFill.setFill()
                 NSBezierPath(rect: rowRect).fill()
             }
             rowY += h
@@ -342,7 +370,7 @@ extension NSTableView {
         let rowsBottom = rowY
 
         // Grid lines.
-        WinDrawnTableStyle.current.gridColor.setStroke()
+        style.gridColor.setStroke()
         if gridStyleMask.contains(.solidHorizontalGridLineMask) {
             var y = winBodyTopInset
             for row in 0...numberOfRows {
@@ -394,7 +422,7 @@ extension NSTableView {
                 let inset = winDrawnLeadingInset(forRow: row, column: column)
                 let trailing = winDrawnTrailingInset(forRow: row, column: column)
                 let color: NSColor = selectedRowIndexes.contains(row)
-                    ? .selectedTextColor : NSColor(white: 0.1, alpha: 1)
+                    ? .selectedTextColor : style.cellTextColor
                 // Match the native control font (Segoe UI 9pt → 12px) and center
                 // the text the way the header title is (optically centered).
                 let attributes: [NSAttributedString.Key: Any] = [

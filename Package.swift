@@ -41,7 +41,9 @@ let package = Package(
                 .linkedLibrary("Shell32"),
                 .linkedLibrary("Ole32"),
                 .linkedLibrary("Winmm"),
-                .linkedLibrary("Advapi32")
+                .linkedLibrary("Advapi32"),
+                .linkedLibrary("Dwmapi"),
+                .linkedLibrary("UxTheme")
             ]
         ),
         .executableTarget(

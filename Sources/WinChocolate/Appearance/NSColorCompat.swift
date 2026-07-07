@@ -137,29 +137,50 @@ extension NSColor {
     // MARK: - Semantic label colors
 
     /// Secondary label color.
-    public static var secondaryLabelColor: NSColor { NSColor(white: 0, alpha: 0.5) }
+    public static var secondaryLabelColor: NSColor {
+        winDynamic(light: NSColor(white: 0, alpha: 0.5), dark: NSColor(white: 1, alpha: 0.55))
+    }
     /// Tertiary label color.
-    public static var tertiaryLabelColor: NSColor { NSColor(white: 0, alpha: 0.26) }
+    public static var tertiaryLabelColor: NSColor {
+        winDynamic(light: NSColor(white: 0, alpha: 0.26), dark: NSColor(white: 1, alpha: 0.25))
+    }
     /// Quaternary label color.
-    public static var quaternaryLabelColor: NSColor { NSColor(white: 0, alpha: 0.1) }
+    public static var quaternaryLabelColor: NSColor {
+        winDynamic(light: NSColor(white: 0, alpha: 0.1), dark: NSColor(white: 1, alpha: 0.1))
+    }
     /// Placeholder text color.
-    public static var placeholderTextColor: NSColor { NSColor(white: 0, alpha: 0.25) }
+    public static var placeholderTextColor: NSColor {
+        winDynamic(light: NSColor(white: 0, alpha: 0.25), dark: NSColor(white: 1, alpha: 0.25))
+    }
     /// Separator color.
-    public static var separatorColor: NSColor { NSColor(white: 0, alpha: 0.1) }
+    public static var separatorColor: NSColor {
+        winDynamic(light: NSColor(white: 0, alpha: 0.1), dark: NSColor(white: 1, alpha: 0.12))
+    }
     /// Link color.
     public static var linkColor: NSColor { systemBlue }
     /// The control accent color.
     public static var controlAccentColor: NSColor { systemBlue }
     /// Selected text color.
-    public static var selectedTextColor: NSColor { black }
+    public static var selectedTextColor: NSColor {
+        winDynamic(light: black, dark: white)
+    }
     /// Selected text background color.
-    public static var selectedTextBackgroundColor: NSColor { NSColor(red: 0.70, green: 0.85, blue: 1.0, alpha: 1) }
+    public static var selectedTextBackgroundColor: NSColor {
+        winDynamic(light: NSColor(red: 0.70, green: 0.85, blue: 1.0, alpha: 1),
+                   dark: NSColor(red: 0.15, green: 0.32, blue: 0.55, alpha: 1))
+    }
     /// Control background color.
-    public static var controlBackgroundColor: NSColor { white }
+    public static var controlBackgroundColor: NSColor {
+        winDynamic(light: white, dark: NSColor(white: 0.17, alpha: 1))
+    }
     /// Grid color.
-    public static var gridColor: NSColor { NSColor(white: 0.9, alpha: 1) }
+    public static var gridColor: NSColor {
+        winDynamic(light: NSColor(white: 0.9, alpha: 1), dark: NSColor(white: 0.28, alpha: 1))
+    }
     /// Header color.
-    public static var headerColor: NSColor { white }
+    public static var headerColor: NSColor {
+        winDynamic(light: white, dark: NSColor(white: 0.17, alpha: 1))
+    }
 
     // MARK: - System palette
 

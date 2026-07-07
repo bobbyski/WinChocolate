@@ -552,6 +552,10 @@ extension Win32NativeControlBackend {
             let deviceContext = HDC(bitPattern: wParam)
             if let textColor = textColors[rawHandle] {
                 _ = winSetTextColor(deviceContext, textColor)
+            } else if NSApplication.shared.effectiveAppearance.winIsDark {
+                // Dark appearance: the DC's default text color is black, so
+                // controls without an explicit color get the dynamic default.
+                _ = winSetTextColor(deviceContext, colorRef(from: .textColor))
             }
 
             // An explicit background color always wins, even on a control that
@@ -559,6 +563,18 @@ extension Win32NativeControlBackend {
             if let backgroundColor = backgroundColors[rawHandle], let brush = backgroundBrushes[rawHandle] {
                 _ = winSetBkColor(deviceContext, backgroundColor)
                 return Int(bitPattern: brush)
+            }
+
+            // Dark appearance: editable faces (edit fields, list boxes) get
+            // the dark control background unless the app chose colors above.
+            if NSApplication.shared.effectiveAppearance.winIsDark,
+               message == wmCtlColorEdit || message == wmCtlColorListBox,
+               !transparentBackgroundHandles.contains(rawHandle) {
+                let face = colorRef(from: .controlBackgroundColor)
+                _ = winSetBkColor(deviceContext, face)
+                if let brush = solidBrush(for: face) {
+                    return Int(bitPattern: brush)
+                }
             }
 
             if transparentBackgroundHandles.contains(rawHandle) {
