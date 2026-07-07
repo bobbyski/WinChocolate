@@ -252,6 +252,18 @@ open class NSWindow: NSResponder {
         }
     }
 
+    /// Toggles the toolbar's visibility, matching AppKit's
+    /// `toggleToolbarShown(_:)` (the View menu's Show/Hide Toolbar action).
+    open func toggleToolbarShown(_ sender: Any?) {
+        toolbar?.isVisible.toggle()
+    }
+
+    /// Opens the toolbar customization palette, matching AppKit's
+    /// `runToolbarCustomizationPalette(_:)`.
+    open func runToolbarCustomizationPalette(_ sender: Any?) {
+        toolbar?.runCustomizationPalette(sender)
+    }
+
     /// Height reserved for the window-owned toolbar strip.
     open var toolbarHeight: CGFloat = NSToolbarView.preferredHeight(for: nil) {
         didSet {

@@ -369,6 +369,14 @@ internal final class NSToolbarCustomizationPanel: NSPanel {
         } else {
             insertionIndicator.isHidden = true
         }
+
+        // Removal affordance: dragging a strip item outside the strip tints
+        // the preview toward the removal state (dropping there removes it).
+        if case .toolbar = dragSource {
+            dragPreview.backgroundColor = pendingInsertionIndex == nil
+                ? NSColor(calibratedRed: 0.96, green: 0.85, blue: 0.84, alpha: 1.0)
+                : NSColor(calibratedRed: 0.84, green: 0.89, blue: 0.96, alpha: 1.0)
+        }
         return true
     }
 

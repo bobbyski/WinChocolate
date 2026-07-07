@@ -167,6 +167,16 @@ open class NSToolbar: NSObject {
         }
     }
 
+    /// Which Apple toolbar look the strip renders — toolbars are the project's
+    /// deliberate exception to the "look like Windows" rule, and this selects
+    /// among the Apple looks: `.unified` (the flat modern default) or
+    /// `.metallic` (the classic brushed-gradient chrome).
+    open var winAppleLook: WinToolbarAppleLook = .unified {
+        didSet {
+            itemsDidChange?()
+        }
+    }
+
     /// The window this toolbar is attached to.
     public private(set) weak var window: NSWindow?
 
@@ -580,6 +590,30 @@ open class NSToolbarView: NSView {
         false
     }
 
+    /// The brushed-silver chrome gradient shared by the strip and the item
+    /// tiles' slice rendering.
+    internal static func winMetallicChromeGradient() -> NSGradient? {
+        NSGradient(colorsAndLocations:
+            (NSColor(calibratedRed: 0.91, green: 0.91, blue: 0.92, alpha: 1.0), 0.0),
+            (NSColor(calibratedRed: 0.78, green: 0.78, blue: 0.80, alpha: 1.0), 0.55),
+            (NSColor(calibratedRed: 0.70, green: 0.70, blue: 0.72, alpha: 1.0), 1.0)
+        )
+    }
+
+    /// The gradient's midtone: the erase color behind transparent children in
+    /// metallic, so item windows never flash white over the chrome.
+    internal static let winMetallicMidtone = NSColor(calibratedRed: 0.80, green: 0.80, blue: 0.82, alpha: 1.0)
+
+    /// Paints the strip chrome for the selected Apple look: `.metallic` draws
+    /// the classic brushed silver gradient; `.unified` keeps the flat
+    /// background fill.
+    open override func draw(_ dirtyRect: NSRect) {
+        guard toolbar?.winAppleLook == .metallic else {
+            return
+        }
+        Self.winMetallicChromeGradient()?.draw(in: bounds, angle: -90)
+    }
+
     /// Right-clicking the toolbar (empty space, or an item — item views don't
     /// consume right-clicks, so they bubble here) pops the Mac toolbar context
     /// menu: the display-mode switches with the current mode checked, and
@@ -645,6 +679,11 @@ open class NSToolbarView: NSView {
             return
         }
 
+        // The strip's own background is what transparent child windows erase
+        // with: in metallic it must be the chrome midtone, never white.
+        backgroundColor = toolbar.winAppleLook == .metallic
+            ? Self.winMetallicMidtone
+            : .windowBackgroundColor
         notifyPreferredHeightIfNeeded()
         rebuildItemViews(for: toolbar)
     }
@@ -748,6 +787,9 @@ open class NSToolbarView: NSView {
                         if group.isSelected(at: index) {
                             tile.backgroundColor = NSColor(calibratedRed: 0.80, green: 0.84, blue: 0.90, alpha: 1.0)
                         }
+                        if toolbar.winAppleLook == .metallic, let composite = tile as? NSToolbarCompositeItemView {
+                            composite.metallicSlice = (stripHeight: frame.size.height, y: entry.frame.origin.y)
+                        }
                         addRenderedSubview(tile)
                     }
                     continue
@@ -776,6 +818,11 @@ open class NSToolbarView: NSView {
                 // pressed/selected band, matching the Mac toolbar look.
                 if toolbar.selectedItemIdentifier == item.itemIdentifier {
                     compositeView.backgroundColor = NSColor(calibratedRed: 0.80, green: 0.84, blue: 0.90, alpha: 1.0)
+                }
+                // Metallic: the tile paints its slice of the chrome gradient
+                // so the child window never breaks the strip's chrome.
+                if toolbar.winAppleLook == .metallic, let composite = compositeView as? NSToolbarCompositeItemView {
+                    composite.metallicSlice = (stripHeight: frame.size.height, y: entry.frame.origin.y)
                 }
                 addRenderedSubview(compositeView)
             case .custom(let item, let view):
@@ -814,6 +861,9 @@ open class NSToolbarView: NSView {
             let chevron = NSToolbarOverflowChevronView(
                 frame: NSMakeRect(max(frame.size.width - 26, 0), 0, 24, frame.size.height)
             )
+            if toolbar.winAppleLook == .metallic {
+                chevron.metallicSlice = (stripHeight: frame.size.height, y: 0)
+            }
             chevron.onOpenMenu = { [weak self, weak toolbar] chevronView in
                 guard let toolbar else {
                     return
@@ -1137,6 +1187,13 @@ open class NSToolbarView: NSView {
         if item.itemIdentifier == .space || item.itemIdentifier == .flexibleSpace {
             return max(frame.size.height - 8, 8)
         }
+        // A native closed combo renders a fixed ~24pt control anchored to the
+        // top of whatever frame it gets (the given height only sizes the
+        // dropdown), so center popups/combos by their visible height — else
+        // they sit visually high next to fields that fill their frames.
+        if item.view is NSPopUpButton || item.view is NSComboBox {
+            return 24
+        }
         if item.view == nil {
             return max(frame.size.height - 6, 8)
         }
@@ -1151,6 +1208,9 @@ final class NSToolbarOverflowChevronView: NSView {
     /// Opens the overflow menu; installed by the toolbar renderer.
     var onOpenMenu: ((NSToolbarOverflowChevronView) -> Void)?
 
+    /// Metallic chrome slice (see `NSToolbarCompositeItemView.metallicSlice`).
+    var metallicSlice: (stripHeight: CGFloat, y: CGFloat)?
+
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         toolTip = "More toolbar items"
@@ -1162,6 +1222,12 @@ final class NSToolbarOverflowChevronView: NSView {
     }
 
     override func draw(_ dirtyRect: NSRect) {
+        if let metallicSlice {
+            NSToolbarView.winMetallicChromeGradient()?.draw(
+                in: NSMakeRect(0, -metallicSlice.y, frame.size.width, metallicSlice.stripHeight),
+                angle: -90
+            )
+        }
         "»".draw(at: NSMakePoint(max((frame.size.width - 10) / 2, 0), max((frame.size.height - 18) / 2, 0)), withAttributes: [
             .font: NSFont.boldSystemFont(ofSize: 13),
             .foregroundColor: NSColor(calibratedRed: 0.25, green: 0.27, blue: 0.30, alpha: 1.0),
@@ -1194,6 +1260,17 @@ open class NSToolbarSeparatorView: NSView {
         backend.setDrawsBackground(false, for: handle)
         return handle
     }
+}
+
+/// The Apple toolbar looks selectable per the phase design note ("support
+/// several Apple looks — for example the older metallic style and the modern
+/// unified style").
+public enum WinToolbarAppleLook: Sendable {
+    /// The modern flat look (default): the strip blends with the window chrome.
+    case unified
+
+    /// The classic brushed-metal look: a silver vertical gradient chrome.
+    case metallic
 }
 
 /// WinChocolate-specific rendering style for toolbar separator items.
@@ -1235,6 +1312,24 @@ public enum WinToolbarDragRepresentation {
 
 private final class NSToolbarCompositeItemView: NSView {
     weak var item: NSToolbarItem?
+
+    /// When the toolbar renders the metallic look, the tile paints its exact
+    /// slice of the strip's chrome gradient (strip height + this tile's y
+    /// offset) so the chrome reads continuous through the child windows.
+    var metallicSlice: (stripHeight: CGFloat, y: CGFloat)?
+
+    override func draw(_ dirtyRect: NSRect) {
+        guard let metallicSlice, backgroundColor == nil else {
+            return
+        }
+        // Paint the full strip gradient shifted up by this tile's offset; the
+        // child surface clips it to the tile's own slice.
+        NSToolbarView.winMetallicChromeGradient()?.draw(
+            in: NSMakeRect(0, -metallicSlice.y, frame.size.width, metallicSlice.stripHeight),
+            angle: -90
+        )
+    }
+
     var title: String {
         didSet {
             updateNativeText()

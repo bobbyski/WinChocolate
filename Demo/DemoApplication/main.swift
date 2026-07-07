@@ -3303,6 +3303,21 @@ for (index, pageTitle) in ["Controls Page", "Values Page", "Tables/Media Page", 
     }
     viewMenu.addItem(item)
 }
+viewMenu.addItem(NSMenuItem.separator())
+// AppKit's standard View-menu toolbar actions (6.2) + the Apple looks (6.10).
+let toggleToolbarMenuItem = NSMenuItem(title: "Show/Hide Toolbar", action: nil, keyEquivalent: "")
+toggleToolbarMenuItem.onAction = { _ in
+    window.toggleToolbarShown(nil)
+}
+viewMenu.addItem(toggleToolbarMenuItem)
+let metallicMenuItem = NSMenuItem(title: "Use Metallic Toolbar", action: nil, keyEquivalent: "")
+metallicMenuItem.onAction = { item in
+    let metallic = demoToolbar.winAppleLook == .metallic
+    demoToolbar.winAppleLook = metallic ? .unified : .metallic
+    item.state = metallic ? .off : .on
+    statusLabel.stringValue = "Toolbar look: \(metallic ? "unified" : "metallic")"
+}
+viewMenu.addItem(metallicMenuItem)
 viewMenuItem.submenu = viewMenu
 menuBar.addItem(viewMenuItem)
 app.mainMenu = menuBar

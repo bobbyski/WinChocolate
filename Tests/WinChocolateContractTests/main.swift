@@ -3546,7 +3546,9 @@ func testToolbarViewHostsCustomItemView() {
 
     expect(selector.superview === toolbarView, "Toolbar custom item view was not hosted by toolbar view.")
     expect(selector.nativeHandle != nil, "Toolbar custom item view did not realize a native peer.")
-    expect(selector.frame == NSMakeRect(8, 6, 140, 28), "Toolbar custom item view was not positioned in the toolbar strip.")
+    // Popups center by their ~24pt visible closed-combo height (the declared
+    // 28pt only sizes the dropdown), so they align with neighboring fields.
+    expect(selector.frame == NSMakeRect(8, 8, 140, 24), "Toolbar custom item view was not positioned in the toolbar strip. Got \(selector.frame).")
     expect(selector.backgroundColor == nil, "Toolbar custom item view should let the toolbar background show through.")
     if let selectorHandle = selector.nativeHandle {
         expect(backend.records[selectorHandle]?.drawsBackground == false, "Toolbar custom control should request a clear native background.")
@@ -4145,6 +4147,168 @@ func testToolbarItemGroupSelectsAndFires() {
     expect(group.isSelected(at: 2) && group.isSelected(at: 0), "selectAny did not accumulate selections.")
     tile(containing: "Right")?.mouseUp(with: NSEvent(type: .leftMouseUp, locationInWindow: NSZeroPoint))
     expect(!group.isSelected(at: 2), "selectAny did not toggle off on re-activation.")
+}
+
+func testWindowToolbarActions() {
+    clearApplicationWindows()
+
+    let window = NSWindow(
+        contentRect: NSMakeRect(0, 0, 320, 200),
+        styleMask: [.titled],
+        backing: .buffered,
+        defer: false,
+        nativeBackend: InMemoryNativeControlBackend()
+    )
+    let toolbar = NSToolbar(identifier: "windowActions")
+    toolbar.allowsUserCustomization = true
+    window.toolbar = toolbar
+
+    // AppKit's View-menu action toggles visibility both ways.
+    expect(toolbar.isVisible, "Toolbars start visible.")
+    window.toggleToolbarShown(nil)
+    expect(!toolbar.isVisible, "toggleToolbarShown did not hide the toolbar.")
+    window.toggleToolbarShown(nil)
+    expect(toolbar.isVisible, "toggleToolbarShown did not re-show the toolbar.")
+
+    // The window-level customize action opens the palette.
+    window.runToolbarCustomizationPalette(nil)
+    expect(toolbar.customizationPaletteIsRunning, "runToolbarCustomizationPalette did not open the palette.")
+
+    clearApplicationWindows()
+}
+
+func testToolbarMetallicLookDrawsGradientChrome() {
+    let backend = InMemoryNativeControlBackend()
+    let toolbar = NSToolbar(identifier: "looks")
+    let item = NSToolbarItem(itemIdentifier: "doc")
+    item.label = "Doc"
+    toolbar.addItem(item)
+
+    let toolbarView = NSToolbarView(frame: NSMakeRect(0, 0, 300, 40))
+    toolbarView.toolbar = toolbar
+    let handle = toolbarView.realizeNativePeer(in: backend, parent: nil)
+
+    // Unified (default): flat chrome, no gradient, window-colored strip.
+    let unified = backend.performDraw(for: handle, in: toolbarView.bounds)
+    expect(unified.gradients.isEmpty, "The unified look should not draw gradient chrome.")
+    expect(toolbarView.backgroundColor == .windowBackgroundColor,
+           "The unified strip should keep the window background color.")
+
+    // Metallic: the classic brushed gradient fills the strip.
+    toolbar.winAppleLook = .metallic
+    let metallic = backend.performDraw(for: handle, in: toolbarView.bounds)
+    expect(!metallic.gradients.isEmpty, "The metallic look did not draw its gradient chrome.")
+
+    // Regression guard (transparent child windows flashed white over the
+    // chrome): in metallic the strip's own background — what transparent
+    // children erase with — must be the gradient midtone, never white…
+    expect(toolbarView.backgroundColor != .windowBackgroundColor && toolbarView.backgroundColor != nil,
+           "The metallic strip background (the children's erase color) stayed white.")
+
+    // …and the item tile itself paints its slice of the chrome gradient.
+    let itemTile = toolbarView.subviews.first { view in
+        guard let tileHandle = view.nativeHandle, let record = backend.records[tileHandle] else {
+            return false
+        }
+        return record.text.hasPrefix("__WinChocolateToolbarItem")
+    }
+    guard let itemTile, let tileHandle = itemTile.nativeHandle else {
+        expect(false, "The metallic toolbar did not render an item tile.")
+        return
+    }
+    let tileDraw = backend.performDraw(for: tileHandle, in: itemTile.bounds)
+    expect(!tileDraw.gradients.isEmpty,
+           "The item tile did not paint its chrome gradient slice (it would erase white over the metal).")
+
+    // Switching back to unified clears the slice rendering.
+    toolbar.winAppleLook = .unified
+    if let unifiedTile = toolbarView.subviews.first(where: { view in
+        guard let h = view.nativeHandle, let record = backend.records[h] else {
+            return false
+        }
+        return record.text.hasPrefix("__WinChocolateToolbarItem")
+    }), let unifiedTileHandle = unifiedTile.nativeHandle {
+        let unifiedTileDraw = backend.performDraw(for: unifiedTileHandle, in: unifiedTile.bounds)
+        expect(unifiedTileDraw.gradients.isEmpty, "A unified item tile should not paint gradient slices.")
+    }
+}
+
+func testToolbarCustomizationDragOutTintsPreviewForRemoval() {
+    clearApplicationWindows()
+
+    let toolbar = NSToolbar(identifier: "removalTint")
+    for name in ["one", "two"] {
+        let item = NSToolbarItem(itemIdentifier: NSToolbarItem.Identifier(rawValue: name))
+        item.label = name
+        toolbar.addItem(item)
+    }
+    toolbar.allowsUserCustomization = true
+    toolbar.runCustomizationPalette(nil)
+
+    guard let panel = NSApplication.shared.windows.compactMap({ $0 as? NSPanel }).last,
+          let contentView = panel.contentView else {
+        expect(false, "Toolbar customization palette did not create a panel.")
+        return
+    }
+
+    let previewBlue = NSColor(calibratedRed: 0.84, green: 0.89, blue: 0.96, alpha: 1.0)
+    let removalRed = NSColor(calibratedRed: 0.96, green: 0.85, blue: 0.84, alpha: 1.0)
+    func preview() -> NSView? {
+        contentView.subviews.first { !$0.isHidden && ($0.backgroundColor == previewBlue || $0.backgroundColor == removalRed) }
+    }
+
+    let strip = contentView.subviews.first { $0.tag == 1_103 }
+    guard let tile = (strip?.subviews ?? []).first(where: { $0.toolTip == "Drag to reorder or drag out to remove." }) else {
+        expect(false, "The mirrored strip did not build tiles.")
+        return
+    }
+    let start = tile.convert(NSMakePoint(tile.bounds.size.width / 2, tile.bounds.size.height / 2), to: nil)
+    let overStrip = contentView.convert(NSMakePoint(contentView.frame.size.width - 40, 20), to: nil)
+    let outside = contentView.convert(NSMakePoint(contentView.frame.size.width / 2, 220), to: nil)
+
+    // Over the strip: the standard blue preview. Outside: the removal tint.
+    tile.mouseDown(with: NSEvent(type: .leftMouseDown, locationInWindow: start))
+    tile.mouseDragged(with: NSEvent(type: .leftMouseDragged, locationInWindow: overStrip))
+    expect(preview()?.backgroundColor == previewBlue, "The in-strip drag preview should use the standard tint.")
+    tile.mouseDragged(with: NSEvent(type: .leftMouseDragged, locationInWindow: outside))
+    expect(preview()?.backgroundColor == removalRed, "Dragging out of the strip did not tint the preview for removal.")
+    tile.mouseUp(with: NSEvent(type: .leftMouseUp, locationInWindow: outside))
+    expect(toolbar.items.count == 1, "The drag-out did not remove the item.")
+
+    clearApplicationWindows()
+}
+
+func testToolbarPopupAndFieldItemsAlignVertically() {
+    let backend = InMemoryNativeControlBackend()
+    let toolbar = NSToolbar(identifier: "alignment")
+
+    // A popup declared 28pt tall next to a 24pt field: the native closed
+    // combo only renders ~24pt anchored to its frame top, so the layout must
+    // center it by its visible height or it reads high next to the field.
+    let popupItem = NSToolbarItem(itemIdentifier: "pages")
+    let popup = NSPopUpButton(frame: NSMakeRect(0, 0, 168, 28), pullsDown: false)
+    popupItem.view = popup
+    popupItem.minSize = NSMakeSize(168, 28)
+    popupItem.maxSize = NSMakeSize(168, 28)
+    toolbar.addItem(popupItem)
+
+    let fieldItem = NSToolbarItem(itemIdentifier: "search")
+    let field = NSTextField(string: "", frame: NSMakeRect(0, 0, 160, 24))
+    fieldItem.view = field
+    fieldItem.minSize = NSMakeSize(160, 24)
+    fieldItem.maxSize = NSMakeSize(160, 24)
+    toolbar.addItem(fieldItem)
+
+    let toolbarView = NSToolbarView(frame: NSMakeRect(0, 0, 500, 40))
+    toolbarView.toolbar = toolbar
+    _ = toolbarView.realizeNativePeer(in: backend, parent: nil)
+
+    let popupMidY = popup.frame.origin.y + popup.frame.size.height / 2
+    let fieldMidY = field.frame.origin.y + field.frame.size.height / 2
+    expect(abs(popupMidY - fieldMidY) <= 1,
+           "The popup and field are not vertically aligned. popup midY \(popupMidY), field midY \(fieldMidY).")
+    expect(popup.frame.size.height <= 25,
+           "The popup's layout height should match its visible closed-combo height. Got \(popup.frame.size.height).")
 }
 
 func testToolbarOverflowCollapsesLowPriorityItems() {
@@ -8129,6 +8293,10 @@ testToolbarItemRightClickAddsRemoveItem()
 testToolbarCenteredItemsLayOutCentered()
 testToolbarCustomViewItemsShrinkBeforeOverflow()
 testToolbarItemGroupSelectsAndFires()
+testWindowToolbarActions()
+testToolbarMetallicLookDrawsGradientChrome()
+testToolbarCustomizationDragOutTintsPreviewForRemoval()
+testToolbarPopupAndFieldItemsAlignVertically()
 testWindowToolbarCreatesDockedComposedHostAndReservesContent()
 testEditableTextFieldUsesEditableNativePeer()
 testSecureTextFieldUsesSecureNativePeer()
