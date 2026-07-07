@@ -74,6 +74,10 @@ open class NSView: NSResponder {
         }
     }
 
+    /// The view's appearance override; `nil` inherits from the ancestor
+    /// chain (see `effectiveAppearance` in NSAppearance.swift).
+    public var appearance: NSAppearance?
+
     /// The view's parent view.
     public private(set) weak var superview: NSView?
 

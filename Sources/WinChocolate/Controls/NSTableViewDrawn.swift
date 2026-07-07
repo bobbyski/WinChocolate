@@ -7,6 +7,46 @@
 /// same custom-draw approach used for the level indicator and token chips,
 /// scaled to a table. (First slice: no vertical scrolling yet — rows beyond
 /// the frame are clipped; scrolling is a follow-up.)
+/// The drawn table's per-presentation style tokens. The classic skin matches
+/// the native `SysListView32` look (gray header slab, bold titles, visible
+/// dividers); the modern skin matches themed Windows list views (flat header on
+/// the body background, regular-weight titles, hairline rules). Everything the
+/// drawn chrome paints routes through these tokens so the two presentations
+/// stay complete alternatives rather than scattered branches.
+struct WinDrawnTableStyle {
+    let headerFill: NSColor
+    let headerBaseline: NSColor
+    let headerDivider: NSColor
+    let headerTitleFont: NSFont
+    let headerTitleColor: NSColor
+    let sortArrowColor: NSColor
+    let gridColor: NSColor
+
+    static var current: WinDrawnTableStyle {
+        WinPresentation.selected == .modern ? modern : classic
+    }
+
+    static let classic = WinDrawnTableStyle(
+        headerFill: NSColor(white: 0.93, alpha: 1),
+        headerBaseline: NSColor(white: 0.75, alpha: 1),
+        headerDivider: NSColor(white: 0.80, alpha: 1),
+        headerTitleFont: NSFont.boldSystemFont(ofSize: 12),
+        headerTitleColor: NSColor(white: 0.25, alpha: 1),
+        sortArrowColor: NSColor(white: 0.4, alpha: 1),
+        gridColor: NSColor(white: 0.85, alpha: 1)
+    )
+
+    static let modern = WinDrawnTableStyle(
+        headerFill: .white,
+        headerBaseline: NSColor(white: 0.88, alpha: 1),
+        headerDivider: NSColor(white: 0.92, alpha: 1),
+        headerTitleFont: NSFont.systemFont(ofSize: 12),
+        headerTitleColor: NSColor(white: 0.35, alpha: 1),
+        sortArrowColor: NSColor(white: 0.45, alpha: 1),
+        gridColor: NSColor(white: 0.92, alpha: 1)
+    )
+}
+
 /// Commits the drawn table's in-place edit overlay when its field ends editing
 /// (focus loss / Enter), then tears the overlay down.
 public final class WinDrawnCellEditor: NSTextFieldDelegate {
@@ -302,7 +342,7 @@ extension NSTableView {
         let rowsBottom = rowY
 
         // Grid lines.
-        NSColor(white: 0.85, alpha: 1).setStroke()
+        WinDrawnTableStyle.current.gridColor.setStroke()
         if gridStyleMask.contains(.solidHorizontalGridLineMask) {
             var y = winBodyTopInset
             for row in 0...numberOfRows {
@@ -423,18 +463,19 @@ extension NSTableView {
         guard !winHeaderHidden else {
             return
         }
+        let style = WinDrawnTableStyle.current
         let headerRect = NSRect(x: 0, y: 0, width: width, height: winDrawnHeaderHeight)
-        NSColor(white: 0.93, alpha: 1).setFill()
+        style.headerFill.setFill()
         NSBezierPath(rect: headerRect).fill()
         // Bottom base line.
-        NSColor(white: 0.75, alpha: 1).setStroke()
+        style.headerBaseline.setStroke()
         let base = NSBezierPath()
         base.move(to: NSMakePoint(0, winDrawnHeaderHeight))
         base.line(to: NSMakePoint(width, winDrawnHeaderHeight))
         base.stroke()
 
         // Column dividers between header cells (matching the body grid).
-        NSColor(white: 0.80, alpha: 1).setStroke()
+        style.headerDivider.setStroke()
         for column in tableColumns.indices where column > 0 {
             let x = winColumnX(column)
             let divider = NSBezierPath()
@@ -451,15 +492,15 @@ extension NSTableView {
         for column in tableColumns.indices {
             let title = tableColumns[column].title
             title.draw(at: NSMakePoint(winColumnX(column) + 6, titleY), withAttributes: [
-                .font: NSFont.boldSystemFont(ofSize: 12),
-                .foregroundColor: NSColor(white: 0.25, alpha: 1),
+                .font: style.headerTitleFont,
+                .foregroundColor: style.headerTitleColor,
             ])
             if let sort = sortDescriptors.first,
                sort.key == tableColumns[column].sortDescriptorPrototype?.key {
                 let arrowX = winColumnX(column) + max(20, tableColumns[column].width) - 14
                 (sort.ascending ? "▲" : "▼").draw(at: NSMakePoint(arrowX, titleY + 3), withAttributes: [
                     .font: NSFont.systemFont(ofSize: 8),
-                    .foregroundColor: NSColor(white: 0.4, alpha: 1),
+                    .foregroundColor: style.sortArrowColor,
                 ])
             }
         }

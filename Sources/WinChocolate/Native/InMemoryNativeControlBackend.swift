@@ -554,6 +554,14 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     /// The screen frame returned to placement logic, settable for tests.
     public var testScreenFrame = NSRect(x: 0, y: 0, width: 1024, height: 768)
 
+    /// Scripted system theme: set to simulate Windows dark mode in tests.
+    public var simulatedDarkAppearance = false
+
+    /// Returns the scripted system theme preference.
+    public func systemPrefersDarkAppearance() -> Bool {
+        simulatedDarkAppearance
+    }
+
     /// Returns the (test-configurable) primary screen frame.
     public func primaryScreenFrame() -> NSRect {
         testScreenFrame

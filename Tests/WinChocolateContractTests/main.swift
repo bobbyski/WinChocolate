@@ -4341,6 +4341,144 @@ func testWinPresentationSelectionAndModernSeparators() {
            "The modern presentation should render automatic separators as gaps.")
 }
 
+func testStringEncodingIORoundTrips() {
+    let sample = "Héllo, 世界 – ¡ok!"
+
+    // UTF-8 round trip; invalid UTF-8 fails to decode.
+    guard let utf8 = sample.data(using: .utf8) else {
+        fatalError("UTF-8 encoding failed.")
+    }
+    expect(String(data: utf8, encoding: .utf8) == sample, "UTF-8 did not round-trip.")
+    expect(String(data: Data([0xC3, 0x28]), encoding: .utf8) == nil,
+           "Invalid UTF-8 bytes should fail to decode.")
+
+    // .utf16 writes a little-endian BOM and round-trips; the explicit
+    // endian variants round-trip without one.
+    guard let utf16 = sample.data(using: .utf16) else {
+        fatalError("UTF-16 encoding failed.")
+    }
+    expect(Array(utf16.array.prefix(2)) == [0xFF, 0xFE], "UTF-16 should lead with the LE BOM.")
+    expect(String(data: utf16, encoding: .utf16) == sample, "UTF-16 did not round-trip.")
+    guard let utf16be = sample.data(using: .utf16BigEndian) else {
+        fatalError("UTF-16BE encoding failed.")
+    }
+    expect(String(data: utf16be, encoding: .utf16BigEndian) == sample,
+           "UTF-16BE did not round-trip.")
+
+    // ASCII is strict; lossy conversion substitutes '?'.
+    expect(sample.data(using: .ascii) == nil, "Accented text should not encode as strict ASCII.")
+    expect("é!".data(using: .ascii, allowLossyConversion: true)?.array == [UInt8(ascii: "?"), UInt8(ascii: "!")],
+           "Lossy ASCII should substitute '?'.")
+
+    // Latin-1 is one byte per character across its repertoire.
+    guard let latin = "café".data(using: .isoLatin1) else {
+        fatalError("Latin-1 encoding failed.")
+    }
+    expect(latin.count == 4 && String(data: latin, encoding: .isoLatin1) == "café",
+           "Latin-1 did not round-trip.")
+
+    // File round trip, including BOM detection on the encoding-less read.
+    let url = FileManager.default.temporaryDirectory
+        .appendingPathComponent("winchocolate-stringio-test.txt")
+    do {
+        try sample.write(to: url, atomically: true, encoding: .utf16)
+        let sniffed = try String(contentsOf: url)
+        expect(sniffed == sample, "The BOM-sniffing read did not recover the UTF-16 file.")
+        try sample.write(to: url, atomically: false, encoding: .utf8)
+        let reread = try String(contentsOf: url, encoding: .utf8)
+        expect(reread == sample, "The UTF-8 file round trip failed.")
+    } catch {
+        fatalError("String file I/O threw: \(error)")
+    }
+    try? FileManager.default.removeItem(atPath: url.path)
+}
+
+func testAppearanceResolvesSystemThemeAndOverrides() {
+    let backend = InMemoryNativeControlBackend()
+    let previousBackend = NSApplication.shared.nativeBackend
+    NSApplication.shared.nativeBackend = backend
+    defer {
+        NSApplication.shared.nativeBackend = previousBackend
+        NSApplication.shared.appearance = nil
+    }
+
+    // Standard names resolve to shared appearance objects; unknown names fail.
+    expect(NSAppearance(named: .aqua)?.name == .aqua, "The aqua appearance should resolve.")
+    expect(NSAppearance(named: .darkAqua)?.winIsDark == true, "darkAqua should report as dark.")
+    expect(NSAppearance(named: NSAppearance.Name("NSAppearanceNameNeon")) == nil,
+           "An unknown appearance name should not resolve.")
+
+    // With no overrides the effective appearance follows the system theme.
+    expect(NSApplication.shared.effectiveAppearance.name == .aqua,
+           "A light system theme should resolve to aqua.")
+    backend.simulatedDarkAppearance = true
+    expect(NSApplication.shared.effectiveAppearance.name == .darkAqua,
+           "A dark system theme should resolve to darkAqua.")
+
+    // The chain flows app → view for an unattached view...
+    let view = NSView(frame: NSMakeRect(0, 0, 10, 10))
+    expect(view.effectiveAppearance.name == .darkAqua,
+           "A view should inherit the application's effective appearance.")
+
+    // ...an application override beats the system theme...
+    NSApplication.shared.appearance = NSAppearance(named: .aqua)
+    expect(view.effectiveAppearance.name == .aqua,
+           "The application appearance override should win over the system theme.")
+
+    // ...and a view override wins and flows down to its subviews.
+    view.appearance = NSAppearance(named: .darkAqua)
+    let child = NSView(frame: NSMakeRect(0, 0, 5, 5))
+    view.addSubview(child)
+    expect(child.effectiveAppearance.name == .darkAqua,
+           "A subview should inherit its ancestor's appearance override.")
+
+    // bestMatch: exact name first, dark falls back to the light base.
+    expect(NSAppearance(named: .darkAqua)?.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua,
+           "bestMatch should prefer the exact name.")
+    expect(NSAppearance(named: .darkAqua)?.bestMatch(from: [.aqua]) == .aqua,
+           "bestMatch should fall dark back to the light base.")
+}
+
+func testDrawnTableModernPresentationRestylesHeaderChrome() {
+    // Renders a one-column drawn table and returns the header chrome the draw
+    // pass recorded: the header slab's fill color and the title's font weight.
+    func headerChrome() -> (fill: NSColor?, titleWeight: Int?) {
+        let backend = InMemoryNativeControlBackend()
+        let tableView = NSTableView(frame: NSMakeRect(0, 0, 200, 100))
+        let column = NSTableColumn(identifier: "a")
+        column.title = "Alpha"
+        column.width = 80
+        tableView.addTableColumn(column)
+        let dataSource = ManyRowTableDataSource(count: 1)
+        tableView.dataSource = dataSource
+        tableView.winUsesViewBasedCells = true
+        let handle = tableView.realizeNativePeer(in: backend, parent: nil)
+        let recording = backend.performDraw(for: handle, in: tableView.bounds)
+        // Draw order: full-bounds background first, then (no row highlights for
+        // a single unselected row) the header slab.
+        let headerFill = recording.fills.count > 1 ? recording.fills[1].color : nil
+        let title = recording.texts.first { $0.text == "Alpha" }
+        return (headerFill, title?.weight)
+    }
+
+    // Classic: the native-look gray header slab with a bold title.
+    let classic = headerChrome()
+    expect(classic.fill == NSColor(white: 0.93, alpha: 1),
+           "The classic drawn header should paint the gray slab.")
+    expect(classic.titleWeight == NSFont.Weight.bold.rawValue,
+           "The classic drawn header title should be bold.")
+
+    // Modern: a flat header on the body background with a regular-weight title
+    // (the themed Windows list-view look).
+    WinPresentation.selected = .modern
+    defer { WinPresentation.selected = .classic }
+    let modern = headerChrome()
+    expect(modern.fill == .white,
+           "The modern drawn header should be flat on the body background.")
+    expect(modern.titleWeight == NSFont.Weight.regular.rawValue,
+           "The modern drawn header title should be regular weight.")
+}
+
 func testToolbarOverflowCollapsesLowPriorityItems() {
     func makeToolbar() -> NSToolbar {
         let toolbar = NSToolbar(identifier: "overflow")
@@ -8328,6 +8466,9 @@ testToolbarMetallicLookDrawsGradientChrome()
 testToolbarCustomizationDragOutTintsPreviewForRemoval()
 testToolbarPopupAndFieldItemsAlignVertically()
 testWinPresentationSelectionAndModernSeparators()
+testDrawnTableModernPresentationRestylesHeaderChrome()
+testAppearanceResolvesSystemThemeAndOverrides()
+testStringEncodingIORoundTrips()
 testWindowToolbarCreatesDockedComposedHostAndReservesContent()
 testEditableTextFieldUsesEditableNativePeer()
 testSecureTextFieldUsesSecureNativePeer()

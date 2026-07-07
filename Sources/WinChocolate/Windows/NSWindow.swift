@@ -164,6 +164,10 @@ open class NSWindow: NSResponder {
     /// applied with the window-appearance work.
     open var titlebarAppearsTransparent: Bool = false
 
+    /// The window's appearance override; `nil` inherits the application's
+    /// effective appearance (see `effectiveAppearance` in NSAppearance.swift).
+    open var appearance: NSAppearance?
+
     private var standardButtons: [ButtonType: NSButton] = [:]
 
     /// The window style mask.

@@ -40,7 +40,8 @@ let package = Package(
                 .linkedLibrary("Comdlg32"),
                 .linkedLibrary("Shell32"),
                 .linkedLibrary("Ole32"),
-                .linkedLibrary("Winmm")
+                .linkedLibrary("Winmm"),
+                .linkedLibrary("Advapi32")
             ]
         ),
         .executableTarget(

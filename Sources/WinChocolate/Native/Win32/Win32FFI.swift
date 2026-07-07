@@ -582,6 +582,24 @@ func winGetSystemMenu(_ hwnd: HWND?, _ revert: Int32) -> HMENU?
 @_silgen_name("GetSystemMetrics")
 func winGetSystemMetrics(_ index: Int32) -> Int32
 
+// Registry read (Advapi32) — used for the system dark-theme preference.
+@_silgen_name("RegGetValueW")
+func winRegGetValueW(
+    _ key: UnsafeMutableRawPointer?,
+    _ subKey: UnsafePointer<UInt16>?,
+    _ value: UnsafePointer<UInt16>?,
+    _ flags: UInt32,
+    _ type: UnsafeMutablePointer<UInt32>?,
+    _ data: UnsafeMutableRawPointer?,
+    _ dataSize: UnsafeMutablePointer<UInt32>?
+) -> Int32
+
+/// `HKEY_CURRENT_USER` — the 32-bit pseudo-handle sign-extends on 64-bit.
+nonisolated(unsafe) let winHKEYCurrentUser = UnsafeMutableRawPointer(bitPattern: UInt(bitPattern: Int(Int32(bitPattern: 0x8000_0001))))
+
+/// `RRF_RT_REG_DWORD` for `RegGetValueW`.
+let winRRFRtRegDword: UInt32 = 0x0000_0010
+
 let smCxScreen: Int32 = 0
 let smCyScreen: Int32 = 1
 

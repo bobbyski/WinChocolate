@@ -47,6 +47,10 @@ public final class NSApplication: NSObject {
     /// Backend used to create native windows and run the platform event loop.
     public var nativeBackend: NativeControlBackend
 
+    /// The application-wide appearance override backing `appearance`
+    /// (see NSAppearance.swift); `nil` follows the system theme.
+    var winAppearanceOverride: NSAppearance?
+
     /// Windows known to the application.
     public private(set) var windows: [NSWindow] = []
 

@@ -337,6 +337,10 @@ public protocol NativeControlBackend: AnyObject {
     /// close button disables the system-menu close command.
     func setWindowButtonsHidden(closeHidden: Bool, minimizeHidden: Bool, zoomHidden: Bool, for handle: NativeHandle)
 
+    /// Whether the user's system theme prefers a dark appearance (Windows
+    /// "dark mode" for applications). Drives `NSAppearance` resolution.
+    func systemPrefersDarkAppearance() -> Bool
+
     /// The primary screen's pixel frame, used for on-screen placement.
     func primaryScreenFrame() -> NSRect
 
