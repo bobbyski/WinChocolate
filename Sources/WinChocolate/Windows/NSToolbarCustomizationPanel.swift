@@ -61,8 +61,15 @@ internal final class NSToolbarCustomizationPanel: NSPanel {
     private let content: NSView
     private let strip: NSView
     private let dragPreview: NSToolbarCustomizationTile
+    /// The drop-position insertion bar shown while a drag hovers the strip.
+    private let insertionIndicator = NSView(frame: NSMakeRect(-10_000, -10_000, 3, 1))
     private var stripTiles: [NSToolbarCustomizationTile] = []
+    /// Palette tiles with their identifiers, for live enable/dim refresh.
+    private var paletteTiles: [(tile: NSToolbarCustomizationTile, identifier: NSToolbarItem.Identifier)] = []
     private var dragSource: DragSource?
+    /// The strip insertion index the indicator currently shows, so the drop
+    /// lands exactly where the user saw it, or `nil` outside the strip.
+    private var pendingInsertionIndex: Int?
 
     /// Creates and populates the customization panel for a toolbar.
     internal init(toolbar: NSToolbar) {
@@ -124,6 +131,9 @@ internal final class NSToolbarCustomizationPanel: NSPanel {
         buildBottomBar(for: toolbar, width: width, height: height)
 
         rebuildStripTiles()
+        insertionIndicator.backgroundColor = NSColor(calibratedRed: 0.16, green: 0.45, blue: 0.85, alpha: 1.0)
+        insertionIndicator.isHidden = true
+        content.addSubview(insertionIndicator)
         dragPreview.style = .preview
         dragPreview.isHidden = true
         content.addSubview(dragPreview)
@@ -166,9 +176,25 @@ internal final class NSToolbarCustomizationPanel: NSPanel {
             tile.toolTip = "Drag into the toolbar."
             wireDragHandlers(for: tile, source: .palette(identifier))
             paletteView.addSubview(tile)
+            paletteTiles.append((tile: tile, identifier: identifier))
         }
+        refreshPaletteEnabling()
 
         return paletteView
+    }
+
+    /// Dims palette tiles whose items are already in the toolbar and can't be
+    /// duplicated, matching Apple's palette filtering; duplicable structural
+    /// items (space/flexible space/separator) stay draggable.
+    private func refreshPaletteEnabling() {
+        guard let toolbar = customizedToolbar else {
+            return
+        }
+        let present = Set(toolbar.items.map(\.itemIdentifier))
+        for entry in paletteTiles {
+            entry.tile.isEnabled = entry.identifier.allowsMultipleToolbarInstances
+                || !present.contains(entry.identifier)
+        }
     }
 
     private func buildDefaultStrip(for toolbar: NSToolbar, top: CGFloat, width: CGFloat) -> NSView {
@@ -275,11 +301,16 @@ internal final class NSToolbarCustomizationPanel: NSPanel {
             x += widths[index] + Metrics.stripSpacing
         }
 
-        // Keep the drag preview above freshly created strip tiles.
+        // Keep the indicator and drag preview above freshly created strip tiles.
+        if insertionIndicator.superview === content {
+            insertionIndicator.removeFromSuperview()
+            content.addSubview(insertionIndicator)
+        }
         if dragPreview.superview === content {
             dragPreview.removeFromSuperview()
             content.addSubview(dragPreview)
         }
+        refreshPaletteEnabling()
     }
 
     /// Returns strip tile widths, capped so the whole set fits the strip.
@@ -326,23 +357,56 @@ internal final class NSToolbarCustomizationPanel: NSPanel {
         dragPreview.imageName = tile.imageName
         dragPreview.frame = NSRect(origin: origin, size: frame.size)
         dragPreview.isHidden = false
+
+        // Track the drop position: while the drag hovers the strip, show the
+        // insertion bar at the prospective boundary (and remember it so the
+        // drop lands exactly where the user saw it).
+        let dragCenter = NSMakePoint(origin.x + frame.size.width / 2, origin.y + frame.size.height / 2)
+        pendingInsertionIndex = stripInsertionIndex(forContentPoint: dragCenter)
+        if let index = pendingInsertionIndex {
+            insertionIndicator.frame = NSMakeRect(insertionIndicatorX(forIndex: index), 6, 3, Metrics.stripHeight - 12)
+            insertionIndicator.isHidden = false
+        } else {
+            insertionIndicator.isHidden = true
+        }
         return true
     }
 
     private func hideDragPreview() {
         dragPreview.isHidden = true
         dragPreview.frame = NSMakeRect(-10_000, -10_000, 1, 1)
+        insertionIndicator.isHidden = true
+        insertionIndicator.frame = NSMakeRect(-10_000, -10_000, 3, 1)
+    }
+
+    /// The x of the insertion bar for a strip insertion index.
+    private func insertionIndicatorX(forIndex index: Int) -> CGFloat {
+        guard let toolbar = customizedToolbar else {
+            return 8
+        }
+        let widths = stripTileWidths(for: toolbar)
+        var x: CGFloat = 8
+        for (tileIndex, width) in widths.enumerated() {
+            if tileIndex == index {
+                break
+            }
+            x += width + Metrics.stripSpacing
+        }
+        return max(2, x - (Metrics.stripSpacing / 2) - 1)
     }
 
     private func finishDrag(from tile: NSToolbarCustomizationTile, event: NSEvent) {
         defer {
             dragSource = nil
+            pendingInsertionIndex = nil
         }
         guard let source = dragSource else {
             return
         }
 
-        let insertionIndex = stripInsertionIndex(for: event)
+        // Drop where the insertion indicator showed (WYSIWYG); fall back to
+        // the raw drop location if no preview frame ever tracked.
+        let insertionIndex = pendingInsertionIndex ?? stripInsertionIndex(for: event)
         switch source {
         case .palette(let identifier):
             guard let insertionIndex else {
@@ -366,11 +430,16 @@ internal final class NSToolbarCustomizationPanel: NSPanel {
 
     /// Returns the strip insertion index for a drop event, or `nil` outside the strip.
     private func stripInsertionIndex(for event: NSEvent) -> Int? {
+        stripInsertionIndex(forContentPoint: content.convert(event.locationInWindow, from: nil))
+    }
+
+    /// Returns the strip insertion index for a content-space point, or `nil`
+    /// when the point is outside the strip zone.
+    private func stripInsertionIndex(forContentPoint point: NSPoint) -> Int? {
         guard let toolbar = customizedToolbar else {
             return nil
         }
 
-        let point = content.convert(event.locationInWindow, from: nil)
         let stripFrame = NSMakeRect(0, 0, content.frame.size.width, Metrics.stripHeight + 6)
         guard NSPointInRect(point, stripFrame) else {
             return nil
@@ -640,7 +709,11 @@ internal final class NSToolbarCustomizationTile: NSView {
         case .toolbar:
             backgroundColor = nil
         case .palette:
-            backgroundColor = NSColor(calibratedRed: 0.98, green: 0.98, blue: 0.97, alpha: 1.0)
+            // Disabled palette tiles (item already in the toolbar) dim to a
+            // flat gray, matching Apple's palette filtering.
+            backgroundColor = isEnabled
+                ? NSColor(calibratedRed: 0.98, green: 0.98, blue: 0.97, alpha: 1.0)
+                : NSColor(calibratedRed: 0.90, green: 0.90, blue: 0.89, alpha: 1.0)
         case .defaultSet:
             backgroundColor = NSColor(calibratedRed: 0.95, green: 0.96, blue: 0.98, alpha: 1.0)
         case .preview:

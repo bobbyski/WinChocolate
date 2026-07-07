@@ -364,6 +364,23 @@ open class NSToolbar: NSObject {
             item.onAction = { [weak self] toolbarItem in
                 self?.runCustomizationPalette(toolbarItem)
             }
+        case .toggleSidebar:
+            // The identifier and label exist for source/palette parity; the
+            // classic backend has no responder-chain `toggleSidebar:`, so the
+            // app wires the action to its own split view.
+            item = NSToolbarItem(itemIdentifier: identifier)
+            item.label = "Sidebar"
+        case .toggleInspector:
+            // Same boundary as toggleSidebar: the app wires the action.
+            item = NSToolbarItem(itemIdentifier: identifier)
+            item.label = "Inspector"
+        case .cloudSharing:
+            // Windows has no macOS sharing service; the app wires its own UI.
+            item = NSToolbarItem(itemIdentifier: identifier)
+            item.label = "Share"
+        case .sidebarTrackingSeparator, .inspectorTrackingSeparator:
+            item = NSToolbarItem(itemIdentifier: identifier)
+            item.label = ""
         case .print:
             item = NSToolbarItem(itemIdentifier: identifier)
             item.label = "Print"
@@ -529,6 +546,13 @@ open class NSToolbarView: NSView {
 
     private var renderedItemViews: [NSView] = []
     private var lastPreferredHeight: CGFloat?
+    /// Rendered strip items with their frames, for right-click hit-testing
+    /// (the Mac's per-item "Remove Item" context entry).
+    private var renderedItemHits: [(item: NSToolbarItem, frame: NSRect)] = []
+    /// Elastic factor (0...1) applied to custom-view items between their min
+    /// and max sizes: a narrow strip shrinks them toward `minSize` before any
+    /// item overflows, matching the Mac's shrink-then-overflow behavior.
+    private var winCustomViewShrink: CGFloat = 1
 
     /// Creates a toolbar view.
     public override init(frame frameRect: NSRect) {
@@ -554,6 +578,65 @@ open class NSToolbarView: NSView {
     /// Toolbar strips do not take focus; their items do.
     open override var acceptsFirstResponder: Bool {
         false
+    }
+
+    /// Right-clicking the toolbar (empty space, or an item — item views don't
+    /// consume right-clicks, so they bubble here) pops the Mac toolbar context
+    /// menu: the display-mode switches with the current mode checked, and
+    /// "Customize Toolbar…" when customization is allowed.
+    open override func rightMouseDown(with event: NSEvent) {
+        guard let toolbar else {
+            super.rightMouseDown(with: event)
+            return
+        }
+
+        let point = convert(event.locationInWindow, from: nil)
+        let hitItem = renderedItemHits.first { NSPointInRect(point, $0.frame) }?.item
+        let menu = winToolbarContextMenu(for: toolbar, clickedItem: hitItem)
+        _ = menu.popUp(positioning: nil, at: point, in: self)
+    }
+
+    /// Builds the Mac toolbar context menu for the current toolbar state; a
+    /// right-click that lands on an item prepends "Remove Item" when
+    /// customization is allowed, matching the Mac.
+    internal func winToolbarContextMenu(for toolbar: NSToolbar, clickedItem: NSToolbarItem? = nil) -> NSMenu {
+        let menu = NSMenu(title: "")
+
+        if let clickedItem, toolbar.allowsUserCustomization {
+            let remove = NSMenuItem(title: "Remove Item", action: nil, keyEquivalent: "")
+            remove.onAction = { [weak toolbar, weak clickedItem] _ in
+                guard let toolbar, let clickedItem,
+                      let index = toolbar.items.firstIndex(where: { $0 === clickedItem }) else {
+                    return
+                }
+                _ = toolbar.removeItem(at: index)
+            }
+            menu.addItem(remove)
+            menu.addItem(NSMenuItem.separator())
+        }
+        let currentMode: NSToolbar.DisplayMode = toolbar.displayMode == .default ? .iconAndLabel : toolbar.displayMode
+
+        func addModeItem(_ title: String, _ mode: NSToolbar.DisplayMode) {
+            let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+            item.state = currentMode == mode ? .on : .off
+            item.onAction = { [weak toolbar] _ in
+                toolbar?.displayMode = mode
+            }
+            menu.addItem(item)
+        }
+        addModeItem("Icon and Text", .iconAndLabel)
+        addModeItem("Icon Only", .iconOnly)
+        addModeItem("Text Only", .labelOnly)
+
+        if toolbar.allowsUserCustomization {
+            menu.addItem(NSMenuItem.separator())
+            let customize = NSMenuItem(title: "Customize Toolbar…", action: nil, keyEquivalent: "")
+            customize.onAction = { [weak toolbar] _ in
+                toolbar?.runCustomizationPalette(nil)
+            }
+            menu.addItem(customize)
+        }
+        return menu
     }
 
     /// Rebuilds composed toolbar child views from the toolbar model.
@@ -645,6 +728,44 @@ open class NSToolbarView: NSView {
         for entry in layout {
             switch entry.kind {
             case .standard(let item):
+                // Item groups render their subitems side by side (the Mac's
+                // segmented-group look), each tile activating through the group.
+                if let group = item as? NSToolbarItemGroup, !group.subitems.isEmpty {
+                    let subitemWidth = entry.frame.size.width / CGFloat(group.subitems.count)
+                    for (index, subitem) in group.subitems.enumerated() {
+                        let tile = subitem.winCompositeView(
+                            showItem: toolbar.displayMode != .labelOnly,
+                            showLabel: toolbar.displayMode != .iconOnly,
+                            toolbarHeight: frame.size.height
+                        )
+                        tile.frame = NSMakeRect(
+                            entry.frame.origin.x + CGFloat(index) * subitemWidth,
+                            entry.frame.origin.y,
+                            subitemWidth,
+                            entry.frame.size.height
+                        )
+                        // Selected subitems show the selection band.
+                        if group.isSelected(at: index) {
+                            tile.backgroundColor = NSColor(calibratedRed: 0.80, green: 0.84, blue: 0.90, alpha: 1.0)
+                        }
+                        addRenderedSubview(tile)
+                    }
+                    continue
+                }
+                // Bordered items (macOS 10.15 shape) render as real buttons,
+                // matching the Mac's button-style toolbar items.
+                if item.isBordered {
+                    let title = item.title.isEmpty ? item.label : item.title
+                    let button = NSButton(title: title, frame: entry.frame)
+                    button.isEnabled = item.isEnabled
+                    button.toolTip = item.toolTip
+                    button.onAction = { [weak item] _ in
+                        item?.performAction()
+                    }
+                    addSubview(button)
+                    renderedItemViews.append(button)
+                    continue
+                }
                 let compositeView = item.winCompositeView(
                     showItem: toolbar.displayMode != .labelOnly,
                     showLabel: toolbar.displayMode != .iconOnly,
@@ -683,10 +804,11 @@ open class NSToolbarView: NSView {
 
         // Overflow chevron (»): pops a menu of the items the narrow strip
         // pushed out, matching the Mac toolbar's overflow behavior.
+        let structuralIdentifiers: Set<NSToolbarItem.Identifier> = [
+            .space, .flexibleSpace, .separator, .sidebarTrackingSeparator, .inspectorTrackingSeparator,
+        ]
         let menuWorthy = overflowedItems(for: toolbar).filter { item in
-            item.itemIdentifier != .space
-                && item.itemIdentifier != .flexibleSpace
-                && item.itemIdentifier != .separator
+            !structuralIdentifiers.contains(item.itemIdentifier)
         }
         if !menuWorthy.isEmpty {
             let chevron = NSToolbarOverflowChevronView(
@@ -697,9 +819,7 @@ open class NSToolbarView: NSView {
                     return
                 }
                 let menu = NSMenu(title: "")
-                for item in self?.overflowedItems(for: toolbar) ?? [] where item.itemIdentifier != .space
-                    && item.itemIdentifier != .flexibleSpace
-                    && item.itemIdentifier != .separator {
+                for item in self?.overflowedItems(for: toolbar) ?? [] where !structuralIdentifiers.contains(item.itemIdentifier) {
                     let title = item.menuFormRepresentation?.title ?? item.label
                     let menuItem = NSMenuItem(title: title, action: nil, keyEquivalent: "")
                     menuItem.isEnabled = item.isEnabled
@@ -802,8 +922,28 @@ open class NSToolbarView: NSView {
             return content + leadingPadding * 2 + max(CGFloat(items.count - 1), 0) * itemSpacing
         }
 
+        winCustomViewShrink = 1
         guard naturalWidth(of: visible) > frame.size.width else {
             return visible
+        }
+
+        // Before anything overflows, shrink elastic custom-view items toward
+        // their minimum sizes (the Mac's shrink-then-overflow behavior).
+        let shrinkSlack = visible.reduce(CGFloat(0)) { slack, item in
+            guard item.view != nil else {
+                return slack
+            }
+            return slack + max(0, item.maxSize.width - item.minSize.width)
+        }
+        if shrinkSlack > 0 {
+            let needed = naturalWidth(of: visible) - frame.size.width
+            if needed <= shrinkSlack {
+                winCustomViewShrink = 1 - (needed / shrinkSlack)
+                return visible
+            }
+            // Even fully shrunken it can't fit: keep the customs at minimum
+            // and fall through to overflow.
+            winCustomViewShrink = 0
         }
 
         // Something must overflow, so the chevron needs room too.
@@ -859,7 +999,9 @@ open class NSToolbarView: NSView {
                 } else {
                     layout.append(RenderedItemLayout(kind: .separator, frame: NSMakeRect(x + ((width - 2) / 2), 6, 2, max(frame.size.height - 12, 8))))
                 }
-            } else if item.itemIdentifier == .space || item.itemIdentifier == .flexibleSpace {
+            } else if item.itemIdentifier == .space || item.itemIdentifier == .flexibleSpace
+                        || item.itemIdentifier == .sidebarTrackingSeparator
+                        || item.itemIdentifier == .inspectorTrackingSeparator {
                 layout.append(RenderedItemLayout(kind: .space, frame: itemFrame))
             } else {
                 layout.append(RenderedItemLayout(kind: .standard(item), frame: itemFrame))
@@ -868,7 +1010,60 @@ open class NSToolbarView: NSView {
             x += width + itemSpacing
         }
 
+        applyCenteredItemLayout(&layout, items: layoutItems, in: toolbar)
+        // Record hit frames after centering so right-click hit-testing sees
+        // the final positions (one layout entry per strip item, index-aligned).
+        renderedItemHits = zip(layoutItems, layout).map { (item: $0, frame: $1.frame) }
         return layout
+    }
+
+    /// Shifts the contiguous run of `centeredItemIdentifiers` items so its
+    /// midpoint sits at the strip's midpoint (macOS 13 behavior), clamped so
+    /// the run never overlaps its natural neighbors.
+    private func applyCenteredItemLayout(
+        _ layout: inout [RenderedItemLayout],
+        items: [NSToolbarItem],
+        in toolbar: NSToolbar
+    ) {
+        guard !toolbar.centeredItemIdentifiers.isEmpty, layout.count == items.count else {
+            return
+        }
+        let centeredIndexes = items.indices.filter { toolbar.centeredItemIdentifiers.contains(items[$0].itemIdentifier) }
+        guard let first = centeredIndexes.first, let last = centeredIndexes.last else {
+            return
+        }
+
+        let runMinX = layout[first].frame.origin.x
+        let runMaxX = layout[last].frame.maxX
+        let runMid = (runMinX + runMaxX) / 2
+        var dx = (frame.size.width / 2) - runMid
+
+        // The prefix stays put (clamp left); the run itself stays on-strip
+        // (clamp right). Items *after* the run re-flow to its right, matching
+        // the Mac's centered-group flow.
+        if first > 0 {
+            let leftLimit = layout[first - 1].frame.maxX + itemSpacing
+            dx = max(dx, leftLimit - runMinX)
+        } else {
+            dx = max(dx, leadingPadding - runMinX)
+        }
+        dx = min(dx, (frame.size.width - leadingPadding) - runMaxX)
+        guard dx > 0 else {
+            return
+        }
+
+        for index in first...last {
+            layout[index].frame.origin.x += dx
+        }
+
+        // Re-flow the suffix after the shifted run.
+        var cursor = layout[last].frame.maxX + itemSpacing
+        for index in (last + 1)..<layout.count {
+            if layout[index].frame.origin.x < cursor {
+                layout[index].frame.origin.x = cursor
+            }
+            cursor = layout[index].frame.maxX + itemSpacing
+        }
     }
 
     private func notifyPreferredHeightIfNeeded() {
@@ -893,8 +1088,17 @@ open class NSToolbarView: NSView {
         if item.itemIdentifier == .space {
             return 8
         }
+        if item.itemIdentifier == .sidebarTrackingSeparator || item.itemIdentifier == .inspectorTrackingSeparator {
+            // Tracking separators render as modest gaps on the classic backend
+            // (there is no split-view divider to track).
+            return 12
+        }
         if item.view != nil {
-            return max(item.minSize.width, min(item.maxSize.width, item.maxSize.width))
+            // Custom-view items are elastic between min and max size; the
+            // shrink factor compresses them before overflow kicks in.
+            let minWidth = item.minSize.width
+            let maxWidth = max(minWidth, item.maxSize.width)
+            return minWidth + (maxWidth - minWidth) * winCustomViewShrink
         }
 
         let mode: NSToolbar.DisplayMode
@@ -904,12 +1108,26 @@ open class NSToolbarView: NSView {
         case .iconAndLabel, .iconOnly, .labelOnly:
             mode = toolbar.displayMode
         }
+
+        // Groups take the sum of their subitems' natural widths.
+        if let group = item as? NSToolbarItemGroup, !group.subitems.isEmpty {
+            let total = group.subitems.reduce(CGFloat(0)) { width, subitem in
+                width + standardNaturalWidth(for: subitem, mode: mode)
+            }
+            return max(item.minSize.width, total)
+        }
+
+        let naturalWidth = standardNaturalWidth(for: item, mode: mode)
+        return max(item.minSize.width, min(item.maxSize.width, naturalWidth))
+    }
+
+    /// The natural width of a standard (composite icon/label) item in a mode.
+    private func standardNaturalWidth(for item: NSToolbarItem, mode: NSToolbar.DisplayMode) -> CGFloat {
         let showsLabel = mode != .iconOnly
         let showsImage = mode != .labelOnly
         let iconWidth: CGFloat = showsImage && item.image != nil ? 24 : 0
         let labelWidth = showsLabel ? CGFloat(max(28, item.label.count * 6)) : 0
-        let naturalWidth = max(iconWidth, labelWidth) + 16
-        return max(item.minSize.width, min(item.maxSize.width, naturalWidth))
+        return max(iconWidth, labelWidth) + 16
     }
 
     private func displayHeight(for item: NSToolbarItem) -> CGFloat {
@@ -1180,6 +1398,26 @@ open class NSToolbarItem: NSObject {
 
         /// Classic customize-toolbar item; runs the customization palette.
         public static let customizeToolbar = Identifier(rawValue: "NSToolbarCustomizeToolbarItem")
+
+        /// Modern toggle-sidebar item (macOS 11 shape). The classic backend
+        /// stores the identifier; apps wire the action (AppKit's responder-chain
+        /// `toggleSidebar:` is the documented boundary).
+        public static let toggleSidebar = Identifier(rawValue: "NSToolbarToggleSidebarItem")
+
+        /// Modern sidebar tracking separator (macOS 11 shape); renders as a gap.
+        public static let sidebarTrackingSeparator = Identifier(rawValue: "NSToolbarSidebarTrackingSeparatorItem")
+
+        /// Modern inspector tracking separator (macOS 14 shape); renders as a gap.
+        public static let inspectorTrackingSeparator = Identifier(rawValue: "NSToolbarInspectorTrackingSeparatorItem")
+
+        /// Modern toggle-inspector item (macOS 14 shape); like `toggleSidebar`,
+        /// the app wires the action to its own inspector pane.
+        public static let toggleInspector = Identifier(rawValue: "NSToolbarToggleInspectorItem")
+
+        /// Cloud-sharing item (macOS 10.12 shape). Windows has no macOS
+        /// sharing service, so the synthesized item is a labeled placeholder
+        /// the app wires to its own sharing UI.
+        public static let cloudSharing = Identifier(rawValue: "NSToolbarCloudSharingItem")
     }
 
     /// Toolbar item visibility priority.
@@ -1272,6 +1510,13 @@ open class NSToolbarItem: NSObject {
     /// The containing toolbar.
     public internal(set) weak var toolbar: NSToolbar?
 
+    /// The group this item belongs to as a subitem, if any — activation then
+    /// routes through the group (selection + group action), matching AppKit.
+    internal weak var winGroup: NSToolbarItemGroup?
+
+    /// This item's index within its group's `subitems`.
+    internal var winGroupIndex: Int = -1
+
     /// Creates a toolbar item.
     public init(itemIdentifier: Identifier) {
         self.itemIdentifier = itemIdentifier
@@ -1300,6 +1545,13 @@ open class NSToolbarItem: NSObject {
     /// Programmatically activates the item.
     open func performAction() {
         guard isEnabled else {
+            return
+        }
+
+        // A group subitem routes through its group: selection state updates
+        // per the group's mode, then the group's action fires (AppKit shape).
+        if let group = winGroup, winGroupIndex >= 0 {
+            group.winSubitemActivated(at: winGroupIndex)
             return
         }
 
@@ -1353,6 +1605,128 @@ open class NSToolbarItem: NSObject {
         }
 
         return itemIdentifier.rawValue
+    }
+}
+
+/// A toolbar item composed of adjacent subitems, matching AppKit's
+/// `NSToolbarItemGroup`: subitems render side by side, and activation updates
+/// the group's selection per its `selectionMode` before firing the group's
+/// action.
+open class NSToolbarItemGroup: NSToolbarItem {
+    /// How subitem activation affects the group's selection, matching AppKit.
+    public enum SelectionMode: Sendable {
+        /// Exactly one subitem is selected at a time (radio behavior).
+        case selectOne
+
+        /// Any combination of subitems may be selected (toggle behavior).
+        case selectAny
+
+        /// Activation fires the action without persisting a selection.
+        case momentary
+    }
+
+    /// The grouped subitems, rendered side by side.
+    open var subitems: [NSToolbarItem] = [] {
+        didSet {
+            adoptSubitems()
+        }
+    }
+
+    /// Wires the subitems' group back-references and prunes stale selection.
+    /// Called from `didSet` and explicitly from initializers (Swift property
+    /// observers do not fire during initialization).
+    private func adoptSubitems() {
+        for (index, subitem) in subitems.enumerated() {
+            subitem.winGroup = self
+            subitem.winGroupIndex = index
+        }
+        selectedIndexes = selectedIndexes.filter { subitems.indices.contains($0) }
+        toolbar?.validateVisibleItems()
+    }
+
+    /// How activation affects selection.
+    open var selectionMode: SelectionMode = .momentary
+
+    private var selectedIndexes: Set<Int> = []
+
+    /// The selected subitem index for `selectOne` groups (the lowest selected
+    /// index otherwise), or `-1` when nothing is selected. Matches AppKit.
+    open var selectedIndex: Int {
+        get {
+            selectedIndexes.min() ?? -1
+        }
+        set {
+            selectedIndexes = subitems.indices.contains(newValue) ? [newValue] : []
+            toolbar?.validateVisibleItems()
+        }
+    }
+
+    /// Sets a subitem's selected state, matching AppKit's `setSelected(_:at:)`.
+    open func setSelected(_ selected: Bool, at index: Int) {
+        guard subitems.indices.contains(index) else {
+            return
+        }
+        if selected {
+            if selectionMode == .selectOne {
+                selectedIndexes = [index]
+            } else {
+                selectedIndexes.insert(index)
+            }
+        } else {
+            selectedIndexes.remove(index)
+        }
+        toolbar?.validateVisibleItems()
+    }
+
+    /// Whether a subitem is selected, matching AppKit's `isSelected(at:)`.
+    open func isSelected(at index: Int) -> Bool {
+        selectedIndexes.contains(index)
+    }
+
+    /// Creates a group whose subitems are built from titles, matching AppKit's
+    /// convenience shape (labels default to the titles).
+    public convenience init(
+        itemIdentifier: NSToolbarItem.Identifier,
+        titles: [String],
+        selectionMode: SelectionMode,
+        labels: [String]? = nil,
+        target: AnyObject? = nil,
+        action: Selector? = nil
+    ) {
+        self.init(itemIdentifier: itemIdentifier)
+        self.selectionMode = selectionMode
+        self.target = target
+        self.action = action
+        self.subitems = titles.enumerated().map { index, title in
+            let subitem = NSToolbarItem(itemIdentifier: NSToolbarItem.Identifier(rawValue: "\(itemIdentifier.rawValue)#\(index)"))
+            subitem.label = labels?.indices.contains(index) == true ? labels![index] : title
+            subitem.title = title
+            return subitem
+        }
+        // Property observers do not fire inside initializers; wire explicitly.
+        adoptSubitems()
+    }
+
+    /// A subitem was activated: update the selection per the mode, then fire
+    /// the group's action.
+    internal func winSubitemActivated(at index: Int) {
+        guard isEnabled, subitems.indices.contains(index) else {
+            return
+        }
+        switch selectionMode {
+        case .selectOne:
+            selectedIndexes = [index]
+        case .selectAny:
+            if selectedIndexes.contains(index) {
+                selectedIndexes.remove(index)
+            } else {
+                selectedIndexes.insert(index)
+            }
+        case .momentary:
+            break
+        }
+        toolbar?.validateVisibleItems()
+        onAction?(self)
     }
 }
 
