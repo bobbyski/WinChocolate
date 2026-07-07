@@ -1893,7 +1893,12 @@ let demoToolbarDelegate = DemoToolbarDelegate(
         .separator,
         .flexibleSpace,
         "toggleToolbar",
-        "customizeToolbar"
+        "customizeToolbar",
+        // Standard Apple items — synthesized by the framework (6.6): the
+        // delegate returns nil for these and the built-in behaviors kick in.
+        .showColors,
+        .showFonts,
+        .print
     ],
     defaultIdentifiers: [
         "open",
@@ -1930,6 +1935,10 @@ let demoToolbarDelegate = DemoToolbarDelegate(
 )
 demoToolbar.displayMode = .iconAndLabel
 demoToolbar.allowsUserCustomization = true
+// Customizations persist across launches (6.8): the configuration autosaves
+// to UserDefaults under AppKit's "NSToolbar Configuration <id>" key and is
+// restored when the toolbar attaches to the window.
+demoToolbar.autosavesConfiguration = true
 demoToolbar.delegate = demoToolbarDelegate
 demoToolbar.addItem(openToolbarItem)
 demoToolbar.addItem(saveToolbarItem)

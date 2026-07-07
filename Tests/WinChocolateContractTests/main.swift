@@ -3583,6 +3583,232 @@ func testToolbarItemCreatesCompositeImageLabelView() {
     expect(backend.records[separatorHandle]?.drawsBackground == false, "Toolbar separator view should request a clear native background.")
 }
 
+func testUserDefaultsRoundTripsPlistValues() {
+    // Pure store logic (no disk).
+    let memory = UserDefaults(persistsToDisk: false)
+    memory.set("hello", forKey: "s")
+    memory.set(42, forKey: "i")
+    memory.set(true, forKey: "b")
+    memory.set(["a", "b"], forKey: "list")
+    memory.set(["nested": ["x", "y"], "n": 7] as [String: Any], forKey: "dict")
+    expect(memory.string(forKey: "s") == "hello", "UserDefaults did not round-trip a string.")
+    expect(memory.integer(forKey: "i") == 42, "UserDefaults did not round-trip an integer.")
+    expect(memory.bool(forKey: "b"), "UserDefaults did not round-trip a boolean.")
+    expect(memory.stringArray(forKey: "list") == ["a", "b"], "UserDefaults did not round-trip a string array.")
+    expect((memory.dictionary(forKey: "dict")?["n"] as? Int) == 7, "UserDefaults did not round-trip a nested dictionary.")
+    memory.removeObject(forKey: "s")
+    expect(memory.string(forKey: "s") == nil, "UserDefaults removeObject did not delete the value.")
+    memory.register(defaults: ["fallback": "reg"])
+    expect(memory.string(forKey: "fallback") == "reg", "UserDefaults registration domain was not consulted.")
+
+    // Real persistence: write through one instance, read through a fresh one.
+    let writer = UserDefaults()
+    writer.set(["one", "two"], forKey: "WinChocolateTestMarker")
+    writer.set(3.5, forKey: "WinChocolateTestDouble")
+    let reader = UserDefaults()
+    expect(reader.stringArray(forKey: "WinChocolateTestMarker") == ["one", "two"],
+           "UserDefaults did not persist an array to disk and back.")
+    expect(reader.double(forKey: "WinChocolateTestDouble") == 3.5,
+           "UserDefaults did not persist a double to disk and back.")
+    writer.removeObject(forKey: "WinChocolateTestMarker")
+    writer.removeObject(forKey: "WinChocolateTestDouble")
+}
+
+/// A toolbar target that decides item enabling, for the validation test.
+final class ToolbarValidationTarget: NSToolbarItemValidation {
+    var allows = false
+    func validateToolbarItem(_ item: NSToolbarItem) -> Bool {
+        allows
+    }
+}
+
+func testToolbarItemValidationAndMenuForm() {
+    let toolbar = NSToolbar(identifier: "validation")
+    let item = NSToolbarItem(itemIdentifier: "save")
+    item.tag = 7
+    let menuForm = NSMenuItem(title: "Save Document", action: nil, keyEquivalent: "")
+    item.menuFormRepresentation = menuForm
+    expect(item.tag == 7, "Toolbar item tag was not stored.")
+    expect(item.menuFormRepresentation?.title == "Save Document", "menuFormRepresentation was not stored.")
+
+    let target = ToolbarValidationTarget()
+    item.target = target
+    toolbar.addItem(item)
+
+    // validateVisibleItems consults the target's NSToolbarItemValidation.
+    target.allows = false
+    toolbar.validateVisibleItems()
+    expect(!item.isEnabled, "validate() did not disable the item per its validation target.")
+    target.allows = true
+    toolbar.validateVisibleItems()
+    expect(item.isEnabled, "validate() did not re-enable the item per its validation target.")
+
+    // autovalidates=false leaves the item alone.
+    item.autovalidates = false
+    target.allows = false
+    toolbar.validateVisibleItems()
+    expect(item.isEnabled, "An autovalidates=false item was validated anyway.")
+}
+
+/// Records selection/lifecycle delegate callbacks for the toolbar parity test.
+final class SelectionToolbarDelegate: NSToolbarDelegate {
+    var added: [NSToolbarItem] = []
+    var removed: [NSToolbarItem] = []
+    func toolbarSelectableItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
+        ["inbox", "sent"]
+    }
+    func toolbarWillAddItem(_ notification: NSNotification) {
+        if let item = notification.userInfo?["item"] as? NSToolbarItem {
+            added.append(item)
+        }
+    }
+    func toolbarDidRemoveItem(_ notification: NSNotification) {
+        if let item = notification.userInfo?["item"] as? NSToolbarItem {
+            removed.append(item)
+        }
+    }
+}
+
+func testToolbarSelectionAndDelegateCallbacks() {
+    let toolbar = NSToolbar(identifier: "selection")
+    let delegate = SelectionToolbarDelegate()
+    toolbar.delegate = delegate
+
+    // The add/remove lifecycle also posts through NotificationCenter.default
+    // (AppKit's willAddItemNotification), filtered to this toolbar.
+    var centerPostCount = 0
+    let observer = NotificationCenter.default.addObserver(
+        forName: NSToolbar.willAddItemNotification,
+        object: toolbar,
+        queue: nil
+    ) { notification in
+        if notification.userInfo?["item"] is NSToolbarItem {
+            centerPostCount += 1
+        }
+    }
+    defer { NotificationCenter.default.removeObserver(observer) }
+
+    let inbox = NSToolbarItem(itemIdentifier: "inbox")
+    let drafts = NSToolbarItem(itemIdentifier: "drafts")
+    toolbar.addItem(inbox)
+    toolbar.addItem(drafts)
+
+    // Will-add fired for both, carrying the item under "item".
+    expect(delegate.added.count == 2 && delegate.added[0] === inbox,
+           "toolbarWillAddItem did not deliver the added items. Got \(delegate.added.count).")
+    expect(centerPostCount == 2,
+           "willAddItemNotification did not post through NotificationCenter. Got \(centerPostCount).")
+
+    // A selectable identifier sticks; a non-selectable one clears the selection.
+    toolbar.selectedItemIdentifier = "inbox"
+    expect(toolbar.selectedItemIdentifier == "inbox", "A selectable identifier did not stick.")
+    toolbar.selectedItemIdentifier = "drafts"
+    expect(toolbar.selectedItemIdentifier == nil, "A non-selectable identifier was not cleared.")
+
+    // Did-remove fires with the removed item.
+    _ = toolbar.removeItem(at: 1)
+    expect(delegate.removed.count == 1 && delegate.removed[0] === drafts,
+           "toolbarDidRemoveItem did not deliver the removed item.")
+
+    // With nothing overflowed, visibleItems mirrors items.
+    expect(toolbar.visibleItems?.map(\.itemIdentifier) == ["inbox"], "visibleItems did not mirror items.")
+    expect(!toolbar.customizationPaletteIsRunning, "The customization palette should not report running by default.")
+}
+
+func testToolbarStandardItemIdentifiers() {
+    let toolbar = NSToolbar(identifier: "standard")
+    // No delegate: standard Apple identifiers synthesize their built-in items.
+    toolbar.setVisibleItemIdentifiers([.showColors, .showFonts, .print, .customizeToolbar])
+    let labels = toolbar.items.map(\.label)
+    expect(labels == ["Colors", "Fonts", "Print", "Customize"],
+           "Standard toolbar identifiers did not synthesize Mac-labeled items. Got \(labels).")
+    expect(toolbar.item(withIdentifier: .showColors)?.paletteLabel == "Colors",
+           "Standard item palette label was not set.")
+}
+
+/// Vends fresh a/b items so a restoring toolbar can resolve identifiers.
+final class AutosaveToolbarDelegate: NSToolbarDelegate {
+    func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
+        ["a", "b"]
+    }
+    func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
+        ["a", "b"]
+    }
+    func toolbar(
+        _ toolbar: NSToolbar,
+        itemForItemIdentifier itemIdentifier: NSToolbarItem.Identifier,
+        willBeInsertedIntoToolbar flag: Bool
+    ) -> NSToolbarItem? {
+        NSToolbarItem(itemIdentifier: itemIdentifier)
+    }
+}
+
+func testToolbarAutosaveRoundTripsConfiguration() {
+    let autosaveKey = "NSToolbar Configuration WinChocolateAutosaveTest"
+    UserDefaults.standard.removeObject(forKey: autosaveKey)
+    let delegate = AutosaveToolbarDelegate()
+
+    // Customize a toolbar with autosave on: the configuration lands in defaults
+    // under AppKit's key with AppKit's dictionary shape.
+    let toolbar = NSToolbar(identifier: "WinChocolateAutosaveTest")
+    toolbar.delegate = delegate
+    toolbar.autosavesConfiguration = true
+    toolbar.displayMode = .iconOnly
+    toolbar.setVisibleItemIdentifiers(["b"])
+    let saved = UserDefaults.standard.dictionary(forKey: autosaveKey)
+    expect((saved?["TB Item Identifiers"] as? [Any])?.compactMap { $0 as? String } == ["b"],
+           "Autosave did not persist the visible identifiers. Got \(String(describing: saved)).")
+    expect((saved?["TB Display Mode"] as? Int) == 2, "Autosave did not persist the display mode.")
+
+    // A fresh toolbar with the same identifier restores on window attach.
+    let window = NSWindow(
+        contentRect: NSMakeRect(0, 0, 320, 200),
+        styleMask: [.titled],
+        backing: .buffered,
+        defer: false,
+        nativeBackend: InMemoryNativeControlBackend()
+    )
+    let restored = NSToolbar(identifier: "WinChocolateAutosaveTest")
+    restored.delegate = delegate
+    restored.setVisibleItemIdentifiers(["a", "b"])
+    restored.autosavesConfiguration = true
+    window.toolbar = restored
+    expect(restored.items.map(\.itemIdentifier) == ["b"],
+           "Attaching did not restore the autosaved item set. Got \(restored.items.map(\.itemIdentifier)).")
+    expect(restored.displayMode == .iconOnly, "Attaching did not restore the autosaved display mode.")
+
+    UserDefaults.standard.removeObject(forKey: autosaveKey)
+}
+
+func testToolbarOverflowCollapsesLowPriorityItems() {
+    func makeToolbar() -> NSToolbar {
+        let toolbar = NSToolbar(identifier: "overflow")
+        for name in ["alpha", "beta", "gamma", "delta"] {
+            let item = NSToolbarItem(itemIdentifier: NSToolbarItem.Identifier(rawValue: name))
+            item.label = name
+            toolbar.addItem(item)
+        }
+        toolbar.item(withIdentifier: "beta")?.visibilityPriority = .low
+        return toolbar
+    }
+
+    // Narrow strip: the low-priority item collapses into the overflow menu first.
+    let narrowView = NSToolbarView(frame: NSMakeRect(0, 0, 150, 36))
+    let narrowToolbar = makeToolbar()
+    narrowView.toolbar = narrowToolbar
+    let visible = narrowToolbar.visibleItems?.map(\.itemIdentifier.rawValue) ?? []
+    expect(!visible.contains("beta"),
+           "The low-priority item did not overflow first. Visible: \(visible).")
+    expect(visible.count < 4, "A 150pt strip should not fit all four items.")
+
+    // Wide strip: everything fits, nothing overflows.
+    let wideView = NSToolbarView(frame: NSMakeRect(0, 0, 600, 36))
+    let wideToolbar = makeToolbar()
+    wideView.toolbar = wideToolbar
+    expect(wideToolbar.visibleItems?.count == 4,
+           "A wide strip overflowed items it could fit. Visible: \(wideToolbar.visibleItems?.count ?? -1).")
+}
+
 func testWindowToolbarCreatesDockedComposedHostAndReservesContent() {
     let backend = InMemoryNativeControlBackend()
     let window = NSWindow(
@@ -7521,6 +7747,12 @@ testToolbarCustomizationMovesExistingItemToEnd()
 testToolbarViewComposesItemsAndDispatchesActions()
 testToolbarViewHostsCustomItemView()
 testToolbarItemCreatesCompositeImageLabelView()
+testUserDefaultsRoundTripsPlistValues()
+testToolbarItemValidationAndMenuForm()
+testToolbarSelectionAndDelegateCallbacks()
+testToolbarStandardItemIdentifiers()
+testToolbarAutosaveRoundTripsConfiguration()
+testToolbarOverflowCollapsesLowPriorityItems()
 testWindowToolbarCreatesDockedComposedHostAndReservesContent()
 testEditableTextFieldUsesEditableNativePeer()
 testSecureTextFieldUsesSecureNativePeer()
