@@ -13,13 +13,15 @@
 /// life of the process (ComCtl32 is bound once). Application code needs no
 /// other changes when switching presentations.
 public enum WinPresentation: Sendable {
-    /// The unthemed classic Win32 look (ComCtl32 v5). The default until the
-    /// modern look reaches parity (plan 8.4).
+    /// The unthemed classic Win32 look (ComCtl32 v5). Selectable
+    /// indefinitely for applications that want the original 3D look.
     case classic
 
-    /// The themed modern Windows look (ComCtl32 v6 visual styles).
+    /// The themed modern Windows look (ComCtl32 v6 visual styles). The
+    /// default (plan 8.4): new applications get the current Windows look
+    /// with no configuration.
     case modern
 
     /// The presentation the next-created backend applies.
-    nonisolated(unsafe) public static var selected: WinPresentation = .classic
+    nonisolated(unsafe) public static var selected: WinPresentation = .modern
 }

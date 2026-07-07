@@ -12,6 +12,12 @@ func expect(_ condition: @autoclosure () -> Bool, _ message: String) {
 // Tests that exercise dark behavior override this locally and restore it.
 NSApplication.shared.appearance = NSAppearance(named: .aqua)
 
+// The framework defaults to the modern presentation (8.4) — asserted here,
+// then pinned to classic so the suite's classic-baseline assertions hold;
+// tests that exercise modern behavior override locally and restore the pin.
+expect(WinPresentation.selected == .modern, "The presentation should default to modern (8.4).")
+WinPresentation.selected = .classic
+
 func clearApplicationWindows() {
     for window in NSApplication.shared.windows {
         NSApplication.shared.removeWindowsItem(window)
@@ -4318,8 +4324,9 @@ func testToolbarPopupAndFieldItemsAlignVertically() {
 }
 
 func testWinPresentationSelectionAndModernSeparators() {
-    // The framework defaults to the classic presentation until 8.4.
-    expect(WinPresentation.selected == .classic, "The presentation should default to classic.")
+    // The modern default (8.4) is asserted at suite startup, before the
+    // classic pin; here the pin should be in effect.
+    expect(WinPresentation.selected == .classic, "The suite should be pinned to the classic presentation.")
 
     func separatorViews(in toolbarView: NSToolbarView) -> Int {
         toolbarView.subviews.filter { $0 is NSToolbarSeparatorView }.count

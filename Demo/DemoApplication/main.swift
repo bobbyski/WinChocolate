@@ -1,10 +1,12 @@
 import WinChocolate
 
-// The demo showcases the modern presentation (ComCtl32 v6 visual styles,
-// plan 8.2) by default; pass --classic to compare against the unthemed
-// classic look. Must be selected before the application (and its backend)
-// is created — the binding is one-way for the process.
-WinPresentation.selected = CommandLine.arguments.contains("--classic") ? .classic : .modern
+// The framework defaults to the modern presentation (ComCtl32 v6 visual
+// styles, plan 8.4); pass --classic to compare against the unthemed classic
+// look. Must be selected before the application (and its backend) is
+// created — the binding is one-way for the process.
+if CommandLine.arguments.contains("--classic") {
+    WinPresentation.selected = .classic
+}
 
 let app = NSApplication.shared
 

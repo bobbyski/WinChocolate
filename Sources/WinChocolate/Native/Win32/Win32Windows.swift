@@ -52,7 +52,8 @@ extension Win32NativeControlBackend {
             return NativeHandle(rawValue: 0)
         }
 
-        // A dark effective appearance gets the dark (immersive) title bar.
+        // A dark effective appearance gets the dark (immersive) title bar and
+        // opts the process's popup menus into the system dark menu theme.
         // Resolved at creation, like every appearance-derived visual.
         if NSApplication.shared.effectiveAppearance.winIsDark {
             var enabled: Int32 = 1
@@ -60,6 +61,7 @@ extension Win32NativeControlBackend {
                 hwnd, winDWMWAUseImmersiveDarkMode,
                 &enabled, DWORD(MemoryLayout<Int32>.size)
             )
+            Self.enableDarkMenusIfNeeded()
         }
 
         let handle = nativeHandle(from: hwnd)

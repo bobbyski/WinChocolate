@@ -956,6 +956,9 @@ func winIsWindowVisible(_ hwnd: HWND?) -> Int32
 @_silgen_name("LoadLibraryW")
 func winLoadLibraryW(_ name: UnsafePointer<UInt16>?) -> UnsafeMutableRawPointer?
 
+@_silgen_name("GetProcAddress")
+func winGetProcAddress(_ module: UnsafeMutableRawPointer?, _ name: UnsafePointer<CChar>?) -> UnsafeMutableRawPointer?
+
 @_silgen_name("OpenClipboard")
 func winOpenClipboard(_ owner: HWND?) -> Int32
 
