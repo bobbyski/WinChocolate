@@ -1827,12 +1827,24 @@ imageView.image = NSImage(contentsOfFile: demoArtworkPath) ?? NSImage(named: "Wi
 imageView.imageFrameStyle = .grayBezel
 clipLabel.font = NSFont.boldSystemFont(ofSize: 12)
 clipOriginLabel.textColor = demoValueTextColor
-clipView.backgroundColor = .white
-clipDocumentView.backgroundColor = NSColor(calibratedRed: 0.97, green: 0.97, blue: 0.97, alpha: 1.0)
-clipTopLeftPane.backgroundColor = NSColor(calibratedRed: 0.84, green: 0.92, blue: 1.0, alpha: 1.0)
-clipTopRightPane.backgroundColor = NSColor(calibratedRed: 1.0, green: 0.94, blue: 0.72, alpha: 1.0)
-clipBottomLeftPane.backgroundColor = NSColor(calibratedRed: 0.86, green: 1.0, blue: 0.86, alpha: 1.0)
-clipBottomRightPane.backgroundColor = NSColor(calibratedRed: 1.0, green: 0.86, blue: 0.88, alpha: 1.0)
+// The demonstrative quadrant/pane colors keep their hues but darken in dark
+// mode so the panels read as distinct tiles rather than bright light slabs.
+clipView.backgroundColor = isDarkDemo ? NSColor(calibratedRed: 0.14, green: 0.14, blue: 0.15, alpha: 1.0) : .white
+clipDocumentView.backgroundColor = isDarkDemo
+    ? NSColor(calibratedRed: 0.17, green: 0.17, blue: 0.18, alpha: 1.0)
+    : NSColor(calibratedRed: 0.97, green: 0.97, blue: 0.97, alpha: 1.0)
+clipTopLeftPane.backgroundColor = isDarkDemo
+    ? NSColor(calibratedRed: 0.16, green: 0.24, blue: 0.36, alpha: 1.0)
+    : NSColor(calibratedRed: 0.84, green: 0.92, blue: 1.0, alpha: 1.0)
+clipTopRightPane.backgroundColor = isDarkDemo
+    ? NSColor(calibratedRed: 0.34, green: 0.29, blue: 0.14, alpha: 1.0)
+    : NSColor(calibratedRed: 1.0, green: 0.94, blue: 0.72, alpha: 1.0)
+clipBottomLeftPane.backgroundColor = isDarkDemo
+    ? NSColor(calibratedRed: 0.16, green: 0.30, blue: 0.18, alpha: 1.0)
+    : NSColor(calibratedRed: 0.86, green: 1.0, blue: 0.86, alpha: 1.0)
+clipBottomRightPane.backgroundColor = isDarkDemo
+    ? NSColor(calibratedRed: 0.34, green: 0.18, blue: 0.20, alpha: 1.0)
+    : NSColor(calibratedRed: 1.0, green: 0.86, blue: 0.88, alpha: 1.0)
 clipDocumentView.addSubview(clipTopLeftPane)
 clipDocumentView.addSubview(clipTopRightPane)
 clipDocumentView.addSubview(clipBottomLeftPane)
@@ -1843,8 +1855,12 @@ clipDocumentView.addSubview(clipBottomLeftLabel)
 clipDocumentView.addSubview(clipBottomRightLabel)
 clipView.documentView = clipDocumentView
 splitLabel.font = NSFont.boldSystemFont(ofSize: 12)
-splitLeftPane.backgroundColor = NSColor(calibratedRed: 0.86, green: 0.93, blue: 1.0, alpha: 1.0)
-splitRightPane.backgroundColor = NSColor(calibratedRed: 1.0, green: 0.92, blue: 0.84, alpha: 1.0)
+splitLeftPane.backgroundColor = isDarkDemo
+    ? NSColor(calibratedRed: 0.16, green: 0.25, blue: 0.37, alpha: 1.0)
+    : NSColor(calibratedRed: 0.86, green: 0.93, blue: 1.0, alpha: 1.0)
+splitRightPane.backgroundColor = isDarkDemo
+    ? NSColor(calibratedRed: 0.35, green: 0.28, blue: 0.17, alpha: 1.0)
+    : NSColor(calibratedRed: 1.0, green: 0.92, blue: 0.84, alpha: 1.0)
 splitView.addSubview(splitLeftPane)
 splitView.addSubview(splitRightPane)
 splitView.setPosition(70, ofDividerAt: 0)
