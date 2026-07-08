@@ -906,4 +906,11 @@ public protocol NativeControlBackend: AnyObject {
 
     /// Measures the rendered size of a single-line text run.
     func measureText(_ text: String, fontName: String, fontSize: CGFloat, weight: Int, italic: Bool) -> NSSize
+
+    /// Measures the rendered size of a text run wrapped at `maxWidth` (word
+    /// wrap): the returned height covers every line the text breaks into, and
+    /// the width is the widest line (≤ `maxWidth`). A non-positive `maxWidth`
+    /// measures as a single line. Lets layout know a multiline label's height
+    /// before any control exists.
+    func measureText(_ text: String, fontName: String, fontSize: CGFloat, weight: Int, italic: Bool, wrappingAt maxWidth: CGFloat) -> NSSize
 }

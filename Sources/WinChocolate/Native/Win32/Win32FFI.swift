@@ -469,6 +469,25 @@ struct NMUPDOWN {
     var iDelta: Int32 = 0
 }
 
+/// `NMCUSTOMDRAW` — the custom-draw notification payload (used to give the
+/// dark list-view header light title text).
+struct NMCUSTOMDRAW {
+    var hdr: NMHDR = NMHDR()
+    var dwDrawStage: DWORD = 0
+    var hdc: HDC?
+    var rc: RECT = RECT()
+    var dwItemSpec: UInt = 0
+    var uItemState: UINT = 0
+    var lItemlParam: LPARAM = 0
+}
+
+/// `NM_CUSTOMDRAW` (NM_FIRST − 12, as an unsigned notification code).
+let nmCustomDraw: UINT = 0xFFFF_FFF4
+let cddsPrePaint: DWORD = 0x0000_0001
+let cddsItemPrePaint: DWORD = 0x0001_0001
+let cdrfDoDefault: LRESULT = 0x0000_0000
+let cdrfNotifyItemDraw: LRESULT = 0x0000_0020
+
 struct HDHITTESTINFO {
     var pt: POINT = POINT()
     var flags: UINT = 0
@@ -1474,6 +1493,7 @@ let wmNotify: UINT = 0x004e
 let wmPaint: UINT = 0x000f
 let wmEraseBackground: UINT = 0x0014
 let wmSetFont: UINT = 0x0030
+let wmGetFont: UINT = 0x0031
 let wmCommand: UINT = 0x0111
 let wmUser: UINT = 0x0400
 let stmSetImage: UINT = 0x0172
@@ -1523,7 +1543,10 @@ let hcbtActivate: Int32 = 5
 let transparentBkMode: Int32 = 1
 let dtCenter: UINT = 0x00000001
 let dtVCenter: UINT = 0x00000004
+let dtWordBreak: UINT = 0x00000010
 let dtSingleLine: UINT = 0x00000020
+let dtNoPrefix: UINT = 0x00000800
+let dtCalcRect: UINT = 0x00000400
 let dtEndEllipsis: UINT = 0x00008000
 let wmApp: UINT = 0x8000
 let wmWinChocolateAsync: UINT = wmApp + 1
@@ -1575,6 +1598,10 @@ let lvmInsertItemW: UINT = lvmFirst + 77
 let lvmInsertColumnW: UINT = lvmFirst + 97
 let lvmSetItemTextW: UINT = lvmFirst + 116
 let lvmSetExtendedListViewStyle: UINT = lvmFirst + 54
+/// List-view color messages (the dark row background/text under dark).
+let lvmSetBkColor: UINT = lvmFirst + 1
+let lvmSetTextColor: UINT = lvmFirst + 36
+let lvmSetTextBkColor: UINT = lvmFirst + 38
 let tcmFirst: UINT = 0x1300
 let tcmGetCurSel: UINT = tcmFirst + 11
 let tcmSetCurSel: UINT = tcmFirst + 12

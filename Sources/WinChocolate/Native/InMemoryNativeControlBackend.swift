@@ -1942,6 +1942,42 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
         NSMakeSize(CGFloat(text.count) * fontSize * 0.55, fontSize * 1.35)
     }
 
+    /// Deterministic word-wrap estimate: the single-line metrics (`0.55 ×
+    /// pointSize` per character, `1.35 × pointSize` per line) greedily packed
+    /// into `maxWidth`-wide lines. Height is line count × line height; width is
+    /// the widest packed line (≤ `maxWidth`).
+    public func measureText(_ text: String, fontName: String, fontSize: CGFloat, weight: Int, italic: Bool, wrappingAt maxWidth: CGFloat) -> NSSize {
+        let charWidth = fontSize * 0.55
+        let lineHeight = fontSize * 1.35
+        guard maxWidth > 0, charWidth > 0 else {
+            return measureText(text, fontName: fontName, fontSize: fontSize, weight: weight, italic: italic)
+        }
+
+        let maxChars = max(1, Int(maxWidth / charWidth))
+        var lineCount = 0
+        var widestChars = 0
+        for paragraph in text.split(separator: "\n", omittingEmptySubsequences: false) {
+            var currentChars = 0
+            var lineStarted = false
+            for word in paragraph.split(separator: " ", omittingEmptySubsequences: false) {
+                let addition = lineStarted ? word.count + 1 : word.count
+                if lineStarted, currentChars + addition > maxChars {
+                    lineCount += 1
+                    widestChars = max(widestChars, currentChars)
+                    currentChars = word.count
+                } else {
+                    currentChars += addition
+                }
+                lineStarted = true
+            }
+            lineCount += 1
+            widestChars = max(widestChars, currentChars)
+        }
+
+        let width = min(CGFloat(widestChars) * charWidth, maxWidth)
+        return NSMakeSize(width, CGFloat(max(lineCount, 1)) * lineHeight)
+    }
+
     /// Records native progress indeterminate state.
 
     public func setProgressIndicatorIndeterminate(_ isIndeterminate: Bool, animating: Bool, for handle: NativeHandle) {
@@ -1998,8 +2034,21 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     }
 
     /// Fires a scheduled timer's action, standing in for a message-loop tick.
+    /// Pair with `scheduledTimers` to test timer-coalesced code headlessly:
+    /// schedule through the run loop, then `fireTimer(id)` (or `fireDueTimers`)
+    /// to pump one tick deterministically.
     public func fireTimer(_ identifier: UInt) {
         timerActions[identifier]?()
+    }
+
+    /// Fires every scheduled timer's action once — a whole "message-loop tick"
+    /// for headless tests of coalesced re-render paths (a Timer-batched layout
+    /// pass fires here rather than waiting on a real run loop). Iterates a
+    /// snapshot so a timer that reschedules during its action doesn't recurse.
+    public func fireDueTimers() {
+        for timer in scheduledTimers {
+            timerActions[timer.identifier]?()
+        }
     }
 
     /// The most recently registered key-equivalent handler.

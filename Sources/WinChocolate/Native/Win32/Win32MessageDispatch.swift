@@ -361,6 +361,25 @@ extension Win32NativeControlBackend {
                 return nil
             }
 
+            // A dark list-view header draws its titles in the theme's dark
+            // text (the `DarkMode_ItemsView` theme darkens only the
+            // background), so custom-draw forces the light title color.
+            if header.code == nmCustomDraw,
+               NSApplication.shared.effectiveAppearance.winIsDark,
+               let source = header.hwndFrom,
+               tableHeaderOwners[UInt(bitPattern: source)] != nil,
+               let custom = UnsafeRawPointer(bitPattern: lParam)?.assumingMemoryBound(to: NMCUSTOMDRAW.self).pointee {
+                switch custom.dwDrawStage {
+                case cddsPrePaint:
+                    return cdrfNotifyItemDraw
+                case cddsItemPrePaint:
+                    _ = winSetTextColor(custom.hdc, colorRef(from: .textColor))
+                    return cdrfDoDefault
+                default:
+                    return cdrfDoDefault
+                }
+            }
+
             if header.code == hdnItemClickA || header.code == hdnItemClickW {
                 guard let source = header.hwndFrom,
                       let handle = tableHeaderOwners[UInt(bitPattern: source)],
@@ -813,12 +832,27 @@ extension Win32NativeControlBackend {
 
             mouseLeftActions[actionHandle(from: hwnd).rawValue]?()
             return nil
+        case wmPaint:
+            // A dark date picker's closed field is owner-drawn (it has no
+            // dark theme part / color API); other controls paint themselves.
+            guard let hwnd,
+                  darkDatePickerFieldHandles.contains(actionHandle(from: hwnd).rawValue) else {
+                return nil
+            }
+
+            drawDarkDatePickerField(hwnd)
+            return 0
         case wmEraseBackground:
             guard let hwnd else {
                 return nil
             }
 
             let handle = actionHandle(from: hwnd)
+            // The owner-drawn dark date field paints its whole client in
+            // WM_PAINT, so the default erase would only flash under it.
+            if darkDatePickerFieldHandles.contains(handle.rawValue) {
+                return 1
+            }
             guard groupBoxHandles.contains(handle.rawValue) else {
                 return nil
             }
