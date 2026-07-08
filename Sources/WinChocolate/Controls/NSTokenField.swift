@@ -81,6 +81,23 @@ open class NSTokenField: NSTextField {
         return super.createNativePeer(in: backend, parent: parent)
     }
 
+    /// Appearance-aware chip fill/border/text colors. The capsule tints the
+    /// user's Windows accent (the Fluent look, plan 8.3): a pale accent wash with
+    /// dark text under light, a deep accent fill with light text under dark, so
+    /// the chips read as tokens in either theme instead of a fixed light island.
+    /// Pure and `isDark`-parameterized for testing.
+    public static func winChipColors(isDark: Bool) -> (fill: NSColor, border: NSColor, text: NSColor) {
+        let accent = NSColor.controlAccentColor
+        if isDark {
+            return (fill: accent.blended(withFraction: 0.55, of: .black) ?? accent,
+                    border: accent,
+                    text: .white)
+        }
+        return (fill: accent.blended(withFraction: 0.80, of: .white) ?? accent,
+                border: accent.blended(withFraction: 0.35, of: .white) ?? accent,
+                text: .black)
+    }
+
     /// Draws the tokens as rounded chips.
     open override func draw(_ dirtyRect: NSRect) {
         guard usesChipRendering else {
@@ -88,10 +105,11 @@ open class NSTokenField: NSTextField {
             return
         }
 
-        let chipColor = NSColor(calibratedRed: 0.85, green: 0.91, blue: 1.0, alpha: 1)
-        let borderColor = NSColor(calibratedRed: 0.40, green: 0.58, blue: 0.85, alpha: 1)
+        let colors = NSTokenField.winChipColors(isDark: effectiveAppearance.winIsDark)
+        let chipColor = colors.fill
+        let borderColor = colors.border
         let attributes: [NSAttributedString.Key: Any] = [
-            .foregroundColor: NSColor.black,
+            .foregroundColor: colors.text,
             .font: NSFont.systemFont(ofSize: 12)
         ]
         let horizontalPadding: CGFloat = 10

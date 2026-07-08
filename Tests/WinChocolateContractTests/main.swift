@@ -1889,6 +1889,20 @@ func testSliderNativeActionUpdatesValue() {
     expect(actionCount == 1, "Slider native action was not dispatched.")
 }
 
+func testSpinnerShadeInvertsForDarkAppearance() {
+    // The leading dot (age 0) must be dark on light but bright on dark, and the
+    // trailing dot (age 11) the reverse — so the sweep stays visible against
+    // either background instead of fading into it.
+    let lightLead = NSProgressIndicator.winSpinnerShade(age: 0, animating: true, isDark: false)
+    let lightTail = NSProgressIndicator.winSpinnerShade(age: 11, animating: true, isDark: false)
+    expect(lightLead < 0.3 && lightTail > 0.7, "On light, the leading dot should be dark and the trail light.")
+
+    let darkLead = NSProgressIndicator.winSpinnerShade(age: 0, animating: true, isDark: true)
+    let darkTail = NSProgressIndicator.winSpinnerShade(age: 11, animating: true, isDark: true)
+    expect(darkLead > 0.7 && darkTail < 0.4, "On dark, the leading dot should be bright and the trail near-dark.")
+    expect(darkLead > lightLead, "The dark leading dot must be brighter than the light one to show on the dark surface.")
+}
+
 func testProgressIndicatorStoresRangeValueAndSyncsNativePeer() {
     let backend = InMemoryNativeControlBackend()
     let progress = NSProgressIndicator(frame: NSMakeRect(0, 0, 240, 16))
@@ -2019,6 +2033,27 @@ func testLevelIndicatorRatingUsesCustomView() {
     let bar = NSLevelIndicator(frame: NSMakeRect(0, 0, 120, 24))
     let barHandle = bar.realizeNativePeer(in: backend, parent: nil)
     expect(backend.records[barHandle]?.kind == "progressIndicator", "Continuous level indicator should use the progress peer.")
+}
+
+func testLevelIndicatorFillColorsAreAppearanceAware() {
+    // The framework-drawn styles must adapt to dark mode: the empty-slot track
+    // lifts so filled/unfilled items stay distinct against the dark surface, and
+    // the whole palette differs between light and dark (no hardcoded light-only
+    // colors — the regression these tokens replaced).
+    let lightRating = NSLevelIndicator.winFillColors(for: .rating, isDark: false)
+    let darkRating = NSLevelIndicator.winFillColors(for: .rating, isDark: true)
+    expect(lightRating.off != darkRating.off, "The empty-slot track must differ between light and dark.")
+    expect(darkRating.off.redComponent < lightRating.off.redComponent,
+        "The dark track should be darker than the light track.")
+
+    // Relevancy keeps the Mac's neutral graphite, not the accent used by rating
+    // and discrete capacity, and it too flips with appearance.
+    let lightRelevancy = NSLevelIndicator.winFillColors(for: .relevancy, isDark: false)
+    let darkRelevancy = NSLevelIndicator.winFillColors(for: .relevancy, isDark: true)
+    expect(lightRelevancy.on != lightRating.on, "Relevancy should not use the accent fill that rating does.")
+    expect(lightRelevancy.on != darkRelevancy.on, "Relevancy's neutral fill must adapt to appearance.")
+    expect(darkRelevancy.on.redComponent > lightRelevancy.on.redComponent,
+        "The dark relevancy fill should lift to stay visible on the dark surface.")
 }
 
 func testLevelIndicatorEditableClickSetsValue() {
@@ -5225,6 +5260,23 @@ func testTokenFieldStoresTokensAndTokenizesNativeText() {
     expect(chips.tokens == ["A", "B"], "Rounded token field did not keep its token model.")
 }
 
+func testTokenFieldChipColorsAreAppearanceAware() {
+    // The rounded chips must not stay a fixed light island in dark mode: the
+    // whole palette (fill/border/text) flips with appearance, and the chip text
+    // inverts so tokens stay legible on the dark capsule.
+    let light = NSTokenField.winChipColors(isDark: false)
+    let dark = NSTokenField.winChipColors(isDark: true)
+    expect(light.fill != dark.fill, "The chip fill must adapt to appearance.")
+    expect(light.text == .black && dark.text == .white,
+        "Chip text should invert: dark text on the light capsule, light text on the dark one.")
+    // The dark capsule is a deep accent fill; the light capsule a pale wash — so
+    // the dark fill is meaningfully darker than the light fill.
+    expect(dark.fill.redComponent < light.fill.redComponent
+        && dark.fill.greenComponent < light.fill.greenComponent
+        && dark.fill.blueComponent < light.fill.blueComponent,
+        "The dark chip fill should be darker than the light one across all channels.")
+}
+
 func testPathControlStoresURLAndPathComponentCells() {
     let backend = InMemoryNativeControlBackend()
     let pathControl = NSPathControl(
@@ -5288,6 +5340,102 @@ func testPathControlComponentURLsAndSelection() {
     // Changing the URL clears the recorded click.
     pathControl.setURL(URL(fileURLWithPath: "C:\\AIResearch"))
     expect(pathControl.clickedPathComponentCell == nil, "Rebuilding components did not clear the clicked cell.")
+}
+
+// A minimal single-value coder pair to exercise Codable conformances without
+// Foundation's JSONEncoder (which WinChocolate deliberately does not depend on).
+// Only the String path is implemented — the only one UUID's coding touches; the
+// rest trap so an accidental use is caught rather than silently mis-tested.
+private final class SingleStringEncoder: Encoder {
+    var codingPath: [CodingKey] = []
+    var userInfo: [CodingUserInfoKey: Any] = [:]
+    var captured: String?
+
+    func singleValueContainer() -> SingleValueEncodingContainer { Container(encoder: self) }
+    func unkeyedContainer() -> UnkeyedEncodingContainer { fatalError("unsupported in test coder") }
+    func container<Key: CodingKey>(keyedBy type: Key.Type) -> KeyedEncodingContainer<Key> { fatalError("unsupported in test coder") }
+
+    struct Container: SingleValueEncodingContainer {
+        let encoder: SingleStringEncoder
+        var codingPath: [CodingKey] { [] }
+        func encodeNil() throws { fatalError("unsupported in test coder") }
+        func encode(_ value: String) throws { encoder.captured = value }
+        func encode(_ value: Bool) throws { fatalError("unsupported in test coder") }
+        func encode(_ value: Double) throws { fatalError("unsupported in test coder") }
+        func encode(_ value: Float) throws { fatalError("unsupported in test coder") }
+        func encode(_ value: Int) throws { fatalError("unsupported in test coder") }
+        func encode(_ value: Int8) throws { fatalError("unsupported in test coder") }
+        func encode(_ value: Int16) throws { fatalError("unsupported in test coder") }
+        func encode(_ value: Int32) throws { fatalError("unsupported in test coder") }
+        func encode(_ value: Int64) throws { fatalError("unsupported in test coder") }
+        func encode(_ value: UInt) throws { fatalError("unsupported in test coder") }
+        func encode(_ value: UInt8) throws { fatalError("unsupported in test coder") }
+        func encode(_ value: UInt16) throws { fatalError("unsupported in test coder") }
+        func encode(_ value: UInt32) throws { fatalError("unsupported in test coder") }
+        func encode(_ value: UInt64) throws { fatalError("unsupported in test coder") }
+        func encode<T: Encodable>(_ value: T) throws { fatalError("unsupported in test coder") }
+    }
+}
+
+private final class SingleStringDecoder: Decoder {
+    var codingPath: [CodingKey] = []
+    var userInfo: [CodingUserInfoKey: Any] = [:]
+    let value: String
+    init(_ value: String) { self.value = value }
+
+    func singleValueContainer() throws -> SingleValueDecodingContainer { Container(value: value) }
+    func unkeyedContainer() throws -> UnkeyedDecodingContainer { fatalError("unsupported in test coder") }
+    func container<Key: CodingKey>(keyedBy type: Key.Type) throws -> KeyedDecodingContainer<Key> { fatalError("unsupported in test coder") }
+
+    struct Container: SingleValueDecodingContainer {
+        let value: String
+        var codingPath: [CodingKey] { [] }
+        func decodeNil() -> Bool { false }
+        func decode(_ type: String.Type) throws -> String { value }
+        func decode(_ type: Bool.Type) throws -> Bool { fatalError("unsupported in test coder") }
+        func decode(_ type: Double.Type) throws -> Double { fatalError("unsupported in test coder") }
+        func decode(_ type: Float.Type) throws -> Float { fatalError("unsupported in test coder") }
+        func decode(_ type: Int.Type) throws -> Int { fatalError("unsupported in test coder") }
+        func decode(_ type: Int8.Type) throws -> Int8 { fatalError("unsupported in test coder") }
+        func decode(_ type: Int16.Type) throws -> Int16 { fatalError("unsupported in test coder") }
+        func decode(_ type: Int32.Type) throws -> Int32 { fatalError("unsupported in test coder") }
+        func decode(_ type: Int64.Type) throws -> Int64 { fatalError("unsupported in test coder") }
+        func decode(_ type: UInt.Type) throws -> UInt { fatalError("unsupported in test coder") }
+        func decode(_ type: UInt8.Type) throws -> UInt8 { fatalError("unsupported in test coder") }
+        func decode(_ type: UInt16.Type) throws -> UInt16 { fatalError("unsupported in test coder") }
+        func decode(_ type: UInt32.Type) throws -> UInt32 { fatalError("unsupported in test coder") }
+        func decode(_ type: UInt64.Type) throws -> UInt64 { fatalError("unsupported in test coder") }
+        func decode<T: Decodable>(_ type: T.Type) throws -> T { fatalError("unsupported in test coder") }
+    }
+}
+
+func testWinFoundationUUIDCodableMatchesAppleForm() {
+    let uuid = UUID(uuidString: "00112233-4455-6677-8899-AABBCCDDEEFF")!
+
+    // Encodes as the uppercase uuidString in a single value — byte-identical to
+    // Apple Foundation's UUID coding, so a JSON model file interchanges across
+    // the two Foundations without a UUID mismatch.
+    let encoder = SingleStringEncoder()
+    try! uuid.encode(to: encoder)
+    expect(encoder.captured == "00112233-4455-6677-8899-AABBCCDDEEFF",
+        "UUID should encode as its uppercase uuidString; got \(String(describing: encoder.captured)).")
+
+    // Round-trips its own output.
+    let decoded = try! UUID(from: SingleStringDecoder(encoder.captured!))
+    expect(decoded == uuid, "UUID did not round-trip through Codable.")
+
+    // Decodes Apple's canonical lowercase uuidString too (interop robustness).
+    let fromLower = try! UUID(from: SingleStringDecoder("00112233-4455-6677-8899-aabbccddeeff"))
+    expect(fromLower == uuid, "UUID should decode Apple's lowercase uuidString form.")
+
+    // A malformed string throws a DecodingError instead of crashing.
+    var threw = false
+    do {
+        _ = try UUID(from: SingleStringDecoder("not-a-uuid"))
+    } catch {
+        threw = true
+    }
+    expect(threw, "Decoding an invalid UUID string should throw a DecodingError.")
 }
 
 func testWinFoundationCompatibilitySurface() {
@@ -8616,9 +8764,11 @@ testCollectionFlowLayoutHorizontalVariableSizePacking()
 testSliderStoresRangeValueAndSyncsNativePeer()
 testSliderNativeActionUpdatesValue()
 testProgressIndicatorStoresRangeValueAndSyncsNativePeer()
+testSpinnerShadeInvertsForDarkAppearance()
 testLevelIndicatorStoresRangeValueAndUsesProgressPeer()
 testLevelIndicatorEditableClickSetsValue()
 testLevelIndicatorRatingUsesCustomView()
+testLevelIndicatorFillColorsAreAppearanceAware()
 testMinorControlCleanups()
 testButtonBezelAndTextFieldBezel()
 testScrollerStoresValueAndSyncsNativePeer()
@@ -8727,9 +8877,11 @@ testComboBoxStoresItemsTextAndUsesNativePeer()
 testComboBoxDataSourceSuppliesItems()
 testComboBoxNativeTextChangeAndActionUpdateState()
 testTokenFieldStoresTokensAndTokenizesNativeText()
+testTokenFieldChipColorsAreAppearanceAware()
 testPathControlStoresURLAndPathComponentCells()
 testPathControlComponentURLsAndSelection()
 testWinFoundationCompatibilitySurface()
+testWinFoundationUUIDCodableMatchesAppleForm()
 testImageViewStoresImageAndUsesNativePeer()
 testTabViewStoresItemsSelectionAndUsesNativePeer()
 testTabViewNativeSelectionDispatchesAction()

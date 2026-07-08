@@ -130,6 +130,33 @@ public struct UUID: Equatable, Hashable, Sendable, CustomStringConvertible {
     }
 }
 
+extension UUID: Codable {
+    /// Matches Apple Foundation's `UUID` coding exactly: a single-value container
+    /// holding the uppercase `uuidString`. Because WinFoundation's `uuidString`
+    /// is already uppercase, JSON produced here is byte-identical to Apple's, so
+    /// a model file written on macOS and read on Windows (or vice versa) round-
+    /// trips its UUIDs. Uses only the Swift standard library's `Codable`, so no
+    /// Foundation dependency is introduced.
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let string = try container.decode(String.self)
+        guard let uuid = UUID(uuidString: string) else {
+            throw DecodingError.dataCorrupted(
+                DecodingError.Context(
+                    codingPath: decoder.codingPath,
+                    debugDescription: "Attempted to decode UUID from invalid UUID string \(string)."
+                )
+            )
+        }
+        self = uuid
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(uuidString)
+    }
+}
+
 #if os(Windows)
 private struct WinFoundationGUID {
     var data1: UInt32 = 0
