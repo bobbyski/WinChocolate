@@ -63,7 +63,45 @@ open class NSSegmentedControl: NSControl {
     open var trackingMode: TrackingMode = .selectOne
 
     /// Segment visual style request.
-    open var segmentStyle: Style = .automatic
+    open var segmentStyle: Style = .automatic {
+        didSet {
+            applySegmentBezelStyle()
+            layoutSegments()
+        }
+    }
+
+    /// The gap drawn between segments for a given style. The `.separated` style
+    /// stands its segments apart as individual pills (the macOS separated look,
+    /// which also reads as the modern Win11 split-button style); every other
+    /// style keeps them joined into one continuous strip. Pure/testable.
+    public static func winSegmentSpacing(for style: Style) -> CGFloat {
+        switch style {
+        case .separated:
+            return 4
+        default:
+            return 0
+        }
+    }
+
+    /// Whether a style renders its segments as flat, square-edged buttons (the
+    /// squared/textured family) versus the standard themed rounded segment. Pure
+    /// and testable. Drives each segment button's bezel so the style is visible.
+    public static func winSegmentButtonIsFlat(for style: Style) -> Bool {
+        switch style {
+        case .texturedSquare, .smallSquare, .roundRect, .texturedRounded:
+            return true
+        default:
+            return false
+        }
+    }
+
+    /// Applies the current style's flat/themed bezel to every segment button.
+    private func applySegmentBezelStyle() {
+        let flat = NSSegmentedControl.winSegmentButtonIsFlat(for: segmentStyle)
+        for button in segmentButtons {
+            button.bezelStyle = flat ? .smallSquare : .rounded
+        }
+    }
 
     /// Creates an empty segmented control.
     public override init(frame frameRect: NSRect) {
@@ -316,6 +354,7 @@ open class NSSegmentedControl: NSControl {
             segmentButtons.append(button)
         }
 
+        applySegmentBezelStyle()
         layoutSegments()
     }
 
@@ -324,11 +363,15 @@ open class NSSegmentedControl: NSControl {
             return
         }
 
+        let spacing = NSSegmentedControl.winSegmentSpacing(for: segmentStyle)
+        let totalSpacing = spacing * CGFloat(max(segments.count - 1, 0))
         let requestedWidth = segments.reduce(CGFloat(0)) { total, segment in
             total + segment.width
         }
         let automaticCount = segments.filter { $0.width == 0 }.count
-        let remainingWidth = max(0, frame.size.width - requestedWidth)
+        // The inter-segment gaps eat into the width available to auto-sized
+        // segments, so a separated control's segments stay inside the frame.
+        let remainingWidth = max(0, frame.size.width - requestedWidth - totalSpacing)
         let automaticWidth = automaticCount == 0 ? 0 : remainingWidth / CGFloat(automaticCount)
         var x = CGFloat(0)
 
@@ -337,7 +380,7 @@ open class NSSegmentedControl: NSControl {
             if segmentButtons.indices.contains(index) {
                 segmentButtons[index].frame = NSMakeRect(x, 0, width, frame.size.height)
             }
-            x += width
+            x += width + spacing
         }
     }
 

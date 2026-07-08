@@ -269,8 +269,24 @@ open class NSToolbar: NSObject {
 
     /// Replaces visible toolbar items with the supplied identifiers.
     open func setVisibleItemIdentifiers(_ identifiers: [NSToolbarItem.Identifier]) {
-        let replacementItems = identifiers.compactMap { identifier -> NSToolbarItem? in
-            itemForVisibleIdentifier(identifier, willBeInsertedIntoToolbar: true)
+        var replacementItems: [NSToolbarItem] = []
+        replacementItems.reserveCapacity(identifiers.count)
+        for identifier in identifiers {
+            guard var item = itemForVisibleIdentifier(identifier, willBeInsertedIntoToolbar: true) else {
+                continue
+            }
+            // A delegate may legitimately return one cached NSToolbarItem for
+            // every request of a structural identifier (the demo reuses a single
+            // separator instance). When two such identifiers arrive in the same
+            // pass, itemForVisibleIdentifier only guards against reusing items
+            // already in `self.items` — not ones we've just consumed here — so it
+            // hands back the same instance twice. Aliasing one item into two slots
+            // corrupts the index/identity operations the customization panel and
+            // renderer rely on, so mint a fresh instance instead.
+            if replacementItems.contains(where: { $0 === item }) {
+                item = NSToolbarItem(itemIdentifier: identifier)
+            }
+            replacementItems.append(item)
         }
 
         for item in items {
@@ -1232,9 +1248,13 @@ final class NSToolbarOverflowChevronView: NSView {
                 angle: -90
             )
         }
+        let onDarkStrip = metallicSlice == nil && NSApplication.shared.effectiveAppearance.winIsDark
+        let chevronColor = onDarkStrip
+            ? NSColor(calibratedWhite: 0.85, alpha: 1)
+            : NSColor(calibratedRed: 0.25, green: 0.27, blue: 0.30, alpha: 1.0)
         "»".draw(at: NSMakePoint(max((frame.size.width - 10) / 2, 0), max((frame.size.height - 18) / 2, 0)), withAttributes: [
             .font: NSFont.boldSystemFont(ofSize: 13),
-            .foregroundColor: NSColor(calibratedRed: 0.25, green: 0.27, blue: 0.30, alpha: 1.0),
+            .foregroundColor: chevronColor,
         ])
     }
 
@@ -1320,7 +1340,13 @@ private final class NSToolbarCompositeItemView: NSView {
     /// When the toolbar renders the metallic look, the tile paints its exact
     /// slice of the strip's chrome gradient (strip height + this tile's y
     /// offset) so the chrome reads continuous through the child windows.
-    var metallicSlice: (stripHeight: CGFloat, y: CGFloat)?
+    /// Set after creation, so re-resolve the label color (metallic = light
+    /// silver strip → dark text; unified dark → light text).
+    var metallicSlice: (stripHeight: CGFloat, y: CGFloat)? {
+        didSet {
+            updateNativeTextColor()
+        }
+    }
 
     override func draw(_ dirtyRect: NSRect) {
         guard let metallicSlice, backgroundColor == nil else {
@@ -1430,9 +1456,19 @@ private final class NSToolbarCompositeItemView: NSView {
     }
 
     private func updateNativeTextColor(for handle: NativeHandle, backend: NativeControlBackend) {
-        let color = isEnabled
-            ? NSColor(calibratedRed: 0.08, green: 0.10, blue: 0.12, alpha: 1.0)
-            : NSColor(calibratedRed: 0.42, green: 0.44, blue: 0.46, alpha: 1.0)
+        // The label contrasts with the tile's background: the metallic look
+        // paints a light silver slice (dark text regardless of appearance),
+        // otherwise the tile is transparent over the strip, so a dark
+        // appearance needs light text.
+        let onDarkStrip = metallicSlice == nil && NSApplication.shared.effectiveAppearance.winIsDark
+        let color: NSColor
+        if onDarkStrip {
+            color = isEnabled ? NSColor(calibratedWhite: 0.92, alpha: 1) : NSColor(calibratedWhite: 0.55, alpha: 1)
+        } else {
+            color = isEnabled
+                ? NSColor(calibratedRed: 0.08, green: 0.10, blue: 0.12, alpha: 1.0)
+                : NSColor(calibratedRed: 0.42, green: 0.44, blue: 0.46, alpha: 1.0)
+        }
         backend.setTextColor(color, for: handle)
     }
 }

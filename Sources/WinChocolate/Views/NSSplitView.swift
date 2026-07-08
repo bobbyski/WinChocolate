@@ -225,9 +225,14 @@ open class NSSplitView: NSView {
         }
     }
 
-    /// Draws one divider: a classic center line inside the gap.
+    /// Draws one divider: a classic center line inside the gap. The hairline
+    /// darkens under dark mode so it reads as a seam on the dark surface instead
+    /// of a bright light-mode line.
     open func drawDivider(in rect: NSRect) {
-        NSColor(calibratedRed: 0.63, green: 0.63, blue: 0.63, alpha: 1).setFill()
+        let dividerColor = effectiveAppearance.winIsDark
+            ? NSColor(white: 0.32, alpha: 1)
+            : NSColor(calibratedRed: 0.63, green: 0.63, blue: 0.63, alpha: 1)
+        dividerColor.setFill()
         if isVertical {
             NSRectFill(NSMakeRect(rect.origin.x + rect.size.width / 2 - 0.5, rect.origin.y + 2, 1, max(0, rect.size.height - 4)))
         } else {
