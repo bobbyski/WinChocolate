@@ -3,18 +3,19 @@
 ## Dashboard
 
 ```text
-Overall Progress                           █████░░░░░░░░░░░░░░░░░░░░░   20%  🔄 Phase L3 active
+Overall Progress                           █████░░░░░░░░░░░░░░░░░░░░░   18%  🔄 Phase L3 active
 
 Phase L1 · Backend Strategy                ██████████████████████████  100%  ✅ Milestone met — GTK4 chosen & proven on dev loop
 Phase L2 · Toolchain & Harness             ██████████████████████████  100%  ✅ Milestone met — reproducible one-command Ring 1 loop
 Phase L3 · Core Shell & First Control      ██████████████████░░░░░░░░   70%  🔄 Active — native click-counter runs, tests green
 Phase L4 · Control Parity Pass             ░░░░░░░░░░░░░░░░░░░░░░░░░░    0%  ⏳ Pending
-Phase L5 · Real-Hardware & Distribution    ░░░░░░░░░░░░░░░░░░░░░░░░░░    0%  ⏳ Pending
+Phase L5 · Linux VMs & Distribution        ░░░░░░░░░░░░░░░░░░░░░░░░░░    0%  ⏳ Pending
 Phase L6 · Three-Platform Proof            ░░░░░░░░░░░░░░░░░░░░░░░░░░    0%  ⏳ Pending
 Phase L7 · Shared-Core Convergence         ░░░░░░░░░░░░░░░░░░░░░░░░░░    0%  ⏳ Deferred (post-WinChocolate-stable)
+Phase L8 · Pi Cleanup                      ░░░░░░░░░░░░░░░░░░░░░░░░░░    0%  ⏳ Pending
 ```
 
-**Phases run serially:** each ends in the **Milestone** stated at its heading, and the next phase does not begin until that milestone is demonstrated. Progress bars reflect one active phase at a time.
+**Phases run serially:** each ends in the **Milestone** stated at its heading, and the next phase does not begin until that milestone is demonstrated. Progress bars reflect one active phase at a time. (L7 · Convergence is deferred on an external trigger — the normal Linux track runs L1→L6 then L8, with L7 slotting in once WinChocolate stabilizes.)
 
 **Status key:** ✅ Done &nbsp;|&nbsp; 🔄 In Progress &nbsp;|&nbsp; ⏳ Pending &nbsp;|&nbsp; 🚫 Blocked
 
@@ -74,7 +75,7 @@ Rules for the matrix:
 
 | # | Item | Status | Notes |
 |---|---|---|---|
-| L1.1 | Native substrate choice | ✅ Done | **GTK 4 via Swift C-interop, Cairo renderer for the XQuartz loop** — see [LinChocolateSubstrate.md](LinChocolateSubstrate.md). Only candidate delivering a native, modern, theme-following look (Goal 2) with Wayland+X11, HiDPI, IME, and AT-SPI already solved; the Pi's own toolkit; Swift↔GTK4 binding path real and Swift.org-endorsed. Validated by **S1** (compiles), **S2** (renders over XQuartz), **S4** (seam swappable). GTK3 is the documented fallback; custom X11/Wayland+Cairo rejected. Pi confirmation (**S3**) is a Phase L5 gate, not a blocker on the decision. |
+| L1.1 | Native substrate choice | ✅ Done | **GTK 4 via Swift C-interop, Cairo renderer for the XQuartz loop** — see [LinChocolateSubstrate.md](LinChocolateSubstrate.md). Only candidate delivering a native, modern, theme-following look (Goal 2) with Wayland+X11, HiDPI, IME, and AT-SPI already solved; the Pi's own toolkit; Swift↔GTK4 binding path real and Swift.org-endorsed. Validated by **S1** (compiles), **S2** (renders over XQuartz), **S4** (seam swappable). GTK3 is the documented fallback; custom X11/Wayland+Cairo rejected. Pi confirmation (**S3**) is the Phase L8 gate, not a blocker on the decision. |
 | L1.2 | Target look baseline | ✅ Decided | Baseline is **plain GTK4 (follows the active system theme)** — right for the Pi's PIXEL desktop; libadwaita optional where a polished GNOME look is wanted. The plain-vs-libadwaita call is refined in L4 with a Pi in hand (substrate doc §5). |
 
 ## Phase L2 — Toolchain & Harness ✅
@@ -83,7 +84,7 @@ Rules for the matrix:
 
 | # | Item | Status | Notes |
 |---|---|---|---|
-| L2.1 | Swift toolchain pin | ✅ Done | `swift:6.0-noble` pinned in the image (GTK 4.14.5; aarch64 on Apple Silicon, `SWIFT_TAG` build-arg for x86-64); GTK4 C-interop builds cleanly. Re-confirmed on VMs/Pi in L5. |
+| L2.1 | Swift toolchain pin | ✅ Done | `swift:6.0-noble` pinned in the image (GTK 4.14.5; aarch64 on Apple Silicon, `SWIFT_TAG` build-arg for x86-64); GTK4 C-interop builds cleanly. Re-confirmed on the VMs in L5 and the Pi in L8. |
 | L2.2 | Docker dev image | ✅ Done | `LinChocolate/Dockerfile` — `swift:6.0-noble` + `libgtk-4-dev` + `dbus-x11`, aarch64 to match the Pi. Image builds; `swift build` green (**S1**). |
 | L2.3 | XQuartz display bridge | ✅ Done | `LinChocolate/run-linux.sh` auto-enables XQuartz TCP, restarts it, `xhost +`, dials `DISPLAY=<en0-IP>:0`, `GSK_RENDERER=cairo`. Window renders on the Mac (**S2**). (Ring 1b WSLg loop doc → L5.) |
 | L2.4 | Real Foundation | ✅ Confirmed | corelibs Foundation works on Linux out of the box — `NSRect`/`NSPoint`/`NSMakeRect`/`CGFloat` used directly, no WinFoundation-style shim needed. `USE_REAL_FOUNDATION` is simply the default here. |
@@ -111,17 +112,16 @@ Rules for the matrix:
 | L4.3 | Composed-control reuse | ⏳ Pending | Reuse composed designs (toolbar, alerts, panels, customization sheet) where GTK lacks a native peer; keep the Apple-look toolbar exception. |
 | L4.4 | Look refinement | ⏳ Pending | Settle plain-GTK4 vs libadwaita (the L1.2 baseline) with a Pi in hand. |
 
-## Phase L5 — Real-Hardware & Distribution ⏳
+## Phase L5 — Linux VMs & Distribution ⏳
 
-**Milestone:** the demo **runs on a real Raspberry Pi under Wayland (S3)** and on **x86-64 + aarch64 Linux VMs (X11 and Wayland)** — Rings 2–3 stood up, Wayland proven, and the distribution/packaging shape decided. This is where the substrate's Pi/Wayland assumptions are finally confirmed on hardware.
+**Milestone:** the demo **runs on x86-64 + aarch64 Linux VMs (X11 and Wayland)** — Ring 2 stood up, the Wayland path proven (XQuartz cannot), and the distribution/packaging shape decided. *(Raspberry Pi hardware is its own focused phase — L8.)*
 
 | # | Item | Status | Notes |
 |---|---|---|---|
 | L5.1 | Linux VM ring (Ring 2) | ⏳ Pending | x86-64 + aarch64 VMs with both an X11 and a Wayland session; the demo runs on each. Wayland path proven (XQuartz cannot). |
-| L5.2 | Raspberry Pi (Ring 3, **S3**) | ⏳ Pending | Build+run on Raspberry Pi OS Bookworm aarch64 under labwc/Wayfire at acceptable perf; decide the minimum supported Pi model. Confirms the substrate on real hardware. |
-| L5.3 | Distribution shape | ⏳ Pending | SwiftPM-only vs distro packaging; minimum supported distros/desktops. Pi OS primary; mainstream x86-64 distros follow. |
-| L5.4 | WSLg secondary loop | ⏳ Pending | Document the Ring 1b WSLg loop so the demo runs on the Windows machine over Wayland/XWayland. |
-| L5.5 | CI | ⏳ Pending | Wire the container ring (build + contract tests) into CI; define the periodic real-hardware verification cadence. |
+| L5.2 | Distribution shape | ⏳ Pending | SwiftPM-only vs distro packaging; minimum supported distros/desktops. Pi OS primary; mainstream x86-64 distros follow. |
+| L5.3 | WSLg secondary loop | ⏳ Pending | Document the Ring 1b WSLg loop so the demo runs on the Windows machine over Wayland/XWayland. |
+| L5.4 | CI | ⏳ Pending | Wire the container ring (build + contract tests) into CI; define the periodic verification cadence. |
 
 ## Phase L6 — Three-Platform Proof ⏳
 
@@ -145,12 +145,23 @@ Deferred until WinChocolate's API stabilizes. Sibling-first (Goal 3) means the A
 | L7.3 | Rebase both siblings | ⏳ Deferred | Re-point WinChocolate (Win32 backend) and LinChocolate (Linux backend) at the shared core; delete the duplicated surface. No app-visible API change on either platform. |
 | L7.4 | Anti-drift guard | ⏳ Deferred | Ensure the shared contract tests run in all three platforms' CI so the core cannot silently diverge again. |
 
+## Phase L8 — Pi Cleanup ⏳
+
+**Milestone:** the demo and the test apps **run cleanly on Raspberry Pi OS (Bookworm, aarch64) under Wayland (labwc/Wayfire) at good performance** — Pi-specific quirks resolved, the minimum supported Pi model set, and first-run install smooth. This is the dedicated Ring 3 pass that finally confirms the substrate on real Pi hardware (**S3**), delivering Goal 4 (Pi as a primary target). It runs on the normal Linux track (after L6), independent of the deferred L7.
+
+| # | Item | Status | Notes |
+|---|---|---|---|
+| L8.1 | Pi bring-up (Ring 3, **S3**) | ⏳ Pending | Build and run on Raspberry Pi OS Bookworm aarch64 under labwc/Wayfire; confirm the Swift toolchain + GTK4 install and that the demo renders. First real-Pi confirmation of the substrate. |
+| L8.2 | Performance & footprint | ⏳ Pending | Tune for the Pi's GPU/RAM (Cairo vs GL renderer on Pi, memory, startup time); decide the minimum supported Pi model. |
+| L8.3 | Compositor & display quirks | ⏳ Pending | Resolve Wayland (labwc/Wayfire) and X11-fallback quirks, DPI/scaling, and input/keyboard on the Pi's PIXEL desktop. |
+| L8.4 | First-run & packaging on Pi | ⏳ Pending | Smooth install/first-run on Pi OS; log every Pi-only finding to `NEEDS_HUMAN.md`. |
+
 ---
 
 ## Maintenance Rules
 
 - **Phases are serial.** Each phase ends in the **Milestone** stated at its heading — a demonstrable capability, not a checklist average. Do not start a later phase until the current phase's milestone is demonstrated; keep exactly one phase active. If work naturally spills into a later phase (as substrate validation did), that is a signal the item is mis-placed — move it to the phase it belongs to rather than opening two phases at once.
 - Keep this plan separate from `ProjectPlan.md`; LinChocolate items never count toward WinChocolate percentages.
-- Track per-item percentages, milestone-first. Honor the ring rules: no windowing/compositing/perf/packaging item is "done" on a green XQuartz run alone — hence Wayland/Pi confirmation lives in Phase L5.
+- Track per-item percentages, milestone-first. Honor the ring rules: no windowing/compositing/perf/packaging item is "done" on a green XQuartz run alone — hence Wayland confirmation lives in Phase L5 (VMs) and Pi confirmation/cleanup in Phase L8.
 - Real-hardware-only findings (Wayland, DPI, keyboard modifiers, Pi GPU/perf) are logged in `NEEDS_HUMAN.md`.
 - **Sibling discipline:** while the Apple API is duplicated (L1–L6), any change to the shared-shaped surface should be made compatibly on both siblings, and the `NativeControlBackend` seam kept identical, so Phase L7's extraction stays mechanical. When you feel the pain of syncing by hand, that is the signal WinChocolate may be stable enough to trigger L7 — not a reason to fork the API.

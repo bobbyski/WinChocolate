@@ -1,9 +1,9 @@
 # LinChocolate — Substrate Decision (Phase L1.1)
 
-**Status:** ✅ Adopted — GTK4, validated on the Ring 1 dev loop (S1/S2/S4). Pi/Wayland confirmation (S3) is a Phase L5 gate, not a blocker on the decision.
+**Status:** ✅ Adopted — GTK4, validated on the Ring 1 dev loop (S1/S2/S4). Pi confirmation (S3) is the Phase L8 gate, not a blocker on the decision.
 **Date:** 2026-07-07
 **Owner decision:** Bobby
-**Feeds:** `LinChocolatePlan.md` L1.1 (substrate), and constrains L1.2 (look) and L2.1–L2.5 (toolchain/package). Distribution and Pi validation moved to Phase L5.
+**Feeds:** `LinChocolatePlan.md` L1.1 (substrate), and constrains L1.2 (look) and L2.1–L2.5 (toolchain/package). Distribution moved to Phase L5; Pi validation/cleanup to Phase L8.
 
 ---
 
@@ -94,7 +94,7 @@ Three ways to drive GTK4's C/GObject API from Swift, cheapest-to-richest:
 
 ## 7. Validation spikes
 
-Small, throwaway proofs that de-risk the commitment. **S1, S2, and S4 have passed**, which validates the decision on the dev loop — the substrate is adopted (§Status). **S3 (Pi/Wayland)** remains, and is tracked as the Phase L5 hardware gate rather than a blocker on the decision.
+Small, throwaway proofs that de-risk the commitment. **S1, S2, and S4 have passed**, which validates the decision on the dev loop — the substrate is adopted (§Status). **S3 (Pi/Wayland)** remains, and is tracked as the Phase L8 (Pi Cleanup) hardware gate rather than a blocker on the decision.
 
 | Spike | Proves | Ring | Status |
 |---|---|---|---|
@@ -113,7 +113,7 @@ S2 and S3 together are the crux: they confirm the plan's two-renderer story (Cai
 |---|---|---|
 | GTK4 GL renderer flaky/blank over XQuartz | Medium | `GSK_RENDERER=cairo` for Ring 1 (documented fallback); real GL only on Rings 2–3 |
 | GObject signal/refcount interop is tedious from Swift | Medium | Narrow hand-written surface first; promote to `SwiftGtk`/`gir2swift` if it grows |
-| GTK4 too heavy on the minimum Pi model | Low–Med | L5.2 sets the minimum supported Pi; GTK3 documented fallback if a floor is hit |
+| GTK4 too heavy on the minimum Pi model | Low–Med | L8.2 sets the minimum supported Pi; GTK3 documented fallback if a floor is hit |
 | libadwaita's theme-resistance fights Pi PIXEL look | Medium | Baseline on **plain GTK4** (theme-following); libadwaita opt-in — settle in L1.2 |
 | Binding code-gen dependency rots | Low | Hand-written map has zero external gen; keep it the default until pain justifies more |
 
