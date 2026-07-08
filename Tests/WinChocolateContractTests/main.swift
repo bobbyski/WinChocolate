@@ -1134,6 +1134,39 @@ func testOutlineViewFlattensExpandableItems() {
     expect(outlineView.numberOfRows == 4, "Disclosure-triangle expand did not reveal child rows.")
 }
 
+func testOutlineViewSelectionTracksItemAcrossExpandCollapse() {
+    let outline = NSOutlineView(frame: NSMakeRect(0, 0, 300, 200))
+    let source = RecordingOutlineDataSource()
+    outline.addTableColumn(NSTableColumn(identifier: "name"))
+    outline.outlineDataSource = source
+    outline.reloadData()
+    outline.expandItem("Application")
+    outline.expandItem("Controls")
+    // Rows: Application(0), NSApplication(1), NSWindow(2), Controls(3), NSButton(4), NSMatrix(5)
+    expect(outline.numberOfRows == 6, "Both groups should be expanded; got \(outline.numberOfRows) rows.")
+
+    // Select the second child of the first group (NSWindow, row 2).
+    outline.selectRowIndexes([2], byExtendingSelection: false)
+    expect(outline.item(atRow: outline.selectedRow) as? String == "NSWindow", "Setup: NSWindow should be selected.")
+
+    // Collapsing that group hides the selected item, so the selection clears —
+    // it must NOT latch onto whatever item now happens to sit at row 2.
+    outline.collapseItem("Application")
+    expect(outline.selectedRowIndexes.isEmpty,
+        "Collapsing the group holding the selection should clear it, not move it to a different item.")
+
+    // Select a still-visible item, then expand a group above it: the selection
+    // must follow the item to its new row so the selected item is unchanged.
+    // Rows now: Application(0), Controls(1), NSButton(2), NSMatrix(3)
+    outline.selectRowIndexes([2], byExtendingSelection: false)
+    expect(outline.item(atRow: outline.selectedRow) as? String == "NSButton", "Setup: NSButton should be selected.")
+    outline.expandItem("Application")
+    // Rows: Application(0), NSApplication(1), NSWindow(2), Controls(3), NSButton(4), NSMatrix(5)
+    expect(outline.item(atRow: outline.selectedRow) as? String == "NSButton",
+        "Selection should follow NSButton to its new row after an earlier group expands.")
+    expect(outline.selectedRow == 4, "NSButton should be at row 4 after expand; got \(outline.selectedRow).")
+}
+
 /// An outline delegate that hosts a text field per cell for the first column.
 final class HostingOutlineDelegate: NSOutlineViewDelegate {
     func outlineView(_ outlineView: NSOutlineView, viewFor tableColumn: NSTableColumn?, item: Any) -> NSView? {
@@ -8843,6 +8876,7 @@ testTableViewKeyboardExtendedSelection()
 testTableViewColumnSelectionAndDoubleActionSurface()
 testTableViewSortDescriptorPrototypeToggle()
 testOutlineViewFlattensExpandableItems()
+testOutlineViewSelectionTracksItemAcrossExpandCollapse()
 testOutlineViewHostsDelegateCellViews()
 testOutlineViewSiblingReorderMovesItem()
 testOutlineViewCrossLevelDropTargetsParent()

@@ -1574,6 +1574,7 @@ let esCenter: DWORD = 0x0001
 let esRight: DWORD = 0x0002
 let emSetCueBanner: UINT = 0x1501
 let pbmSetBarColor: UINT = 0x0409
+let pbmSetBkColor: UINT = 0x2001 // CCM_SETBKCOLOR
 let wmGetMinMaxInfo: UINT = 0x0024
 let sbmSetScrollInfo: UINT = 0x00e9
 let sbmGetScrollInfo: UINT = 0x00ea

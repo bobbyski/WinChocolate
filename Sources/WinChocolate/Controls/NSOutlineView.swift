@@ -117,9 +117,29 @@ open class NSOutlineView: NSTableView {
 
     /// Reloads the visible outline rows.
     open override func reloadData() {
+        // Selection in an outline is by item, not by row index: after an
+        // expand/collapse the rows shift, so capture the selected items' keys
+        // against the current rows, then restore the selection to wherever those
+        // items now sit. Items whose parent collapsed out of view are no longer
+        // present and are dropped, so the selection never lands on a different
+        // item than the one the user picked.
+        let selectedKeys = Set(selectedRowIndexes.compactMap { row -> String? in
+            visibleRows.indices.contains(row) ? key(for: visibleRows[row].item) : nil
+        })
+
         rebuildVisibleRows()
         dataSource = outlineAdapter
         super.reloadData()
+
+        guard !selectedKeys.isEmpty else {
+            return
+        }
+        let restored = Set(visibleRows.indices.filter { selectedKeys.contains(key(for: visibleRows[$0].item)) })
+        if restored.isEmpty {
+            deselectAll(nil)
+        } else {
+            selectRowIndexes(restored, byExtendingSelection: false)
+        }
     }
 
     /// Expands an item.
