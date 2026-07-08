@@ -26,6 +26,28 @@
 /// All interactions are drag based, matching Apple: drag palette items into
 /// the strip, drag strip items to reorder, drag them out to remove, and drag
 /// the default set in to restore it.
+/// Appearance-aware colors for the customization sheet. The panel is
+/// framework-drawn with fixed light colors historically; these resolve a dark
+/// variant under a dark appearance so the sheet matches the rest of the app
+/// (plan 8.5). Item labels use the dynamic `.textColor`, so darkening the
+/// backgrounds keeps them legible without per-label changes.
+enum WinCustomizeColors {
+    static var isDark: Bool { NSApplication.shared.effectiveAppearance.winIsDark }
+    private static func pick(_ light: NSColor, _ dark: NSColor) -> NSColor { isDark ? dark : light }
+
+    static var content: NSColor { pick(NSColor(calibratedRed: 0.93, green: 0.93, blue: 0.93, alpha: 1), NSColor(white: 0.15, alpha: 1)) }
+    static var palette: NSColor { pick(NSColor(calibratedRed: 0.97, green: 0.97, blue: 0.96, alpha: 1), NSColor(white: 0.12, alpha: 1)) }
+    static var stripEdge: NSColor { pick(NSColor(calibratedRed: 0.62, green: 0.62, blue: 0.60, alpha: 1), NSColor(white: 0.30, alpha: 1)) }
+    static var divider: NSColor { pick(NSColor(calibratedRed: 0.78, green: 0.78, blue: 0.78, alpha: 1), NSColor(white: 0.28, alpha: 1)) }
+    static var tileEnabled: NSColor { pick(NSColor(calibratedRed: 0.98, green: 0.98, blue: 0.97, alpha: 1), NSColor(white: 0.20, alpha: 1)) }
+    static var tileDisabled: NSColor { pick(NSColor(calibratedRed: 0.90, green: 0.90, blue: 0.89, alpha: 1), NSColor(white: 0.14, alpha: 1)) }
+    static var tileDefaultSet: NSColor { pick(NSColor(calibratedRed: 0.95, green: 0.96, blue: 0.98, alpha: 1), NSColor(calibratedRed: 0.18, green: 0.20, blue: 0.24, alpha: 1)) }
+    static var tileSelected: NSColor { pick(NSColor(calibratedRed: 0.84, green: 0.89, blue: 0.96, alpha: 1), NSColor(calibratedRed: 0.18, green: 0.32, blue: 0.50, alpha: 1)) }
+    static var removeTint: NSColor { pick(NSColor(calibratedRed: 0.96, green: 0.85, blue: 0.84, alpha: 1), NSColor(calibratedRed: 0.42, green: 0.20, blue: 0.20, alpha: 1)) }
+    static var tileTextEnabled: NSColor { pick(NSColor(calibratedRed: 0.08, green: 0.10, blue: 0.12, alpha: 1), NSColor(white: 0.92, alpha: 1)) }
+    static var tileTextDisabled: NSColor { pick(NSColor(calibratedRed: 0.42, green: 0.44, blue: 0.46, alpha: 1), NSColor(white: 0.50, alpha: 1)) }
+}
+
 internal final class NSToolbarCustomizationPanel: NSPanel {
     /// Marks the content view as the toolbar drop surface for tests.
     internal static let contentTag = 1_100
@@ -97,7 +119,7 @@ internal final class NSToolbarCustomizationPanel: NSPanel {
         let width = Metrics.contentSize.width
         let height = Metrics.contentSize.height
         content.tag = Self.contentTag
-        content.backgroundColor = NSColor(calibratedRed: 0.93, green: 0.93, blue: 0.93, alpha: 1.0)
+        content.backgroundColor = WinCustomizeColors.content
 
         strip.tag = Self.stripTag
         // Match the live toolbar, which blends with the window chrome.
@@ -106,7 +128,7 @@ internal final class NSToolbarCustomizationPanel: NSPanel {
         content.addSubview(strip)
 
         let stripEdge = NSView(frame: NSMakeRect(0, Metrics.stripHeight, width, 1))
-        stripEdge.backgroundColor = NSColor(calibratedRed: 0.62, green: 0.62, blue: 0.60, alpha: 1.0)
+        stripEdge.backgroundColor = WinCustomizeColors.stripEdge
         stripEdge.autoresizingMask = [.width]
         content.addSubview(stripEdge)
 
@@ -124,7 +146,7 @@ internal final class NSToolbarCustomizationPanel: NSPanel {
         content.addSubview(defaultStrip)
 
         let divider = NSView(frame: NSMakeRect(0, height - Metrics.bottomBarHeight, width, 1))
-        divider.backgroundColor = NSColor(calibratedRed: 0.78, green: 0.78, blue: 0.78, alpha: 1.0)
+        divider.backgroundColor = WinCustomizeColors.divider
         divider.autoresizingMask = [.width, .minYMargin]
         content.addSubview(divider)
 
@@ -156,7 +178,7 @@ internal final class NSToolbarCustomizationPanel: NSPanel {
 
         let paletteView = NSView(frame: NSMakeRect(Metrics.margin, top, width, paletteHeight))
         paletteView.tag = Self.paletteTag
-        paletteView.backgroundColor = NSColor(calibratedRed: 0.97, green: 0.97, blue: 0.96, alpha: 1.0)
+        paletteView.backgroundColor = WinCustomizeColors.palette
         paletteView.autoresizingMask = [.width]
 
         for (index, identifier) in identifiers.enumerated() {
@@ -201,7 +223,7 @@ internal final class NSToolbarCustomizationPanel: NSPanel {
         let identifiers = toolbar.customizationDefaultIdentifiers
         let strip = NSView(frame: NSMakeRect(Metrics.margin, top, width, Metrics.stripHeight))
         strip.tag = Self.defaultStripTag
-        strip.backgroundColor = NSColor(calibratedRed: 0.97, green: 0.97, blue: 0.96, alpha: 1.0)
+        strip.backgroundColor = WinCustomizeColors.palette
         strip.autoresizingMask = [.width]
 
         // Cap tile widths so the whole default set fits inside the strip;
@@ -374,8 +396,8 @@ internal final class NSToolbarCustomizationPanel: NSPanel {
         // the preview toward the removal state (dropping there removes it).
         if case .toolbar = dragSource {
             dragPreview.backgroundColor = pendingInsertionIndex == nil
-                ? NSColor(calibratedRed: 0.96, green: 0.85, blue: 0.84, alpha: 1.0)
-                : NSColor(calibratedRed: 0.84, green: 0.89, blue: 0.96, alpha: 1.0)
+                ? WinCustomizeColors.removeTint
+                : WinCustomizeColors.tileSelected
         }
         return true
     }
@@ -719,13 +741,11 @@ internal final class NSToolbarCustomizationTile: NSView {
         case .palette:
             // Disabled palette tiles (item already in the toolbar) dim to a
             // flat gray, matching Apple's palette filtering.
-            backgroundColor = isEnabled
-                ? NSColor(calibratedRed: 0.98, green: 0.98, blue: 0.97, alpha: 1.0)
-                : NSColor(calibratedRed: 0.90, green: 0.90, blue: 0.89, alpha: 1.0)
+            backgroundColor = isEnabled ? WinCustomizeColors.tileEnabled : WinCustomizeColors.tileDisabled
         case .defaultSet:
-            backgroundColor = NSColor(calibratedRed: 0.95, green: 0.96, blue: 0.98, alpha: 1.0)
+            backgroundColor = WinCustomizeColors.tileDefaultSet
         case .preview:
-            backgroundColor = NSColor(calibratedRed: 0.84, green: 0.89, blue: 0.96, alpha: 1.0)
+            backgroundColor = WinCustomizeColors.tileSelected
         }
     }
 
@@ -750,9 +770,7 @@ internal final class NSToolbarCustomizationTile: NSView {
     }
 
     private func updateNativeTextColor(for handle: NativeHandle, backend: NativeControlBackend) {
-        let color = isEnabled
-            ? NSColor(calibratedRed: 0.08, green: 0.10, blue: 0.12, alpha: 1.0)
-            : NSColor(calibratedRed: 0.42, green: 0.44, blue: 0.46, alpha: 1.0)
+        let color = isEnabled ? WinCustomizeColors.tileTextEnabled : WinCustomizeColors.tileTextDisabled
         backend.setTextColor(color, for: handle)
     }
 }

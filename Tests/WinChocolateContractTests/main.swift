@@ -3353,6 +3353,49 @@ func testToolbarCustomizationAllowsDuplicateStructuralItems() {
     expect(toolbar.items[2] !== toolbar.items[3], "Duplicate flexible spaces should be distinct toolbar item instances.")
 }
 
+final class SharedSeparatorToolbarDelegate: NSToolbarDelegate {
+    // Mirrors the demo (and common AppKit apps): one cached NSToolbarItem reused
+    // for every .separator request, instead of a fresh instance each time.
+    let sharedSeparator = NSToolbarItem(itemIdentifier: .separator)
+
+    func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
+        [.separator, "a"]
+    }
+    func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
+        [.separator, .separator]
+    }
+    func toolbar(
+        _ toolbar: NSToolbar,
+        itemForItemIdentifier itemIdentifier: NSToolbarItem.Identifier,
+        willBeInsertedIntoToolbar flag: Bool
+    ) -> NSToolbarItem? {
+        if itemIdentifier == .separator {
+            return sharedSeparator
+        }
+        return NSToolbarItem(itemIdentifier: itemIdentifier)
+    }
+}
+
+func testToolbarKeepsDistinctSeparatorsWithSharedDelegateItem() {
+    let delegate = SharedSeparatorToolbarDelegate()
+    let toolbar = NSToolbar(identifier: "shared-separator")
+    toolbar.delegate = delegate
+
+    // A delegate that reuses one cached NSToolbarItem for every .separator must
+    // still yield two DISTINCT toolbar items when two separators are requested in
+    // a single pass — the path that autosave restore and a two-separator default
+    // set both take. Aliasing the same instance into two slots corrupts the
+    // index-based reorder/remove the customization panel relies on.
+    toolbar.setVisibleItemIdentifiers([.separator, .separator])
+    expect(toolbar.items.count == 2, "Two separators should produce two items; got \(toolbar.items.count).")
+    expect(toolbar.items[0] !== toolbar.items[1], "A shared delegate separator was aliased into two slots.")
+
+    // Restoring an autosaved two-separator configuration must not alias either.
+    toolbar.setConfiguration(["TB Item Identifiers": [NSToolbarItem.Identifier.separator.rawValue, NSToolbarItem.Identifier.separator.rawValue]])
+    expect(toolbar.items.count == 2, "Restore should produce two separators; got \(toolbar.items.count).")
+    expect(toolbar.items[0] !== toolbar.items[1], "Restored shared delegate separators were aliased.")
+}
+
 func testToolbarCustomizationPaletteShowsToolbarDropTargetAtTop() {
     clearApplicationWindows()
 
@@ -8631,6 +8674,7 @@ testToolbarStoresItemsAndAttachesToWindow()
 testToolbarVisibilityAndItemActions()
 testToolbarCustomizationDelegateAndDefaultItems()
 testToolbarCustomizationAllowsDuplicateStructuralItems()
+testToolbarKeepsDistinctSeparatorsWithSharedDelegateItem()
 testToolbarCustomizationPaletteShowsToolbarDropTargetAtTop()
 testToolbarCustomizationMovesExistingItemToEnd()
 testToolbarViewComposesItemsAndDispatchesActions()
