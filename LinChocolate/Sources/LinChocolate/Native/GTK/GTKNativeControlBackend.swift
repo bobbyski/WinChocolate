@@ -97,7 +97,15 @@ public final class GTKNativeControlBackend: NativeControlBackend {
 
     // MARK: Views & controls
     public func createView(frame: NSRect) -> NativeHandle {
-        allocate(gtk_fixed_new()!, .view, frame: frame)
+        let fixed = gtk_fixed_new()!
+        // Give the container an explicit size and let it expand to fill its
+        // parent. Without this the GtkFixed can collapse to 0×0 and clip all of
+        // its children — the "window shows but controls are blank" symptom seen
+        // over XQuartz (where the initial surface configure can lag).
+        gtk_widget_set_size_request(fixed, Int32(frame.width), Int32(frame.height))
+        gtk_widget_set_hexpand(fixed, gboolean(1))
+        gtk_widget_set_vexpand(fixed, gboolean(1))
+        return allocate(fixed, .view, frame: frame)
     }
     public func createButton(title: String, frame: NSRect) -> NativeHandle {
         let b = gtk_button_new_with_label(title)!
