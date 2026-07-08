@@ -12,7 +12,9 @@ import Foundation
 public final class InMemoryNativeControlBackend: NativeControlBackend {
 
     /// What kind of control a handle refers to (drives `setText` routing).
-    public enum Kind: Equatable { case window, view, button, label, textField, checkbox }
+    public enum Kind: Equatable {
+        case window, view, button, label, textField, checkbox, radio, slider, progress, popUp
+    }
 
     private var nextRaw: UInt = 1
 
@@ -26,10 +28,17 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     public private(set) var subviews: [UInt: [UInt]] = [:]
     public private(set) var visibleWindows: Set<UInt> = []
     public private(set) var buttonStates: [UInt: Bool] = [:]
+    public private(set) var doubleValues: [UInt: Double] = [:]
+    public private(set) var selectedIndices: [UInt: Int] = [:]
+    public private(set) var itemsByHandle: [UInt: [String]] = [:]
+    private var ranges: [UInt: (min: Double, max: Double)] = [:]
+    private var radioGroups: [UInt: [UInt]] = [:]   // member -> all members in its group
     private var actions: [UInt: () -> Void] = [:]
     private var windowCloseActions: [UInt: () -> Void] = [:]
     private var textChangeActions: [UInt: (String) -> Void] = [:]
     private var toggleActions: [UInt: (Bool) -> Void] = [:]
+    private var valueChangeActions: [UInt: (Double) -> Void] = [:]
+    private var selectionActions: [UInt: (Int) -> Void] = [:]
 
     public init() {}
 
@@ -94,6 +103,42 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
         buttonStates[h.rawValue] = false
         return h
     }
+    public func createRadioButton(title: String, frame: NSRect) -> NativeHandle {
+        let h = allocate(.radio)
+        titles[h.rawValue] = title
+        texts[h.rawValue] = title
+        frames[h.rawValue] = frame
+        enabledStates[h.rawValue] = true
+        buttonStates[h.rawValue] = false
+        return h
+    }
+    public func groupRadioButtons(_ handles: [NativeHandle]) {
+        let members = handles.map(\.rawValue)
+        for raw in members { radioGroups[raw] = members }
+    }
+    public func createSlider(value: Double, minValue: Double, maxValue: Double, frame: NSRect) -> NativeHandle {
+        let h = allocate(.slider)
+        frames[h.rawValue] = frame
+        ranges[h.rawValue] = (minValue, maxValue)
+        doubleValues[h.rawValue] = value
+        enabledStates[h.rawValue] = true
+        return h
+    }
+    public func createProgressIndicator(value: Double, minValue: Double, maxValue: Double, frame: NSRect) -> NativeHandle {
+        let h = allocate(.progress)
+        frames[h.rawValue] = frame
+        ranges[h.rawValue] = (minValue, maxValue)
+        doubleValues[h.rawValue] = value
+        return h
+    }
+    public func createPopUpButton(items: [String], selectedIndex: Int, frame: NSRect) -> NativeHandle {
+        let h = allocate(.popUp)
+        frames[h.rawValue] = frame
+        itemsByHandle[h.rawValue] = items
+        selectedIndices[h.rawValue] = selectedIndex
+        enabledStates[h.rawValue] = true
+        return h
+    }
     public func addSubview(_ child: NativeHandle, to parent: NativeHandle) {
         subviews[parent.rawValue, default: []].append(child.rawValue)
     }
@@ -118,8 +163,20 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     public func setButtonState(_ on: Bool, for handle: NativeHandle) {
         buttonStates[handle.rawValue] = on
     }
+    public func setDoubleValue(_ value: Double, for handle: NativeHandle) {
+        doubleValues[handle.rawValue] = value
+    }
+    public func setSelectedIndex(_ index: Int, for handle: NativeHandle) {
+        selectedIndices[handle.rawValue] = index
+    }
     public func setToggleAction(for handle: NativeHandle, action: @escaping (Bool) -> Void) {
         toggleActions[handle.rawValue] = action
+    }
+    public func setValueChangeAction(for handle: NativeHandle, action: @escaping (Double) -> Void) {
+        valueChangeActions[handle.rawValue] = action
+    }
+    public func setSelectionChangeAction(for handle: NativeHandle, action: @escaping (Int) -> Void) {
+        selectionActions[handle.rawValue] = action
     }
 
     // MARK: Test hooks (not part of the protocol)
@@ -139,6 +196,34 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     }
     /// Whether a checkbox is on.
     public func isOn(_ handle: NativeHandle) -> Bool { buttonStates[handle.rawValue] ?? false }
+    /// Simulates the user selecting a radio button: it turns on, its group peers
+    /// turn off, and its toggle action fires.
+    public func simulateRadioSelect(_ handle: NativeHandle) {
+        let raw = handle.rawValue
+        // Like GTK: the newly-selected radio and the previously-selected one both
+        // fire `toggled` (on and off respectively); unchanged peers stay quiet.
+        for peer in radioGroups[raw] ?? [raw] {
+            let newState = (peer == raw)
+            if (buttonStates[peer] ?? false) != newState {
+                buttonStates[peer] = newState
+                toggleActions[peer]?(newState)
+            }
+        }
+    }
+    /// Simulates the user moving a slider to `value`.
+    public func simulateValueChange(_ handle: NativeHandle, _ value: Double) {
+        doubleValues[handle.rawValue] = value
+        valueChangeActions[handle.rawValue]?(value)
+    }
+    /// Simulates the user choosing pop-up item `index`.
+    public func simulateSelection(_ handle: NativeHandle, _ index: Int) {
+        selectedIndices[handle.rawValue] = index
+        selectionActions[handle.rawValue]?(index)
+    }
+    /// The current slider/progress value.
+    public func doubleValue(_ handle: NativeHandle) -> Double { doubleValues[handle.rawValue] ?? 0 }
+    /// The current pop-up selection index.
+    public func selectedIndex(_ handle: NativeHandle) -> Int { selectedIndices[handle.rawValue] ?? -1 }
     /// The text currently recorded for a control.
     public func text(for handle: NativeHandle) -> String? { texts[handle.rawValue] }
     /// Whether a window has been shown.

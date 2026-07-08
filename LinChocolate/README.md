@@ -9,8 +9,9 @@ It now contains the first real framework slice plus the original harness spike:
 - **`LinChocolate`** — the AppKit-shaped library: `NSApplication`, `NSWindow`,
   `NSView`, `NSButton`, `NSTextField`, behind a narrow `NativeControlBackend`
   seam with a **GTK4 backend** and an **in-memory backend** (mirrors WinChocolate).
-- **`LinChocolateDemo`** — the click-counter, written against the AppKit API,
-  rendered as native GTK controls (spikes S1/S2 + the working backend).
+- **`LinChocolateDemo`** — a Controls page (button, checkbox, radio group,
+  slider, progress bar, dropdown, editable text) written against the AppKit API,
+  rendered as native GTK controls.
 - **`LinChocolateContractTests`** — hermetic, no-display tests proving the API is
   backend-swappable (spike **S4**, 13/13 green).
 - **`GTKHelloSpike`** — the original raw-GTK4 smoke test.

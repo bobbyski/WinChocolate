@@ -40,6 +40,16 @@ public protocol NativeControlBackend: AnyObject {
     func createTextField(text: String, frame: NSRect) -> NativeHandle
     /// Creates a checkbox (labelled on/off toggle).
     func createCheckbox(title: String, frame: NSRect) -> NativeHandle
+    /// Creates a radio button (group for mutual exclusion via `groupRadioButtons`).
+    func createRadioButton(title: String, frame: NSRect) -> NativeHandle
+    /// Groups radio buttons so at most one is selected at a time.
+    func groupRadioButtons(_ handles: [NativeHandle])
+    /// Creates a horizontal slider over `[minValue, maxValue]`.
+    func createSlider(value: Double, minValue: Double, maxValue: Double, frame: NSRect) -> NativeHandle
+    /// Creates a determinate progress indicator over `[minValue, maxValue]`.
+    func createProgressIndicator(value: Double, minValue: Double, maxValue: Double, frame: NSRect) -> NativeHandle
+    /// Creates a pop-up (dropdown) button.
+    func createPopUpButton(items: [String], selectedIndex: Int, frame: NSRect) -> NativeHandle
     /// Places `child` inside `parent` at the child's frame origin.
     func addSubview(_ child: NativeHandle, to parent: NativeHandle)
 
@@ -50,8 +60,12 @@ public protocol NativeControlBackend: AnyObject {
     func setFrame(_ frame: NSRect, for handle: NativeHandle)
     /// Enables or disables a control.
     func setEnabled(_ isEnabled: Bool, for handle: NativeHandle)
-    /// Sets a checkbox's on/off state.
+    /// Sets a checkbox/radio's on/off state.
     func setButtonState(_ on: Bool, for handle: NativeHandle)
+    /// Sets a slider's or progress indicator's value.
+    func setDoubleValue(_ value: Double, for handle: NativeHandle)
+    /// Sets a pop-up button's selected item index.
+    func setSelectedIndex(_ index: Int, for handle: NativeHandle)
     /// Releases the native resources for a control.
     func destroyControl(_ handle: NativeHandle)
 
@@ -60,6 +74,10 @@ public protocol NativeControlBackend: AnyObject {
     func registerAction(for handle: NativeHandle, action: @escaping () -> Void)
     /// Registers the action to perform when a text field's contents change.
     func setTextChangeAction(for handle: NativeHandle, action: @escaping (String) -> Void)
-    /// Registers the action to perform when a checkbox toggles; passes the new state.
+    /// Registers the action to perform when a checkbox/radio toggles; passes the new state.
     func setToggleAction(for handle: NativeHandle, action: @escaping (Bool) -> Void)
+    /// Registers the action to perform when a slider's value changes; passes the value.
+    func setValueChangeAction(for handle: NativeHandle, action: @escaping (Double) -> Void)
+    /// Registers the action to perform when a pop-up's selection changes; passes the index.
+    func setSelectionChangeAction(for handle: NativeHandle, action: @escaping (Int) -> Void)
 }

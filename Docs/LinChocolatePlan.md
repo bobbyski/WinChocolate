@@ -3,12 +3,12 @@
 ## Dashboard
 
 ```text
-Overall Progress                           ███████░░░░░░░░░░░░░░░░░░░   28%  🔄 Phase L4 active
+Overall Progress                           █████████░░░░░░░░░░░░░░░░░   34%  🔄 Phase L4 active
 
 Phase L1 · Backend Strategy                ██████████████████████████  100%  ✅ Milestone met — GTK4 chosen & proven on dev loop
 Phase L2 · Toolchain & Harness             ██████████████████████████  100%  ✅ Milestone met — reproducible one-command Ring 1 loop
 Phase L3 · Core Shell & First Control      ██████████████████████████  100%  ✅ Milestone met — click-counter, AppKit coords, tests green
-Phase L4 · Control Parity Pass             ████░░░░░░░░░░░░░░░░░░░░░░   15%  🔄 Active — editable text + checkbox
+Phase L4 · Control Parity Pass             ██████████████░░░░░░░░░░░░   55%  🔄 Active — Controls page runs (7 control types)
 Phase L5 · Linux VMs & Distribution        ░░░░░░░░░░░░░░░░░░░░░░░░░░    0%  ⏳ Pending
 Phase L6 · Three-Platform Proof            ░░░░░░░░░░░░░░░░░░░░░░░░░░    0%  ⏳ Pending
 Phase L7 · Shared-Core Convergence         ░░░░░░░░░░░░░░░░░░░░░░░░░░    0%  ⏳ Deferred (post-WinChocolate-stable)
@@ -69,6 +69,34 @@ Rules for the matrix:
 
 ---
 
+## Demo Parity — Replicating the WinChocolate Demo
+
+WinChocolate ships one comprehensive demo (`Demo/DemoApplication/main.swift`, ~3,400 lines) that exercises nearly the whole AppKit surface across tabbed pages, a toolbar, tables/outlines/collections/browsers, dialogs, and custom drawing. It does a good job, so it is LinChocolate's **yardstick**: `LinChocolateDemo` targets the same coverage, and the north star is that the *same* AppKit-shaped demo source builds and runs on Linux (Goal 1), diverging only where a control isn't ported yet.
+
+This is a **cross-cutting deliverable, not a serial phase** (like the test matrix above): control breadth is delivered by **L4**, the composed controls (toolbar / alerts / panels) by **L4.3**, and the *unmodified* WinChocolate demo/apps running on Linux is the **L6** milestone. The current Controls-page `LinChocolateDemo` is the first slice — it maps 1:1 to the "basic + value controls" rows below.
+
+| Demo area (WinChocolate) | Representative controls | LinChocolate status | Delivered by |
+|---|---|---|---|
+| App shell + window + **menu bar** | `NSApplication`, `NSWindow`, `NSMenu`/`NSMenuItem` | 🔄 window/app done; menu bar ⏳ | L3 / L4 |
+| Basic controls | `NSButton` (push/check/radio), `NSTextField`, `NSSecureTextField`, `NSComboBox`, `NSSearchField`, `NSTokenField` | 🔄 button/check/radio/label/editable done | L4 |
+| Value controls | `NSSlider`, `NSStepper`, `NSProgressIndicator`, `NSLevelIndicator`, `NSDatePicker`, `NSColorWell` | 🔄 slider/progress done | L4 |
+| Choice controls | `NSPopUpButton`, `NSSegmentedControl` | 🔄 pop-up done; segmented ⏳ | L4 |
+| Multiline & structured text | `NSTextView`, `NSForm`, `NSMatrix`, `NSPathControl` | ⏳ | L4 |
+| Images | `NSImageView` (bitmap) | ⏳ | L4 |
+| Layout containers | `NSTabView` (the page switcher), `NSSplitView`, `NSBox` | ⏳ | L4 |
+| Scrolling | `NSScrollView`, `NSClipView`, `NSScroller` | ⏳ | L4 |
+| Tables / lists / collections | `NSTableView`, `NSOutlineView`, `NSBrowser`, `NSCollectionView` + data source / delegate / sort descriptors | ⏳ | L4 |
+| Toolbar (**Apple-look exception**) | `NSToolbar`, `NSToolbarItem` + customization sheet | ⏳ | L4.3 |
+| Dialogs & panels | `NSAlert`, `NSOpenPanel`/`NSSavePanel`, `NSColorPanel`, `NSPopover`, `NSPanel` | ⏳ | L4.3 |
+| Materials | `NSVisualEffectView` | ⏳ | L4 |
+| Drag & drop | `NSDraggingSource`/`NSDraggingInfo`, `NSPasteboard` | ⏳ | later |
+| Printing | `NSPrintOperation` | ⏳ | later |
+| Document architecture | `NSDocument`, `NSDocumentController` | ⏳ | later |
+
+**Acceptance:** `LinChocolateDemo` reaches the WinChocolate demo's page/feature coverage (tracked by the rows above), and ultimately the *same* demo source compiles and runs on Linux via the conditional-import idiom — the concrete proof of Goal 1, demonstrated in Phase L6. Per-control detail lives in [`LinChocolateControlParity.md`](LinChocolateControlParity.md).
+
+---
+
 ## Phase L1 — Backend Strategy ✅
 
 **Milestone (met):** GTK4 chosen as the substrate and *proven runnable from Swift on the Ring 1 dev loop* — a GTK4 window renders over XQuartz.
@@ -107,8 +135,8 @@ Rules for the matrix:
 
 | # | Item | Status | Notes |
 |---|---|---|---|
-| L4.1 | Core control set | 🔄 In progress | ✅ Editable `NSTextField` (GtkEntry) with a text-change event; ✅ checkbox `NSButton` (GtkCheckButton) with toggle→`isOn`/`onAction`; ✅ `NSTextField(labelWithString:)` split from the editable initializer. Demo is now a small Controls page; 23 contract tests green. **Remaining:** radio-button groups, and a few more controls. |
-| L4.2 | Parity matrix | ⏳ Pending | Extend `CONTROL_PARITY.md` with a Linux column; map each `NS*` control to its GTK peer. |
+| L4.1 | Core control set | ✅ Done | Seven control types over GTK4, each event-wired: label + editable `NSTextField` (GtkLabel/GtkEntry), push/checkbox/radio `NSButton` (GtkButton/GtkCheckButton, radios grouped), `NSSlider` (GtkScale), `NSProgressIndicator` (GtkProgressBar), `NSPopUpButton` (GtkDropDown). Demo is a full Controls page — **verified rendering on XQuartz** and **32 contract tests green**. |
+| L4.2 | Parity matrix | 🔄 Started | [LinChocolateControlParity.md](LinChocolateControlParity.md) records the `NS*`→GTK peer map for the implemented set + the opaque-vs-nominal import finding. Grows as controls land. |
 | L4.3 | Composed-control reuse | ⏳ Pending | Reuse composed designs (toolbar, alerts, panels, customization sheet) where GTK lacks a native peer; keep the Apple-look toolbar exception. |
 | L4.4 | Look refinement | ⏳ Pending | Settle plain-GTK4 vs libadwaita (the L1.2 baseline) with a Pi in hand. |
 

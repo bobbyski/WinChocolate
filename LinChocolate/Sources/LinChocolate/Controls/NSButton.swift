@@ -52,6 +52,26 @@ public final class NSButton: NSView {
         }
     }
 
+    /// Creates a radio button. Group several with `NSButton.group(_:)` so only
+    /// one can be selected at a time.
+    public init(radioWithTitle title: String, frame: NSRect) {
+        self.title = title
+        let backend = NSApplication.shared.nativeBackend
+        let handle = backend.createRadioButton(title: title, frame: frame)
+        super.init(frame: frame, handle: handle, backend: backend)
+        backend.setToggleAction(for: handle) { [weak self] on in
+            guard let self else { return }
+            self.backingIsOn = on
+            if on { self.onAction?(self) }   // radios fire their action on selection
+        }
+    }
+
+    /// Groups radio buttons for mutual exclusion. They should share a superview.
+    public static func group(_ radios: [NSButton]) {
+        guard let backend = radios.first?.backend else { return }
+        backend.groupRadioButtons(radios.map(\.handle))
+    }
+
     /// Programmatically performs the button's action.
     public func performClick(_ sender: Any?) {
         onAction?(self)

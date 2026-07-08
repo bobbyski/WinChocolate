@@ -132,6 +132,48 @@ do {
     check(toggledState == true, "checkbox onAction fires with the new state")
 }
 
+// MARK: 5 — Radio, slider, progress, pop-up (L4 controls page)
+do {
+    let backend = InMemoryNativeControlBackend()
+    NSApplication.shared.nativeBackend = backend
+
+    // Radio buttons: grouping gives mutual exclusion; selection fires onAction.
+    let a = NSButton(radioWithTitle: "A", frame: NSMakeRect(0, 0, 80, 24))
+    let b = NSButton(radioWithTitle: "B", frame: NSMakeRect(0, 0, 80, 24))
+    let c = NSButton(radioWithTitle: "C", frame: NSMakeRect(0, 0, 80, 24))
+    NSButton.group([a, b, c])
+    var picked = ""
+    for radio in [a, b, c] { radio.onAction = { picked = $0.title } }
+    backend.simulateRadioSelect(b.handle)
+    check(b.isOn && !a.isOn && !c.isOn, "radio group is mutually exclusive")
+    check(picked == "B", "radio selection fires onAction")
+    backend.simulateRadioSelect(c.handle)
+    check(c.isOn && !b.isOn, "selecting another radio deselects the previous")
+
+    // Slider: a native drag drives doubleValue and onValueChange.
+    let slider = NSSlider(value: 10, minValue: 0, maxValue: 100, frame: NSMakeRect(0, 0, 200, 24))
+    var slid = 0.0
+    slider.onValueChange = { slid = $0.doubleValue }
+    backend.simulateValueChange(slider.handle, 42)
+    check(slider.doubleValue == 42, "slider doubleValue syncs from native drag")
+    check(slid == 42, "slider onValueChange fires")
+
+    // Progress: setting doubleValue reaches the backend.
+    let progress = NSProgressIndicator(value: 0, minValue: 0, maxValue: 100, frame: NSMakeRect(0, 0, 200, 20))
+    progress.doubleValue = 75
+    check(backend.doubleValue(progress.handle) == 75, "progress doubleValue writes through")
+
+    // Pop-up: selection drives index, title, and onSelectionChange.
+    let popup = NSPopUpButton(items: ["System", "Light", "Dark"], frame: NSMakeRect(0, 0, 160, 30))
+    var chosen = ""
+    popup.onSelectionChange = { chosen = $0.titleOfSelectedItem ?? "" }
+    check(popup.titleOfSelectedItem == "System", "pop-up starts on the first item")
+    backend.simulateSelection(popup.handle, 2)
+    check(popup.indexOfSelectedItem == 2, "pop-up index syncs from native selection")
+    check(popup.titleOfSelectedItem == "Dark", "pop-up title reflects the selection")
+    check(chosen == "Dark", "pop-up onSelectionChange fires")
+}
+
 if failures == 0 {
     print("\nAll contract tests passed.")
 } else {

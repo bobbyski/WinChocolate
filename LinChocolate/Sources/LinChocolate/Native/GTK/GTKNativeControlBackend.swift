@@ -25,6 +25,7 @@ public final class GTKNativeControlBackend: NativeControlBackend {
     private var kinds: [UInt: InMemoryNativeControlBackend.Kind] = [:]
     private var frames: [UInt: NSRect] = [:]
     private var parents: [UInt: UInt] = [:]   // child -> parent, for repositioning
+    private var ranges: [UInt: (min: Double, max: Double)] = [:]   // slider/progress
     private var mainLoop: OpaquePointer?   // GMainLoop* (opaque in the GTK import)
 
     /// Connects to the display and initializes GTK. Only construct this when a
@@ -49,6 +50,9 @@ public final class GTKNativeControlBackend: NativeControlBackend {
     private func asFixed(_ p: OpaquePointer) -> UnsafeMutablePointer<GtkFixed> { .init(p) }
     private func asButton(_ p: OpaquePointer) -> UnsafeMutablePointer<GtkButton> { .init(p) }
     private func asCheckButton(_ p: OpaquePointer) -> UnsafeMutablePointer<GtkCheckButton> { .init(p) }
+    private func asRange(_ p: OpaquePointer) -> UnsafeMutablePointer<GtkRange> { .init(p) }
+    // GtkProgressBar and GtkDropDown are opaque in the import — their functions
+    // take OpaquePointer directly (no cast helper needed).
     // NOTE: GtkLabel, GtkEditable, and GMainLoop are opaque in the GTK4 Swift
     // import (no nominal type), so their functions take/return OpaquePointer.
     // GtkWindow/GtkButton/GtkCheckButton/GtkFixed do import as nominal types.
@@ -128,6 +132,47 @@ public final class GTKNativeControlBackend: NativeControlBackend {
         gtk_widget_set_size_request(c, Int32(frame.width), Int32(frame.height))
         return allocate(c, .checkbox, frame: frame)
     }
+    public func createRadioButton(title: String, frame: NSRect) -> NativeHandle {
+        // A radio button is a GtkCheckButton grouped via groupRadioButtons().
+        let r = gtk_check_button_new_with_label(title)!
+        gtk_widget_set_size_request(r, Int32(frame.width), Int32(frame.height))
+        return allocate(r, .radio, frame: frame)
+    }
+    public func groupRadioButtons(_ handles: [NativeHandle]) {
+        guard let first = handles.first, let lead = widget(first) else { return }
+        for handle in handles.dropFirst() {
+            guard let w = widget(handle) else { continue }
+            gtk_check_button_set_group(asCheckButton(w), asCheckButton(lead))
+        }
+    }
+    public func createSlider(value: Double, minValue: Double, maxValue: Double, frame: NSRect) -> NativeHandle {
+        let step = (maxValue - minValue) / 100
+        let s = gtk_scale_new_with_range(GTK_ORIENTATION_HORIZONTAL, minValue, maxValue, step == 0 ? 1 : step)!
+        gtk_range_set_value(asRange(OpaquePointer(s)), value)
+        gtk_widget_set_size_request(s, Int32(frame.width), Int32(frame.height))
+        let h = allocate(s, .slider, frame: frame)
+        ranges[h.rawValue] = (minValue, maxValue)
+        return h
+    }
+    public func createProgressIndicator(value: Double, minValue: Double, maxValue: Double, frame: NSRect) -> NativeHandle {
+        let p = gtk_progress_bar_new()!
+        gtk_widget_set_size_request(p, Int32(frame.width), Int32(frame.height))
+        let h = allocate(p, .progress, frame: frame)
+        ranges[h.rawValue] = (minValue, maxValue)
+        setDoubleValue(value, for: h)
+        return h
+    }
+    public func createPopUpButton(items: [String], selectedIndex: Int, frame: NSRect) -> NativeHandle {
+        // gtk_drop_down_new_from_strings takes a NULL-terminated C string array;
+        // it copies the strings, so the temporaries are freed right after.
+        var cStrings: [UnsafePointer<CChar>?] = items.map { UnsafePointer(strdup($0)) }
+        cStrings.append(nil)
+        let widget = cStrings.withUnsafeBufferPointer { gtk_drop_down_new_from_strings($0.baseAddress) }!
+        for s in cStrings where s != nil { free(UnsafeMutableRawPointer(mutating: s)) }
+        if selectedIndex >= 0 { gtk_drop_down_set_selected(OpaquePointer(widget), guint(selectedIndex)) }
+        gtk_widget_set_size_request(widget, Int32(frame.width), Int32(frame.height))
+        return allocate(widget, .popUp, frame: frame)
+    }
     public func addSubview(_ child: NativeHandle, to parent: NativeHandle) {
         guard let p = widget(parent), let c = widget(child) else { return }
         parents[child.rawValue] = parent.rawValue
@@ -145,7 +190,7 @@ public final class GTKNativeControlBackend: NativeControlBackend {
         case .button:    gtk_button_set_label(asButton(w), text)
         case .label:     gtk_label_set_text(w, text)          // GtkLabel is opaque
         case .textField: gtk_editable_set_text(w, text)       // GtkEditable is opaque
-        case .checkbox:  gtk_check_button_set_label(asCheckButton(w), text)
+        case .checkbox, .radio: gtk_check_button_set_label(asCheckButton(w), text)
         case .window:    gtk_window_set_title(asWindow(w), text)
         default: break
         }
@@ -177,6 +222,22 @@ public final class GTKNativeControlBackend: NativeControlBackend {
     public func setButtonState(_ on: Bool, for handle: NativeHandle) {
         guard let w = widget(handle) else { return }
         gtk_check_button_set_active(asCheckButton(w), gboolean(on ? 1 : 0))
+    }
+    public func setDoubleValue(_ value: Double, for handle: NativeHandle) {
+        guard let w = widget(handle) else { return }
+        switch kinds[handle.rawValue] {
+        case .slider:
+            gtk_range_set_value(asRange(w), value)
+        case .progress:
+            let (lo, hi) = ranges[handle.rawValue] ?? (0, 1)
+            let fraction = hi > lo ? (value - lo) / (hi - lo) : 0
+            gtk_progress_bar_set_fraction(w, min(1, max(0, fraction)))   // GtkProgressBar is opaque
+        default: break
+        }
+    }
+    public func setSelectedIndex(_ index: Int, for handle: NativeHandle) {
+        guard let w = widget(handle), index >= 0 else { return }
+        gtk_drop_down_set_selected(w, guint(index))   // GtkDropDown is opaque
     }
     public func destroyControl(_ handle: NativeHandle) {
         let r = handle.rawValue
@@ -214,6 +275,25 @@ public final class GTKNativeControlBackend: NativeControlBackend {
             Unmanaged.passRetained(box).toOpaque(), boxRelease, GConnectFlags(rawValue: 0)
         )
     }
+    public func setValueChangeAction(for handle: NativeHandle, action: @escaping (Double) -> Void) {
+        guard let w = widget(handle) else { return }
+        let box = DoubleActionBox(action)
+        g_signal_connect_data(
+            UnsafeMutableRawPointer(w), "value-changed",
+            unsafeBitCast(gtkValueChangedTrampoline, to: GCallback.self),
+            Unmanaged.passRetained(box).toOpaque(), boxRelease, GConnectFlags(rawValue: 0)
+        )
+    }
+    public func setSelectionChangeAction(for handle: NativeHandle, action: @escaping (Int) -> Void) {
+        guard let w = widget(handle) else { return }
+        let box = IntActionBox(action)
+        // GtkDropDown exposes its selection as the "selected" property.
+        g_signal_connect_data(
+            UnsafeMutableRawPointer(w), "notify::selected",
+            unsafeBitCast(gtkSelectionChangedTrampoline, to: GCallback.self),
+            Unmanaged.passRetained(box).toOpaque(), boxRelease, GConnectFlags(rawValue: 0)
+        )
+    }
 }
 
 // MARK: - GObject signal glue
@@ -234,6 +314,14 @@ private final class StringActionBox {
 private final class BoolActionBox {
     let action: (Bool) -> Void
     init(_ action: @escaping (Bool) -> Void) { self.action = action }
+}
+private final class DoubleActionBox {
+    let action: (Double) -> Void
+    init(_ action: @escaping (Double) -> Void) { self.action = action }
+}
+private final class IntActionBox {
+    let action: (Int) -> Void
+    init(_ action: @escaping (Int) -> Void) { self.action = action }
 }
 
 /// Handler for `GtkButton::clicked` — `void (*)(GtkButton*, gpointer)`.
@@ -263,6 +351,21 @@ private let gtkToggledTrampoline: @convention(c) (UnsafeMutableRawPointer?, gpoi
     guard let button, let userData else { return }
     let active = gtk_check_button_get_active(UnsafeMutablePointer<GtkCheckButton>(OpaquePointer(button))) != 0
     Unmanaged<BoolActionBox>.fromOpaque(userData).takeUnretainedValue().action(active)
+}
+
+/// Handler for `GtkRange::value-changed` — reads the new slider value.
+private let gtkValueChangedTrampoline: @convention(c) (UnsafeMutableRawPointer?, gpointer?) -> Void = { range, userData in
+    guard let range, let userData else { return }
+    let value = gtk_range_get_value(UnsafeMutablePointer<GtkRange>(OpaquePointer(range)))
+    Unmanaged<DoubleActionBox>.fromOpaque(userData).takeUnretainedValue().action(value)
+}
+
+/// Handler for `GtkDropDown::notify::selected` — a GObject notify handler, so it
+/// takes an extra GParamSpec argument before the user data.
+private let gtkSelectionChangedTrampoline: @convention(c) (UnsafeMutableRawPointer?, UnsafeMutableRawPointer?, gpointer?) -> Void = { dropdown, _, userData in
+    guard let dropdown, let userData else { return }
+    let index = Int(gtk_drop_down_get_selected(OpaquePointer(dropdown)))
+    Unmanaged<IntActionBox>.fromOpaque(userData).takeUnretainedValue().action(index)
 }
 
 /// Releases a boxed closure of any box type when GLib tears the connection down.
