@@ -2013,6 +2013,48 @@ func testDisclosureButtonTogglesAndOrientsTriangle() {
     expect(button.state == .off && fired == 2, "Second click should close the disclosure and fire the action.")
 }
 
+func testFrameworkDrawnBezelStylesUseViewPeersAndInteract() {
+    let backend = InMemoryNativeControlBackend()
+
+    // Circular, recessed, and inline bezels have no native Win32 form, so each
+    // is drawn on a view peer rather than mapped to a native button.
+    for style in [NSButton.BezelStyle.circular, .recessed, .inline] {
+        let button = NSButton(title: "X", frame: NSMakeRect(0, 0, 44, 24))
+        button.bezelStyle = style
+        let handle = button.realizeNativePeer(in: backend, parent: nil)
+        expect(backend.records[handle]?.kind == "view", "The \(style) bezel should use a custom-draw view peer.")
+    }
+
+    // A recessed button is a toggle: clicking latches on, then off.
+    let recessed = NSButton(title: "Bold", frame: NSMakeRect(0, 0, 60, 24))
+    recessed.bezelStyle = .recessed
+    _ = recessed.realizeNativePeer(in: backend, parent: nil)
+    var recessedFires = 0
+    recessed.onAction = { _ in recessedFires += 1 }
+    recessed.performClick(nil)
+    expect(recessed.state == .on && recessedFires == 1, "A recessed button should latch on and fire.")
+    recessed.performClick(nil)
+    expect(recessed.state == .off && recessedFires == 2, "A recessed button should latch back off and fire.")
+
+    // Circular and inline are momentary: they fire without latching state.
+    for style in [NSButton.BezelStyle.circular, .inline] {
+        let momentary = NSButton(title: "?", frame: NSMakeRect(0, 0, 24, 24))
+        momentary.bezelStyle = style
+        _ = momentary.realizeNativePeer(in: backend, parent: nil)
+        var fires = 0
+        momentary.onAction = { _ in fires += 1 }
+        momentary.performClick(nil)
+        expect(momentary.state == .off && fires == 1, "The \(style) bezel should fire without latching state.")
+    }
+
+    // The face/badge fills adapt to appearance (no fixed light island): the dark
+    // variants are darker than the light ones.
+    expect(NSButton.winBezelFaceColor(isDark: true).redComponent < NSButton.winBezelFaceColor(isDark: false).redComponent,
+        "The bezel face fill should be darker under dark appearance.")
+    expect(NSButton.winInlineBadgeColor(isDark: true).redComponent < NSButton.winInlineBadgeColor(isDark: false).redComponent,
+        "The inline badge fill should be darker under dark appearance.")
+}
+
 func testMinorControlCleanups() {
     let backend = InMemoryNativeControlBackend()
 
@@ -2307,6 +2349,39 @@ func testSegmentedControlSeparatedStyleGapsSegments() {
     expect(abs(gap - NSSegmentedControl.winSegmentSpacing(for: .separated)) < 0.001,
         "Separated segments should be spaced by the style gap; got \(gap).")
     expect(sSecond.frame.maxX <= 160.001, "Separated segments should stay inside the control width.")
+}
+
+func testSegmentedControlStyleDrivesSegmentBezel() {
+    // The squared/textured families flatten their segment buttons; the rounded
+    // family keeps the standard themed segment.
+    expect(NSSegmentedControl.winSegmentButtonIsFlat(for: .texturedSquare), "Textured-square segments should be flat.")
+    expect(NSSegmentedControl.winSegmentButtonIsFlat(for: .smallSquare), "Small-square segments should be flat.")
+    expect(!NSSegmentedControl.winSegmentButtonIsFlat(for: .rounded), "Rounded segments should not be flat.")
+    expect(!NSSegmentedControl.winSegmentButtonIsFlat(for: .capsule), "Capsule segments should not be flat.")
+
+    let backend = InMemoryNativeControlBackend()
+
+    // A textured-square control renders its segment buttons flat on the peer.
+    let textured = NSSegmentedControl(labels: ["A", "B"], frame: NSMakeRect(0, 0, 160, 28))
+    textured.segmentStyle = .texturedSquare
+    _ = textured.realizeNativePeer(in: backend, parent: nil)
+    for case let button as NSButton in textured.subviews {
+        guard let handle = button.nativeHandle else {
+            continue
+        }
+        expect(backend.flatBezelButtons[handle] == true, "Textured-square segment button should be flat.")
+    }
+
+    // A rounded control keeps its segment buttons themed (not flat).
+    let rounded = NSSegmentedControl(labels: ["A", "B"], frame: NSMakeRect(0, 0, 160, 28))
+    rounded.segmentStyle = .rounded
+    _ = rounded.realizeNativePeer(in: backend, parent: nil)
+    for case let button as NSButton in rounded.subviews {
+        guard let handle = button.nativeHandle else {
+            continue
+        }
+        expect(backend.flatBezelButtons[handle] != true, "Rounded segment button should not be flat.")
+    }
 }
 
 func testSegmentedControlPerSegmentImageAndTag() {
@@ -8837,6 +8912,7 @@ testLevelIndicatorEditableClickSetsValue()
 testLevelIndicatorRatingUsesCustomView()
 testLevelIndicatorFillColorsAreAppearanceAware()
 testDisclosureButtonTogglesAndOrientsTriangle()
+testFrameworkDrawnBezelStylesUseViewPeersAndInteract()
 testMinorControlCleanups()
 testButtonBezelAndTextFieldBezel()
 testScrollerStoresValueAndSyncsNativePeer()
@@ -8846,6 +8922,7 @@ testDatePickerStoresDateRangeAndSyncsNativePeer()
 testDatePickerClockAndCalendarStyle()
 testSegmentedControlStoresSegmentsAndComposesButtons()
 testSegmentedControlSeparatedStyleGapsSegments()
+testSegmentedControlStyleDrivesSegmentBezel()
 testSegmentedControlPerSegmentImageAndTag()
 testSegmentedControlPerSegmentMenu()
 testSegmentedControlActionSelectsSegment()

@@ -65,6 +65,7 @@ open class NSSegmentedControl: NSControl {
     /// Segment visual style request.
     open var segmentStyle: Style = .automatic {
         didSet {
+            applySegmentBezelStyle()
             layoutSegments()
         }
     }
@@ -79,6 +80,26 @@ open class NSSegmentedControl: NSControl {
             return 4
         default:
             return 0
+        }
+    }
+
+    /// Whether a style renders its segments as flat, square-edged buttons (the
+    /// squared/textured family) versus the standard themed rounded segment. Pure
+    /// and testable. Drives each segment button's bezel so the style is visible.
+    public static func winSegmentButtonIsFlat(for style: Style) -> Bool {
+        switch style {
+        case .texturedSquare, .smallSquare, .roundRect, .texturedRounded:
+            return true
+        default:
+            return false
+        }
+    }
+
+    /// Applies the current style's flat/themed bezel to every segment button.
+    private func applySegmentBezelStyle() {
+        let flat = NSSegmentedControl.winSegmentButtonIsFlat(for: segmentStyle)
+        for button in segmentButtons {
+            button.bezelStyle = flat ? .smallSquare : .rounded
         }
     }
 
@@ -333,6 +354,7 @@ open class NSSegmentedControl: NSControl {
             segmentButtons.append(button)
         }
 
+        applySegmentBezelStyle()
         layoutSegments()
     }
 
