@@ -86,6 +86,44 @@ open class NSButton: NSControl {
         }
     }
 
+    /// Whether this button is a framework-drawn disclosure triangle rather than a
+    /// native push button. The triangle points right when closed (`.off`) and
+    /// down when open (`.on`), toggling on each click — AppKit's disclosure
+    /// control, which has no native Win32 form.
+    var usesDisclosureRendering: Bool {
+        switch bezelStyle {
+        case .disclosure, .roundedDisclosure:
+            return true
+        default:
+            return false
+        }
+    }
+
+    /// The three vertices of the disclosure triangle inside `bounds`: a
+    /// right-pointing glyph when closed (vertical base, apex at max-x), a
+    /// down-pointing glyph when open (horizontal base, single apex in y). Pure
+    /// and orientation-testable.
+    public static func winDisclosureTriangle(in bounds: NSRect, isOpen: Bool) -> [NSPoint] {
+        let side = min(bounds.size.width, bounds.size.height) * 0.5
+        let half = side / 2
+        let cx = bounds.origin.x + bounds.size.width / 2
+        let cy = bounds.origin.y + bounds.size.height / 2
+        if isOpen {
+            // Down-pointing: horizontal base across the top, apex at the bottom.
+            return [
+                NSPoint(x: cx - half, y: cy + half),
+                NSPoint(x: cx + half, y: cy + half),
+                NSPoint(x: cx, y: cy - half)
+            ]
+        }
+        // Right-pointing: vertical base on the left, apex on the right.
+        return [
+            NSPoint(x: cx - half, y: cy - half),
+            NSPoint(x: cx - half, y: cy + half),
+            NSPoint(x: cx + half, y: cy)
+        ]
+    }
+
     /// The title shown while the button is in its alternate (on) state.
     open var alternateTitle: String = "" {
         didSet {
@@ -138,7 +176,9 @@ open class NSButton: NSControl {
     /// Button state for switch-like buttons.
     open var state: StateValue = .off {
         didSet {
-            if !isUpdatingStateFromNative, let nativeHandle {
+            if usesDisclosureRendering {
+                needsDisplay = true
+            } else if !isUpdatingStateFromNative, let nativeHandle {
                 realizedBackend?.setButtonState(state, for: nativeHandle)
             }
             // The alternate title swaps in on the "on" state, whether the
@@ -163,6 +203,10 @@ open class NSButton: NSControl {
 
     /// Creates the native Windows button peer.
     open override func createNativePeer(in backend: NativeControlBackend, parent: NativeHandle?) -> NativeHandle {
+        if usesDisclosureRendering {
+            // Disclosure triangles have no native Win32 form; draw them on a view.
+            return backend.createView(frame: frame, parent: parent)
+        }
         switch buttonType {
         case .momentaryPushIn:
             return backend.createButton(title: title, frame: frame, parent: parent, isBordered: isBordered)
@@ -177,6 +221,12 @@ open class NSButton: NSControl {
     @discardableResult
     open override func realizeNativePeer(in backend: NativeControlBackend, parent: NativeHandle?) -> NativeHandle {
         let handle = super.realizeNativePeer(in: backend, parent: parent)
+        if usesDisclosureRendering {
+            // The view peer carries no native button state or click action; the
+            // triangle draws from `state` and toggles via mouseDown/performClick.
+            needsDisplay = true
+            return handle
+        }
         backend.setButtonState(state, for: handle)
         if isFlatBezel {
             backend.setButtonBezelFlat(true, for: handle)
@@ -230,7 +280,9 @@ open class NSButton: NSControl {
 
     /// Programmatically performs the button action.
     open func performClick(_ sender: Any?) {
-        if buttonType == .switchButton {
+        if usesDisclosureRendering {
+            state = (state == .on) ? .off : .on
+        } else if buttonType == .switchButton {
             setNextState()
         } else if buttonType == .radioButton {
             state = .on
@@ -238,6 +290,44 @@ open class NSButton: NSControl {
         }
 
         sendAction()
+    }
+
+    /// A click on a disclosure triangle toggles it open/closed and fires the
+    /// action; other bezel styles use their native button behavior.
+    open override func mouseDown(with event: NSEvent) {
+        guard usesDisclosureRendering, isEnabled else {
+            super.mouseDown(with: event)
+            return
+        }
+
+        state = (state == .on) ? .off : .on
+        _ = window?.makeFirstResponder(self)
+        sendAction()
+    }
+
+    /// Draws the disclosure triangle (right when closed, down when open); the
+    /// rounded-disclosure variant frames it with a hairline bezel. Non-disclosure
+    /// buttons render through their native peer, so this defers to `super`.
+    open override func draw(_ dirtyRect: NSRect) {
+        guard usesDisclosureRendering else {
+            super.draw(dirtyRect)
+            return
+        }
+
+        if bezelStyle == .roundedDisclosure {
+            let bezel = NSBezierPath(roundedRect: bounds.insetBy(dx: 1, dy: 1), xRadius: 3, yRadius: 3)
+            NSColor.separatorColor.setStroke()
+            bezel.stroke()
+        }
+
+        let vertices = NSButton.winDisclosureTriangle(in: bounds, isOpen: state == .on)
+        let triangle = NSBezierPath()
+        triangle.move(to: vertices[0])
+        triangle.line(to: vertices[1])
+        triangle.line(to: vertices[2])
+        triangle.close()
+        (isEnabled ? NSColor.labelColor : NSColor.tertiaryLabelColor).setFill()
+        triangle.fill()
     }
 
     /// Advances the button to its next state.

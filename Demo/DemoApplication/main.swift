@@ -1809,6 +1809,9 @@ levelIndicator.isEditable = true
 colorWellLabel.font = NSFont.boldSystemFont(ofSize: 12)
 colorWell.color = demoColors[colorIndex]
 segmentedLabel.font = NSFont.boldSystemFont(ofSize: 12)
+// Show the separated segment style (8.3): the segments stand apart as
+// individual pills rather than a joined strip.
+segmentedControl.segmentStyle = .separated
 segmentedControl.selectedSegment = 0
 scrollerLabel.font = NSFont.boldSystemFont(ofSize: 12)
 scroller.doubleValue = 0

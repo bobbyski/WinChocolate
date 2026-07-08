@@ -1978,6 +1978,41 @@ func testButtonBezelAndTextFieldBezel() {
     expect(backend.bezeledTextFields[fieldHandle] == false, "Clearing isBezeled did not remove the bezel.")
 }
 
+func testDisclosureButtonTogglesAndOrientsTriangle() {
+    let backend = InMemoryNativeControlBackend()
+
+    // A disclosure button is framework-drawn on a view peer, not a native button.
+    let button = NSButton(title: "", frame: NSMakeRect(0, 0, 20, 20))
+    button.bezelStyle = .disclosure
+    let handle = button.realizeNativePeer(in: backend, parent: nil)
+    expect(backend.records[handle]?.kind == "view", "Disclosure button should use a custom-draw view peer.")
+
+    // Closed → right-pointing: the vertical base shares an x (two vertices), and
+    // the single apex sits at the maximum x.
+    let closed = NSButton.winDisclosureTriangle(in: NSMakeRect(0, 0, 20, 20), isOpen: false)
+    let closedXs = closed.map(\.x).sorted()
+    expect(abs(closedXs[0] - closedXs[1]) < 0.001 || abs(closedXs[1] - closedXs[2]) < 0.001,
+        "A closed disclosure triangle's base should share an x edge.")
+    let apexClosedX = closed.map(\.x).max()!
+    expect(closed.filter { abs($0.x - apexClosedX) < 0.001 }.count == 1, "The closed triangle should have a single rightmost apex.")
+
+    // Open → down-pointing: the horizontal base shares a y (two vertices) — a
+    // different orientation from closed.
+    let open = NSButton.winDisclosureTriangle(in: NSMakeRect(0, 0, 20, 20), isOpen: true)
+    let openYs = open.map(\.y).sorted()
+    expect(abs(openYs[0] - openYs[1]) < 0.001 || abs(openYs[1] - openYs[2]) < 0.001,
+        "An open disclosure triangle's base should share a y edge.")
+
+    // Clicking (via performClick) toggles open/closed and fires the action.
+    var fired = 0
+    button.onAction = { _ in fired += 1 }
+    expect(button.state == .off, "A disclosure button should start closed.")
+    button.performClick(nil)
+    expect(button.state == .on && fired == 1, "First click should open the disclosure and fire the action.")
+    button.performClick(nil)
+    expect(button.state == .off && fired == 2, "Second click should close the disclosure and fire the action.")
+}
+
 func testMinorControlCleanups() {
     let backend = InMemoryNativeControlBackend()
 
@@ -2240,6 +2275,38 @@ func testSegmentedControlStoresSegmentsAndComposesButtons() {
     expect(backend.records[firstHandle]?.text == "First", "First segment label was not synced.")
     expect(backend.records[firstHandle]?.frame.size.width == 90, "First segment width was not synced.")
     expect(backend.records[secondHandle]?.isEnabled == false, "Second segment enabled state was not synced.")
+}
+
+func testSegmentedControlSeparatedStyleGapsSegments() {
+    // The pure spacing helper: only .separated stands segments apart.
+    expect(NSSegmentedControl.winSegmentSpacing(for: .separated) > 0, "Separated style should introduce a gap.")
+    expect(NSSegmentedControl.winSegmentSpacing(for: .rounded) == 0, "Joined styles should not gap segments.")
+    expect(NSSegmentedControl.winSegmentSpacing(for: .automatic) == 0, "The default joined style should not gap segments.")
+
+    let backend = InMemoryNativeControlBackend()
+
+    // Joined (default): segment 2 begins exactly where segment 1 ends.
+    let joined = NSSegmentedControl(labels: ["A", "B"], frame: NSMakeRect(0, 0, 160, 28))
+    _ = joined.realizeNativePeer(in: backend, parent: nil)
+    guard let jFirst = joined.subviews[0] as? NSButton, let jSecond = joined.subviews[1] as? NSButton else {
+        expect(false, "Joined segmented control did not compose two buttons.")
+        return
+    }
+    expect(abs(jSecond.frame.minX - jFirst.frame.maxX) < 0.001, "Joined segments should be adjacent (no gap).")
+
+    // Separated: a positive gap opens between the two segments, and both still
+    // fit inside the control's width.
+    let separated = NSSegmentedControl(labels: ["A", "B"], frame: NSMakeRect(0, 0, 160, 28))
+    separated.segmentStyle = .separated
+    _ = separated.realizeNativePeer(in: backend, parent: nil)
+    guard let sFirst = separated.subviews[0] as? NSButton, let sSecond = separated.subviews[1] as? NSButton else {
+        expect(false, "Separated segmented control did not compose two buttons.")
+        return
+    }
+    let gap = sSecond.frame.minX - sFirst.frame.maxX
+    expect(abs(gap - NSSegmentedControl.winSegmentSpacing(for: .separated)) < 0.001,
+        "Separated segments should be spaced by the style gap; got \(gap).")
+    expect(sSecond.frame.maxX <= 160.001, "Separated segments should stay inside the control width.")
 }
 
 func testSegmentedControlPerSegmentImageAndTag() {
@@ -8769,6 +8836,7 @@ testLevelIndicatorStoresRangeValueAndUsesProgressPeer()
 testLevelIndicatorEditableClickSetsValue()
 testLevelIndicatorRatingUsesCustomView()
 testLevelIndicatorFillColorsAreAppearanceAware()
+testDisclosureButtonTogglesAndOrientsTriangle()
 testMinorControlCleanups()
 testButtonBezelAndTextFieldBezel()
 testScrollerStoresValueAndSyncsNativePeer()
@@ -8777,6 +8845,7 @@ testScrollerHitPartReflectsGesture()
 testDatePickerStoresDateRangeAndSyncsNativePeer()
 testDatePickerClockAndCalendarStyle()
 testSegmentedControlStoresSegmentsAndComposesButtons()
+testSegmentedControlSeparatedStyleGapsSegments()
 testSegmentedControlPerSegmentImageAndTag()
 testSegmentedControlPerSegmentMenu()
 testSegmentedControlActionSelectsSegment()
