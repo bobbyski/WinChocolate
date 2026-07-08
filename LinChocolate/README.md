@@ -4,10 +4,22 @@ This is the Phase L2.2/L2.3 harness from [`../Docs/LinChocolatePlan.md`](../Docs
 a reproducible **inner loop** where Swift + GTK4 build and run inside a Linux
 container, and GUI windows display on the Mac desktop through XQuartz (X11).
 
-It currently contains only a hello-world **spike** (`GTKHelloSpike`) that proves
-the loop works — validation spikes **S1/S2** from
-[`../Docs/LinChocolateSubstrate.md`](../Docs/LinChocolateSubstrate.md). The
-framework itself lands in Phase L3; this package grows into it.
+It now contains the first real framework slice plus the original harness spike:
+
+- **`LinChocolate`** — the AppKit-shaped library: `NSApplication`, `NSWindow`,
+  `NSView`, `NSButton`, `NSTextField`, behind a narrow `NativeControlBackend`
+  seam with a **GTK4 backend** and an **in-memory backend** (mirrors WinChocolate).
+- **`LinChocolateDemo`** — the click-counter, written against the AppKit API,
+  rendered as native GTK controls (spikes S1/S2 + the working backend).
+- **`LinChocolateContractTests`** — hermetic, no-display tests proving the API is
+  backend-swappable (spike **S4**, 13/13 green).
+- **`GTKHelloSpike`** — the original raw-GTK4 smoke test.
+
+```sh
+./run-linux.sh LinChocolateDemo                       # native window on the Mac
+docker run --rm -v "$PWD":/work -w /work \
+  linchocolate-dev swift run LinChocolateContractTests # hermetic tests, no display
+```
 
 > **Note on location.** This lives nested under `WinChocolate/LinChocolate/`
 > for now (same pattern as the nested `WinFoundation/` package) so it rides the
@@ -73,10 +85,13 @@ at `/work` for incremental rebuilds.
 ## Files
 
 ```
-Package.swift              SwiftPM manifest (CGTK system lib + spike executable)
+Package.swift              SwiftPM manifest (library + demo + tests + spike)
 Dockerfile                 Swift 6 + GTK4 on Ubuntu Noble (arm64 on Apple Silicon)
 run-linux.sh               XQuartz bridge + build + run
 docker-compose.yml         Same loop via `docker compose run`
 Sources/CGTK/              Hand-written GTK4 module map (pkg-config gtk4)
-Sources/GTKHelloSpike/     The S1/S2 spike
+Sources/LinChocolate/      AppKit-shaped API + NativeControlBackend (GTK + in-memory)
+Sources/LinChocolateDemo/  The click-counter demo (AppKit API over GTK)
+Sources/GTKHelloSpike/     The raw-GTK4 S1/S2 smoke test
+Tests/LinChocolateContractTests/  Hermetic backend/API contract tests (S4)
 ```

@@ -2,32 +2,50 @@
 //
 // LinChocolate — sibling of WinChocolate (see ../Docs/LinChocolatePlan.md).
 //
-// This is currently just the Phase L2 harness: a system-library binding to
-// GTK4 and a hello-world spike that proves the Ring 1 inner loop
-// (Mac + Docker + XQuartz). The AppKit-shaped API and the LinChocolate
-// Native/Linux backend land in Phase L3; this package grows into them.
+// Layout mirrors WinChocolate: an AppKit-shaped `LinChocolate` library with a
+// narrow `NativeControlBackend` seam (GTK backend + in-memory backend), a demo,
+// and executable contract tests. `CGTK` is the hand-written GTK4 C-interop.
 
 import PackageDescription
 
 let package = Package(
     name: "LinChocolate",
     products: [
-        .executable(name: "GTKHelloSpike", targets: ["GTKHelloSpike"])
+        .library(name: "LinChocolate", targets: ["LinChocolate"]),
+        .executable(name: "LinChocolateDemo", targets: ["LinChocolateDemo"])
     ],
     targets: [
         // Thin C-interop binding to GTK4, resolved via pkg-config `gtk4`.
-        // This is the narrow, hand-written module map the substrate decision
-        // (Docs/LinChocolateSubstrate.md §6) recommends starting from.
         .systemLibrary(
             name: "CGTK",
             path: "Sources/CGTK",
             pkgConfig: "gtk4",
-            providers: [
-                .apt(["libgtk-4-dev"])
-            ]
+            providers: [.apt(["libgtk-4-dev"])]
         ),
-        // Validation spike S1/S2: build against GTK4 from Swift and open a
-        // window that renders on the Mac through XQuartz.
+
+        // AppKit-shaped API + the platform backends (GTK, in-memory).
+        .target(
+            name: "LinChocolate",
+            dependencies: ["CGTK"],
+            path: "Sources/LinChocolate"
+        ),
+
+        // The click-counter demo, written against the AppKit-shaped API.
+        .executableTarget(
+            name: "LinChocolateDemo",
+            dependencies: ["LinChocolate"],
+            path: "Sources/LinChocolateDemo"
+        ),
+
+        // Hermetic contract tests (in-memory backend, no display).
+        .executableTarget(
+            name: "LinChocolateContractTests",
+            dependencies: ["LinChocolate"],
+            path: "Tests/LinChocolateContractTests"
+        ),
+
+        // Original Ring 1 harness spike (raw GTK4 from Swift) — kept as the
+        // minimal S1/S2 smoke test independent of the framework.
         .executableTarget(
             name: "GTKHelloSpike",
             dependencies: ["CGTK"],

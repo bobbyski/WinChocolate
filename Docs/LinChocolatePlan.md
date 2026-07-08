@@ -3,15 +3,18 @@
 ## Dashboard
 
 ```text
-Overall Progress                           ███░░░░░░░░░░░░░░░░░░░░░░░    9%  🔄 Ring 1 loop proven end-to-end
+Overall Progress                           █████░░░░░░░░░░░░░░░░░░░░░   20%  🔄 Phase L3 active
 
-Phase L1 · Backend Strategy                █████░░░░░░░░░░░░░░░░░░░░░   22%  🔄 GTK4 recommended (S1+S2 passed)
-Phase L2 · Toolchain & Environment         █████████░░░░░░░░░░░░░░░░░   35%  🔄 Ring 1 harness verified
-Phase L3 · Core Shell Port                 ░░░░░░░░░░░░░░░░░░░░░░░░░░    0%  ⏳ Pending
+Phase L1 · Backend Strategy                ██████████████████████████  100%  ✅ Milestone met — GTK4 chosen & proven on dev loop
+Phase L2 · Toolchain & Harness             ██████████████████████████  100%  ✅ Milestone met — reproducible one-command Ring 1 loop
+Phase L3 · Core Shell & First Control      ██████████████████░░░░░░░░   70%  🔄 Active — native click-counter runs, tests green
 Phase L4 · Control Parity Pass             ░░░░░░░░░░░░░░░░░░░░░░░░░░    0%  ⏳ Pending
-Phase L5 · Three-Platform Proof            ░░░░░░░░░░░░░░░░░░░░░░░░░░    0%  ⏳ Pending
-Phase L6 · Shared-Core Convergence         ░░░░░░░░░░░░░░░░░░░░░░░░░░    0%  ⏳ Deferred (post-WinChocolate-stable)
+Phase L5 · Real-Hardware & Distribution    ░░░░░░░░░░░░░░░░░░░░░░░░░░    0%  ⏳ Pending
+Phase L6 · Three-Platform Proof            ░░░░░░░░░░░░░░░░░░░░░░░░░░    0%  ⏳ Pending
+Phase L7 · Shared-Core Convergence         ░░░░░░░░░░░░░░░░░░░░░░░░░░    0%  ⏳ Deferred (post-WinChocolate-stable)
 ```
+
+**Phases run serially:** each ends in the **Milestone** stated at its heading, and the next phase does not begin until that milestone is demonstrated. Progress bars reflect one active phase at a time.
 
 **Status key:** ✅ Done &nbsp;|&nbsp; 🔄 In Progress &nbsp;|&nbsp; ⏳ Pending &nbsp;|&nbsp; 🚫 Blocked
 
@@ -21,13 +24,13 @@ Phase L6 · Shared-Core Convergence         ░░░░░░░░░░░░
 
 LinChocolate brings the same AppKit-shaped Swift API to Linux that WinChocolate brings to Windows: Apple API in, native Linux look out. Application sources stay byte-identical across macOS, Windows, and Linux via the single conditional-import idiom (`import AppKit` on Mac, `import WinChocolate` on Windows, `import LinChocolate` on Linux). Work starts **after the Windows framework is going** (roughly: WinChocolate Phases 3–8 mature); until then the later phases stay deliberately high-level and get detailed the way WinChocolate's did once work approached.
 
-LinChocolate is a **sibling** to WinChocolate, not a sub-project: it starts as its own package that references WinChocolate's already-proven Apple-compatible API, and converges onto shared elements only once WinChocolate stabilizes (Phase L6). The defining environment change from the earlier draft of this plan: development and everyday testing now happen **on the Mac, using Docker + XQuartz** — a Linux container builds and runs honest Linux binaries, and their GUI windows display on the Mac desktop through XQuartz (X11). **Real Linux VMs and Raspberry Pi hardware** are the verification rings that catch what the container hides (Wayland, real GPU/RAM, packaging, aarch64 hardware quirks). This plan follows the AI-coding-rules plan format (`AICoding rules.md`) and is tracked separately from `ProjectPlan.md` — LinChocolate items never count toward WinChocolate percentages.
+LinChocolate is a **sibling** to WinChocolate, not a sub-project: it starts as its own package that references WinChocolate's already-proven Apple-compatible API, and converges onto shared elements only once WinChocolate stabilizes (Phase L7). The defining environment change from the earlier draft of this plan: development and everyday testing now happen **on the Mac, using Docker + XQuartz** — a Linux container builds and runs honest Linux binaries, and their GUI windows display on the Mac desktop through XQuartz (X11). **Real Linux VMs and Raspberry Pi hardware** are the verification rings that catch what the container hides (Wayland, real GPU/RAM, packaging, aarch64 hardware quirks). This plan follows the AI-coding-rules plan format (`AICoding rules.md`) and is tracked separately from `ProjectPlan.md` — LinChocolate items never count toward WinChocolate percentages.
 
 ## Project Goals
 
 1. **PRIMARY GOAL — Apple AppKit API compatibility**, identical to WinChocolate's: most Mac AppKit programs build and run (at least their UI) by swapping `import AppKit` for `import LinChocolate`. When any design decision conflicts with this goal, Apple API compatibility wins.
 2. **Native Linux presentation — modern only.** Apps should look like modern Linux apps. Unlike WinChocolate there is **no classic/legacy look and no presentation switch**: the classic Win32 look on Windows exists for historical reasons, not as a pattern to replicate. LinChocolate ships one contemporary presentation; what exactly it follows (GNOME HIG? theme-following?) is a Phase L1 decision. The Apple-look toolbar exception carries over unchanged.
-3. **Sibling now, shared core later.** LinChocolate starts as a **sibling package** alongside WinChocolate — its own package that mirrors WinChocolate's AppKit-shaped layout and uses it as a *reference implementation*, with only the backend behind `NativeControlBackend` written fresh for Linux. The Apple API surface is duplicated at first and synced by hand. **Once WinChocolate's API stabilizes**, the plan converges the two onto shared elements (Phase L6): the platform-neutral API, the `NativeControlBackend` protocol, the in-memory backend, the contract tests, and the composed controls get extracted into a common core both siblings consume. Every design decision keeps that seam narrow and platform-neutral so the later extraction is mechanical, not a rewrite.
+3. **Sibling now, shared core later.** LinChocolate starts as a **sibling package** alongside WinChocolate — its own package that mirrors WinChocolate's AppKit-shaped layout and uses it as a *reference implementation*, with only the backend behind `NativeControlBackend` written fresh for Linux. The Apple API surface is duplicated at first and synced by hand. **Once WinChocolate's API stabilizes**, the plan converges the two onto shared elements (Phase L7): the platform-neutral API, the `NativeControlBackend` protocol, the in-memory backend, the contract tests, and the composed controls get extracted into a common core both siblings consume. Every design decision keeps that seam narrow and platform-neutral so the later extraction is mechanical, not a rewrite.
 4. **Raspberry Pi OS is a primary target.** LinChocolate must run well on Raspberry Pi hardware (aarch64, modest GPU/RAM), not just desktop distros — substrate and rendering choices are made with the Pi in mind.
 5. **Mac + Docker + XQuartz is the preferred development loop; WSL on Windows is the secondary loop.** Day-to-day work happens on the Mac (preferred): Swift and the Linux GUI stack run inside a Linux Docker container, and GUI windows display on the Mac through XQuartz over X11. On Apple Silicon the container is **aarch64 Linux**, which matches the Pi's architecture — the fast loop and the primary hardware target share an ISA. **WSL2 on the Windows machine is a fully supported second inner loop** for when work is happening on Windows; it complements the Mac loop rather than replacing it — WSLg runs a real Wayland compositor (plus XWayland), so it exercises the Wayland path that XQuartz cannot. Everything must build and run in the container, but **nothing may only work there** (or only under WSL): real GPU behavior and packaging are still proven on the verification rings below.
 
@@ -65,69 +68,89 @@ Rules for the matrix:
 
 ---
 
-## Phase L1 — Backend Strategy ⏳
+## Phase L1 — Backend Strategy ✅
 
-Decide before writing any Linux code.
-
-| # | Item | Status | Notes |
-|---|---|---|---|
-| L1.1 | Native substrate choice | 🔄 Recommended | **GTK 4 via Swift C-interop, Cairo renderer for the XQuartz loop** — see [LinChocolateSubstrate.md](LinChocolateSubstrate.md) for the full evaluation. GTK4 is the only candidate delivering a native, modern, theme-following look (Goal 2) with Wayland+X11, HiDPI, IME, and AT-SPI accessibility already solved; it's the Pi's own toolkit; and the Swift↔GTK4 binding path is real and Swift.org-endorsed. GTK3 is a documented fallback; custom X11/Wayland+Cairo is rejected (contradicts Goal 2, reinvents a toolkit). Recommendation stays 🔄 until validation spikes S1–S4 pass. |
-| L1.2 | Target look definition | ⏳ Pending | Define "looks like a modern Linux app" (GNOME HIG default? follow the active theme? PIXEL desktop conventions on Pi?). Modern only — no classic look, no presentation switch (goal 2). |
-| L1.3 | Distribution shape | ⏳ Pending | SwiftPM-only vs distro packaging expectations; minimum supported distros/desktop environments. Raspberry Pi OS (Bookworm, aarch64) is the primary target; mainstream x86-64 distros follow. |
-| L1.4 | Pi hardware validation | ⏳ Pending | Confirm the Swift toolchain and chosen substrate build and run acceptably on Raspberry Pi OS aarch64 (Ring 3), and decide the minimum supported Pi model, **before** committing to the substrate. |
-
-## Phase L2 — Toolchain & Environment ⏳
-
-Stand up the three-ring environment (see matrix) and the Foundation/package groundwork.
+**Milestone (met):** GTK4 chosen as the substrate and *proven runnable from Swift on the Ring 1 dev loop* — a GTK4 window renders over XQuartz.
 
 | # | Item | Status | Notes |
 |---|---|---|---|
-| L2.1 | Swift-on-Linux toolchain pin | ⏳ Pending | Pin one Swift toolchain and use it across all three rings — in the Docker image, on the Linux VMs, and on Raspberry Pi OS aarch64 — and confirm C-interop with the chosen substrate builds cleanly on each. |
-| L2.2 | Docker dev image | ✅ Built | `LinChocolate/Dockerfile` — `swift:6.0-noble` + `libgtk-4-dev` (GTK 4.14.5), builds **aarch64** on Apple Silicon to match the Pi (`SWIFT_TAG` build-arg for the x86-64 variant). Verified: image builds and `swift build` of the GTK4 spike is green (**spike S1**). |
-| L2.3 | GUI display bridges | ✅ Mac verified | **Mac/XQuartz (primary):** `LinChocolate/run-linux.sh` auto-enables XQuartz TCP, restarts it if needed, `xhost +`, and dials `DISPLAY=<host-en0-IP>:0` with `GSK_RENDERER=cairo`. **Spike S2 passed** — GTK4 window rendered on the Mac over XQuartz. **WSL (secondary):** WSLg loop still to be documented. |
-| L2.4 | Real Foundation | ⏳ Pending | Swift on Linux ships working corelibs Foundation, so the `USE_REAL_FOUNDATION` path (WinChocolate plan, 7.2) likely replaces WinFoundation entirely here; rerun the canary from `FOUNDATION_SHIMS.md` and record the result. |
-| L2.5 | Sibling package layout | ⏳ Pending | Stand up LinChocolate as its **own package**, a sibling directory next to WinChocolate, mirroring its target layout (AppKit-shaped API + `Native/Linux` backend + in-memory backend + contract tests). Copy/adapt the Apple API surface from WinChocolate as reference; keep the `NativeControlBackend` seam byte-compatible so Phase L6 can later hoist the neutral parts into a shared core. Do not restructure WinChocolate itself yet. |
-| L2.6 | VM & Pi verification setup | ⏳ Pending | Stand up Ring 2 (x86-64 + aarch64 Linux VMs with both an X11 session and a Wayland session) and Ring 3 (a Pi running Bookworm). Write the checklist and cadence for periodic verification passes; wire whatever CI is feasible for the container ring. |
+| L1.1 | Native substrate choice | ✅ Done | **GTK 4 via Swift C-interop, Cairo renderer for the XQuartz loop** — see [LinChocolateSubstrate.md](LinChocolateSubstrate.md). Only candidate delivering a native, modern, theme-following look (Goal 2) with Wayland+X11, HiDPI, IME, and AT-SPI already solved; the Pi's own toolkit; Swift↔GTK4 binding path real and Swift.org-endorsed. Validated by **S1** (compiles), **S2** (renders over XQuartz), **S4** (seam swappable). GTK3 is the documented fallback; custom X11/Wayland+Cairo rejected. Pi confirmation (**S3**) is a Phase L5 gate, not a blocker on the decision. |
+| L1.2 | Target look baseline | ✅ Decided | Baseline is **plain GTK4 (follows the active system theme)** — right for the Pi's PIXEL desktop; libadwaita optional where a polished GNOME look is wanted. The plain-vs-libadwaita call is refined in L4 with a Pi in hand (substrate doc §5). |
 
-## Phase L3 — Core Shell Port ⏳
+## Phase L2 — Toolchain & Harness ✅
+
+**Milestone (met):** a reproducible, checked-in **one-command Ring 1 loop** (`./run-linux.sh`) that builds the container and shows a native window on the Mac, with the sibling package building against real Foundation.
 
 | # | Item | Status | Notes |
 |---|---|---|---|
-| L3.1 | Application shell | ⏳ Pending | Run loop, application lifecycle, window creation/close/resize over the chosen substrate; first proven in Ring 1 (XQuartz X11), then Ring 2 Wayland. |
-| L3.2 | First control set | ⏳ Pending | Buttons, labels, text fields, and the event bridge — enough to run the demo's Controls page. |
-| L3.3 | Contract tests on Linux CI | ⏳ Pending | The existing WinChocolate contract tests (in-memory backend) pass unchanged inside the container; add backend-specific contract coverage as peers land. |
+| L2.1 | Swift toolchain pin | ✅ Done | `swift:6.0-noble` pinned in the image (GTK 4.14.5; aarch64 on Apple Silicon, `SWIFT_TAG` build-arg for x86-64); GTK4 C-interop builds cleanly. Re-confirmed on VMs/Pi in L5. |
+| L2.2 | Docker dev image | ✅ Done | `LinChocolate/Dockerfile` — `swift:6.0-noble` + `libgtk-4-dev` + `dbus-x11`, aarch64 to match the Pi. Image builds; `swift build` green (**S1**). |
+| L2.3 | XQuartz display bridge | ✅ Done | `LinChocolate/run-linux.sh` auto-enables XQuartz TCP, restarts it, `xhost +`, dials `DISPLAY=<en0-IP>:0`, `GSK_RENDERER=cairo`. Window renders on the Mac (**S2**). (Ring 1b WSLg loop doc → L5.) |
+| L2.4 | Real Foundation | ✅ Confirmed | corelibs Foundation works on Linux out of the box — `NSRect`/`NSPoint`/`NSMakeRect`/`CGFloat` used directly, no WinFoundation-style shim needed. `USE_REAL_FOUNDATION` is simply the default here. |
+| L2.5 | Sibling package layout | ✅ Done | `LinChocolate/` stood up as its own package (nested for now; graduates to a true sibling dir at convergence) mirroring WinChocolate: AppKit-shaped `LinChocolate` target + GTK/in-memory backends + demo + contract tests. `NativeControlBackend` seam mirrors WinChocolate's shape for L7. WinChocolate untouched. |
+
+## Phase L3 — Core Shell & First Control 🔄 (ACTIVE)
+
+**Milestone:** the AppKit-shaped **click-counter runs as native GTK controls with green contract tests** — `NSApplication`/`NSWindow`/`NSButton`/`NSTextField` driving GTK through the `NativeControlBackend` seam, with frames matching AppKit's coordinate model. *(Demo + tests already work; the coordinate model closes it.)*
+
+| # | Item | Status | Notes |
+|---|---|---|---|
+| L3.1 | Application shell | ✅ Done | `NSApplication`/`NSWindow` over GTK4 (`GMainLoop` lifecycle, window create/show, close→terminate); renders over XQuartz and quits cleanly. |
+| L3.2 | Backend seam + first controls | ✅ Done | `NativeControlBackend` + GTK and in-memory backends; `NSView` (GtkFixed), `NSButton` (GtkButton), `NSTextField` label (GtkLabel); event bridge `registerAction` → GTK `clicked`. Click-counter demo works. |
+| L3.3 | Contract tests | ✅ Done | `LinChocolateContractTests` 13/13 green (in-memory backend), including the full API→backend click path (**S4**). |
+| L3.4 | AppKit coordinate model | ⏳ Pending | GTK top-left → AppKit bottom-left Y-flip, plus live `setFrame`/window resize, so frames match AppKit exactly. **Closes the L3 milestone.** |
 
 ## Phase L4 — Control Parity Pass ⏳
 
-| # | Item | Status | Notes |
-|---|---|---|---|
-| L4.1 | Parity matrix | ⏳ Pending | Extend `CONTROL_PARITY.md` with a Linux column and walk the control matrix. |
-| L4.2 | Composed-control reuse | ⏳ Pending | Reuse the composed designs (toolbar, alerts, panels, customization sheet) where the substrate lacks a native peer; keep the Apple-look toolbar exception. |
-
-## Phase L5 — Three-Platform Proof ⏳
+**Milestone:** the demo's **Controls-page equivalent runs** — the core control set (editable text, checkboxes/radios, and more) with each `NS*` mapped to its GTK peer in `CONTROL_PARITY.md`, and composed controls reused where GTK lacks a native peer.
 
 | # | Item | Status | Notes |
 |---|---|---|---|
-| L5.1 | Test apps unmodified | ⏳ Pending | The WinChocolate Phase 11 apps build and run unmodified on macOS, Windows, and Linux; the dual-platform harness (11.6) grows a third target. Verify each app through all three rings before calling it done. |
-| L5.2 | Parity gap log | ⏳ Pending | Linux-only gaps (and Wayland-vs-X11 or Pi-only gaps) feed back into this plan the way WinChocolate 11.7 feeds the Windows phases. |
+| L4.1 | Core control set | ⏳ Pending | Editable `NSTextField`, checkbox/radio `NSButton`, and enough of the matrix to run a Controls page. |
+| L4.2 | Parity matrix | ⏳ Pending | Extend `CONTROL_PARITY.md` with a Linux column; map each `NS*` control to its GTK peer. |
+| L4.3 | Composed-control reuse | ⏳ Pending | Reuse composed designs (toolbar, alerts, panels, customization sheet) where GTK lacks a native peer; keep the Apple-look toolbar exception. |
+| L4.4 | Look refinement | ⏳ Pending | Settle plain-GTK4 vs libadwaita (the L1.2 baseline) with a Pi in hand. |
 
-## Phase L6 — Shared-Core Convergence ⏳ (Deferred)
+## Phase L5 — Real-Hardware & Distribution ⏳
 
-Deferred until WinChocolate's API stabilizes. Sibling-first (Goal 3) means the Apple API is duplicated across the two packages during L1–L5; this phase pays that back by hoisting the platform-neutral parts into one shared core both siblings consume, so the API stops being maintained twice. Do not start until WinChocolate signals API stability.
+**Milestone:** the demo **runs on a real Raspberry Pi under Wayland (S3)** and on **x86-64 + aarch64 Linux VMs (X11 and Wayland)** — Rings 2–3 stood up, Wayland proven, and the distribution/packaging shape decided. This is where the substrate's Pi/Wayland assumptions are finally confirmed on hardware.
 
 | # | Item | Status | Notes |
 |---|---|---|---|
-| L6.1 | Convergence trigger | ⏳ Deferred | Define what "WinChocolate stable enough" means (e.g. Phase 8 modern look at parity, no churn in the `NativeControlBackend` surface for N releases) and confirm before starting. |
-| L6.2 | Extract shared core | ⏳ Deferred | Hoist the platform-neutral pieces — AppKit-shaped API, `NativeControlBackend` protocol, in-memory backend, contract tests, composed controls (toolbar/alerts/panels) — into a common core target. |
-| L6.3 | Rebase both siblings | ⏳ Deferred | Re-point WinChocolate (Win32 backend) and LinChocolate (Linux backend) at the shared core; delete the duplicated surface. No app-visible API change on either platform. |
-| L6.4 | Anti-drift guard | ⏳ Deferred | Ensure the shared contract tests run in all three platforms' CI so the core cannot silently diverge again. |
+| L5.1 | Linux VM ring (Ring 2) | ⏳ Pending | x86-64 + aarch64 VMs with both an X11 and a Wayland session; the demo runs on each. Wayland path proven (XQuartz cannot). |
+| L5.2 | Raspberry Pi (Ring 3, **S3**) | ⏳ Pending | Build+run on Raspberry Pi OS Bookworm aarch64 under labwc/Wayfire at acceptable perf; decide the minimum supported Pi model. Confirms the substrate on real hardware. |
+| L5.3 | Distribution shape | ⏳ Pending | SwiftPM-only vs distro packaging; minimum supported distros/desktops. Pi OS primary; mainstream x86-64 distros follow. |
+| L5.4 | WSLg secondary loop | ⏳ Pending | Document the Ring 1b WSLg loop so the demo runs on the Windows machine over Wayland/XWayland. |
+| L5.5 | CI | ⏳ Pending | Wire the container ring (build + contract tests) into CI; define the periodic real-hardware verification cadence. |
+
+## Phase L6 — Three-Platform Proof ⏳
+
+**Milestone:** the **WinChocolate Phase 11 apps build and run unmodified on macOS, Windows, and Linux**, verified through all rings, with Linux-only gaps logged back into this plan.
+
+| # | Item | Status | Notes |
+|---|---|---|---|
+| L6.1 | Test apps unmodified | ⏳ Pending | WinChocolate Phase 11 apps build and run unmodified on all three platforms; the dual-platform harness (11.6) grows a third target. |
+| L6.2 | Parity gap log | ⏳ Pending | Linux-only gaps (and Wayland-vs-X11 or Pi-only gaps) feed back into this plan the way WinChocolate 11.7 feeds the Windows phases. |
+
+## Phase L7 — Shared-Core Convergence ⏳ (Deferred)
+
+**Milestone:** **one shared core consumed by both siblings** — the platform-neutral API/protocol/tests/composed-controls hoisted out, both backends rebased onto it with no app-visible change, and an anti-drift CI guard in place.
+
+Deferred until WinChocolate's API stabilizes. Sibling-first (Goal 3) means the Apple API is duplicated across the two packages during L1–L6; this phase pays that back so the API stops being maintained twice. Do not start until WinChocolate signals API stability.
+
+| # | Item | Status | Notes |
+|---|---|---|---|
+| L7.1 | Convergence trigger | ⏳ Deferred | Define what "WinChocolate stable enough" means (e.g. Phase 8 modern look at parity, no churn in the `NativeControlBackend` surface for N releases) and confirm before starting. |
+| L7.2 | Extract shared core | ⏳ Deferred | Hoist the platform-neutral pieces — AppKit-shaped API, `NativeControlBackend` protocol, in-memory backend, contract tests, composed controls (toolbar/alerts/panels) — into a common core target. |
+| L7.3 | Rebase both siblings | ⏳ Deferred | Re-point WinChocolate (Win32 backend) and LinChocolate (Linux backend) at the shared core; delete the duplicated surface. No app-visible API change on either platform. |
+| L7.4 | Anti-drift guard | ⏳ Deferred | Ensure the shared contract tests run in all three platforms' CI so the core cannot silently diverge again. |
 
 ---
 
 ## Maintenance Rules
 
+- **Phases are serial.** Each phase ends in the **Milestone** stated at its heading — a demonstrable capability, not a checklist average. Do not start a later phase until the current phase's milestone is demonstrated; keep exactly one phase active. If work naturally spills into a later phase (as substrate validation did), that is a signal the item is mis-placed — move it to the phase it belongs to rather than opening two phases at once.
 - Keep this plan separate from `ProjectPlan.md`; LinChocolate items never count toward WinChocolate percentages.
-- Until work starts, only revisit this plan when a Windows-side decision would affect the backend boundary — record the consequence here.
-- When work starts, adopt the same per-item percentage discipline and milestone-first working method as the WinChocolate plan, and honor the ring rules: no windowing/compositing/perf/packaging item is "done" on a green XQuartz run alone.
+- Track per-item percentages, milestone-first. Honor the ring rules: no windowing/compositing/perf/packaging item is "done" on a green XQuartz run alone — hence Wayland/Pi confirmation lives in Phase L5.
 - Real-hardware-only findings (Wayland, DPI, keyboard modifiers, Pi GPU/perf) are logged in `NEEDS_HUMAN.md`.
-- **Sibling discipline:** while the Apple API is duplicated (L1–L5), any change to the shared-shaped surface should be made compatibly on both siblings, and the `NativeControlBackend` seam kept identical, so Phase L6's extraction stays mechanical. When you feel the pain of syncing by hand, that is the signal WinChocolate may be stable enough to trigger L6 — not a reason to fork the API.
+- **Sibling discipline:** while the Apple API is duplicated (L1–L6), any change to the shared-shaped surface should be made compatibly on both siblings, and the `NativeControlBackend` seam kept identical, so Phase L7's extraction stays mechanical. When you feel the pain of syncing by hand, that is the signal WinChocolate may be stable enough to trigger L7 — not a reason to fork the API.

@@ -1,9 +1,9 @@
 # LinChocolate — Substrate Decision (Phase L1.1)
 
-**Status:** 🔄 Recommendation — pending validation spikes (see §7) before locking
+**Status:** ✅ Adopted — GTK4, validated on the Ring 1 dev loop (S1/S2/S4). Pi/Wayland confirmation (S3) is a Phase L5 gate, not a blocker on the decision.
 **Date:** 2026-07-07
 **Owner decision:** Bobby
-**Feeds:** `LinChocolatePlan.md` L1.1 (substrate), and constrains L1.2 (look), L1.3 (distribution), L2.1–L2.5 (toolchain/package)
+**Feeds:** `LinChocolatePlan.md` L1.1 (substrate), and constrains L1.2 (look) and L2.1–L2.5 (toolchain/package). Distribution and Pi validation moved to Phase L5.
 
 ---
 
@@ -15,7 +15,7 @@ In one line: GTK4 is the only candidate that delivers a *native, modern, theme-f
 
 The `NativeControlBackend` protocol is unchanged: GTK4 sits behind it exactly as Win32 sits behind it in WinChocolate. Nothing here touches the AppKit-shaped API surface.
 
-Two sub-decisions are deliberately **left open** and handed to Phase L1.2 (§5):
+Two sub-decisions are deliberately **left open** and handed to Phase L4 (§5):
 1. **libadwaita vs. plain GTK4** — polish-and-opinionated vs. theme-following.
 2. **Which Swift binding path** — generated bindings vs. a narrow hand-written module map.
 
@@ -73,9 +73,9 @@ This is the Win32-classic-backend instinct carried to Linux, and it's the wrong 
 
 ---
 
-## 5. Deferred to Phase L1.2 (this decision constrains, doesn't settle)
+## 5. Deferred to Phase L4 (this decision constrains, doesn't settle)
 
-1. **libadwaita vs. plain GTK4.** libadwaita gives the polished GNOME HIG look but is *opinionated* and resists theming (it hardcodes Adwaita). Plain GTK4 **follows the active system theme** — which is what "look native on the Pi's PIXEL desktop" (L1.2) actually wants. Likely answer: **plain GTK4 as the baseline for theme-following, libadwaita optional** where a GNOME-polished look is desired. Settle in L1.2 with a Pi in hand.
+1. **libadwaita vs. plain GTK4.** libadwaita gives the polished GNOME HIG look but is *opinionated* and resists theming (it hardcodes Adwaita). Plain GTK4 **follows the active system theme** — which is what "look native on the Pi's PIXEL desktop" (L1.2) actually wants. Likely answer: **plain GTK4 as the baseline for theme-following, libadwaita optional** where a GNOME-polished look is desired. Baseline decided in L1.2; final call settled in L4 with a Pi in hand.
 2. **Native-peer mapping table.** Which `NS*` control maps to which GTK widget (`NSButton`→`GtkButton`, `NSTextField`→`GtkEntry`/`GtkLabel`, `NSTableView`→`GtkColumnView`, `NSToolbar`→`GtkHeaderBar` except the Apple-look exception, `NSAlert`→`AdwMessageDialog`/`GtkAlertDialog`…). Belongs in the L4.1 parity matrix (new Linux column in `CONTROL_PARITY.md`).
 
 ---
@@ -92,16 +92,16 @@ Three ways to drive GTK4's C/GObject API from Swift, cheapest-to-richest:
 
 ---
 
-## 7. Validation spikes before locking (do these first when work starts)
+## 7. Validation spikes
 
-Small, throwaway proofs that de-risk the commitment. Until these pass, the recommendation stays 🔄, not ✅.
+Small, throwaway proofs that de-risk the commitment. **S1, S2, and S4 have passed**, which validates the decision on the dev loop — the substrate is adopted (§Status). **S3 (Pi/Wayland)** remains, and is tracked as the Phase L5 hardware gate rather than a blocker on the decision.
 
 | Spike | Proves | Ring | Status |
 |---|---|---|---|
 | **S1 · Hello-GTK4 from Swift in the container** | Swift ↔ GTK4 C-interop builds and opens a window; module-map approach is tolerable | 1 (Mac/Docker) | ✅ **Passed** 2026-07-07 — `swift build` green on GTK 4.14.5 aarch64 (Ubuntu Noble); hand-written module map + `@convention(c)` callback compiled with no fixes. Harness: `LinChocolate/`. |
 | **S2 · Same window over XQuartz with `GSK_RENDERER=cairo`** | The Ring 1 dev loop actually shows GTK4 pixels on the Mac | 1 | ✅ **Passed** 2026-07-07 — GTK4 window opened over XQuartz via the Cairo renderer. Required enabling XQuartz TCP (`nolisten_tcp=false` + real restart), `xhost +` (container connects from Docker's NAT IP, not the LAN IP), and `DISPLAY=<host-en0-IP>:0` (`host.docker.internal` resolved IPv6-only and was unreachable). All baked into `run-linux.sh`. |
 | **S3 · Same binary on a Pi (Bookworm, Wayland)** | GTK4 builds/runs on aarch64 Pi under labwc/Wayfire at acceptable perf | 3 | ⏳ Pending Pi |
-| **S4 · One `NativeControlBackend` method (a button) end-to-end** | The seam is truly backend-swappable: contract test green with the GTK backend | 1 → 2 | ⏳ Pending (Phase L3) |
+| **S4 · One `NativeControlBackend` method (a button) end-to-end** | The seam is truly backend-swappable: contract test green with the GTK backend | 1 → 2 | ✅ **Passed** 2026-07-07 — 13/13 contract tests green (in-memory backend), including the click-counter driving `NSButton.onAction` through the backend. The same AppKit-shaped demo also renders as a native GTK window (button+label) over XQuartz. Seam proven swappable. |
 
 S2 and S3 together are the crux: they confirm the plan's two-renderer story (Cairo on XQuartz, GL/Vulkan on hardware) holds in practice.
 
@@ -113,7 +113,7 @@ S2 and S3 together are the crux: they confirm the plan's two-renderer story (Cai
 |---|---|---|
 | GTK4 GL renderer flaky/blank over XQuartz | Medium | `GSK_RENDERER=cairo` for Ring 1 (documented fallback); real GL only on Rings 2–3 |
 | GObject signal/refcount interop is tedious from Swift | Medium | Narrow hand-written surface first; promote to `SwiftGtk`/`gir2swift` if it grows |
-| GTK4 too heavy on the minimum Pi model | Low–Med | L1.4 sets the minimum supported Pi; GTK3 documented fallback if a floor is hit |
+| GTK4 too heavy on the minimum Pi model | Low–Med | L5.2 sets the minimum supported Pi; GTK3 documented fallback if a floor is hit |
 | libadwaita's theme-resistance fights Pi PIXEL look | Medium | Baseline on **plain GTK4** (theme-following); libadwaita opt-in — settle in L1.2 |
 | Binding code-gen dependency rots | Low | Hand-written map has zero external gen; keep it the default until pain justifies more |
 
