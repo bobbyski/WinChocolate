@@ -1,20 +1,47 @@
 import Foundation
 
-/// AppKit-shaped text field. This slice implements the static-label use
-/// (non-editable), which is enough for the demo's counter readout; editable
-/// entry is a Phase L3.2 follow-up.
+/// AppKit-shaped text field, in two flavors:
+///  - `init(labelWithString:frame:)` → a static, non-editable label (GtkLabel).
+///  - `init(string:frame:)`          → an editable single-line field (GtkEntry).
+///
+/// GTK backs labels and editable fields with different widgets, so the
+/// editable/non-editable choice is fixed at creation in this slice (AppKit's
+/// mutable `isEditable` is a later refinement).
 public final class NSTextField: NSView {
 
-    /// The displayed string.
+    private var backingValue: String
+
+    /// The displayed / edited string. Setting it writes through to the control;
+    /// the user's own edits flow back in via the backend's text-change event.
     public var stringValue: String {
-        didSet { backend.setText(stringValue, for: handle) }
+        get { backingValue }
+        set {
+            backingValue = newValue
+            backend.setText(newValue, for: handle)
+        }
     }
 
-    /// Creates a label showing `string`.
-    public init(string: String, frame: NSRect) {
-        self.stringValue = string
+    /// Called after the user edits an editable field (never fired for labels).
+    public var onTextChange: ((NSTextField) -> Void)?
+
+    /// Creates a static, non-editable label.
+    public init(labelWithString string: String, frame: NSRect) {
+        self.backingValue = string
         let backend = NSApplication.shared.nativeBackend
         let handle = backend.createLabel(text: string, frame: frame)
         super.init(frame: frame, handle: handle, backend: backend)
+    }
+
+    /// Creates an editable single-line text field.
+    public init(string: String, frame: NSRect) {
+        self.backingValue = string
+        let backend = NSApplication.shared.nativeBackend
+        let handle = backend.createTextField(text: string, frame: frame)
+        super.init(frame: frame, handle: handle, backend: backend)
+        backend.setTextChangeAction(for: handle) { [weak self] text in
+            guard let self else { return }
+            self.backingValue = text          // sync silently — no write-back loop
+            self.onTextChange?(self)
+        }
     }
 }

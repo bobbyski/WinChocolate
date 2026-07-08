@@ -86,6 +86,52 @@ do {
     check(backend.text(for: label.handle) == "Clicks: 2", "second click accumulates")
 }
 
+// MARK: 3 — Coordinate model (AppKit bottom-left → GTK top-left)
+do {
+    check(CoordinateSpace.gtkY(for: NSMakeRect(0, 24, 240, 24), parentHeight: 220) == 172,
+          "Y-flip: bottom-anchored child maps to a large GTK y")
+    check(CoordinateSpace.gtkY(for: NSMakeRect(0, 0, 10, 10), parentHeight: 100) == 90,
+          "Y-flip: origin child sits at the GTK bottom")
+    check(CoordinateSpace.gtkY(for: NSMakeRect(0, 90, 10, 10), parentHeight: 100) == 0,
+          "Y-flip: top child maps to GTK y=0")
+
+    // Setting NSView.frame reaches the backend (live reposition/resize).
+    let backend = InMemoryNativeControlBackend()
+    NSApplication.shared.nativeBackend = backend
+    let view = NSView(frame: NSMakeRect(0, 0, 50, 50))
+    view.frame = NSMakeRect(10, 20, 60, 70)
+    check(backend.frames[view.handle.rawValue] == NSMakeRect(10, 20, 60, 70),
+          "NSView.frame setter reaches the backend")
+}
+
+// MARK: 4 — Editable text field + checkbox (L4.1 controls)
+do {
+    let backend = InMemoryNativeControlBackend()
+    NSApplication.shared.nativeBackend = backend
+
+    // Editable text field: a native edit drives onTextChange and stringValue.
+    let field = NSTextField(string: "a", frame: NSMakeRect(0, 0, 100, 24))
+    var changedTo = ""
+    field.onTextChange = { changedTo = $0.stringValue }
+    backend.simulateTextChange(field.handle, "hello")
+    check(field.stringValue == "hello", "editable NSTextField.stringValue syncs from native edits")
+    check(changedTo == "hello", "NSTextField.onTextChange fires on native edit")
+
+    // Label: the setter writes through to the backend.
+    let label = NSTextField(labelWithString: "x", frame: NSMakeRect(0, 0, 100, 24))
+    label.stringValue = "y"
+    check(backend.text(for: label.handle) == "y", "label NSTextField.stringValue writes through")
+
+    // Checkbox: a native toggle drives isOn and onAction.
+    let checkbox = NSButton(checkboxWithTitle: "On?", frame: NSMakeRect(0, 0, 120, 24))
+    var toggledState: Bool?
+    checkbox.onAction = { toggledState = $0.isOn }
+    check(checkbox.isOn == false, "checkbox starts off")
+    backend.simulateToggle(checkbox.handle, true)
+    check(checkbox.isOn, "checkbox NSButton.isOn syncs from native toggle")
+    check(toggledState == true, "checkbox onAction fires with the new state")
+}
+
 if failures == 0 {
     print("\nAll contract tests passed.")
 } else {

@@ -12,7 +12,7 @@ import Foundation
 public final class InMemoryNativeControlBackend: NativeControlBackend {
 
     /// What kind of control a handle refers to (drives `setText` routing).
-    public enum Kind: Equatable { case window, view, button, label }
+    public enum Kind: Equatable { case window, view, button, label, textField, checkbox }
 
     private var nextRaw: UInt = 1
 
@@ -25,8 +25,11 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     public private(set) var contentViews: [UInt: UInt] = [:]
     public private(set) var subviews: [UInt: [UInt]] = [:]
     public private(set) var visibleWindows: Set<UInt> = []
+    public private(set) var buttonStates: [UInt: Bool] = [:]
     private var actions: [UInt: () -> Void] = [:]
     private var windowCloseActions: [UInt: () -> Void] = [:]
+    private var textChangeActions: [UInt: (String) -> Void] = [:]
+    private var toggleActions: [UInt: (Bool) -> Void] = [:]
 
     public init() {}
 
@@ -75,6 +78,22 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     public func createLabel(text: String, frame: NSRect) -> NativeHandle {
         let h = allocate(.label); texts[h.rawValue] = text; frames[h.rawValue] = frame; return h
     }
+    public func createTextField(text: String, frame: NSRect) -> NativeHandle {
+        let h = allocate(.textField)
+        texts[h.rawValue] = text
+        frames[h.rawValue] = frame
+        enabledStates[h.rawValue] = true
+        return h
+    }
+    public func createCheckbox(title: String, frame: NSRect) -> NativeHandle {
+        let h = allocate(.checkbox)
+        titles[h.rawValue] = title
+        texts[h.rawValue] = title
+        frames[h.rawValue] = frame
+        enabledStates[h.rawValue] = true
+        buttonStates[h.rawValue] = false
+        return h
+    }
     public func addSubview(_ child: NativeHandle, to parent: NativeHandle) {
         subviews[parent.rawValue, default: []].append(child.rawValue)
     }
@@ -93,12 +112,33 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     public func registerAction(for handle: NativeHandle, action: @escaping () -> Void) {
         actions[handle.rawValue] = action
     }
+    public func setTextChangeAction(for handle: NativeHandle, action: @escaping (String) -> Void) {
+        textChangeActions[handle.rawValue] = action
+    }
+    public func setButtonState(_ on: Bool, for handle: NativeHandle) {
+        buttonStates[handle.rawValue] = on
+    }
+    public func setToggleAction(for handle: NativeHandle, action: @escaping (Bool) -> Void) {
+        toggleActions[handle.rawValue] = action
+    }
 
     // MARK: Test hooks (not part of the protocol)
     /// Fires the action registered for a control, as if the user clicked it.
     public func simulateClick(_ handle: NativeHandle) { actions[handle.rawValue]?() }
     /// Fires a window's close action, as if the user closed it.
     public func simulateWindowClose(_ handle: NativeHandle) { windowCloseActions[handle.rawValue]?() }
+    /// Simulates the user editing a text field to `text`.
+    public func simulateTextChange(_ handle: NativeHandle, _ text: String) {
+        texts[handle.rawValue] = text
+        textChangeActions[handle.rawValue]?(text)
+    }
+    /// Simulates the user toggling a checkbox to `on`.
+    public func simulateToggle(_ handle: NativeHandle, _ on: Bool) {
+        buttonStates[handle.rawValue] = on
+        toggleActions[handle.rawValue]?(on)
+    }
+    /// Whether a checkbox is on.
+    public func isOn(_ handle: NativeHandle) -> Bool { buttonStates[handle.rawValue] ?? false }
     /// The text currently recorded for a control.
     public func text(for handle: NativeHandle) -> String? { texts[handle.rawValue] }
     /// Whether a window has been shown.

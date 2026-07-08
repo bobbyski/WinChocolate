@@ -7,8 +7,11 @@ import Foundation
 /// through the backend and hand its handle to the designated initializer.
 public class NSView {
 
-    /// The view's frame in its parent's coordinate space.
-    public internal(set) var frame: NSRect
+    /// The view's frame in its parent's coordinate space (AppKit bottom-left
+    /// origin). Setting it repositions/resizes the native control.
+    public var frame: NSRect {
+        didSet { backend.setFrame(frame, for: handle) }
+    }
 
     /// Opaque backend handle for this view. Exposed for advanced/testing use
     /// (e.g. simulating input against a specific control).

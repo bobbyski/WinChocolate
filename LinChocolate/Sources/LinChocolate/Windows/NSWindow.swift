@@ -54,4 +54,9 @@ public final class NSWindow {
     public func makeKeyAndOrderFront(_ sender: Any?) {
         backend.showWindow(handle)
     }
+
+    /// Resizes the window's content area.
+    public func setContentSize(_ size: NSSize) {
+        backend.setFrame(NSMakeRect(0, 0, size.width, size.height), for: handle)
+    }
 }

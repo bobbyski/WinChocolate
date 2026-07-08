@@ -36,6 +36,10 @@ public protocol NativeControlBackend: AnyObject {
     func createButton(title: String, frame: NSRect) -> NativeHandle
     /// Creates a static text label.
     func createLabel(text: String, frame: NSRect) -> NativeHandle
+    /// Creates an editable single-line text field.
+    func createTextField(text: String, frame: NSRect) -> NativeHandle
+    /// Creates a checkbox (labelled on/off toggle).
+    func createCheckbox(title: String, frame: NSRect) -> NativeHandle
     /// Places `child` inside `parent` at the child's frame origin.
     func addSubview(_ child: NativeHandle, to parent: NativeHandle)
 
@@ -46,10 +50,16 @@ public protocol NativeControlBackend: AnyObject {
     func setFrame(_ frame: NSRect, for handle: NativeHandle)
     /// Enables or disables a control.
     func setEnabled(_ isEnabled: Bool, for handle: NativeHandle)
+    /// Sets a checkbox's on/off state.
+    func setButtonState(_ on: Bool, for handle: NativeHandle)
     /// Releases the native resources for a control.
     func destroyControl(_ handle: NativeHandle)
 
     // MARK: Events
     /// Registers the action to perform when a control fires (e.g. a click).
     func registerAction(for handle: NativeHandle, action: @escaping () -> Void)
+    /// Registers the action to perform when a text field's contents change.
+    func setTextChangeAction(for handle: NativeHandle, action: @escaping (String) -> Void)
+    /// Registers the action to perform when a checkbox toggles; passes the new state.
+    func setToggleAction(for handle: NativeHandle, action: @escaping (Bool) -> Void)
 }

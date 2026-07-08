@@ -3,12 +3,12 @@
 ## Dashboard
 
 ```text
-Overall Progress                           █████░░░░░░░░░░░░░░░░░░░░░   18%  🔄 Phase L3 active
+Overall Progress                           ███████░░░░░░░░░░░░░░░░░░░   28%  🔄 Phase L4 active
 
 Phase L1 · Backend Strategy                ██████████████████████████  100%  ✅ Milestone met — GTK4 chosen & proven on dev loop
 Phase L2 · Toolchain & Harness             ██████████████████████████  100%  ✅ Milestone met — reproducible one-command Ring 1 loop
-Phase L3 · Core Shell & First Control      ██████████████████░░░░░░░░   70%  🔄 Active — native click-counter runs, tests green
-Phase L4 · Control Parity Pass             ░░░░░░░░░░░░░░░░░░░░░░░░░░    0%  ⏳ Pending
+Phase L3 · Core Shell & First Control      ██████████████████████████  100%  ✅ Milestone met — click-counter, AppKit coords, tests green
+Phase L4 · Control Parity Pass             ████░░░░░░░░░░░░░░░░░░░░░░   15%  🔄 Active — editable text + checkbox
 Phase L5 · Linux VMs & Distribution        ░░░░░░░░░░░░░░░░░░░░░░░░░░    0%  ⏳ Pending
 Phase L6 · Three-Platform Proof            ░░░░░░░░░░░░░░░░░░░░░░░░░░    0%  ⏳ Pending
 Phase L7 · Shared-Core Convergence         ░░░░░░░░░░░░░░░░░░░░░░░░░░    0%  ⏳ Deferred (post-WinChocolate-stable)
@@ -90,24 +90,24 @@ Rules for the matrix:
 | L2.4 | Real Foundation | ✅ Confirmed | corelibs Foundation works on Linux out of the box — `NSRect`/`NSPoint`/`NSMakeRect`/`CGFloat` used directly, no WinFoundation-style shim needed. `USE_REAL_FOUNDATION` is simply the default here. |
 | L2.5 | Sibling package layout | ✅ Done | `LinChocolate/` stood up as its own package (nested for now; graduates to a true sibling dir at convergence) mirroring WinChocolate: AppKit-shaped `LinChocolate` target + GTK/in-memory backends + demo + contract tests. `NativeControlBackend` seam mirrors WinChocolate's shape for L7. WinChocolate untouched. |
 
-## Phase L3 — Core Shell & First Control 🔄 (ACTIVE)
+## Phase L3 — Core Shell & First Control ✅
 
-**Milestone:** the AppKit-shaped **click-counter runs as native GTK controls with green contract tests** — `NSApplication`/`NSWindow`/`NSButton`/`NSTextField` driving GTK through the `NativeControlBackend` seam, with frames matching AppKit's coordinate model. *(Demo + tests already work; the coordinate model closes it.)*
+**Milestone (met):** the AppKit-shaped **click-counter runs as native GTK controls with green contract tests** — `NSApplication`/`NSWindow`/`NSButton`/`NSTextField` driving GTK through the `NativeControlBackend` seam, with frames matching AppKit's bottom-left coordinate model. Demo renders over XQuartz; 17 contract tests green.
 
 | # | Item | Status | Notes |
 |---|---|---|---|
 | L3.1 | Application shell | ✅ Done | `NSApplication`/`NSWindow` over GTK4 (`GMainLoop` lifecycle, window create/show, close→terminate); renders over XQuartz and quits cleanly. |
 | L3.2 | Backend seam + first controls | ✅ Done | `NativeControlBackend` + GTK and in-memory backends; `NSView` (GtkFixed), `NSButton` (GtkButton), `NSTextField` label (GtkLabel); event bridge `registerAction` → GTK `clicked`. Click-counter demo works. |
 | L3.3 | Contract tests | ✅ Done | `LinChocolateContractTests` 13/13 green (in-memory backend), including the full API→backend click path (**S4**). |
-| L3.4 | AppKit coordinate model | ⏳ Pending | GTK top-left → AppKit bottom-left Y-flip, plus live `setFrame`/window resize, so frames match AppKit exactly. **Closes the L3 milestone.** |
+| L3.4 | AppKit coordinate model | ✅ Done | `CoordinateSpace.gtkY` (pure, unit-tested) flips AppKit bottom-left → GTK top-left in `addSubview`/`setFrame`; `NSView.frame` setter repositions live, `NSWindow.setContentSize` resizes. Demo now lays out button-above-label as AppKit intends. 4 coordinate tests added (17 total green). |
 
-## Phase L4 — Control Parity Pass ⏳
+## Phase L4 — Control Parity Pass 🔄 (ACTIVE)
 
 **Milestone:** the demo's **Controls-page equivalent runs** — the core control set (editable text, checkboxes/radios, and more) with each `NS*` mapped to its GTK peer in `CONTROL_PARITY.md`, and composed controls reused where GTK lacks a native peer.
 
 | # | Item | Status | Notes |
 |---|---|---|---|
-| L4.1 | Core control set | ⏳ Pending | Editable `NSTextField`, checkbox/radio `NSButton`, and enough of the matrix to run a Controls page. |
+| L4.1 | Core control set | 🔄 In progress | ✅ Editable `NSTextField` (GtkEntry) with a text-change event; ✅ checkbox `NSButton` (GtkCheckButton) with toggle→`isOn`/`onAction`; ✅ `NSTextField(labelWithString:)` split from the editable initializer. Demo is now a small Controls page; 23 contract tests green. **Remaining:** radio-button groups, and a few more controls. |
 | L4.2 | Parity matrix | ⏳ Pending | Extend `CONTROL_PARITY.md` with a Linux column; map each `NS*` control to its GTK peer. |
 | L4.3 | Composed-control reuse | ⏳ Pending | Reuse composed designs (toolbar, alerts, panels, customization sheet) where GTK lacks a native peer; keep the Apple-look toolbar exception. |
 | L4.4 | Look refinement | ⏳ Pending | Settle plain-GTK4 vs libadwaita (the L1.2 baseline) with a Pi in hand. |
