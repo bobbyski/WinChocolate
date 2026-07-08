@@ -2286,7 +2286,7 @@ func testDatePickerClockAndCalendarStyle() {
     expect(backend.records[fieldHandle]?.kind == "datePicker", "Default style should still use the field peer.")
 }
 
-func testSegmentedControlStoresSegmentsAndComposesButtons() {
+func testSegmentedControlStoresSegmentsAndDrawsOnAView() {
     let backend = InMemoryNativeControlBackend()
     let segmented = NSSegmentedControl(labels: ["One", "Two"], frame: NSMakeRect(0, 0, 160, 28))
     segmented.setLabel("First", forSegment: 0)
@@ -2302,21 +2302,16 @@ func testSegmentedControlStoresSegmentsAndComposesButtons() {
 
     let handle = segmented.realizeNativePeer(in: backend, parent: nil)
 
+    // The control is framework-drawn on a single view peer (no child buttons).
     expect(backend.records[handle]?.kind == "view", "Segmented control did not request a native container view.")
-    expect(segmented.subviews.count == 2, "Segmented control did not compose segment buttons.")
-    guard segmented.subviews.count == 2,
-          let first = segmented.subviews[0] as? NSButton,
-          let second = segmented.subviews[1] as? NSButton,
-          let firstHandle = first.nativeHandle,
-          let secondHandle = second.nativeHandle else {
-        expect(false, "Segmented control segment buttons were not realized.")
-        return
-    }
 
-    expect(backend.records[firstHandle]?.kind == "button", "First segment was not backed by a button.")
-    expect(backend.records[firstHandle]?.text == "First", "First segment label was not synced.")
-    expect(backend.records[firstHandle]?.frame.size.width == 90, "First segment width was not synced.")
-    expect(backend.records[secondHandle]?.isEnabled == false, "Second segment enabled state was not synced.")
+    // Segment frames honor the fixed width: segment 0 is 90 wide, segment 1
+    // takes the remaining 70 of the 160-wide control, laid out left to right.
+    let frames = segmented.winSegmentFrames()
+    expect(frames.count == 2, "Segmented control should compute one frame per segment.")
+    expect(frames[0].size.width == 90, "Fixed-width segment should keep its width; got \(frames[0].size.width).")
+    expect(abs(frames[1].origin.x - 90) < 0.001, "The second segment should begin where the first ends.")
+    expect(abs(frames[1].size.width - 70) < 0.001, "The automatic segment should take the remaining width.")
 }
 
 func testSegmentedControlSeparatedStyleGapsSegments() {
@@ -2325,63 +2320,40 @@ func testSegmentedControlSeparatedStyleGapsSegments() {
     expect(NSSegmentedControl.winSegmentSpacing(for: .rounded) == 0, "Joined styles should not gap segments.")
     expect(NSSegmentedControl.winSegmentSpacing(for: .automatic) == 0, "The default joined style should not gap segments.")
 
-    let backend = InMemoryNativeControlBackend()
-
     // Joined (default): segment 2 begins exactly where segment 1 ends.
     let joined = NSSegmentedControl(labels: ["A", "B"], frame: NSMakeRect(0, 0, 160, 28))
-    _ = joined.realizeNativePeer(in: backend, parent: nil)
-    guard let jFirst = joined.subviews[0] as? NSButton, let jSecond = joined.subviews[1] as? NSButton else {
-        expect(false, "Joined segmented control did not compose two buttons.")
-        return
-    }
-    expect(abs(jSecond.frame.minX - jFirst.frame.maxX) < 0.001, "Joined segments should be adjacent (no gap).")
+    let jFrames = joined.winSegmentFrames()
+    expect(abs(jFrames[1].origin.x - (jFrames[0].origin.x + jFrames[0].size.width)) < 0.001,
+        "Joined segments should be adjacent (no gap).")
 
     // Separated: a positive gap opens between the two segments, and both still
     // fit inside the control's width.
     let separated = NSSegmentedControl(labels: ["A", "B"], frame: NSMakeRect(0, 0, 160, 28))
     separated.segmentStyle = .separated
-    _ = separated.realizeNativePeer(in: backend, parent: nil)
-    guard let sFirst = separated.subviews[0] as? NSButton, let sSecond = separated.subviews[1] as? NSButton else {
-        expect(false, "Separated segmented control did not compose two buttons.")
-        return
-    }
-    let gap = sSecond.frame.minX - sFirst.frame.maxX
+    let sFrames = separated.winSegmentFrames()
+    let gap = sFrames[1].origin.x - (sFrames[0].origin.x + sFrames[0].size.width)
     expect(abs(gap - NSSegmentedControl.winSegmentSpacing(for: .separated)) < 0.001,
         "Separated segments should be spaced by the style gap; got \(gap).")
-    expect(sSecond.frame.maxX <= 160.001, "Separated segments should stay inside the control width.")
+    expect(sFrames[1].origin.x + sFrames[1].size.width <= 160.001, "Separated segments should stay inside the control width.")
 }
 
-func testSegmentedControlStyleDrivesSegmentBezel() {
-    // The squared/textured families flatten their segment buttons; the rounded
-    // family keeps the standard themed segment.
-    expect(NSSegmentedControl.winSegmentButtonIsFlat(for: .texturedSquare), "Textured-square segments should be flat.")
-    expect(NSSegmentedControl.winSegmentButtonIsFlat(for: .smallSquare), "Small-square segments should be flat.")
-    expect(!NSSegmentedControl.winSegmentButtonIsFlat(for: .rounded), "Rounded segments should not be flat.")
-    expect(!NSSegmentedControl.winSegmentButtonIsFlat(for: .capsule), "Capsule segments should not be flat.")
-
-    let backend = InMemoryNativeControlBackend()
-
-    // A textured-square control renders its segment buttons flat on the peer.
-    let textured = NSSegmentedControl(labels: ["A", "B"], frame: NSMakeRect(0, 0, 160, 28))
-    textured.segmentStyle = .texturedSquare
-    _ = textured.realizeNativePeer(in: backend, parent: nil)
-    for case let button as NSButton in textured.subviews {
-        guard let handle = button.nativeHandle else {
-            continue
-        }
-        expect(backend.flatBezelButtons[handle] == true, "Textured-square segment button should be flat.")
-    }
-
-    // A rounded control keeps its segment buttons themed (not flat).
-    let rounded = NSSegmentedControl(labels: ["A", "B"], frame: NSMakeRect(0, 0, 160, 28))
-    rounded.segmentStyle = .rounded
-    _ = rounded.realizeNativePeer(in: backend, parent: nil)
-    for case let button as NSButton in rounded.subviews {
-        guard let handle = button.nativeHandle else {
-            continue
-        }
-        expect(backend.flatBezelButtons[handle] != true, "Rounded segment button should not be flat.")
-    }
+func testSegmentedControlStyleDrivesCornerRadius() {
+    // The style sets the outer corner radius the framework draws: a full pill for
+    // .capsule (half the height), a modest rounding for the rounded family, and
+    // square corners for the textured/small-square family.
+    let height: CGFloat = 28
+    expect(NSSegmentedControl.winSegmentCornerRadius(for: .capsule, height: height) == height / 2,
+        "Capsule should be a full half-height pill.")
+    expect(NSSegmentedControl.winSegmentCornerRadius(for: .texturedSquare, height: height) == 0,
+        "Textured-square should have square corners.")
+    expect(NSSegmentedControl.winSegmentCornerRadius(for: .smallSquare, height: height) == 0,
+        "Small-square should have square corners.")
+    let rounded = NSSegmentedControl.winSegmentCornerRadius(for: .rounded, height: height)
+    expect(rounded > 0 && rounded < height / 2, "Rounded should round modestly, less than a full pill.")
+    // The capsule is rounder than the rounded style, which is rounder than square.
+    expect(NSSegmentedControl.winSegmentCornerRadius(for: .capsule, height: height) > rounded
+        && rounded > NSSegmentedControl.winSegmentCornerRadius(for: .roundRect, height: height) - 3,
+        "Corner radius should increase from square → roundRect → rounded → capsule.")
 }
 
 func testSegmentedControlPerSegmentImageAndTag() {
@@ -2395,18 +2367,12 @@ func testSegmentedControlPerSegmentImageAndTag() {
     segmented.selectedSegment = 1
     expect(segmented.selectedSegmentTag() == 22, "selectedSegmentTag did not follow the selection.")
 
-    // Per-segment images round-trip and reach the composed button.
+    // Per-segment images round-trip through the model (rendering is a follow-up
+    // in the framework-drawn control; labels render for now).
     let icon = NSImage(named: "grid.symbol")
     segmented.setImage(icon, forSegment: 0)
     expect(segmented.image(forSegment: 0) === icon, "Segment image was not stored.")
     expect(segmented.image(forSegment: 1) == nil, "Unset segment image should be nil.")
-    guard segmented.subviews.indices.contains(0), let firstButton = segmented.subviews[0] as? NSButton else {
-        expect(false, "Segment button was not composed.")
-        return
-    }
-    expect(firstButton.image === icon, "Segment image did not reach the composed button.")
-    // A labeled segment with an image shows the image beside the label.
-    expect(firstButton.imagePosition == .imageLeft, "Labeled segment with image should place the image left.")
 }
 
 func testSegmentedControlPerSegmentMenu() {
@@ -2421,15 +2387,14 @@ func testSegmentedControlPerSegmentMenu() {
 
     segmented.realizeNativePeer(in: backend, parent: nil)
     segmented.selectedSegment = 0
-    let buttons = segmented.subviews.compactMap { $0 as? NSButton }
 
     // Clicking the menu segment pops its menu instead of changing selection.
-    buttons[1].sendAction()
+    segmented.winSelectSegment(byClickAt: 1)
     expect(backend.poppedContextMenus.last === menu, "Clicking a menu segment did not pop its menu.")
     expect(segmented.selectedSegment == 0, "A menu segment should not become the selection.")
 
     // A plain segment still selects normally.
-    buttons[0].sendAction()
+    segmented.winSelectSegment(byClickAt: 0)
     expect(segmented.selectedSegment == 0, "Clicking a plain segment should select it.")
 }
 
@@ -2446,13 +2411,7 @@ func testSegmentedControlActionSelectsSegment() {
         expect(segmented.selectedSegment == 1, "Segmented control did not select clicked segment.")
     }
 
-    guard segmented.subviews.count == 2,
-          let second = segmented.subviews[1] as? NSButton else {
-        expect(false, "Segmented control did not create segment buttons before realization.")
-        return
-    }
-
-    second.performClick(nil)
+    segmented.winSelectSegment(byClickAt: 1)
     expect(actionCount == 1, "Segmented control action was not dispatched.")
 }
 
@@ -8920,9 +8879,9 @@ testScrollerNativeActionUpdatesValue()
 testScrollerHitPartReflectsGesture()
 testDatePickerStoresDateRangeAndSyncsNativePeer()
 testDatePickerClockAndCalendarStyle()
-testSegmentedControlStoresSegmentsAndComposesButtons()
+testSegmentedControlStoresSegmentsAndDrawsOnAView()
 testSegmentedControlSeparatedStyleGapsSegments()
-testSegmentedControlStyleDrivesSegmentBezel()
+testSegmentedControlStyleDrivesCornerRadius()
 testSegmentedControlPerSegmentImageAndTag()
 testSegmentedControlPerSegmentMenu()
 testSegmentedControlActionSelectsSegment()

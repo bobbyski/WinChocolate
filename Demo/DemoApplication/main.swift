@@ -946,11 +946,13 @@ let tablesPage = DemoPageView(frame: NSMakeRect(0, 144, 1120, 560))
 let drawingPage = DemoPageView(frame: NSMakeRect(0, 144, 1120, 560))
 let showcasePage = DemoPageView(frame: NSMakeRect(0, 144, 1120, 560))
 let listsPage = DemoPageView(frame: NSMakeRect(0, 144, 1120, 560))
+let bezelsPage = DemoPageView(frame: NSMakeRect(0, 144, 1120, 560))
 valuesPage.isHidden = true
 tablesPage.isHidden = true
 drawingPage.isHidden = true
 showcasePage.isHidden = true
 listsPage.isHidden = true
+bezelsPage.isHidden = true
 let counterLabel = NSTextField(string: "Clicks: 0", frame: NSMakeRect(32, 36, 300, 24))
 let statusLabel = NSTextField(string: "Ready", frame: NSMakeRect(32, 74, 640, 24))
 let focusLabel = NSTextField(string: "Focus: none", frame: NSMakeRect(744, 74, 300, 24))
@@ -1824,7 +1826,7 @@ datePicker.maxDate = Date(timeIntervalSince1970: 1_893_456_000)
 datePicker.datePickerElements = [.yearMonthDay, .hourMinuteSecond]
 dateValueLabel.textColor = demoValueTextColor
 dateValueLabel.stringValue = datePicker.stringValue
-pageSelector.addItems(withTitles: ["Controls", "Values", "Tables/Media", "Drawing", "New in 3.x", "Lists (5.x)"])
+pageSelector.addItems(withTitles: ["Controls", "Values", "Tables/Media", "Drawing", "New in 3.x", "Lists (5.x)", "Bezels (8.3)"])
 imageLabel.font = NSFont.boldSystemFont(ofSize: 12)
 imageView.image = NSImage(contentsOfFile: demoArtworkPath) ?? NSImage(named: "WinChocolate artwork")
 imageView.imageFrameStyle = .grayBezel
@@ -2046,6 +2048,7 @@ func showDemoPage(_ index: Int) {
     drawingPage.isHidden = index != 3
     showcasePage.isHidden = index != 4
     listsPage.isHidden = index != 5
+    bezelsPage.isHidden = index != 6
     updateFocusDisplay()
 }
 
@@ -2820,6 +2823,7 @@ contentView.addSubview(tablesPage)
 contentView.addSubview(drawingPage)
 contentView.addSubview(showcasePage)
 contentView.addSubview(listsPage)
+contentView.addSubview(bezelsPage)
 
 controlsPage.addSubview(editableLabel)
 controlsPage.addSubview(editableTextField)
@@ -3392,8 +3396,148 @@ for shapeTitle in ["Star", "Wave", "Card"] {
 }
 shapesView.contextMenu = shapesContextMenu
 
+// ---------------------------------------------------------------------------
+// Bezels (8.3) page — showcases the framework-drawn NSButton bezel styles, the
+// NSSegmentedControl styles, and the accent-aware drawn controls added in 8.3.
+// Toggle to dark mode (run with --dark, or set Windows to dark) to see the
+// appearance-aware fills.
+// ---------------------------------------------------------------------------
+@MainActor
+func bezelCaption(_ text: String, _ frame: NSRect) -> NSTextField {
+    let label = NSTextField(string: text, frame: frame)
+    label.isBordered = false
+    label.drawsBackground = false
+    label.font = NSFont.systemFont(ofSize: 11)
+    return label
+}
+
+let bezelsIntro = bezelCaption("Framework-drawn button bezels and segmented styles (Phase 8.3). Click the toggles; run with --dark to see the appearance-aware fills.", NSMakeRect(24, 12, 1000, 20))
+
+let buttonBezelHeader = showcaseSectionLabel("NSButton.bezelStyle — framework-drawn (8.3)", NSMakeRect(24, 42, 520, 20))
+
+let disclosureButton = NSButton(title: "", frame: NSMakeRect(28, 74, 22, 22))
+disclosureButton.bezelStyle = .disclosure
+disclosureButton.onAction = { _ in
+    statusLabel.stringValue = "Disclosure: \(disclosureButton.state == .on ? "open" : "closed")"
+}
+let disclosureCaption = bezelCaption("Disclosure", NSMakeRect(56, 74, 78, 20))
+
+let roundedDisclosureButton = NSButton(title: "", frame: NSMakeRect(150, 74, 24, 22))
+roundedDisclosureButton.bezelStyle = .roundedDisclosure
+roundedDisclosureButton.onAction = { _ in
+    statusLabel.stringValue = "Rounded disclosure: \(roundedDisclosureButton.state == .on ? "open" : "closed")"
+}
+let roundedDisclosureCaption = bezelCaption("Rounded", NSMakeRect(180, 74, 70, 20))
+
+let circularBezelButton = NSButton(title: "?", frame: NSMakeRect(262, 70, 30, 30))
+circularBezelButton.bezelStyle = .circular
+circularBezelButton.onAction = { _ in
+    statusLabel.stringValue = "Circular button clicked"
+}
+let circularCaption = bezelCaption("Circular", NSMakeRect(298, 74, 66, 20))
+
+let recessedBezelButton = NSButton(title: "Bold", frame: NSMakeRect(372, 72, 64, 26))
+recessedBezelButton.bezelStyle = .recessed
+recessedBezelButton.onAction = { _ in
+    statusLabel.stringValue = "Recessed toggle: \(recessedBezelButton.state == .on ? "on" : "off")"
+}
+let recessedCaption = bezelCaption("Recessed (toggle)", NSMakeRect(444, 74, 130, 20))
+
+let inlineBezelButton = NSButton(title: "NEW", frame: NSMakeRect(576, 73, 52, 24))
+inlineBezelButton.bezelStyle = .inline
+inlineBezelButton.onAction = { _ in
+    statusLabel.stringValue = "Inline pill clicked"
+}
+let inlineCaption = bezelCaption("Inline pill", NSMakeRect(634, 74, 90, 20))
+
+let segmentHeader = showcaseSectionLabel("NSSegmentedControl.segmentStyle (8.3)", NSMakeRect(24, 124, 520, 20))
+
+let roundedSegCaption = bezelCaption(".rounded (joined)", NSMakeRect(24, 150, 250, 20))
+let roundedSeg = NSSegmentedControl(labels: ["Day", "Week", "Month"], frame: NSMakeRect(24, 172, 250, 28))
+roundedSeg.segmentStyle = .rounded
+roundedSeg.selectedSegment = 0
+
+let separatedSegCaption = bezelCaption(".separated (gapped)", NSMakeRect(298, 150, 250, 20))
+let separatedSeg = NSSegmentedControl(labels: ["Day", "Week", "Month"], frame: NSMakeRect(298, 172, 250, 28))
+separatedSeg.segmentStyle = .separated
+separatedSeg.selectedSegment = 1
+
+let texturedSegCaption = bezelCaption(".texturedSquare (flat)", NSMakeRect(572, 150, 250, 20))
+let texturedSeg = NSSegmentedControl(labels: ["Day", "Week", "Month"], frame: NSMakeRect(572, 172, 250, 28))
+texturedSeg.segmentStyle = .texturedSquare
+texturedSeg.selectedSegment = 2
+
+let capsuleSegCaption = bezelCaption(".capsule (joined)", NSMakeRect(846, 150, 250, 20))
+let capsuleSeg = NSSegmentedControl(labels: ["Day", "Week", "Month"], frame: NSMakeRect(846, 172, 250, 28))
+capsuleSeg.segmentStyle = .capsule
+capsuleSeg.selectedSegment = 0
+
+for seg in [roundedSeg, separatedSeg, texturedSeg, capsuleSeg] {
+    seg.onAction = { control in
+        guard let seg = control as? NSSegmentedControl else {
+            return
+        }
+        statusLabel.stringValue = "Segment: \(seg.label(forSegment: seg.selectedSegment) ?? "none")"
+    }
+}
+
+let drawnHeader = showcaseSectionLabel("Accent-aware drawn controls (8.3)", NSMakeRect(24, 224, 520, 20))
+
+let ratingCaption = bezelCaption("NSLevelIndicator .rating", NSMakeRect(24, 250, 180, 20))
+let bezelsRating = NSLevelIndicator(frame: NSMakeRect(24, 272, 150, 24))
+bezelsRating.levelIndicatorStyle = .rating
+bezelsRating.minValue = 0
+bezelsRating.maxValue = 5
+bezelsRating.doubleValue = 3
+bezelsRating.isEditable = true
+bezelsRating.onAction = { _ in
+    statusLabel.stringValue = "Rating: \(bezelsRating.intValue)/5"
+}
+
+let discreteCaption = bezelCaption(".discreteCapacity", NSMakeRect(200, 250, 180, 20))
+let discreteIndicator = NSLevelIndicator(frame: NSMakeRect(200, 272, 150, 24))
+discreteIndicator.levelIndicatorStyle = .discreteCapacity
+discreteIndicator.minValue = 0
+discreteIndicator.maxValue = 10
+discreteIndicator.doubleValue = 6
+
+let relevancyCaption = bezelCaption(".relevancy", NSMakeRect(376, 250, 180, 20))
+let relevancyIndicator = NSLevelIndicator(frame: NSMakeRect(376, 272, 150, 24))
+relevancyIndicator.levelIndicatorStyle = .relevancy
+relevancyIndicator.minValue = 0
+relevancyIndicator.maxValue = 12
+relevancyIndicator.doubleValue = 8
+
+let tokenCaption = bezelCaption("NSTokenField chips", NSMakeRect(560, 250, 180, 20))
+let bezelsTokenField = NSTokenField(tokens: ["Swift", "AppKit", "Windows"], frame: NSMakeRect(560, 272, 280, 26))
+
+for control in [
+    bezelsIntro, buttonBezelHeader,
+    disclosureButton, disclosureCaption,
+    roundedDisclosureButton, roundedDisclosureCaption,
+    circularBezelButton, circularCaption,
+    recessedBezelButton, recessedCaption,
+    inlineBezelButton, inlineCaption,
+    segmentHeader,
+    roundedSegCaption, roundedSeg, separatedSegCaption, separatedSeg,
+    texturedSegCaption, texturedSeg, capsuleSegCaption, capsuleSeg,
+    drawnHeader,
+    ratingCaption, bezelsRating, discreteCaption, discreteIndicator,
+    relevancyCaption, relevancyIndicator, tokenCaption, bezelsTokenField
+] as [NSView] {
+    bezelsPage.addSubview(control)
+}
+
 window.contentView = contentView
-showDemoPage(0)
+// --page N opens directly on a given page (handy for QA of a specific page).
+var initialPage = 0
+if let pageFlag = CommandLine.arguments.firstIndex(of: "--page"),
+   CommandLine.arguments.indices.contains(pageFlag + 1),
+   let page = Int(CommandLine.arguments[pageFlag + 1]) {
+    initialPage = page
+}
+pageSelector.selectItem(at: initialPage)
+showDemoPage(initialPage)
 updateFocusDisplay()
 
 if CommandLine.arguments.contains("--diagnose") {
