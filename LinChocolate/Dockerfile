@@ -16,6 +16,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libx11-6 \
         dbus-x11 \
         ca-certificates \
+        imagemagick \
+        x11-utils \
     && rm -rf /var/lib/apt/lists/*
 
 # GTK4's GL/Vulkan renderer is unreliable over XQuartz's indirect GL, so the

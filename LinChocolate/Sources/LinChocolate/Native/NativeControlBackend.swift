@@ -38,6 +38,12 @@ public protocol NativeControlBackend: AnyObject {
     func createLabel(text: String, frame: NSRect) -> NativeHandle
     /// Creates an editable single-line text field.
     func createTextField(text: String, frame: NSRect) -> NativeHandle
+    /// Creates a masked (password) text field.
+    func createSecureTextField(text: String, frame: NSRect) -> NativeHandle
+    /// Creates a search field.
+    func createSearchField(text: String, frame: NSRect) -> NativeHandle
+    /// Creates an editable combo box (text field + dropdown list).
+    func createComboBox(items: [String], text: String, frame: NSRect) -> NativeHandle
     /// Creates a checkbox (labelled on/off toggle).
     func createCheckbox(title: String, frame: NSRect) -> NativeHandle
     /// Creates a radio button (group for mutual exclusion via `groupRadioButtons`).

@@ -13,7 +13,8 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
 
     /// What kind of control a handle refers to (drives `setText` routing).
     public enum Kind: Equatable {
-        case window, view, button, label, textField, checkbox, radio, slider, progress, popUp
+        case window, view, button, label, textField, secureField, searchField, comboBox
+        case checkbox, radio, slider, progress, popUp
     }
 
     private var nextRaw: UInt = 1
@@ -92,6 +93,22 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
         texts[h.rawValue] = text
         frames[h.rawValue] = frame
         enabledStates[h.rawValue] = true
+        return h
+    }
+    public func createSecureTextField(text: String, frame: NSRect) -> NativeHandle {
+        let h = allocate(.secureField)
+        texts[h.rawValue] = text; frames[h.rawValue] = frame; enabledStates[h.rawValue] = true
+        return h
+    }
+    public func createSearchField(text: String, frame: NSRect) -> NativeHandle {
+        let h = allocate(.searchField)
+        texts[h.rawValue] = text; frames[h.rawValue] = frame; enabledStates[h.rawValue] = true
+        return h
+    }
+    public func createComboBox(items: [String], text: String, frame: NSRect) -> NativeHandle {
+        let h = allocate(.comboBox)
+        texts[h.rawValue] = text; frames[h.rawValue] = frame; enabledStates[h.rawValue] = true
+        itemsByHandle[h.rawValue] = items
         return h
     }
     public func createCheckbox(title: String, frame: NSRect) -> NativeHandle {

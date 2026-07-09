@@ -174,6 +174,34 @@ do {
     check(chosen == "Dark", "pop-up onSelectionChange fires")
 }
 
+// MARK: 6 — Secure / search / combo text inputs (L4.2)
+do {
+    let backend = InMemoryNativeControlBackend()
+    NSApplication.shared.nativeBackend = backend
+
+    let password = NSSecureTextField(string: "", frame: NSMakeRect(0, 0, 120, 24))
+    var secret = ""
+    password.onTextChange = { secret = $0.stringValue }
+    backend.simulateTextChange(password.handle, "hunter2")
+    check(password.stringValue == "hunter2", "secure field stringValue syncs from native edits")
+    check(secret == "hunter2", "secure field onTextChange fires")
+
+    let search = NSSearchField(string: "", frame: NSMakeRect(0, 0, 200, 24))
+    var query = ""
+    search.onTextChange = { query = $0.stringValue }
+    backend.simulateTextChange(search.handle, "swift")
+    check(search.stringValue == "swift", "search field stringValue syncs")
+    check(query == "swift", "search field onTextChange fires")
+
+    let combo = NSComboBox(items: ["Apple", "Banana"], frame: NSMakeRect(0, 0, 160, 30))
+    check(combo.stringValue == "Apple", "combo starts on the first item")
+    var chosen = ""
+    combo.onTextChange = { chosen = $0.stringValue }
+    backend.simulateTextChange(combo.handle, "Cherry")   // typed value, not in the list
+    check(combo.stringValue == "Cherry", "combo accepts a typed value")
+    check(chosen == "Cherry", "combo onTextChange fires")
+}
+
 if failures == 0 {
     print("\nAll contract tests passed.")
 } else {

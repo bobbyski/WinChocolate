@@ -26,6 +26,7 @@ public final class GTKNativeControlBackend: NativeControlBackend {
     private var frames: [UInt: NSRect] = [:]
     private var parents: [UInt: UInt] = [:]   // child -> parent, for repositioning
     private var ranges: [UInt: (min: Double, max: Double)] = [:]   // slider/progress
+    private var comboEntries: [UInt: OpaquePointer] = [:]   // combo -> its GtkEntry child
     private var mainLoop: OpaquePointer?   // GMainLoop* (opaque in the GTK import)
 
     /// Connects to the display and initializes GTK. Only construct this when a
@@ -127,6 +128,32 @@ public final class GTKNativeControlBackend: NativeControlBackend {
         gtk_widget_set_size_request(e, Int32(frame.width), Int32(frame.height))
         return allocate(e, .textField, frame: frame)
     }
+    public func createSecureTextField(text: String, frame: NSRect) -> NativeHandle {
+        let e = gtk_password_entry_new()!
+        gtk_editable_set_text(OpaquePointer(e), text)
+        gtk_widget_set_size_request(e, Int32(frame.width), Int32(frame.height))
+        return allocate(e, .secureField, frame: frame)
+    }
+    public func createSearchField(text: String, frame: NSRect) -> NativeHandle {
+        let e = gtk_search_entry_new()!
+        gtk_editable_set_text(OpaquePointer(e), text)
+        gtk_widget_set_size_request(e, Int32(frame.width), Int32(frame.height))
+        return allocate(e, .searchField, frame: frame)
+    }
+    public func createComboBox(items: [String], text: String, frame: NSRect) -> NativeHandle {
+        // GtkComboBoxText(-with-entry) is deprecated in GTK4 but remains the
+        // direct editable-combo analog; its child GtkEntry (GtkEditable) carries
+        // the text get/set and the change signal.
+        let combo = gtk_combo_box_text_new_with_entry()!
+        for item in items { gtk_combo_box_text_append_text(OpaquePointer(combo), item) }
+        // GtkComboBoxText is opaque in the import but GtkComboBox is nominal.
+        let entry = gtk_combo_box_get_child(UnsafeMutablePointer<GtkComboBox>(OpaquePointer(combo)))
+        if let entry { gtk_editable_set_text(OpaquePointer(entry), text) }
+        gtk_widget_set_size_request(combo, Int32(frame.width), Int32(frame.height))
+        let h = allocate(combo, .comboBox, frame: frame)
+        if let entry { comboEntries[h.rawValue] = OpaquePointer(entry) }
+        return h
+    }
     public func createCheckbox(title: String, frame: NSRect) -> NativeHandle {
         let c = gtk_check_button_new_with_label(title)!
         gtk_widget_set_size_request(c, Int32(frame.width), Int32(frame.height))
@@ -189,7 +216,8 @@ public final class GTKNativeControlBackend: NativeControlBackend {
         switch kinds[handle.rawValue] {
         case .button:    gtk_button_set_label(asButton(w), text)
         case .label:     gtk_label_set_text(w, text)          // GtkLabel is opaque
-        case .textField: gtk_editable_set_text(w, text)       // GtkEditable is opaque
+        case .textField, .secureField, .searchField: gtk_editable_set_text(w, text)
+        case .comboBox:  if let e = comboEntries[handle.rawValue] { gtk_editable_set_text(e, text) }
         case .checkbox, .radio: gtk_check_button_set_label(asCheckButton(w), text)
         case .window:    gtk_window_set_title(asWindow(w), text)
         default: break
@@ -258,7 +286,9 @@ public final class GTKNativeControlBackend: NativeControlBackend {
         )
     }
     public func setTextChangeAction(for handle: NativeHandle, action: @escaping (String) -> Void) {
-        guard let w = widget(handle) else { return }
+        // A combo emits text changes on its internal entry, not the combo itself.
+        let target = (kinds[handle.rawValue] == .comboBox) ? comboEntries[handle.rawValue] : widget(handle)
+        guard let w = target else { return }
         let box = StringActionBox(action)
         g_signal_connect_data(
             UnsafeMutableRawPointer(w), "changed",

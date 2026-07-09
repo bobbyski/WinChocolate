@@ -17,6 +17,9 @@ here (Goal 2 — native modern look).
 | `NSButton` (radio) | `GtkCheckButton` grouped | ✅ | `NSButton.group([...])` chains via `gtk_check_button_set_group`; mutually exclusive. |
 | `NSTextField` (label) | `GtkLabel` | ✅ | `init(labelWithString:)`. |
 | `NSTextField` (editable) | `GtkEntry` | ✅ | `init(string:)`; `changed` → `stringValue` / `onTextChange`. |
+| `NSSecureTextField` | `GtkPasswordEntry` | ✅ | Masked entry (GtkEditable); `changed` → `stringValue`. |
+| `NSSearchField` | `GtkSearchEntry` | ✅ | GtkEditable; `changed` → `stringValue`. |
+| `NSComboBox` | `GtkComboBoxText` (w/ entry) | ✅ | Editable; child `GtkEntry` carries the text. Deprecated GTK peer — no non-deprecated editable combo in GTK4 short of a composite. |
 | `NSSlider` | `GtkScale` (horizontal) | ✅ | `value-changed` → `doubleValue` / `onValueChange`. |
 | `NSProgressIndicator` | `GtkProgressBar` | ✅ | Determinate; `doubleValue` → fraction over `[min,max]`. |
 | `NSPopUpButton` | `GtkDropDown` | ✅ | `notify::selected` → `indexOfSelectedItem` / `onSelectionChange`. |
@@ -34,9 +37,10 @@ The C→Swift import treats some GTK widget structs as **nominal** types
 must be checked per widget when binding a new control:
 
 - **Nominal** (need a typed pointer / `as*` cast helper): `GtkWindow`,
-  `GtkButton`, `GtkCheckButton`, `GtkFixed`, `GtkRange`.
+  `GtkButton`, `GtkCheckButton`, `GtkFixed`, `GtkRange`, `GtkComboBox`.
 - **Opaque** (functions take `OpaquePointer` directly): `GtkLabel`,
-  `GtkEditable`, `GtkProgressBar`, `GtkDropDown`, `GMainLoop`.
+  `GtkEditable`, `GtkProgressBar`, `GtkDropDown`, `GtkComboBoxText`,
+  `GtkPasswordEntry`, `GtkSearchEntry`, `GMainLoop`.
 
 The compiler flags the wrong choice immediately (`cannot find type 'GtkX'` →
 it's opaque; `cannot convert OpaquePointer to UnsafeMutablePointer<GtkX>` → it's
