@@ -10,8 +10,20 @@ It now contains the first real framework slice plus the original harness spike:
   `NSView`, `NSButton`, `NSTextField`, behind a narrow `NativeControlBackend`
   seam with a **GTK4 backend** and an **in-memory backend** (mirrors WinChocolate).
 - **`LinChocolateDemo`** — a Controls page (button, checkbox, radio group,
-  slider, progress bar, dropdown, editable/secure/search text, combo box)
+  slider, stepper, progress bar, level bar, dropdown, editable/secure/search
+  text, combo box, color well, calendar date picker, multiline text view)
   written against the AppKit API, rendered as native GTK controls.
+
+Headless verification: the demo can be rendered and screenshotted without any
+display via Xvfb (baked into the image) — useful when the window is taller than
+the XQuartz screen, whose off-screen pixels X11 cannot capture:
+
+```sh
+docker run --rm -v "$PWD":/work -w /work linchocolate-dev bash -c \
+  'Xvfb :99 -screen 0 900x1600x24 & sleep 1; export DISPLAY=:99 GSK_RENDERER=cairo; \
+   (timeout 20 swift run LinChocolateDemo &) ; sleep 12; \
+   import -window "$(xwininfo -root -tree | grep -oE \"^ *0x[0-9a-f]+\" | head -1)" /work/shot.png'
+```
 - **`LinChocolateContractTests`** — hermetic, no-display tests proving the API is
   backend-swappable (spike **S4**, 13/13 green).
 - **`GTKHelloSpike`** — the original raw-GTK4 smoke test.

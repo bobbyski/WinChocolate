@@ -18,6 +18,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates \
         imagemagick \
         x11-utils \
+        xvfb \
+        xdotool \
     && rm -rf /var/lib/apt/lists/*
 
 # GTK4's GL/Vulkan renderer is unreliable over XQuartz's indirect GL, so the
@@ -26,6 +28,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Rings 2-3 (VMs, Pi). Both are overridable at run time.
 ENV GSK_RENDERER=cairo
 ENV GDK_DISABLE=gl
+
+# Software rendering over the XQuartz TCP socket repaints the whole window per
+# frame; GTK's fade/transition animations turn that into redraw storms (visible
+# flicker/lag). Disable animations inside the container.
+RUN mkdir -p /root/.config/gtk-4.0 \
+    && printf '[Settings]\ngtk-enable-animations=false\n' > /root/.config/gtk-4.0/settings.ini
 # No accessibility bus in the container; silence the a11y-bus probe warning.
 ENV GTK_A11Y=none
 

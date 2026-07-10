@@ -56,6 +56,21 @@ public protocol NativeControlBackend: AnyObject {
     func createProgressIndicator(value: Double, minValue: Double, maxValue: Double, frame: NSRect) -> NativeHandle
     /// Creates a pop-up (dropdown) button.
     func createPopUpButton(items: [String], selectedIndex: Int, frame: NSRect) -> NativeHandle
+    /// Creates a stepper (numeric up/down) over `[minValue, maxValue]`.
+    func createStepper(value: Double, minValue: Double, maxValue: Double, stepSize: Double, frame: NSRect) -> NativeHandle
+    /// Creates a determinate level indicator over `[minValue, maxValue]`.
+    func createLevelIndicator(value: Double, minValue: Double, maxValue: Double, frame: NSRect) -> NativeHandle
+    /// Creates a multi-line, scrollable, editable text view.
+    func createTextView(text: String, frame: NSRect) -> NativeHandle
+    /// Creates a calendar-style date picker showing `date`.
+    func createDatePicker(date: Date, frame: NSRect) -> NativeHandle
+    /// Creates a color well (swatch button that opens a color chooser).
+    func createColorWell(color: NSColor, frame: NSRect) -> NativeHandle
+    /// Creates a tabbed page container.
+    func createTabView(frame: NSRect) -> NativeHandle
+    /// Appends `page` as a new tab titled `label`. `setSelectedIndex` switches
+    /// tabs; `setSelectionChangeAction` reports user tab switches.
+    func addTabPage(_ page: NativeHandle, label: String, to tabView: NativeHandle)
     /// Places `child` inside `parent` at the child's frame origin.
     func addSubview(_ child: NativeHandle, to parent: NativeHandle)
 
@@ -72,6 +87,10 @@ public protocol NativeControlBackend: AnyObject {
     func setDoubleValue(_ value: Double, for handle: NativeHandle)
     /// Sets a pop-up button's selected item index.
     func setSelectedIndex(_ index: Int, for handle: NativeHandle)
+    /// Sets a date picker's date.
+    func setDateValue(_ date: Date, for handle: NativeHandle)
+    /// Sets a color well's color.
+    func setColor(_ color: NSColor, for handle: NativeHandle)
     /// Releases the native resources for a control.
     func destroyControl(_ handle: NativeHandle)
 
@@ -86,4 +105,8 @@ public protocol NativeControlBackend: AnyObject {
     func setValueChangeAction(for handle: NativeHandle, action: @escaping (Double) -> Void)
     /// Registers the action to perform when a pop-up's selection changes; passes the index.
     func setSelectionChangeAction(for handle: NativeHandle, action: @escaping (Int) -> Void)
+    /// Registers the action to perform when a date picker's date changes.
+    func setDateChangeAction(for handle: NativeHandle, action: @escaping (Date) -> Void)
+    /// Registers the action to perform when a color well's color changes.
+    func setColorChangeAction(for handle: NativeHandle, action: @escaping (NSColor) -> Void)
 }

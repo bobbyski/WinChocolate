@@ -202,6 +202,91 @@ do {
     check(chosen == "Cherry", "combo onTextChange fires")
 }
 
+// MARK: 6 — Stepper, level indicator, text view
+do {
+    let backend = InMemoryNativeControlBackend()
+    NSApplication.shared.nativeBackend = backend
+
+    // Stepper: a native step drives doubleValue and onValueChange.
+    let stepper = NSStepper(value: 1, minValue: 0, maxValue: 10, increment: 1, frame: NSMakeRect(0, 0, 80, 24))
+    var stepped = 0.0
+    stepper.onValueChange = { stepped = $0.doubleValue }
+    backend.simulateValueChange(stepper.handle, 4)
+    check(stepper.doubleValue == 4, "stepper doubleValue syncs from native step")
+    check(stepped == 4, "stepper onValueChange fires")
+
+    // Level indicator: setting doubleValue writes through.
+    let level = NSLevelIndicator(value: 2, minValue: 0, maxValue: 10, frame: NSMakeRect(0, 0, 120, 20))
+    level.doubleValue = 7
+    check(backend.doubleValue(level.handle) == 7, "level indicator doubleValue writes through")
+
+    // Text view: a native edit drives string and onTextChange.
+    let notes = NSTextView(string: "hi", frame: NSMakeRect(0, 0, 200, 80))
+    var edited = ""
+    notes.onTextChange = { edited = $0.string }
+    backend.simulateTextChange(notes.handle, "hello world")
+    check(notes.string == "hello world", "text view string syncs from native edit")
+    check(edited == "hello world", "text view onTextChange fires")
+}
+
+// MARK: 7 — Date picker and color well
+do {
+    let backend = InMemoryNativeControlBackend()
+    NSApplication.shared.nativeBackend = backend
+
+    // Date picker: a native pick drives dateValue and onDateChange.
+    let start = Date(timeIntervalSince1970: 1_000_000)
+    let picker = NSDatePicker(date: start, frame: NSMakeRect(0, 0, 300, 200))
+    check(backend.date(picker.handle) == start, "date picker initial date reaches the backend")
+    var picked: Date?
+    picker.onDateChange = { picked = $0.dateValue }
+    let newDate = Date(timeIntervalSince1970: 2_000_000)
+    backend.simulateDateChange(picker.handle, newDate)
+    check(picker.dateValue == newDate, "date picker dateValue syncs from native pick")
+    check(picked == newDate, "date picker onDateChange fires")
+
+    // Color well: a native choice drives color and onColorChange.
+    let well = NSColorWell(color: .red, frame: NSMakeRect(0, 0, 60, 34))
+    check(backend.color(well.handle) == .red, "color well initial color reaches the backend")
+    var chosen: NSColor?
+    well.onColorChange = { chosen = $0.color }
+    backend.simulateColorChange(well.handle, .green)
+    check(well.color == .green, "color well color syncs from native choice")
+    check(chosen == .green, "color well onColorChange fires")
+    well.color = .blue
+    check(backend.color(well.handle) == .blue, "color well setter writes through")
+}
+
+// MARK: 8 — Tab view
+do {
+    let backend = InMemoryNativeControlBackend()
+    NSApplication.shared.nativeBackend = backend
+
+    let tabs = NSTabView(frame: NSMakeRect(0, 0, 400, 300))
+    let pageA = NSView(frame: NSMakeRect(0, 0, 400, 260))
+    let pageB = NSView(frame: NSMakeRect(0, 0, 400, 260))
+    let itemA = NSTabViewItem(); itemA.label = "A"; itemA.view = pageA
+    let itemB = NSTabViewItem(); itemB.label = "B"; itemB.view = pageB
+    tabs.addTabViewItem(itemA)
+    tabs.addTabViewItem(itemB)
+
+    let recorded = backend.tabPages[tabs.handle.rawValue] ?? []
+    check(recorded.count == 2, "tab view records two pages")
+    check(recorded.first?.label == "A" && recorded.last?.label == "B", "tab labels preserved in order")
+    check(recorded.first?.page == pageA.handle.rawValue, "tab page handle reaches the backend")
+
+    check(tabs.indexOfSelectedTab == 0, "first tab selected initially")
+    tabs.selectTabViewItem(at: 1)
+    check(backend.selectedIndex(tabs.handle) == 1, "programmatic tab select writes through")
+
+    var switched = -1
+    tabs.onSelectionChange = { switched = $0.indexOfSelectedTab }
+    backend.simulateSelection(tabs.handle, 0)
+    check(tabs.indexOfSelectedTab == 0, "tab index syncs from native switch")
+    check(switched == 0, "tab onSelectionChange fires")
+    check(tabs.selectedTabViewItem === itemA, "selectedTabViewItem tracks the index")
+}
+
 if failures == 0 {
     print("\nAll contract tests passed.")
 } else {

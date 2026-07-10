@@ -14,7 +14,8 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     /// What kind of control a handle refers to (drives `setText` routing).
     public enum Kind: Equatable {
         case window, view, button, label, textField, secureField, searchField, comboBox
-        case checkbox, radio, slider, progress, popUp
+        case checkbox, radio, slider, progress, popUp, stepper, level, textView
+        case datePicker, colorWell, tabView
     }
 
     private var nextRaw: UInt = 1
@@ -40,6 +41,11 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     private var toggleActions: [UInt: (Bool) -> Void] = [:]
     private var valueChangeActions: [UInt: (Double) -> Void] = [:]
     private var selectionActions: [UInt: (Int) -> Void] = [:]
+    public private(set) var dates: [UInt: Date] = [:]
+    public private(set) var colors: [UInt: NSColor] = [:]
+    public private(set) var tabPages: [UInt: [(page: UInt, label: String)]] = [:]
+    private var dateChangeActions: [UInt: (Date) -> Void] = [:]
+    private var colorChangeActions: [UInt: (NSColor) -> Void] = [:]
 
     public init() {}
 
@@ -156,6 +162,51 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
         enabledStates[h.rawValue] = true
         return h
     }
+    public func createStepper(value: Double, minValue: Double, maxValue: Double, stepSize: Double, frame: NSRect) -> NativeHandle {
+        let h = allocate(.stepper)
+        frames[h.rawValue] = frame
+        ranges[h.rawValue] = (minValue, maxValue)
+        doubleValues[h.rawValue] = value
+        enabledStates[h.rawValue] = true
+        return h
+    }
+    public func createLevelIndicator(value: Double, minValue: Double, maxValue: Double, frame: NSRect) -> NativeHandle {
+        let h = allocate(.level)
+        frames[h.rawValue] = frame
+        ranges[h.rawValue] = (minValue, maxValue)
+        doubleValues[h.rawValue] = value
+        return h
+    }
+    public func createTextView(text: String, frame: NSRect) -> NativeHandle {
+        let h = allocate(.textView)
+        texts[h.rawValue] = text
+        frames[h.rawValue] = frame
+        enabledStates[h.rawValue] = true
+        return h
+    }
+    public func createDatePicker(date: Date, frame: NSRect) -> NativeHandle {
+        let h = allocate(.datePicker)
+        frames[h.rawValue] = frame
+        dates[h.rawValue] = date
+        enabledStates[h.rawValue] = true
+        return h
+    }
+    public func createColorWell(color: NSColor, frame: NSRect) -> NativeHandle {
+        let h = allocate(.colorWell)
+        frames[h.rawValue] = frame
+        colors[h.rawValue] = color
+        enabledStates[h.rawValue] = true
+        return h
+    }
+    public func createTabView(frame: NSRect) -> NativeHandle {
+        let h = allocate(.tabView)
+        frames[h.rawValue] = frame
+        selectedIndices[h.rawValue] = 0
+        return h
+    }
+    public func addTabPage(_ page: NativeHandle, label: String, to tabView: NativeHandle) {
+        tabPages[tabView.rawValue, default: []].append((page: page.rawValue, label: label))
+    }
     public func addSubview(_ child: NativeHandle, to parent: NativeHandle) {
         subviews[parent.rawValue, default: []].append(child.rawValue)
     }
@@ -194,6 +245,18 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     }
     public func setSelectionChangeAction(for handle: NativeHandle, action: @escaping (Int) -> Void) {
         selectionActions[handle.rawValue] = action
+    }
+    public func setDateValue(_ date: Date, for handle: NativeHandle) {
+        dates[handle.rawValue] = date
+    }
+    public func setColor(_ color: NSColor, for handle: NativeHandle) {
+        colors[handle.rawValue] = color
+    }
+    public func setDateChangeAction(for handle: NativeHandle, action: @escaping (Date) -> Void) {
+        dateChangeActions[handle.rawValue] = action
+    }
+    public func setColorChangeAction(for handle: NativeHandle, action: @escaping (NSColor) -> Void) {
+        colorChangeActions[handle.rawValue] = action
     }
 
     // MARK: Test hooks (not part of the protocol)
@@ -237,6 +300,20 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
         selectedIndices[handle.rawValue] = index
         selectionActions[handle.rawValue]?(index)
     }
+    /// Simulates the user picking a date.
+    public func simulateDateChange(_ handle: NativeHandle, _ date: Date) {
+        dates[handle.rawValue] = date
+        dateChangeActions[handle.rawValue]?(date)
+    }
+    /// Simulates the user choosing a color.
+    public func simulateColorChange(_ handle: NativeHandle, _ color: NSColor) {
+        colors[handle.rawValue] = color
+        colorChangeActions[handle.rawValue]?(color)
+    }
+    /// The current date-picker date.
+    public func date(_ handle: NativeHandle) -> Date? { dates[handle.rawValue] }
+    /// The current color-well color.
+    public func color(_ handle: NativeHandle) -> NSColor? { colors[handle.rawValue] }
     /// The current slider/progress value.
     public func doubleValue(_ handle: NativeHandle) -> Double { doubleValues[handle.rawValue] ?? 0 }
     /// The current pop-up selection index.

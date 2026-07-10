@@ -52,8 +52,10 @@ public final class GTKNativeControlBackend: NativeControlBackend {
     private func asButton(_ p: OpaquePointer) -> UnsafeMutablePointer<GtkButton> { .init(p) }
     private func asCheckButton(_ p: OpaquePointer) -> UnsafeMutablePointer<GtkCheckButton> { .init(p) }
     private func asRange(_ p: OpaquePointer) -> UnsafeMutablePointer<GtkRange> { .init(p) }
-    // GtkProgressBar and GtkDropDown are opaque in the import — their functions
-    // take OpaquePointer directly (no cast helper needed).
+    private func asTextView(_ p: OpaquePointer) -> UnsafeMutablePointer<GtkTextView> { .init(p) }
+    private func asTextBuffer(_ p: OpaquePointer) -> UnsafeMutablePointer<GtkTextBuffer> { .init(p) }
+    // GtkProgressBar, GtkDropDown, GtkLevelBar and GtkSpinButton are opaque in the
+    // import — their functions take OpaquePointer directly. GtkTextBuffer is nominal.
     // NOTE: GtkLabel, GtkEditable, and GMainLoop are opaque in the GTK4 Swift
     // import (no nominal type), so their functions take/return OpaquePointer.
     // GtkWindow/GtkButton/GtkCheckButton/GtkFixed do import as nominal types.
@@ -200,6 +202,61 @@ public final class GTKNativeControlBackend: NativeControlBackend {
         gtk_widget_set_size_request(widget, Int32(frame.width), Int32(frame.height))
         return allocate(widget, .popUp, frame: frame)
     }
+    public func createStepper(value: Double, minValue: Double, maxValue: Double, stepSize: Double, frame: NSRect) -> NativeHandle {
+        let sb = gtk_spin_button_new_with_range(minValue, maxValue, stepSize == 0 ? 1 : stepSize)!
+        gtk_spin_button_set_value(OpaquePointer(sb), value)   // GtkSpinButton is opaque
+        gtk_widget_set_size_request(sb, Int32(frame.width), Int32(frame.height))
+        let h = allocate(sb, .stepper, frame: frame)
+        ranges[h.rawValue] = (minValue, maxValue)
+        return h
+    }
+    public func createLevelIndicator(value: Double, minValue: Double, maxValue: Double, frame: NSRect) -> NativeHandle {
+        let lb = gtk_level_bar_new_for_interval(minValue, maxValue)!
+        gtk_level_bar_set_value(OpaquePointer(lb), value)   // GtkLevelBar is opaque
+        gtk_widget_set_size_request(lb, Int32(frame.width), Int32(frame.height))
+        let h = allocate(lb, .level, frame: frame)
+        ranges[h.rawValue] = (minValue, maxValue)
+        return h
+    }
+    public func createTextView(text: String, frame: NSRect) -> NativeHandle {
+        let tv = gtk_text_view_new()!
+        let buffer = gtk_text_view_get_buffer(asTextView(OpaquePointer(tv)))
+        gtk_text_buffer_set_text(buffer, text, -1)   // GtkTextBuffer is opaque
+        gtk_widget_set_size_request(tv, Int32(frame.width), Int32(frame.height))
+        return allocate(tv, .textView, frame: frame)
+    }
+    public func createDatePicker(date: Date, frame: NSRect) -> NativeHandle {
+        let cal = gtk_calendar_new()!
+        gtk_widget_set_size_request(cal, Int32(frame.width), Int32(frame.height))
+        let h = allocate(cal, .datePicker, frame: frame)
+        setDateValue(date, for: h)
+        return h
+    }
+    public func createColorWell(color: NSColor, frame: NSRect) -> NativeHandle {
+        // GtkColorButton (via the GtkColorChooser interface) is deprecated in
+        // GTK 4.10 like GtkComboBoxText, but remains the direct color-well
+        // analog; the non-deprecated GtkColorDialogButton is async-only.
+        let cb = gtk_color_button_new()!
+        // Non-modal: a modal chooser grabs all input, and if the dialog fails to
+        // map (seen over XQuartz) the whole app looks hung and cannot be closed.
+        gtk_color_button_set_modal(OpaquePointer(cb), gboolean(0))
+        gtk_widget_set_size_request(cb, Int32(frame.width), Int32(frame.height))
+        let h = allocate(cb, .colorWell, frame: frame)
+        setColor(color, for: h)
+        return h
+    }
+    public func createTabView(frame: NSRect) -> NativeHandle {
+        let nb = gtk_notebook_new()!
+        gtk_widget_set_size_request(nb, Int32(frame.width), Int32(frame.height))
+        gtk_widget_set_hexpand(nb, gboolean(1))
+        gtk_widget_set_vexpand(nb, gboolean(1))
+        return allocate(nb, .tabView, frame: frame)
+    }
+    public func addTabPage(_ page: NativeHandle, label: String, to tabView: NativeHandle) {
+        guard let nb = widget(tabView), let p = widget(page) else { return }
+        let tabLabel = gtk_label_new(label)
+        gtk_notebook_append_page(nb, asWidget(p), tabLabel)   // GtkNotebook is opaque
+    }
     public func addSubview(_ child: NativeHandle, to parent: NativeHandle) {
         guard let p = widget(parent), let c = widget(child) else { return }
         parents[child.rawValue] = parent.rawValue
@@ -219,6 +276,7 @@ public final class GTKNativeControlBackend: NativeControlBackend {
         case .textField, .secureField, .searchField: gtk_editable_set_text(w, text)
         case .comboBox:  if let e = comboEntries[handle.rawValue] { gtk_editable_set_text(e, text) }
         case .checkbox, .radio: gtk_check_button_set_label(asCheckButton(w), text)
+        case .textView:  gtk_text_buffer_set_text(gtk_text_view_get_buffer(asTextView(w)), text, -1)
         case .window:    gtk_window_set_title(asWindow(w), text)
         default: break
         }
@@ -260,12 +318,34 @@ public final class GTKNativeControlBackend: NativeControlBackend {
             let (lo, hi) = ranges[handle.rawValue] ?? (0, 1)
             let fraction = hi > lo ? (value - lo) / (hi - lo) : 0
             gtk_progress_bar_set_fraction(w, min(1, max(0, fraction)))   // GtkProgressBar is opaque
+        case .stepper:
+            gtk_spin_button_set_value(w, value)   // GtkSpinButton is opaque
+        case .level:
+            gtk_level_bar_set_value(w, value)   // GtkLevelBar is opaque
         default: break
         }
     }
     public func setSelectedIndex(_ index: Int, for handle: NativeHandle) {
         guard let w = widget(handle), index >= 0 else { return }
-        gtk_drop_down_set_selected(w, guint(index))   // GtkDropDown is opaque
+        switch kinds[handle.rawValue] {
+        case .tabView: gtk_notebook_set_current_page(w, gint(index))   // GtkNotebook is opaque
+        default:       gtk_drop_down_set_selected(w, guint(index))     // GtkDropDown is opaque
+        }
+    }
+    public func setDateValue(_ date: Date, for handle: NativeHandle) {
+        guard let w = widget(handle) else { return }
+        // GtkCalendar navigates via a GDateTime; unix-local keeps Date exact.
+        guard let gdt = g_date_time_new_from_unix_local(gint64(date.timeIntervalSince1970)) else { return }
+        gtk_calendar_select_day(w, gdt)   // GtkCalendar is opaque
+        g_date_time_unref(gdt)
+    }
+    public func setColor(_ color: NSColor, for handle: NativeHandle) {
+        guard let w = widget(handle) else { return }
+        var rgba = GdkRGBA(
+            red: Float(color.redComponent), green: Float(color.greenComponent),
+            blue: Float(color.blueComponent), alpha: Float(color.alphaComponent)
+        )
+        gtk_color_chooser_set_rgba(w, &rgba)   // GtkColorChooser is opaque
     }
     public func destroyControl(_ handle: NativeHandle) {
         let r = handle.rawValue
@@ -286,10 +366,21 @@ public final class GTKNativeControlBackend: NativeControlBackend {
         )
     }
     public func setTextChangeAction(for handle: NativeHandle, action: @escaping (String) -> Void) {
+        let box = StringActionBox(action)
+        // A text view's changes come from its GtkTextBuffer, which reads back
+        // differently from a GtkEditable, so it uses its own trampoline.
+        if kinds[handle.rawValue] == .textView, let w = widget(handle) {
+            let buffer = gtk_text_view_get_buffer(asTextView(w))
+            g_signal_connect_data(
+                UnsafeMutableRawPointer(buffer), "changed",
+                unsafeBitCast(gtkTextBufferChangedTrampoline, to: GCallback.self),
+                Unmanaged.passRetained(box).toOpaque(), boxRelease, GConnectFlags(rawValue: 0)
+            )
+            return
+        }
         // A combo emits text changes on its internal entry, not the combo itself.
         let target = (kinds[handle.rawValue] == .comboBox) ? comboEntries[handle.rawValue] : widget(handle)
         guard let w = target else { return }
-        let box = StringActionBox(action)
         g_signal_connect_data(
             UnsafeMutableRawPointer(w), "changed",
             unsafeBitCast(gtkTextChangedTrampoline, to: GCallback.self),
@@ -308,19 +399,50 @@ public final class GTKNativeControlBackend: NativeControlBackend {
     public func setValueChangeAction(for handle: NativeHandle, action: @escaping (Double) -> Void) {
         guard let w = widget(handle) else { return }
         let box = DoubleActionBox(action)
+        // Both GtkScale (via GtkRange) and GtkSpinButton emit "value-changed", but
+        // the value is read from different getters, so pick the right trampoline.
+        let trampoline = kinds[handle.rawValue] == .stepper
+            ? gtkSpinValueChangedTrampoline : gtkValueChangedTrampoline
         g_signal_connect_data(
             UnsafeMutableRawPointer(w), "value-changed",
-            unsafeBitCast(gtkValueChangedTrampoline, to: GCallback.self),
+            unsafeBitCast(trampoline, to: GCallback.self),
             Unmanaged.passRetained(box).toOpaque(), boxRelease, GConnectFlags(rawValue: 0)
         )
     }
     public func setSelectionChangeAction(for handle: NativeHandle, action: @escaping (Int) -> Void) {
         guard let w = widget(handle) else { return }
         let box = IntActionBox(action)
+        if kinds[handle.rawValue] == .tabView {
+            // GtkNotebook reports tab changes via "switch-page" (page index arg).
+            g_signal_connect_data(
+                UnsafeMutableRawPointer(w), "switch-page",
+                unsafeBitCast(gtkSwitchPageTrampoline, to: GCallback.self),
+                Unmanaged.passRetained(box).toOpaque(), boxRelease, GConnectFlags(rawValue: 0)
+            )
+            return
+        }
         // GtkDropDown exposes its selection as the "selected" property.
         g_signal_connect_data(
             UnsafeMutableRawPointer(w), "notify::selected",
             unsafeBitCast(gtkSelectionChangedTrampoline, to: GCallback.self),
+            Unmanaged.passRetained(box).toOpaque(), boxRelease, GConnectFlags(rawValue: 0)
+        )
+    }
+    public func setDateChangeAction(for handle: NativeHandle, action: @escaping (Date) -> Void) {
+        guard let w = widget(handle) else { return }
+        let box = DateActionBox(action)
+        g_signal_connect_data(
+            UnsafeMutableRawPointer(w), "day-selected",
+            unsafeBitCast(gtkDaySelectedTrampoline, to: GCallback.self),
+            Unmanaged.passRetained(box).toOpaque(), boxRelease, GConnectFlags(rawValue: 0)
+        )
+    }
+    public func setColorChangeAction(for handle: NativeHandle, action: @escaping (NSColor) -> Void) {
+        guard let w = widget(handle) else { return }
+        let box = ColorActionBox(action)
+        g_signal_connect_data(
+            UnsafeMutableRawPointer(w), "color-set",
+            unsafeBitCast(gtkColorSetTrampoline, to: GCallback.self),
             Unmanaged.passRetained(box).toOpaque(), boxRelease, GConnectFlags(rawValue: 0)
         )
     }
@@ -352,6 +474,14 @@ private final class DoubleActionBox {
 private final class IntActionBox {
     let action: (Int) -> Void
     init(_ action: @escaping (Int) -> Void) { self.action = action }
+}
+private final class DateActionBox {
+    let action: (Date) -> Void
+    init(_ action: @escaping (Date) -> Void) { self.action = action }
+}
+private final class ColorActionBox {
+    let action: (NSColor) -> Void
+    init(_ action: @escaping (NSColor) -> Void) { self.action = action }
 }
 
 /// Handler for `GtkButton::clicked` — `void (*)(GtkButton*, gpointer)`.
@@ -390,12 +520,60 @@ private let gtkValueChangedTrampoline: @convention(c) (UnsafeMutableRawPointer?,
     Unmanaged<DoubleActionBox>.fromOpaque(userData).takeUnretainedValue().action(value)
 }
 
+/// Handler for `GtkSpinButton::value-changed` — reads the spin button's value.
+private let gtkSpinValueChangedTrampoline: @convention(c) (UnsafeMutableRawPointer?, gpointer?) -> Void = { spin, userData in
+    guard let spin, let userData else { return }
+    let value = gtk_spin_button_get_value(OpaquePointer(spin))
+    Unmanaged<DoubleActionBox>.fromOpaque(userData).takeUnretainedValue().action(value)
+}
+
+/// Handler for `GtkTextBuffer::changed` — reads the whole buffer text.
+private let gtkTextBufferChangedTrampoline: @convention(c) (UnsafeMutableRawPointer?, gpointer?) -> Void = { buffer, userData in
+    guard let buffer, let userData else { return }
+    var start = GtkTextIter()
+    var end = GtkTextIter()
+    let buf = UnsafeMutablePointer<GtkTextBuffer>(OpaquePointer(buffer))   // GtkTextBuffer is nominal
+    gtk_text_buffer_get_bounds(buf, &start, &end)
+    let cText = gtk_text_buffer_get_text(buf, &start, &end, gboolean(0))
+    let text = cText.map { String(cString: $0) } ?? ""
+    if let cText { g_free(cText) }
+    Unmanaged<StringActionBox>.fromOpaque(userData).takeUnretainedValue().action(text)
+}
+
 /// Handler for `GtkDropDown::notify::selected` — a GObject notify handler, so it
 /// takes an extra GParamSpec argument before the user data.
 private let gtkSelectionChangedTrampoline: @convention(c) (UnsafeMutableRawPointer?, UnsafeMutableRawPointer?, gpointer?) -> Void = { dropdown, _, userData in
     guard let dropdown, let userData else { return }
     let index = Int(gtk_drop_down_get_selected(OpaquePointer(dropdown)))
     Unmanaged<IntActionBox>.fromOpaque(userData).takeUnretainedValue().action(index)
+}
+
+/// Handler for `GtkNotebook::switch-page` — `void (*)(GtkNotebook*, GtkWidget*,
+/// guint page_num, gpointer)`; passes the new page index.
+private let gtkSwitchPageTrampoline: @convention(c) (UnsafeMutableRawPointer?, UnsafeMutableRawPointer?, guint, gpointer?) -> Void = { _, _, pageNum, userData in
+    guard let userData else { return }
+    Unmanaged<IntActionBox>.fromOpaque(userData).takeUnretainedValue().action(Int(pageNum))
+}
+
+/// Handler for `GtkCalendar::day-selected` — reads the calendar's date.
+private let gtkDaySelectedTrampoline: @convention(c) (UnsafeMutableRawPointer?, gpointer?) -> Void = { calendar, userData in
+    guard let calendar, let userData else { return }
+    guard let gdt = gtk_calendar_get_date(OpaquePointer(calendar)) else { return }
+    let date = Date(timeIntervalSince1970: TimeInterval(g_date_time_to_unix(gdt)))
+    g_date_time_unref(gdt)
+    Unmanaged<DateActionBox>.fromOpaque(userData).takeUnretainedValue().action(date)
+}
+
+/// Handler for `GtkColorButton::color-set` — reads the chosen RGBA.
+private let gtkColorSetTrampoline: @convention(c) (UnsafeMutableRawPointer?, gpointer?) -> Void = { button, userData in
+    guard let button, let userData else { return }
+    var rgba = GdkRGBA(red: 0, green: 0, blue: 0, alpha: 0)
+    gtk_color_chooser_get_rgba(OpaquePointer(button), &rgba)
+    let color = NSColor(
+        red: CGFloat(rgba.red), green: CGFloat(rgba.green),
+        blue: CGFloat(rgba.blue), alpha: CGFloat(rgba.alpha)
+    )
+    Unmanaged<ColorActionBox>.fromOpaque(userData).takeUnretainedValue().action(color)
 }
 
 /// Releases a boxed closure of any box type when GLib tears the connection down.

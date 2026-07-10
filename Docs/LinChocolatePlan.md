@@ -3,16 +3,16 @@
 ## Dashboard
 
 ```text
-Overall Progress                            ████░░░░░░░░░░░░░░░░░░░░░░   15%  🔄 Phase L4 — building the AppKit surface
+Overall Progress                            ██████░░░░░░░░░░░░░░░░░░░░   21%  🔄 L4/L6 — building the AppKit surface
 
 ── Foundations ───────────────────────────────────────────────
 Phase L1  · Backend Strategy                ██████████████████████████  100%  ✅ GTK4 chosen & proven on dev loop
 Phase L2  · Toolchain & Harness             ██████████████████████████  100%  ✅ Reproducible one-command Ring 1 loop
 Phase L3  · Core Shell & First Control      ██████████████████████████  100%  ✅ Click-counter, AppKit coords, tests green
 ── AppKit surface (the "all of AppKit" work) ─────────────────
-Phase L4  · Basic & Value Controls          ███████████░░░░░░░░░░░░░░   45%  🔄 Active — 10 control types; Controls page runs
-Phase L5  · Text System                     ░░░░░░░░░░░░░░░░░░░░░░░░░░    0%  ⏳ NSTextView, attributed strings, fonts
-Phase L6  · Layout Containers & Scrolling   ░░░░░░░░░░░░░░░░░░░░░░░░░░    0%  ⏳ Tab / split / box / scroll views
+Phase L4  · Basic & Value Controls          ███████████████████░░░░░░░   75%  🔄 Active — 14 control types; value controls complete
+Phase L5  · Text System                     ███░░░░░░░░░░░░░░░░░░░░░░░   12%  🔄 NSTextView (multiline) landed; attributed strings, fonts next
+Phase L6  · Layout Containers & Scrolling   ██████░░░░░░░░░░░░░░░░░░░░   25%  🔄 NSTabView done (demo is tabbed); split / box / scroll next
 Phase L7  · Tables, Lists, Collections      ░░░░░░░░░░░░░░░░░░░░░░░░░░    0%  ⏳ Table / outline / browser / collection
 Phase L8  · Images & Custom Drawing         ░░░░░░░░░░░░░░░░░░░░░░░░░░    0%  ⏳ NSImage + LinCoreGraphics (Cairo)
 Phase L9  · Menus & Toolbar                 ░░░░░░░░░░░░░░░░░░░░░░░░░░    0%  ⏳ Menu bar + Apple-look toolbar
@@ -92,11 +92,11 @@ This is a **cross-cutting deliverable, not a serial phase** (like the test matri
 | Demo area (WinChocolate) | Representative controls | LinChocolate status | Delivered by |
 |---|---|---|---|
 | App shell + window | `NSApplication`, `NSWindow` | ✅ done | L3 |
-| Basic controls | `NSButton` (push/check/radio), `NSTextField`, `NSSecureTextField`, `NSComboBox`, `NSSearchField`, `NSTokenField` | 🔄 button/check/radio/label/editable done | L4 |
-| Value controls | `NSSlider`, `NSStepper`, `NSProgressIndicator`, `NSLevelIndicator`, `NSDatePicker`, `NSColorWell` | 🔄 slider/progress done | L4 |
+| Basic controls | `NSButton` (push/check/radio), `NSTextField`, `NSSecureTextField`, `NSComboBox`, `NSSearchField`, `NSTokenField` | 🔄 all done except `NSTokenField` | L4 |
+| Value controls | `NSSlider`, `NSStepper`, `NSProgressIndicator`, `NSLevelIndicator`, `NSDatePicker`, `NSColorWell` | ✅ all six done | L4 |
 | Choice controls | `NSPopUpButton`, `NSSegmentedControl` | 🔄 pop-up done; segmented ⏳ | L4 |
 | Multiline & structured text | `NSTextView`, `NSForm`, `NSMatrix`, `NSPathControl` | ⏳ | L5 |
-| Layout containers | `NSTabView` (the page switcher), `NSSplitView`, `NSBox` | ⏳ | L6 |
+| Layout containers | `NSTabView` (the page switcher), `NSSplitView`, `NSBox` | 🔄 `NSTabView` done — demo now paged like WinChocolate's | L6 |
 | Scrolling | `NSScrollView`, `NSClipView`, `NSScroller` | ⏳ | L6 |
 | Tables / lists / collections | `NSTableView`, `NSOutlineView`, `NSBrowser`, `NSCollectionView` + data source / delegate / sort descriptors | ⏳ | L7 |
 | Images & custom drawing | `NSImageView`, `NSBezierPath`, `NSGraphicsContext` | ⏳ | L8 |
