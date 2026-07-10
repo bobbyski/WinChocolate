@@ -28,6 +28,11 @@ public final class GTKNativeControlBackend: NativeControlBackend {
     private var ranges: [UInt: (min: Double, max: Double)] = [:]   // slider/progress
     private var comboEntries: [UInt: OpaquePointer] = [:]   // combo -> its GtkEntry child
     private var splitPaneCounts: [UInt: Int] = [:]           // paned -> panes added
+    private var windowBoxes: [UInt: OpaquePointer] = [:]     // window -> vertical GtkBox child
+    private var windowContents: [UInt: OpaquePointer] = [:]  // window -> current content widget
+    private var windowMenuBars: [UInt: OpaquePointer] = [:]  // window -> GtkPopoverMenuBar
+    private var segmentButtons: [UInt: [OpaquePointer]] = [:] // segmented -> its toggle buttons
+    private var menuActionCounter = 0                         // unique GAction names
     private var mainLoop: OpaquePointer?   // GMainLoop* (opaque in the GTK import)
 
     /// Connects to the display and initializes GTK. Only construct this when a
@@ -56,6 +61,9 @@ public final class GTKNativeControlBackend: NativeControlBackend {
     private func asTextView(_ p: OpaquePointer) -> UnsafeMutablePointer<GtkTextView> { .init(p) }
     private func asTextBuffer(_ p: OpaquePointer) -> UnsafeMutablePointer<GtkTextBuffer> { .init(p) }
     private func asFrame(_ p: OpaquePointer) -> UnsafeMutablePointer<GtkFrame> { .init(p) }
+    private func asBox(_ p: OpaquePointer) -> UnsafeMutablePointer<GtkBox> { .init(p) }
+    private func asToggle(_ p: OpaquePointer) -> UnsafeMutablePointer<GtkToggleButton> { .init(p) }
+    private func asMenuModel(_ p: OpaquePointer) -> UnsafeMutablePointer<GMenuModel> { .init(p) }
     // GtkProgressBar, GtkDropDown, GtkLevelBar and GtkSpinButton are opaque in the
     // import — their functions take OpaquePointer directly. GtkTextBuffer is nominal.
     // NOTE: GtkLabel, GtkEditable, and GMainLoop are opaque in the GTK4 Swift
@@ -80,6 +88,11 @@ public final class GTKNativeControlBackend: NativeControlBackend {
         let p = widget(h)!
         gtk_window_set_title(asWindow(p), title)
         gtk_window_set_default_size(asWindow(p), Int32(frame.width), Int32(frame.height))
+        // The window's real child is a vertical box: [menu bar?][content view].
+        // This keeps a slot for `installMenuBar` above the AppKit content view.
+        let box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0)!
+        gtk_window_set_child(asWindow(p), box)
+        windowBoxes[h.rawValue] = OpaquePointer(box)
         return h
     }
     public func setContentView(_ view: NativeHandle, for window: NativeHandle) {
@@ -87,7 +100,13 @@ public final class GTKNativeControlBackend: NativeControlBackend {
         switch kinds[window.rawValue] {
         case .box:        gtk_frame_set_child(asFrame(w), asWidget(v))
         case .scrollView: gtk_scrolled_window_set_child(w, asWidget(v))   // GtkScrolledWindow is opaque
-        default:          gtk_window_set_child(asWindow(w), asWidget(v))
+        default:
+            guard let box = windowBoxes[window.rawValue] else { return }
+            if let old = windowContents[window.rawValue] {
+                gtk_box_remove(asBox(box), asWidget(old))
+            }
+            gtk_box_append(asBox(box), asWidget(v))
+            windowContents[window.rawValue] = v
         }
     }
     public func showWindow(_ handle: NativeHandle) {
@@ -97,6 +116,50 @@ public final class GTKNativeControlBackend: NativeControlBackend {
     public func setWindowTitle(_ title: String, for handle: NativeHandle) {
         guard let w = widget(handle) else { return }
         gtk_window_set_title(asWindow(w), title)
+    }
+    public func installMenuBar(_ menus: [NativeMenuSpec], on window: NativeHandle) {
+        guard let w = widget(window), let box = windowBoxes[window.rawValue] else { return }
+
+        // Build the GMenu model and a matching action group. Item actions are
+        // GSimpleActions named "m<N>" in the window-scoped "win" group;
+        // separators become GMenu section boundaries.
+        let root = g_menu_new()!
+        let group = g_simple_action_group_new()!
+        for menu in menus {
+            let submenu = g_menu_new()!
+            var section = g_menu_new()!
+            for item in menu.items {
+                if item.isSeparator {
+                    g_menu_append_section(submenu, nil, asMenuModel(section))
+                    section = g_menu_new()!
+                    continue
+                }
+                menuActionCounter += 1
+                let name = "m\(menuActionCounter)"
+                g_menu_append(section, item.title, "win.\(name)")
+                let gaction = g_simple_action_new(name, nil)!
+                if let action = item.action {
+                    let box = ActionBox(action)
+                    g_signal_connect_data(
+                        UnsafeMutableRawPointer(gaction), "activate",
+                        unsafeBitCast(gtkMenuActivateTrampoline, to: GCallback.self),
+                        Unmanaged.passRetained(box).toOpaque(), boxRelease, GConnectFlags(rawValue: 0)
+                    )
+                }
+                g_action_map_add_action(OpaquePointer(group), gaction)
+            }
+            g_menu_append_section(submenu, nil, asMenuModel(section))
+            g_menu_append_submenu(root, menu.title, asMenuModel(submenu))
+        }
+        gtk_widget_insert_action_group(asWidget(w), "win", OpaquePointer(group))
+
+        // Replace any existing bar, then put the new one at the top of the box.
+        if let oldBar = windowMenuBars[window.rawValue] {
+            gtk_box_remove(asBox(box), asWidget(oldBar))
+        }
+        let bar = gtk_popover_menu_bar_new_from_model(asMenuModel(root))!
+        gtk_box_prepend(asBox(box), bar)
+        windowMenuBars[window.rawValue] = OpaquePointer(bar)
     }
     public func registerWindowCloseAction(for handle: NativeHandle, action: @escaping () -> Void) {
         guard let w = widget(handle) else { return }
@@ -263,6 +326,26 @@ public final class GTKNativeControlBackend: NativeControlBackend {
         let tabLabel = gtk_label_new(label)
         gtk_notebook_append_page(nb, asWidget(p), tabLabel)   // GtkNotebook is opaque
     }
+    public func createSegmentedControl(labels: [String], frame: NSRect) -> NativeHandle {
+        // Composed control: linked GtkToggleButtons in a horizontal box — the
+        // native GTK idiom for a segmented switcher ("linked" style class).
+        let box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0)!
+        gtk_widget_add_css_class(box, "linked")
+        gtk_widget_set_size_request(box, Int32(frame.width), Int32(frame.height))
+        let h = allocate(box, .segmented, frame: frame)
+
+        var buttons: [OpaquePointer] = []
+        for label in labels {
+            let tb = gtk_toggle_button_new_with_label(label)!
+            if let first = buttons.first {
+                gtk_toggle_button_set_group(asToggle(OpaquePointer(tb)), asToggle(first))
+            }
+            gtk_box_append(asBox(OpaquePointer(box)), tb)
+            buttons.append(OpaquePointer(tb))
+        }
+        segmentButtons[h.rawValue] = buttons
+        return h
+    }
     public func createBox(title: String, frame: NSRect) -> NativeHandle {
         let f = gtk_frame_new(title)!
         gtk_widget_set_size_request(f, Int32(frame.width), Int32(frame.height))
@@ -368,6 +451,9 @@ public final class GTKNativeControlBackend: NativeControlBackend {
         guard let w = widget(handle), index >= 0 else { return }
         switch kinds[handle.rawValue] {
         case .tabView: gtk_notebook_set_current_page(w, gint(index))   // GtkNotebook is opaque
+        case .segmented:
+            guard let buttons = segmentButtons[handle.rawValue], index < buttons.count else { return }
+            gtk_toggle_button_set_active(asToggle(buttons[index]), gboolean(1))
         default:       gtk_drop_down_set_selected(w, guint(index))     // GtkDropDown is opaque
         }
     }
@@ -451,6 +537,19 @@ public final class GTKNativeControlBackend: NativeControlBackend {
     public func setSelectionChangeAction(for handle: NativeHandle, action: @escaping (Int) -> Void) {
         guard let w = widget(handle) else { return }
         let box = IntActionBox(action)
+        if kinds[handle.rawValue] == .segmented {
+            // One "toggled" hookup per segment; each box carries its index and
+            // only fires on activation (the deactivating peer stays quiet).
+            for (index, button) in (segmentButtons[handle.rawValue] ?? []).enumerated() {
+                let segmentBox = SegmentBox(index: index, action: action)
+                g_signal_connect_data(
+                    UnsafeMutableRawPointer(button), "toggled",
+                    unsafeBitCast(gtkSegmentToggledTrampoline, to: GCallback.self),
+                    Unmanaged.passRetained(segmentBox).toOpaque(), boxRelease, GConnectFlags(rawValue: 0)
+                )
+            }
+            return
+        }
         if kinds[handle.rawValue] == .tabView {
             // GtkNotebook reports tab changes via "switch-page" (page index arg).
             g_signal_connect_data(
@@ -517,6 +616,11 @@ private final class IntActionBox {
 private final class DateActionBox {
     let action: (Date) -> Void
     init(_ action: @escaping (Date) -> Void) { self.action = action }
+}
+private final class SegmentBox {
+    let index: Int
+    let action: (Int) -> Void
+    init(index: Int, action: @escaping (Int) -> Void) { self.index = index; self.action = action }
 }
 private final class ColorActionBox {
     let action: (NSColor) -> Void
@@ -585,6 +689,22 @@ private let gtkSelectionChangedTrampoline: @convention(c) (UnsafeMutableRawPoint
     guard let dropdown, let userData else { return }
     let index = Int(gtk_drop_down_get_selected(OpaquePointer(dropdown)))
     Unmanaged<IntActionBox>.fromOpaque(userData).takeUnretainedValue().action(index)
+}
+
+/// Handler for a segment's `GtkToggleButton::toggled` — fires only when the
+/// segment becomes active, passing its index.
+private let gtkSegmentToggledTrampoline: @convention(c) (UnsafeMutableRawPointer?, gpointer?) -> Void = { button, userData in
+    guard let button, let userData else { return }
+    guard gtk_toggle_button_get_active(UnsafeMutablePointer<GtkToggleButton>(OpaquePointer(button))) != 0 else { return }
+    let box = Unmanaged<SegmentBox>.fromOpaque(userData).takeUnretainedValue()
+    box.action(box.index)
+}
+
+/// Handler for `GSimpleAction::activate` — `void (*)(GSimpleAction*, GVariant*,
+/// gpointer)`; runs a menu item's action.
+private let gtkMenuActivateTrampoline: @convention(c) (UnsafeMutableRawPointer?, UnsafeMutableRawPointer?, gpointer?) -> Void = { _, _, userData in
+    guard let userData else { return }
+    Unmanaged<ActionBox>.fromOpaque(userData).takeUnretainedValue().action()
 }
 
 /// Handler for `GtkNotebook::switch-page` — `void (*)(GtkNotebook*, GtkWidget*,

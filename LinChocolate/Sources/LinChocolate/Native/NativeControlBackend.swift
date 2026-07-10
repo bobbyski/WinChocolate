@@ -1,5 +1,28 @@
 import Foundation
 
+/// Platform-neutral description of one menu-bar item, used to carry `NSMenu`
+/// structures across the backend seam without the seam knowing API types.
+public struct NativeMenuItemSpec {
+    public let title: String
+    public let isSeparator: Bool
+    public let action: (() -> Void)?
+    public init(title: String, isSeparator: Bool = false, action: (() -> Void)? = nil) {
+        self.title = title
+        self.isSeparator = isSeparator
+        self.action = action
+    }
+}
+
+/// Platform-neutral description of one top-level menu (e.g. "File").
+public struct NativeMenuSpec {
+    public let title: String
+    public let items: [NativeMenuItemSpec]
+    public init(title: String, items: [NativeMenuItemSpec]) {
+        self.title = title
+        self.items = items
+    }
+}
+
 /// The substitution point between LinChocolate's AppKit-shaped API and the
 /// platform. The GTK backend is the real one; the in-memory backend keeps the
 /// API testable without a display.
@@ -29,6 +52,8 @@ public protocol NativeControlBackend: AnyObject {
     func setWindowTitle(_ title: String, for handle: NativeHandle)
     /// Registers the action to run when the window is closed by the user.
     func registerWindowCloseAction(for handle: NativeHandle, action: @escaping () -> Void)
+    /// Installs (or replaces) the menu bar shown at the top of `window`.
+    func installMenuBar(_ menus: [NativeMenuSpec], on window: NativeHandle)
 
     // MARK: Views & controls
     /// Creates a container view (absolute child placement, like AppKit frames).
@@ -57,6 +82,9 @@ public protocol NativeControlBackend: AnyObject {
     func createProgressIndicator(value: Double, minValue: Double, maxValue: Double, frame: NSRect) -> NativeHandle
     /// Creates a pop-up (dropdown) button.
     func createPopUpButton(items: [String], selectedIndex: Int, frame: NSRect) -> NativeHandle
+    /// Creates a segmented control (`setSelectedIndex` selects a segment;
+    /// `setSelectionChangeAction` reports user selection).
+    func createSegmentedControl(labels: [String], frame: NSRect) -> NativeHandle
     /// Creates a stepper (numeric up/down) over `[minValue, maxValue]`.
     func createStepper(value: Double, minValue: Double, maxValue: Double, stepSize: Double, frame: NSRect) -> NativeHandle
     /// Creates a determinate level indicator over `[minValue, maxValue]`.

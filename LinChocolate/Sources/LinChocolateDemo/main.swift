@@ -86,8 +86,14 @@ let levelY = r2.next(24)
 let levelLabel = NSTextField(labelWithString: "Level:", frame: NSMakeRect(24, levelY, 90, 24))
 let level = NSLevelIndicator(value: 6, minValue: 0, maxValue: 10, frame: NSMakeRect(120, levelY, 300, 22))
 
+let alignY = r2.next(34)
+let alignLabel = NSTextField(labelWithString: "Align:", frame: NSMakeRect(24, alignY + 4, 90, 24))
+let segmented = NSSegmentedControl(labels: ["Left", "Center", "Right"], frame: NSMakeRect(120, alignY, 260, 34))
+let alignResult = NSTextField(labelWithString: "Align: —", frame: NSMakeRect(396, alignY + 4, 130, 24))
+
 for control in [volumeLabel, slider, volumeValue, progress,
-                stepperLabel, stepper, stepperResult, levelLabel, level] as [NSView] {
+                stepperLabel, stepper, stepperResult, levelLabel, level,
+                alignLabel, segmented, alignResult] as [NSView] {
     values.addSubview(control)
 }
 
@@ -196,6 +202,34 @@ dateFormatter.dateStyle = .medium
 datePicker.onDateChange = { dateResult.stringValue = "Picked: \(dateFormatter.string(from: $0.dateValue))" }
 
 notes.onTextChange = { notesEdit.stringValue = "Last edit: \($0.string.count) chars" }
+segmented.onAction = { seg in
+    alignResult.stringValue = "Align: \(seg.label(forSegment: seg.selectedSegment) ?? "—")"
+}
+segmented.selectedSegment = 0
+
+// MARK: - Menu bar (AppKit-shaped: mainMenu of submenus)
+let mainMenu = NSMenu()
+
+let fileItem = NSMenuItem(title: "File")
+let fileMenu = NSMenu(title: "File")
+fileMenu.addItem(withTitle: "Reset Counter") { _ in
+    clicks = 0
+    counter.stringValue = "Clicks: 0 (reset)"
+}
+fileMenu.addItem(.separator())
+fileMenu.addItem(withTitle: "Quit") { _ in NSApp.terminate(nil) }
+mainMenu.addItem(fileItem)
+mainMenu.setSubmenu(fileMenu, for: fileItem)
+
+let helpItem = NSMenuItem(title: "Help")
+let helpMenu = NSMenu(title: "Help")
+helpMenu.addItem(withTitle: "About LinChocolate") { _ in
+    echo.stringValue = "LinChocolate — AppKit API, native GTK"
+}
+mainMenu.addItem(helpItem)
+mainMenu.setSubmenu(helpMenu, for: helpItem)
+
+NSApp.mainMenu = mainMenu
 
 window.contentView = tabView
 window.makeKeyAndOrderFront(nil)

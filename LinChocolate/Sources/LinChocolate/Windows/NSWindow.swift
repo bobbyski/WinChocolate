@@ -48,6 +48,8 @@ public final class NSWindow {
         backend.registerWindowCloseAction(for: handle) {
             NSApplication.shared.terminate(nil)
         }
+        NSApplication.shared.windows.append(self)
+        NSApplication.shared.installMainMenuIfNeeded(on: self)
     }
 
     /// Shows the window and orders it to the front.

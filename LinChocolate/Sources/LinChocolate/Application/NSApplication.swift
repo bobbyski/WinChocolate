@@ -25,6 +25,27 @@ public final class NSApplication {
     /// Backend used to create native controls and run the platform event loop.
     public var nativeBackend: NativeControlBackend
 
+    /// The application's windows, in creation order (AppKit's `windows`).
+    public internal(set) var windows: [NSWindow] = []
+
+    /// The menu bar, as in AppKit: a menu whose top-level items each carry a
+    /// submenu. Installs on every window (Linux draws the bar in-window).
+    public var mainMenu: NSMenu? {
+        didSet {
+            guard let mainMenu else { return }
+            let specs = mainMenu.menuBarSpecs()
+            for window in windows {
+                nativeBackend.installMenuBar(specs, on: window.handle)
+            }
+        }
+    }
+
+    /// Installs the current main menu on a newly created window.
+    func installMainMenuIfNeeded(on window: NSWindow) {
+        guard let mainMenu else { return }
+        nativeBackend.installMenuBar(mainMenu.menuBarSpecs(), on: window.handle)
+    }
+
     /// Creates an application using the default (in-memory) backend.
     public convenience init() {
         self.init(nativeBackend: InMemoryNativeControlBackend())

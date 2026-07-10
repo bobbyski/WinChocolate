@@ -319,6 +319,70 @@ do {
     check(backend.dividerPositions[split.handle.rawValue] == 160, "divider position writes through")
 }
 
+// MARK: 10 — Segmented control
+do {
+    let backend = InMemoryNativeControlBackend()
+    NSApplication.shared.nativeBackend = backend
+
+    let seg = NSSegmentedControl(labels: ["L", "C", "R"], frame: NSMakeRect(0, 0, 240, 34))
+    check(backend.itemsByHandle[seg.handle.rawValue] == ["L", "C", "R"], "segment labels reach the backend")
+    check(seg.selectedSegment == -1, "segmented starts with no selection")
+
+    var picked = -1
+    seg.onAction = { picked = $0.selectedSegment }
+    backend.simulateSelection(seg.handle, 1)
+    check(seg.selectedSegment == 1, "segmented selection syncs from native click")
+    check(picked == 1, "segmented onAction fires with the index")
+    check(seg.label(forSegment: 1) == "C", "label(forSegment:) resolves")
+
+    seg.selectedSegment = 2
+    check(backend.selectedIndex(seg.handle) == 2, "segmented setter writes through")
+}
+
+// MARK: 11 — Menu bar
+do {
+    let backend = InMemoryNativeControlBackend()
+    NSApplication.shared.nativeBackend = backend
+    NSApplication.shared.mainMenu = nil
+
+    let window = NSWindow(contentRect: NSMakeRect(0, 0, 300, 200),
+                          styleMask: [.titled], backing: .buffered, defer: false)
+    check(NSApplication.shared.windows.contains(where: { $0 === window }), "window registers with NSApp")
+
+    var resetCount = 0
+    var aboutCount = 0
+    let main = NSMenu()
+    let fileItem = NSMenuItem(title: "File")
+    let fileMenu = NSMenu(title: "File")
+    fileMenu.addItem(withTitle: "Reset") { _ in resetCount += 1 }
+    fileMenu.addItem(.separator())
+    fileMenu.addItem(withTitle: "Quit") { _ in }
+    main.addItem(fileItem)
+    main.setSubmenu(fileMenu, for: fileItem)
+    let helpItem = NSMenuItem(title: "Help")
+    let helpMenu = NSMenu(title: "Help")
+    helpMenu.addItem(withTitle: "About") { _ in aboutCount += 1 }
+    main.addItem(helpItem)
+    main.setSubmenu(helpMenu, for: helpItem)
+    NSApplication.shared.mainMenu = main
+
+    let bars = backend.menuBars[window.handle.rawValue]
+    check(bars?.count == 2, "menu bar installs two top-level menus")
+    check(bars?.first?.title == "File" && bars?.last?.title == "Help", "menu titles preserved")
+    check(bars?.first?.items.count == 3, "File menu has three items (incl. separator)")
+    check(bars?.first?.items[1].isSeparator == true, "separator carried through the seam")
+
+    backend.simulateMenuActivate(window.handle, menu: 0, item: 0)
+    check(resetCount == 1, "File > Reset action fires")
+    backend.simulateMenuActivate(window.handle, menu: 1, item: 0)
+    check(aboutCount == 1, "Help > About action fires")
+
+    // A window created *after* the menu is set also gets the bar.
+    let late = NSWindow(contentRect: NSMakeRect(0, 0, 300, 200),
+                        styleMask: [.titled], backing: .buffered, defer: false)
+    check(backend.menuBars[late.handle.rawValue]?.count == 2, "late window inherits the main menu")
+}
+
 if failures == 0 {
     print("\nAll contract tests passed.")
 } else {

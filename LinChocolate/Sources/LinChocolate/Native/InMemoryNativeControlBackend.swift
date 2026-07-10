@@ -15,7 +15,7 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     public enum Kind: Equatable {
         case window, view, button, label, textField, secureField, searchField, comboBox
         case checkbox, radio, slider, progress, popUp, stepper, level, textView
-        case datePicker, colorWell, tabView, box, scrollView, splitView
+        case datePicker, colorWell, tabView, box, scrollView, splitView, segmented
     }
 
     private var nextRaw: UInt = 1
@@ -46,6 +46,7 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     public private(set) var tabPages: [UInt: [(page: UInt, label: String)]] = [:]
     public private(set) var splitPanes: [UInt: [UInt]] = [:]
     public private(set) var dividerPositions: [UInt: Double] = [:]
+    public private(set) var menuBars: [UInt: [NativeMenuSpec]] = [:]
     private var dateChangeActions: [UInt: (Date) -> Void] = [:]
     private var colorChangeActions: [UInt: (NSColor) -> Void] = [:]
 
@@ -79,6 +80,9 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     }
     public func registerWindowCloseAction(for handle: NativeHandle, action: @escaping () -> Void) {
         windowCloseActions[handle.rawValue] = action
+    }
+    public func installMenuBar(_ menus: [NativeMenuSpec], on window: NativeHandle) {
+        menuBars[window.rawValue] = menus
     }
 
     // MARK: Views & controls
@@ -209,6 +213,14 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     public func addTabPage(_ page: NativeHandle, label: String, to tabView: NativeHandle) {
         tabPages[tabView.rawValue, default: []].append((page: page.rawValue, label: label))
     }
+    public func createSegmentedControl(labels: [String], frame: NSRect) -> NativeHandle {
+        let h = allocate(.segmented)
+        frames[h.rawValue] = frame
+        itemsByHandle[h.rawValue] = labels
+        selectedIndices[h.rawValue] = -1
+        enabledStates[h.rawValue] = true
+        return h
+    }
     public func createBox(title: String, frame: NSRect) -> NativeHandle {
         let h = allocate(.box)
         titles[h.rawValue] = title
@@ -320,6 +332,13 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     public func simulateSelection(_ handle: NativeHandle, _ index: Int) {
         selectedIndices[handle.rawValue] = index
         selectionActions[handle.rawValue]?(index)
+    }
+    /// Fires the action of menu item `itemIndex` in top-level menu `menuIndex`,
+    /// as if the user picked it from the window's menu bar.
+    public func simulateMenuActivate(_ window: NativeHandle, menu menuIndex: Int, item itemIndex: Int) {
+        guard let menus = menuBars[window.rawValue],
+              menuIndex < menus.count, itemIndex < menus[menuIndex].items.count else { return }
+        menus[menuIndex].items[itemIndex].action?()
     }
     /// Simulates the user picking a date.
     public func simulateDateChange(_ handle: NativeHandle, _ date: Date) {
