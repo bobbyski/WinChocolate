@@ -35,8 +35,9 @@ here (Goal 2 — native modern look).
 | `NSScrollView` | `GtkScrolledWindow` | ✅ | `documentView` scrolls when larger than the frame; native overlay scrollbars. |
 | `NSSplitView` | `GtkPaned` | ✅ | Two panes (`addArrangedSubview`), draggable divider, `setPosition`. AppKit `vertical` = GTK horizontal orientation. |
 | `NSTableView` | `GtkColumnView` | ⏳ | |
+| `NSAlert` | composed modal `GtkWindow` + nested `GMainLoop` | ✅ | AppKit's blocking `runModal()`: GTK4 removed blocking dialogs and its dialog constructors are C-variadic (uncallable from Swift), so the alert is composed — modal transient window, headline ("title-4"), buttons right-aligned with the first (default) rightmost, response = `NSAlertFirstButtonReturn + index`. |
+| `NSImage` / `NSImageView` | `GtkPicture` | ✅ | File-backed image slice; `gtk_picture_set_filename`, aspect-fit scaling. |
 | `NSToolbar` | hand-drawn (Apple-look exception) | ⏳ | Keeps the Apple look/feel per Goal 2's toolbar exception. |
-| `NSAlert` | `AdwMessageDialog` / `GtkAlertDialog` | ⏳ | |
 
 ## Interop note: opaque vs. nominal GTK types
 
@@ -53,7 +54,8 @@ must be checked per widget when binding a new control:
   `GtkEditable`, `GtkProgressBar`, `GtkDropDown`, `GtkComboBoxText`,
   `GtkPasswordEntry`, `GtkSearchEntry`, `GtkSpinButton`, `GtkLevelBar`,
   `GtkCalendar`, `GtkColorChooser`, `GtkNotebook`, `GtkScrolledWindow`,
-  `GtkPaned`, `GMenu`, `GSimpleAction`, `GActionMap`, `GDateTime`, `GMainLoop`.
+  `GtkPaned`, `GMenu`, `GSimpleAction`, `GActionMap`, `GtkPicture`,
+  `GDateTime`, `GMainLoop`.
   (`GMenu` is opaque while `GMenuModel` is nominal — same family, split import.)
 
 There is no pattern to which is which (`GtkSpinButton` is opaque while the

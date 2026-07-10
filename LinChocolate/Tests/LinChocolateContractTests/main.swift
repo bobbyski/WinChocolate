@@ -383,6 +383,51 @@ do {
     check(backend.menuBars[late.handle.rawValue]?.count == 2, "late window inherits the main menu")
 }
 
+// MARK: 12 — Alert
+do {
+    let backend = InMemoryNativeControlBackend()
+    NSApplication.shared.nativeBackend = backend
+
+    let alert = NSAlert()
+    alert.messageText = "Save changes?"
+    alert.informativeText = "Your edits will be lost otherwise."
+    alert.addButton(withTitle: "Save")
+    alert.addButton(withTitle: "Discard")
+
+    backend.nextAlertResponse = 0
+    check(alert.runModal() == NSAlertFirstButtonReturn, "first button maps to NSAlertFirstButtonReturn")
+    backend.nextAlertResponse = 1
+    check(alert.runModal() == NSAlertSecondButtonReturn, "second button maps to NSAlertSecondButtonReturn")
+
+    let recorded = backend.alerts.last
+    check(recorded?.message == "Save changes?", "alert message reaches the backend")
+    check(recorded?.buttons == ["Save", "Discard"], "alert buttons preserved in order")
+
+    let bare = NSAlert()
+    bare.messageText = "Hi"
+    backend.nextAlertResponse = 0
+    check(bare.runModal() == NSAlertFirstButtonReturn, "buttonless alert defaults to OK")
+    check(backend.alerts.last?.buttons == ["OK"], "default OK button synthesized")
+}
+
+// MARK: 13 — Image view
+do {
+    let backend = InMemoryNativeControlBackend()
+    NSApplication.shared.nativeBackend = backend
+
+    check(NSImage(contentsOfFile: "/nonexistent/nope.png") == nil, "NSImage nil for missing file")
+
+    // Package.swift is a file guaranteed to exist relative to the test cwd.
+    let image = NSImage(contentsOfFile: "Package.swift")
+    check(image != nil, "NSImage loads an existing file")
+
+    let view = NSImageView(frame: NSMakeRect(0, 0, 100, 100))
+    view.image = image
+    check(backend.imagePaths[view.handle.rawValue] == "Package.swift", "image path reaches the backend")
+    view.image = nil
+    check(backend.imagePaths[view.handle.rawValue] == nil, "nil image clears the path")
+}
+
 if failures == 0 {
     print("\nAll contract tests passed.")
 } else {

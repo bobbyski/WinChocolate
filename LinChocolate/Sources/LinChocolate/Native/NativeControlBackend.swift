@@ -54,6 +54,10 @@ public protocol NativeControlBackend: AnyObject {
     func registerWindowCloseAction(for handle: NativeHandle, action: @escaping () -> Void)
     /// Installs (or replaces) the menu bar shown at the top of `window`.
     func installMenuBar(_ menus: [NativeMenuSpec], on window: NativeHandle)
+    /// Shows a modal alert and blocks until a button is pressed; returns the
+    /// pressed button's index in `buttons` (AppKit order: first = default,
+    /// shown rightmost).
+    func runAlert(message: String, informative: String, buttons: [String], for window: NativeHandle?) -> Int
 
     // MARK: Views & controls
     /// Creates a container view (absolute child placement, like AppKit frames).
@@ -85,6 +89,10 @@ public protocol NativeControlBackend: AnyObject {
     /// Creates a segmented control (`setSelectedIndex` selects a segment;
     /// `setSelectionChangeAction` reports user selection).
     func createSegmentedControl(labels: [String], frame: NSRect) -> NativeHandle
+    /// Creates an image view (set content with `setImagePath`).
+    func createImageView(frame: NSRect) -> NativeHandle
+    /// Shows the image file at `path` in an image view (nil clears it).
+    func setImagePath(_ path: String?, for handle: NativeHandle)
     /// Creates a stepper (numeric up/down) over `[minValue, maxValue]`.
     func createStepper(value: Double, minValue: Double, maxValue: Double, stepSize: Double, frame: NSRect) -> NativeHandle
     /// Creates a determinate level indicator over `[minValue, maxValue]`.

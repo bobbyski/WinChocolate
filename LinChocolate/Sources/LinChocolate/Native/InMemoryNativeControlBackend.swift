@@ -15,7 +15,7 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     public enum Kind: Equatable {
         case window, view, button, label, textField, secureField, searchField, comboBox
         case checkbox, radio, slider, progress, popUp, stepper, level, textView
-        case datePicker, colorWell, tabView, box, scrollView, splitView, segmented
+        case datePicker, colorWell, tabView, box, scrollView, splitView, segmented, imageView
     }
 
     private var nextRaw: UInt = 1
@@ -47,6 +47,11 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     public private(set) var splitPanes: [UInt: [UInt]] = [:]
     public private(set) var dividerPositions: [UInt: Double] = [:]
     public private(set) var menuBars: [UInt: [NativeMenuSpec]] = [:]
+    public private(set) var imagePaths: [UInt: String] = [:]
+    /// Alerts shown so far (message, informative, buttons), newest last.
+    public private(set) var alerts: [(message: String, informative: String, buttons: [String])] = []
+    /// The button index `runAlert` returns, standing in for the user's press.
+    public var nextAlertResponse = 0
     private var dateChangeActions: [UInt: (Date) -> Void] = [:]
     private var colorChangeActions: [UInt: (NSColor) -> Void] = [:]
 
@@ -83,6 +88,10 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     }
     public func installMenuBar(_ menus: [NativeMenuSpec], on window: NativeHandle) {
         menuBars[window.rawValue] = menus
+    }
+    public func runAlert(message: String, informative: String, buttons: [String], for window: NativeHandle?) -> Int {
+        alerts.append((message: message, informative: informative, buttons: buttons))
+        return nextAlertResponse
     }
 
     // MARK: Views & controls
@@ -220,6 +229,12 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
         selectedIndices[h.rawValue] = -1
         enabledStates[h.rawValue] = true
         return h
+    }
+    public func createImageView(frame: NSRect) -> NativeHandle {
+        let h = allocate(.imageView); frames[h.rawValue] = frame; return h
+    }
+    public func setImagePath(_ path: String?, for handle: NativeHandle) {
+        if let path { imagePaths[handle.rawValue] = path } else { imagePaths[handle.rawValue] = nil }
     }
     public func createBox(title: String, frame: NSRect) -> NativeHandle {
         let h = allocate(.box)

@@ -128,7 +128,11 @@ let notesLabel = NSTextField(labelWithString: "Notes:", frame: NSMakeRect(24, r4
 let notes = NSTextView(string: "Type multi-line notes here…", frame: NSMakeRect(24, r4.next(160), 486, 160))
 let notesEdit = NSTextField(labelWithString: "Last edit: —", frame: NSMakeRect(24, r4.next(24), 486, 24))
 
-for control in [notesLabel, notes, notesEdit] as [NSView] {
+let artworkLabel = NSTextField(labelWithString: "Artwork (NSImageView):", frame: NSMakeRect(24, r4.next(22), 300, 22))
+let artwork = NSImageView(frame: NSMakeRect(24, r4.next(150), 150, 150))
+artwork.image = NSImage(contentsOfFile: "Sources/LinChocolateDemo/Resources/Artwork.png")
+
+for control in [notesLabel, notes, notesEdit, artworkLabel, artwork] as [NSView] {
     textPage.addSubview(control)
 }
 
@@ -224,7 +228,13 @@ mainMenu.setSubmenu(fileMenu, for: fileItem)
 let helpItem = NSMenuItem(title: "Help")
 let helpMenu = NSMenu(title: "Help")
 helpMenu.addItem(withTitle: "About LinChocolate") { _ in
-    echo.stringValue = "LinChocolate — AppKit API, native GTK"
+    let alert = NSAlert()
+    alert.messageText = "LinChocolate"
+    alert.informativeText = "The AppKit API, rendered as native GTK."
+    alert.addButton(withTitle: "OK")
+    alert.addButton(withTitle: "Nice")
+    let response = alert.runModal()
+    echo.stringValue = "About closed: \(response == NSAlertFirstButtonReturn ? "OK" : "Nice")"
 }
 mainMenu.addItem(helpItem)
 mainMenu.setSubmenu(helpMenu, for: helpItem)

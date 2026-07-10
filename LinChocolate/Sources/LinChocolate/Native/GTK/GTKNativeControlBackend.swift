@@ -161,6 +161,56 @@ public final class GTKNativeControlBackend: NativeControlBackend {
         gtk_box_prepend(asBox(box), bar)
         windowMenuBars[window.rawValue] = OpaquePointer(bar)
     }
+    public func runAlert(message: String, informative: String, buttons: [String], for window: NativeHandle?) -> Int {
+        // Composed modal alert: GTK4 removed blocking dialogs (gtk_dialog_run),
+        // and its dialog constructors are C-variadic (uncallable from Swift), so
+        // AppKit's synchronous `runModal` is built from a modal GtkWindow plus a
+        // nested GMainLoop that runs until a button responds.
+        let alert = gtk_window_new()!
+        gtk_window_set_modal(asWindow(OpaquePointer(alert)), gboolean(1))
+        gtk_window_set_resizable(asWindow(OpaquePointer(alert)), gboolean(0))
+        if let window, let parent = widget(window) {
+            gtk_window_set_transient_for(asWindow(OpaquePointer(alert)), asWindow(parent))
+        }
+
+        let vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 12)!
+        gtk_widget_set_margin_top(vbox, 20); gtk_widget_set_margin_bottom(vbox, 16)
+        gtk_widget_set_margin_start(vbox, 24); gtk_widget_set_margin_end(vbox, 24)
+
+        let title = gtk_label_new(message)!
+        gtk_widget_add_css_class(title, "title-4")   // GTK's built-in heading style
+        gtk_box_append(asBox(OpaquePointer(vbox)), title)
+        if !informative.isEmpty {
+            let detail = gtk_label_new(informative)!
+            gtk_box_append(asBox(OpaquePointer(vbox)), detail)
+        }
+
+        let loop = g_main_loop_new(nil, gboolean(0))
+        let state = AlertState(loop: loop)
+
+        let buttonRow = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8)!
+        gtk_widget_set_halign(buttonRow, GTK_ALIGN_END)
+        gtk_widget_set_margin_top(buttonRow, 8)
+        // AppKit shows the first (default) button rightmost; append in reverse.
+        for (index, buttonTitle) in buttons.enumerated().reversed() {
+            let button = gtk_button_new_with_label(buttonTitle)!
+            let box = AlertButtonBox(index: index, state: state)
+            g_signal_connect_data(
+                UnsafeMutableRawPointer(button), "clicked",
+                unsafeBitCast(gtkAlertButtonTrampoline, to: GCallback.self),
+                Unmanaged.passRetained(box).toOpaque(), boxRelease, GConnectFlags(rawValue: 0)
+            )
+            gtk_box_append(asBox(OpaquePointer(buttonRow)), button)
+        }
+        gtk_box_append(asBox(OpaquePointer(vbox)), buttonRow)
+
+        gtk_window_set_child(asWindow(OpaquePointer(alert)), vbox)
+        gtk_window_present(asWindow(OpaquePointer(alert)))
+        g_main_loop_run(loop)   // blocks until a button quits the nested loop
+
+        gtk_window_destroy(asWindow(OpaquePointer(alert)))
+        return state.response
+    }
     public func registerWindowCloseAction(for handle: NativeHandle, action: @escaping () -> Void) {
         guard let w = widget(handle) else { return }
         let box = ActionBox(action)
@@ -345,6 +395,15 @@ public final class GTKNativeControlBackend: NativeControlBackend {
         }
         segmentButtons[h.rawValue] = buttons
         return h
+    }
+    public func createImageView(frame: NSRect) -> NativeHandle {
+        let picture = gtk_picture_new()!
+        gtk_widget_set_size_request(picture, Int32(frame.width), Int32(frame.height))
+        return allocate(picture, .imageView, frame: frame)
+    }
+    public func setImagePath(_ path: String?, for handle: NativeHandle) {
+        guard let w = widget(handle) else { return }
+        gtk_picture_set_filename(w, path)   // GtkPicture is opaque; nil clears
     }
     public func createBox(title: String, frame: NSRect) -> NativeHandle {
         let f = gtk_frame_new(title)!
@@ -622,6 +681,17 @@ private final class SegmentBox {
     let action: (Int) -> Void
     init(index: Int, action: @escaping (Int) -> Void) { self.index = index; self.action = action }
 }
+/// Shared state for one modal alert run: the nested loop and the response.
+private final class AlertState {
+    let loop: OpaquePointer?
+    var response = 0
+    init(loop: OpaquePointer?) { self.loop = loop }
+}
+private final class AlertButtonBox {
+    let index: Int
+    let state: AlertState
+    init(index: Int, state: AlertState) { self.index = index; self.state = state }
+}
 private final class ColorActionBox {
     let action: (NSColor) -> Void
     init(_ action: @escaping (NSColor) -> Void) { self.action = action }
@@ -689,6 +759,15 @@ private let gtkSelectionChangedTrampoline: @convention(c) (UnsafeMutableRawPoint
     guard let dropdown, let userData else { return }
     let index = Int(gtk_drop_down_get_selected(OpaquePointer(dropdown)))
     Unmanaged<IntActionBox>.fromOpaque(userData).takeUnretainedValue().action(index)
+}
+
+/// Handler for an alert button's `clicked` — records the response and quits the
+/// alert's nested main loop, unblocking `runAlert`.
+private let gtkAlertButtonTrampoline: @convention(c) (UnsafeMutableRawPointer?, gpointer?) -> Void = { _, userData in
+    guard let userData else { return }
+    let box = Unmanaged<AlertButtonBox>.fromOpaque(userData).takeUnretainedValue()
+    box.state.response = box.index
+    g_main_loop_quit(box.state.loop)
 }
 
 /// Handler for a segment's `GtkToggleButton::toggled` — fires only when the

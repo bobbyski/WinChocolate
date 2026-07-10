@@ -31,10 +31,12 @@ let package = Package(
         ),
 
         // The click-counter demo, written against the AppKit-shaped API.
+        // Resources/ holds demo artwork, loaded by path at run time.
         .executableTarget(
             name: "LinChocolateDemo",
             dependencies: ["LinChocolate"],
-            path: "Sources/LinChocolateDemo"
+            path: "Sources/LinChocolateDemo",
+            exclude: ["Resources"]
         ),
 
         // Hermetic contract tests (in-memory backend, no display).
