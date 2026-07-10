@@ -80,10 +80,18 @@ open class NSScroller: NSControl {
     open var usableParts: UsableParts
 
     /// Appearance style.
-    open var scrollerStyle: Style
+    open var scrollerStyle: Style {
+        didSet {
+            pushAppearanceToNative()
+        }
+    }
 
     /// Knob appearance.
-    open var knobStyle: KnobStyle
+    open var knobStyle: KnobStyle {
+        didSet {
+            pushAppearanceToNative()
+        }
+    }
 
     /// Creates a scroller with a frame.
     public override init(frame frameRect: NSRect) {
@@ -130,6 +138,11 @@ open class NSScroller: NSControl {
     open override func realizeNativePeer(in backend: NativeControlBackend, parent: NativeHandle?) -> NativeHandle {
         let handle = super.realizeNativePeer(in: backend, parent: parent)
         backend.setScrollerValue(doubleValue, knobProportion: knobProportion, for: handle)
+        backend.setScrollerAppearance(
+            overlay: scrollerStyle == .overlay,
+            knobStyle: NSScroller.nativeKnobStyle(from: knobStyle),
+            for: handle
+        )
         backend.registerAction(for: handle) { [weak self, weak backend] in
             guard let self, let backend, let nativeHandle = self.nativeHandle else {
                 return
@@ -158,6 +171,32 @@ open class NSScroller: NSControl {
         case .incrementLine:
             return .incrementLine
         }
+    }
+
+    /// Maps the AppKit knob style onto the backend-neutral one.
+    static func nativeKnobStyle(from style: KnobStyle) -> NativeScrollerKnobStyle {
+        switch style {
+        case .default:
+            return .default
+        case .dark:
+            return .dark
+        case .light:
+            return .light
+        }
+    }
+
+    /// Pushes the current appearance to a realized peer (a no-op before realize
+    /// — `realizeNativePeer` applies the initial appearance).
+    private func pushAppearanceToNative() {
+        guard let nativeHandle else {
+            return
+        }
+
+        realizedBackend?.setScrollerAppearance(
+            overlay: scrollerStyle == .overlay,
+            knobStyle: NSScroller.nativeKnobStyle(from: knobStyle),
+            for: nativeHandle
+        )
     }
 
     private func updateValueFromNative(_ value: Double) {

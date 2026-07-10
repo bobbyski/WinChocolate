@@ -2260,6 +2260,28 @@ func testScrollerHitPartReflectsGesture() {
     }
 }
 
+func testScrollerAppearancePropagatesToNativePeer() {
+    let backend = InMemoryNativeControlBackend()
+    let scroller = NSScroller(frame: NSMakeRect(0, 0, 120, 18))
+    scroller.scrollerStyle = .overlay
+    scroller.knobStyle = .dark
+    let handle = scroller.realizeNativePeer(in: backend, parent: nil)
+
+    // The overlay flag and knob style reach the backend at realize time.
+    expect(backend.scrollerOverlays[handle] == true,
+           "Overlay scroller style did not reach the native peer.")
+    expect(backend.scrollerKnobStyles[handle] == .dark,
+           "Dark knob style did not reach the native peer.")
+
+    // A later change pushes through as well (the didSet path).
+    scroller.knobStyle = .light
+    scroller.scrollerStyle = .legacy
+    expect(backend.scrollerKnobStyles[handle] == .light,
+           "Changing the knob style did not update the native peer.")
+    expect(backend.scrollerOverlays[handle] == false,
+           "Changing to the legacy style did not update the native peer.")
+}
+
 func testDatePickerStoresDateRangeAndSyncsNativePeer() {
     let backend = InMemoryNativeControlBackend()
     let initialDate = Date(timeIntervalSince1970: 1_780_272_000)
@@ -8975,6 +8997,7 @@ testButtonBezelAndTextFieldBezel()
 testScrollerStoresValueAndSyncsNativePeer()
 testScrollerNativeActionUpdatesValue()
 testScrollerHitPartReflectsGesture()
+testScrollerAppearancePropagatesToNativePeer()
 testDatePickerStoresDateRangeAndSyncsNativePeer()
 testDatePickerClockAndCalendarStyle()
 testSegmentedControlStoresSegmentsAndDrawsOnAView()
