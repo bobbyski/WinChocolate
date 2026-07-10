@@ -1728,6 +1728,18 @@ let vkLMenu: Int32 = 0xa4
 let vkRMenu: Int32 = 0xa5
 let gwlpWndProc: Int32 = -4
 let gwChild: UINT = 5
+let gwHwndNext: UINT = 2
+let wmSettingChange: UINT = 0x001A
+let rdwFrame: UINT = 0x0400
+let clrDefault: DWORD = 0xFF00_0000
+let gclpHbrBackground: Int32 = -10
+
+@_silgen_name("GetClassNameW")
+func winGetClassNameW(_ hwnd: HWND?, _ buffer: UnsafeMutablePointer<UInt16>, _ maxCount: Int32) -> Int32
+
+@_silgen_name("SetClassLongPtrW")
+func winSetClassLongPtrW(_ hwnd: HWND?, _ index: Int32, _ value: LONG_PTR) -> LONG_PTR
+
 let dlgcWantTab: LRESULT = 0x0002
 let idOK: Int32 = 1
 let idYes: Int32 = 6

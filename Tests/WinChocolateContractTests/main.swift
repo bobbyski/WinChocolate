@@ -2347,6 +2347,34 @@ func testSegmentedControlStoresSegmentsAndDrawsOnAView() {
     expect(abs(frames[1].size.width - 70) < 0.001, "The automatic segment should take the remaining width.")
 }
 
+func testSegmentedControlDrawsSegmentImages() {
+    let backend = InMemoryNativeControlBackend()
+    let segmented = NSSegmentedControl(labels: ["", "Text"], frame: NSMakeRect(0, 0, 160, 28))
+    let iconPath = "C:/icons/seg.png"
+    guard let icon = NSImage(contentsOfFile: iconPath) else {
+        fatalError("Failed to build the file-backed segment image.")
+    }
+    icon.isTemplate = true
+    segmented.setImage(icon, forSegment: 0)
+    segmented.selectedSegment = 1
+
+    expect(segmented.image(forSegment: 0) === icon, "Segmented control did not store the segment image.")
+
+    let handle = segmented.realizeNativePeer(in: backend, parent: nil)
+    let recording = backend.performDraw(for: handle, in: segmented.bounds)
+
+    // Segment 0's file-backed image draws, tinted (it is a template) to the
+    // segment's label color; segment 1 still draws its text label.
+    guard let drawn = recording.images.first(where: { $0.path == iconPath }) else {
+        fatalError("Segment image was not drawn. Got \(recording.images.map { $0.path }).")
+    }
+    expect(drawn.tint != nil, "A template segment image should draw tinted to the label color.")
+    expect(drawn.rect.origin.x < 80,
+           "The first segment's image should sit within its own (left) segment.")
+    expect(recording.texts.contains { $0.text == "Text" },
+           "The labeled segment should still draw its text alongside image segments.")
+}
+
 func testSegmentedControlSeparatedStyleGapsSegments() {
     // The pure spacing helper: only .separated stands segments apart.
     expect(NSSegmentedControl.winSegmentSpacing(for: .separated) > 0, "Separated style should introduce a gap.")
@@ -6069,6 +6097,42 @@ func testVisualEffectViewStoresMaterialAndUsesFallbackBackground() {
     expect(backend.records[handle]?.backgroundColor == effectView.backgroundColor, "Visual effect material change did not update fallback background.")
 }
 
+func testAppearanceSwitchNotificationReresolvesCachedBackgrounds() {
+    // Views that cache a resolved background brush (built once from the launch
+    // appearance) must re-resolve it when the system theme switches live —
+    // otherwise the strip/material stays its old shade under a repaint. Both
+    // observe the effective-appearance notification the backend posts.
+    NSApplication.shared.appearance = NSAppearance(named: .darkAqua)
+    defer { NSApplication.shared.appearance = NSAppearance(named: .aqua) }
+
+    let effectView = NSVisualEffectView(frame: NSMakeRect(0, 0, 180, 80))
+    effectView.material = .sidebar
+    let toolbarView = NSToolbarView(frame: NSMakeRect(0, 0, 300, 40))
+
+    guard let darkEffect = effectView.backgroundColor,
+          let darkStrip = toolbarView.backgroundColor else {
+        fatalError("Both views should have a background color under the dark appearance.")
+    }
+    expect(darkEffect.whiteComponent < 0.4,
+           "The sidebar material should start dark under the dark appearance. Got \(darkEffect).")
+    expect(darkStrip.whiteComponent < 0.4,
+           "The toolbar strip should start dark under the dark appearance. Got \(darkStrip).")
+
+    // Flip to light and post the live-switch notification the backend emits.
+    NSApplication.shared.appearance = NSAppearance(named: .aqua)
+    NotificationCenter.default.post(
+        name: NSApplication.winEffectiveAppearanceDidChangeNotification, object: nil)
+
+    guard let lightEffect = effectView.backgroundColor,
+          let lightStrip = toolbarView.backgroundColor else {
+        fatalError("Both views should still have a background color after the switch.")
+    }
+    expect(lightEffect.whiteComponent > 0.7,
+           "The sidebar material should re-resolve light after a live switch. Got \(lightEffect).")
+    expect(lightStrip.whiteComponent > 0.7,
+           "The toolbar strip should re-resolve light after a live switch. Got \(lightStrip).")
+}
+
 func testFontValuesClampSizeAndSyncToBackend() {
     let backend = InMemoryNativeControlBackend()
     let textField = NSTextField(string: "Font", frame: NSMakeRect(0, 0, 120, 24))
@@ -8914,6 +8978,7 @@ testScrollerHitPartReflectsGesture()
 testDatePickerStoresDateRangeAndSyncsNativePeer()
 testDatePickerClockAndCalendarStyle()
 testSegmentedControlStoresSegmentsAndDrawsOnAView()
+testSegmentedControlDrawsSegmentImages()
 testSegmentedControlSeparatedStyleGapsSegments()
 testSegmentedControlStyleDrivesCornerRadius()
 testSegmentedControlPerSegmentImageAndTag()
@@ -9033,6 +9098,7 @@ testBoxUsesNativePeerAndSyncsTitle()
 testColorValuesClampComponents()
 testViewAndTextFieldColorsSyncToBackend()
 testVisualEffectViewStoresMaterialAndUsesFallbackBackground()
+testAppearanceSwitchNotificationReresolvesCachedBackgrounds()
 testFontValuesClampSizeAndSyncToBackend()
 testRemovingRealizedSubviewDestroysNativePeer()
 testMainMenuQuitItemTerminatesApplication()

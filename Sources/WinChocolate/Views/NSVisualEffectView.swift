@@ -100,10 +100,29 @@ open class NSVisualEffectView: NSView {
         }
     }
 
+    /// Token for the live appearance-change observer, removed on deinit.
+    private var winAppearanceObserver: NSObjectProtocol?
+
     /// Creates a visual effect view.
     public override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         updateFallbackBackground()
+        // The material's fallback color is resolved for the current appearance
+        // and cached as a brush; re-resolve it when the system theme switches
+        // live so the backdrop follows (a plain repaint keeps the old shade).
+        winAppearanceObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.winEffectiveAppearanceDidChangeNotification,
+            object: nil, queue: nil
+        ) { [weak self] _ in
+            self?.updateFallbackBackground()
+            self?.needsDisplay = true
+        }
+    }
+
+    deinit {
+        if let winAppearanceObserver {
+            NotificationCenter.default.removeObserver(winAppearanceObserver)
+        }
     }
 
     /// Visual effect views are decorative containers and skip key-view traversal.

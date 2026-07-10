@@ -478,6 +478,15 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         return brush
     }
 
+    /// Discards the cached control-background brush so it is rebuilt with the
+    /// current appearance's window background (used on a live theme switch).
+    func winResetCachedControlBackgroundBrush() {
+        if let brush = defaultControlBackgroundBrush {
+            _ = winDeleteObject(brush)
+        }
+        defaultControlBackgroundBrush = nil
+    }
+
     func colorRef(from color: NSColor) -> DWORD {
         colorRef(red: color.redComponent, green: color.greenComponent, blue: color.blueComponent)
     }

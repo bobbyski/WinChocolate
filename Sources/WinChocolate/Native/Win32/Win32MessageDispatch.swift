@@ -20,6 +20,12 @@ extension Win32NativeControlBackend {
             // another application is active and return afterward.
             applicationActivationDidChange(isActive: wParam != 0)
             return nil
+        case wmSettingChange:
+            // The user may have flipped the system dark/light theme. Refresh the
+            // app's appearance if it follows the system; let DefWindowProc see
+            // the message too.
+            winHandleSettingChange()
+            return nil
         case wmGetMinMaxInfo:
             // Constrain user resizing to the window's content size limits,
             // converting each content size to the outer window rect.
