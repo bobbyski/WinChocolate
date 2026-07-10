@@ -27,6 +27,7 @@ public final class GTKNativeControlBackend: NativeControlBackend {
     private var parents: [UInt: UInt] = [:]   // child -> parent, for repositioning
     private var ranges: [UInt: (min: Double, max: Double)] = [:]   // slider/progress
     private var comboEntries: [UInt: OpaquePointer] = [:]   // combo -> its GtkEntry child
+    private var splitPaneCounts: [UInt: Int] = [:]           // paned -> panes added
     private var mainLoop: OpaquePointer?   // GMainLoop* (opaque in the GTK import)
 
     /// Connects to the display and initializes GTK. Only construct this when a
@@ -54,6 +55,7 @@ public final class GTKNativeControlBackend: NativeControlBackend {
     private func asRange(_ p: OpaquePointer) -> UnsafeMutablePointer<GtkRange> { .init(p) }
     private func asTextView(_ p: OpaquePointer) -> UnsafeMutablePointer<GtkTextView> { .init(p) }
     private func asTextBuffer(_ p: OpaquePointer) -> UnsafeMutablePointer<GtkTextBuffer> { .init(p) }
+    private func asFrame(_ p: OpaquePointer) -> UnsafeMutablePointer<GtkFrame> { .init(p) }
     // GtkProgressBar, GtkDropDown, GtkLevelBar and GtkSpinButton are opaque in the
     // import — their functions take OpaquePointer directly. GtkTextBuffer is nominal.
     // NOTE: GtkLabel, GtkEditable, and GMainLoop are opaque in the GTK4 Swift
@@ -82,7 +84,11 @@ public final class GTKNativeControlBackend: NativeControlBackend {
     }
     public func setContentView(_ view: NativeHandle, for window: NativeHandle) {
         guard let w = widget(window), let v = widget(view) else { return }
-        gtk_window_set_child(asWindow(w), asWidget(v))
+        switch kinds[window.rawValue] {
+        case .box:        gtk_frame_set_child(asFrame(w), asWidget(v))
+        case .scrollView: gtk_scrolled_window_set_child(w, asWidget(v))   // GtkScrolledWindow is opaque
+        default:          gtk_window_set_child(asWindow(w), asWidget(v))
+        }
     }
     public func showWindow(_ handle: NativeHandle) {
         guard let w = widget(handle) else { return }
@@ -257,6 +263,38 @@ public final class GTKNativeControlBackend: NativeControlBackend {
         let tabLabel = gtk_label_new(label)
         gtk_notebook_append_page(nb, asWidget(p), tabLabel)   // GtkNotebook is opaque
     }
+    public func createBox(title: String, frame: NSRect) -> NativeHandle {
+        let f = gtk_frame_new(title)!
+        gtk_widget_set_size_request(f, Int32(frame.width), Int32(frame.height))
+        return allocate(f, .box, frame: frame)
+    }
+    public func createScrollView(frame: NSRect) -> NativeHandle {
+        let sw = gtk_scrolled_window_new()!
+        gtk_widget_set_size_request(sw, Int32(frame.width), Int32(frame.height))
+        return allocate(sw, .scrollView, frame: frame)
+    }
+    public func createSplitView(vertical: Bool, frame: NSRect) -> NativeHandle {
+        // AppKit "vertical" = vertical divider = panes side by side, which is
+        // GTK's *horizontal* orientation.
+        let orientation = vertical ? GTK_ORIENTATION_HORIZONTAL : GTK_ORIENTATION_VERTICAL
+        let paned = gtk_paned_new(orientation)!
+        gtk_widget_set_size_request(paned, Int32(frame.width), Int32(frame.height))
+        return allocate(paned, .splitView, frame: frame)
+    }
+    public func addSplitPane(_ pane: NativeHandle, to splitView: NativeHandle) {
+        guard let paned = widget(splitView), let p = widget(pane) else { return }
+        let count = splitPaneCounts[splitView.rawValue, default: 0]
+        if count == 0 {
+            gtk_paned_set_start_child(paned, asWidget(p))   // GtkPaned is opaque
+        } else {
+            gtk_paned_set_end_child(paned, asWidget(p))
+        }
+        splitPaneCounts[splitView.rawValue] = count + 1
+    }
+    public func setDividerPosition(_ position: Double, for splitView: NativeHandle) {
+        guard let paned = widget(splitView) else { return }
+        gtk_paned_set_position(paned, gint(position))
+    }
     public func addSubview(_ child: NativeHandle, to parent: NativeHandle) {
         guard let p = widget(parent), let c = widget(child) else { return }
         parents[child.rawValue] = parent.rawValue
@@ -277,6 +315,7 @@ public final class GTKNativeControlBackend: NativeControlBackend {
         case .comboBox:  if let e = comboEntries[handle.rawValue] { gtk_editable_set_text(e, text) }
         case .checkbox, .radio: gtk_check_button_set_label(asCheckButton(w), text)
         case .textView:  gtk_text_buffer_set_text(gtk_text_view_get_buffer(asTextView(w)), text, -1)
+        case .box:       gtk_frame_set_label(asFrame(w), text)
         case .window:    gtk_window_set_title(asWindow(w), text)
         default: break
         }

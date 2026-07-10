@@ -126,9 +126,41 @@ for control in [notesLabel, notes, notesEdit] as [NSView] {
     textPage.addSubview(control)
 }
 
+// MARK: - Page 5 · Layout (box, split view, scroll view)
+let layoutPage = NSView(frame: NSMakeRect(0, 0, pageWidth, pageHeight))
+var r5 = Rows(top: pageHeight - 16)
+
+let splitLabel = NSTextField(labelWithString: "Split view (drag the divider):", frame: NSMakeRect(24, r5.next(22), 300, 22))
+
+let split = NSSplitView(vertical: true, frame: NSMakeRect(24, r5.next(170), 486, 170))
+let leftBox = NSBox(title: "Left pane", frame: NSMakeRect(0, 0, 200, 170))
+let leftContent = NSView(frame: NSMakeRect(0, 0, 180, 140))
+leftContent.addSubview(NSTextField(labelWithString: "Leading", frame: NSMakeRect(12, 100, 150, 24)))
+leftBox.contentView = leftContent
+let rightBox = NSBox(title: "Right pane", frame: NSMakeRect(0, 0, 260, 170))
+let rightContent = NSView(frame: NSMakeRect(0, 0, 240, 140))
+rightContent.addSubview(NSTextField(labelWithString: "Trailing", frame: NSMakeRect(12, 100, 150, 24)))
+rightBox.contentView = rightContent
+split.addArrangedSubview(leftBox)
+split.addArrangedSubview(rightBox)
+split.setPosition(200)
+
+let scrollLabel = NSTextField(labelWithString: "Scroll view (tall document):", frame: NSMakeRect(24, r5.next(22), 300, 22))
+let scroll = NSScrollView(frame: NSMakeRect(24, r5.next(200), 486, 200))
+let document = NSView(frame: NSMakeRect(0, 0, 440, 600))
+var docRows = Rows(top: 600 - 10)
+for i in 1...12 {
+    document.addSubview(NSTextField(labelWithString: "Scrollable row \(i)", frame: NSMakeRect(16, docRows.next(24), 300, 24)))
+}
+scroll.documentView = document
+
+for control in [splitLabel, split, scrollLabel, scroll] as [NSView] {
+    layoutPage.addSubview(control)
+}
+
 // MARK: - Tab view assembly
 let tabView = NSTabView(frame: NSMakeRect(0, 0, pageWidth, pageHeight + 60))
-for (label, page) in [("Basics", basics), ("Values", values), ("Pickers", pickers), ("Text", textPage)] {
+for (label, page) in [("Basics", basics), ("Values", values), ("Pickers", pickers), ("Text", textPage), ("Layout", layoutPage)] {
     let item = NSTabViewItem()
     item.label = label
     item.view = page

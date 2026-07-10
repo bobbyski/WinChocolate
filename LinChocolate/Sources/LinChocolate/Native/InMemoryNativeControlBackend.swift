@@ -15,7 +15,7 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     public enum Kind: Equatable {
         case window, view, button, label, textField, secureField, searchField, comboBox
         case checkbox, radio, slider, progress, popUp, stepper, level, textView
-        case datePicker, colorWell, tabView
+        case datePicker, colorWell, tabView, box, scrollView, splitView
     }
 
     private var nextRaw: UInt = 1
@@ -44,6 +44,8 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     public private(set) var dates: [UInt: Date] = [:]
     public private(set) var colors: [UInt: NSColor] = [:]
     public private(set) var tabPages: [UInt: [(page: UInt, label: String)]] = [:]
+    public private(set) var splitPanes: [UInt: [UInt]] = [:]
+    public private(set) var dividerPositions: [UInt: Double] = [:]
     private var dateChangeActions: [UInt: (Date) -> Void] = [:]
     private var colorChangeActions: [UInt: (NSColor) -> Void] = [:]
 
@@ -206,6 +208,25 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     }
     public func addTabPage(_ page: NativeHandle, label: String, to tabView: NativeHandle) {
         tabPages[tabView.rawValue, default: []].append((page: page.rawValue, label: label))
+    }
+    public func createBox(title: String, frame: NSRect) -> NativeHandle {
+        let h = allocate(.box)
+        titles[h.rawValue] = title
+        texts[h.rawValue] = title
+        frames[h.rawValue] = frame
+        return h
+    }
+    public func createScrollView(frame: NSRect) -> NativeHandle {
+        let h = allocate(.scrollView); frames[h.rawValue] = frame; return h
+    }
+    public func createSplitView(vertical: Bool, frame: NSRect) -> NativeHandle {
+        let h = allocate(.splitView); frames[h.rawValue] = frame; return h
+    }
+    public func addSplitPane(_ pane: NativeHandle, to splitView: NativeHandle) {
+        splitPanes[splitView.rawValue, default: []].append(pane.rawValue)
+    }
+    public func setDividerPosition(_ position: Double, for splitView: NativeHandle) {
+        dividerPositions[splitView.rawValue] = position
     }
     public func addSubview(_ child: NativeHandle, to parent: NativeHandle) {
         subviews[parent.rawValue, default: []].append(child.rawValue)

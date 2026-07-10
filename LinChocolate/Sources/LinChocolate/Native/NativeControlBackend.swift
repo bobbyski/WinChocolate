@@ -20,7 +20,8 @@ public protocol NativeControlBackend: AnyObject {
     // MARK: Windows
     /// Creates a top-level window and returns its handle.
     func createWindow(title: String, frame: NSRect, styleMask: NSWindow.StyleMask) -> NativeHandle
-    /// Installs `view` as the window's content area.
+    /// Installs `view` as the single content child of `window` — also used for
+    /// other single-child containers (box, scroll view), routed by kind.
     func setContentView(_ view: NativeHandle, for window: NativeHandle)
     /// Shows and orders the window to the front.
     func showWindow(_ handle: NativeHandle)
@@ -71,6 +72,17 @@ public protocol NativeControlBackend: AnyObject {
     /// Appends `page` as a new tab titled `label`. `setSelectedIndex` switches
     /// tabs; `setSelectionChangeAction` reports user tab switches.
     func addTabPage(_ page: NativeHandle, label: String, to tabView: NativeHandle)
+    /// Creates a titled group box (`setContentView` installs its content).
+    func createBox(title: String, frame: NSRect) -> NativeHandle
+    /// Creates a scroll container (`setContentView` installs its document view).
+    func createScrollView(frame: NSRect) -> NativeHandle
+    /// Creates a two-pane split container. `vertical` follows AppKit: a
+    /// vertical *divider*, panes side by side.
+    func createSplitView(vertical: Bool, frame: NSRect) -> NativeHandle
+    /// Adds the next pane (first call = leading/top, second = trailing/bottom).
+    func addSplitPane(_ pane: NativeHandle, to splitView: NativeHandle)
+    /// Moves the split divider to `position` (pixels from the leading edge).
+    func setDividerPosition(_ position: Double, for splitView: NativeHandle)
     /// Places `child` inside `parent` at the child's frame origin.
     func addSubview(_ child: NativeHandle, to parent: NativeHandle)
 

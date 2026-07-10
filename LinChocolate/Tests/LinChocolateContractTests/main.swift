@@ -287,6 +287,38 @@ do {
     check(tabs.selectedTabViewItem === itemA, "selectedTabViewItem tracks the index")
 }
 
+// MARK: 9 — Box, scroll view, split view
+do {
+    let backend = InMemoryNativeControlBackend()
+    NSApplication.shared.nativeBackend = backend
+
+    // Box: title + content wire through.
+    let box = NSBox(title: "Group", frame: NSMakeRect(0, 0, 200, 100))
+    check(backend.text(for: box.handle) == "Group", "box title reaches the backend")
+    let inner = NSView(frame: NSMakeRect(0, 0, 180, 80))
+    box.contentView = inner
+    check(backend.contentViews[box.handle.rawValue] == inner.handle.rawValue, "box content view installs")
+    box.title = "Renamed"
+    check(backend.text(for: box.handle) == "Renamed", "box title setter writes through")
+
+    // Scroll view: document view installs.
+    let scroll = NSScrollView(frame: NSMakeRect(0, 0, 200, 150))
+    let doc = NSView(frame: NSMakeRect(0, 0, 400, 600))
+    scroll.documentView = doc
+    check(backend.contentViews[scroll.handle.rawValue] == doc.handle.rawValue, "scroll documentView installs")
+
+    // Split view: panes in order + divider position.
+    let split = NSSplitView(vertical: true, frame: NSMakeRect(0, 0, 400, 200))
+    let a = NSView(frame: NSMakeRect(0, 0, 100, 200))
+    let b = NSView(frame: NSMakeRect(0, 0, 100, 200))
+    split.addArrangedSubview(a)
+    split.addArrangedSubview(b)
+    check(backend.splitPanes[split.handle.rawValue] == [a.handle.rawValue, b.handle.rawValue],
+          "split panes recorded in order")
+    split.setPosition(160)
+    check(backend.dividerPositions[split.handle.rawValue] == 160, "divider position writes through")
+}
+
 if failures == 0 {
     print("\nAll contract tests passed.")
 } else {

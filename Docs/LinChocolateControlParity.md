@@ -29,6 +29,9 @@ here (Goal 2 — native modern look).
 | `NSDatePicker` | `GtkCalendar` | ✅ | Graphical calendar style; `day-selected` → `dateValue` / `onDateChange` via `GDateTime` ↔ `Date` (unix epoch). |
 | `NSColorWell` | `GtkColorButton` | ✅ | Swatch + native chooser; `color-set` → `color` / `onColorChange` via `GdkRGBA` ↔ `NSColor`. Deprecated GTK peer (like `GtkComboBoxText`) — the non-deprecated `GtkColorDialogButton` is async-only. **Chooser is deliberately non-modal**: a modal chooser grabs all input, and when the dialog fails to map over XQuartz the app looks hung and can't be closed (hit in practice; verified fixed by scripted click-through with the dialog open). |
 | `NSTabView` / `NSTabViewItem` | `GtkNotebook` | ✅ | Tabbed pages; `switch-page` → `indexOfSelectedTab` / `onSelectionChange`; programmatic `selectTabViewItem(at:)`. |
+| `NSBox` | `GtkFrame` | ✅ | Titled group box; `contentView` via kind-routed `setContentView`. |
+| `NSScrollView` | `GtkScrolledWindow` | ✅ | `documentView` scrolls when larger than the frame; native overlay scrollbars. |
+| `NSSplitView` | `GtkPaned` | ✅ | Two panes (`addArrangedSubview`), draggable divider, `setPosition`. AppKit `vertical` = GTK horizontal orientation. |
 | `NSTableView` | `GtkColumnView` | ⏳ | |
 | `NSToolbar` | hand-drawn (Apple-look exception) | ⏳ | Keeps the Apple look/feel per Goal 2's toolbar exception. |
 | `NSAlert` | `AdwMessageDialog` / `GtkAlertDialog` | ⏳ | |
@@ -41,12 +44,13 @@ must be checked per widget when binding a new control:
 
 - **Nominal** (need a typed pointer / `as*` cast helper): `GtkWindow`,
   `GtkButton`, `GtkCheckButton`, `GtkFixed`, `GtkRange`, `GtkComboBox`,
-  `GtkTextView`, `GtkTextBuffer`. Plain C structs (`GdkRGBA`, `GtkTextIter`)
-  import as Swift structs.
+  `GtkTextView`, `GtkTextBuffer`, `GtkFrame`. Plain C structs (`GdkRGBA`,
+  `GtkTextIter`) import as Swift structs.
 - **Opaque** (functions take `OpaquePointer` directly): `GtkLabel`,
   `GtkEditable`, `GtkProgressBar`, `GtkDropDown`, `GtkComboBoxText`,
   `GtkPasswordEntry`, `GtkSearchEntry`, `GtkSpinButton`, `GtkLevelBar`,
-  `GtkCalendar`, `GtkColorChooser`, `GDateTime`, `GMainLoop`.
+  `GtkCalendar`, `GtkColorChooser`, `GtkNotebook`, `GtkScrolledWindow`,
+  `GtkPaned`, `GDateTime`, `GMainLoop`.
 
 There is no pattern to which is which (`GtkSpinButton` is opaque while the
 simpler `GtkButton` is nominal), so it must be checked per widget.
