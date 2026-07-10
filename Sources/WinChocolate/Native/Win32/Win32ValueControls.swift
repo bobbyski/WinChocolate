@@ -34,6 +34,9 @@ extension Win32NativeControlBackend {
         )
         setProgressIndicatorRange(minValue: minValue, maxValue: maxValue, for: handle)
         setProgressIndicatorValue(value, for: handle)
+        if let hwnd = hwnd(from: handle) {
+            applyDarkProgressColorsIfNeeded(hwnd)
+        }
         return handle
     }
 

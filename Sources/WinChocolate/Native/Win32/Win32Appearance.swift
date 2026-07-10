@@ -85,6 +85,23 @@ extension Win32NativeControlBackend {
         _ = winSendMessageW(hwnd, mcmSetColor, WPARAM(mcscTrailingText), trailing)
     }
 
+    /// A native determinate progress bar (`msctls_progress32`, used by
+    /// `NSProgressIndicator` and `NSLevelIndicator`'s continuous capacity) shows
+    /// a light themed fill that reads as a bright white slab on a dark surface.
+    /// Under dark, de-theme it (so the explicit color messages take effect) and
+    /// give it an accent fill on a dark track. A later threshold color
+    /// (warning/critical, via `setProgressBarColor`) still overrides the fill.
+    func applyDarkProgressColorsIfNeeded(_ hwnd: HWND) {
+        guard NSApplication.shared.effectiveAppearance.winIsDark else {
+            return
+        }
+        _ = withWideString("") { empty in
+            winSetWindowTheme(hwnd, empty, empty)
+        }
+        _ = winSendMessageW(hwnd, pbmSetBarColor, 0, LPARAM(colorRef(from: .controlAccentColor)))
+        _ = winSendMessageW(hwnd, pbmSetBkColor, 0, LPARAM(colorRef(red: 0.22, green: 0.22, blue: 0.23)))
+    }
+
     /// Applies the dark calendar palette to a `SysDateTimePick32`'s drop-down
     /// month calendar (`DTM_SETMCCOLOR` takes the same color parts).
     func applyDarkDropDownCalendarColorsIfNeeded(_ hwnd: HWND) {

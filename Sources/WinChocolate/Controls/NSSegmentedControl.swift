@@ -1,8 +1,12 @@
-/// A segmented control made from AppKit-shaped segment state.
+/// A framework-drawn segmented control.
 ///
-/// The first WinChocolate slice composes native push buttons inside a view
-/// container. This keeps application code pointed at `NSSegmentedControl`
-/// while the backend can later swap in a custom or modern renderer.
+/// WinChocolate draws the segmented control itself — like the drawn table, level
+/// indicator, token field, and disclosure button — rather than composing native
+/// push buttons. Only a framework-drawn control can render AppKit's segment
+/// shapes (the `.capsule` pill, `.rounded` strip, `.separated` pills, and the
+/// square/textured families), which have no native Win32 form. The public
+/// surface follows AppKit's segment model: labels, per-segment
+/// width/enabled/image/tag/menu, tracking mode, and keyboard selection.
 open class NSSegmentedControl: NSControl {
     /// Segment selection behavior.
     public enum TrackingMode: Sendable {
@@ -34,7 +38,6 @@ open class NSSegmentedControl: NSControl {
     }
 
     private var segments: [SegmentState]
-    private var segmentButtons: [NSButton] = []
     private var isUpdatingSelection = false
 
     /// Number of segments.
@@ -65,10 +68,11 @@ open class NSSegmentedControl: NSControl {
     /// Segment visual style request.
     open var segmentStyle: Style = .automatic {
         didSet {
-            applySegmentBezelStyle()
-            layoutSegments()
+            needsDisplay = true
         }
     }
+
+    // MARK: - Style geometry (pure/testable)
 
     /// The gap drawn between segments for a given style. The `.separated` style
     /// stands its segments apart as individual pills (the macOS separated look,
@@ -83,25 +87,49 @@ open class NSSegmentedControl: NSControl {
         }
     }
 
-    /// Whether a style renders its segments as flat, square-edged buttons (the
-    /// squared/textured family) versus the standard themed rounded segment. Pure
-    /// and testable. Drives each segment button's bezel so the style is visible.
-    public static func winSegmentButtonIsFlat(for style: Style) -> Bool {
+    /// The outer corner radius of the control (or of each pill, for
+    /// `.separated`) for a given style and height: a full half-height pill for
+    /// `.capsule`, a modest rounding for the rounded family, and square corners
+    /// for the textured/small-square family. Pure/testable.
+    public static func winSegmentCornerRadius(for style: Style, height: CGFloat) -> CGFloat {
         switch style {
-        case .texturedSquare, .smallSquare, .roundRect, .texturedRounded:
-            return true
-        default:
-            return false
+        case .capsule:
+            return height / 2
+        case .rounded, .texturedRounded, .automatic, .separated:
+            return min(6, height / 2)
+        case .roundRect:
+            return 4
+        case .texturedSquare, .smallSquare:
+            return 0
         }
     }
 
-    /// Applies the current style's flat/themed bezel to every segment button.
-    private func applySegmentBezelStyle() {
-        let flat = NSSegmentedControl.winSegmentButtonIsFlat(for: segmentStyle)
-        for button in segmentButtons {
-            button.bezelStyle = flat ? .smallSquare : .rounded
+    /// The frame of each segment inside the control, in the control's own
+    /// coordinates. Fixed-width segments keep their width; the rest split the
+    /// remaining space (minus the inter-segment gaps) equally. Exposed for tests.
+    public func winSegmentFrames() -> [NSRect] {
+        guard !segments.isEmpty else {
+            return []
         }
+
+        let spacing = NSSegmentedControl.winSegmentSpacing(for: segmentStyle)
+        let totalSpacing = spacing * CGFloat(max(segments.count - 1, 0))
+        let requestedWidth = segments.reduce(CGFloat(0)) { $0 + $1.width }
+        let automaticCount = segments.filter { $0.width == 0 }.count
+        let remainingWidth = max(0, frame.size.width - requestedWidth - totalSpacing)
+        let automaticWidth = automaticCount == 0 ? 0 : remainingWidth / CGFloat(automaticCount)
+
+        var x: CGFloat = 0
+        var rects: [NSRect] = []
+        for segment in segments {
+            let width = segment.width == 0 ? automaticWidth : segment.width
+            rects.append(NSMakeRect(x, 0, width, frame.size.height))
+            x += width + spacing
+        }
+        return rects
     }
+
+    // MARK: - Init
 
     /// Creates an empty segmented control.
     public override init(frame frameRect: NSRect) {
@@ -113,13 +141,14 @@ open class NSSegmentedControl: NSControl {
     public init(labels: [String], frame frameRect: NSRect) {
         self.segments = labels.map { SegmentState(label: $0, width: 0, isEnabled: true, isSelected: false, image: nil, tag: 0, menu: nil) }
         super.init(frame: frameRect)
-        rebuildSegmentButtons()
     }
 
     /// Segmented controls take focus so arrow keys can move the selection.
     open override var acceptsFirstResponder: Bool {
         trackingMode != .momentary
     }
+
+    // MARK: - Keyboard
 
     /// Moves the selection with the arrow keys in selection tracking modes.
     open override func keyDown(with event: NSEvent) {
@@ -159,17 +188,21 @@ open class NSSegmentedControl: NSControl {
         }
     }
 
-    /// Creates the native container peer.
+    // MARK: - Peer
+
+    /// Creates the native container peer the control draws into.
     open override func createNativePeer(in backend: NativeControlBackend, parent: NativeHandle?) -> NativeHandle {
         backend.createView(frame: frame, parent: parent)
     }
 
-    /// Ensures the composed segment buttons exist before native realization.
     @discardableResult
     open override func realizeNativePeer(in backend: NativeControlBackend, parent: NativeHandle?) -> NativeHandle {
-        rebuildSegmentButtons()
-        return super.realizeNativePeer(in: backend, parent: parent)
+        let handle = super.realizeNativePeer(in: backend, parent: parent)
+        needsDisplay = true
+        return handle
     }
+
+    // MARK: - Segment accessors
 
     /// Sets the label for a segment.
     open func setLabel(_ label: String, forSegment segment: Int) {
@@ -178,10 +211,7 @@ open class NSSegmentedControl: NSControl {
         }
 
         segments[segment].label = label
-        if segmentButtons.indices.contains(segment) {
-            segmentButtons[segment].title = label
-            applyImage(to: segmentButtons[segment], segment: segment)
-        }
+        needsDisplay = true
     }
 
     /// Returns the label for a segment.
@@ -193,16 +223,16 @@ open class NSSegmentedControl: NSControl {
         return segments[segment].label
     }
 
-    /// Sets the image for a segment.
+    /// Sets the image for a segment. (Stored in the model; label rendering is
+    /// used for the drawn control — segment image rendering is a follow-up, since
+    /// the framework has no image-into-context blit yet.)
     open func setImage(_ image: NSImage?, forSegment segment: Int) {
         guard segments.indices.contains(segment) else {
             return
         }
 
         segments[segment].image = image
-        if segmentButtons.indices.contains(segment) {
-            applyImage(to: segmentButtons[segment], segment: segment)
-        }
+        needsDisplay = true
     }
 
     /// Returns the image for a segment.
@@ -262,7 +292,7 @@ open class NSSegmentedControl: NSControl {
         }
 
         segments[segment].width = max(0, width)
-        layoutSegments()
+        needsDisplay = true
     }
 
     /// Returns the requested width for a segment.
@@ -281,9 +311,7 @@ open class NSSegmentedControl: NSControl {
         }
 
         segments[segment].isEnabled = enabled
-        if segmentButtons.indices.contains(segment) {
-            segmentButtons[segment].isEnabled = enabled
-        }
+        needsDisplay = true
     }
 
     /// Returns whether an individual segment is enabled.
@@ -306,9 +334,7 @@ open class NSSegmentedControl: NSControl {
             selectedSegment = selected ? segment : -1
         case .selectAny:
             segments[segment].isSelected = selected
-            if segmentButtons.indices.contains(segment) {
-                segmentButtons[segment].state = selected ? .on : .off
-            }
+            needsDisplay = true
         case .momentary:
             selectedSegment = selected ? segment : -1
         }
@@ -323,76 +349,30 @@ open class NSSegmentedControl: NSControl {
         return segments[segment].isSelected
     }
 
-    private func resizeSegments(to count: Int) {
-        if count < segments.count {
-            segments.removeLast(segments.count - count)
-        } else if count > segments.count {
-            for _ in segments.count..<count {
-                segments.append(SegmentState(label: "", width: 0, isEnabled: true, isSelected: false, image: nil, tag: 0, menu: nil))
-            }
-        }
+    // MARK: - Interaction
 
-        selectedSegment = normalizedSelection(selectedSegment)
-        rebuildSegmentButtons()
-    }
-
-    private func rebuildSegmentButtons() {
-        for button in segmentButtons {
-            button.removeFromSuperview()
-        }
-        segmentButtons.removeAll()
-
-        for index in segments.indices {
-            let button = NSButton(title: segments[index].label, frame: NSZeroRect)
-            button.state = segments[index].isSelected ? .on : .off
-            button.isEnabled = segments[index].isEnabled
-            applyImage(to: button, segment: index)
-            button.onAction = { [weak self] _ in
-                self?.activateSegment(at: index)
-            }
-            addSubview(button)
-            segmentButtons.append(button)
-        }
-
-        applySegmentBezelStyle()
-        layoutSegments()
-    }
-
-    private func layoutSegments() {
-        guard !segments.isEmpty else {
-            return
-        }
-
-        let spacing = NSSegmentedControl.winSegmentSpacing(for: segmentStyle)
-        let totalSpacing = spacing * CGFloat(max(segments.count - 1, 0))
-        let requestedWidth = segments.reduce(CGFloat(0)) { total, segment in
-            total + segment.width
-        }
-        let automaticCount = segments.filter { $0.width == 0 }.count
-        // The inter-segment gaps eat into the width available to auto-sized
-        // segments, so a separated control's segments stay inside the frame.
-        let remainingWidth = max(0, frame.size.width - requestedWidth - totalSpacing)
-        let automaticWidth = automaticCount == 0 ? 0 : remainingWidth / CGFloat(automaticCount)
-        var x = CGFloat(0)
-
-        for index in segments.indices {
-            let width = segments[index].width == 0 ? automaticWidth : segments[index].width
-            if segmentButtons.indices.contains(index) {
-                segmentButtons[index].frame = NSMakeRect(x, 0, width, frame.size.height)
-            }
-            x += width + spacing
-        }
-    }
-
-    /// Applies a segment's image (and the matching image position) to its button.
-    private func applyImage(to button: NSButton, segment: Int) {
-        let state = segments[segment]
-        button.image = state.image
-        if state.image == nil {
-            button.imagePosition = .noImage
+    /// A click selects (or, in `.selectAny`, toggles) the segment under the
+    /// cursor, or pops that segment's menu.
+    open override func mouseDown(with event: NSEvent) {
+        let localX = event.locationInWindow.x - frameInWindow().origin.x
+        if let index = segmentIndex(atX: localX) {
+            activateSegment(at: index)
         } else {
-            button.imagePosition = state.label.isEmpty ? .imageOnly : .imageLeft
+            super.mouseDown(with: event)
         }
+    }
+
+    /// Activates a segment as if clicked (respecting its menu and the tracking
+    /// mode). Exposed for tests and scripted/programmatic interaction.
+    public func winSelectSegment(byClickAt index: Int) {
+        activateSegment(at: index)
+    }
+
+    private func segmentIndex(atX x: CGFloat) -> Int? {
+        for (index, rect) in winSegmentFrames().enumerated() where x >= rect.origin.x && x < rect.origin.x + rect.size.width {
+            return index
+        }
+        return nil
     }
 
     private func activateSegment(at index: Int) {
@@ -403,7 +383,8 @@ open class NSSegmentedControl: NSControl {
         // A segment with an attached menu pops it up under the segment instead
         // of acting as a plain selection.
         if let menu = segments[index].menu {
-            let origin = segmentButtons.indices.contains(index) ? segmentButtons[index].frame.origin : NSMakePoint(0, 0)
+            let frames = winSegmentFrames()
+            let origin = frames.indices.contains(index) ? frames[index].origin : NSMakePoint(0, 0)
             _ = menu.popUp(positioning: nil, at: origin, in: self)
             return
         }
@@ -423,6 +404,191 @@ open class NSSegmentedControl: NSControl {
         sendAction()
     }
 
+    // MARK: - Drawing
+
+    /// Off-curve control distance for approximating a quarter circle.
+    private static let cornerControl: CGFloat = 0.5522847498
+
+    /// A rectangle path that rounds only its left and/or right corners. Used for
+    /// the selection band in a joined control: only the outer end of an end
+    /// segment is rounded (matching the control's outer shape), while inner
+    /// segment edges stay square, so the rounding lands only where segments meet
+    /// the outside — never between connected segments.
+    private static func winSegmentPath(rect: NSRect, radius: CGFloat, roundLeft: Bool, roundRight: Bool) -> NSBezierPath {
+        let cap = min(radius, rect.size.width / 2, rect.size.height / 2)
+        let rL = roundLeft ? cap : 0
+        let rR = roundRight ? cap : 0
+        let control = cornerControl
+        let left = rect.origin.x
+        let right = rect.origin.x + rect.size.width
+        let top = rect.origin.y
+        let bottom = rect.origin.y + rect.size.height
+
+        let path = NSBezierPath()
+        path.move(to: NSMakePoint(left + rL, top))
+        path.line(to: NSMakePoint(right - rR, top))
+        if rR > 0 {
+            path.curve(to: NSMakePoint(right, top + rR),
+                       controlPoint1: NSMakePoint(right - rR + rR * control, top),
+                       controlPoint2: NSMakePoint(right, top + rR - rR * control))
+        } else {
+            path.line(to: NSMakePoint(right, top))
+        }
+        path.line(to: NSMakePoint(right, bottom - rR))
+        if rR > 0 {
+            path.curve(to: NSMakePoint(right - rR, bottom),
+                       controlPoint1: NSMakePoint(right, bottom - rR + rR * control),
+                       controlPoint2: NSMakePoint(right - rR + rR * control, bottom))
+        } else {
+            path.line(to: NSMakePoint(right, bottom))
+        }
+        path.line(to: NSMakePoint(left + rL, bottom))
+        if rL > 0 {
+            path.curve(to: NSMakePoint(left, bottom - rL),
+                       controlPoint1: NSMakePoint(left + rL - rL * control, bottom),
+                       controlPoint2: NSMakePoint(left, bottom - rL + rL * control))
+        } else {
+            path.line(to: NSMakePoint(left, bottom))
+        }
+        path.line(to: NSMakePoint(left, top + rL))
+        if rL > 0 {
+            path.curve(to: NSMakePoint(left + rL, top),
+                       controlPoint1: NSMakePoint(left, top + rL - rL * control),
+                       controlPoint2: NSMakePoint(left + rL - rL * control, top))
+        } else {
+            path.line(to: NSMakePoint(left, top))
+        }
+        path.close()
+        return path
+    }
+
+    open override func draw(_ dirtyRect: NSRect) {
+        guard !segments.isEmpty else {
+            return
+        }
+
+        // The border, dividers, and selection highlight all use the accent color:
+        // AppKit exposes no border toggle on NSSegmentedControl, and on the dark
+        // Windows surface a neutral hairline had too little contrast — an accent
+        // frame reads cleanly. Unselected segments stay transparent (just the
+        // label); the selected segment fills; dividers run the full height to
+        // connect to the border.
+        let rects = winSegmentFrames()
+        let accent = NSColor.controlAccentColor
+        let spacing = NSSegmentedControl.winSegmentSpacing(for: segmentStyle)
+        let lastIndex = rects.count - 1
+        // Inset the whole drawing so the 1px accent border and its rounded
+        // corners sit fully inside the view — a border stroked at the very edge
+        // gets its outer half (and the corner curve) clipped by the view bounds.
+        let margin: CGFloat = 1.5
+        let top = margin
+        let bottom = max(frame.size.height - margin, top)
+        let radius = NSSegmentedControl.winSegmentCornerRadius(for: segmentStyle, height: bottom - top)
+
+        if spacing > 0 {
+            // Separated: each segment is an accent-outlined pill; selected ones
+            // are also accent-filled.
+            for (index, rect) in rects.enumerated() {
+                let path = NSBezierPath(roundedRect: rect.insetBy(dx: margin, dy: margin), xRadius: radius, yRadius: radius)
+                if isSegmentHighlighted(index) {
+                    accent.setFill()
+                    path.fill()
+                }
+                accent.setStroke()
+                path.stroke()
+                drawSegmentLabel(index, in: rect)
+            }
+            return
+        }
+
+        // Joined: an accent outer border with full-height accent dividers, the
+        // selected segment filled (rounding only the outer corner of an end
+        // segment; inner edges between connected segments stay square).
+        let outerLeft = margin
+        let outerRight = max(frame.size.width - margin, outerLeft)
+        let outerPath = NSBezierPath(
+            roundedRect: NSMakeRect(outerLeft, top, outerRight - outerLeft, bottom - top),
+            xRadius: radius,
+            yRadius: radius
+        )
+
+        accent.setFill()
+        for index in rects.indices where isSegmentHighlighted(index) {
+            let leftEdge = index == 0 ? outerLeft : rects[index].origin.x
+            let rightEdge = index == lastIndex ? outerRight : rects[index].origin.x + rects[index].size.width
+            let band = NSMakeRect(leftEdge, top, max(rightEdge - leftEdge, 0), bottom - top)
+            NSSegmentedControl.winSegmentPath(rect: band, radius: radius, roundLeft: index == 0, roundRight: index == lastIndex).fill()
+        }
+
+        accent.setStroke()
+        for rect in rects.dropLast() {
+            let x = rect.origin.x + rect.size.width
+            let divider = NSBezierPath()
+            divider.move(to: NSMakePoint(x, top))
+            divider.line(to: NSMakePoint(x, bottom))
+            divider.stroke()
+        }
+        outerPath.stroke()
+
+        for index in rects.indices {
+            drawSegmentLabel(index, in: rects[index])
+        }
+    }
+
+    /// Whether a segment reads as selected (the single selection, or any of the
+    /// `.selectAny` flags).
+    private func isSegmentHighlighted(_ index: Int) -> Bool {
+        index == selectedSegment || segments[index].isSelected
+    }
+
+    private func drawSegmentLabel(_ index: Int, in rect: NSRect) {
+        let segment = segments[index]
+        guard !segment.label.isEmpty else {
+            return
+        }
+
+        let color: NSColor = !segment.isEnabled
+            ? .tertiaryLabelColor
+            : (isSegmentHighlighted(index) ? .white : .labelColor)
+        let attributes: [NSAttributedString.Key: Any] = [
+            .foregroundColor: color,
+            .font: font ?? NSFont.systemFont(ofSize: 12)
+        ]
+        let size = segment.label.size(withAttributes: attributes)
+        let origin = NSPoint(
+            x: rect.origin.x + (rect.size.width - size.width) / 2,
+            y: rect.origin.y + (rect.size.height - size.height) / 2
+        )
+        segment.label.draw(at: origin, withAttributes: attributes)
+    }
+
+    /// This view's origin in window coordinates (for click hit mapping).
+    private func frameInWindow() -> NSRect {
+        var origin = frame.origin
+        var parent = superview
+        while let current = parent {
+            origin.x += current.frame.origin.x
+            origin.y += current.frame.origin.y
+            parent = current.superview
+        }
+        return NSRect(origin: origin, size: frame.size)
+    }
+
+    // MARK: - Model maintenance
+
+    private func resizeSegments(to count: Int) {
+        if count < segments.count {
+            segments.removeLast(segments.count - count)
+        } else if count > segments.count {
+            for _ in segments.count..<count {
+                segments.append(SegmentState(label: "", width: 0, isEnabled: true, isSelected: false, image: nil, tag: 0, menu: nil))
+            }
+        }
+
+        selectedSegment = normalizedSelection(selectedSegment)
+        needsDisplay = true
+    }
+
     private func syncSegmentSelection() {
         isUpdatingSelection = true
         defer {
@@ -430,12 +596,9 @@ open class NSSegmentedControl: NSControl {
         }
 
         for index in segments.indices {
-            let selected = index == selectedSegment
-            segments[index].isSelected = selected
-            if segmentButtons.indices.contains(index) {
-                segmentButtons[index].state = selected ? .on : .off
-            }
+            segments[index].isSelected = index == selectedSegment
         }
+        needsDisplay = true
     }
 
     private func normalizedSelection(_ selection: Int) -> Int {
