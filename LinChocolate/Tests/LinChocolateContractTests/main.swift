@@ -587,6 +587,84 @@ do {
     check(grid.selectionIndexes == IndexSet(integer: 2), "selectionIndexes reflects the selection")
 }
 
+// MARK: 19 — Toolbar
+do {
+    let backend = InMemoryNativeControlBackend()
+    NSApplication.shared.nativeBackend = backend
+
+    let window = NSWindow(contentRect: NSMakeRect(0, 0, 300, 200),
+                          styleMask: [.titled], backing: .buffered, defer: false)
+    var opened = 0
+    let toolbar = NSToolbar(identifier: "main")
+    let open = NSToolbarItem(itemIdentifier: "open")
+    open.label = "Open"
+    open.onAction = { _ in opened += 1 }
+    toolbar.addItem(open)
+    toolbar.addItem(.flexibleSpace())
+    let save = NSToolbarItem(itemIdentifier: "save")
+    save.label = "Save"
+    toolbar.addItem(save)
+    window.toolbar = toolbar
+
+    let specs = backend.toolbars[window.handle.rawValue]
+    check(specs?.count == 3, "toolbar installs three items")
+    check(specs?[0].label == "Open" && specs?[2].label == "Save", "item labels preserved in order")
+    check(specs?[1].isFlexibleSpace == true, "flexible space carried through the seam")
+
+    backend.simulateToolbarActivate(window.handle, item: 0)
+    check(opened == 1, "toolbar item action fires")
+
+    // Adding an item after install refreshes the toolbar.
+    let extra = NSToolbarItem(itemIdentifier: "extra")
+    extra.label = "Extra"
+    toolbar.addItem(extra)
+    check(backend.toolbars[window.handle.rawValue]?.count == 4, "late-added item reinstalls the bar")
+}
+
+// MARK: 19 — Open/save panels
+do {
+    let backend = InMemoryNativeControlBackend()
+    NSApplication.shared.nativeBackend = backend
+
+    let open = NSOpenPanel()
+    backend.nextOpenPanelPath = "/tmp/pick.txt"
+    check(open.runModal() == NSModalResponseOK, "open panel returns OK for a chosen path")
+    check(open.url?.path == "/tmp/pick.txt", "open panel url set")
+    check(open.urls.map(\.path) == ["/tmp/pick.txt"], "open panel urls set")
+
+    backend.nextOpenPanelPath = nil
+    check(open.runModal() == NSModalResponseCancel, "open panel returns Cancel for nil")
+
+    let save = NSSavePanel()
+    save.nameFieldStringValue = "report.md"
+    save.directoryURL = URL(fileURLWithPath: "/tmp")
+    backend.nextSavePanelPath = "/tmp/report.md"
+    check(save.runModal() == NSModalResponseOK, "save panel returns OK")
+    check(save.url?.path == "/tmp/report.md", "save panel url set")
+    check(backend.savePanelRuns.last?.suggestedName == "report.md", "suggested name reaches the backend")
+    check(backend.savePanelRuns.last?.directory == "/tmp", "initial directory reaches the backend")
+}
+
+// MARK: 20 — Attributed strings
+do {
+    let backend = InMemoryNativeControlBackend()
+    NSApplication.shared.nativeBackend = backend
+
+    let text = NSMutableAttributedString(string: "hello world")
+    text.addAttribute(.foregroundColor, value: NSColor.red, range: NSMakeRange(0, 5))
+    text.addAttribute(.font, value: NSFont.boldSystemFont(ofSize: 14), range: NSMakeRange(6, 5))
+    let runs = text.nativeRuns()
+    check(runs.count == 3, "attributes split into three runs")
+    check(runs[0].text == "hello" && runs[0].color == .red && runs[0].font == nil, "first run colored")
+    check(runs[1].text == " " && runs[1].color == nil && runs[1].font == nil, "middle run plain")
+    check(runs[2].text == "world" && runs[2].font?.bold == true, "last run bold")
+
+    let label = NSTextField(labelWithString: "", frame: NSMakeRect(0, 0, 200, 24))
+    label.attributedStringValue = text
+    check(backend.styledTexts[label.handle.rawValue]?.count == 3, "styled runs reach the backend")
+    check(backend.text(for: label.handle) == "hello world", "plain text recorded alongside runs")
+}
+
 if failures == 0 {
     print("\nAll contract tests passed.")
 } else {

@@ -134,8 +134,13 @@ let styledLabel = NSTextField(labelWithString: "Bold 18pt, firebrick red (NSFont
 styledLabel.font = .boldSystemFont(ofSize: 18)
 styledLabel.textColor = NSColor(red: 0.70, green: 0.13, blue: 0.13)
 
-let monoLabel = NSTextField(labelWithString: "Monospace 13pt sample 0123", frame: NSMakeRect(24, r4.next(22), 486, 22))
-monoLabel.font = .monospacedSystemFont(ofSize: 13)
+let monoLabel = NSTextField(labelWithString: "", frame: NSMakeRect(24, r4.next(22), 486, 22))
+let attributed = NSMutableAttributedString(string: "Attributed: red bold, plain, blue mono")
+attributed.addAttribute(.foregroundColor, value: NSColor.red, range: NSMakeRange(12, 8))
+attributed.addAttribute(.font, value: NSFont.boldSystemFont(ofSize: 14), range: NSMakeRange(12, 8))
+attributed.addAttribute(.foregroundColor, value: NSColor.blue, range: NSMakeRange(29, 9))
+attributed.addAttribute(.font, value: NSFont.monospacedSystemFont(ofSize: 13), range: NSMakeRange(29, 9))
+monoLabel.attributedStringValue = attributed
 
 let notesLabel = NSTextField(labelWithString: "Notes (monospace):", frame: NSMakeRect(24, r4.next(24), 200, 24))
 let notes = NSTextView(string: "Type multi-line notes here…", frame: NSMakeRect(24, r4.next(120), 486, 120))
@@ -363,6 +368,37 @@ mainMenu.addItem(helpItem)
 mainMenu.setSubmenu(helpMenu, for: helpItem)
 
 NSApp.mainMenu = mainMenu
+
+// MARK: - Toolbar (the deliberate Apple-look exception)
+let toolbar = NSToolbar(identifier: "main")
+let openItem = NSToolbarItem(itemIdentifier: "open")
+openItem.label = "Open"
+openItem.onAction = { _ in
+    let panel = NSOpenPanel()
+    echo.stringValue = panel.runModal() == NSModalResponseOK
+        ? "Open: \(panel.url?.path ?? "?")" : "Open: cancelled"
+}
+let saveItem = NSToolbarItem(itemIdentifier: "save")
+saveItem.label = "Save"
+saveItem.onAction = { _ in
+    let panel = NSSavePanel()
+    panel.nameFieldStringValue = "untitled.txt"
+    echo.stringValue = panel.runModal() == NSModalResponseOK
+        ? "Save: \(panel.url?.path ?? "?")" : "Save: cancelled"
+}
+let infoItem = NSToolbarItem(itemIdentifier: "info")
+infoItem.label = "Info"
+infoItem.onAction = { _ in
+    let alert = NSAlert()
+    alert.messageText = "Toolbar"
+    alert.informativeText = "The Apple-look toolbar exception, on Linux."
+    alert.runModal()
+}
+toolbar.addItem(openItem)
+toolbar.addItem(saveItem)
+toolbar.addItem(.flexibleSpace())
+toolbar.addItem(infoItem)
+window.toolbar = toolbar
 
 window.contentView = tabView
 window.makeKeyAndOrderFront(nil)

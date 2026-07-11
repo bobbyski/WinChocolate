@@ -15,6 +15,32 @@ public struct NativeFontSpec: Equatable {
     }
 }
 
+/// Platform-neutral description of one toolbar item carried across the seam.
+public struct NativeToolbarItemSpec {
+    public let identifier: String
+    public let label: String
+    public let isFlexibleSpace: Bool
+    public let action: (() -> Void)?
+    public init(identifier: String, label: String, isFlexibleSpace: Bool = false, action: (() -> Void)? = nil) {
+        self.identifier = identifier
+        self.label = label
+        self.isFlexibleSpace = isFlexibleSpace
+        self.action = action
+    }
+}
+
+/// One styled run of text (carries `NSAttributedString` content across the seam).
+public struct NativeTextRun: Equatable {
+    public let text: String
+    public let color: NSColor?
+    public let font: NativeFontSpec?
+    public init(text: String, color: NSColor? = nil, font: NativeFontSpec? = nil) {
+        self.text = text
+        self.color = color
+        self.font = font
+    }
+}
+
 /// Platform-neutral description of one menu-bar item, used to carry `NSMenu`
 /// structures across the backend seam without the seam knowing API types.
 public struct NativeMenuItemSpec {
@@ -69,10 +95,16 @@ public protocol NativeControlBackend: AnyObject {
     func registerWindowCloseAction(for handle: NativeHandle, action: @escaping () -> Void)
     /// Installs (or replaces) the menu bar shown at the top of `window`.
     func installMenuBar(_ menus: [NativeMenuSpec], on window: NativeHandle)
+    /// Installs (or replaces) the Apple-look toolbar under the menu bar.
+    func installToolbar(_ items: [NativeToolbarItemSpec], on window: NativeHandle)
     /// Shows a modal alert and blocks until a button is pressed; returns the
     /// pressed button's index in `buttons` (AppKit order: first = default,
     /// shown rightmost).
     func runAlert(message: String, informative: String, buttons: [String], for window: NativeHandle?) -> Int
+    /// Shows a modal open-file dialog; returns the chosen path, or nil on cancel.
+    func runOpenPanel(directory: String?, for window: NativeHandle?) -> String?
+    /// Shows a modal save-file dialog; returns the chosen path, or nil on cancel.
+    func runSavePanel(directory: String?, suggestedName: String?, for window: NativeHandle?) -> String?
 
     // MARK: Views & controls
     /// Creates a container view (absolute child placement, like AppKit frames).
@@ -184,6 +216,8 @@ public protocol NativeControlBackend: AnyObject {
     func setFont(_ font: NativeFontSpec, for handle: NativeHandle)
     /// Applies a foreground text color to a control.
     func setTextColor(_ color: NSColor, for handle: NativeHandle)
+    /// Replaces a label's content with styled runs (attributed text).
+    func setStyledText(_ runs: [NativeTextRun], for handle: NativeHandle)
     /// Sets a checkbox/radio's on/off state.
     func setButtonState(_ on: Bool, for handle: NativeHandle)
     /// Sets a slider's or progress indicator's value.

@@ -61,4 +61,19 @@ public final class NSWindow {
     public func setContentSize(_ size: NSSize) {
         backend.setFrame(NSMakeRect(0, 0, size.width, size.height), for: handle)
     }
+
+    /// The window's toolbar (the deliberate Apple-look exception). Assigning
+    /// docks it under the menu bar.
+    public var toolbar: NSToolbar? {
+        didSet {
+            toolbar?.window = self
+            reinstallToolbar()
+        }
+    }
+
+    /// Rebuilds the native toolbar from the current items.
+    func reinstallToolbar() {
+        guard let toolbar else { return }
+        backend.installToolbar(toolbar.specs(), on: handle)
+    }
 }

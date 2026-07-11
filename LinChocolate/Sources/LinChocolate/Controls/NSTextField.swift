@@ -32,6 +32,14 @@ public final class NSTextField: NSView {
         }
     }
 
+    /// Styled text with ranged colors/fonts; replaces the plain string.
+    public var attributedStringValue: NSAttributedString? {
+        didSet {
+            guard let attributedStringValue else { return }
+            backend.setStyledText(attributedStringValue.nativeRuns(), for: handle)
+        }
+    }
+
     /// Creates a static, non-editable label.
     public init(labelWithString string: String, frame: NSRect) {
         self.backingValue = string

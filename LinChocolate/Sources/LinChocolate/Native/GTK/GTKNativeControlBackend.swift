@@ -31,6 +31,7 @@ public final class GTKNativeControlBackend: NativeControlBackend {
     private var windowBoxes: [UInt: OpaquePointer] = [:]     // window -> vertical GtkBox child
     private var windowContents: [UInt: OpaquePointer] = [:]  // window -> current content widget
     private var windowMenuBars: [UInt: OpaquePointer] = [:]  // window -> GtkPopoverMenuBar
+    private var windowToolbars: [UInt: OpaquePointer] = [:]  // window -> toolbar GtkBox
     private var segmentButtons: [UInt: [OpaquePointer]] = [:] // segmented -> its toggle buttons
     private var tokenEntries: [UInt: OpaquePointer] = [:]     // token field -> its entry
     private var tokenChips: [UInt: [OpaquePointer]] = [:]     // token field -> chip buttons
@@ -63,6 +64,30 @@ public final class GTKNativeControlBackend: NativeControlBackend {
     public init() {
         gtk_init()
         applyNonCompositedFixups()
+        installToolbarStyle()
+    }
+
+    /// Display-wide CSS for the Apple-look toolbar (the deliberate Apple
+    /// look-and-feel exception, Goal 2): a light gradient strip with a hairline
+    /// bottom border and flat, hover-highlighted text buttons.
+    private func installToolbarStyle() {
+        guard let display = gdk_display_get_default() else { return }
+        let css = """
+            .linchocolate-toolbar {
+                padding: 5px 8px;
+                background: linear-gradient(to bottom, #fdfdfd, #f0f0f0);
+                border-bottom: 1px solid rgba(0,0,0,0.18);
+            }
+            .linchocolate-toolbar button {
+                background: none; border: none; box-shadow: none;
+                padding: 3px 12px; border-radius: 6px;
+            }
+            .linchocolate-toolbar button:hover { background: rgba(0,0,0,0.07); }
+            .linchocolate-toolbar button:active { background: rgba(0,0,0,0.14); }
+            """
+        let provider = gtk_css_provider_new()!
+        gtk_css_provider_load_from_data(provider, css, gssize(css.utf8.count))
+        gtk_style_context_add_provider_for_display(display, OpaquePointer(provider), 600)
     }
 
     /// Popovers (menus, dropdowns) draw a drop shadow and rounded corners that
@@ -157,6 +182,13 @@ public final class GTKNativeControlBackend: NativeControlBackend {
             Unmanaged.passRetained(box).toOpaque(), boxRelease, GConnectFlags(rawValue: 0)
         )
         gtk_widget_add_controller(windowWidget, gesture)
+        // Also dismiss when the window deactivates (click on desktop/other app).
+        let activeBox = WidgetBox(widget: windowWidget)
+        g_signal_connect_data(
+            UnsafeMutableRawPointer(windowWidget), "notify::is-active",
+            unsafeBitCast(gtkWindowActiveTrampoline, to: GCallback.self),
+            Unmanaged.passRetained(activeBox).toOpaque(), boxRelease, GConnectFlags(rawValue: 0)
+        )
     }
     public func setContentView(_ view: NativeHandle, for window: NativeHandle) {
         guard let w = widget(window), let v = widget(view) else { return }
@@ -230,7 +262,13 @@ public final class GTKNativeControlBackend: NativeControlBackend {
         // AppKit's synchronous `runModal` is built from a modal GtkWindow plus a
         // nested GMainLoop that runs until a button responds.
         let alert = gtk_window_new()!
-        gtk_window_set_modal(asWindow(OpaquePointer(alert)), gboolean(1))
+        // Modal only on composited displays: on XQuartz a modal window that
+        // fails to map grabs all input and the app looks hung (seen with the
+        // color chooser). Non-modal still blocks `runModal` via the nested
+        // loop, but can never input-lock the app.
+        if !nonComposited {
+            gtk_window_set_modal(asWindow(OpaquePointer(alert)), gboolean(1))
+        }
         gtk_window_set_resizable(asWindow(OpaquePointer(alert)), gboolean(0))
         if let window, let parent = widget(window) {
             gtk_window_set_transient_for(asWindow(OpaquePointer(alert)), asWindow(parent))
@@ -273,6 +311,71 @@ public final class GTKNativeControlBackend: NativeControlBackend {
 
         gtk_window_destroy(asWindow(OpaquePointer(alert)))
         return state.response
+    }
+    public func installToolbar(_ items: [NativeToolbarItemSpec], on window: NativeHandle) {
+        guard let box = windowBoxes[window.rawValue] else { return }
+        if let old = windowToolbars[window.rawValue] {
+            gtk_box_remove(asBox(box), asWidget(old))
+        }
+        let bar = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 4)!
+        gtk_widget_add_css_class(bar, "linchocolate-toolbar")
+        for item in items {
+            if item.isFlexibleSpace {
+                let spacer = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0)!
+                gtk_widget_set_hexpand(spacer, gboolean(1))
+                gtk_box_append(asBox(OpaquePointer(bar)), spacer)
+                continue
+            }
+            let button = gtk_button_new_with_label(item.label)!
+            if let action = item.action {
+                let actionBox = ActionBox(action)
+                g_signal_connect_data(
+                    UnsafeMutableRawPointer(button), "clicked",
+                    unsafeBitCast(gtkActionTrampoline, to: GCallback.self),
+                    Unmanaged.passRetained(actionBox).toOpaque(), boxRelease, GConnectFlags(rawValue: 0)
+                )
+            }
+            gtk_box_append(asBox(OpaquePointer(bar)), button)
+        }
+        // Below the menu bar if present, else at the very top.
+        let anchor = windowMenuBars[window.rawValue]
+        gtk_box_insert_child_after(asBox(box), bar, anchor.map(asWidget))
+        windowToolbars[window.rawValue] = OpaquePointer(bar)
+    }
+    public func runOpenPanel(directory: String?, for window: NativeHandle?) -> String? {
+        runFileDialog(open: true, directory: directory, suggestedName: nil, for: window)
+    }
+    public func runSavePanel(directory: String?, suggestedName: String?, for window: NativeHandle?) -> String? {
+        runFileDialog(open: false, directory: directory, suggestedName: suggestedName, for: window)
+    }
+
+    /// GtkFileDialog is async-only; AppKit's `runModal` is synchronous, so the
+    /// async completion quits a nested main loop (same pattern as `runAlert`).
+    private func runFileDialog(open: Bool, directory: String?, suggestedName: String?, for window: NativeHandle?) -> String? {
+        let dialog = gtk_file_dialog_new()!
+        if let directory {
+            let folder = g_file_new_for_path(directory)!
+            gtk_file_dialog_set_initial_folder(dialog, folder)
+            g_object_unref(UnsafeMutableRawPointer(folder))
+        }
+        if let suggestedName {
+            gtk_file_dialog_set_initial_name(dialog, suggestedName)
+        }
+        let parent = window.flatMap { widget($0) }.map { asWindow($0) }
+        let loop = g_main_loop_new(nil, gboolean(0))
+        let state = FileDialogState(loop: loop, open: open)
+        if open {
+            gtk_file_dialog_open(dialog, parent, nil,
+                unsafeBitCast(fileDialogFinishedCallback, to: GAsyncReadyCallback.self),
+                Unmanaged.passRetained(state).toOpaque())
+        } else {
+            gtk_file_dialog_save(dialog, parent, nil,
+                unsafeBitCast(fileDialogFinishedCallback, to: GAsyncReadyCallback.self),
+                Unmanaged.passRetained(state).toOpaque())
+        }
+        g_main_loop_run(loop)   // blocks until the completion callback quits it
+        g_object_unref(UnsafeMutableRawPointer(dialog))
+        return state.path
     }
     public func registerWindowCloseAction(for handle: NativeHandle, action: @escaping () -> Void) {
         guard let w = widget(handle) else { return }
@@ -809,6 +912,34 @@ public final class GTKNativeControlBackend: NativeControlBackend {
         guard let w = widget(handle) else { return }
         gtk_widget_set_sensitive(asWidget(w), gboolean(isEnabled ? 1 : 0))
     }
+    public func setStyledText(_ runs: [NativeTextRun], for handle: NativeHandle) {
+        guard let w = widget(handle) else { return }
+        // Attributed text renders via Pango markup on the label.
+        var markup = ""
+        for run in runs {
+            var attributes: [String] = []
+            if let color = run.color {
+                attributes.append(String(
+                    format: "foreground=\"#%02X%02X%02X\"",
+                    Int(color.redComponent * 255), Int(color.greenComponent * 255),
+                    Int(color.blueComponent * 255)
+                ))
+            }
+            if let font = run.font {
+                var description = font.family ?? ""
+                if font.bold { description += " Bold" }
+                if font.italic { description += " Italic" }
+                description += " \(Int(font.size))"
+                attributes.append("font_desc=\"\(description.trimmingCharacters(in: .whitespaces))\"")
+            }
+            let escaped = run.text
+                .replacingOccurrences(of: "&", with: "&amp;")
+                .replacingOccurrences(of: "<", with: "&lt;")
+                .replacingOccurrences(of: ">", with: "&gt;")
+            markup += attributes.isEmpty ? escaped : "<span \(attributes.joined(separator: " "))>\(escaped)</span>"
+        }
+        gtk_label_set_markup(w, markup)   // GtkLabel is opaque
+    }
     public func setFont(_ font: NativeFontSpec, for handle: NativeHandle) {
         widgetFonts[handle.rawValue] = font
         applyWidgetStyle(for: handle)
@@ -1063,6 +1194,34 @@ private final class WidgetBox {
     init(widget: UnsafeMutablePointer<GtkWidget>) { self.widget = widget }
 }
 
+/// Shared state for one modal file-dialog run.
+private final class FileDialogState {
+    let loop: OpaquePointer?
+    let open: Bool          // open vs save (selects the *_finish call)
+    var path: String?
+    init(loop: OpaquePointer?, open: Bool) { self.loop = loop; self.open = open }
+}
+
+/// `GAsyncReadyCallback` for GtkFileDialog open/save — extracts the chosen
+/// file's path (nil on cancel) and quits the nested loop.
+private let fileDialogFinishedCallback: @convention(c) (UnsafeMutableRawPointer?, OpaquePointer?, gpointer?) -> Void = { source, result, data in
+    guard let data else { return }
+    let state = Unmanaged<FileDialogState>.fromOpaque(data).takeRetainedValue()
+    if let source, let result {
+        let file = state.open
+            ? gtk_file_dialog_open_finish(OpaquePointer(source), result, nil)
+            : gtk_file_dialog_save_finish(OpaquePointer(source), result, nil)
+        if let file {
+            if let cPath = g_file_get_path(file) {
+                state.path = String(cString: cPath)
+                g_free(cPath)
+            }
+            g_object_unref(UnsafeMutableRawPointer(file))
+        }
+    }
+    g_main_loop_quit(state.loop)
+}
+
 /// Shared state for one modal alert run: the nested loop and the response.
 private final class AlertState {
     let loop: OpaquePointer?
@@ -1278,20 +1437,36 @@ private let gtkTableSelectionChangedTrampoline: @convention(c) (UnsafeMutableRaw
     Unmanaged<IntActionBox>.fromOpaque(userData).takeUnretainedValue().action(row)
 }
 
-/// Recursively pops down any visible popover in `widget`'s subtree (dropdown
-/// lists, menu-bar menus, combo popups — all `Gtk*Popover*` types).
+/// Actual popover widget types. Matching must be exact: `GtkPopoverMenuBar`
+/// and `GtkPopoverMenuBarItem` contain "Popover" but are NOT popovers, and
+/// popping them down trips a Gtk-CRITICAL assertion on every click.
+private let popoverTypeNames: Set<String> = ["GtkPopover", "GtkPopoverMenu", "GtkTreePopover"]
+
+/// Recursively pops down any *mapped* popover in `widget`'s subtree (dropdown
+/// lists, menu-bar menus, combo popups).
 private func popdownVisiblePopovers(under widget: UnsafeMutablePointer<GtkWidget>) {
     var child = gtk_widget_get_first_child(widget)
     while let c = child {
         let typeName = String(cString: g_type_name_from_instance(
             UnsafeMutableRawPointer(c).assumingMemoryBound(to: GTypeInstance.self)))
-        if typeName.contains("Popover"), gtk_widget_get_visible(c) != 0 {
-            gtk_popover_popdown(UnsafeMutablePointer<GtkPopover>(OpaquePointer(c)))
+        if popoverTypeNames.contains(typeName) {
+            if gtk_widget_get_mapped(c) != 0 {
+                gtk_popover_popdown(UnsafeMutablePointer<GtkPopover>(OpaquePointer(c)))
+            }
         } else {
             popdownVisiblePopovers(under: c)
         }
         child = gtk_widget_get_next_sibling(c)
     }
+}
+
+/// Handler for the window's `notify::is-active` — dismisses popovers when the
+/// window deactivates (covers clicks landing outside the app entirely).
+private let gtkWindowActiveTrampoline: @convention(c) (UnsafeMutableRawPointer?, UnsafeMutableRawPointer?, gpointer?) -> Void = { window, _, userData in
+    guard let window, let userData else { return }
+    guard gtk_window_is_active(UnsafeMutablePointer<GtkWindow>(OpaquePointer(window))) == 0 else { return }
+    let box = Unmanaged<WidgetBox>.fromOpaque(userData).takeUnretainedValue()
+    popdownVisiblePopovers(under: box.widget)
 }
 
 /// Handler for the window's capture-phase `GtkGestureClick::pressed` — the

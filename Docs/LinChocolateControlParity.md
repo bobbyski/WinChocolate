@@ -36,13 +36,15 @@ here (Goal 2 — native modern look).
 | `NSScrollView` | `GtkScrolledWindow` | ✅ | `documentView` scrolls when larger than the frame; native overlay scrollbars. |
 | `NSSplitView` | `GtkPaned` | ✅ | Two panes (`addArrangedSubview`), draggable divider, `setPosition`. AppKit `vertical` = GTK horizontal orientation. |
 | `NSTableView` / `NSTableColumn` | `GtkColumnView` (in a scroller) | ✅ | AppKit-shaped `NSTableViewDataSource` (row count + `objectValueFor:row:`); GtkStringList model carries only the row count — cell text pulled from the Swift provider in each column's factory `bind`. Single selection via `GtkSingleSelection` → `selectedRow`/`onSelectionChange`; `reloadData()` re-splices the model. |
+| `NSOpenPanel` / `NSSavePanel` | `GtkFileDialog` (async → nested loop) | ✅ | AppKit's blocking `runModal()` over GTK4's async-only dialog: the `GAsyncReadyCallback` quits a nested `GMainLoop`; cancel ⇒ nil ⇒ `NSModalResponseCancel`. `directoryURL`, `nameFieldStringValue`, `url`/`urls`. |
 | `NSAlert` | composed modal `GtkWindow` + nested `GMainLoop` | ✅ | AppKit's blocking `runModal()`: GTK4 removed blocking dialogs and its dialog constructors are C-variadic (uncallable from Swift), so the alert is composed — modal transient window, headline ("title-4"), buttons right-aligned with the first (default) rightmost, response = `NSAlertFirstButtonReturn + index`. |
 | `NSImage` / `NSImageView` | `GtkPicture` | ✅ | File-backed image slice; `gtk_picture_set_filename`, aspect-fit scaling. |
+| `NSAttributedString` (+`.foregroundColor`/`.font` keys) | Pango markup (`gtk_label_set_markup`) | ✅ | Foundation's attributed classes (as on macOS) + AppKit's keys added by LinChocolate; `NSTextField.attributedStringValue` flattens to styled runs → `<span>` markup. |
 | `NSFont` | per-widget CSS (`font-family/size/weight/style`) | ✅ | `NSView.font`; `systemFont`/`boldSystemFont`/`monospacedSystemFont`/`init(name:size:)`. GTK styles text via CSS providers, not API calls. |
 | `NSColor` as `textColor` | per-widget CSS (`color`) | ✅ | On `NSTextField`/`NSTextView`; same provider as the font (rebuilt together). |
 | `NSOutlineView` | `GtkColumnView` + `GtkTreeListModel` + `GtkTreeExpander` | ✅ | AppKit-shaped `NSOutlineViewDataSource` (children/expandable/value by item). Items addressed by index paths ("0.2"): the tree create-func builds child path lists on expand; the API resolves paths back to data-source items. Column 0 carries native expand arrows. |
 | `NSCollectionView` | `GtkGridView` (in a scroller, 3–4 columns) | ✅ | Count-only string-list model + one tile factory; `representedObjectForItemAt` supplies tile text (full `NSCollectionViewItem` view controllers are a later parity item). `selectionIndexes` (single) + `onSelectionChange`. |
-| `NSToolbar` | hand-drawn (Apple-look exception) | ⏳ | Keeps the Apple look/feel per Goal 2's toolbar exception. |
+| `NSToolbar` / `NSToolbarItem` | composed styled `GtkBox` (**Apple-look exception**) | ✅ | The one deliberate non-native look (Goal 2): light gradient strip, hairline bottom border, flat hover-highlighted buttons; flexible-space item; docks under the menu bar via `NSWindow.toolbar`. Delegate-based item management + customization sheet are later parity items. |
 
 ## Interop note: opaque vs. nominal GTK types
 

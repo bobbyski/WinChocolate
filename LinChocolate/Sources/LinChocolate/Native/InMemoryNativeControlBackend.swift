@@ -48,10 +48,12 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     public private(set) var splitPanes: [UInt: [UInt]] = [:]
     public private(set) var dividerPositions: [UInt: Double] = [:]
     public private(set) var menuBars: [UInt: [NativeMenuSpec]] = [:]
+    public private(set) var toolbars: [UInt: [NativeToolbarItemSpec]] = [:]
     public private(set) var imagePaths: [UInt: String] = [:]
     public private(set) var tokensByHandle: [UInt: [String]] = [:]
     public private(set) var fonts: [UInt: NativeFontSpec] = [:]
     public private(set) var textColors: [UInt: NSColor] = [:]
+    public private(set) var styledTexts: [UInt: [NativeTextRun]] = [:]
     public private(set) var tableColumns: [UInt: [String]] = [:]
     public private(set) var tableRowCounts: [UInt: Int] = [:]
     private var tableCellProviders: [UInt: (Int, Int) -> String] = [:]
@@ -66,6 +68,14 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     public private(set) var alerts: [(message: String, informative: String, buttons: [String])] = []
     /// The button index `runAlert` returns, standing in for the user's press.
     public var nextAlertResponse = 0
+    /// The path `runOpenPanel` returns (nil = user cancelled).
+    public var nextOpenPanelPath: String?
+    /// The path `runSavePanel` returns (nil = user cancelled).
+    public var nextSavePanelPath: String?
+    /// Save-panel invocations recorded as (directory, suggestedName), newest last.
+    public private(set) var savePanelRuns: [(directory: String?, suggestedName: String?)] = []
+    /// Open-panel invocations recorded as initial directories, newest last.
+    public private(set) var openPanelRuns: [String?] = []
     private var dateChangeActions: [UInt: (Date) -> Void] = [:]
     private var colorChangeActions: [UInt: (NSColor) -> Void] = [:]
 
@@ -103,9 +113,25 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     public func installMenuBar(_ menus: [NativeMenuSpec], on window: NativeHandle) {
         menuBars[window.rawValue] = menus
     }
+    public func installToolbar(_ items: [NativeToolbarItemSpec], on window: NativeHandle) {
+        toolbars[window.rawValue] = items
+    }
+    /// Fires toolbar item `index`'s action, as if the user clicked it.
+    public func simulateToolbarActivate(_ window: NativeHandle, item index: Int) {
+        guard let items = toolbars[window.rawValue], index < items.count else { return }
+        items[index].action?()
+    }
     public func runAlert(message: String, informative: String, buttons: [String], for window: NativeHandle?) -> Int {
         alerts.append((message: message, informative: informative, buttons: buttons))
         return nextAlertResponse
+    }
+    public func runOpenPanel(directory: String?, for window: NativeHandle?) -> String? {
+        openPanelRuns.append(directory)
+        return nextOpenPanelPath
+    }
+    public func runSavePanel(directory: String?, suggestedName: String?, for window: NativeHandle?) -> String? {
+        savePanelRuns.append((directory: directory, suggestedName: suggestedName))
+        return nextSavePanelPath
     }
 
     // MARK: Views & controls
@@ -360,6 +386,10 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     public func setEnabled(_ isEnabled: Bool, for handle: NativeHandle) { enabledStates[handle.rawValue] = isEnabled }
     public func setFont(_ font: NativeFontSpec, for handle: NativeHandle) { fonts[handle.rawValue] = font }
     public func setTextColor(_ color: NSColor, for handle: NativeHandle) { textColors[handle.rawValue] = color }
+    public func setStyledText(_ runs: [NativeTextRun], for handle: NativeHandle) {
+        styledTexts[handle.rawValue] = runs
+        texts[handle.rawValue] = runs.map(\.text).joined()
+    }
     public func destroyControl(_ handle: NativeHandle) {
         let r = handle.rawValue
         kinds[r] = nil; titles[r] = nil; texts[r] = nil; frames[r] = nil
