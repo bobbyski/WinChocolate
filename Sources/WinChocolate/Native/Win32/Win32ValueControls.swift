@@ -371,6 +371,28 @@ extension Win32NativeControlBackend {
         scrollerParts[handle.rawValue] ?? .none
     }
 
+    /// Applies the scroller's appearance. Windows draws the native themed
+    /// scrollbar (there is no standalone-control overlay style), so `overlay`
+    /// has no visual effect here; `knobStyle` selects this scroller's light or
+    /// dark visual-styles theme (`.default` follows the window's appearance).
+    public func setScrollerAppearance(overlay: Bool, knobStyle: NativeScrollerKnobStyle, for handle: NativeHandle) {
+        guard let hwnd = hwnd(from: handle) else {
+            return
+        }
+
+        let dark: Bool
+        switch knobStyle {
+        case .dark:
+            dark = true
+        case .light:
+            dark = false
+        case .default:
+            dark = NSApplication.shared.effectiveAppearance.winIsDark
+        }
+        _ = withWideString(dark ? "DarkMode_Explorer" : "Explorer") { winSetWindowTheme(hwnd, $0, nil) }
+        _ = winInvalidateRect(hwnd, nil, 1)
+    }
+
     /// Maps a Win32 scroll notification code to a backend-neutral part.
     func scrollerPart(fromScrollCode code: UInt) -> NativeScrollerPart {
         switch code {

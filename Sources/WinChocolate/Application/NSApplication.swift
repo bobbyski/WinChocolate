@@ -51,6 +51,24 @@ public final class NSApplication: NSObject {
     /// (see NSAppearance.swift); `nil` follows the system theme.
     var winAppearanceOverride: NSAppearance?
 
+    /// Posted when the effective appearance changes because the user flipped the
+    /// system dark/light theme while the app was running (the app follows the
+    /// system — no `appearance` override). Application code that caches
+    /// appearance-derived values can observe this to refresh. The framework's
+    /// own windows and controls are already re-themed and repainted by the time
+    /// this posts.
+    public static let winEffectiveAppearanceDidChangeNotification =
+        Notification.Name("WinChocolateEffectiveAppearanceDidChange")
+
+    /// Posts `winEffectiveAppearanceDidChangeNotification` (called by the Win32
+    /// backend after it refreshes windows for a live system theme switch).
+    public func winPostEffectiveAppearanceDidChange() {
+        NotificationCenter.default.post(
+            name: NSApplication.winEffectiveAppearanceDidChangeNotification,
+            object: self
+        )
+    }
+
     /// Windows known to the application.
     public private(set) var windows: [NSWindow] = []
 

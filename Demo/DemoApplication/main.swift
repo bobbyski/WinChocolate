@@ -196,9 +196,15 @@ final class DemoShapesView: NSView {
     }
 
     override func draw(_ dirtyRect: NSRect) {
-        NSColor.white.setFill()
+        // The artboard follows the appearance (light paper / dark board) so it
+        // doesn't read as a white slab in dark mode; the shapes are saturated
+        // colors that stay legible on either.
+        let dark = NSAppearance.currentDrawing().winIsDark
+        (dark ? NSColor(calibratedRed: 0.17, green: 0.17, blue: 0.18, alpha: 1)
+              : NSColor.white).setFill()
         NSRectFill(NSMakeRect(0, 0, frame.size.width, frame.size.height))
-        NSColor(calibratedRed: 0.55, green: 0.55, blue: 0.55, alpha: 1).setFill()
+        (dark ? NSColor(calibratedRed: 0.40, green: 0.40, blue: 0.42, alpha: 1)
+              : NSColor(calibratedRed: 0.55, green: 0.55, blue: 0.55, alpha: 1)).setFill()
         NSFrameRect(NSMakeRect(0, 0, frame.size.width, frame.size.height))
 
         // Five-point star built from explicit line segments.
@@ -268,14 +274,19 @@ final class DemoGradientsView: NSView {
     }
 
     override func draw(_ dirtyRect: NSRect) {
-        NSColor.white.setFill()
+        // Appearance-aware board (light paper / dark board) so it doesn't read as
+        // a white slab in dark mode; the gradient swatches stay legible on either.
+        let dark = NSAppearance.currentDrawing().winIsDark
+        (dark ? NSColor(calibratedRed: 0.17, green: 0.17, blue: 0.18, alpha: 1)
+              : NSColor.white).setFill()
         NSRectFill(NSMakeRect(0, 0, frame.size.width, frame.size.height))
-        NSColor(calibratedRed: 0.55, green: 0.55, blue: 0.55, alpha: 1).setFill()
+        (dark ? NSColor(calibratedRed: 0.40, green: 0.40, blue: 0.42, alpha: 1)
+              : NSColor(calibratedRed: 0.55, green: 0.55, blue: 0.55, alpha: 1)).setFill()
         NSFrameRect(NSMakeRect(0, 0, frame.size.width, frame.size.height))
 
         let labelAttributes: [NSAttributedString.Key: Any] = [
             .font: NSFont.systemFont(ofSize: 10),
-            .foregroundColor: NSColor.darkGray
+            .foregroundColor: dark ? NSColor(white: 0.78, alpha: 1) : NSColor.darkGray
         ]
         let sampleY: CGFloat = 30
         let sampleHeight: CGFloat = 56
@@ -360,9 +371,13 @@ final class DemoHoverView: NSView {
     }
 
     override func draw(_ dirtyRect: NSRect) {
+        // The resting fill/text follow the appearance so the box isn't a light
+        // slab in dark mode; the hover state stays accent-blue on both.
+        let dark = NSAppearance.currentDrawing().winIsDark
         let fill = hovering
             ? NSColor(calibratedRed: 0.30, green: 0.62, blue: 0.86, alpha: 1)
-            : NSColor(calibratedRed: 0.90, green: 0.92, blue: 0.95, alpha: 1)
+            : (dark ? NSColor(calibratedRed: 0.24, green: 0.24, blue: 0.26, alpha: 1)
+                    : NSColor(calibratedRed: 0.90, green: 0.92, blue: 0.95, alpha: 1))
         fill.setFill()
         let body = NSBezierPath(roundedRect: bounds.insetBy(dx: 1, dy: 1), xRadius: 8, yRadius: 8)
         body.fill()
@@ -372,7 +387,9 @@ final class DemoHoverView: NSView {
         let text = hovering ? "Hovering" : "Hover me"
         text.draw(at: NSMakePoint(14, bounds.size.height / 2 - 8), withAttributes: [
             .font: NSFont.boldSystemFont(ofSize: 13),
-            .foregroundColor: hovering ? NSColor.white : NSColor(calibratedRed: 0.3, green: 0.3, blue: 0.32, alpha: 1),
+            .foregroundColor: hovering
+                ? NSColor.white
+                : (dark ? NSColor(white: 0.85, alpha: 1) : NSColor(calibratedRed: 0.3, green: 0.3, blue: 0.32, alpha: 1)),
         ])
     }
 
@@ -905,12 +922,15 @@ final class DemoFlowCollectionDataSource: NSCollectionViewDataSource {
 
     func collectionView(_ collectionView: NSCollectionView, viewForSupplementaryElementOfKind kind: String, at indexPath: IndexPath) -> NSView? {
         let section = sections[indexPath.section]
+        // Resolve the appearance live (not the cached launch value) so bands
+        // recreated during a redraw after a system switch pick up the new look.
+        let dark = NSApplication.shared.effectiveAppearance.winIsDark
         if kind == NSCollectionView.elementKindSectionHeader {
             let header = NSTextField(string: "  \(section.title)", frame: .zero)
             header.isBordered = false
             header.font = NSFont.boldSystemFont(ofSize: 12)
             // Appearance-aware band so the dynamic label color stays legible.
-            header.backgroundColor = isDarkDemo
+            header.backgroundColor = dark
                 ? NSColor(red: 0.16, green: 0.22, blue: 0.34, alpha: 1)
                 : NSColor(red: 0.90, green: 0.93, blue: 0.98, alpha: 1)
             return header
@@ -919,8 +939,8 @@ final class DemoFlowCollectionDataSource: NSCollectionViewDataSource {
             let footer = NSTextField(string: "  — \(section.items.count) classes —", frame: .zero)
             footer.isBordered = false
             footer.font = NSFont.boldSystemFont(ofSize: 10)
-            footer.textColor = isDarkDemo ? NSColor(white: 0.75, alpha: 1) : NSColor(white: 0.35, alpha: 1)
-            footer.backgroundColor = isDarkDemo
+            footer.textColor = dark ? NSColor(white: 0.75, alpha: 1) : NSColor(white: 0.35, alpha: 1)
+            footer.backgroundColor = dark
                 ? NSColor(red: 0.30, green: 0.27, blue: 0.20, alpha: 1)
                 : NSColor(red: 0.95, green: 0.93, blue: 0.88, alpha: 1)
             return footer
@@ -1743,7 +1763,15 @@ func updateFocusDisplay() {
     // pages on resize and tab switches, reading as a repaint bug). Keep the
     // container at its normal color and show content focus only via the label
     // above; the small input controls below still demo their own focus tint.
-    contentView.backgroundColor = normalContentColor
+    // Resolve the surface from the live appearance (windowBackgroundColor is
+    // dynamic) — a cached launch value would clobber the content background back
+    // to the old shade after a system switch.
+    contentView.backgroundColor = NSColor.windowBackgroundColor
+    // Resolve the focus tint from the live appearance so a system switch while a
+    // field is focused rebuilds its brush at the new shade.
+    let controlFocusColor = NSApplication.shared.effectiveAppearance.winIsDark
+        ? NSColor(calibratedRed: 0.35, green: 0.32, blue: 0.12, alpha: 1.0)
+        : NSColor(calibratedRed: 1.0, green: 0.96, blue: 0.72, alpha: 1.0)
     editableTextField.backgroundColor = name == "text field"
         ? controlFocusColor
         : normalTextFieldColor
@@ -1765,11 +1793,19 @@ contentView.backgroundColor = normalContentColor
 counterLabel.font = NSFont.boldSystemFont(ofSize: 14)
 counterLabel.textColor = .green
 statusLabel.font = NSFont.systemFont(ofSize: 13)
-statusLabel.textColor = .blue  // sits on its own light-blue band in both appearances
-statusLabel.backgroundColor = NSColor(calibratedRed: 0.94, green: 0.97, blue: 1.0, alpha: 1.0)
+// Under dark mode the status/focus bands go neutral (a subtle field lifted just
+// off the page) and let the text carry the info-blue / attention-amber meaning,
+// so they sit with the theme instead of reading as colored slabs. Light mode
+// keeps the classic tinted bands.
+statusLabel.textColor = isDarkDemo ? NSColor(calibratedRed: 0.55, green: 0.78, blue: 1.0, alpha: 1) : .blue
+statusLabel.backgroundColor = isDarkDemo
+    ? NSColor(white: 0.16, alpha: 1)
+    : NSColor(calibratedRed: 0.94, green: 0.97, blue: 1.0, alpha: 1.0)
 focusLabel.font = NSFont.boldSystemFont(ofSize: 12)
-focusLabel.textColor = .black
-focusLabel.backgroundColor = NSColor(calibratedRed: 1.0, green: 0.98, blue: 0.86, alpha: 1.0)
+focusLabel.textColor = isDarkDemo ? NSColor(calibratedRed: 1.0, green: 0.83, blue: 0.4, alpha: 1) : .black
+focusLabel.backgroundColor = isDarkDemo
+    ? NSColor(white: 0.16, alpha: 1)
+    : NSColor(calibratedRed: 1.0, green: 0.98, blue: 0.86, alpha: 1.0)
 slider.frame = NSMakeRect(120, 28, 184, 28)
 sliderLabel.font = NSFont.boldSystemFont(ofSize: 12)
 sliderValueLabel.textColor = demoValueTextColor
@@ -3526,6 +3562,81 @@ for control in [
     relevancyCaption, relevancyIndicator, tokenCaption, bezelsTokenField
 ] as [NSView] {
     bezelsPage.addSubview(control)
+}
+
+// Follow a live system dark/light switch (8.5). The framework re-themes and
+// repaints its own windows/controls; the demo re-applies the few colors it
+// caches at startup (the status/focus bands) and redraws. Skipped implicitly
+// when --light/--dark pin an override, since the framework won't post then.
+_ = NotificationCenter.default.addObserver(
+    forName: NSApplication.winEffectiveAppearanceDidChangeNotification,
+    object: nil,
+    queue: nil
+) { _ in
+    let dark = NSApplication.shared.effectiveAppearance.winIsDark
+    // The content view was given a background resolved at launch; re-resolve it
+    // (windowBackgroundColor is dynamic) so the page surface follows the switch.
+    contentView.backgroundColor = NSColor.windowBackgroundColor
+    statusLabel.textColor = dark ? NSColor(calibratedRed: 0.55, green: 0.78, blue: 1.0, alpha: 1) : .blue
+    statusLabel.backgroundColor = dark
+        ? NSColor(white: 0.16, alpha: 1)
+        : NSColor(calibratedRed: 0.94, green: 0.97, blue: 1.0, alpha: 1.0)
+    focusLabel.textColor = dark ? NSColor(calibratedRed: 1.0, green: 0.83, blue: 0.4, alpha: 1) : .black
+    focusLabel.backgroundColor = dark
+        ? NSColor(white: 0.16, alpha: 1)
+        : NSColor(calibratedRed: 1.0, green: 0.98, blue: 0.86, alpha: 1.0)
+
+    // The demo caches a number of appearance-tuned colors at launch and sets
+    // them on views scattered across every page. Setting a view's
+    // backgroundColor builds a solid brush at that shade, so a live switch has
+    // to re-set each one to rebuild the brush — a plain repaint keeps the old
+    // color. Re-derive every cached color from the live appearance here.
+    let valueText = dark
+        ? NSColor(calibratedRed: 0.45, green: 0.68, blue: 1.0, alpha: 1.0)
+        : NSColor.blue
+    for label in [stepperValueLabel, scrollerValueLabel, dateValueLabel,
+                  clipOriginLabel, listsBrowserPathLabel] {
+        label.textColor = valueText
+    }
+
+    // Clip-view page: document surface + four demonstrative quadrant tiles.
+    clipView.backgroundColor = dark
+        ? NSColor(calibratedRed: 0.14, green: 0.14, blue: 0.15, alpha: 1.0) : .white
+    clipDocumentView.backgroundColor = dark
+        ? NSColor(calibratedRed: 0.17, green: 0.17, blue: 0.18, alpha: 1.0)
+        : NSColor(calibratedRed: 0.97, green: 0.97, blue: 0.97, alpha: 1.0)
+    clipTopLeftPane.backgroundColor = dark
+        ? NSColor(calibratedRed: 0.16, green: 0.24, blue: 0.36, alpha: 1.0)
+        : NSColor(calibratedRed: 0.84, green: 0.92, blue: 1.0, alpha: 1.0)
+    clipTopRightPane.backgroundColor = dark
+        ? NSColor(calibratedRed: 0.34, green: 0.29, blue: 0.14, alpha: 1.0)
+        : NSColor(calibratedRed: 1.0, green: 0.94, blue: 0.72, alpha: 1.0)
+    clipBottomLeftPane.backgroundColor = dark
+        ? NSColor(calibratedRed: 0.16, green: 0.30, blue: 0.18, alpha: 1.0)
+        : NSColor(calibratedRed: 0.86, green: 1.0, blue: 0.86, alpha: 1.0)
+    clipBottomRightPane.backgroundColor = dark
+        ? NSColor(calibratedRed: 0.34, green: 0.18, blue: 0.20, alpha: 1.0)
+        : NSColor(calibratedRed: 1.0, green: 0.86, blue: 0.88, alpha: 1.0)
+
+    // Split-view page: the two demonstrative panes.
+    splitLeftPane.backgroundColor = dark
+        ? NSColor(calibratedRed: 0.16, green: 0.25, blue: 0.37, alpha: 1.0)
+        : NSColor(calibratedRed: 0.86, green: 0.93, blue: 1.0, alpha: 1.0)
+    splitRightPane.backgroundColor = dark
+        ? NSColor(calibratedRed: 0.35, green: 0.28, blue: 0.17, alpha: 1.0)
+        : NSColor(calibratedRed: 1.0, green: 0.92, blue: 0.84, alpha: 1.0)
+
+    // A focused field is tinted with the (cached) focus color; re-apply so a
+    // switch while a field holds focus rebuilds its brush too.
+    updateFocusDisplay()
+
+    // The collection views' section header/footer bands are supplementary
+    // views built once from the launch appearance and not recreated on a
+    // repaint — reload so the delegate rebuilds them for the live appearance.
+    collectionView.reloadData()
+    listsCollectionView.reloadData()
+
+    contentView.needsDisplay = true
 }
 
 window.contentView = contentView

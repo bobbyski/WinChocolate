@@ -392,6 +392,12 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     /// Last actuated scroller part by handle.
     private var scrollerParts: [NativeHandle: NativeScrollerPart] = [:]
 
+    /// Recorded scroller overlay flag by handle (test-visible).
+    public private(set) var scrollerOverlays: [NativeHandle: Bool] = [:]
+
+    /// Recorded scroller knob style by handle (test-visible).
+    public private(set) var scrollerKnobStyles: [NativeHandle: NativeScrollerKnobStyle] = [:]
+
     /// Registered text change actions by handle.
     public private(set) var textChangeActions: [NativeHandle: (String) -> Void] = [:]
 
@@ -591,6 +597,9 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     /// Zoomed (maximized) windows, by handle.
     public private(set) var zoomedWindows: Set<NativeHandle> = []
 
+    /// Handles currently in full-screen presentation (test-visible).
+    public private(set) var fullScreenWindows: Set<NativeHandle> = []
+
     /// Windows ordered to the back, in request order.
     public private(set) var windowsOrderedBack: [NativeHandle] = []
 
@@ -630,6 +639,15 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     /// Whether a recorded window is zoomed.
     public func isWindowZoomed(_ handle: NativeHandle) -> Bool {
         zoomedWindows.contains(handle)
+    }
+
+    /// Records a window entering or exiting full-screen presentation.
+    public func setWindowFullScreen(_ fullScreen: Bool, for handle: NativeHandle) {
+        if fullScreen {
+            fullScreenWindows.insert(handle)
+        } else {
+            fullScreenWindows.remove(handle)
+        }
     }
 
     /// Registered window-move actions by handle.
@@ -1516,6 +1534,12 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     /// Reads the recorded scroller hit part.
     public func scrollerPart(for handle: NativeHandle) -> NativeScrollerPart {
         scrollerParts[handle] ?? .none
+    }
+
+    /// Records the scroller's requested appearance.
+    public func setScrollerAppearance(overlay: Bool, knobStyle: NativeScrollerKnobStyle, for handle: NativeHandle) {
+        scrollerOverlays[handle] = overlay
+        scrollerKnobStyles[handle] = knobStyle
     }
 
     /// Test helper: pretends the user actuated a scroller part, optionally

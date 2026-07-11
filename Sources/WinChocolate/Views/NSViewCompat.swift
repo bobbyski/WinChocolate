@@ -25,15 +25,7 @@ extension NSView {
         rect.contains(point)
     }
 
-    /// Lays out this view's subtree if it has been flagged as needing layout.
-    public func layoutSubtreeIfNeeded() {
-        if needsLayout {
-            layout()
-            needsLayout = false
-        }
-    }
-
-    /// Flags the view's intrinsic size as stale. A no-op until a constraint
-    /// solver exists, but keeps call sites source-compatible.
+    /// Flags the view's intrinsic size as stale. A no-op until intrinsic-size
+    /// participation (plan 9.2) lands, but keeps call sites source-compatible.
     public func invalidateIntrinsicContentSize() {}
 }

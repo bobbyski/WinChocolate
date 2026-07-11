@@ -12,6 +12,17 @@ public enum NativeScrollerPart: Sendable {
     case incrementLine
 }
 
+/// Backend-neutral scroller knob appearance, mapped from `NSScroller.KnobStyle`.
+///
+/// Windows renders the native (OS-themed) scrollbar, so this only selects the
+/// light/dark visual variant a backend can honor — `default` follows the
+/// window's appearance, `dark`/`light` force that theme on this one scroller.
+public enum NativeScrollerKnobStyle: Sendable, Equatable {
+    case `default`
+    case dark
+    case light
+}
+
 /// Native toolbar item descriptor used by backend toolbar renderers.
 public struct NativeToolbarItem: Equatable, Sendable {
     /// Stable item identifier.
@@ -303,6 +314,15 @@ extension NativeControlBackend {
     public func setClipboardContents(text: String?, dataRepresentations: [String: [UInt8]]) {
         setClipboardContents(text: text, dataRepresentations: dataRepresentations, filePaths: [])
     }
+
+    /// Default: a backend that doesn't distinguish scroller appearance ignores
+    /// it (the native themed scrollbar is the presentation on that platform).
+    public func setScrollerAppearance(overlay: Bool, knobStyle: NativeScrollerKnobStyle, for handle: NativeHandle) {
+    }
+
+    /// Default: a backend without a windowing concept ignores full-screen.
+    public func setWindowFullScreen(_ fullScreen: Bool, for handle: NativeHandle) {
+    }
 }
 
 /// Native control creation and lifetime boundary.
@@ -356,6 +376,10 @@ public protocol NativeControlBackend: AnyObject {
 
     /// Toggles a native window between zoomed (maximized) and normal.
     func toggleWindowZoom(_ handle: NativeHandle)
+
+    /// Enters or exits full-screen (borderless, display-covering) presentation,
+    /// restoring the prior frame and chrome on exit.
+    func setWindowFullScreen(_ fullScreen: Bool, for handle: NativeHandle)
 
     /// Moves a native window to the bottom of the z-order without activating.
     func orderWindowBack(_ handle: NativeHandle)
@@ -702,6 +726,11 @@ public protocol NativeControlBackend: AnyObject {
 
     /// Reports which part of a scroller the user last actuated.
     func scrollerPart(for handle: NativeHandle) -> NativeScrollerPart
+
+    /// Applies the scroller's appearance: `overlay` requests the thin
+    /// auto-hiding style (no standalone Win32 equivalent — the native themed
+    /// bar renders regardless), and `knobStyle` picks its light/dark variant.
+    func setScrollerAppearance(overlay: Bool, knobStyle: NativeScrollerKnobStyle, for handle: NativeHandle)
 
     /// Sets which side of the track a slider's tick marks are drawn on.
     func setSliderTickMarkPosition(aboveOrLeading: Bool, for handle: NativeHandle)

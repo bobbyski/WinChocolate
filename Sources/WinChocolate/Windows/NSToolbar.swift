@@ -580,12 +580,31 @@ open class NSToolbarView: NSView {
     /// item overflows, matching the Mac's shrink-then-overflow behavior.
     private var winCustomViewShrink: CGFloat = 1
 
+    /// Token for the live appearance-change observer, removed on deinit.
+    private var winAppearanceObserver: NSObjectProtocol?
+
     /// Creates a toolbar view.
     public override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         // Blend with the window chrome the way AppKit toolbars extend the
         // title bar; a bottom hairline separates the strip from content.
         backgroundColor = .windowBackgroundColor
+        // The strip fill is resolved for the current appearance and cached as a
+        // brush; re-resolve it on a live system theme switch so the toolbar
+        // follows the window chrome instead of staying its old shade.
+        winAppearanceObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.winEffectiveAppearanceDidChangeNotification,
+            object: nil, queue: nil
+        ) { [weak self] _ in
+            self?.backgroundColor = .windowBackgroundColor
+            self?.needsDisplay = true
+        }
+    }
+
+    deinit {
+        if let winAppearanceObserver {
+            NotificationCenter.default.removeObserver(winAppearanceObserver)
+        }
     }
 
     /// The separator style after resolving `.automatic` for this presentation.
@@ -1410,6 +1429,23 @@ private final class NSToolbarCompositeItemView: NSView {
         super.init(frame: frameRect)
         toolTip = item.toolTip
         backgroundColor = nil
+        // The label color contrasts with the strip (light text on a dark strip,
+        // dark text on light); re-resolve it on a live system theme switch.
+        winAppearanceObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.winEffectiveAppearanceDidChangeNotification,
+            object: nil, queue: nil
+        ) { [weak self] _ in
+            self?.updateNativeTextColor()
+            self?.needsDisplay = true
+        }
+    }
+
+    private var winAppearanceObserver: NSObjectProtocol?
+
+    deinit {
+        if let winAppearanceObserver {
+            NotificationCenter.default.removeObserver(winAppearanceObserver)
+        }
     }
 
     override var acceptsFirstResponder: Bool {

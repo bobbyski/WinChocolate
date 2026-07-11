@@ -223,9 +223,10 @@ open class NSSegmentedControl: NSControl {
         return segments[segment].label
     }
 
-    /// Sets the image for a segment. (Stored in the model; label rendering is
-    /// used for the drawn control — segment image rendering is a follow-up, since
-    /// the framework has no image-into-context blit yet.)
+    /// Sets the image for a segment. File-backed images render in the drawn
+    /// control (image left of the label when both are present, else centered);
+    /// template images tint to the label color. Named/symbol images without a
+    /// file path fall back to the label until in-memory decoding lands.
     open func setImage(_ image: NSImage?, forSegment segment: Int) {
         guard segments.indices.contains(segment) else {
             return
@@ -543,7 +544,12 @@ open class NSSegmentedControl: NSControl {
 
     private func drawSegmentLabel(_ index: Int, in rect: NSRect) {
         let segment = segments[index]
-        guard !segment.label.isEmpty else {
+        let hasLabel = !segment.label.isEmpty
+        // Only file-backed images draw (named/symbol images are a no-op until
+        // in-memory bitmap decoding lands), so an undrawable image reserves no
+        // space and the segment falls back to its label.
+        let drawableImage = segment.image?.filePath != nil ? segment.image : nil
+        guard hasLabel || drawableImage != nil else {
             return
         }
 
@@ -554,12 +560,48 @@ open class NSSegmentedControl: NSControl {
             .foregroundColor: color,
             .font: font ?? NSFont.systemFont(ofSize: 12)
         ]
-        let size = segment.label.size(withAttributes: attributes)
-        let origin = NSPoint(
-            x: rect.origin.x + (rect.size.width - size.width) / 2,
-            y: rect.origin.y + (rect.size.height - size.height) / 2
-        )
-        segment.label.draw(at: origin, withAttributes: attributes)
+        let labelSize = hasLabel ? segment.label.size(withAttributes: attributes) : .zero
+
+        // The image glyph fits the segment height (leaving vertical padding),
+        // keeping its natural aspect ratio when known, else a square.
+        var imageSize = NSSize.zero
+        if let image = drawableImage {
+            let side = min(max(rect.size.height - 8, 0), 16)
+            if image.size.width > 0 && image.size.height > 0 {
+                imageSize = NSSize(width: image.size.width * (side / image.size.height), height: side)
+            } else {
+                imageSize = NSSize(width: side, height: side)
+            }
+        }
+
+        // Image and label sit side by side, the pair centered in the segment
+        // (AppKit's image-left layout); either alone is centered on its own.
+        let gap: CGFloat = (imageSize.width > 0 && hasLabel) ? 4 : 0
+        let contentWidth = imageSize.width + gap + labelSize.width
+        var cursorX = rect.origin.x + (rect.size.width - contentWidth) / 2
+
+        if let image = drawableImage, imageSize.width > 0 {
+            let imageRect = NSRect(
+                x: cursorX,
+                y: rect.origin.y + (rect.size.height - imageSize.height) / 2,
+                width: imageSize.width,
+                height: imageSize.height
+            )
+            // Template segment images tint to the label color, matching AppKit.
+            if image.isTemplate {
+                color.setFill()
+            }
+            image.draw(in: imageRect)
+            cursorX += imageSize.width + gap
+        }
+
+        if hasLabel {
+            let origin = NSPoint(
+                x: cursorX,
+                y: rect.origin.y + (rect.size.height - labelSize.height) / 2
+            )
+            segment.label.draw(at: origin, withAttributes: attributes)
+        }
     }
 
     /// This view's origin in window coordinates (for click hit mapping).

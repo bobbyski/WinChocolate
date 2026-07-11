@@ -20,6 +20,12 @@ extension Win32NativeControlBackend {
             // another application is active and return afterward.
             applicationActivationDidChange(isActive: wParam != 0)
             return nil
+        case wmSettingChange:
+            // The user may have flipped the system dark/light theme. Refresh the
+            // app's appearance if it follows the system; let DefWindowProc see
+            // the message too.
+            winHandleSettingChange()
+            return nil
         case wmGetMinMaxInfo:
             // Constrain user resizing to the window's content size limits,
             // converting each content size to the outer window rect.
@@ -361,24 +367,9 @@ extension Win32NativeControlBackend {
                 return nil
             }
 
-            // A dark list-view header draws its titles in the theme's dark
-            // text (the `DarkMode_ItemsView` theme darkens only the
-            // background), so custom-draw forces the light title color.
-            if header.code == nmCustomDraw,
-               NSApplication.shared.effectiveAppearance.winIsDark,
-               let source = header.hwndFrom,
-               tableHeaderOwners[UInt(bitPattern: source)] != nil,
-               let custom = UnsafeRawPointer(bitPattern: lParam)?.assumingMemoryBound(to: NMCUSTOMDRAW.self).pointee {
-                switch custom.dwDrawStage {
-                case cddsPrePaint:
-                    return cdrfNotifyItemDraw
-                case cddsItemPrePaint:
-                    _ = winSetTextColor(custom.hdc, colorRef(from: .textColor))
-                    return cdrfDoDefault
-                default:
-                    return cdrfDoDefault
-                }
-            }
+            // (The dark list-view header is owner-drawn by subclassing the
+            // header window's WM_PAINT — see `drawDarkTableHeader` — because its
+            // NM_CUSTOMDRAW is not forwarded to the top-level window here.)
 
             if header.code == hdnItemClickA || header.code == hdnItemClickW {
                 guard let source = header.hwndFrom,
@@ -833,10 +824,23 @@ extension Win32NativeControlBackend {
             mouseLeftActions[actionHandle(from: hwnd).rawValue]?()
             return nil
         case wmPaint:
+            guard let hwnd else {
+                return nil
+            }
+            // A dark list-view header is owner-drawn (its theme leaves the text
+            // dark-on-dark and its NM_CUSTOMDRAW isn't forwarded to us). Only
+            // while the appearance is actually dark — under light it paints
+            // natively.
+            if darkTableHeaderHwnds.contains(UInt(bitPattern: hwnd)) {
+                guard NSApplication.shared.effectiveAppearance.winIsDark else {
+                    return nil
+                }
+                drawDarkTableHeader(hwnd)
+                return 0
+            }
             // A dark date picker's closed field is owner-drawn (it has no
             // dark theme part / color API); other controls paint themselves.
-            guard let hwnd,
-                  darkDatePickerFieldHandles.contains(actionHandle(from: hwnd).rawValue) else {
+            guard darkDatePickerFieldHandles.contains(actionHandle(from: hwnd).rawValue) else {
                 return nil
             }
 
@@ -847,6 +851,12 @@ extension Win32NativeControlBackend {
                 return nil
             }
 
+            // The owner-drawn dark header paints its whole client in WM_PAINT,
+            // so suppress the default erase (it would flash the theme under it).
+            if darkTableHeaderHwnds.contains(UInt(bitPattern: hwnd)),
+               NSApplication.shared.effectiveAppearance.winIsDark {
+                return 1
+            }
             let handle = actionHandle(from: hwnd)
             // The owner-drawn dark date field paints its whole client in
             // WM_PAINT, so the default erase would only flash under it.
@@ -1154,7 +1164,7 @@ extension Win32NativeControlBackend {
         return Int(hitTest.iItem)
     }
 
-    private func subclassChildControl(_ hwnd: HWND, handle: NativeHandle) {
+    func subclassChildControl(_ hwnd: HWND, handle: NativeHandle) {
         let replacement = unsafeBitCast(winChocolateControlProcedure as WNDPROC, to: LONG_PTR.self)
         let previous = winSetWindowLongPtrW(hwnd, gwlpWndProc, replacement)
         guard previous != 0 else {
