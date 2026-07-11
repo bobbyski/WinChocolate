@@ -37,6 +37,9 @@ public final class Win32NativeControlBackend: NativeControlBackend {
     var windowShouldCloseHandlers: [UInt: () -> Bool] = [:]
     var windowResizeActions: [UInt: (NSSize) -> Void] = [:]
     var windowMoveActions: [UInt: (NSPoint) -> Void] = [:]
+    /// Saved window style and frame while a window is in full screen, keyed by
+    /// handle, so exiting full screen restores the original chrome and bounds.
+    var fullScreenSavedState: [UInt: (style: LONG_PTR, rect: RECT)] = [:]
     var originalControlProcedures: [UInt: WNDPROC] = [:]
     var controlHandleAliases: [UInt: NativeHandle] = [:]
     var commandActions: [UInt: () -> Void] = [:]
@@ -44,6 +47,13 @@ public final class Win32NativeControlBackend: NativeControlBackend {
     var toolbarActions: [UInt: (String) -> Void] = [:]
     var tableColumnTitles: [UInt: [String]] = [:]
     var tableHeaderOwners: [UInt: NativeHandle] = [:]
+    /// The sorted column and direction per table handle, so the dark owner-drawn
+    /// header can render the sort glyph itself (the native `HDF_SORTUP` flag is
+    /// skipped under dark because the themed header repaints the sorted column
+    /// on top of the owner-draw).
+    var tableSortIndicators: [UInt: (column: Int, ascending: Bool)] = [:]
+    /// Raw header hwnds we've subclassed to owner-draw under dark mode.
+    var darkTableHeaderHwnds: Set<UInt> = []
     var tableSuppressedColumnClicks: [UInt: Int] = [:]
     var tableClickedRows: [UInt: Int] = [:]
     var tableClickedColumns: [UInt: Int] = [:]

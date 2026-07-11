@@ -486,6 +486,7 @@ let nmCustomDraw: UINT = 0xFFFF_FFF4
 let cddsPrePaint: DWORD = 0x0000_0001
 let cddsItemPrePaint: DWORD = 0x0001_0001
 let cdrfDoDefault: LRESULT = 0x0000_0000
+let cdrfSkipDefault: LRESULT = 0x0000_0004
 let cdrfNotifyItemDraw: LRESULT = 0x0000_0020
 
 struct HDHITTESTINFO {
@@ -1419,6 +1420,12 @@ func winEnumDisplayMonitors(
 
 @_silgen_name("GetMonitorInfoW")
 func winGetMonitorInfoW(_ monitor: UnsafeMutableRawPointer?, _ info: UnsafeMutablePointer<MONITORINFOW>?) -> Int32
+
+@_silgen_name("MonitorFromWindow")
+func winMonitorFromWindow(_ hwnd: HWND?, _ flags: DWORD) -> UnsafeMutableRawPointer?
+
+/// `MonitorFromWindow` flag: return the display nearest the window.
+let monitorDefaultToNearest: DWORD = 0x0000_0002
 let gwlExStyle: Int32 = -20
 let wsExClientEdge: DWORD = 0x0000_0200
 let wsExToolWindow: DWORD = 0x0000_0080
@@ -1542,6 +1549,7 @@ let wmNCLButtonDown: UINT = 0x00a1
 let hcbtActivate: Int32 = 5
 let transparentBkMode: Int32 = 1
 let dtCenter: UINT = 0x00000001
+let dtRight: UINT = 0x00000002
 let dtVCenter: UINT = 0x00000004
 let dtWordBreak: UINT = 0x00000010
 let dtSingleLine: UINT = 0x00000020
@@ -1633,6 +1641,8 @@ let lvnBeginDrag: UINT = 0xffffff93
 let lvsEditLabels: DWORD = 0x0200
 let lvmEditLabelW: UINT = lvmFirst + 118
 /// Header control: get/set item and sort-indicator format bits.
+let hdmGetItemCount: UINT = hdmFirst + 0
+let hdmGetItemRect: UINT = hdmFirst + 7
 let hdmGetItemW: UINT = hdmFirst + 11
 let hdmSetItemW: UINT = hdmFirst + 12
 let hdiFormat: UINT = 0x0004

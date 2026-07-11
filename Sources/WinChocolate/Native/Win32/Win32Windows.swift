@@ -240,6 +240,56 @@ extension Win32NativeControlBackend {
         _ = winShowWindow(hwnd, winIsZoomed(hwnd) != 0 ? swRestore : swMaximize)
     }
 
+    /// Enters or exits full-screen: a borderless window covering the display it
+    /// is on. There is no Windows title-bar merge (an AppKit-only concept), so
+    /// the toolbar strip stays where it is — the honest Windows full screen.
+    public func setWindowFullScreen(_ fullScreen: Bool, for handle: NativeHandle) {
+        guard let hwnd = hwnd(from: handle) else {
+            return
+        }
+
+        if fullScreen {
+            guard fullScreenSavedState[handle.rawValue] == nil else {
+                return
+            }
+            // Save the current style and frame, then strip the caption/resize
+            // border and size the window to the monitor's full bounds.
+            let style = winGetWindowLongPtrW(hwnd, gwlStyle)
+            var savedRect = RECT()
+            _ = winGetWindowRect(hwnd, &savedRect)
+            fullScreenSavedState[handle.rawValue] = (style, savedRect)
+
+            var info = MONITORINFOW()
+            info.cbSize = DWORD(MemoryLayout<MONITORINFOW>.size)
+            let monitor = winMonitorFromWindow(hwnd, monitorDefaultToNearest)
+            guard winGetMonitorInfoW(monitor, &info) != 0 else {
+                fullScreenSavedState[handle.rawValue] = nil
+                return
+            }
+
+            let stripped = LONG_PTR(UInt(bitPattern: Int(style)) & ~UInt(wsCaption | wsThickFrame | wsBorder))
+            _ = winSetWindowLongPtrW(hwnd, gwlStyle, stripped)
+            let bounds = info.rcMonitor
+            _ = winSetWindowPos(
+                hwnd, nil, bounds.left, bounds.top,
+                bounds.right - bounds.left, bounds.bottom - bounds.top,
+                swpNoZOrder | swpNoActivate | swpFrameChanged
+            )
+        } else {
+            guard let saved = fullScreenSavedState[handle.rawValue] else {
+                return
+            }
+            fullScreenSavedState[handle.rawValue] = nil
+            _ = winSetWindowLongPtrW(hwnd, gwlStyle, saved.style)
+            let rect = saved.rect
+            _ = winSetWindowPos(
+                hwnd, nil, rect.left, rect.top,
+                rect.right - rect.left, rect.bottom - rect.top,
+                swpNoZOrder | swpNoActivate | swpFrameChanged
+            )
+        }
+    }
+
     /// Moves a native window to the bottom of the z-order.
     public func orderWindowBack(_ handle: NativeHandle) {
         guard let hwnd = hwnd(from: handle) else {

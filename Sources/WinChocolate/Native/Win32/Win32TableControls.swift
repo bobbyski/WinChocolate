@@ -191,6 +191,14 @@ extension Win32NativeControlBackend {
               let headerHwnd = HWND(bitPattern: winSendMessageW(hwnd, lvmGetHeader, 0, 0)) else {
             return
         }
+        // Record the sort so a dark owner-drawn header can render its own glyph.
+        tableSortIndicators[handle.rawValue] = (column: column, ascending: ascending)
+
+        // Under dark, the owner-draw paints the glyph itself and we must NOT set
+        // the native `HDF_SORTUP` flag — a themed header repaints the sorted
+        // column on top of the owner-draw, producing dark-on-dark text. Under
+        // light, the native flag draws the standard themed arrow.
+        let dark = NSApplication.shared.effectiveAppearance.winIsDark
         let columnCount = tableColumnTitles[handle.rawValue]?.count ?? 0
         for index in 0..<columnCount {
             var item = HDITEMW()
@@ -199,13 +207,15 @@ extension Win32NativeControlBackend {
                 _ = winSendMessageW(headerHwnd, hdmGetItemW, WPARAM(index), Int(bitPattern: itemPointer))
             }
             item.fmt &= ~(hdfSortUp | hdfSortDown)
-            if index == column {
+            if !dark && index == column {
                 item.fmt |= ascending ? hdfSortUp : hdfSortDown
             }
             withUnsafeMutablePointer(to: &item) { itemPointer in
                 _ = winSendMessageW(headerHwnd, hdmSetItemW, WPARAM(index), Int(bitPattern: itemPointer))
             }
         }
+        // Repaint the header so the owner-draw reflects the new sort glyph.
+        _ = winInvalidateRect(headerHwnd, nil, 1)
     }
 
     /// Registers the in-place-edit commit callback.

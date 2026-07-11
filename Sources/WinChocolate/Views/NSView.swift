@@ -171,12 +171,16 @@ open class NSView: NSResponder {
     /// Whether the view has been flagged as needing layout.
     open var needsLayout: Bool = false
 
-    /// Whether the view's frame is managed by autoresizing rather than constraints.
-    ///
-    /// Stored for source compatibility. WinChocolate uses frame/autoresizing
-    /// layout; a constraint solver is tracked separately (see the plan's Auto
-    /// Layout note), so this defaults to `true` and toggling it is a no-op today.
+    /// Whether the view's frame is managed by autoresizing rather than
+    /// constraints. When `false`, this view's frame is computed by the Auto
+    /// Layout solver from the constraints on its container (see the Layout
+    /// sources); when `true` (the default) the view keeps its explicit frame
+    /// and contributes it to the solver as a fixed input.
     open var translatesAutoresizingMaskIntoConstraints: Bool = true
+
+    /// Auto Layout constraints installed on this view — it acts as the layout
+    /// container for these, solving its subviews' frames from them.
+    var winActiveConstraints: [NSLayoutConstraint] = []
 
     /// Lays out the view's subviews. Subclasses override to position children.
     open func layout() {}

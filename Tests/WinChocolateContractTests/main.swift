@@ -18,6 +18,101 @@ NSApplication.shared.appearance = NSAppearance(named: .aqua)
 expect(WinPresentation.selected == .modern, "The presentation should default to modern (8.4).")
 WinPresentation.selected = .classic
 
+func winClose(_ a: CGFloat, _ b: CGFloat, _ tol: CGFloat = 0.5) -> Bool {
+    abs(a - b) < tol
+}
+
+func testAutoLayoutPinsEdgesFixedSizeAndCenter() {
+    // Pinning all four edges to the superview with insets sizes and positions
+    // the subview exactly.
+    let container = NSView(frame: NSMakeRect(0, 0, 200, 100))
+    let box = NSView(frame: .zero)
+    box.translatesAutoresizingMaskIntoConstraints = false
+    container.addSubview(box)
+    NSLayoutConstraint.activate([
+        box.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 10),
+        box.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -10),
+        box.topAnchor.constraint(equalTo: container.topAnchor, constant: 20),
+        box.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -20),
+    ])
+    container.layoutSubtreeIfNeeded()
+    expect(winClose(box.frame.origin.x, 10) && winClose(box.frame.origin.y, 20)
+        && winClose(box.frame.size.width, 180) && winClose(box.frame.size.height, 60),
+        "Edge-pinned subview frame wrong: got \(box.frame).")
+
+    // Fixed size + centering places the subview centered in the container.
+    let centered = NSView(frame: .zero)
+    centered.translatesAutoresizingMaskIntoConstraints = false
+    container.addSubview(centered)
+    NSLayoutConstraint.activate([
+        centered.widthAnchor.constraint(equalToConstant: 50),
+        centered.heightAnchor.constraint(equalToConstant: 30),
+        centered.centerXAnchor.constraint(equalTo: container.centerXAnchor),
+        centered.centerYAnchor.constraint(equalTo: container.centerYAnchor),
+    ])
+    container.layoutSubtreeIfNeeded()
+    expect(winClose(centered.frame.origin.x, 75) && winClose(centered.frame.origin.y, 35)
+        && winClose(centered.frame.size.width, 50) && winClose(centered.frame.size.height, 30),
+        "Fixed-size centered subview frame wrong: got \(centered.frame).")
+}
+
+func testAutoLayoutSiblingChainInequalityAndFixedAnchor() {
+    // A sibling chain: A pinned to the leading edge, B trailing of A with a gap.
+    let container = NSView(frame: NSMakeRect(0, 0, 200, 100))
+    let a = NSView(frame: .zero)
+    let b = NSView(frame: .zero)
+    a.translatesAutoresizingMaskIntoConstraints = false
+    b.translatesAutoresizingMaskIntoConstraints = false
+    container.addSubview(a)
+    container.addSubview(b)
+    NSLayoutConstraint.activate([
+        a.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+        a.widthAnchor.constraint(equalToConstant: 40),
+        a.topAnchor.constraint(equalTo: container.topAnchor),
+        a.heightAnchor.constraint(equalToConstant: 20),
+        b.leadingAnchor.constraint(equalTo: a.trailingAnchor, constant: 10),
+        b.widthAnchor.constraint(equalToConstant: 60),
+        b.topAnchor.constraint(equalTo: a.topAnchor),
+        b.heightAnchor.constraint(equalToConstant: 20),
+    ])
+    container.layoutSubtreeIfNeeded()
+    expect(winClose(a.frame.origin.x, 0) && winClose(a.frame.size.width, 40),
+        "Chain head A wrong: got \(a.frame).")
+    expect(winClose(b.frame.origin.x, 50) && winClose(b.frame.size.width, 60),
+        "Chain tail B should begin at A.trailing+10 = 50: got \(b.frame).")
+
+    // A required minimum-width inequality overrides a low-priority width.
+    let grow = NSView(frame: .zero)
+    grow.translatesAutoresizingMaskIntoConstraints = false
+    container.addSubview(grow)
+    let low = grow.widthAnchor.constraint(equalToConstant: 30)
+    low.priority = .defaultLow
+    NSLayoutConstraint.activate([
+        grow.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+        grow.widthAnchor.constraint(greaterThanOrEqualToConstant: 100),
+        low,
+    ])
+    container.layoutSubtreeIfNeeded()
+    expect(grow.frame.size.width >= 99,
+        "Required min-width should beat the low-priority width: got \(grow.frame.size.width).")
+
+    // A translates=true sibling is a fixed anchor others can pin to.
+    let fixed = NSView(frame: NSMakeRect(0, 0, 40, 100))  // translates == true (default)
+    let follower = NSView(frame: .zero)
+    follower.translatesAutoresizingMaskIntoConstraints = false
+    container.addSubview(fixed)
+    container.addSubview(follower)
+    NSLayoutConstraint.activate([
+        follower.leadingAnchor.constraint(equalTo: fixed.trailingAnchor),
+        follower.widthAnchor.constraint(equalToConstant: 30),
+        follower.topAnchor.constraint(equalTo: container.topAnchor),
+        follower.heightAnchor.constraint(equalToConstant: 10),
+    ])
+    container.layoutSubtreeIfNeeded()
+    expect(winClose(follower.frame.origin.x, 40),
+        "Follower should pin to the fixed sibling's trailing edge (40): got \(follower.frame).")
+}
+
 func clearApplicationWindows() {
     for window in NSApplication.shared.windows {
         NSApplication.shared.removeWindowsItem(window)
@@ -82,6 +177,58 @@ func testWindowRealizationCreatesNativeHierarchy() {
     window.makeKeyAndOrderFront(nil)
 
     expect(backend.records[windowHandle]?.isHidden == false, "makeKeyAndOrderFront did not show the realized window.")
+
+    clearApplicationWindows()
+}
+
+final class FullScreenSpyDelegate: NSWindowDelegate {
+    var willEnter = 0, didEnter = 0, willExit = 0, didExit = 0
+    func windowWillEnterFullScreen(_ notification: NSNotification) { willEnter += 1 }
+    func windowDidEnterFullScreen(_ notification: NSNotification) { didEnter += 1 }
+    func windowWillExitFullScreen(_ notification: NSNotification) { willExit += 1 }
+    func windowDidExitFullScreen(_ notification: NSNotification) { didExit += 1 }
+}
+
+func testWindowToggleFullScreenTracksStateAndDelegate() {
+    let backend = InMemoryNativeControlBackend()
+    let window = NSWindow(
+        contentRect: NSMakeRect(0, 0, 400, 300),
+        styleMask: [.titled, .closable, .resizable],
+        backing: .buffered,
+        defer: false,
+        nativeBackend: backend
+    )
+    window.collectionBehavior = .fullScreenPrimary
+    let spy = FullScreenSpyDelegate()
+    window.delegate = spy
+    let handle = window.realizeNativePeer()
+
+    // Enter: state + styleMask flag + backend + will/did callbacks.
+    window.toggleFullScreen(nil)
+    expect(window.isFullScreen, "Window should report full screen after entering.")
+    expect(window.styleMask.contains(.fullScreen), "styleMask should include .fullScreen in full screen.")
+    expect(backend.fullScreenWindows.contains(handle), "Backend was not told the window entered full screen.")
+    expect(spy.willEnter == 1 && spy.didEnter == 1, "Enter full-screen delegate callbacks did not fire once each.")
+
+    // Exit: state clears, backend clears, exit callbacks fire.
+    window.toggleFullScreen(nil)
+    expect(!window.isFullScreen, "Window should not report full screen after exiting.")
+    expect(!window.styleMask.contains(.fullScreen), "styleMask should drop .fullScreen after exiting.")
+    expect(!backend.fullScreenWindows.contains(handle), "Backend was not told the window exited full screen.")
+    expect(spy.willExit == 1 && spy.didExit == 1, "Exit full-screen delegate callbacks did not fire once each.")
+
+    // A .fullScreenNone window ignores the toggle entirely.
+    let locked = NSWindow(
+        contentRect: NSMakeRect(0, 0, 200, 150),
+        styleMask: [.titled],
+        backing: .buffered,
+        defer: false,
+        nativeBackend: backend
+    )
+    locked.collectionBehavior = .fullScreenNone
+    _ = locked.realizeNativePeer()
+    locked.toggleFullScreen(nil)
+    expect(!locked.isFullScreen, "A .fullScreenNone window should not enter full screen.")
 
     clearApplicationWindows()
 }
@@ -8933,6 +9080,9 @@ func testAlertBeginSheetModalDeliversResponse() {
 }
 
 testWindowRealizationCreatesNativeHierarchy()
+testWindowToggleFullScreenTracksStateAndDelegate()
+testAutoLayoutPinsEdgesFixedSizeAndCenter()
+testAutoLayoutSiblingChainInequalityAndFixedAnchor()
 testWindowTitleVisibilityBlanksCaption()
 testWindowStandardButtonsAndStyleFlags()
 testWindowStandardButtonHidingReflectsToCaption()

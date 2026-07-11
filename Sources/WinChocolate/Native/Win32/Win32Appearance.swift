@@ -133,10 +133,84 @@ extension Win32NativeControlBackend {
         _ = winSendMessageW(hwnd, lvmSetTextBkColor, 0, LPARAM(face))
         _ = winSendMessageW(hwnd, lvmSetTextColor, 0, LPARAM(text))
         if let header = HWND(bitPattern: winSendMessageW(hwnd, lvmGetHeader, 0, 0)) {
-            _ = withWideString("DarkMode_ItemsView") { themeName in
-                winSetWindowTheme(header, themeName, nil)
+            // The undocumented `DarkMode_ItemsView` theme darkens the header
+            // background but not its title text (dark-on-dark), and it won't
+            // reliably invert even with the process app-mode + AllowDarkMode
+            // dance on all Windows builds — so we own the header entirely: the
+            // list-view header's NM_CUSTOMDRAW isn't forwarded to us, so we
+            // subclass the header window and owner-draw its WM_PAINT.
+            let key = UInt(bitPattern: header)
+            if !darkTableHeaderHwnds.contains(key), let owner = tableHeaderOwners[key] {
+                darkTableHeaderHwnds.insert(key)
+                subclassChildControl(header, handle: owner)
+            }
+            _ = winInvalidateRect(header, nil, 1)
+        }
+    }
+
+    /// Owner-draws a list-view column header under a dark appearance: each item
+    /// gets a dark fill, its title in the dynamic light color, a hairline
+    /// column separator, and — for the sorted column — the tracked sort glyph.
+    /// (The header is subclassed because its `NM_CUSTOMDRAW` never reaches the
+    /// top-level window, and its dark theme leaves the text dark-on-dark.)
+    func drawDarkTableHeader(_ hwnd: HWND) {
+        var paint = PAINTSTRUCT()
+        guard let deviceContext = winBeginPaint(hwnd, &paint) else {
+            return
+        }
+        defer {
+            withUnsafePointer(to: paint) { _ = winEndPaint(hwnd, $0) }
+        }
+
+        var client = RECT()
+        _ = winGetClientRect(hwnd, &client)
+        // Dark fill for the whole header (covers past the last column too).
+        fillRect(client, color: colorRef(from: .controlBackgroundColor), deviceContext: deviceContext)
+
+        let owner = tableHeaderOwners[UInt(bitPattern: hwnd)]
+        let titles = owner.flatMap { tableColumnTitles[$0.rawValue] } ?? []
+        let sort = owner.flatMap { tableSortIndicators[$0.rawValue] }
+        let separator = colorRef(from: .separatorColor)
+        let textColor = colorRef(from: .textColor)
+
+        _ = winSetBkMode(deviceContext, transparentBkMode)
+        let font = winSendMessageW(hwnd, wmGetFont, 0, 0)
+        let previousFont = font != 0 ? winSelectObject(deviceContext, HFONT(bitPattern: font)) : nil
+        _ = winSetTextColor(deviceContext, textColor)
+
+        let count = Int(winSendMessageW(hwnd, hdmGetItemCount, 0, 0))
+        for index in 0..<max(count, 0) {
+            var itemRect = RECT()
+            let ok = withUnsafeMutablePointer(to: &itemRect) {
+                winSendMessageW(hwnd, hdmGetItemRect, WPARAM(index), Int(bitPattern: $0))
+            }
+            guard ok != 0 else {
+                continue
+            }
+            // Column separator hairline on the trailing edge.
+            let sepRect = RECT(left: itemRect.right - 1, top: itemRect.top, right: itemRect.right, bottom: itemRect.bottom)
+            fillRect(sepRect, color: separator, deviceContext: deviceContext)
+            // Title text.
+            if titles.indices.contains(index) {
+                var textRect = RECT(left: itemRect.left + 6, top: itemRect.top,
+                                    right: itemRect.right - 16, bottom: itemRect.bottom)
+                let chars = Array(titles[index].utf16)
+                _ = winDrawTextW(deviceContext, chars, Int32(chars.count), &textRect, dtSingleLine | dtVCenter | dtEndEllipsis)
+            }
+            // Sort glyph on the sorted column (tracked; the native flag is unset under dark).
+            if let sort, sort.column == index {
+                let glyph = sort.ascending ? "\u{25B2}" : "\u{25BC}"
+                var arrowRect = RECT(left: itemRect.left, top: itemRect.top, right: itemRect.right - 4, bottom: itemRect.bottom)
+                let arrowChars = Array(glyph.utf16)
+                _ = winDrawTextW(deviceContext, arrowChars, Int32(arrowChars.count), &arrowRect, dtSingleLine | dtVCenter | dtRight)
             }
         }
+        if font != 0 {
+            _ = winSelectObject(deviceContext, previousFont ?? nil)
+        }
+        // Bottom baseline hairline.
+        let baseline = RECT(left: client.left, top: client.bottom - 1, right: client.right, bottom: client.bottom)
+        fillRect(baseline, color: separator, deviceContext: deviceContext)
     }
 
     /// Owner-draws a compact date picker's closed field under a dark
