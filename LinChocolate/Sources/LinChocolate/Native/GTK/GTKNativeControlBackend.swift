@@ -28,6 +28,9 @@ public final class GTKNativeControlBackend: NativeControlBackend {
     private var ranges: [UInt: (min: Double, max: Double)] = [:]   // slider/progress
     private var comboEntries: [UInt: OpaquePointer] = [:]   // combo -> its GtkEntry child
     private var splitPaneCounts: [UInt: Int] = [:]           // paned -> panes added
+    private var viewFixeds: [UInt: OpaquePointer] = [:]      // view -> child-hosting GtkFixed
+    private var viewDrawAreas: [UInt: OpaquePointer] = [:]   // view -> GtkDrawingArea
+    private var drawHandlers: [UInt: (NativeGraphicsContext, Double, Double) -> Void] = [:]
     private var windowBoxes: [UInt: OpaquePointer] = [:]     // window -> vertical GtkBox child
     private var windowContents: [UInt: OpaquePointer] = [:]  // window -> current content widget
     private var windowMenuBars: [UInt: OpaquePointer] = [:]  // window -> GtkPopoverMenuBar
@@ -389,15 +392,29 @@ public final class GTKNativeControlBackend: NativeControlBackend {
 
     // MARK: Views & controls
     public func createView(frame: NSRect) -> NativeHandle {
+        // An NSView both draws (AppKit `draw(_:)`) and contains children, so it
+        // is a GtkOverlay: a GtkDrawingArea underneath for custom drawing, and
+        // a GtkFixed on top for absolute child placement.
+        let overlay = gtk_overlay_new()!
+        let area = gtk_drawing_area_new()!
         let fixed = gtk_fixed_new()!
-        // Give the container an explicit size and let it expand to fill its
-        // parent. Without this the GtkFixed can collapse to 0×0 and clip all of
-        // its children — the "window shows but controls are blank" symptom seen
-        // over XQuartz (where the initial surface configure can lag).
-        gtk_widget_set_size_request(fixed, Int32(frame.width), Int32(frame.height))
-        gtk_widget_set_hexpand(fixed, gboolean(1))
-        gtk_widget_set_vexpand(fixed, gboolean(1))
-        return allocate(fixed, .view, frame: frame)
+        gtk_overlay_set_child(OpaquePointer(overlay), area)
+        gtk_overlay_add_overlay(OpaquePointer(overlay), fixed)
+        // Explicit size + expand: without this the container can collapse to
+        // 0×0 and clip its children (the "window shows but controls are blank"
+        // symptom seen over XQuartz, where the initial configure can lag).
+        gtk_widget_set_size_request(overlay, Int32(frame.width), Int32(frame.height))
+        gtk_widget_set_hexpand(overlay, gboolean(1))
+        gtk_widget_set_vexpand(overlay, gboolean(1))
+        let h = allocate(overlay, .view, frame: frame)
+        viewFixeds[h.rawValue] = OpaquePointer(fixed)
+        viewDrawAreas[h.rawValue] = OpaquePointer(area)
+        return h
+    }
+
+    /// The child-hosting GtkFixed of a container view.
+    private func containerFixed(of raw: UInt) -> OpaquePointer? {
+        viewFixeds[raw] ?? widgets[raw]   // pre-overlay fallback: the widget itself
     }
     public func createButton(title: String, frame: NSRect) -> NativeHandle {
         let b = gtk_button_new_with_label(title)!
@@ -864,7 +881,7 @@ public final class GTKNativeControlBackend: NativeControlBackend {
         gtk_paned_set_position(paned, gint(position))
     }
     public func addSubview(_ child: NativeHandle, to parent: NativeHandle) {
-        guard let p = widget(parent), let c = widget(child) else { return }
+        guard let p = containerFixed(of: parent.rawValue), let c = widget(child) else { return }
         parents[child.rawValue] = parent.rawValue
         let childFrame = frames[child.rawValue] ?? .zero
         // Flip AppKit's bottom-left origin to GTK's top-left for placement.
@@ -902,11 +919,29 @@ public final class GTKNativeControlBackend: NativeControlBackend {
         gtk_widget_set_size_request(asWidget(w), Int32(frame.width), Int32(frame.height))
 
         // If placed in a parent GtkFixed, move to the new (flipped) position.
-        if let parentRaw = parents[handle.rawValue], let p = widgets[parentRaw] {
+        if let parentRaw = parents[handle.rawValue], let p = containerFixed(of: parentRaw) {
             let parentHeight = frames[parentRaw]?.height ?? 0
             let y = CoordinateSpace.gtkY(for: frame, parentHeight: parentHeight)
             gtk_fixed_move(asFixed(p), asWidget(w), Double(frame.origin.x), Double(y))
         }
+    }
+    public func setDrawHandler(for handle: NativeHandle, handler: @escaping (NativeGraphicsContext, Double, Double) -> Void) {
+        guard let area = viewDrawAreas[handle.rawValue] else { return }
+        drawHandlers[handle.rawValue] = handler
+        let box = DrawBox(backend: self, view: handle.rawValue)
+        gtk_drawing_area_set_draw_func(
+            UnsafeMutablePointer<GtkDrawingArea>(area),
+            gtkDrawFunc,
+            Unmanaged.passRetained(box).toOpaque(), boxDestroyNotify
+        )
+    }
+    public func setNeedsDisplay(_ handle: NativeHandle) {
+        guard let area = viewDrawAreas[handle.rawValue] else { return }
+        gtk_widget_queue_draw(asWidget(area))
+    }
+    /// Dispatches a draw pass to the Swift handler (called by the draw func).
+    func dispatchDraw(view: UInt, context: NativeGraphicsContext, width: Double, height: Double) {
+        drawHandlers[view]?(context, width, height)
     }
     public func setEnabled(_ isEnabled: Bool, for handle: NativeHandle) {
         guard let w = widget(handle) else { return }
@@ -1192,6 +1227,60 @@ private final class SegmentBox {
 private final class WidgetBox {
     let widget: UnsafeMutablePointer<GtkWidget>
     init(widget: UnsafeMutablePointer<GtkWidget>) { self.widget = widget }
+}
+
+private final class DrawBox {
+    weak var backend: GTKNativeControlBackend?
+    let view: UInt
+    init(backend: GTKNativeControlBackend, view: UInt) {
+        self.backend = backend
+        self.view = view
+    }
+}
+
+/// Cairo-backed graphics context: NSBezierPath ops map 1:1 onto the cairo_t.
+final class CairoGraphicsContext: NativeGraphicsContext {
+    private let cr: OpaquePointer
+    private var fillColor = NSColor.black
+    private var strokeColor = NSColor.black
+    private var lineWidth = 1.0
+
+    init(cr: OpaquePointer) { self.cr = cr }
+
+    func setFillColor(_ color: NSColor) { fillColor = color }
+    func setStrokeColor(_ color: NSColor) { strokeColor = color }
+    func setLineWidth(_ width: Double) { lineWidth = width }
+    func beginPath() { cairo_new_path(cr) }
+    func move(toX x: Double, y: Double) { cairo_move_to(cr, x, y) }
+    func line(toX x: Double, y: Double) { cairo_line_to(cr, x, y) }
+    func curve(toX x: Double, y: Double, c1x: Double, c1y: Double, c2x: Double, c2y: Double) {
+        cairo_curve_to(cr, c1x, c1y, c2x, c2y, x, y)
+    }
+    func closePath() { cairo_close_path(cr) }
+    func fillPath() {
+        cairo_set_source_rgba(cr, Double(fillColor.redComponent), Double(fillColor.greenComponent),
+                              Double(fillColor.blueComponent), Double(fillColor.alphaComponent))
+        cairo_fill(cr)
+    }
+    func strokePath() {
+        cairo_set_source_rgba(cr, Double(strokeColor.redComponent), Double(strokeColor.greenComponent),
+                              Double(strokeColor.blueComponent), Double(strokeColor.alphaComponent))
+        cairo_set_line_width(cr, lineWidth)
+        cairo_stroke(cr)
+    }
+}
+
+/// `GtkDrawingAreaDrawFunc` — flips into AppKit's bottom-left space and
+/// dispatches to the view's Swift draw handler.
+private let gtkDrawFunc: @convention(c) (UnsafeMutablePointer<GtkDrawingArea>?, OpaquePointer?, Int32, Int32, gpointer?) -> Void = { _, cr, width, height, userData in
+    guard let cr, let userData else { return }
+    let box = Unmanaged<DrawBox>.fromOpaque(userData).takeUnretainedValue()
+    cairo_save(cr)
+    cairo_translate(cr, 0, Double(height))
+    cairo_scale(cr, 1, -1)
+    let context = CairoGraphicsContext(cr: cr)
+    box.backend?.dispatchDraw(view: box.view, context: context, width: Double(width), height: Double(height))
+    cairo_restore(cr)
 }
 
 /// Shared state for one modal file-dialog run.

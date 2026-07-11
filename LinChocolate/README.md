@@ -75,6 +75,7 @@ On Apple Silicon the container builds **arm64/aarch64**, matching the Pi.
 ./run-linux.sh                 # build the image, then `swift run GTKHelloSpike`
 ./run-linux.sh --shell         # interactive container shell
 ./run-linux.sh SomeExecutable  # run a different executable target
+./verify.sh                    # CI-style: build + contract tests + headless captures
 ```
 
 Expected result: a small GTK4 window titled **"Hello LinChocolate"** appears on

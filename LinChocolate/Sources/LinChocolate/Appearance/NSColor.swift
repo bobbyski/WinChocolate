@@ -23,6 +23,14 @@ public struct NSColor: Equatable, Sendable {
         self.init(red: red, green: green, blue: blue, alpha: alpha)
     }
 
+    // MARK: Drawing
+    /// Uses this color for subsequent fills in the current draw pass.
+    public func setFill() { NSGraphicsContext.current?.native.setFillColor(self) }
+    /// Uses this color for subsequent strokes in the current draw pass.
+    public func setStroke() { NSGraphicsContext.current?.native.setStrokeColor(self) }
+    /// Uses this color for both fills and strokes.
+    public func set() { setFill(); setStroke() }
+
     // MARK: Common colors
     public static let black   = NSColor(red: 0, green: 0, blue: 0)
     public static let white   = NSColor(red: 1, green: 1, blue: 1)

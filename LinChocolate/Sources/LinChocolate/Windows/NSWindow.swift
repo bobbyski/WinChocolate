@@ -54,6 +54,7 @@ public final class NSWindow {
 
     /// Shows the window and orders it to the front.
     public func makeKeyAndOrderFront(_ sender: Any?) {
+        contentView?.layoutSubtreeIfNeeded()
         backend.showWindow(handle)
     }
 

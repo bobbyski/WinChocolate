@@ -29,6 +29,22 @@ public struct NativeToolbarItemSpec {
     }
 }
 
+/// Platform drawing surface handed to a view's draw handler. Path-based:
+/// build a path with the primitive ops, then fill or stroke it (both consume
+/// the path). Backed by Cairo on GTK and by an op recorder in tests.
+public protocol NativeGraphicsContext: AnyObject {
+    func setFillColor(_ color: NSColor)
+    func setStrokeColor(_ color: NSColor)
+    func setLineWidth(_ width: Double)
+    func beginPath()
+    func move(toX x: Double, y: Double)
+    func line(toX x: Double, y: Double)
+    func curve(toX x: Double, y: Double, c1x: Double, c1y: Double, c2x: Double, c2y: Double)
+    func closePath()
+    func fillPath()
+    func strokePath()
+}
+
 /// One styled run of text (carries `NSAttributedString` content across the seam).
 public struct NativeTextRun: Equatable {
     public let text: String
@@ -218,6 +234,11 @@ public protocol NativeControlBackend: AnyObject {
     func setTextColor(_ color: NSColor, for handle: NativeHandle)
     /// Replaces a label's content with styled runs (attributed text).
     func setStyledText(_ runs: [NativeTextRun], for handle: NativeHandle)
+    /// Registers custom drawing for a container view: `(context, width, height)`
+    /// in AppKit's bottom-left coordinate space.
+    func setDrawHandler(for handle: NativeHandle, handler: @escaping (NativeGraphicsContext, Double, Double) -> Void)
+    /// Requests a redraw of a view with a draw handler.
+    func setNeedsDisplay(_ handle: NativeHandle)
     /// Sets a checkbox/radio's on/off state.
     func setButtonState(_ on: Bool, for handle: NativeHandle)
     /// Sets a slider's or progress indicator's value.

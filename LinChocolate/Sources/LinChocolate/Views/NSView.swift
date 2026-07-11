@@ -1,11 +1,14 @@
 import Foundation
 
 /// AppKit-shaped view. A rectangular region backed by a native container that
-/// can host subviews at absolute frames.
+/// can host subviews at absolute frames and draw custom content: subclass and
+/// override `draw(_:)`, using `NSBezierPath`/`NSColor` in AppKit's bottom-left
+/// coordinates.
 ///
-/// Subclasses (`NSButton`, `NSTextField`) create their own native control
-/// through the backend and hand its handle to the designated initializer.
-public class NSView {
+/// Control subclasses (`NSButton`, `NSTextField`) create their own native
+/// control through the backend and hand its handle to the designated
+/// initializer (controls render natively and do not custom-draw).
+open class NSView {
 
     /// The view's frame in its parent's coordinate space (AppKit bottom-left
     /// origin). Setting it repositions/resizes the native control.
@@ -36,11 +39,27 @@ public class NSView {
         }
     }
 
-    /// Creates a plain container view.
+    /// Creates a plain container view (custom drawing enabled).
     public init(frame: NSRect) {
         self.frame = frame
         self.backend = NSApplication.shared.nativeBackend
         self.handle = backend.createView(frame: frame)
+        backend.setDrawHandler(for: handle) { [weak self] native, width, height in
+            guard let self else { return }
+            NSGraphicsContext.setCurrent(NSGraphicsContext(native: native))
+            self.draw(NSMakeRect(0, 0, width, height))
+            NSGraphicsContext.setCurrent(nil)
+        }
+    }
+
+    /// Draws the view's custom content. Override in subclasses; the default
+    /// draws nothing. `NSGraphicsContext.current` is valid during the call.
+    open func draw(_ dirtyRect: NSRect) {}
+
+    /// Set to true to request a redraw of custom content.
+    public var needsDisplay: Bool {
+        get { false }
+        set { if newValue { backend.setNeedsDisplay(handle) } }
     }
 
     /// Designated initializer for subclasses that create their own native
@@ -55,5 +74,49 @@ public class NSView {
     public func addSubview(_ view: NSView) {
         subviews.append(view)
         backend.addSubview(view.handle, to: handle)
+    }
+
+    // MARK: - Auto Layout
+
+    /// When true (the AppKit default), the view keeps its manual frame and is
+    /// treated as a fixed constant by the solver. Set to false to lay the view
+    /// out from constraints via its anchors.
+    public var translatesAutoresizingMaskIntoConstraints = true
+
+    /// The view's natural size, or `noIntrinsicMetric` in a dimension it has no
+    /// opinion about. Override in content views; unconstrained dimensions fall
+    /// back to the current frame rather than this value in the current solver.
+    open var intrinsicContentSize: NSSize { NSMakeSize(-1, -1) }
+
+    public var leadingAnchor: NSLayoutXAxisAnchor { NSLayoutXAxisAnchor(item: self, attribute: .leading) }
+    public var trailingAnchor: NSLayoutXAxisAnchor { NSLayoutXAxisAnchor(item: self, attribute: .trailing) }
+    public var leftAnchor: NSLayoutXAxisAnchor { NSLayoutXAxisAnchor(item: self, attribute: .left) }
+    public var rightAnchor: NSLayoutXAxisAnchor { NSLayoutXAxisAnchor(item: self, attribute: .right) }
+    public var centerXAnchor: NSLayoutXAxisAnchor { NSLayoutXAxisAnchor(item: self, attribute: .centerX) }
+    public var topAnchor: NSLayoutYAxisAnchor { NSLayoutYAxisAnchor(item: self, attribute: .top) }
+    public var bottomAnchor: NSLayoutYAxisAnchor { NSLayoutYAxisAnchor(item: self, attribute: .bottom) }
+    public var centerYAnchor: NSLayoutYAxisAnchor { NSLayoutYAxisAnchor(item: self, attribute: .centerY) }
+    public var widthAnchor: NSLayoutDimension { NSLayoutDimension(item: self, attribute: .width) }
+    public var heightAnchor: NSLayoutDimension { NSLayoutDimension(item: self, attribute: .height) }
+
+    /// Adds and activates a constraint (AppKit stores it on the common ancestor;
+    /// the process-wide active set makes that ancestor irrelevant here).
+    public func addConstraint(_ constraint: NSLayoutConstraint) {
+        constraint.isActive = true
+    }
+
+    /// Adds and activates several constraints.
+    public func addConstraints(_ constraints: [NSLayoutConstraint]) {
+        constraints.forEach { $0.isActive = true }
+    }
+
+    /// Marks the view as needing a layout pass. A no-op hook for now: layout is
+    /// driven explicitly by `layoutSubtreeIfNeeded()` (and window presentation).
+    func setNeedsLayout() {}
+
+    /// Resolves active constraints for this view and its descendants, applying
+    /// the computed frames.
+    public func layoutSubtreeIfNeeded() {
+        LayoutSolver.solve(container: self)
     }
 }

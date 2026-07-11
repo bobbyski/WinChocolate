@@ -665,6 +665,122 @@ do {
     check(backend.text(for: label.handle) == "hello world", "plain text recorded alongside runs")
 }
 
+// MARK: 21 — Custom drawing (NSView.draw + NSBezierPath)
+final class TestCanvas: NSView {
+    override func draw(_ dirtyRect: NSRect) {
+        NSColor.red.setFill()
+        NSBezierPath(rect: NSMakeRect(10, 20, 30, 40)).fill()
+        NSColor.blue.setStroke()
+        let line = NSBezierPath()
+        line.move(to: NSMakePoint(0, 0))
+        line.line(to: NSMakePoint(50, 50))
+        line.lineWidth = 3
+        line.stroke()
+    }
+}
+do {
+    let backend = InMemoryNativeControlBackend()
+    NSApplication.shared.nativeBackend = backend
+
+    let canvas = TestCanvas(frame: NSMakeRect(0, 0, 200, 100))
+    canvas.needsDisplay = true
+    let ops = backend.lastDrawOps[canvas.handle.rawValue] ?? []
+    check(backend.displayRequests[canvas.handle.rawValue] == 1, "needsDisplay triggers a draw pass")
+    check(ops.contains("fillColor(1.00,0.00,0.00)"), "fill color reaches the context")
+    check(ops.contains("move(10,20)") && ops.contains("line(40,20)") && ops.contains("close"),
+          "rect path replays into the context")
+    check(ops.contains("fill"), "fill consumes the path")
+    check(ops.contains("strokeColor(0.00,0.00,1.00)") && ops.contains("lineWidth(3)") && ops.contains("stroke"),
+          "stroke color, width, and stroke op recorded")
+    let fillIndex = ops.firstIndex(of: "fill")!
+    let strokeIndex = ops.firstIndex(of: "stroke")!
+    check(fillIndex < strokeIndex, "draw order preserved")
+
+    // Oval renders as four curves.
+    final class OvalCanvas: NSView {
+        override func draw(_ dirtyRect: NSRect) {
+            NSBezierPath(ovalIn: NSMakeRect(0, 0, 100, 100)).fill()
+        }
+    }
+    let ovalCanvas = OvalCanvas(frame: NSMakeRect(0, 0, 100, 100))
+    ovalCanvas.needsDisplay = true
+    let ovalOps = backend.lastDrawOps[ovalCanvas.handle.rawValue] ?? []
+    check(ovalOps.filter { $0.hasPrefix("curve") }.count == 4, "oval builds four bezier arcs")
+}
+
+// MARK: 22 — Auto Layout (NSLayoutConstraint + anchors + solver)
+@MainActor
+func approx(_ a: CGFloat, _ b: CGFloat, _ label: String) {
+    check(abs(a - b) < 0.01, "\(label) (\(a) ≈ \(b))")
+}
+do {
+    let backend = InMemoryNativeControlBackend()
+    NSApplication.shared.nativeBackend = backend
+
+    // Leading / centered / trailing row, sized and positioned only by constraints.
+    let container = NSView(frame: NSMakeRect(0, 0, 486, 300))
+    func box() -> NSView {
+        let v = NSView(frame: .zero)
+        v.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(v)
+        return v
+    }
+    let a = box(), b = box(), c = box()
+    NSLayoutConstraint.activate([
+        a.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 16),
+        a.centerYAnchor.constraint(equalTo: container.centerYAnchor),
+        a.widthAnchor.constraint(equalToConstant: 130),
+        a.heightAnchor.constraint(equalToConstant: 70),
+
+        b.centerXAnchor.constraint(equalTo: container.centerXAnchor),
+        b.centerYAnchor.constraint(equalTo: container.centerYAnchor),
+        b.widthAnchor.constraint(equalToConstant: 130),
+        b.heightAnchor.constraint(equalToConstant: 70),
+
+        c.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -16),
+        c.centerYAnchor.constraint(equalTo: container.centerYAnchor),
+        c.widthAnchor.constraint(equalToConstant: 130),
+        c.heightAnchor.constraint(equalToConstant: 70),
+    ])
+    container.layoutSubtreeIfNeeded()
+
+    approx(a.frame.minX, 16, "leading box pinned left"); approx(a.frame.minY, 115, "leading box vertically centered")
+    approx(a.frame.width, 130, "leading box width"); approx(a.frame.height, 70, "leading box height")
+    approx(b.frame.minX, 178, "center box centered X"); approx(b.frame.minY, 115, "center box centered Y")
+    approx(c.frame.minX, 340, "trailing box pinned right"); approx(c.frame.minY, 115, "trailing box centered Y")
+    // Frames reached the backend, not just the API object.
+    check(backend.frames[a.handle.rawValue]?.width == 130, "solved frame routes to the backend")
+
+    // Multiplier constraint: width = half the container.
+    let half = NSView(frame: .zero)
+    half.translatesAutoresizingMaskIntoConstraints = false
+    container.addSubview(half)
+    NSLayoutConstraint.activate([
+        half.widthAnchor.constraint(equalTo: container.widthAnchor, multiplier: 0.5),
+        half.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+    ])
+    container.layoutSubtreeIfNeeded()
+    approx(half.frame.width, 243, "multiplier constraint yields half width")
+
+    // Sibling chain: view2 sits 10pt to the right of view1's trailing edge.
+    let chainContainer = NSView(frame: NSMakeRect(0, 0, 400, 100))
+    let v1 = NSView(frame: .zero); v1.translatesAutoresizingMaskIntoConstraints = false
+    let v2 = NSView(frame: .zero); v2.translatesAutoresizingMaskIntoConstraints = false
+    chainContainer.addSubview(v1); chainContainer.addSubview(v2)
+    NSLayoutConstraint.activate([
+        v1.leadingAnchor.constraint(equalTo: chainContainer.leadingAnchor, constant: 20),
+        v1.widthAnchor.constraint(equalToConstant: 100),
+        v2.leadingAnchor.constraint(equalTo: v1.trailingAnchor, constant: 10),
+        v2.widthAnchor.constraint(equalToConstant: 50),
+    ])
+    chainContainer.layoutSubtreeIfNeeded()
+    approx(v1.frame.minX, 20, "chain: first view leading")
+    approx(v2.frame.minX, 130, "chain: second view follows first's trailing + gap")
+
+    // translates=true subview stays a fixed anchor point for its siblings.
+    check(v1.translatesAutoresizingMaskIntoConstraints == false, "opted-in view is solver-driven")
+}
+
 if failures == 0 {
     print("\nAll contract tests passed.")
 } else {

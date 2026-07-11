@@ -284,9 +284,87 @@ for control in [gridTitle, grid, gridResult] as [NSView] {
     gridPage.addSubview(control)
 }
 
+// MARK: - Page 8 · Drawing (NSView.draw + NSBezierPath)
+final class DemoCanvasView: NSView {
+    override func draw(_ dirtyRect: NSRect) {
+        NSColor.white.setFill()
+        NSBezierPath(rect: dirtyRect).fill()
+
+        NSColor.orange.setFill()
+        NSBezierPath(rect: NSMakeRect(30, 290, 180, 120)).fill()
+
+        NSColor.blue.setStroke()
+        let oval = NSBezierPath(ovalIn: NSMakeRect(250, 270, 200, 140))
+        oval.lineWidth = 4
+        oval.stroke()
+
+        NSColor.red.setFill()
+        let triangle = NSBezierPath()
+        triangle.move(to: NSMakePoint(60, 40))
+        triangle.line(to: NSMakePoint(220, 40))
+        triangle.line(to: NSMakePoint(140, 200))
+        triangle.close()
+        triangle.fill()
+
+        NSColor.green.setStroke()
+        let diagonal = NSBezierPath()
+        diagonal.move(to: NSMakePoint(280, 60))
+        diagonal.line(to: NSMakePoint(470, 220))
+        diagonal.lineWidth = 6
+        diagonal.stroke()
+    }
+}
+
+let drawingPage = NSView(frame: NSMakeRect(0, 0, pageWidth, pageHeight))
+var r8 = Rows(top: pageHeight - 16)
+let drawingTitle = NSTextField(labelWithString: "Canvas (NSView.draw + NSBezierPath):", frame: NSMakeRect(24, r8.next(22), 400, 22))
+let canvas = DemoCanvasView(frame: NSMakeRect(24, r8.next(440), 486, 440))
+drawingPage.addSubview(drawingTitle)
+drawingPage.addSubview(canvas)
+
+// MARK: - Page 9 · Auto Layout (NSLayoutConstraint + anchors)
+let autoLayoutPage = NSView(frame: NSMakeRect(0, 0, pageWidth, pageHeight))
+var r9 = Rows(top: pageHeight - 16)
+let autoLayoutTitle = NSTextField(
+    labelWithString: "Leading / centered / trailing, positioned only by constraints:",
+    frame: NSMakeRect(24, r9.next(22), 480, 22))
+autoLayoutPage.addSubview(autoLayoutTitle)
+
+// A container whose three boxes carry no manual frame — the solver places them.
+let constraintBed = NSView(frame: NSMakeRect(24, r9.next(360), 486, 360))
+autoLayoutPage.addSubview(constraintBed)
+
+@MainActor func constraintBox(_ title: String) -> NSBox {
+    let b = NSBox(title: title, frame: .zero)
+    b.translatesAutoresizingMaskIntoConstraints = false
+    constraintBed.addSubview(b)
+    return b
+}
+let leadingBox = constraintBox("Leading")
+let centerBox = constraintBox("Center")
+let trailingBox = constraintBox("Trailing")
+
+NSLayoutConstraint.activate([
+    leadingBox.leadingAnchor.constraint(equalTo: constraintBed.leadingAnchor, constant: 16),
+    leadingBox.centerYAnchor.constraint(equalTo: constraintBed.centerYAnchor),
+    leadingBox.widthAnchor.constraint(equalToConstant: 130),
+    leadingBox.heightAnchor.constraint(equalToConstant: 90),
+
+    centerBox.centerXAnchor.constraint(equalTo: constraintBed.centerXAnchor),
+    centerBox.centerYAnchor.constraint(equalTo: constraintBed.centerYAnchor),
+    centerBox.widthAnchor.constraint(equalToConstant: 130),
+    centerBox.heightAnchor.constraint(equalToConstant: 90),
+
+    trailingBox.trailingAnchor.constraint(equalTo: constraintBed.trailingAnchor, constant: -16),
+    trailingBox.centerYAnchor.constraint(equalTo: constraintBed.centerYAnchor),
+    trailingBox.widthAnchor.constraint(equalToConstant: 130),
+    trailingBox.heightAnchor.constraint(equalToConstant: 90),
+])
+constraintBed.layoutSubtreeIfNeeded()
+
 // MARK: - Tab view assembly
 let tabView = NSTabView(frame: NSMakeRect(0, 0, pageWidth, pageHeight + 60))
-for (label, page) in [("Basics", basics), ("Values", values), ("Pickers", pickers), ("Text", textPage), ("Layout", layoutPage), ("Table", tablePage), ("Grid", gridPage)] {
+for (label, page) in [("Basics", basics), ("Values", values), ("Pickers", pickers), ("Text", textPage), ("Layout", layoutPage), ("Table", tablePage), ("Grid", gridPage), ("Drawing", drawingPage), ("Auto Layout", autoLayoutPage)] {
     let item = NSTabViewItem()
     item.label = label
     item.view = page

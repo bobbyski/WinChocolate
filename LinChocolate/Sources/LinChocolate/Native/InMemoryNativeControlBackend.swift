@@ -1,5 +1,28 @@
 import Foundation
 
+/// Graphics context that records its operations as readable strings, so
+/// contract tests can assert an entire draw pass without a display.
+public final class RecordingGraphicsContext: NativeGraphicsContext {
+    public private(set) var ops: [String] = []
+    public init() {}
+
+    private func rgb(_ c: NSColor) -> String {
+        String(format: "%.2f,%.2f,%.2f", c.redComponent, c.greenComponent, c.blueComponent)
+    }
+    public func setFillColor(_ color: NSColor) { ops.append("fillColor(\(rgb(color)))") }
+    public func setStrokeColor(_ color: NSColor) { ops.append("strokeColor(\(rgb(color)))") }
+    public func setLineWidth(_ width: Double) { ops.append("lineWidth(\(Int(width)))") }
+    public func beginPath() { ops.append("begin") }
+    public func move(toX x: Double, y: Double) { ops.append("move(\(Int(x)),\(Int(y)))") }
+    public func line(toX x: Double, y: Double) { ops.append("line(\(Int(x)),\(Int(y)))") }
+    public func curve(toX x: Double, y: Double, c1x: Double, c1y: Double, c2x: Double, c2y: Double) {
+        ops.append("curve(\(Int(x)),\(Int(y)))")
+    }
+    public func closePath() { ops.append("close") }
+    public func fillPath() { ops.append("fill") }
+    public func strokePath() { ops.append("stroke") }
+}
+
 /// A backend that records state in memory instead of touching a display.
 ///
 /// It lets the contract tests exercise the whole AppKit-shaped API — window
@@ -54,6 +77,10 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     public private(set) var fonts: [UInt: NativeFontSpec] = [:]
     public private(set) var textColors: [UInt: NSColor] = [:]
     public private(set) var styledTexts: [UInt: [NativeTextRun]] = [:]
+    /// The ops recorded by the most recent draw of each view.
+    public private(set) var lastDrawOps: [UInt: [String]] = [:]
+    public private(set) var displayRequests: [UInt: Int] = [:]
+    private var drawHandlers: [UInt: (NativeGraphicsContext, Double, Double) -> Void] = [:]
     public private(set) var tableColumns: [UInt: [String]] = [:]
     public private(set) var tableRowCounts: [UInt: Int] = [:]
     private var tableCellProviders: [UInt: (Int, Int) -> String] = [:]
@@ -389,6 +416,18 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     public func setStyledText(_ runs: [NativeTextRun], for handle: NativeHandle) {
         styledTexts[handle.rawValue] = runs
         texts[handle.rawValue] = runs.map(\.text).joined()
+    }
+    public func setDrawHandler(for handle: NativeHandle, handler: @escaping (NativeGraphicsContext, Double, Double) -> Void) {
+        drawHandlers[handle.rawValue] = handler
+    }
+    public func setNeedsDisplay(_ handle: NativeHandle) {
+        displayRequests[handle.rawValue, default: 0] += 1
+        // Draw synchronously so tests can assert the recorded ops immediately.
+        guard let handler = drawHandlers[handle.rawValue] else { return }
+        let frame = frames[handle.rawValue] ?? .zero
+        let context = RecordingGraphicsContext()
+        handler(context, Double(frame.width), Double(frame.height))
+        lastDrawOps[handle.rawValue] = context.ops
     }
     public func destroyControl(_ handle: NativeHandle) {
         let r = handle.rawValue
