@@ -428,6 +428,165 @@ do {
     check(backend.imagePaths[view.handle.rawValue] == nil, "nil image clears the path")
 }
 
+// MARK: 14 — Token field
+do {
+    let backend = InMemoryNativeControlBackend()
+    NSApplication.shared.nativeBackend = backend
+
+    let field = NSTokenField(tokens: ["a", "b"], frame: NSMakeRect(0, 0, 300, 36))
+    check(backend.tokensByHandle[field.handle.rawValue] == ["a", "b"], "initial tokens reach the backend")
+    check(field.objectValue == ["a", "b"], "objectValue reflects initial tokens")
+
+    var changed: [String]?
+    field.onTokensChange = { changed = $0.objectValue }
+    backend.simulateTokensChange(field.handle, ["a", "b", "c"])
+    check(field.objectValue == ["a", "b", "c"], "tokens sync from native add")
+    check(changed == ["a", "b", "c"], "onTokensChange fires with new tokens")
+
+    field.objectValue = ["x"]
+    check(backend.tokensByHandle[field.handle.rawValue] == ["x"], "token setter writes through")
+}
+
+// MARK: 15 — Fonts and text color
+do {
+    let backend = InMemoryNativeControlBackend()
+    NSApplication.shared.nativeBackend = backend
+
+    let label = NSTextField(labelWithString: "styled", frame: NSMakeRect(0, 0, 100, 24))
+    label.font = .boldSystemFont(ofSize: 18)
+    let recorded = backend.fonts[label.handle.rawValue]
+    check(recorded?.size == 18 && recorded?.bold == true, "bold system font reaches the backend")
+    check(recorded?.family == nil, "system font has no explicit family")
+
+    label.font = NSFont(name: "Serif", size: 14)
+    check(backend.fonts[label.handle.rawValue]?.family == "Serif", "named font family carries through")
+
+    label.textColor = .red
+    check(backend.textColors[label.handle.rawValue] == .red, "text color writes through")
+
+    let notes = NSTextView(string: "x", frame: NSMakeRect(0, 0, 200, 80))
+    notes.font = .monospacedSystemFont(ofSize: 12)
+    check(backend.fonts[notes.handle.rawValue]?.family == "Monospace", "text view font writes through")
+    notes.textColor = .blue
+    check(backend.textColors[notes.handle.rawValue] == .blue, "text view color writes through")
+}
+
+// MARK: 16 — Table view
+final class TestTableData: NSTableViewDataSource {
+    var rows = [("a", "1"), ("b", "2"), ("c", "3")]
+    func numberOfRows(in tableView: NSTableView) -> Int { rows.count }
+    func tableView(_ tableView: NSTableView, objectValueFor tableColumn: NSTableColumn?, row: Int) -> Any? {
+        tableColumn?.identifier == "right" ? rows[row].1 : rows[row].0
+    }
+}
+do {
+    let backend = InMemoryNativeControlBackend()
+    NSApplication.shared.nativeBackend = backend
+
+    let table = NSTableView(frame: NSMakeRect(0, 0, 300, 200))
+    let left = NSTableColumn(identifier: "left"); left.title = "Left"
+    let right = NSTableColumn(identifier: "right"); right.title = "Right"
+    table.addTableColumn(left)
+    table.addTableColumn(right)
+    check(backend.tableColumns[table.handle.rawValue] == ["Left", "Right"], "columns reach the backend in order")
+
+    let data = TestTableData()
+    table.dataSource = data
+    check(backend.tableRowCounts[table.handle.rawValue] == 3, "dataSource assignment reloads row count")
+    check(backend.tableCellText(table.handle, row: 1, column: 0) == "b", "cell provider resolves column 0")
+    check(backend.tableCellText(table.handle, row: 2, column: 1) == "3", "cell provider resolves column 1")
+
+    data.rows.append(("d", "4"))
+    table.reloadData()
+    check(backend.tableRowCounts[table.handle.rawValue] == 4, "reloadData picks up new rows")
+
+    var selected = -2
+    table.onSelectionChange = { selected = $0.selectedRow }
+    backend.simulateSelection(table.handle, 2)
+    check(table.selectedRow == 2, "selection syncs from native click")
+    check(selected == 2, "onSelectionChange fires with the row")
+
+    table.selectRow(at: 1)
+    check(backend.selectedIndex(table.handle) == 1, "programmatic selectRow writes through")
+}
+
+// MARK: 17 — Outline view
+final class TestNode {
+    let name: String
+    let children: [TestNode]
+    init(_ name: String, _ children: [TestNode] = []) { self.name = name; self.children = children }
+}
+final class TestOutlineData: NSOutlineViewDataSource {
+    let roots = [TestNode("A", [TestNode("A1"), TestNode("A2", [TestNode("A2x")])]), TestNode("B")]
+    private func children(of item: Any?) -> [TestNode] { (item as? TestNode)?.children ?? roots }
+    func outlineView(_ outlineView: NSOutlineView, numberOfChildrenOfItem item: Any?) -> Int {
+        children(of: item).count
+    }
+    func outlineView(_ outlineView: NSOutlineView, child index: Int, ofItem item: Any?) -> Any {
+        children(of: item)[index]
+    }
+    func outlineView(_ outlineView: NSOutlineView, isItemExpandable item: Any) -> Bool {
+        !((item as? TestNode)?.children.isEmpty ?? true)
+    }
+    func outlineView(_ outlineView: NSOutlineView, objectValueFor tableColumn: NSTableColumn?, byItem item: Any?) -> Any? {
+        guard let node = item as? TestNode else { return nil }
+        return tableColumn?.identifier == "count" ? node.children.count : node.name
+    }
+}
+do {
+    let backend = InMemoryNativeControlBackend()
+    NSApplication.shared.nativeBackend = backend
+
+    let outline = NSOutlineView(frame: NSMakeRect(0, 0, 300, 200))
+    let name = NSTableColumn(identifier: "name"); name.title = "Name"
+    let count = NSTableColumn(identifier: "count"); count.title = "Count"
+    outline.addTableColumn(name)
+    outline.addTableColumn(count)
+    check(backend.outlineColumns[outline.handle.rawValue] == ["Name", "Count"], "outline columns reach the backend")
+
+    let data = TestOutlineData()   // strong ref: dataSource is weak
+    outline.dataSource = data
+    check(backend.outlineRootCounts[outline.handle.rawValue] == 2, "root count from dataSource")
+    check(backend.outlineChildCount(outline.handle, path: "0") == 2, "expandable root reports children")
+    check(backend.outlineChildCount(outline.handle, path: "1") == 0, "leaf root reports none")
+    check(backend.outlineChildCount(outline.handle, path: "0.1") == 1, "nested child count resolves")
+    check(backend.outlineCellText(outline.handle, path: "0.1", column: 0) == "A2", "cell text resolves path column 0")
+    check(backend.outlineCellText(outline.handle, path: "0.1", column: 1) == "1", "cell text resolves path column 1")
+    check(backend.outlineCellText(outline.handle, path: "0.1.0", column: 0) == "A2x", "deep path resolves")
+
+    var selected = -2
+    outline.onSelectionChange = { selected = $0.selectedRow }
+    backend.simulateSelection(outline.handle, 1)
+    check(outline.selectedRow == 1 && selected == 1, "outline selection syncs and fires")
+}
+
+// MARK: 18 — Collection view
+final class TestGridData: NSCollectionViewDataSource {
+    var items = ["x", "y", "z"]
+    func collectionView(_ collectionView: NSCollectionView, numberOfItemsInSection section: Int) -> Int { items.count }
+    func collectionView(_ collectionView: NSCollectionView, representedObjectForItemAt index: Int) -> Any? { items[index] }
+}
+do {
+    let backend = InMemoryNativeControlBackend()
+    NSApplication.shared.nativeBackend = backend
+
+    let grid = NSCollectionView(frame: NSMakeRect(0, 0, 300, 200))
+    let data = TestGridData()   // strong ref: dataSource is weak
+    grid.dataSource = data
+    check(backend.collectionItemCounts[grid.handle.rawValue] == 3, "item count from dataSource")
+    check(backend.collectionItemText(grid.handle, index: 1) == "y", "item provider resolves")
+
+    data.items.append("w")
+    grid.reloadData()
+    check(backend.collectionItemCounts[grid.handle.rawValue] == 4, "reloadData picks up new items")
+
+    var selected = -2
+    grid.onSelectionChange = { selected = $0.selectedIndex }
+    backend.simulateSelection(grid.handle, 2)
+    check(grid.selectedIndex == 2 && selected == 2, "collection selection syncs and fires")
+    check(grid.selectionIndexes == IndexSet(integer: 2), "selectionIndexes reflects the selection")
+}
+
 if failures == 0 {
     print("\nAll contract tests passed.")
 } else {

@@ -19,6 +19,14 @@ public final class NSTextView: NSView {
     /// Called after the user edits the text.
     public var onTextChange: ((NSTextView) -> Void)?
 
+    /// The text's foreground color (nil = theme default).
+    public var textColor: NSColor? {
+        didSet {
+            guard let textColor else { return }
+            backend.setTextColor(textColor, for: handle)
+        }
+    }
+
     /// Creates a text view with initial `string`.
     public init(string: String, frame: NSRect) {
         self.backingString = string

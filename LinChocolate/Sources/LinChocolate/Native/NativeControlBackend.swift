@@ -1,5 +1,20 @@
 import Foundation
 
+/// Platform-neutral font description carried across the backend seam.
+public struct NativeFontSpec: Equatable {
+    /// Font family, or nil for the platform default.
+    public let family: String?
+    public let size: Double
+    public let bold: Bool
+    public let italic: Bool
+    public init(family: String?, size: Double, bold: Bool = false, italic: Bool = false) {
+        self.family = family
+        self.size = size
+        self.bold = bold
+        self.italic = italic
+    }
+}
+
 /// Platform-neutral description of one menu-bar item, used to carry `NSMenu`
 /// structures across the backend seam without the seam knowing API types.
 public struct NativeMenuItemSpec {
@@ -91,6 +106,42 @@ public protocol NativeControlBackend: AnyObject {
     func createSegmentedControl(labels: [String], frame: NSRect) -> NativeHandle
     /// Creates an image view (set content with `setImagePath`).
     func createImageView(frame: NSRect) -> NativeHandle
+    /// Creates a scrolling, column-based table. Selection uses
+    /// `setSelectedIndex`/`setSelectionChangeAction` (row index).
+    func createTableView(frame: NSRect) -> NativeHandle
+    /// Appends a titled column to a table.
+    func addTableColumn(title: String, to table: NativeHandle)
+    /// Sets the number of rows and re-binds visible cells.
+    func setTableRowCount(_ count: Int, for table: NativeHandle)
+    /// Supplies cell text on demand: `(row, columnIndex) -> String`.
+    func setTableCellProvider(for table: NativeHandle, provider: @escaping (Int, Int) -> String)
+    /// Creates a tree table (expandable rows). Items are addressed by dot-paths
+    /// ("2", "0.1"); selection is by visible row via `setSelectionChangeAction`.
+    func createOutlineView(frame: NSRect) -> NativeHandle
+    /// Appends a titled column (column 0 carries the expand arrows).
+    func addOutlineColumn(title: String, to outline: NativeHandle)
+    /// Sets the number of root items and re-binds (= reload).
+    func setOutlineRootCount(_ count: Int, for outline: NativeHandle)
+    /// Supplies tree shape and cell text by item path.
+    func setOutlineProviders(
+        for outline: NativeHandle,
+        childCount: @escaping (String) -> Int,
+        cellText: @escaping (String, Int) -> String
+    )
+    /// Creates a grid collection view. Selection uses the shared
+    /// `setSelectedIndex`/`setSelectionChangeAction` (item index).
+    func createCollectionView(frame: NSRect) -> NativeHandle
+    /// Sets the number of items and re-binds visible tiles (= reload).
+    func setCollectionItemCount(_ count: Int, for collection: NativeHandle)
+    /// Supplies tile text on demand by item index.
+    func setCollectionItemProvider(for collection: NativeHandle, provider: @escaping (Int) -> String)
+    /// Creates a token field (chips + text entry; Enter commits a token,
+    /// clicking a chip removes it).
+    func createTokenField(tokens: [String], frame: NSRect) -> NativeHandle
+    /// Replaces a token field's tokens.
+    func setTokens(_ tokens: [String], for handle: NativeHandle)
+    /// Registers the action fired when the user adds or removes a token.
+    func setTokensChangeAction(for handle: NativeHandle, action: @escaping ([String]) -> Void)
     /// Shows the image file at `path` in an image view (nil clears it).
     func setImagePath(_ path: String?, for handle: NativeHandle)
     /// Creates a stepper (numeric up/down) over `[minValue, maxValue]`.
@@ -129,6 +180,10 @@ public protocol NativeControlBackend: AnyObject {
     func setFrame(_ frame: NSRect, for handle: NativeHandle)
     /// Enables or disables a control.
     func setEnabled(_ isEnabled: Bool, for handle: NativeHandle)
+    /// Applies a font to a control's text.
+    func setFont(_ font: NativeFontSpec, for handle: NativeHandle)
+    /// Applies a foreground text color to a control.
+    func setTextColor(_ color: NSColor, for handle: NativeHandle)
     /// Sets a checkbox/radio's on/off state.
     func setButtonState(_ on: Bool, for handle: NativeHandle)
     /// Sets a slider's or progress indicator's value.

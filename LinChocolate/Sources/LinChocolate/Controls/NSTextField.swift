@@ -24,6 +24,14 @@ public final class NSTextField: NSView {
     /// Called after the user edits an editable field (never fired for labels).
     public var onTextChange: ((NSTextField) -> Void)?
 
+    /// The text's foreground color (nil = theme default).
+    public var textColor: NSColor? {
+        didSet {
+            guard let textColor else { return }
+            backend.setTextColor(textColor, for: handle)
+        }
+    }
+
     /// Creates a static, non-editable label.
     public init(labelWithString string: String, frame: NSRect) {
         self.backingValue = string

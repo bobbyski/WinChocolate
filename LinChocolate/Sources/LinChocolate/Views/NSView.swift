@@ -28,6 +28,14 @@ public class NSView {
         didSet { backend.setEnabled(isEnabled, for: handle) }
     }
 
+    /// The font for the control's text (nil = platform default).
+    public var font: NSFont? {
+        didSet {
+            guard let font else { return }
+            backend.setFont(font.spec, for: handle)
+        }
+    }
+
     /// Creates a plain container view.
     public init(frame: NSRect) {
         self.frame = frame

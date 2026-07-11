@@ -32,13 +32,56 @@ public final class GTKNativeControlBackend: NativeControlBackend {
     private var windowContents: [UInt: OpaquePointer] = [:]  // window -> current content widget
     private var windowMenuBars: [UInt: OpaquePointer] = [:]  // window -> GtkPopoverMenuBar
     private var segmentButtons: [UInt: [OpaquePointer]] = [:] // segmented -> its toggle buttons
+    private var tokenEntries: [UInt: OpaquePointer] = [:]     // token field -> its entry
+    private var tokenChips: [UInt: [OpaquePointer]] = [:]     // token field -> chip buttons
+    private var tokenValues: [UInt: [String]] = [:]           // token field -> tokens
+    private var tokenActions: [UInt: ([String]) -> Void] = [:]
+    private var tableColumnViews: [UInt: OpaquePointer] = [:] // table -> GtkColumnView
+    private var tableSelections: [UInt: OpaquePointer] = [:]  // table -> GtkSingleSelection
+    private var tableLists: [UInt: OpaquePointer] = [:]       // table -> GtkStringList model
+    private var tableRowCounts: [UInt: Int] = [:]
+    private var tableColumnCounts: [UInt: Int] = [:]
+    private var tableProviders: [UInt: (Int, Int) -> String] = [:]
+    private var collectionLists: [UInt: OpaquePointer] = [:]  // collection -> GtkStringList
+    private var collectionItemCounts: [UInt: Int] = [:]
+    private var collectionProviders: [UInt: (Int) -> String] = [:]
+    private var outlineColumnViews: [UInt: OpaquePointer] = [:]
+    private var outlineRootLists: [UInt: OpaquePointer] = [:]
+    private var outlineRootCounts: [UInt: Int] = [:]
+    private var outlineColumnCounts: [UInt: Int] = [:]
+    private var outlineChildCountProviders: [UInt: (String) -> Int] = [:]
+    private var outlineCellTextProviders: [UInt: (String, Int) -> String] = [:]
+    private var widgetFonts: [UInt: NativeFontSpec] = [:]     // style state per widget
+    private var widgetTextColors: [UInt: NSColor] = [:]
+    private var widgetStyleProviders: [UInt: OpaquePointer] = [:]  // current CSS provider
     private var menuActionCounter = 0                         // unique GAction names
+    private var nonComposited = false                         // display lacks alpha compositing
     private var mainLoop: OpaquePointer?   // GMainLoop* (opaque in the GTK import)
 
     /// Connects to the display and initializes GTK. Only construct this when a
     /// display is available (the demo/app), never in headless tests.
     public init() {
         gtk_init()
+        applyNonCompositedFixups()
+    }
+
+    /// Popovers (menus, dropdowns) draw a drop shadow and rounded corners that
+    /// need an alpha channel. On a non-composited display (XQuartz over TCP,
+    /// Xvfb) that transparent region renders solid black, so flatten popovers
+    /// there: no shadow, square corners, a hairline border instead. Composited
+    /// displays (real Linux desktops, WSLg) keep the native look.
+    private func applyNonCompositedFixups() {
+        guard let display = gdk_display_get_default() else { return }
+        guard gdk_display_is_composited(display) == 0 else { return }
+        nonComposited = true
+        let css = """
+            popover { margin: 0; padding: 0; border-radius: 0; background: #fafafa; }
+            popover > contents { margin: 0; box-shadow: none; border-radius: 0; border: 1px solid rgba(0,0,0,0.25); }
+            """
+        let provider = gtk_css_provider_new()!
+        gtk_css_provider_load_from_data(provider, css, gssize(css.utf8.count))
+        // 600 = GTK_STYLE_PROVIDER_PRIORITY_APPLICATION (macro doesn't import).
+        gtk_style_context_add_provider_for_display(display, OpaquePointer(provider), 600)
     }
 
     // MARK: Handle bookkeeping
@@ -93,7 +136,27 @@ public final class GTKNativeControlBackend: NativeControlBackend {
         let box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0)!
         gtk_window_set_child(asWindow(p), box)
         windowBoxes[h.rawValue] = OpaquePointer(box)
+        installPopoverDismissFallback(on: asWidget(p))
         return h
+    }
+
+    /// Popovers normally dismiss on outside click via a pointer grab, but that
+    /// grab does not take effect on non-composited X11 (XQuartz), leaving menus
+    /// stuck open. Fallback: a capture-phase click handler on the window that
+    /// pops down any open popover. Clicks inside a popover are on its own
+    /// surface and never reach this handler, so item activation is unaffected.
+    private func installPopoverDismissFallback(on windowWidget: UnsafeMutablePointer<GtkWidget>) {
+        guard nonComposited else { return }
+        let gesture = gtk_gesture_click_new()!
+        // GtkEventController is opaque; the gesture pointer doubles as one.
+        gtk_event_controller_set_propagation_phase(gesture, GTK_PHASE_CAPTURE)
+        let box = WidgetBox(widget: windowWidget)
+        g_signal_connect_data(
+            UnsafeMutableRawPointer(gesture), "pressed",
+            unsafeBitCast(gtkDismissPopoversTrampoline, to: GCallback.self),
+            Unmanaged.passRetained(box).toOpaque(), boxRelease, GConnectFlags(rawValue: 0)
+        )
+        gtk_widget_add_controller(windowWidget, gesture)
     }
     public func setContentView(_ view: NativeHandle, for window: NativeHandle) {
         guard let w = widget(window), let v = widget(view) else { return }
@@ -319,7 +382,24 @@ public final class GTKNativeControlBackend: NativeControlBackend {
         for s in cStrings where s != nil { free(UnsafeMutableRawPointer(mutating: s)) }
         if selectedIndex >= 0 { gtk_drop_down_set_selected(OpaquePointer(widget), guint(selectedIndex)) }
         gtk_widget_set_size_request(widget, Int32(frame.width), Int32(frame.height))
+        stripPopoverArrows(of: widget)
         return allocate(widget, .popUp, frame: frame)
+    }
+
+    /// On non-composited displays a popover's pointing arrow renders as a black
+    /// bar (its tail geometry is compiled into GTK — CSS cannot remove it), so
+    /// walk `widget`'s children and disable the arrow on any internal popover.
+    private func stripPopoverArrows(of widget: UnsafeMutablePointer<GtkWidget>) {
+        guard nonComposited else { return }
+        var child = gtk_widget_get_first_child(widget)
+        while let c = child {
+            let typeName = String(cString: g_type_name_from_instance(
+                UnsafeMutableRawPointer(c).assumingMemoryBound(to: GTypeInstance.self)))
+            if typeName == "GtkPopover" {
+                gtk_popover_set_has_arrow(UnsafeMutablePointer<GtkPopover>(OpaquePointer(c)), gboolean(0))
+            }
+            child = gtk_widget_get_next_sibling(c)
+        }
     }
     public func createStepper(value: Double, minValue: Double, maxValue: Double, stepSize: Double, frame: NSRect) -> NativeHandle {
         let sb = gtk_spin_button_new_with_range(minValue, maxValue, stepSize == 0 ? 1 : stepSize)!
@@ -395,6 +475,249 @@ public final class GTKNativeControlBackend: NativeControlBackend {
         }
         segmentButtons[h.rawValue] = buttons
         return h
+    }
+    public func createTableView(frame: NSRect) -> NativeHandle {
+        // GtkColumnView = selection model over a GListModel + per-column cell
+        // factories. The model is a GtkStringList used purely for its item
+        // count; cell text comes from the Swift-side provider at bind time.
+        let list = gtk_string_list_new(nil)!   // GtkStringList is opaque
+        let selection = gtk_single_selection_new(list)!   // GListModel is opaque
+        let cv = gtk_column_view_new(selection)!   // GtkSingleSelection is opaque
+        let scroller = gtk_scrolled_window_new()!
+        gtk_scrolled_window_set_child(OpaquePointer(scroller), cv)
+        gtk_widget_set_size_request(scroller, Int32(frame.width), Int32(frame.height))
+        let h = allocate(scroller, .table, frame: frame)
+        tableColumnViews[h.rawValue] = OpaquePointer(cv)
+        tableSelections[h.rawValue] = selection
+        tableLists[h.rawValue] = list
+        return h
+    }
+    public func addTableColumn(title: String, to table: NativeHandle) {
+        guard let cv = tableColumnViews[table.rawValue] else { return }
+        let columnIndex = tableColumnCounts[table.rawValue, default: 0]
+        let factory = gtk_signal_list_item_factory_new()!
+        g_signal_connect_data(
+            UnsafeMutableRawPointer(factory), "setup",
+            unsafeBitCast(gtkTableCellSetupTrampoline, to: GCallback.self),
+            nil, nil, GConnectFlags(rawValue: 0)
+        )
+        let box = TableColumnBox(backend: self, table: table.rawValue, column: columnIndex)
+        g_signal_connect_data(
+            UnsafeMutableRawPointer(factory), "bind",
+            unsafeBitCast(gtkTableCellBindTrampoline, to: GCallback.self),
+            Unmanaged.passRetained(box).toOpaque(), boxRelease, GConnectFlags(rawValue: 0)
+        )
+        let column = gtk_column_view_column_new(title, factory)!   // factory is opaque
+        gtk_column_view_column_set_expand(column, gboolean(1))
+        gtk_column_view_append_column(cv, column)
+        tableColumnCounts[table.rawValue] = columnIndex + 1
+    }
+    public func setTableRowCount(_ count: Int, for table: NativeHandle) {
+        guard let list = tableLists[table.rawValue] else { return }
+        // Replace all items: forces every visible cell to re-bind (= reload).
+        let old = tableRowCounts[table.rawValue] ?? 0
+        var additions: [UnsafePointer<CChar>?] = (0..<count).map { _ in UnsafePointer(strdup("")) }
+        additions.append(nil)
+        additions.withUnsafeBufferPointer {
+            gtk_string_list_splice(list, 0, guint(old), $0.baseAddress)
+        }
+        for s in additions where s != nil { free(UnsafeMutableRawPointer(mutating: s)) }
+        tableRowCounts[table.rawValue] = count
+    }
+    public func setTableCellProvider(for table: NativeHandle, provider: @escaping (Int, Int) -> String) {
+        tableProviders[table.rawValue] = provider
+    }
+    /// Cell text for the bind trampoline.
+    func tableCellText(table: UInt, row: Int, column: Int) -> String {
+        tableProviders[table]?(row, column) ?? ""
+    }
+    public func createCollectionView(frame: NSRect) -> NativeHandle {
+        // GtkGridView over the same count-only GtkStringList trick as tables;
+        // one factory renders every tile, pulling text from the provider.
+        let list = gtk_string_list_new(nil)!
+        let selection = gtk_single_selection_new(list)!
+        let factory = gtk_signal_list_item_factory_new()!
+        g_signal_connect_data(
+            UnsafeMutableRawPointer(factory), "setup",
+            unsafeBitCast(gtkCollectionTileSetupTrampoline, to: GCallback.self),
+            nil, nil, GConnectFlags(rawValue: 0)
+        )
+        let gv = gtk_grid_view_new(selection, factory)!
+        gtk_grid_view_set_min_columns(OpaquePointer(gv), 3)
+        gtk_grid_view_set_max_columns(OpaquePointer(gv), 4)
+        let scroller = gtk_scrolled_window_new()!
+        gtk_scrolled_window_set_child(OpaquePointer(scroller), gv)
+        gtk_widget_set_size_request(scroller, Int32(frame.width), Int32(frame.height))
+        let h = allocate(scroller, .collection, frame: frame)
+        let box = CollectionBox(backend: self, collection: h.rawValue)
+        g_signal_connect_data(
+            UnsafeMutableRawPointer(factory), "bind",
+            unsafeBitCast(gtkCollectionTileBindTrampoline, to: GCallback.self),
+            Unmanaged.passRetained(box).toOpaque(), boxRelease, GConnectFlags(rawValue: 0)
+        )
+        collectionLists[h.rawValue] = list
+        tableSelections[h.rawValue] = selection   // shared selection routing
+        return h
+    }
+    public func setCollectionItemCount(_ count: Int, for collection: NativeHandle) {
+        guard let list = collectionLists[collection.rawValue] else { return }
+        let old = collectionItemCounts[collection.rawValue] ?? 0
+        var additions: [UnsafePointer<CChar>?] = (0..<count).map { _ in UnsafePointer(strdup("")) }
+        additions.append(nil)
+        additions.withUnsafeBufferPointer {
+            gtk_string_list_splice(list, 0, guint(old), $0.baseAddress)
+        }
+        for s in additions where s != nil { free(UnsafeMutableRawPointer(mutating: s)) }
+        collectionItemCounts[collection.rawValue] = count
+    }
+    public func setCollectionItemProvider(for collection: NativeHandle, provider: @escaping (Int) -> String) {
+        collectionProviders[collection.rawValue] = provider
+    }
+    /// Tile text for the collection bind trampoline.
+    func collectionItemText(collection: UInt, index: Int) -> String {
+        collectionProviders[collection]?(index) ?? ""
+    }
+    public func createOutlineView(frame: NSRect) -> NativeHandle {
+        // Tree table: GtkTreeListModel over a root GtkStringList of path keys
+        // ("0", "1", …); expanding a row asks the create-func for a child list
+        // ("0.0", "0.1", …). Cell text resolves paths through the Swift provider.
+        let rootList = gtk_string_list_new(nil)!
+        let box = OutlineBox(backend: self)
+        let tree = gtk_tree_list_model_new(
+            rootList, gboolean(0), gboolean(0),   // passthrough: no, autoexpand: no
+            outlineCreateChildModelFunc,
+            Unmanaged.passRetained(box).toOpaque(), boxDestroyNotify
+        )!
+        let selection = gtk_single_selection_new(tree)!   // GtkTreeListModel is opaque
+        let cv = gtk_column_view_new(selection)!
+        let scroller = gtk_scrolled_window_new()!
+        gtk_scrolled_window_set_child(OpaquePointer(scroller), cv)
+        gtk_widget_set_size_request(scroller, Int32(frame.width), Int32(frame.height))
+        let h = allocate(scroller, .outline, frame: frame)
+        box.outline = h.rawValue
+        outlineColumnViews[h.rawValue] = OpaquePointer(cv)
+        outlineRootLists[h.rawValue] = rootList
+        tableSelections[h.rawValue] = selection   // shared selection routing
+        return h
+    }
+    public func addOutlineColumn(title: String, to outline: NativeHandle) {
+        guard let cv = outlineColumnViews[outline.rawValue] else { return }
+        let columnIndex = outlineColumnCounts[outline.rawValue, default: 0]
+        let factory = gtk_signal_list_item_factory_new()!
+        let setupBox = OutlineColumnBox(backend: self, outline: outline.rawValue, column: columnIndex)
+        g_signal_connect_data(
+            UnsafeMutableRawPointer(factory), "setup",
+            unsafeBitCast(gtkOutlineCellSetupTrampoline, to: GCallback.self),
+            Unmanaged.passRetained(setupBox).toOpaque(), boxRelease, GConnectFlags(rawValue: 0)
+        )
+        let bindBox = OutlineColumnBox(backend: self, outline: outline.rawValue, column: columnIndex)
+        g_signal_connect_data(
+            UnsafeMutableRawPointer(factory), "bind",
+            unsafeBitCast(gtkOutlineCellBindTrampoline, to: GCallback.self),
+            Unmanaged.passRetained(bindBox).toOpaque(), boxRelease, GConnectFlags(rawValue: 0)
+        )
+        let column = gtk_column_view_column_new(title, factory)!
+        gtk_column_view_column_set_expand(column, gboolean(1))
+        gtk_column_view_append_column(cv, column)
+        outlineColumnCounts[outline.rawValue] = columnIndex + 1
+    }
+    public func setOutlineRootCount(_ count: Int, for outline: NativeHandle) {
+        guard let list = outlineRootLists[outline.rawValue] else { return }
+        let old = outlineRootCounts[outline.rawValue] ?? 0
+        var additions: [UnsafePointer<CChar>?] = (0..<count).map { UnsafePointer(strdup("\($0)")) }
+        additions.append(nil)
+        additions.withUnsafeBufferPointer {
+            gtk_string_list_splice(list, 0, guint(old), $0.baseAddress)
+        }
+        for s in additions where s != nil { free(UnsafeMutableRawPointer(mutating: s)) }
+        outlineRootCounts[outline.rawValue] = count
+    }
+    public func setOutlineProviders(
+        for outline: NativeHandle,
+        childCount: @escaping (String) -> Int,
+        cellText: @escaping (String, Int) -> String
+    ) {
+        outlineChildCountProviders[outline.rawValue] = childCount
+        outlineCellTextProviders[outline.rawValue] = cellText
+    }
+    /// Child count for the tree create-func.
+    func outlineChildCount(outline: UInt, path: String) -> Int {
+        outlineChildCountProviders[outline]?(path) ?? 0
+    }
+    /// Cell text for the outline bind trampoline.
+    func outlineCellText(outline: UInt, path: String, column: Int) -> String {
+        outlineCellTextProviders[outline]?(path, column) ?? ""
+    }
+    public func createTokenField(tokens: [String], frame: NSRect) -> NativeHandle {
+        // Composed control (no GTK peer): [chip][chip]…[entry] in a box.
+        // Enter in the entry commits a token; clicking a chip removes it.
+        let box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6)!
+        gtk_widget_set_size_request(box, Int32(frame.width), Int32(frame.height))
+        let entry = gtk_entry_new()!
+        gtk_widget_set_hexpand(entry, gboolean(1))
+        gtk_box_append(asBox(OpaquePointer(box)), entry)
+        let h = allocate(box, .tokenField, frame: frame)
+        tokenEntries[h.rawValue] = OpaquePointer(entry)
+        tokenValues[h.rawValue] = tokens
+        rebuildTokenChips(for: h)
+
+        let commit = ActionBox { [weak self] in self?.commitTokenEntry(h) }
+        g_signal_connect_data(
+            UnsafeMutableRawPointer(entry), "activate",
+            unsafeBitCast(gtkActionTrampoline, to: GCallback.self),
+            Unmanaged.passRetained(commit).toOpaque(), boxRelease, GConnectFlags(rawValue: 0)
+        )
+        return h
+    }
+    public func setTokens(_ tokens: [String], for handle: NativeHandle) {
+        tokenValues[handle.rawValue] = tokens
+        rebuildTokenChips(for: handle)
+    }
+    public func setTokensChangeAction(for handle: NativeHandle, action: @escaping ([String]) -> Void) {
+        tokenActions[handle.rawValue] = action
+    }
+
+    /// Commits the entry's text as a new token (Enter pressed).
+    private func commitTokenEntry(_ handle: NativeHandle) {
+        guard let entry = tokenEntries[handle.rawValue] else { return }
+        let text = String(cString: gtk_editable_get_text(entry)).trimmingCharacters(in: .whitespaces)
+        guard !text.isEmpty else { return }
+        tokenValues[handle.rawValue, default: []].append(text)
+        gtk_editable_set_text(entry, "")
+        rebuildTokenChips(for: handle)
+        tokenActions[handle.rawValue]?(tokenValues[handle.rawValue] ?? [])
+    }
+
+    /// Removes token `index` (its chip was clicked).
+    private func removeToken(_ handle: NativeHandle, at index: Int) {
+        guard var tokens = tokenValues[handle.rawValue], index < tokens.count else { return }
+        tokens.remove(at: index)
+        tokenValues[handle.rawValue] = tokens
+        rebuildTokenChips(for: handle)
+        tokenActions[handle.rawValue]?(tokens)
+    }
+
+    /// Recreates the chip buttons to match the current tokens (entry stays last).
+    private func rebuildTokenChips(for handle: NativeHandle) {
+        guard let boxWidget = widget(handle) else { return }
+        for chip in tokenChips[handle.rawValue] ?? [] {
+            gtk_box_remove(asBox(boxWidget), asWidget(chip))
+        }
+        var chips: [OpaquePointer] = []
+        var previous: OpaquePointer? = nil
+        for (index, token) in (tokenValues[handle.rawValue] ?? []).enumerated() {
+            let chip = gtk_button_new_with_label("\(token) ✕")!
+            let remove = ActionBox { [weak self] in self?.removeToken(handle, at: index) }
+            g_signal_connect_data(
+                UnsafeMutableRawPointer(chip), "clicked",
+                unsafeBitCast(gtkActionTrampoline, to: GCallback.self),
+                Unmanaged.passRetained(remove).toOpaque(), boxRelease, GConnectFlags(rawValue: 0)
+            )
+            gtk_box_insert_child_after(asBox(boxWidget), chip, previous.map(asWidget))
+            previous = OpaquePointer(chip)
+            chips.append(OpaquePointer(chip))
+        }
+        tokenChips[handle.rawValue] = chips
     }
     public func createImageView(frame: NSRect) -> NativeHandle {
         let picture = gtk_picture_new()!
@@ -486,6 +809,48 @@ public final class GTKNativeControlBackend: NativeControlBackend {
         guard let w = widget(handle) else { return }
         gtk_widget_set_sensitive(asWidget(w), gboolean(isEnabled ? 1 : 0))
     }
+    public func setFont(_ font: NativeFontSpec, for handle: NativeHandle) {
+        widgetFonts[handle.rawValue] = font
+        applyWidgetStyle(for: handle)
+    }
+    public func setTextColor(_ color: NSColor, for handle: NativeHandle) {
+        widgetTextColors[handle.rawValue] = color
+        applyWidgetStyle(for: handle)
+    }
+
+    /// Rebuilds and installs the widget-scoped CSS provider carrying the
+    /// control's font and text color (GTK styles text via CSS, not API calls).
+    private func applyWidgetStyle(for handle: NativeHandle) {
+        guard let w = widget(handle) else { return }
+        let context = gtk_widget_get_style_context(asWidget(w))
+
+        var declarations: [String] = []
+        if let font = widgetFonts[handle.rawValue] {
+            if let family = font.family { declarations.append("font-family: \"\(family)\";") }
+            declarations.append("font-size: \(Int(font.size))px;")
+            if font.bold { declarations.append("font-weight: bold;") }
+            if font.italic { declarations.append("font-style: italic;") }
+        }
+        if let color = widgetTextColors[handle.rawValue] {
+            declarations.append(String(
+                format: "color: rgba(%d,%d,%d,%.2f);",
+                Int(color.redComponent * 255), Int(color.greenComponent * 255),
+                Int(color.blueComponent * 255), color.alphaComponent
+            ))
+        }
+        let body = declarations.joined(separator: " ")
+        // `* text` reaches text-holding subnodes (GtkTextView, GtkEntry).
+        let css = "* { \(body) } * text { \(body) }"
+
+        if let old = widgetStyleProviders[handle.rawValue] {
+            gtk_style_context_remove_provider(context, old)
+        }
+        let provider = gtk_css_provider_new()!
+        gtk_css_provider_load_from_data(provider, css, gssize(css.utf8.count))
+        // 800 = GTK_STYLE_PROVIDER_PRIORITY_USER (macro doesn't import).
+        gtk_style_context_add_provider(context, OpaquePointer(provider), 800)
+        widgetStyleProviders[handle.rawValue] = OpaquePointer(provider)
+    }
     public func setButtonState(_ on: Bool, for handle: NativeHandle) {
         guard let w = widget(handle) else { return }
         gtk_check_button_set_active(asCheckButton(w), gboolean(on ? 1 : 0))
@@ -513,6 +878,9 @@ public final class GTKNativeControlBackend: NativeControlBackend {
         case .segmented:
             guard let buttons = segmentButtons[handle.rawValue], index < buttons.count else { return }
             gtk_toggle_button_set_active(asToggle(buttons[index]), gboolean(1))
+        case .table, .outline, .collection:
+            guard let selection = tableSelections[handle.rawValue] else { return }
+            gtk_single_selection_set_selected(selection, guint(index))
         default:       gtk_drop_down_set_selected(w, guint(index))     // GtkDropDown is opaque
         }
     }
@@ -596,6 +964,15 @@ public final class GTKNativeControlBackend: NativeControlBackend {
     public func setSelectionChangeAction(for handle: NativeHandle, action: @escaping (Int) -> Void) {
         guard let w = widget(handle) else { return }
         let box = IntActionBox(action)
+        if [.table, .outline, .collection].contains(kinds[handle.rawValue]) {
+            guard let selection = tableSelections[handle.rawValue] else { return }
+            g_signal_connect_data(
+                UnsafeMutableRawPointer(selection), "notify::selected",
+                unsafeBitCast(gtkTableSelectionChangedTrampoline, to: GCallback.self),
+                Unmanaged.passRetained(box).toOpaque(), boxRelease, GConnectFlags(rawValue: 0)
+            )
+            return
+        }
         if kinds[handle.rawValue] == .segmented {
             // One "toggled" hookup per segment; each box carries its index and
             // only fires on activation (the deactivating peer stays quiet).
@@ -681,6 +1058,11 @@ private final class SegmentBox {
     let action: (Int) -> Void
     init(index: Int, action: @escaping (Int) -> Void) { self.index = index; self.action = action }
 }
+private final class WidgetBox {
+    let widget: UnsafeMutablePointer<GtkWidget>
+    init(widget: UnsafeMutablePointer<GtkWidget>) { self.widget = widget }
+}
+
 /// Shared state for one modal alert run: the nested loop and the response.
 private final class AlertState {
     let loop: OpaquePointer?
@@ -761,6 +1143,165 @@ private let gtkSelectionChangedTrampoline: @convention(c) (UnsafeMutableRawPoint
     Unmanaged<IntActionBox>.fromOpaque(userData).takeUnretainedValue().action(index)
 }
 
+private final class TableColumnBox {
+    weak var backend: GTKNativeControlBackend?
+    let table: UInt
+    let column: Int
+    init(backend: GTKNativeControlBackend, table: UInt, column: Int) {
+        self.backend = backend
+        self.table = table
+        self.column = column
+    }
+}
+
+private final class OutlineBox {
+    weak var backend: GTKNativeControlBackend?
+    var outline: UInt = 0   // assigned right after the handle is allocated
+    init(backend: GTKNativeControlBackend) { self.backend = backend }
+}
+private final class OutlineColumnBox {
+    weak var backend: GTKNativeControlBackend?
+    let outline: UInt
+    let column: Int
+    init(backend: GTKNativeControlBackend, outline: UInt, column: Int) {
+        self.backend = backend
+        self.outline = outline
+        self.column = column
+    }
+}
+
+private final class CollectionBox {
+    weak var backend: GTKNativeControlBackend?
+    let collection: UInt
+    init(backend: GTKNativeControlBackend, collection: UInt) {
+        self.backend = backend
+        self.collection = collection
+    }
+}
+
+/// Collection factory `setup` — a centered tile label with breathing room.
+private let gtkCollectionTileSetupTrampoline: @convention(c) (UnsafeMutableRawPointer?, UnsafeMutableRawPointer?, gpointer?) -> Void = { _, item, _ in
+    guard let item else { return }
+    let label = gtk_label_new("")!
+    gtk_widget_set_margin_start(label, 12); gtk_widget_set_margin_end(label, 12)
+    gtk_widget_set_margin_top(label, 16); gtk_widget_set_margin_bottom(label, 16)
+    gtk_list_item_set_child(OpaquePointer(item), label)
+}
+
+/// Collection factory `bind` — fills the tile from the item provider.
+private let gtkCollectionTileBindTrampoline: @convention(c) (UnsafeMutableRawPointer?, UnsafeMutableRawPointer?, gpointer?) -> Void = { _, item, userData in
+    guard let item, let userData else { return }
+    let box = Unmanaged<CollectionBox>.fromOpaque(userData).takeUnretainedValue()
+    let index = Int(gtk_list_item_get_position(OpaquePointer(item)))
+    guard let child = gtk_list_item_get_child(OpaquePointer(item)) else { return }
+    let text = box.backend?.collectionItemText(collection: box.collection, index: index) ?? ""
+    gtk_label_set_text(OpaquePointer(child), text)
+}
+
+/// `GtkTreeListModel` create-func — returns a child path list, or nil for leaves.
+private let outlineCreateChildModelFunc: @convention(c) (gpointer?, gpointer?) -> OpaquePointer? = { item, userData in
+    guard let item, let userData else { return nil }
+    let box = Unmanaged<OutlineBox>.fromOpaque(userData).takeUnretainedValue()
+    let path = String(cString: gtk_string_object_get_string(OpaquePointer(item)))
+    let count = box.backend?.outlineChildCount(outline: box.outline, path: path) ?? 0
+    guard count > 0 else { return nil }
+    let children = gtk_string_list_new(nil)!
+    for index in 0..<count {
+        gtk_string_list_append(children, "\(path).\(index)")
+    }
+    return children
+}
+
+/// Outline factory `setup` — column 0 gets a tree expander wrapping the label.
+private let gtkOutlineCellSetupTrampoline: @convention(c) (UnsafeMutableRawPointer?, UnsafeMutableRawPointer?, gpointer?) -> Void = { _, item, userData in
+    guard let item, let userData else { return }
+    let box = Unmanaged<OutlineColumnBox>.fromOpaque(userData).takeUnretainedValue()
+    let label = gtk_label_new("")!
+    gtk_label_set_xalign(OpaquePointer(label), 0)
+    gtk_widget_set_margin_start(label, 4)
+    gtk_widget_set_margin_end(label, 8)
+    if box.column == 0 {
+        let expander = gtk_tree_expander_new()!
+        gtk_tree_expander_set_child(OpaquePointer(expander), label)
+        gtk_list_item_set_child(OpaquePointer(item), expander)
+    } else {
+        gtk_list_item_set_child(OpaquePointer(item), label)
+    }
+}
+
+/// Outline factory `bind` — unwraps the tree row, wires the expander (col 0),
+/// and fills the label from the path-based provider.
+private let gtkOutlineCellBindTrampoline: @convention(c) (UnsafeMutableRawPointer?, UnsafeMutableRawPointer?, gpointer?) -> Void = { _, item, userData in
+    guard let item, let userData else { return }
+    let box = Unmanaged<OutlineColumnBox>.fromOpaque(userData).takeUnretainedValue()
+    guard let rowObject = gtk_list_item_get_item(OpaquePointer(item)) else { return }
+    guard let inner = gtk_tree_list_row_get_item(OpaquePointer(rowObject)) else { return }
+    let path = String(cString: gtk_string_object_get_string(OpaquePointer(inner)))
+    g_object_unref(inner)   // get_item returns a strong reference
+    let text = box.backend?.outlineCellText(outline: box.outline, path: path, column: box.column) ?? ""
+    guard let child = gtk_list_item_get_child(OpaquePointer(item)) else { return }
+    if box.column == 0 {
+        gtk_tree_expander_set_list_row(OpaquePointer(child), OpaquePointer(rowObject))
+        if let label = gtk_tree_expander_get_child(OpaquePointer(child)) {
+            gtk_label_set_text(OpaquePointer(label), text)
+        }
+    } else {
+        gtk_label_set_text(OpaquePointer(child), text)
+    }
+}
+
+/// Factory `setup` — gives each cell a left-aligned label.
+private let gtkTableCellSetupTrampoline: @convention(c) (UnsafeMutableRawPointer?, UnsafeMutableRawPointer?, gpointer?) -> Void = { _, item, _ in
+    guard let item else { return }
+    let label = gtk_label_new("")!
+    gtk_label_set_xalign(OpaquePointer(label), 0)
+    gtk_widget_set_margin_start(label, 8)
+    gtk_widget_set_margin_end(label, 8)
+    gtk_list_item_set_child(OpaquePointer(item), label)
+}
+
+/// Factory `bind` — fills the cell's label from the table's cell provider.
+private let gtkTableCellBindTrampoline: @convention(c) (UnsafeMutableRawPointer?, UnsafeMutableRawPointer?, gpointer?) -> Void = { _, item, userData in
+    guard let item, let userData else { return }
+    let box = Unmanaged<TableColumnBox>.fromOpaque(userData).takeUnretainedValue()
+    let row = Int(gtk_list_item_get_position(OpaquePointer(item)))
+    guard let child = gtk_list_item_get_child(OpaquePointer(item)) else { return }
+    let text = box.backend?.tableCellText(table: box.table, row: row, column: box.column) ?? ""
+    gtk_label_set_text(OpaquePointer(child), text)
+}
+
+/// `GtkSingleSelection::notify::selected` — passes the selected row (−1 if none).
+private let gtkTableSelectionChangedTrampoline: @convention(c) (UnsafeMutableRawPointer?, UnsafeMutableRawPointer?, gpointer?) -> Void = { selection, _, userData in
+    guard let selection, let userData else { return }
+    let selected = gtk_single_selection_get_selected(OpaquePointer(selection))
+    let row = selected == guint.max ? -1 : Int(selected)   // guint.max = GTK_INVALID_LIST_POSITION
+    Unmanaged<IntActionBox>.fromOpaque(userData).takeUnretainedValue().action(row)
+}
+
+/// Recursively pops down any visible popover in `widget`'s subtree (dropdown
+/// lists, menu-bar menus, combo popups — all `Gtk*Popover*` types).
+private func popdownVisiblePopovers(under widget: UnsafeMutablePointer<GtkWidget>) {
+    var child = gtk_widget_get_first_child(widget)
+    while let c = child {
+        let typeName = String(cString: g_type_name_from_instance(
+            UnsafeMutableRawPointer(c).assumingMemoryBound(to: GTypeInstance.self)))
+        if typeName.contains("Popover"), gtk_widget_get_visible(c) != 0 {
+            gtk_popover_popdown(UnsafeMutablePointer<GtkPopover>(OpaquePointer(c)))
+        } else {
+            popdownVisiblePopovers(under: c)
+        }
+        child = gtk_widget_get_next_sibling(c)
+    }
+}
+
+/// Handler for the window's capture-phase `GtkGestureClick::pressed` — the
+/// outside-click popover dismissal fallback for non-composited displays.
+private let gtkDismissPopoversTrampoline: @convention(c) (UnsafeMutableRawPointer?, gint, gdouble, gdouble, gpointer?) -> Void = { _, _, _, _, userData in
+    guard let userData else { return }
+    let box = Unmanaged<WidgetBox>.fromOpaque(userData).takeUnretainedValue()
+    popdownVisiblePopovers(under: box.widget)
+}
+
 /// Handler for an alert button's `clicked` — records the response and quits the
 /// alert's nested main loop, unblocking `runAlert`.
 private let gtkAlertButtonTrampoline: @convention(c) (UnsafeMutableRawPointer?, gpointer?) -> Void = { _, userData in
@@ -816,6 +1357,12 @@ private let gtkColorSetTrampoline: @convention(c) (UnsafeMutableRawPointer?, gpo
 
 /// Releases a boxed closure of any box type when GLib tears the connection down.
 private let boxRelease: GClosureNotify = { data, _ in
+    guard let data else { return }
+    Unmanaged<AnyObject>.fromOpaque(data).release()
+}
+
+/// Single-argument variant for APIs taking a `GDestroyNotify`.
+private let boxDestroyNotify: @convention(c) (gpointer?) -> Void = { data in
     guard let data else { return }
     Unmanaged<AnyObject>.fromOpaque(data).release()
 }

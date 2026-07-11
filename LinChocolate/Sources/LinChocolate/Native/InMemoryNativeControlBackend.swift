@@ -16,6 +16,7 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
         case window, view, button, label, textField, secureField, searchField, comboBox
         case checkbox, radio, slider, progress, popUp, stepper, level, textView
         case datePicker, colorWell, tabView, box, scrollView, splitView, segmented, imageView
+        case tokenField, table, outline, collection
     }
 
     private var nextRaw: UInt = 1
@@ -48,6 +49,19 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     public private(set) var dividerPositions: [UInt: Double] = [:]
     public private(set) var menuBars: [UInt: [NativeMenuSpec]] = [:]
     public private(set) var imagePaths: [UInt: String] = [:]
+    public private(set) var tokensByHandle: [UInt: [String]] = [:]
+    public private(set) var fonts: [UInt: NativeFontSpec] = [:]
+    public private(set) var textColors: [UInt: NSColor] = [:]
+    public private(set) var tableColumns: [UInt: [String]] = [:]
+    public private(set) var tableRowCounts: [UInt: Int] = [:]
+    private var tableCellProviders: [UInt: (Int, Int) -> String] = [:]
+    public private(set) var collectionItemCounts: [UInt: Int] = [:]
+    private var collectionItemProviders: [UInt: (Int) -> String] = [:]
+    public private(set) var outlineColumns: [UInt: [String]] = [:]
+    public private(set) var outlineRootCounts: [UInt: Int] = [:]
+    private var outlineChildCountProviders: [UInt: (String) -> Int] = [:]
+    private var outlineCellTextProviders: [UInt: (String, Int) -> String] = [:]
+    private var tokensChangeActions: [UInt: ([String]) -> Void] = [:]
     /// Alerts shown so far (message, informative, buttons), newest last.
     public private(set) var alerts: [(message: String, informative: String, buttons: [String])] = []
     /// The button index `runAlert` returns, standing in for the user's press.
@@ -233,6 +247,87 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     public func createImageView(frame: NSRect) -> NativeHandle {
         let h = allocate(.imageView); frames[h.rawValue] = frame; return h
     }
+    public func createTableView(frame: NSRect) -> NativeHandle {
+        let h = allocate(.table)
+        frames[h.rawValue] = frame
+        selectedIndices[h.rawValue] = -1
+        return h
+    }
+    public func addTableColumn(title: String, to table: NativeHandle) {
+        tableColumns[table.rawValue, default: []].append(title)
+    }
+    public func setTableRowCount(_ count: Int, for table: NativeHandle) {
+        tableRowCounts[table.rawValue] = count
+    }
+    public func setTableCellProvider(for table: NativeHandle, provider: @escaping (Int, Int) -> String) {
+        tableCellProviders[table.rawValue] = provider
+    }
+    /// The text a table would render at (row, columnIndex) — test hook.
+    public func tableCellText(_ table: NativeHandle, row: Int, column: Int) -> String {
+        tableCellProviders[table.rawValue]?(row, column) ?? ""
+    }
+    public func createOutlineView(frame: NSRect) -> NativeHandle {
+        let h = allocate(.outline)
+        frames[h.rawValue] = frame
+        selectedIndices[h.rawValue] = -1
+        return h
+    }
+    public func addOutlineColumn(title: String, to outline: NativeHandle) {
+        outlineColumns[outline.rawValue, default: []].append(title)
+    }
+    public func setOutlineRootCount(_ count: Int, for outline: NativeHandle) {
+        outlineRootCounts[outline.rawValue] = count
+    }
+    public func setOutlineProviders(
+        for outline: NativeHandle,
+        childCount: @escaping (String) -> Int,
+        cellText: @escaping (String, Int) -> String
+    ) {
+        outlineChildCountProviders[outline.rawValue] = childCount
+        outlineCellTextProviders[outline.rawValue] = cellText
+    }
+    /// The number of children an outline reports at `path` — test hook.
+    public func outlineChildCount(_ outline: NativeHandle, path: String) -> Int {
+        outlineChildCountProviders[outline.rawValue]?(path) ?? 0
+    }
+    /// The text an outline renders at (`path`, columnIndex) — test hook.
+    public func outlineCellText(_ outline: NativeHandle, path: String, column: Int) -> String {
+        outlineCellTextProviders[outline.rawValue]?(path, column) ?? ""
+    }
+    public func createCollectionView(frame: NSRect) -> NativeHandle {
+        let h = allocate(.collection)
+        frames[h.rawValue] = frame
+        selectedIndices[h.rawValue] = -1
+        return h
+    }
+    public func setCollectionItemCount(_ count: Int, for collection: NativeHandle) {
+        collectionItemCounts[collection.rawValue] = count
+    }
+    public func setCollectionItemProvider(for collection: NativeHandle, provider: @escaping (Int) -> String) {
+        collectionItemProviders[collection.rawValue] = provider
+    }
+    /// The text a collection tile would render at `index` — test hook.
+    public func collectionItemText(_ collection: NativeHandle, index: Int) -> String {
+        collectionItemProviders[collection.rawValue]?(index) ?? ""
+    }
+    public func createTokenField(tokens: [String], frame: NSRect) -> NativeHandle {
+        let h = allocate(.tokenField)
+        frames[h.rawValue] = frame
+        tokensByHandle[h.rawValue] = tokens
+        enabledStates[h.rawValue] = true
+        return h
+    }
+    public func setTokens(_ tokens: [String], for handle: NativeHandle) {
+        tokensByHandle[handle.rawValue] = tokens
+    }
+    public func setTokensChangeAction(for handle: NativeHandle, action: @escaping ([String]) -> Void) {
+        tokensChangeActions[handle.rawValue] = action
+    }
+    /// Simulates the user adding/removing tokens (e.g. typing one and hitting Enter).
+    public func simulateTokensChange(_ handle: NativeHandle, _ tokens: [String]) {
+        tokensByHandle[handle.rawValue] = tokens
+        tokensChangeActions[handle.rawValue]?(tokens)
+    }
     public func setImagePath(_ path: String?, for handle: NativeHandle) {
         if let path { imagePaths[handle.rawValue] = path } else { imagePaths[handle.rawValue] = nil }
     }
@@ -263,6 +358,8 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     public func setText(_ text: String, for handle: NativeHandle) { texts[handle.rawValue] = text }
     public func setFrame(_ frame: NSRect, for handle: NativeHandle) { frames[handle.rawValue] = frame }
     public func setEnabled(_ isEnabled: Bool, for handle: NativeHandle) { enabledStates[handle.rawValue] = isEnabled }
+    public func setFont(_ font: NativeFontSpec, for handle: NativeHandle) { fonts[handle.rawValue] = font }
+    public func setTextColor(_ color: NSColor, for handle: NativeHandle) { textColors[handle.rawValue] = color }
     public func destroyControl(_ handle: NativeHandle) {
         let r = handle.rawValue
         kinds[r] = nil; titles[r] = nil; texts[r] = nil; frames[r] = nil

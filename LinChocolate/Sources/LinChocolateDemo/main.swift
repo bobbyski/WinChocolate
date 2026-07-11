@@ -86,6 +86,11 @@ let levelY = r2.next(24)
 let levelLabel = NSTextField(labelWithString: "Level:", frame: NSMakeRect(24, levelY, 90, 24))
 let level = NSLevelIndicator(value: 6, minValue: 0, maxValue: 10, frame: NSMakeRect(120, levelY, 300, 22))
 
+let tagsY = r2.next(36)
+let tagsLabel = NSTextField(labelWithString: "Tags:", frame: NSMakeRect(24, tagsY + 6, 90, 24))
+let tags = NSTokenField(tokens: ["swift", "gtk"], frame: NSMakeRect(120, tagsY, 320, 36))
+let tagsResult = NSTextField(labelWithString: "2 tags", frame: NSMakeRect(452, tagsY + 6, 80, 24))
+
 let alignY = r2.next(34)
 let alignLabel = NSTextField(labelWithString: "Align:", frame: NSMakeRect(24, alignY + 4, 90, 24))
 let segmented = NSSegmentedControl(labels: ["Left", "Center", "Right"], frame: NSMakeRect(120, alignY, 260, 34))
@@ -93,6 +98,7 @@ let alignResult = NSTextField(labelWithString: "Align: —", frame: NSMakeRect(3
 
 for control in [volumeLabel, slider, volumeValue, progress,
                 stepperLabel, stepper, stepperResult, levelLabel, level,
+                tagsLabel, tags, tagsResult,
                 alignLabel, segmented, alignResult] as [NSView] {
     values.addSubview(control)
 }
@@ -124,15 +130,23 @@ for control in [themeLabel, theme, themeResult, colorLabel, colorWell, colorResu
 let textPage = NSView(frame: NSMakeRect(0, 0, pageWidth, pageHeight))
 var r4 = Rows(top: pageHeight - 16)
 
-let notesLabel = NSTextField(labelWithString: "Notes:", frame: NSMakeRect(24, r4.next(24), 200, 24))
-let notes = NSTextView(string: "Type multi-line notes here…", frame: NSMakeRect(24, r4.next(160), 486, 160))
+let styledLabel = NSTextField(labelWithString: "Bold 18pt, firebrick red (NSFont + textColor)", frame: NSMakeRect(24, r4.next(28), 486, 28))
+styledLabel.font = .boldSystemFont(ofSize: 18)
+styledLabel.textColor = NSColor(red: 0.70, green: 0.13, blue: 0.13)
+
+let monoLabel = NSTextField(labelWithString: "Monospace 13pt sample 0123", frame: NSMakeRect(24, r4.next(22), 486, 22))
+monoLabel.font = .monospacedSystemFont(ofSize: 13)
+
+let notesLabel = NSTextField(labelWithString: "Notes (monospace):", frame: NSMakeRect(24, r4.next(24), 200, 24))
+let notes = NSTextView(string: "Type multi-line notes here…", frame: NSMakeRect(24, r4.next(120), 486, 120))
+notes.font = .monospacedSystemFont(ofSize: 12)
 let notesEdit = NSTextField(labelWithString: "Last edit: —", frame: NSMakeRect(24, r4.next(24), 486, 24))
 
 let artworkLabel = NSTextField(labelWithString: "Artwork (NSImageView):", frame: NSMakeRect(24, r4.next(22), 300, 22))
-let artwork = NSImageView(frame: NSMakeRect(24, r4.next(150), 150, 150))
+let artwork = NSImageView(frame: NSMakeRect(24, r4.next(130), 130, 130))
 artwork.image = NSImage(contentsOfFile: "Sources/LinChocolateDemo/Resources/Artwork.png")
 
-for control in [notesLabel, notes, notesEdit, artworkLabel, artwork] as [NSView] {
+for control in [styledLabel, monoLabel, notesLabel, notes, notesEdit, artworkLabel, artwork] as [NSView] {
     textPage.addSubview(control)
 }
 
@@ -168,9 +182,106 @@ for control in [splitLabel, split, scrollLabel, scroll] as [NSView] {
     layoutPage.addSubview(control)
 }
 
+// MARK: - Page 6 · Table (NSTableView + data source)
+final class DemoTableData: NSTableViewDataSource {
+    var rows: [(name: String, status: String)] = [
+        ("Aurora", "Ready"), ("Borealis", "Building"), ("Cascade", "Ready"),
+        ("Dune", "Failed"), ("Ember", "Ready"), ("Fjord", "Queued"),
+        ("Glacier", "Ready"), ("Harbor", "Building")
+    ]
+    func numberOfRows(in tableView: NSTableView) -> Int { rows.count }
+    func tableView(_ tableView: NSTableView, objectValueFor tableColumn: NSTableColumn?, row: Int) -> Any? {
+        guard row < rows.count else { return nil }
+        return tableColumn?.identifier == "status" ? rows[row].status : rows[row].name
+    }
+}
+let tableData = DemoTableData()
+
+let tablePage = NSView(frame: NSMakeRect(0, 0, pageWidth, pageHeight))
+var r6 = Rows(top: pageHeight - 16)
+
+final class OutlineNode {
+    let name: String
+    let children: [OutlineNode]
+    init(_ name: String, _ children: [OutlineNode] = []) {
+        self.name = name
+        self.children = children
+    }
+}
+final class DemoOutlineData: NSOutlineViewDataSource {
+    let roots = [
+        OutlineNode("Engineering", [OutlineNode("Compilers"), OutlineNode("UI Frameworks")]),
+        OutlineNode("Design"),
+        OutlineNode("Operations", [OutlineNode("Cloud")])
+    ]
+    private func children(of item: Any?) -> [OutlineNode] {
+        (item as? OutlineNode)?.children ?? roots
+    }
+    func outlineView(_ outlineView: NSOutlineView, numberOfChildrenOfItem item: Any?) -> Int {
+        children(of: item).count
+    }
+    func outlineView(_ outlineView: NSOutlineView, child index: Int, ofItem item: Any?) -> Any {
+        children(of: item)[index]
+    }
+    func outlineView(_ outlineView: NSOutlineView, isItemExpandable item: Any) -> Bool {
+        !((item as? OutlineNode)?.children.isEmpty ?? true)
+    }
+    func outlineView(_ outlineView: NSOutlineView, objectValueFor tableColumn: NSTableColumn?, byItem item: Any?) -> Any? {
+        guard let node = item as? OutlineNode else { return nil }
+        return tableColumn?.identifier == "members" ? node.children.count : node.name
+    }
+}
+let outlineData = DemoOutlineData()
+
+let tableTitle = NSTextField(labelWithString: "Projects (NSTableView):", frame: NSMakeRect(24, r6.next(22), 300, 22))
+let table = NSTableView(frame: NSMakeRect(24, r6.next(200), 486, 200))
+let nameColumn = NSTableColumn(identifier: "name");   nameColumn.title = "Name"
+let statusColumn = NSTableColumn(identifier: "status"); statusColumn.title = "Status"
+table.addTableColumn(nameColumn)
+table.addTableColumn(statusColumn)
+table.dataSource = tableData
+let tableResult = NSTextField(labelWithString: "Selected: —", frame: NSMakeRect(24, r6.next(24), 486, 24))
+
+let outlineTitle = NSTextField(labelWithString: "Departments (NSOutlineView):", frame: NSMakeRect(24, r6.next(22), 300, 22))
+let outline = NSOutlineView(frame: NSMakeRect(24, r6.next(170), 486, 170))
+let deptColumn = NSTableColumn(identifier: "name");    deptColumn.title = "Department"
+let membersColumn = NSTableColumn(identifier: "members"); membersColumn.title = "Teams"
+outline.addTableColumn(deptColumn)
+outline.addTableColumn(membersColumn)
+outline.dataSource = outlineData
+
+for control in [tableTitle, table, tableResult, outlineTitle, outline] as [NSView] {
+    tablePage.addSubview(control)
+}
+
+// MARK: - Page 7 · Grid (NSCollectionView)
+final class DemoGridData: NSCollectionViewDataSource {
+    let items = ["Agate", "Beryl", "Citrine", "Diamond", "Emerald", "Fluorite",
+                 "Garnet", "Howlite", "Iolite", "Jasper", "Kunzite", "Larimar"]
+    func collectionView(_ collectionView: NSCollectionView, numberOfItemsInSection section: Int) -> Int {
+        items.count
+    }
+    func collectionView(_ collectionView: NSCollectionView, representedObjectForItemAt index: Int) -> Any? {
+        index < items.count ? items[index] : nil
+    }
+}
+let gridData = DemoGridData()
+
+let gridPage = NSView(frame: NSMakeRect(0, 0, pageWidth, pageHeight))
+var r7 = Rows(top: pageHeight - 16)
+
+let gridTitle = NSTextField(labelWithString: "Minerals (NSCollectionView):", frame: NSMakeRect(24, r7.next(22), 300, 22))
+let grid = NSCollectionView(frame: NSMakeRect(24, r7.next(320), 486, 320))
+grid.dataSource = gridData
+let gridResult = NSTextField(labelWithString: "Selected: —", frame: NSMakeRect(24, r7.next(24), 486, 24))
+
+for control in [gridTitle, grid, gridResult] as [NSView] {
+    gridPage.addSubview(control)
+}
+
 // MARK: - Tab view assembly
 let tabView = NSTabView(frame: NSMakeRect(0, 0, pageWidth, pageHeight + 60))
-for (label, page) in [("Basics", basics), ("Values", values), ("Pickers", pickers), ("Text", textPage), ("Layout", layoutPage)] {
+for (label, page) in [("Basics", basics), ("Values", values), ("Pickers", pickers), ("Text", textPage), ("Layout", layoutPage), ("Table", tablePage), ("Grid", gridPage)] {
     let item = NSTabViewItem()
     item.label = label
     item.view = page
@@ -206,6 +317,18 @@ dateFormatter.dateStyle = .medium
 datePicker.onDateChange = { dateResult.stringValue = "Picked: \(dateFormatter.string(from: $0.dateValue))" }
 
 notes.onTextChange = { notesEdit.stringValue = "Last edit: \($0.string.count) chars" }
+tags.onTokensChange = { tagsResult.stringValue = "\($0.objectValue.count) tags" }
+grid.onSelectionChange = { g in
+    let index = g.selectedIndex
+    gridResult.stringValue = index >= 0 && index < gridData.items.count
+        ? "Selected: \(gridData.items[index])" : "Selected: —"
+}
+table.onSelectionChange = { t in
+    let row = t.selectedRow
+    tableResult.stringValue = row >= 0 && row < tableData.rows.count
+        ? "Selected: \(tableData.rows[row].name) — \(tableData.rows[row].status)"
+        : "Selected: —"
+}
 segmented.onAction = { seg in
     alignResult.stringValue = "Align: \(seg.label(forSegment: seg.selectedSegment) ?? "—")"
 }
