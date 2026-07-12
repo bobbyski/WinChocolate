@@ -52,6 +52,11 @@ public final class NumberFormatter: Formatter {
     /// An explicit currency symbol, or `nil` to use the locale's.
     public var currencySymbol: String?
 
+    /// An ISO 4217 currency code (for example `"USD"`), or `nil` to use the
+    /// locale's currency. Rendered as the symbol when set; an explicit
+    /// `currencySymbol` wins.
+    public var currencyCode: String?
+
     /// The symbol appended for percent style.
     public var percentSymbol: String = "%"
 
@@ -75,11 +80,24 @@ public final class NumberFormatter: Formatter {
         case .percent:
             return formatMagnitudeSigned(value * 100) + percentSymbol
         case .currency:
-            let symbol = currencySymbol ?? locale.currencySymbol
+            let symbol = currencySymbol ?? currencyCode.map { winSymbol(forCurrencyCode: $0) } ?? locale.currencySymbol
             let body = formatMagnitude(abs(value))
             return (value < 0 ? "-" : "") + symbol + body
         case .scientific, .spellOut:
             return number.stringValue
+        }
+    }
+
+    /// The display symbol for an ISO currency code — the common sign where
+    /// one exists, otherwise the code itself with a separating space, which
+    /// is how Foundation renders less-common codes.
+    private func winSymbol(forCurrencyCode code: String) -> String {
+        switch code.uppercased() {
+        case "USD": return "$"
+        case "EUR": return "€"
+        case "GBP": return "£"
+        case "JPY": return "¥"
+        default: return code + "\u{00A0}"
         }
     }
 

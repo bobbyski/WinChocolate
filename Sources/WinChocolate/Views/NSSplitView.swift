@@ -85,6 +85,17 @@ open class NSSplitView: NSView {
         adjustSubviews()
     }
 
+    /// The views the split view arranges — its subviews; there is no
+    /// separate arranged list in the classic pane model.
+    open var arrangedSubviews: [NSView] {
+        subviews
+    }
+
+    /// Adds a pane, matching AppKit's arranged-subview shape.
+    open func addArrangedSubview(_ view: NSView) {
+        addSubview(view)
+    }
+
     /// Sets the leading edge of the divider, resizing its two panes.
     ///
     /// The position clamps between the neighboring panes so neither pane

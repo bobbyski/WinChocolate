@@ -11,6 +11,13 @@ open class NSScreen: NSObject {
     /// The display's frame excluding the taskbar and docked bars.
     public let visibleFrame: NSRect
 
+    /// The display's pixel-per-point scale.
+    ///
+    /// The classic backend enumerates monitors in logical (DPI-virtualized)
+    /// coordinates, so points are the working unit and the factor is 1.
+    /// Per-monitor DPI awareness would surface real scales here.
+    open var backingScaleFactor: CGFloat { 1 }
+
     init(frame: NSRect, visibleFrame: NSRect) {
         self.frame = frame
         self.visibleFrame = visibleFrame

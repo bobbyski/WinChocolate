@@ -33,10 +33,29 @@ open class NSView: NSResponder {
         public static let maxYMargin = AutoresizingMask(rawValue: 1 << 5)
     }
 
+    /// Posted when a view's frame changes, for views that opted in through
+    /// `postsFrameChangedNotifications`.
+    public static let frameDidChangeNotification = Notification.Name("NSViewFrameDidChangeNotification")
+
+    /// Posted when a view's bounds origin changes (scrolling), for views
+    /// that opted in through `postsBoundsChangedNotifications`.
+    public static let boundsDidChangeNotification = Notification.Name("NSViewBoundsDidChangeNotification")
+
+    /// Whether frame changes post `frameDidChangeNotification`.
+    open var postsFrameChangedNotifications: Bool = false
+
+    /// Whether bounds-origin changes post `boundsDidChangeNotification`
+    /// (clip views scroll by moving their bounds origin).
+    open var postsBoundsChangedNotifications: Bool = false
+
     /// The view frame in its parent coordinate space.
     open var frame: NSRect {
         didSet {
             autoresizeSubviews(from: oldValue.size, to: frame.size)
+
+            if postsFrameChangedNotifications, frame != oldValue {
+                NotificationCenter.default.post(name: NSView.frameDidChangeNotification, object: self)
+            }
 
             guard let nativeHandle else {
                 return

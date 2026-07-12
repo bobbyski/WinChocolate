@@ -293,7 +293,7 @@ extension NSTableView {
             // A delegate-vended row view sits full-width behind the cells and
             // paints the row background/selection. Add it first so cells layer
             // on top.
-            if let rowView = delegate?.tableView(self, rowViewFor: row) {
+            if let rowView = winMainActor({ delegate?.tableView(self, rowViewFor: row) }) {
                 rowView.frame = NSRect(x: 0, y: winRowY(row), width: width, height: winRowHeightAt(row))
                 rowView.isSelected = selectedRowIndexes.contains(row)
                 addSubview(rowView)
@@ -301,7 +301,7 @@ extension NSTableView {
                 winHostedRowViews[row] = rowView
             }
             for column in tableColumns.indices {
-                guard let cellView = delegate?.tableView(self, viewFor: tableColumns[column], row: row) else {
+                guard let cellView = winMainActor({ delegate?.tableView(self, viewFor: tableColumns[column], row: row) }) else {
                     continue
                 }
                 // Inset the cell view slightly so grid lines/selection show,
@@ -824,7 +824,7 @@ extension NSTableView {
             winDraggingRows = IndexSet(integer: row)
             winDropIndex = -1
             winPendingCollapseRow = -1
-        } else if dataSource?.tableView(self, pasteboardWriterForRow: row) != nil {
+        } else if winMainActor { dataSource?.tableView(self, pasteboardWriterForRow: row) } != nil {
             winExternalDragRow = row
         }
 
@@ -875,7 +875,7 @@ extension NSTableView {
         let row = winExternalDragRow
         winExternalDragRow = -1
         guard row >= 0, row < numberOfRows,
-              let writer = dataSource?.tableView(self, pasteboardWriterForRow: row) else {
+              let writer = winMainActor { dataSource?.tableView(self, pasteboardWriterForRow: row) } else {
             return
         }
         let item = NSDraggingItem(pasteboardWriter: writer)

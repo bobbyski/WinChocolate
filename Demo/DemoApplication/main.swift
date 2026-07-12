@@ -3703,7 +3703,7 @@ resizeContainer.layoutSubtreeIfNeeded()
 // NSStackView (9.4): a horizontal row and a vertical column, each arranging its
 // views with a distribution + spacing. The horizontal one also stretches with
 // the window (see the resize handler) to show the stack refilling live.
-let stackHeader = showcaseSectionLabel("NSStackView (9.4)", NSMakeRect(24, 388, 400, 20))
+let stackHeader = showcaseSectionLabel("NSStackView (9.4)", NSMakeRect(24, 370, 400, 20))
 let hStackCaption = bezelCaption("Horizontal .fillEqually, spacing 8", NSMakeRect(24, 414, 520, 18))
 let hStack = NSStackView(views: [layoutBox(layoutBlue), layoutBox(layoutGreen), layoutBox(layoutRed), layoutBox(layoutOrange)])
 hStack.orientation = .horizontal
@@ -3737,8 +3737,10 @@ func fieldBox() -> NSTextField {
     field.isBordered = true
     return field
 }
-let gridCaption = bezelCaption("NSGridView form (label : field, 9.5)", NSMakeRect(840, 414, 280, 18))
+let gridCaption = bezelCaption("NSGridView form + merged header (9.5)", NSMakeRect(840, 414, 280, 18))
+let formHeader = formLabel("Contact details")
 let formGrid = NSGridView(views: [
+    [formHeader, formLabel("")],
     [formLabel("Name:"), fieldBox()],
     [formLabel("Email address:"), fieldBox()],
     [formLabel("Role:"), fieldBox()],
@@ -3748,7 +3750,11 @@ formGrid.columnSpacing = 10
 formGrid.column(at: 0).xPlacement = .trailing
 formGrid.column(at: 1).width = 130
 formGrid.column(at: 1).xPlacement = .fill
-formGrid.frame = NSMakeRect(840, 436, 270, 110)
+// 9.5: merge the top row across both columns so the section header spans the
+// whole form and centers over the label/field columns below it.
+formGrid.mergeCells(inHorizontalRange: NSMakeRange(0, 2), verticalRange: NSMakeRange(0, 1))
+formGrid.cell(atColumnIndex: 0, rowIndex: 0).xPlacement = .center
+formGrid.frame = NSMakeRect(840, 436, 270, 130)
 formGrid.layoutSubtreeIfNeeded()
 
 for view in [
@@ -3786,24 +3792,25 @@ func reflowAutoLayoutPage(width pageWidth: CGFloat) {
 
     // Middle: the live-reflow strip spans the full width.
     resizeDemoCaption.frame = NSMakeRect(margin, 250, available, 18)
-    resizeContainer.frame = NSMakeRect(margin, 274, available, 90)
+    resizeContainer.frame = NSMakeRect(margin, 274, available, 80)
     resizeContainer.layoutSubtreeIfNeeded()
 
     // Bottom row: form pinned to the right, vertical stack to its left, and the
-    // horizontal stack filling everything left of them.
+    // horizontal stack filling everything left of them. Sits high enough that the
+    // taller grid (a merged header row + three fields) clears the window bottom.
     let formWidth: CGFloat = 270
     let vStackWidth: CGFloat = 130
     let formX = pageWidth - margin - formWidth
     let vStackX = formX - 30 - vStackWidth
-    gridCaption.frame = NSMakeRect(formX, 414, formWidth, 18)
-    formGrid.frame = NSMakeRect(formX, 436, formWidth, 110)
+    gridCaption.frame = NSMakeRect(formX, 394, formWidth, 18)
+    formGrid.frame = NSMakeRect(formX, 416, formWidth, 130)
     formGrid.layoutSubtreeIfNeeded()
-    vStackCaption.frame = NSMakeRect(vStackX, 414, 200, 18)
-    vStack.frame = NSMakeRect(vStackX, 436, vStackWidth, 110)
+    vStackCaption.frame = NSMakeRect(vStackX, 394, 200, 18)
+    vStack.frame = NSMakeRect(vStackX, 416, vStackWidth, 110)
     vStack.layoutSubtreeIfNeeded()
     let hStackWidth = max(vStackX - 20 - margin, 200)
-    hStackCaption.frame = NSMakeRect(margin, 414, hStackWidth, 18)
-    hStack.frame = NSMakeRect(margin, 436, hStackWidth, 56)
+    hStackCaption.frame = NSMakeRect(margin, 394, hStackWidth, 18)
+    hStack.frame = NSMakeRect(margin, 416, hStackWidth, 56)
     hStack.layoutSubtreeIfNeeded()
 }
 reflowAutoLayoutPage(width: 1120)

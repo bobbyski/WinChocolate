@@ -55,6 +55,11 @@ open class NSPathControl: NSTextField {
         isSelectable = true
     }
 
+    /// Creates a path control with a zero frame, matching AppKit's shape.
+    public convenience init() {
+        self.init(frame: .zero)
+    }
+
     /// Creates a path control with a URL.
     public init(url: URL?, frame frameRect: NSRect) {
         self.url = url

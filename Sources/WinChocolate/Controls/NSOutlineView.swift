@@ -1,4 +1,5 @@
 /// Data source for an AppKit-shaped outline view.
+@MainActor
 public protocol NSOutlineViewDataSource: AnyObject {
     /// Returns the number of children below an item. `nil` means the root.
     func outlineView(_ outlineView: NSOutlineView, numberOfChildrenOfItem item: Any?) -> Int
@@ -22,6 +23,7 @@ public extension NSOutlineViewDataSource {
 
 /// Delegate that can vend per-column cell views for an outline's items,
 /// matching AppKit's `NSOutlineViewDelegate` view-based hook.
+@MainActor
 public protocol NSOutlineViewDelegate: AnyObject {
     /// Returns a view to host for a column and item, or `nil` for drawn text.
     func outlineView(_ outlineView: NSOutlineView, viewFor tableColumn: NSTableColumn?, item: Any) -> NSView?
@@ -51,20 +53,26 @@ open class NSOutlineView: NSTableView {
     /// column, ahead of the cell text.
     private let disclosureWidth: CGFloat = 14
 
+    // The adapter's members are nonisolated: the protocols are @MainActor
+    // (inferring @MainActor on this class), but everything it touches on
+    // the owner is nonisolated control state, and every call happens on the
+    // Win32 UI thread.
     private final class OutlineTableAdapter: NSTableViewDataSource, NSTableViewDelegate {
-        weak var owner: NSOutlineView?
+        nonisolated(unsafe) weak var owner: NSOutlineView?
 
-        func numberOfRows(in tableView: NSTableView) -> Int {
+        nonisolated init() {}
+
+        nonisolated func numberOfRows(in tableView: NSTableView) -> Int {
             owner?.visibleRows.count ?? 0
         }
 
-        func tableView(_ tableView: NSTableView, objectValueFor tableColumn: NSTableColumn?, row: Int) -> Any? {
+        nonisolated func tableView(_ tableView: NSTableView, objectValueFor tableColumn: NSTableColumn?, row: Int) -> Any? {
             owner?.objectValue(for: tableColumn, row: row)
         }
 
         /// Bridges the drawn table's per-cell view request to the outline
         /// delegate's item-based hook.
-        func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
+        nonisolated func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
             owner?.hostedView(for: tableColumn, row: row)
         }
     }

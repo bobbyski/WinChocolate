@@ -161,6 +161,62 @@ func testGridViewContentSizingAndPlacement() {
         "Fill placement should stretch to the column width: got \(only.frame).")
 }
 
+func testGridViewCellMergingSpans() {
+    func iv(_ w: CGFloat, _ h: CGFloat) -> IntrinsicSizeView { IntrinsicSizeView(NSSize(width: w, height: h)) }
+
+    // Row 0 is a header that spans all three columns; row 1 has the real cells.
+    let header = iv(50, 20)
+    let a = iv(40, 20), b = iv(60, 20), c = iv(30, 20)
+    let grid = NSGridView(views: [[header], [a, b, c]])
+    grid.columnSpacing = 10
+    grid.rowSpacing = 8
+    grid.xPlacement = .fill
+    grid.mergeCells(inHorizontalRange: NSMakeRange(0, 3), verticalRange: NSMakeRange(0, 1))
+    grid.layoutSubtreeIfNeeded()
+
+    // Columns come from row 1 (merged cells excluded): 40 / 60 / 30, spacing 10.
+    // Total width = 40+60+30 + 20 = 150; the header spans all of it.
+    expect(winClose(header.frame.origin.x, 0) && winClose(header.frame.size.width, 150),
+        "Merged header should span the full width (150): got \(header.frame).")
+    // Row 1 begins below the header row (20 + 8 = 28).
+    expect(winClose(b.frame.origin.x, 50) && winClose(c.frame.origin.x, 120) && winClose(a.frame.origin.y, 28),
+        "Row-1 cells wrong under the merged header: a=\(a.frame) b=\(b.frame) c=\(c.frame).")
+
+    // Unmerging restores per-cell placement of the head content.
+    grid.unmergeCells(atColumnIndex: 0, rowIndex: 0)
+    grid.layoutSubtreeIfNeeded()
+    // Column 0 now sizes to max(header 50, a 40) = 50; the header no longer spans.
+    expect(winClose(header.frame.size.width, 50),
+        "After unmerge the header should occupy just its own column (50): got \(header.frame.size.width).")
+}
+
+func testStackViewCustomSpacingAndHiddenViews() {
+    func iv(_ w: CGFloat, _ h: CGFloat) -> IntrinsicSizeView { IntrinsicSizeView(NSSize(width: w, height: h)) }
+    let a = iv(40, 20), b = iv(40, 20), c = iv(40, 20)
+    let stack = NSStackView(views: [a, b, c])
+    stack.orientation = .horizontal
+    stack.distribution = .fill
+    stack.spacing = 8
+
+    // A custom gap after `a` widens the first gap to 20; the rest stay 8.
+    stack.setCustomSpacing(20, after: a)
+    stack.frame = NSRect(origin: .zero, size: stack.intrinsicContentSize)
+    stack.layoutSubtreeIfNeeded()
+    expect(winClose(stack.intrinsicContentSize.width, 148),
+        "Custom spacing should widen the intrinsic size to 148: got \(stack.intrinsicContentSize.width).")
+    expect(winClose(b.frame.origin.x, 60) && winClose(c.frame.origin.x, 108),
+        "Custom spacing after a should push b to 60 and c to 108: b=\(b.frame.origin.x) c=\(c.frame.origin.x).")
+
+    // Hiding b drops it from layout (detachesHiddenViews); a→c gap is a's custom 20.
+    b.isHidden = true
+    stack.frame = NSRect(origin: .zero, size: stack.intrinsicContentSize)
+    stack.layoutSubtreeIfNeeded()
+    expect(winClose(stack.intrinsicContentSize.width, 100),
+        "Hidden b should shrink the stack to 100: got \(stack.intrinsicContentSize.width).")
+    expect(winClose(c.frame.origin.x, 60),
+        "With b hidden, c should follow a's custom gap to x=60: got \(c.frame.origin.x).")
+}
+
 func testGridViewHiddenStructureAndSolver() {
     func iv(_ w: CGFloat, _ h: CGFloat) -> IntrinsicSizeView { IntrinsicSizeView(NSSize(width: w, height: h)) }
 
@@ -9445,6 +9501,8 @@ testStackViewDistributionsAlignmentAndInsets()
 testStackViewComposesWithSolverAndResizes()
 testGridViewContentSizingAndPlacement()
 testGridViewHiddenStructureAndSolver()
+testGridViewCellMergingSpans()
+testStackViewCustomSpacingAndHiddenViews()
 testAutoLayoutResizeReflowsConstraints()
 testAutoLayoutSiblingChainInequalityAndFixedAnchor()
 testWindowTitleVisibilityBlanksCaption()
@@ -11062,7 +11120,8 @@ func testTableViewAutoDetectsViewBasedModeFromDelegate() {
     cellCol.width = 180
     cellTable.addTableColumn(cellCol)
     cellTable.dataSource = cellSource
-    cellTable.delegate = CellBasedSelectionDelegate()
+    let cellDelegate = CellBasedSelectionDelegate()
+    cellTable.delegate = cellDelegate
     let cellHandle = cellTable.realizeNativePeer(in: backend, parent: nil)
     expect(backend.records[cellHandle]?.kind != "view",
            "A cell-based table wrongly used the drawn peer. Got \(backend.records[cellHandle]?.kind ?? "nil").")

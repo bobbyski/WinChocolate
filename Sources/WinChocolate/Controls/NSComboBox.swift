@@ -7,6 +7,19 @@ public protocol NSComboBoxDataSource: AnyObject {
     func comboBox(_ comboBox: NSComboBox, objectValueForItemAt index: Int) -> Any?
 }
 
+/// The methods a combo-box delegate implements, matching AppKit's shape:
+/// text callbacks ride the text-field delegate surface, selection commits
+/// arrive through `comboBoxSelectionDidChange`.
+public protocol NSComboBoxDelegate: NSTextFieldDelegate {
+    /// Tells the delegate the selected item changed.
+    func comboBoxSelectionDidChange(_ notification: NSNotification)
+}
+
+extension NSComboBoxDelegate {
+    /// Default no-op so delegates only implement the callbacks they need.
+    public func comboBoxSelectionDidChange(_ notification: NSNotification) {}
+}
+
 /// An editable combo box control.
 ///
 /// `NSComboBox` preserves AppKit's editable text plus item-list shape and maps
@@ -71,6 +84,19 @@ open class NSComboBox: NSTextField {
         super.init(frame: frameRect)
         isEditable = true
         isSelectable = true
+    }
+
+    /// Creates a combo box with a zero frame, matching AppKit's shape.
+    public convenience init() {
+        self.init(frame: .zero)
+    }
+
+    /// The index of the item matching the current text, or `-1`.
+    ///
+    /// Selection commits copy the picked item into `stringValue`, so the
+    /// match against the item list is the selection state.
+    open var indexOfSelectedItem: Int {
+        items.firstIndex(of: stringValue) ?? -1
     }
 
     /// All item object values as strings.
@@ -181,6 +207,12 @@ open class NSComboBox: NSTextField {
             // On commit, complete a partial entry to the first matching item.
             if self.completes, let completed = self.completedString(forPrefix: self.stringValue) {
                 self.stringValue = completed
+            }
+            // A commit whose text matches an item is a selection change.
+            if self.indexOfSelectedItem >= 0 {
+                (self.delegate as? NSComboBoxDelegate)?.comboBoxSelectionDidChange(
+                    NSNotification(name: "NSComboBoxSelectionDidChangeNotification", object: self)
+                )
             }
             self.sendAction()
         }

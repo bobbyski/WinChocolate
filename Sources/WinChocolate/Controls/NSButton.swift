@@ -35,6 +35,12 @@ open class NSButton: NSControl {
 
         /// Image below the title.
         case imageBelow
+
+        /// Image on the leading edge of the title (left in LTR).
+        case imageLeading
+
+        /// Image on the trailing edge of the title (right in LTR).
+        case imageTrailing
     }
 
     /// The button title.
@@ -179,6 +185,10 @@ open class NSButton: NSControl {
 
     /// Keyboard equivalent for button activation.
     open var keyEquivalent: String = ""
+
+    /// Modifier keys required with `keyEquivalent`. Stored for AppKit shape;
+    /// the key-equivalent match currently compares characters only.
+    open var keyEquivalentModifierMask: NSEvent.ModifierFlags = []
 
     /// Whether the button draws a border.
     open var isBordered: Bool = true

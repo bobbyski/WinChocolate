@@ -234,6 +234,18 @@ open class NSPopUpButton: NSControl {
         indexOfSelectedItem = index
     }
 
+    /// Selects a menu item, or clears the selection for `nil`, matching
+    /// AppKit's shape. WinChocolate items are title-backed, so a non-nil
+    /// item selects by its title.
+    open func select(_ item: NSMenuItem?) {
+        guard let item else {
+            indexOfSelectedItem = -1
+            return
+        }
+
+        selectItem(withTitle: item.title)
+    }
+
     /// Selects the first item matching a title.
     open func selectItem(withTitle title: String) {
         guard let index = titles.firstIndex(of: title) else {

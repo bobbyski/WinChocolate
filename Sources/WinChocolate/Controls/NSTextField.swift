@@ -11,6 +11,10 @@ public enum NSTextAlignment: Sendable {
 
     /// Natural alignment for the writing direction (left here).
     case natural
+
+    /// Fully-justified text. Native edit controls have no justified mode,
+    /// so rendering falls back to the natural alignment.
+    case justified
 }
 
 /// The methods a text field delegate uses to observe editing.
@@ -109,6 +113,10 @@ open class NSTextField: NSControl {
                 return
             }
 
+            // The text drives the field's intrinsic size (9.2), so a change
+            // schedules a layout pass for any constraint layout hosting it.
+            invalidateIntrinsicContentSize()
+
             guard let nativeHandle else {
                 return
             }
@@ -205,6 +213,19 @@ open class NSTextField: NSControl {
             realizedBackend?.setTextColor(textColor, for: nativeHandle)
         }
     }
+
+    /// The field's content as an attributed string.
+    ///
+    /// The classic peer renders plain text; the attributed form is stored so
+    /// runs survive round-trips while the plain projection drives display.
+    open var attributedStringValue: NSAttributedString {
+        get { storedAttributedStringValue ?? NSAttributedString(string: stringValue) }
+        set {
+            storedAttributedStringValue = newValue
+            stringValue = newValue.string
+        }
+    }
+    private var storedAttributedStringValue: NSAttributedString?
 
     /// Swift-native action invoked when user editing changes the string value.
     open var onTextChanged: ((NSTextField) -> Void)?

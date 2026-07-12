@@ -96,6 +96,46 @@ open class NSStackView: NSView {
         invalidateAndRelayout()
     }
 
+    // MARK: - Custom spacing + hidden views
+
+    /// Sentinel for "use the stack's default `spacing`", matching AppKit's
+    /// `NSStackView.spacingUseDefault`.
+    public static let useDefaultSpacing: CGFloat = .greatestFiniteMagnitude
+
+    /// Whether hidden arranged views are removed from the layout (default
+    /// `true`, matching AppKit) — a hidden view then takes no space.
+    open var detachesHiddenViews: Bool = true { didSet { invalidateAndRelayout() } }
+
+    private var customSpacings: [ObjectIdentifier: CGFloat] = [:]
+
+    /// Sets a custom gap after a specific arranged view (or
+    /// `NSStackView.useDefaultSpacing` to clear it).
+    open func setCustomSpacing(_ spacing: CGFloat, after view: NSView) {
+        if spacing == NSStackView.useDefaultSpacing {
+            customSpacings.removeValue(forKey: ObjectIdentifier(view))
+        } else {
+            customSpacings[ObjectIdentifier(view)] = spacing
+        }
+        invalidateAndRelayout()
+    }
+
+    /// The custom gap after a view, or `useDefaultSpacing` when none is set.
+    open func customSpacing(after view: NSView) -> CGFloat {
+        customSpacings[ObjectIdentifier(view)] ?? NSStackView.useDefaultSpacing
+    }
+
+    /// The arranged views that participate in layout (hidden ones drop out when
+    /// `detachesHiddenViews`).
+    private var layoutArrangedViews: [NSView] {
+        detachesHiddenViews ? arrangedSubviews.filter { !$0.isHidden } : arrangedSubviews
+    }
+
+    /// The gap after `views[index]` (its custom spacing or the default).
+    private func gapAfter(_ views: [NSView], _ index: Int) -> CGFloat {
+        guard index < views.count - 1 else { return 0 }
+        return customSpacings[ObjectIdentifier(views[index])] ?? spacing
+    }
+
     // MARK: - Layout
 
     open override func layout() {
@@ -105,14 +145,15 @@ open class NSStackView: NSView {
     /// The stack's natural size: the arranged content plus spacing and insets
     /// along the axis, and the widest/tallest arranged view across it.
     open override var intrinsicContentSize: NSSize {
-        guard !arrangedSubviews.isEmpty else {
+        let views = layoutArrangedViews
+        guard !views.isEmpty else {
             return NSSize(width: edgeInsets.left + edgeInsets.right,
                           height: edgeInsets.top + edgeInsets.bottom)
         }
-        let sizes = arrangedSubviews.map { arrangedSize($0) }
+        let sizes = views.map { arrangedSize($0) }
         let horizontal = orientation == .horizontal
-        let mainTotal = sizes.reduce(0) { $0 + (horizontal ? $1.width : $1.height) }
-            + spacing * CGFloat(arrangedSubviews.count - 1)
+        let gapTotal = (0..<views.count).reduce(CGFloat(0)) { $0 + gapAfter(views, $1) }
+        let mainTotal = sizes.reduce(0) { $0 + (horizontal ? $1.width : $1.height) } + gapTotal
         let crossMax = sizes.reduce(0) { max($0, horizontal ? $1.height : $1.width) }
         let mainInset = horizontal ? edgeInsets.left + edgeInsets.right : edgeInsets.top + edgeInsets.bottom
         let crossInset = horizontal ? edgeInsets.top + edgeInsets.bottom : edgeInsets.left + edgeInsets.right
@@ -155,7 +196,7 @@ open class NSStackView: NSView {
     }
 
     private func arrangeSubviews() {
-        let views = arrangedSubviews
+        let views = layoutArrangedViews
         guard !views.isEmpty else {
             return
         }
@@ -173,11 +214,12 @@ open class NSStackView: NSView {
 
         let intrinsicMains = views.map { horizontal ? arrangedSize($0).width : arrangedSize($0).height }
         let count = views.count
-        let totalSpacing = spacing * CGFloat(count - 1)
+        // Per-view gaps (custom spacing overrides the default).
+        var gaps = (0..<count).map { gapAfter(views, $0) }
+        let totalSpacing = gaps.reduce(0, +)
 
-        // Main-axis sizes + the gap to use between views.
+        // Main-axis sizes.
         var mains = intrinsicMains
-        var gap = spacing
         switch distribution {
         case .fillEqually:
             let each = max((availableMain - totalSpacing) / CGFloat(count), 0)
@@ -196,10 +238,11 @@ open class NSStackView: NSView {
             let share = leftover / CGFloat(count)
             mains = intrinsicMains.map { max($0 + share, 0) }
         case .equalSpacing, .equalCentering:
-            // Views keep their intrinsic size; the gap grows to fill the axis.
+            // Views keep their intrinsic size; the gaps grow uniformly to fill.
             let freeSpace = availableMain - intrinsicMains.reduce(0, +)
             if count > 1 {
-                gap = max(spacing, freeSpace / CGFloat(count - 1))
+                let uniform = max(spacing, freeSpace / CGFloat(count - 1))
+                gaps = (0..<count).map { $0 < count - 1 ? uniform : 0 }
             }
         }
 
@@ -225,7 +268,7 @@ open class NSStackView: NSView {
             view.frame = horizontal
                 ? NSRect(x: mainCursor, y: crossPos, width: mainLen, height: crossLen)
                 : NSRect(x: crossPos, y: mainCursor, width: crossLen, height: mainLen)
-            mainCursor += mainLen + gap
+            mainCursor += mainLen + gaps[index]
         }
     }
 }

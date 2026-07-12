@@ -4,6 +4,81 @@
 /// code a familiar framed grouping surface while leaving future modern
 /// rendering choices behind the backend.
 open class NSBox: NSView {
+    /// Box appearance kinds, matching AppKit's names.
+    public enum BoxType: Sendable {
+        /// The standard titled group box.
+        case primary
+
+        /// A thin separator line, rendered by the thin frame callers give it.
+        case separator
+
+        /// A custom-drawn box.
+        case custom
+    }
+
+    /// The box appearance. Separator boxes are laid out as hairlines by
+    /// their owners; the group-box chrome comes from the native peer.
+    open var boxType: BoxType = .primary
+
+    /// Title placement, matching AppKit's names (the slice the native
+    /// group box supports: hidden, or on the top edge).
+    public enum TitlePosition: Sendable {
+        /// No title is shown.
+        case noTitle
+
+        /// The title sits on the top edge of the border.
+        case atTop
+    }
+
+    /// Where the title shows. `.noTitle` blanks the native caption.
+    open var titlePosition: TitlePosition = .atTop {
+        didSet {
+            guard let nativeHandle else {
+                return
+            }
+
+            realizedBackend?.setText(titlePosition == .noTitle ? "" : title, for: nativeHandle)
+        }
+    }
+
+    /// Padding between the box border and the content view.
+    open var contentViewMargins: NSSize = NSSize(width: 5, height: 5)
+
+    /// The view hosted inside the box, laid out inset by the title band
+    /// and `contentViewMargins` on the box's layout pass.
+    open var contentView: NSView? {
+        didSet {
+            if let oldValue, oldValue !== contentView {
+                oldValue.removeFromSuperview()
+            }
+            if let contentView, contentView.superview !== self {
+                addSubview(contentView)
+            }
+            needsLayout = true
+        }
+    }
+
+    /// The vertical space the top title band occupies when a title shows.
+    private var winTitleBandHeight: CGFloat {
+        (titlePosition == .noTitle || title.isEmpty) ? 0 : 16
+    }
+
+    /// Places the content view within the border and margins (top-left
+    /// origin; the title band sits at the top).
+    open override func layout() {
+        super.layout()
+        guard let contentView else {
+            return
+        }
+
+        contentView.frame = NSRect(
+            x: contentViewMargins.width,
+            y: winTitleBandHeight + contentViewMargins.height,
+            width: max(0, bounds.width - contentViewMargins.width * 2),
+            height: max(0, bounds.height - winTitleBandHeight - contentViewMargins.height * 2)
+        )
+    }
+
     /// The box title.
     open var title: String {
         didSet {
@@ -11,7 +86,7 @@ open class NSBox: NSView {
                 return
             }
 
-            realizedBackend?.setText(title, for: nativeHandle)
+            realizedBackend?.setText(titlePosition == .noTitle ? "" : title, for: nativeHandle)
         }
     }
 

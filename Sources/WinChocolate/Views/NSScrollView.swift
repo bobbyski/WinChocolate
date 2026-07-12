@@ -41,6 +41,20 @@ open class NSScrollView: NSView {
     /// the modern appearance work.
     open var allowsMagnification: Bool = false
 
+    /// Whether the scroll view paints its own background. Stored for AppKit
+    /// shape; the classic backend composites the document over the parent's
+    /// fill either way.
+    open var drawsBackground: Bool = true
+
+    /// Whether scrollers hide when the content fits. The native classic
+    /// scrollbars already disable/hide per content size; stored for shape.
+    open var autohidesScrollers: Bool = false
+
+    /// Updates scroller state after programmatic clip scrolling. The native
+    /// scrollbars track the content offset themselves, so this is a no-op
+    /// hook kept for AppKit shape.
+    open func reflectScrolledClipView(_ cView: NSClipView) {}
+
     /// The smallest magnification `setMagnification` accepts.
     open var minMagnification: CGFloat = 0.25
 

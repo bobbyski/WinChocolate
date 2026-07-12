@@ -55,6 +55,9 @@ open class NSClipView: NSView {
     open func scroll(to newOrigin: NSPoint) {
         boundsOrigin = constrainBoundsRect(NSRect(origin: newOrigin, size: bounds.size)).origin
         onScroll?(boundsOrigin)
+        if postsBoundsChangedNotifications {
+            NotificationCenter.default.post(name: NSView.boundsDidChangeNotification, object: self)
+        }
     }
 
     /// Constrains a proposed visible rectangle to the current document extent.

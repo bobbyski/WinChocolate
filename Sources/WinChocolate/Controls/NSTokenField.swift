@@ -1,3 +1,7 @@
+/// The methods a token-field delegate implements, matching AppKit's shape:
+/// token fields report text changes through the text-field delegate surface.
+public protocol NSTokenFieldDelegate: NSTextFieldDelegate {}
+
 /// A tokenizing text field.
 ///
 /// This first slice keeps AppKit's `NSTokenField` name and token/object-value
@@ -10,6 +14,12 @@ open class NSTokenField: NSTextField {
 
         /// Plain text token appearance.
         case plain
+
+        /// Square-cornered token appearance.
+        case squared
+
+        /// Square-cornered tokens without a filled background.
+        case plainSquared
     }
 
     /// Callback for completion candidates.
@@ -51,6 +61,11 @@ open class NSTokenField: NSTextField {
         super.init(frame: frameRect)
         isEditable = true
         isSelectable = true
+    }
+
+    /// Creates a token field with a zero frame, matching AppKit's shape.
+    public convenience init() {
+        self.init(frame: .zero)
     }
 
     /// Creates a token field with an initial token list.
