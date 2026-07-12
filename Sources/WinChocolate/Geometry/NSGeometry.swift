@@ -364,6 +364,30 @@ public struct NSEdgeInsets: Equatable, Sendable {
 /// Zero edge insets.
 public let NSEdgeInsetsZero = NSEdgeInsets()
 
+/// Writing-direction-relative inset distances, matching AppKit's
+/// `NSDirectionalEdgeInsets` (leading/trailing rather than left/right). In a
+/// left-to-right layout, `leading` is the left edge and `trailing` the right.
+public struct NSDirectionalEdgeInsets: Equatable, Sendable {
+    public var top: CGFloat
+    public var leading: CGFloat
+    public var bottom: CGFloat
+    public var trailing: CGFloat
+
+    public init(top: CGFloat, leading: CGFloat, bottom: CGFloat, trailing: CGFloat) {
+        self.top = top
+        self.leading = leading
+        self.bottom = bottom
+        self.trailing = trailing
+    }
+
+    public init() {
+        self.init(top: 0, leading: 0, bottom: 0, trailing: 0)
+    }
+}
+
+/// Zero directional edge insets.
+public let NSDirectionalEdgeInsetsZero = NSDirectionalEdgeInsets()
+
 /// Creates edge insets, matching AppKit's convenience function.
 public func NSEdgeInsetsMake(_ top: CGFloat, _ left: CGFloat, _ bottom: CGFloat, _ right: CGFloat) -> NSEdgeInsets {
     NSEdgeInsets(top: top, left: left, bottom: bottom, right: right)

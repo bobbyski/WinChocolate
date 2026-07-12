@@ -43,6 +43,26 @@ open class NSPrintInfo: NSObject {
     /// The bottom margin in points.
     open var bottomMargin: CGFloat = 90
 
+    /// How content paginates along an axis, matching AppKit's names.
+    public enum PaginationMode: Sendable {
+        /// Pages break automatically at page boundaries.
+        case automatic
+
+        /// Content scales to fit the page along the axis.
+        case fit
+
+        /// Content clips at the page edge.
+        case clip
+    }
+
+    /// Horizontal pagination. Stored for AppKit shape; the classic print
+    /// path already fits the view to the printable page rect.
+    open var horizontalPagination: PaginationMode = .clip
+
+    /// Vertical pagination. Stored for AppKit shape; see
+    /// `horizontalPagination`.
+    open var verticalPagination: PaginationMode = .automatic
+
     /// The printable area: the paper inset by the margins.
     open var imageablePageBounds: NSRect {
         NSRect(
@@ -120,7 +140,8 @@ open class NSPrintOperation: NSObject {
         NSPrintOperation(view: view, printInfo: printInfo)
     }
 
-    init(view: NSView, printInfo: NSPrintInfo) {
+    /// Creates a print operation for a view, matching AppKit's shape.
+    public init(view: NSView, printInfo: NSPrintInfo = .shared) {
         self.view = view
         self.printInfo = printInfo
         self.jobTitle = view.window?.title.isEmpty == false ? view.window!.title : "WinChocolate Document"

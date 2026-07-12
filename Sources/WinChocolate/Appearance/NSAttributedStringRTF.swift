@@ -11,6 +11,67 @@ extension NSAttributedString {
         public init(rawValue: String) {
             self.rawValue = rawValue
         }
+
+        /// The document's type (see `DocumentType`).
+        public static let documentType = DocumentAttributeKey(rawValue: "DocumentType")
+    }
+
+    /// Document types for encoded-data conversion, matching AppKit's names.
+    public struct DocumentType: RawRepresentable, Hashable, Sendable {
+        /// The type's raw string name.
+        public let rawValue: String
+
+        /// Creates a document type from a raw string name.
+        public init(rawValue: String) {
+            self.rawValue = rawValue
+        }
+
+        /// Rich Text Format.
+        public static let rtf = DocumentType(rawValue: "NSRTF")
+
+        /// Plain text.
+        public static let plainText = DocumentType(rawValue: "NSPlainText")
+    }
+
+    /// Document reading option keys, matching AppKit's names.
+    public struct DocumentReadingOptionKey: RawRepresentable, Hashable, Sendable {
+        /// The key's raw string name.
+        public let rawValue: String
+
+        /// Creates a reading option key from a raw string name.
+        public init(rawValue: String) {
+            self.rawValue = rawValue
+        }
+
+        /// The expected document type (see `DocumentType`).
+        public static let documentType = DocumentReadingOptionKey(rawValue: "DocumentType")
+    }
+
+    /// Returns encoded document data for a range, matching AppKit's shape.
+    /// RTF is the encoding this slice supports; other document types throw.
+    public func data(from range: NSRange, documentAttributes: [DocumentAttributeKey: Any]) throws -> Data {
+        let type = documentAttributes[.documentType] as? DocumentType
+        guard type == nil || type == .rtf, let data = rtf(from: range) else {
+            throw NSError(domain: "WinChocolate.NSAttributedString", code: 1)
+        }
+        return data
+    }
+
+    /// Creates an attributed string from encoded document data, matching
+    /// AppKit's shape. RTF is the encoding this slice supports.
+    public convenience init(
+        data: Data,
+        options: [DocumentReadingOptionKey: Any] = [:],
+        documentAttributes: UnsafeMutablePointer<[DocumentAttributeKey: Any]>? = nil
+    ) throws {
+        let type = options[.documentType] as? DocumentType
+        guard type == nil || type == .rtf else {
+            throw NSError(domain: "WinChocolate.NSAttributedString", code: 1)
+        }
+        guard let parsed = NSAttributedString(rtf: data, documentAttributes: documentAttributes) else {
+            throw NSError(domain: "WinChocolate.NSAttributedString", code: 2)
+        }
+        self.init(attributedString: parsed)
     }
 
     /// Returns RTF data for a character range.
@@ -83,7 +144,7 @@ extension NSAttributedString {
                     controls += "\\qr"
                 case .left:
                     controls += "\\ql"
-                case .natural:
+                case .natural, .justified:
                     break
                 }
             }

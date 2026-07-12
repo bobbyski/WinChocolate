@@ -37,6 +37,9 @@ public final class Win32NativeControlBackend: NativeControlBackend {
     var windowShouldCloseHandlers: [UInt: () -> Bool] = [:]
     var windowResizeActions: [UInt: (NSSize) -> Void] = [:]
     var windowMoveActions: [UInt: (NSPoint) -> Void] = [:]
+    /// Saved window style and frame while a window is in full screen, keyed by
+    /// handle, so exiting full screen restores the original chrome and bounds.
+    var fullScreenSavedState: [UInt: (style: LONG_PTR, rect: RECT)] = [:]
     var originalControlProcedures: [UInt: WNDPROC] = [:]
     var controlHandleAliases: [UInt: NativeHandle] = [:]
     var commandActions: [UInt: () -> Void] = [:]
@@ -44,17 +47,30 @@ public final class Win32NativeControlBackend: NativeControlBackend {
     var toolbarActions: [UInt: (String) -> Void] = [:]
     var tableColumnTitles: [UInt: [String]] = [:]
     var tableHeaderOwners: [UInt: NativeHandle] = [:]
+    /// The sorted column and direction per table handle, so the dark owner-drawn
+    /// header can render the sort glyph itself (the native `HDF_SORTUP` flag is
+    /// skipped under dark because the themed header repaints the sorted column
+    /// on top of the owner-draw).
+    var tableSortIndicators: [UInt: (column: Int, ascending: Bool)] = [:]
+    /// Raw header hwnds we've subclassed to owner-draw under dark mode.
+    var darkTableHeaderHwnds: Set<UInt> = []
     var tableSuppressedColumnClicks: [UInt: Int] = [:]
     var tableClickedRows: [UInt: Int] = [:]
     var tableClickedColumns: [UInt: Int] = [:]
     var tableEditableHandles: Set<UInt> = []
     var tableEditActions: [UInt: (Int, Int, String) -> Void] = [:]
+    var tableDoubleClickActions: [UInt: () -> Void] = [:]
     var sliderRanges: [UInt: (minValue: Double, maxValue: Double)] = [:]
     var trackbarHandles: Set<UInt> = []
     var scrollerHandles: Set<UInt> = []
     var scrollerParts: [UInt: NativeScrollerPart] = [:]
     var monthCalHandles: Set<UInt> = []
     var monthCalDates: [UInt: Date] = [:]
+    /// Compact date pickers (`SysDateTimePick32`) whose closed field is
+    /// owner-drawn dark — the control has no dark theme part and no color API,
+    /// so the resting field is painted by the framework under a dark
+    /// appearance (plan 8.5).
+    var darkDatePickerFieldHandles: Set<UInt> = []
     var editableLevelHandles: Set<UInt> = []
     var levelIndicatorRanges: [UInt: (minValue: Double, maxValue: Double)] = [:]
     var levelIndicatorValues: [UInt: Double] = [:]
@@ -66,6 +82,9 @@ public final class Win32NativeControlBackend: NativeControlBackend {
     var customViewHandles: Set<UInt> = []
     var textColors: [UInt: DWORD] = [:]
     var backgroundColors: [UInt: DWORD] = [:]
+    /// Explicit rich-edit text colors, restored after WM_SETTEXT resets the
+    /// control's default character format.
+    var richEditTextColors: [UInt: DWORD] = [:]
     var backgroundBrushes: [UInt: HBRUSH] = [:]
     var transparentBackgroundHandles: Set<UInt> = []
     private var isComInitialized = false
@@ -383,7 +402,11 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         // dark control themes (the same undocumented-but-stable subclasses
         // Explorer and the common dialogs use). Best-effort: classes without
         // a dark theme part keep their light rendering — tracked in 8.5.
-        if NSApplication.shared.effectiveAppearance.winIsDark {
+        // Rich edit is excluded: the dark theme dims its text rendering while
+        // the control already takes explicit colors (EM_SETBKGNDCOLOR + char
+        // formats), which the dark path applies directly.
+        if NSApplication.shared.effectiveAppearance.winIsDark,
+           !className.uppercased().hasPrefix("RICHEDIT") {
             let theme = className.uppercased() == "COMBOBOX" ? "DarkMode_CFD" : "DarkMode_Explorer"
             _ = withWideString(theme) { themeName in
                 winSetWindowTheme(childHwnd, themeName, nil)
@@ -464,6 +487,15 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         let brush = winCreateSolidBrush(colorRef(from: .windowBackgroundColor))
         defaultControlBackgroundBrush = brush
         return brush
+    }
+
+    /// Discards the cached control-background brush so it is rebuilt with the
+    /// current appearance's window background (used on a live theme switch).
+    func winResetCachedControlBackgroundBrush() {
+        if let brush = defaultControlBackgroundBrush {
+            _ = winDeleteObject(brush)
+        }
+        defaultControlBackgroundBrush = nil
     }
 
     func colorRef(from color: NSColor) -> DWORD {

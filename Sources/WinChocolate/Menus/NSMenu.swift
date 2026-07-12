@@ -3,6 +3,18 @@
 /// `NSMenu` mirrors AppKit's tree-shaped menu model. A top-level menu assigned
 /// to `NSApplication.mainMenu` represents the menu bar; items inside it may own
 /// submenus such as the application menu containing Quit.
+/// The methods a menu delegate uses to refresh a menu before display,
+/// matching AppKit's shape.
+public protocol NSMenuDelegate: AnyObject {
+    /// Asks the delegate to bring the menu's items up to date.
+    func menuNeedsUpdate(_ menu: NSMenu)
+}
+
+extension NSMenuDelegate {
+    /// Default no-op so delegates only implement the callbacks they need.
+    public func menuNeedsUpdate(_ menu: NSMenu) {}
+}
+
 /// Conformed to by menu item targets to control item enablement.
 ///
 /// When a menu autoenables its items, each item whose `target` adopts this
@@ -43,11 +55,17 @@ open class NSMenu: NSObject {
         super.init()
     }
 
+    /// The delegate asked to refresh contents before the menu shows.
+    open weak var delegate: NSMenuDelegate?
+
     /// Refreshes item enablement, running validation like AppKit's update pass.
     ///
     /// Called by the backend just before a menu is displayed; apps may also
     /// call it directly after changing state that validation depends on.
+    /// The delegate's `menuNeedsUpdate` runs first, so dynamic item
+    /// providers rebuild before validation walks the items.
     open func update() {
+        delegate?.menuNeedsUpdate(self)
         for item in items {
             if autoenablesItems, !item.isSeparatorItem, item.submenu == nil {
                 item.isEnabled = validatedEnablement(for: item)

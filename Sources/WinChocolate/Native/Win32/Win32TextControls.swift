@@ -94,10 +94,12 @@ extension Win32NativeControlBackend {
                     _ = winSendMessageW(hwnd, emSetReadOnly, 1, 0)
                 }
                 // Rich edit ignores WM_CTLCOLOR; under a dark appearance the
-                // face and default text follow the dynamic palette directly.
+                // face and default text follow the dynamic palette directly
+                // (the text color re-applies after every WM_SETTEXT, which
+                // resets the default format — see `applyRichEditTextColor`).
                 if NSApplication.shared.effectiveAppearance.winIsDark {
                     _ = winSendMessageW(hwnd, emSetBkgndColor, 0, LPARAM(colorRef(from: .controlBackgroundColor)))
-                    setTextColor(.textColor, for: handle)
+                    applyRichEditTextColor(hwnd, handle: handle)
                 }
             }
         }
@@ -194,7 +196,7 @@ extension Win32NativeControlBackend {
             format.wAlignment = pfaCenter
         case .right:
             format.wAlignment = pfaRight
-        case .left, .natural:
+        case .left, .natural, .justified:
             format.wAlignment = pfaLeft
         }
         withUnsafePointer(to: &format) { pointer in
@@ -235,7 +237,7 @@ extension Win32NativeControlBackend {
             style |= LONG_PTR(esCenter)
         case .right:
             style |= LONG_PTR(esRight)
-        case .left, .natural:
+        case .left, .natural, .justified:
             break
         }
         _ = winSetWindowLongPtrW(hwnd, gwlStyle, style)
@@ -295,15 +297,15 @@ extension Win32NativeControlBackend {
     /// Updates a native control's text color.
     public func setTextColor(_ color: NSColor?, for handle: NativeHandle) {
         // Rich edit ignores WM_CTLCOLOR; its whole-control color is a
-        // character format applied to all text.
-        if richTextHandles.contains(handle.rawValue), let hwnd = hwnd(from: handle), let color {
-            var format = CHARFORMATW()
-            format.cbSize = UINT(MemoryLayout<CHARFORMATW>.stride)
-            format.dwMask = cfmColor
-            format.crTextColor = colorRef(from: color)
-            withUnsafePointer(to: &format) { pointer in
-                _ = winSendMessageW(hwnd, emSetCharFormat, scfAll, Int(bitPattern: pointer))
+        // character format applied to all text. The choice is remembered so
+        // it can be restored after WM_SETTEXT resets the default format.
+        if richTextHandles.contains(handle.rawValue), let hwnd = hwnd(from: handle) {
+            if let color {
+                richEditTextColors[handle.rawValue] = colorRef(from: color)
+            } else {
+                richEditTextColors.removeValue(forKey: handle.rawValue)
             }
+            applyRichEditTextColor(hwnd, handle: handle)
             return
         }
 
@@ -313,6 +315,24 @@ extension Win32NativeControlBackend {
             textColors.removeValue(forKey: handle.rawValue)
         }
         invalidate(handle)
+    }
+
+    /// Applies a rich edit's effective text color to all of its text: the
+    /// explicitly chosen color, else the appearance default under dark (the
+    /// system default format is black, unreadable on the dark face).
+    func applyRichEditTextColor(_ hwnd: HWND, handle: NativeHandle) {
+        let effective = richEditTextColors[handle.rawValue]
+            ?? (NSApplication.shared.effectiveAppearance.winIsDark ? colorRef(from: .textColor) : nil)
+        guard let effective else {
+            return
+        }
+        var format = CHARFORMATW()
+        format.cbSize = UINT(MemoryLayout<CHARFORMATW>.stride)
+        format.dwMask = cfmColor
+        format.crTextColor = effective
+        withUnsafePointer(to: &format) { pointer in
+            _ = winSendMessageW(hwnd, emSetCharFormat, scfAll, Int(bitPattern: pointer))
+        }
     }
 
     /// Updates a native control's background color.
@@ -355,6 +375,11 @@ extension Win32NativeControlBackend {
 
         guard let font else {
             _ = winSendMessageW(hwnd, wmSetFont, 0, 1)
+            // WM_SETFONT resets a rich edit's default character format
+            // (color included); restore the effective text color.
+            if richTextHandles.contains(handle.rawValue) {
+                applyRichEditTextColor(hwnd, handle: handle)
+            }
             invalidate(handle)
             return
         }
@@ -385,6 +410,11 @@ extension Win32NativeControlBackend {
 
         fonts[handle.rawValue] = nativeFont
         _ = winSendMessageW(hwnd, wmSetFont, UInt(bitPattern: nativeFont), 1)
+        // WM_SETFONT resets a rich edit's default character format (color
+        // included); restore the effective text color.
+        if richTextHandles.contains(handle.rawValue) {
+            applyRichEditTextColor(hwnd, handle: handle)
+        }
         invalidate(handle)
     }
 
@@ -431,6 +461,51 @@ extension Win32NativeControlBackend {
         }
         _ = winSelectObject(deviceContext, previousFont ?? nil)
         return NSMakeSize(CGFloat(size.cx), CGFloat(size.cy))
+    }
+
+    /// Measures a word-wrapped run: `DrawTextW` with `DT_CALCRECT | DT_WORDBREAK`
+    /// into a `maxWidth`-wide rect returns the height for every wrapped line and
+    /// the widest line's width.
+    public func measureText(_ text: String, fontName: String, fontSize: CGFloat, weight: Int, italic: Bool, wrappingAt maxWidth: CGFloat) -> NSSize {
+        guard maxWidth > 0 else {
+            return measureText(text, fontName: fontName, fontSize: fontSize, weight: weight, italic: italic)
+        }
+        guard let deviceContext = winGetDC(nil) else {
+            return NSMakeSize(0, 0)
+        }
+        defer {
+            _ = winReleaseDC(nil, deviceContext)
+        }
+
+        let font = withWideString(fontName) { faceName in
+            winCreateFontW(
+                -Int32(max((fontSize * 96.0 / 72.0).rounded(), 1)),
+                0, 0, 0, Int32(weight), italic ? 1 : 0, 0, 0,
+                defaultCharset, defaultPrecision, defaultPrecision,
+                defaultQuality, defaultPitchAndFamily, faceName
+            )
+        }
+        guard let font else {
+            return NSMakeSize(0, 0)
+        }
+        defer {
+            _ = winDeleteObject(font)
+        }
+
+        let previousFont = winSelectObject(deviceContext, font)
+        defer {
+            _ = winSelectObject(deviceContext, previousFont ?? nil)
+        }
+
+        var rectangle = RECT(left: 0, top: 0, right: Int32(maxWidth.rounded()), bottom: 0)
+        let characters = Array(text.utf16)
+        characters.withUnsafeBufferPointer { buffer in
+            withUnsafeMutablePointer(to: &rectangle) { rectanglePointer in
+                _ = winDrawTextW(deviceContext, buffer.baseAddress, Int32(buffer.count), rectanglePointer,
+                                 dtCalcRect | dtWordBreak | dtNoPrefix)
+            }
+        }
+        return NSMakeSize(CGFloat(rectangle.right - rectangle.left), CGFloat(rectangle.bottom - rectangle.top))
     }
 }
 #endif

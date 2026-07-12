@@ -33,10 +33,29 @@ open class NSView: NSResponder {
         public static let maxYMargin = AutoresizingMask(rawValue: 1 << 5)
     }
 
+    /// Posted when a view's frame changes, for views that opted in through
+    /// `postsFrameChangedNotifications`.
+    public static let frameDidChangeNotification = Notification.Name("NSViewFrameDidChangeNotification")
+
+    /// Posted when a view's bounds origin changes (scrolling), for views
+    /// that opted in through `postsBoundsChangedNotifications`.
+    public static let boundsDidChangeNotification = Notification.Name("NSViewBoundsDidChangeNotification")
+
+    /// Whether frame changes post `frameDidChangeNotification`.
+    open var postsFrameChangedNotifications: Bool = false
+
+    /// Whether bounds-origin changes post `boundsDidChangeNotification`
+    /// (clip views scroll by moving their bounds origin).
+    open var postsBoundsChangedNotifications: Bool = false
+
     /// The view frame in its parent coordinate space.
     open var frame: NSRect {
         didSet {
             autoresizeSubviews(from: oldValue.size, to: frame.size)
+
+            if postsFrameChangedNotifications, frame != oldValue {
+                NotificationCenter.default.post(name: NSView.frameDidChangeNotification, object: self)
+            }
 
             guard let nativeHandle else {
                 return
@@ -169,17 +188,107 @@ open class NSView: NSResponder {
     public static let noIntrinsicMetric: CGFloat = -1
 
     /// Whether the view has been flagged as needing layout.
-    open var needsLayout: Bool = false
-
-    /// Whether the view's frame is managed by autoresizing rather than constraints.
     ///
-    /// Stored for source compatibility. WinChocolate uses frame/autoresizing
-    /// layout; a constraint solver is tracked separately (see the plan's Auto
-    /// Layout note), so this defaults to `true` and toggling it is a no-op today.
+    /// Setting `true` schedules a coalesced layout pass for the containing
+    /// window (see `NSLayoutPump`); the flag clears when
+    /// `layoutSubtreeIfNeeded()` visits the view. Marks on views not yet in
+    /// a window stay set and are honored by the window's next layout pass.
+    open var needsLayout: Bool = false {
+        didSet {
+            guard needsLayout, let window else {
+                return
+            }
+
+            NSLayoutPump.shared.scheduleLayout(for: window)
+        }
+    }
+
+    /// Whether the view's frame is managed by autoresizing rather than
+    /// constraints. When `false`, this view's frame is computed by the Auto
+    /// Layout solver from the constraints on its container (see the Layout
+    /// sources); when `true` (the default) the view keeps its explicit frame
+    /// and contributes it to the solver as a fixed input.
     open var translatesAutoresizingMaskIntoConstraints: Bool = true
+
+    /// Auto Layout constraints installed on this view — it acts as the layout
+    /// container for these, solving its subviews' frames from them.
+    var winActiveConstraints: [NSLayoutConstraint] = []
+
+    /// Per-axis content-hugging priorities (how strongly the view resists
+    /// growing past its intrinsic size); AppKit's default is `defaultLow` (250).
+    var winContentHuggingPriority: (horizontal: Float, vertical: Float) = (250, 250)
+
+    /// Per-axis compression-resistance priorities (how strongly the view resists
+    /// shrinking below its intrinsic size); AppKit's default is `defaultHigh` (750).
+    var winCompressionResistancePriority: (horizontal: Float, vertical: Float) = (750, 750)
+
+    /// Invisible layout guides owned by this view (see `NSLayoutGuide`).
+    var winLayoutGuides: [NSLayoutGuide] = []
+
+    /// The view's writing-direction-relative layout margins, used by
+    /// `layoutMarginsGuide`. AppKit's default is 8pt on every edge.
+    public var directionalLayoutMargins = NSDirectionalEdgeInsets(top: 8, leading: 8, bottom: 8, trailing: 8) {
+        didSet { winUpdateLayoutMarginsConstraints() }
+    }
+
+    /// The lazily-created margins guide inset from the view's edges (see
+    /// `layoutMarginsGuide`), and the four edge constraints positioning it.
+    var winLayoutMarginsGuide: NSLayoutGuide?
+    var winLayoutMarginsConstraints: [NSLayoutConstraint] = []
 
     /// Lays out the view's subviews. Subclasses override to position children.
     open func layout() {}
+
+    /// The view's context menu, shown on right-click when set.
+    open var menu: NSMenu?
+
+    /// Shows the view's context menu on right-click, matching AppKit's
+    /// default responder behavior; without a menu the event travels up the
+    /// responder chain as before.
+    open override func rightMouseDown(with event: NSEvent) {
+        if let menu {
+            _ = menu.popUp(positioning: nil, at: convert(event.locationInWindow, from: nil), in: self)
+            return
+        }
+        super.rightMouseDown(with: event)
+    }
+
+    // Stored accessibility strings. Narrator/UIA wiring is a later slice;
+    // storing them keeps AppKit-shaped consumers building and preserves the
+    // values for when the backend exposes them.
+    private var storedAccessibilityLabel: String?
+    private var storedAccessibilityValue: String?
+    private var storedAccessibilityHelp: String?
+
+    /// Sets the accessibility label read by assistive technology.
+    open func setAccessibilityLabel(_ label: String?) {
+        storedAccessibilityLabel = label
+    }
+
+    /// The accessibility label read by assistive technology.
+    open func accessibilityLabel() -> String? {
+        storedAccessibilityLabel
+    }
+
+    /// Sets the accessibility value read by assistive technology.
+    open func setAccessibilityValue(_ value: Any?) {
+        storedAccessibilityValue = value.map { String(describing: $0) }
+    }
+
+    /// The accessibility value read by assistive technology.
+    open func accessibilityValue() -> Any? {
+        storedAccessibilityValue
+    }
+
+    /// Sets the accessibility help text read by assistive technology.
+    open func setAccessibilityHelp(_ help: String?) {
+        storedAccessibilityHelp = help
+    }
+
+    /// The accessibility help text read by assistive technology.
+    open func accessibilityHelp() -> String? {
+        storedAccessibilityHelp
+    }
 
     /// The view's mouse-tracking areas.
     public private(set) var trackingAreas: [NSTrackingArea] = []
@@ -214,14 +323,49 @@ open class NSView: NSResponder {
         return window?.isKeyWindow ?? true
     }
 
+    /// Gesture recognizers attached through `addGestureRecognizer`; the
+    /// view forwards its mouse events to each (see NSGestureRecognizer.swift).
+    var winGestureRecognizers: [NSGestureRecognizer] = []
+
+    /// Forwards a press to attached gesture recognizers, then up the chain.
+    open override func mouseDown(with event: NSEvent) {
+        for recognizer in winGestureRecognizers {
+            recognizer.mouseDown(with: event)
+        }
+        super.mouseDown(with: event)
+    }
+
+    /// Forwards a drag to attached gesture recognizers, then up the chain.
+    open override func mouseDragged(with event: NSEvent) {
+        for recognizer in winGestureRecognizers {
+            recognizer.mouseDragged(with: event)
+        }
+        super.mouseDragged(with: event)
+    }
+
+    /// Forwards a release to attached gesture recognizers, then up the chain.
+    open override func mouseUp(with event: NSEvent) {
+        for recognizer in winGestureRecognizers {
+            recognizer.mouseUp(with: event)
+        }
+        super.mouseUp(with: event)
+    }
+
     /// Resolves hover state against the tracking areas for a mouse position,
-    /// sending `mouseEntered`/`mouseExited` to each area's owner.
+    /// sending `mouseEntered`/`mouseExited` to each area's owner — and
+    /// `mouseMoved` to owners of areas that asked for movement.
     func resolveTrackingAreas(with event: NSEvent) {
         guard !trackingAreas.isEmpty else {
             return
         }
 
         let point = convert(event.locationInWindow, from: nil)
+        for area in trackingAreas where area.options.contains(.mouseMoved) {
+            let region = area.options.contains(.inVisibleRect) ? bounds : area.rect
+            if isTrackingActive(area), region.contains(point) {
+                trackingResponder(for: area)?.mouseMoved(with: event)
+            }
+        }
         for area in trackingAreas where area.options.contains(.mouseEnteredAndExited) {
             let identity = ObjectIdentifier(area)
             let region = area.options.contains(.inVisibleRect) ? bounds : area.rect
@@ -290,6 +434,12 @@ open class NSView: NSResponder {
     open func concludeDragOperation(_ sender: NSDraggingInfo?) {}
 
     /// Creates a view with a frame.
+    /// Creates a view with a zero frame, matching AppKit's shape. ActiveUI
+    /// and other frame-assigning consumers size views after creation.
+    public convenience override init() {
+        self.init(frame: .zero)
+    }
+
     public init(frame frameRect: NSRect) {
         self.frame = frameRect
         super.init()

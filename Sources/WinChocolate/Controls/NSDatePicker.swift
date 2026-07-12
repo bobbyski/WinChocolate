@@ -21,6 +21,9 @@ open class NSDatePicker: NSControl {
         public static let yearMonthDay = ElementFlags(rawValue: 1 << 0)
         public static let hourMinuteSecond = ElementFlags(rawValue: 1 << 1)
         public static let timeZone = ElementFlags(rawValue: 1 << 2)
+
+        /// Hour and minute, without seconds.
+        public static let hourMinute = ElementFlags(rawValue: 1 << 3)
     }
 
     /// Selected date.
@@ -47,6 +50,20 @@ open class NSDatePicker: NSControl {
         }
     }
 
+    /// The control's natural size (9.2): the calendar style is a fixed square;
+    /// the text-field styles measure a representative date string with the
+    /// current font plus the stepper/padding at the standard control height.
+    open override var intrinsicContentSize: NSSize {
+        if datePickerStyle == .clockAndCalendar {
+            return NSSize(width: 139, height: 148)
+        }
+        let font = self.font ?? NSFont.systemFont(ofSize: 13)
+        let sample = "00/00/0000 00:00:00 PM"
+        let measured = sample.size(withAttributes: [.font: font])
+        let stepper: CGFloat = datePickerStyle == .textFieldAndStepper ? 16 : 0
+        return NSSize(width: measured.width + 12 + stepper, height: 24)
+    }
+
     /// Requested visual style.
     open var datePickerStyle: Style = .textFieldAndStepper
 
@@ -65,7 +82,7 @@ open class NSDatePicker: NSControl {
     /// machine). `nil` lets the native control use its own locale short date.
     private var nativeDateFormat: String? {
         let showsDate = datePickerElements.contains(.yearMonthDay)
-        let showsTime = datePickerElements.contains(.hourMinuteSecond)
+        let showsTime = datePickerElements.contains(.hourMinuteSecond) || datePickerElements.contains(.hourMinute)
         let locale = Locale.current
         switch (showsDate, showsTime) {
         case (true, true):
@@ -132,7 +149,7 @@ open class NSDatePicker: NSControl {
     /// follows the picker's elements (date, time, or both).
     open var stringValue: String {
         let formatter = DateFormatter()
-        let showsTime = datePickerElements.contains(.hourMinuteSecond)
+        let showsTime = datePickerElements.contains(.hourMinuteSecond) || datePickerElements.contains(.hourMinute)
         let showsDate = datePickerElements.contains(.yearMonthDay) || !showsTime
         formatter.dateStyle = showsDate ? .short : .none
         formatter.timeStyle = showsTime ? .medium : .none

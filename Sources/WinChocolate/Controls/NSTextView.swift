@@ -1,4 +1,5 @@
 /// The methods a text view delegate uses to respond to editing.
+@MainActor
 public protocol NSTextViewDelegate: AnyObject {
     /// Tells the delegate that editing changed the text view's text.
     func textDidChange(_ notification: NSNotification)
@@ -58,6 +59,20 @@ open class NSTextView: NSControl {
     /// Whether editing changes register with the undo manager.
     open var allowsUndo = false
 
+    /// Whether the view participates in font-panel changes. Stored for
+    /// AppKit shape; rich text views apply `changeFont(_:)` regardless.
+    open var usesFontPanel: Bool = false
+
+    /// Creates a scroll view wrapping a fresh text view as its document,
+    /// matching AppKit's factory shape.
+    public class func scrollableTextView() -> NSScrollView {
+        let scrollView = NSScrollView(frame: NSRect(origin: NSZeroPoint, size: NSMakeSize(200, 100)))
+        let textView = NSTextView(frame: NSRect(origin: NSZeroPoint, size: NSMakeSize(200, 100)))
+        scrollView.documentView = textView
+        scrollView.hasVerticalScroller = true
+        return scrollView
+    }
+
     private var storedUndoManager: NSUndoManager?
 
     /// The undo manager recording this text view's edits.
@@ -88,16 +103,7 @@ open class NSTextView: NSControl {
         }
     }
 
-    /// The text font, when explicitly set.
-    open var font: NSFont? {
-        didSet {
-            guard let nativeHandle else {
-                return
-            }
-
-            realizedBackend?.setFont(font, for: nativeHandle)
-        }
-    }
+    // `font` is inherited from `NSControl` (AppKit's declaration point).
 
     /// Applies a live font panel change.
     ///
@@ -392,7 +398,7 @@ open class NSTextView: NSControl {
             registerTypingUndo(previousText: previousText, text: text)
         }
         onTextChanged?(self)
-        delegate?.textDidChange(NSNotification(name: Self.textDidChangeNotification, object: self))
+        winMainActor { delegate?.textDidChange(NSNotification(name: Self.textDidChangeNotification, object: self)) }
     }
 
     /// Registers undo state for one native edit, coalescing typing bursts.
@@ -460,7 +466,7 @@ open class NSTextView: NSControl {
         objectValue = text
         selectedRange = NSMakeRange(text.utf16.count, 0)
         onTextChanged?(self)
-        delegate?.textDidChange(NSNotification(name: Self.textDidChangeNotification, object: self))
+        winMainActor { delegate?.textDidChange(NSNotification(name: Self.textDidChangeNotification, object: self)) }
     }
 }
 

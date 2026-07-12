@@ -20,6 +20,12 @@ extension Win32NativeControlBackend {
             // another application is active and return afterward.
             applicationActivationDidChange(isActive: wParam != 0)
             return nil
+        case wmSettingChange:
+            // The user may have flipped the system dark/light theme. Refresh the
+            // app's appearance if it follows the system; let DefWindowProc see
+            // the message too.
+            winHandleSettingChange()
+            return nil
         case wmGetMinMaxInfo:
             // Constrain user resizing to the window's content size limits,
             // converting each content size to the outer window rect.
@@ -347,6 +353,24 @@ extension Win32NativeControlBackend {
                 return nil
             }
 
+            // A date picker's drop-down calendar is created lazily when it
+            // opens, so the dark palette is applied at drop time: de-theme
+            // the fresh calendar (explicit colors only work unthemed) and
+            // hand it the dynamic palette.
+            if header.code == dtnDropDown,
+               NSApplication.shared.effectiveAppearance.winIsDark,
+               let picker = header.hwndFrom {
+                let calendar = HWND(bitPattern: winSendMessageW(picker, dtmGetMonthCal, 0, 0))
+                if let calendar {
+                    applyDarkCalendarColorsIfNeeded(calendar)
+                }
+                return nil
+            }
+
+            // (The dark list-view header is owner-drawn by subclassing the
+            // header window's WM_PAINT — see `drawDarkTableHeader` — because its
+            // NM_CUSTOMDRAW is not forwarded to the top-level window here.)
+
             if header.code == hdnItemClickA || header.code == hdnItemClickW {
                 guard let source = header.hwndFrom,
                       let handle = tableHeaderOwners[UInt(bitPattern: source)],
@@ -491,6 +515,22 @@ extension Win32NativeControlBackend {
                 tableClickedRows[handle.rawValue] = clickedRow
                 tableClickedColumns[handle.rawValue] = clickedColumn
                 action()
+                return 0
+            case nmDblclk:
+                guard let doubleAction = tableDoubleClickActions[handle.rawValue] else {
+                    return nil
+                }
+
+                let hit = tableHitTest(at: notification.ptAction, hwnd: source)
+                let clickedRow = hit.row >= 0 ? hit.row : Int(notification.iItem)
+                let clickedColumn = hit.column >= 0 ? hit.column : Int(notification.iSubItem)
+                guard clickedRow >= 0 else {
+                    return nil
+                }
+
+                tableClickedRows[handle.rawValue] = clickedRow
+                tableClickedColumns[handle.rawValue] = clickedColumn
+                doubleAction()
                 return 0
             case lvnItemChanged:
                 guard notification.iItem >= 0,
@@ -799,12 +839,46 @@ extension Win32NativeControlBackend {
 
             mouseLeftActions[actionHandle(from: hwnd).rawValue]?()
             return nil
+        case wmPaint:
+            guard let hwnd else {
+                return nil
+            }
+            // A dark list-view header is owner-drawn (its theme leaves the text
+            // dark-on-dark and its NM_CUSTOMDRAW isn't forwarded to us). Only
+            // while the appearance is actually dark — under light it paints
+            // natively.
+            if darkTableHeaderHwnds.contains(UInt(bitPattern: hwnd)) {
+                guard NSApplication.shared.effectiveAppearance.winIsDark else {
+                    return nil
+                }
+                drawDarkTableHeader(hwnd)
+                return 0
+            }
+            // A dark date picker's closed field is owner-drawn (it has no
+            // dark theme part / color API); other controls paint themselves.
+            guard darkDatePickerFieldHandles.contains(actionHandle(from: hwnd).rawValue) else {
+                return nil
+            }
+
+            drawDarkDatePickerField(hwnd)
+            return 0
         case wmEraseBackground:
             guard let hwnd else {
                 return nil
             }
 
+            // The owner-drawn dark header paints its whole client in WM_PAINT,
+            // so suppress the default erase (it would flash the theme under it).
+            if darkTableHeaderHwnds.contains(UInt(bitPattern: hwnd)),
+               NSApplication.shared.effectiveAppearance.winIsDark {
+                return 1
+            }
             let handle = actionHandle(from: hwnd)
+            // The owner-drawn dark date field paints its whole client in
+            // WM_PAINT, so the default erase would only flash under it.
+            if darkDatePickerFieldHandles.contains(handle.rawValue) {
+                return 1
+            }
             guard groupBoxHandles.contains(handle.rawValue) else {
                 return nil
             }
@@ -1106,7 +1180,7 @@ extension Win32NativeControlBackend {
         return Int(hitTest.iItem)
     }
 
-    private func subclassChildControl(_ hwnd: HWND, handle: NativeHandle) {
+    func subclassChildControl(_ hwnd: HWND, handle: NativeHandle) {
         let replacement = unsafeBitCast(winChocolateControlProcedure as WNDPROC, to: LONG_PTR.self)
         let previous = winSetWindowLongPtrW(hwnd, gwlpWndProc, replacement)
         guard previous != 0 else {

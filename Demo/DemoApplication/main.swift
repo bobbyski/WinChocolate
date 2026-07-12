@@ -120,10 +120,15 @@ final class DemoCanvasView: NSView {
 
     override func draw(_ dirtyRect: NSRect) {
         let inset = NSMakeRect(4, 4, frame.size.width - 8, frame.size.height - 8)
-        NSColor(calibratedRed: 0.98, green: 0.98, blue: 0.96, alpha: 1).setFill()
+        // The artboard follows the appearance (light paper / dark board) so
+        // the canvas doesn't read as a white slab in dark mode.
+        let dark = NSAppearance.currentDrawing().winIsDark
+        (dark ? NSColor(calibratedRed: 0.17, green: 0.17, blue: 0.18, alpha: 1)
+              : NSColor(calibratedRed: 0.98, green: 0.98, blue: 0.96, alpha: 1)).setFill()
         let backdrop = NSBezierPath(roundedRect: inset, xRadius: 10, yRadius: 10)
         backdrop.fill()
-        NSColor(calibratedRed: 0.55, green: 0.55, blue: 0.55, alpha: 1).setStroke()
+        (dark ? NSColor(calibratedRed: 0.40, green: 0.40, blue: 0.42, alpha: 1)
+              : NSColor(calibratedRed: 0.55, green: 0.55, blue: 0.55, alpha: 1)).setStroke()
         backdrop.stroke()
 
         Self.palette[strokeColorIndex].setStroke()
@@ -191,9 +196,15 @@ final class DemoShapesView: NSView {
     }
 
     override func draw(_ dirtyRect: NSRect) {
-        NSColor.white.setFill()
+        // The artboard follows the appearance (light paper / dark board) so it
+        // doesn't read as a white slab in dark mode; the shapes are saturated
+        // colors that stay legible on either.
+        let dark = NSAppearance.currentDrawing().winIsDark
+        (dark ? NSColor(calibratedRed: 0.17, green: 0.17, blue: 0.18, alpha: 1)
+              : NSColor.white).setFill()
         NSRectFill(NSMakeRect(0, 0, frame.size.width, frame.size.height))
-        NSColor(calibratedRed: 0.55, green: 0.55, blue: 0.55, alpha: 1).setFill()
+        (dark ? NSColor(calibratedRed: 0.40, green: 0.40, blue: 0.42, alpha: 1)
+              : NSColor(calibratedRed: 0.55, green: 0.55, blue: 0.55, alpha: 1)).setFill()
         NSFrameRect(NSMakeRect(0, 0, frame.size.width, frame.size.height))
 
         // Five-point star built from explicit line segments.
@@ -263,14 +274,19 @@ final class DemoGradientsView: NSView {
     }
 
     override func draw(_ dirtyRect: NSRect) {
-        NSColor.white.setFill()
+        // Appearance-aware board (light paper / dark board) so it doesn't read as
+        // a white slab in dark mode; the gradient swatches stay legible on either.
+        let dark = NSAppearance.currentDrawing().winIsDark
+        (dark ? NSColor(calibratedRed: 0.17, green: 0.17, blue: 0.18, alpha: 1)
+              : NSColor.white).setFill()
         NSRectFill(NSMakeRect(0, 0, frame.size.width, frame.size.height))
-        NSColor(calibratedRed: 0.55, green: 0.55, blue: 0.55, alpha: 1).setFill()
+        (dark ? NSColor(calibratedRed: 0.40, green: 0.40, blue: 0.42, alpha: 1)
+              : NSColor(calibratedRed: 0.55, green: 0.55, blue: 0.55, alpha: 1)).setFill()
         NSFrameRect(NSMakeRect(0, 0, frame.size.width, frame.size.height))
 
         let labelAttributes: [NSAttributedString.Key: Any] = [
             .font: NSFont.systemFont(ofSize: 10),
-            .foregroundColor: NSColor.darkGray
+            .foregroundColor: dark ? NSColor(white: 0.78, alpha: 1) : NSColor.darkGray
         ]
         let sampleY: CGFloat = 30
         let sampleHeight: CGFloat = 56
@@ -355,9 +371,13 @@ final class DemoHoverView: NSView {
     }
 
     override func draw(_ dirtyRect: NSRect) {
+        // The resting fill/text follow the appearance so the box isn't a light
+        // slab in dark mode; the hover state stays accent-blue on both.
+        let dark = NSAppearance.currentDrawing().winIsDark
         let fill = hovering
             ? NSColor(calibratedRed: 0.30, green: 0.62, blue: 0.86, alpha: 1)
-            : NSColor(calibratedRed: 0.90, green: 0.92, blue: 0.95, alpha: 1)
+            : (dark ? NSColor(calibratedRed: 0.24, green: 0.24, blue: 0.26, alpha: 1)
+                    : NSColor(calibratedRed: 0.90, green: 0.92, blue: 0.95, alpha: 1))
         fill.setFill()
         let body = NSBezierPath(roundedRect: bounds.insetBy(dx: 1, dy: 1), xRadius: 8, yRadius: 8)
         body.fill()
@@ -367,7 +387,9 @@ final class DemoHoverView: NSView {
         let text = hovering ? "Hovering" : "Hover me"
         text.draw(at: NSMakePoint(14, bounds.size.height / 2 - 8), withAttributes: [
             .font: NSFont.boldSystemFont(ofSize: 13),
-            .foregroundColor: hovering ? NSColor.white : NSColor(calibratedRed: 0.3, green: 0.3, blue: 0.32, alpha: 1),
+            .foregroundColor: hovering
+                ? NSColor.white
+                : (dark ? NSColor(white: 0.85, alpha: 1) : NSColor(calibratedRed: 0.3, green: 0.3, blue: 0.32, alpha: 1)),
         ])
     }
 
@@ -900,19 +922,27 @@ final class DemoFlowCollectionDataSource: NSCollectionViewDataSource {
 
     func collectionView(_ collectionView: NSCollectionView, viewForSupplementaryElementOfKind kind: String, at indexPath: IndexPath) -> NSView? {
         let section = sections[indexPath.section]
+        // Resolve the appearance live (not the cached launch value) so bands
+        // recreated during a redraw after a system switch pick up the new look.
+        let dark = NSApplication.shared.effectiveAppearance.winIsDark
         if kind == NSCollectionView.elementKindSectionHeader {
             let header = NSTextField(string: "  \(section.title)", frame: .zero)
             header.isBordered = false
             header.font = NSFont.boldSystemFont(ofSize: 12)
-            header.backgroundColor = NSColor(red: 0.90, green: 0.93, blue: 0.98, alpha: 1)
+            // Appearance-aware band so the dynamic label color stays legible.
+            header.backgroundColor = dark
+                ? NSColor(red: 0.16, green: 0.22, blue: 0.34, alpha: 1)
+                : NSColor(red: 0.90, green: 0.93, blue: 0.98, alpha: 1)
             return header
         }
         if kind == NSCollectionView.elementKindSectionFooter {
             let footer = NSTextField(string: "  — \(section.items.count) classes —", frame: .zero)
             footer.isBordered = false
             footer.font = NSFont.boldSystemFont(ofSize: 10)
-            footer.textColor = NSColor(white: 0.35, alpha: 1)
-            footer.backgroundColor = NSColor(red: 0.95, green: 0.93, blue: 0.88, alpha: 1)
+            footer.textColor = dark ? NSColor(white: 0.75, alpha: 1) : NSColor(white: 0.35, alpha: 1)
+            footer.backgroundColor = dark
+                ? NSColor(red: 0.30, green: 0.27, blue: 0.20, alpha: 1)
+                : NSColor(red: 0.95, green: 0.93, blue: 0.88, alpha: 1)
             return footer
         }
         return nil
@@ -936,11 +966,15 @@ let tablesPage = DemoPageView(frame: NSMakeRect(0, 144, 1120, 560))
 let drawingPage = DemoPageView(frame: NSMakeRect(0, 144, 1120, 560))
 let showcasePage = DemoPageView(frame: NSMakeRect(0, 144, 1120, 560))
 let listsPage = DemoPageView(frame: NSMakeRect(0, 144, 1120, 560))
+let bezelsPage = DemoPageView(frame: NSMakeRect(0, 144, 1120, 560))
+let layoutPage = DemoPageView(frame: NSMakeRect(0, 144, 1120, 560))
 valuesPage.isHidden = true
 tablesPage.isHidden = true
 drawingPage.isHidden = true
 showcasePage.isHidden = true
 listsPage.isHidden = true
+bezelsPage.isHidden = true
+layoutPage.isHidden = true
 let counterLabel = NSTextField(string: "Clicks: 0", frame: NSMakeRect(32, 36, 300, 24))
 let statusLabel = NSTextField(string: "Ready", frame: NSMakeRect(32, 74, 640, 24))
 let focusLabel = NSTextField(string: "Focus: none", frame: NSMakeRect(744, 74, 300, 24))
@@ -1105,6 +1139,11 @@ let controlFocusColor = isDarkDemo
     ? NSColor(calibratedRed: 0.35, green: 0.32, blue: 0.12, alpha: 1.0)
     : NSColor(calibratedRed: 1.0, green: 0.96, blue: 0.72, alpha: 1.0)
 let normalTextFieldColor = NSColor.controlBackgroundColor
+// Value/echo labels: the classic demo blue is illegible on the dark surface,
+// so dark mode lightens it (labels on explicit light bands keep plain blue).
+let demoValueTextColor = isDarkDemo
+    ? NSColor(calibratedRed: 0.45, green: 0.68, blue: 1.0, alpha: 1.0)
+    : NSColor.blue
 var clickCount = 0
 var isClickEnabled = true
 var isCounterHidden = false
@@ -1726,7 +1765,15 @@ func updateFocusDisplay() {
     // pages on resize and tab switches, reading as a repaint bug). Keep the
     // container at its normal color and show content focus only via the label
     // above; the small input controls below still demo their own focus tint.
-    contentView.backgroundColor = normalContentColor
+    // Resolve the surface from the live appearance (windowBackgroundColor is
+    // dynamic) — a cached launch value would clobber the content background back
+    // to the old shade after a system switch.
+    contentView.backgroundColor = NSColor.windowBackgroundColor
+    // Resolve the focus tint from the live appearance so a system switch while a
+    // field is focused rebuilds its brush at the new shade.
+    let controlFocusColor = NSApplication.shared.effectiveAppearance.winIsDark
+        ? NSColor(calibratedRed: 0.35, green: 0.32, blue: 0.12, alpha: 1.0)
+        : NSColor(calibratedRed: 1.0, green: 0.96, blue: 0.72, alpha: 1.0)
     editableTextField.backgroundColor = name == "text field"
         ? controlFocusColor
         : normalTextFieldColor
@@ -1748,14 +1795,22 @@ contentView.backgroundColor = normalContentColor
 counterLabel.font = NSFont.boldSystemFont(ofSize: 14)
 counterLabel.textColor = .green
 statusLabel.font = NSFont.systemFont(ofSize: 13)
-statusLabel.textColor = .blue
-statusLabel.backgroundColor = NSColor(calibratedRed: 0.94, green: 0.97, blue: 1.0, alpha: 1.0)
+// Under dark mode the status/focus bands go neutral (a subtle field lifted just
+// off the page) and let the text carry the info-blue / attention-amber meaning,
+// so they sit with the theme instead of reading as colored slabs. Light mode
+// keeps the classic tinted bands.
+statusLabel.textColor = isDarkDemo ? NSColor(calibratedRed: 0.55, green: 0.78, blue: 1.0, alpha: 1) : .blue
+statusLabel.backgroundColor = isDarkDemo
+    ? NSColor(white: 0.16, alpha: 1)
+    : NSColor(calibratedRed: 0.94, green: 0.97, blue: 1.0, alpha: 1.0)
 focusLabel.font = NSFont.boldSystemFont(ofSize: 12)
-focusLabel.textColor = .black
-focusLabel.backgroundColor = NSColor(calibratedRed: 1.0, green: 0.98, blue: 0.86, alpha: 1.0)
+focusLabel.textColor = isDarkDemo ? NSColor(calibratedRed: 1.0, green: 0.83, blue: 0.4, alpha: 1) : .black
+focusLabel.backgroundColor = isDarkDemo
+    ? NSColor(white: 0.16, alpha: 1)
+    : NSColor(calibratedRed: 1.0, green: 0.98, blue: 0.86, alpha: 1.0)
 slider.frame = NSMakeRect(120, 28, 184, 28)
 sliderLabel.font = NSFont.boldSystemFont(ofSize: 12)
-sliderValueLabel.textColor = .blue
+sliderValueLabel.textColor = demoValueTextColor
 progressLabel.font = NSFont.boldSystemFont(ofSize: 12)
 progressIndicator.minValue = 0
 progressIndicator.maxValue = 100
@@ -1765,7 +1820,7 @@ stepper.minValue = 0
 stepper.maxValue = 100
 stepper.increment = 1
 stepper.doubleValue = 50
-stepperValueLabel.textColor = .blue
+stepperValueLabel.textColor = demoValueTextColor
 comboLabel.font = NSFont.boldSystemFont(ofSize: 12)
 comboBox.addItems(withObjectValues: ["Cocoa", "AppKit", "WinChocolate", "Windows", "Wingding"])
 comboBox.completes = true
@@ -1794,30 +1849,45 @@ levelIndicator.isEditable = true
 colorWellLabel.font = NSFont.boldSystemFont(ofSize: 12)
 colorWell.color = demoColors[colorIndex]
 segmentedLabel.font = NSFont.boldSystemFont(ofSize: 12)
+// Show the separated segment style (8.3): the segments stand apart as
+// individual pills rather than a joined strip.
+segmentedControl.segmentStyle = .separated
 segmentedControl.selectedSegment = 0
 scrollerLabel.font = NSFont.boldSystemFont(ofSize: 12)
 scroller.doubleValue = 0
 scroller.knobProportion = 0.25
-scrollerValueLabel.textColor = .blue
+scrollerValueLabel.textColor = demoValueTextColor
 dateLabel.font = NSFont.boldSystemFont(ofSize: 12)
 datePicker.minDate = Date(timeIntervalSince1970: 1_735_689_600)
 datePicker.maxDate = Date(timeIntervalSince1970: 1_893_456_000)
 // Show both date and time fields (3.1 datePickerElements).
 datePicker.datePickerElements = [.yearMonthDay, .hourMinuteSecond]
-dateValueLabel.textColor = .blue
+dateValueLabel.textColor = demoValueTextColor
 dateValueLabel.stringValue = datePicker.stringValue
-pageSelector.addItems(withTitles: ["Controls", "Values", "Tables/Media", "Drawing", "New in 3.x", "Lists (5.x)"])
+pageSelector.addItems(withTitles: ["Controls", "Values", "Tables/Media", "Drawing", "New in 3.x", "Lists (5.x)", "Bezels (8.3)", "Auto Layout (9.x)"])
 imageLabel.font = NSFont.boldSystemFont(ofSize: 12)
 imageView.image = NSImage(contentsOfFile: demoArtworkPath) ?? NSImage(named: "WinChocolate artwork")
 imageView.imageFrameStyle = .grayBezel
 clipLabel.font = NSFont.boldSystemFont(ofSize: 12)
-clipOriginLabel.textColor = .blue
-clipView.backgroundColor = .white
-clipDocumentView.backgroundColor = NSColor(calibratedRed: 0.97, green: 0.97, blue: 0.97, alpha: 1.0)
-clipTopLeftPane.backgroundColor = NSColor(calibratedRed: 0.84, green: 0.92, blue: 1.0, alpha: 1.0)
-clipTopRightPane.backgroundColor = NSColor(calibratedRed: 1.0, green: 0.94, blue: 0.72, alpha: 1.0)
-clipBottomLeftPane.backgroundColor = NSColor(calibratedRed: 0.86, green: 1.0, blue: 0.86, alpha: 1.0)
-clipBottomRightPane.backgroundColor = NSColor(calibratedRed: 1.0, green: 0.86, blue: 0.88, alpha: 1.0)
+clipOriginLabel.textColor = demoValueTextColor
+// The demonstrative quadrant/pane colors keep their hues but darken in dark
+// mode so the panels read as distinct tiles rather than bright light slabs.
+clipView.backgroundColor = isDarkDemo ? NSColor(calibratedRed: 0.14, green: 0.14, blue: 0.15, alpha: 1.0) : .white
+clipDocumentView.backgroundColor = isDarkDemo
+    ? NSColor(calibratedRed: 0.17, green: 0.17, blue: 0.18, alpha: 1.0)
+    : NSColor(calibratedRed: 0.97, green: 0.97, blue: 0.97, alpha: 1.0)
+clipTopLeftPane.backgroundColor = isDarkDemo
+    ? NSColor(calibratedRed: 0.16, green: 0.24, blue: 0.36, alpha: 1.0)
+    : NSColor(calibratedRed: 0.84, green: 0.92, blue: 1.0, alpha: 1.0)
+clipTopRightPane.backgroundColor = isDarkDemo
+    ? NSColor(calibratedRed: 0.34, green: 0.29, blue: 0.14, alpha: 1.0)
+    : NSColor(calibratedRed: 1.0, green: 0.94, blue: 0.72, alpha: 1.0)
+clipBottomLeftPane.backgroundColor = isDarkDemo
+    ? NSColor(calibratedRed: 0.16, green: 0.30, blue: 0.18, alpha: 1.0)
+    : NSColor(calibratedRed: 0.86, green: 1.0, blue: 0.86, alpha: 1.0)
+clipBottomRightPane.backgroundColor = isDarkDemo
+    ? NSColor(calibratedRed: 0.34, green: 0.18, blue: 0.20, alpha: 1.0)
+    : NSColor(calibratedRed: 1.0, green: 0.86, blue: 0.88, alpha: 1.0)
 clipDocumentView.addSubview(clipTopLeftPane)
 clipDocumentView.addSubview(clipTopRightPane)
 clipDocumentView.addSubview(clipBottomLeftPane)
@@ -1828,8 +1898,12 @@ clipDocumentView.addSubview(clipBottomLeftLabel)
 clipDocumentView.addSubview(clipBottomRightLabel)
 clipView.documentView = clipDocumentView
 splitLabel.font = NSFont.boldSystemFont(ofSize: 12)
-splitLeftPane.backgroundColor = NSColor(calibratedRed: 0.86, green: 0.93, blue: 1.0, alpha: 1.0)
-splitRightPane.backgroundColor = NSColor(calibratedRed: 1.0, green: 0.92, blue: 0.84, alpha: 1.0)
+splitLeftPane.backgroundColor = isDarkDemo
+    ? NSColor(calibratedRed: 0.16, green: 0.25, blue: 0.37, alpha: 1.0)
+    : NSColor(calibratedRed: 0.86, green: 0.93, blue: 1.0, alpha: 1.0)
+splitRightPane.backgroundColor = isDarkDemo
+    ? NSColor(calibratedRed: 0.35, green: 0.28, blue: 0.17, alpha: 1.0)
+    : NSColor(calibratedRed: 1.0, green: 0.92, blue: 0.84, alpha: 1.0)
 splitView.addSubview(splitLeftPane)
 splitView.addSubview(splitRightPane)
 splitView.setPosition(70, ofDividerAt: 0)
@@ -2012,6 +2086,8 @@ func showDemoPage(_ index: Int) {
     drawingPage.isHidden = index != 3
     showcasePage.isHidden = index != 4
     listsPage.isHidden = index != 5
+    bezelsPage.isHidden = index != 6
+    layoutPage.isHidden = index != 7
     updateFocusDisplay()
 }
 
@@ -2786,6 +2862,8 @@ contentView.addSubview(tablesPage)
 contentView.addSubview(drawingPage)
 contentView.addSubview(showcasePage)
 contentView.addSubview(listsPage)
+contentView.addSubview(bezelsPage)
+contentView.addSubview(layoutPage)
 
 controlsPage.addSubview(editableLabel)
 controlsPage.addSubview(editableTextField)
@@ -3143,7 +3221,7 @@ let listsBrowserPathLabel = NSTextField(string: "Path: /", frame: NSMakeRect(24,
 listsBrowserPathLabel.isBordered = false
 listsBrowserPathLabel.drawsBackground = false
 listsBrowserPathLabel.font = NSFont.boldSystemFont(ofSize: 12)
-listsBrowserPathLabel.textColor = .blue
+listsBrowserPathLabel.textColor = demoValueTextColor
 browser.onAction = { [weak browser] _ in
     guard let browser else {
         return
@@ -3317,8 +3395,8 @@ editMenuController.textView = notesTextView
 // menu entry.
 let viewMenuItem = NSMenuItem(title: "View", action: nil, keyEquivalent: "")
 let viewMenu = NSMenu(title: "View")
-for (index, pageTitle) in ["Controls Page", "Values Page", "Tables/Media Page", "Drawing Page", "New in 3.x Page", "Lists Page"].enumerated() {
-    // Ctrl+1...Ctrl+5 switch pages (the .command mask maps onto Ctrl on Windows).
+for (index, pageTitle) in ["Controls Page", "Values Page", "Tables/Media Page", "Drawing Page", "New in 3.x Page", "Lists Page", "Bezels Page", "Auto Layout Page"].enumerated() {
+    // Ctrl+1...Ctrl+8 switch pages (the .command mask maps onto Ctrl on Windows).
     let item = NSMenuItem(title: pageTitle, action: nil, keyEquivalent: "\(index + 1)")
     item.onAction = { _ in
         pageSelector.selectItem(at: index)
@@ -3358,8 +3436,492 @@ for shapeTitle in ["Star", "Wave", "Card"] {
 }
 shapesView.contextMenu = shapesContextMenu
 
+// ---------------------------------------------------------------------------
+// Bezels (8.3) page — showcases the framework-drawn NSButton bezel styles, the
+// NSSegmentedControl styles, and the accent-aware drawn controls added in 8.3.
+// Toggle to dark mode (run with --dark, or set Windows to dark) to see the
+// appearance-aware fills.
+// ---------------------------------------------------------------------------
+@MainActor
+func bezelCaption(_ text: String, _ frame: NSRect) -> NSTextField {
+    let label = NSTextField(string: text, frame: frame)
+    label.isBordered = false
+    label.drawsBackground = false
+    label.font = NSFont.systemFont(ofSize: 11)
+    return label
+}
+
+let bezelsIntro = bezelCaption("Framework-drawn button bezels and segmented styles (Phase 8.3). Click the toggles; run with --dark to see the appearance-aware fills.", NSMakeRect(24, 12, 1000, 20))
+
+let buttonBezelHeader = showcaseSectionLabel("NSButton.bezelStyle — framework-drawn (8.3)", NSMakeRect(24, 42, 520, 20))
+
+let disclosureButton = NSButton(title: "", frame: NSMakeRect(28, 74, 22, 22))
+disclosureButton.bezelStyle = .disclosure
+disclosureButton.onAction = { _ in
+    statusLabel.stringValue = "Disclosure: \(disclosureButton.state == .on ? "open" : "closed")"
+}
+let disclosureCaption = bezelCaption("Disclosure", NSMakeRect(56, 74, 78, 20))
+
+let roundedDisclosureButton = NSButton(title: "", frame: NSMakeRect(150, 74, 24, 22))
+roundedDisclosureButton.bezelStyle = .roundedDisclosure
+roundedDisclosureButton.onAction = { _ in
+    statusLabel.stringValue = "Rounded disclosure: \(roundedDisclosureButton.state == .on ? "open" : "closed")"
+}
+let roundedDisclosureCaption = bezelCaption("Rounded", NSMakeRect(180, 74, 70, 20))
+
+let circularBezelButton = NSButton(title: "?", frame: NSMakeRect(262, 70, 30, 30))
+circularBezelButton.bezelStyle = .circular
+circularBezelButton.onAction = { _ in
+    statusLabel.stringValue = "Circular button clicked"
+}
+let circularCaption = bezelCaption("Circular", NSMakeRect(298, 74, 66, 20))
+
+let recessedBezelButton = NSButton(title: "Bold", frame: NSMakeRect(372, 72, 64, 26))
+recessedBezelButton.bezelStyle = .recessed
+recessedBezelButton.onAction = { _ in
+    statusLabel.stringValue = "Recessed toggle: \(recessedBezelButton.state == .on ? "on" : "off")"
+}
+let recessedCaption = bezelCaption("Recessed (toggle)", NSMakeRect(444, 74, 130, 20))
+
+let inlineBezelButton = NSButton(title: "NEW", frame: NSMakeRect(576, 73, 52, 24))
+inlineBezelButton.bezelStyle = .inline
+inlineBezelButton.onAction = { _ in
+    statusLabel.stringValue = "Inline pill clicked"
+}
+let inlineCaption = bezelCaption("Inline pill", NSMakeRect(634, 74, 90, 20))
+
+let segmentHeader = showcaseSectionLabel("NSSegmentedControl.segmentStyle (8.3)", NSMakeRect(24, 124, 520, 20))
+
+let roundedSegCaption = bezelCaption(".rounded (joined)", NSMakeRect(24, 150, 250, 20))
+let roundedSeg = NSSegmentedControl(labels: ["Day", "Week", "Month"], frame: NSMakeRect(24, 172, 250, 28))
+roundedSeg.segmentStyle = .rounded
+roundedSeg.selectedSegment = 0
+
+let separatedSegCaption = bezelCaption(".separated (gapped)", NSMakeRect(298, 150, 250, 20))
+let separatedSeg = NSSegmentedControl(labels: ["Day", "Week", "Month"], frame: NSMakeRect(298, 172, 250, 28))
+separatedSeg.segmentStyle = .separated
+separatedSeg.selectedSegment = 1
+
+let texturedSegCaption = bezelCaption(".texturedSquare (flat)", NSMakeRect(572, 150, 250, 20))
+let texturedSeg = NSSegmentedControl(labels: ["Day", "Week", "Month"], frame: NSMakeRect(572, 172, 250, 28))
+texturedSeg.segmentStyle = .texturedSquare
+texturedSeg.selectedSegment = 2
+
+let capsuleSegCaption = bezelCaption(".capsule (joined)", NSMakeRect(846, 150, 250, 20))
+let capsuleSeg = NSSegmentedControl(labels: ["Day", "Week", "Month"], frame: NSMakeRect(846, 172, 250, 28))
+capsuleSeg.segmentStyle = .capsule
+capsuleSeg.selectedSegment = 0
+
+for seg in [roundedSeg, separatedSeg, texturedSeg, capsuleSeg] {
+    seg.onAction = { control in
+        guard let seg = control as? NSSegmentedControl else {
+            return
+        }
+        statusLabel.stringValue = "Segment: \(seg.label(forSegment: seg.selectedSegment) ?? "none")"
+    }
+}
+
+let drawnHeader = showcaseSectionLabel("Accent-aware drawn controls (8.3)", NSMakeRect(24, 224, 520, 20))
+
+let ratingCaption = bezelCaption("NSLevelIndicator .rating", NSMakeRect(24, 250, 180, 20))
+let bezelsRating = NSLevelIndicator(frame: NSMakeRect(24, 272, 150, 24))
+bezelsRating.levelIndicatorStyle = .rating
+bezelsRating.minValue = 0
+bezelsRating.maxValue = 5
+bezelsRating.doubleValue = 3
+bezelsRating.isEditable = true
+bezelsRating.onAction = { _ in
+    statusLabel.stringValue = "Rating: \(bezelsRating.intValue)/5"
+}
+
+let discreteCaption = bezelCaption(".discreteCapacity", NSMakeRect(200, 250, 180, 20))
+let discreteIndicator = NSLevelIndicator(frame: NSMakeRect(200, 272, 150, 24))
+discreteIndicator.levelIndicatorStyle = .discreteCapacity
+discreteIndicator.minValue = 0
+discreteIndicator.maxValue = 10
+discreteIndicator.doubleValue = 6
+
+let relevancyCaption = bezelCaption(".relevancy", NSMakeRect(376, 250, 180, 20))
+let relevancyIndicator = NSLevelIndicator(frame: NSMakeRect(376, 272, 150, 24))
+relevancyIndicator.levelIndicatorStyle = .relevancy
+relevancyIndicator.minValue = 0
+relevancyIndicator.maxValue = 12
+relevancyIndicator.doubleValue = 8
+
+let tokenCaption = bezelCaption("NSTokenField chips", NSMakeRect(560, 250, 180, 20))
+let bezelsTokenField = NSTokenField(tokens: ["Swift", "AppKit", "Windows"], frame: NSMakeRect(560, 272, 280, 26))
+
+for control in [
+    bezelsIntro, buttonBezelHeader,
+    disclosureButton, disclosureCaption,
+    roundedDisclosureButton, roundedDisclosureCaption,
+    circularBezelButton, circularCaption,
+    recessedBezelButton, recessedCaption,
+    inlineBezelButton, inlineCaption,
+    segmentHeader,
+    roundedSegCaption, roundedSeg, separatedSegCaption, separatedSeg,
+    texturedSegCaption, texturedSeg, capsuleSegCaption, capsuleSeg,
+    drawnHeader,
+    ratingCaption, bezelsRating, discreteCaption, discreteIndicator,
+    relevancyCaption, relevancyIndicator, tokenCaption, bezelsTokenField
+] as [NSView] {
+    bezelsPage.addSubview(control)
+}
+
+// ── Auto Layout (9.x) page ───────────────────────────────────────────
+// Every box on this page is positioned by the constraint solver
+// (`NSLayoutConstraint` + anchors + intrinsic sizes), not a fixed frame:
+// each demo container adds constraint-driven subviews and calls
+// `layoutSubtreeIfNeeded()` to compute their frames.
+let layoutIntro = bezelCaption(
+    "Every box below is positioned by the Auto Layout solver (NSLayoutConstraint + anchors), not a fixed frame.",
+    NSMakeRect(24, 10, 1040, 20))
+let layoutHeader = showcaseSectionLabel(
+    "NSLayoutConstraint + anchors + intrinsic sizes (9.1/9.2)", NSMakeRect(24, 36, 660, 20))
+
+func layoutDemoContainer(at x: CGFloat) -> NSView {
+    let container = NSView(frame: NSMakeRect(x, 84, 250, 150))
+    container.backgroundColor = NSColor(calibratedWhite: 0.30, alpha: 1)
+    return container
+}
+func layoutBox(_ color: NSColor) -> NSView {
+    let box = NSView(frame: .zero)
+    box.translatesAutoresizingMaskIntoConstraints = false
+    box.backgroundColor = color
+    return box
+}
+let layoutBlue = NSColor(calibratedRed: 0.30, green: 0.56, blue: 0.95, alpha: 1)
+let layoutGreen = NSColor(calibratedRed: 0.30, green: 0.75, blue: 0.45, alpha: 1)
+let layoutRed = NSColor(calibratedRed: 0.90, green: 0.36, blue: 0.36, alpha: 1)
+let layoutOrange = NSColor(calibratedRed: 0.95, green: 0.64, blue: 0.24, alpha: 1)
+let layoutPurple = NSColor(calibratedRed: 0.66, green: 0.44, blue: 0.90, alpha: 1)
+
+// Demo 1: pin all four edges with a 12pt inset — the box fills the container.
+let demo1Caption = bezelCaption("Pinned to edges (inset 12)", NSMakeRect(24, 60, 250, 18))
+let demo1 = layoutDemoContainer(at: 24)
+let demo1Box = layoutBox(layoutBlue)
+demo1.addSubview(demo1Box)
+NSLayoutConstraint.activate([
+    demo1Box.leadingAnchor.constraint(equalTo: demo1.leadingAnchor, constant: 12),
+    demo1Box.trailingAnchor.constraint(equalTo: demo1.trailingAnchor, constant: -12),
+    demo1Box.topAnchor.constraint(equalTo: demo1.topAnchor, constant: 12),
+    demo1Box.bottomAnchor.constraint(equalTo: demo1.bottomAnchor, constant: -12),
+])
+demo1.layoutSubtreeIfNeeded()
+
+// Demo 2: fixed 90×48, centered in the container.
+let demo2Caption = bezelCaption("Fixed 90×48, centered", NSMakeRect(292, 60, 250, 18))
+let demo2 = layoutDemoContainer(at: 292)
+let demo2Box = layoutBox(layoutGreen)
+demo2.addSubview(demo2Box)
+NSLayoutConstraint.activate([
+    demo2Box.widthAnchor.constraint(equalToConstant: 90),
+    demo2Box.heightAnchor.constraint(equalToConstant: 48),
+    demo2Box.centerXAnchor.constraint(equalTo: demo2.centerXAnchor),
+    demo2Box.centerYAnchor.constraint(equalTo: demo2.centerYAnchor),
+])
+demo2.layoutSubtreeIfNeeded()
+
+// Demo 3: a horizontal sibling chain — equal widths, 10pt gaps.
+let demo3Caption = bezelCaption("Sibling chain (equal, gap 10)", NSMakeRect(560, 60, 250, 18))
+let demo3 = layoutDemoContainer(at: 560)
+let boxA = layoutBox(layoutRed)
+let boxB = layoutBox(layoutOrange)
+let boxC = layoutBox(layoutPurple)
+demo3.addSubview(boxA)
+demo3.addSubview(boxB)
+demo3.addSubview(boxC)
+NSLayoutConstraint.activate([
+    boxA.leadingAnchor.constraint(equalTo: demo3.leadingAnchor, constant: 12),
+    boxA.topAnchor.constraint(equalTo: demo3.topAnchor, constant: 12),
+    boxA.bottomAnchor.constraint(equalTo: demo3.bottomAnchor, constant: -12),
+    boxA.widthAnchor.constraint(equalToConstant: 44),
+    boxB.leadingAnchor.constraint(equalTo: boxA.trailingAnchor, constant: 10),
+    boxB.topAnchor.constraint(equalTo: boxA.topAnchor),
+    boxB.bottomAnchor.constraint(equalTo: boxA.bottomAnchor),
+    boxB.widthAnchor.constraint(equalTo: boxA.widthAnchor),
+    boxC.leadingAnchor.constraint(equalTo: boxB.trailingAnchor, constant: 10),
+    boxC.topAnchor.constraint(equalTo: boxA.topAnchor),
+    boxC.bottomAnchor.constraint(equalTo: boxA.bottomAnchor),
+    boxC.widthAnchor.constraint(equalTo: boxA.widthAnchor),
+])
+demo3.layoutSubtreeIfNeeded()
+
+// Demo 4: intrinsic-sized labels stacked in a column (width from text).
+let demo4Caption = bezelCaption("Intrinsic-sized labels (column)", NSMakeRect(828, 60, 250, 18))
+let demo4 = layoutDemoContainer(at: 828)
+let layoutLabel1 = NSTextField(string: "Short", frame: .zero)
+let layoutLabel2 = NSTextField(string: "A considerably longer label", frame: .zero)
+for label in [layoutLabel1, layoutLabel2] {
+    label.translatesAutoresizingMaskIntoConstraints = false
+    label.isEditable = false
+    label.isBordered = false
+    label.drawsBackground = true
+    label.backgroundColor = layoutBlue
+    label.textColor = .white
+}
+demo4.addSubview(layoutLabel1)
+demo4.addSubview(layoutLabel2)
+NSLayoutConstraint.activate([
+    layoutLabel1.leadingAnchor.constraint(equalTo: demo4.leadingAnchor, constant: 12),
+    layoutLabel1.topAnchor.constraint(equalTo: demo4.topAnchor, constant: 16),
+    layoutLabel2.leadingAnchor.constraint(equalTo: layoutLabel1.leadingAnchor),
+    layoutLabel2.topAnchor.constraint(equalTo: layoutLabel1.bottomAnchor, constant: 12),
+])
+demo4.layoutSubtreeIfNeeded()
+
+// Live resize demo: left/right boxes pinned to the edges, the middle box fills
+// the gap. The window-resize handler (below) widens this container and re-runs
+// the solver, so dragging the window reflows the middle box in real time.
+let resizeDemoCaption = bezelCaption(
+    "Resize the window → the green middle box reflows live (left/right pinned to the edges, middle fills the gap).",
+    NSMakeRect(24, 250, 1000, 18))
+let resizeContainer = NSView(frame: NSMakeRect(24, 274, 1072, 90))
+resizeContainer.backgroundColor = NSColor(calibratedWhite: 0.30, alpha: 1)
+let resizeLeft = layoutBox(layoutBlue)
+let resizeMiddle = layoutBox(layoutGreen)
+let resizeRight = layoutBox(layoutRed)
+resizeContainer.addSubview(resizeLeft)
+resizeContainer.addSubview(resizeMiddle)
+resizeContainer.addSubview(resizeRight)
+NSLayoutConstraint.activate([
+    resizeLeft.leadingAnchor.constraint(equalTo: resizeContainer.leadingAnchor, constant: 12),
+    resizeLeft.widthAnchor.constraint(equalToConstant: 70),
+    resizeLeft.topAnchor.constraint(equalTo: resizeContainer.topAnchor, constant: 12),
+    resizeLeft.bottomAnchor.constraint(equalTo: resizeContainer.bottomAnchor, constant: -12),
+    resizeRight.trailingAnchor.constraint(equalTo: resizeContainer.trailingAnchor, constant: -12),
+    resizeRight.widthAnchor.constraint(equalToConstant: 70),
+    resizeRight.topAnchor.constraint(equalTo: resizeLeft.topAnchor),
+    resizeRight.bottomAnchor.constraint(equalTo: resizeLeft.bottomAnchor),
+    resizeMiddle.leadingAnchor.constraint(equalTo: resizeLeft.trailingAnchor, constant: 10),
+    resizeMiddle.trailingAnchor.constraint(equalTo: resizeRight.leadingAnchor, constant: -10),
+    resizeMiddle.topAnchor.constraint(equalTo: resizeLeft.topAnchor),
+    resizeMiddle.bottomAnchor.constraint(equalTo: resizeLeft.bottomAnchor),
+])
+resizeContainer.layoutSubtreeIfNeeded()
+
+// NSStackView (9.4): a horizontal row and a vertical column, each arranging its
+// views with a distribution + spacing. The horizontal one also stretches with
+// the window (see the resize handler) to show the stack refilling live.
+let stackHeader = showcaseSectionLabel("NSStackView (9.4)", NSMakeRect(24, 370, 400, 20))
+let hStackCaption = bezelCaption("Horizontal .fillEqually, spacing 8", NSMakeRect(24, 414, 520, 18))
+let hStack = NSStackView(views: [layoutBox(layoutBlue), layoutBox(layoutGreen), layoutBox(layoutRed), layoutBox(layoutOrange)])
+hStack.orientation = .horizontal
+hStack.distribution = .fillEqually
+hStack.spacing = 8
+hStack.frame = NSMakeRect(24, 436, 620, 56)
+hStack.layoutSubtreeIfNeeded()
+
+let vStackCaption = bezelCaption("Vertical .fillEqually", NSMakeRect(680, 414, 260, 18))
+let vStack = NSStackView(views: [layoutBox(layoutPurple), layoutBox(layoutBlue), layoutBox(layoutGreen)])
+vStack.orientation = .vertical
+vStack.distribution = .fillEqually
+vStack.spacing = 6
+vStack.frame = NSMakeRect(680, 436, 130, 110)
+vStack.layoutSubtreeIfNeeded()
+
+// NSGridView (9.5): a label-and-field form — column 0 sizes to the widest label
+// and right-aligns them, column 1 is a fixed width the field boxes fill.
+func formLabel(_ text: String) -> NSTextField {
+    let label = NSTextField(string: text, frame: .zero)
+    label.isEditable = false
+    label.isBordered = false
+    label.drawsBackground = false
+    return label
+}
+func fieldBox() -> NSTextField {
+    // A real editable field so the form actually accepts focus and typing.
+    let field = NSTextField(string: "", frame: NSMakeRect(0, 0, 120, 22))
+    field.isEditable = true
+    field.isBezeled = true
+    field.isBordered = true
+    return field
+}
+let gridCaption = bezelCaption("NSGridView form + merged header (9.5)", NSMakeRect(840, 414, 280, 18))
+let formHeader = formLabel("Contact details")
+let formGrid = NSGridView(views: [
+    [formHeader, formLabel("")],
+    [formLabel("Name:"), fieldBox()],
+    [formLabel("Email address:"), fieldBox()],
+    [formLabel("Role:"), fieldBox()],
+])
+formGrid.rowSpacing = 8
+formGrid.columnSpacing = 10
+formGrid.column(at: 0).xPlacement = .trailing
+formGrid.column(at: 1).width = 130
+formGrid.column(at: 1).xPlacement = .fill
+// 9.5: merge the top row across both columns so the section header spans the
+// whole form and centers over the label/field columns below it.
+formGrid.mergeCells(inHorizontalRange: NSMakeRange(0, 2), verticalRange: NSMakeRange(0, 1))
+formGrid.cell(atColumnIndex: 0, rowIndex: 0).xPlacement = .center
+formGrid.frame = NSMakeRect(840, 436, 270, 130)
+formGrid.layoutSubtreeIfNeeded()
+
+for view in [
+    layoutIntro, layoutHeader,
+    demo1Caption, demo1, demo2Caption, demo2,
+    demo3Caption, demo3, demo4Caption, demo4,
+    resizeDemoCaption, resizeContainer,
+    stackHeader, hStackCaption, hStack, vStackCaption, vStack,
+    gridCaption, formGrid
+] as [NSView] {
+    layoutPage.addSubview(view)
+}
+
+// Reflow the whole Auto Layout page from the current width: the four top demos
+// become equal columns, the resize strip spans full width, and on the bottom
+// row the form pins right, the vertical stack sits to its left, and the
+// horizontal stack fills the remaining space. Each container re-runs the solver
+// so its constraint-driven contents adapt. Called at startup and on resize.
+@MainActor
+func reflowAutoLayoutPage(width pageWidth: CGFloat) {
+    let margin: CGFloat = 24
+    let gap: CGFloat = 18
+    let available = max(pageWidth - margin * 2, 240)
+
+    // Top row: four equal-width demo columns.
+    let colWidth = max((available - gap * 3) / 4, 120)
+    let topCaptions = [demo1Caption, demo2Caption, demo3Caption, demo4Caption]
+    let topContainers = [demo1, demo2, demo3, demo4]
+    for i in 0..<4 {
+        let x = margin + CGFloat(i) * (colWidth + gap)
+        topCaptions[i].frame = NSMakeRect(x, 60, colWidth, 18)
+        topContainers[i].frame = NSMakeRect(x, 84, colWidth, 150)
+        topContainers[i].layoutSubtreeIfNeeded()
+    }
+
+    // Middle: the live-reflow strip spans the full width.
+    resizeDemoCaption.frame = NSMakeRect(margin, 250, available, 18)
+    resizeContainer.frame = NSMakeRect(margin, 274, available, 80)
+    resizeContainer.layoutSubtreeIfNeeded()
+
+    // Bottom row: form pinned to the right, vertical stack to its left, and the
+    // horizontal stack filling everything left of them. Sits high enough that the
+    // taller grid (a merged header row + three fields) clears the window bottom.
+    let formWidth: CGFloat = 270
+    let vStackWidth: CGFloat = 130
+    let formX = pageWidth - margin - formWidth
+    let vStackX = formX - 30 - vStackWidth
+    gridCaption.frame = NSMakeRect(formX, 394, formWidth, 18)
+    formGrid.frame = NSMakeRect(formX, 416, formWidth, 130)
+    formGrid.layoutSubtreeIfNeeded()
+    vStackCaption.frame = NSMakeRect(vStackX, 394, 200, 18)
+    vStack.frame = NSMakeRect(vStackX, 416, vStackWidth, 110)
+    vStack.layoutSubtreeIfNeeded()
+    let hStackWidth = max(vStackX - 20 - margin, 200)
+    hStackCaption.frame = NSMakeRect(margin, 394, hStackWidth, 18)
+    hStack.frame = NSMakeRect(margin, 416, hStackWidth, 56)
+    hStack.layoutSubtreeIfNeeded()
+}
+reflowAutoLayoutPage(width: 1120)
+
+// Follow a live system dark/light switch (8.5). The framework re-themes and
+// repaints its own windows/controls; the demo re-applies the few colors it
+// caches at startup (the status/focus bands) and redraws. Skipped implicitly
+// when --light/--dark pin an override, since the framework won't post then.
+_ = NotificationCenter.default.addObserver(
+    forName: NSApplication.winEffectiveAppearanceDidChangeNotification,
+    object: nil,
+    queue: nil
+) { _ in
+    let dark = NSApplication.shared.effectiveAppearance.winIsDark
+    // The content view was given a background resolved at launch; re-resolve it
+    // (windowBackgroundColor is dynamic) so the page surface follows the switch.
+    contentView.backgroundColor = NSColor.windowBackgroundColor
+    statusLabel.textColor = dark ? NSColor(calibratedRed: 0.55, green: 0.78, blue: 1.0, alpha: 1) : .blue
+    statusLabel.backgroundColor = dark
+        ? NSColor(white: 0.16, alpha: 1)
+        : NSColor(calibratedRed: 0.94, green: 0.97, blue: 1.0, alpha: 1.0)
+    focusLabel.textColor = dark ? NSColor(calibratedRed: 1.0, green: 0.83, blue: 0.4, alpha: 1) : .black
+    focusLabel.backgroundColor = dark
+        ? NSColor(white: 0.16, alpha: 1)
+        : NSColor(calibratedRed: 1.0, green: 0.98, blue: 0.86, alpha: 1.0)
+
+    // The demo caches a number of appearance-tuned colors at launch and sets
+    // them on views scattered across every page. Setting a view's
+    // backgroundColor builds a solid brush at that shade, so a live switch has
+    // to re-set each one to rebuild the brush — a plain repaint keeps the old
+    // color. Re-derive every cached color from the live appearance here.
+    let valueText = dark
+        ? NSColor(calibratedRed: 0.45, green: 0.68, blue: 1.0, alpha: 1.0)
+        : NSColor.blue
+    for label in [stepperValueLabel, scrollerValueLabel, dateValueLabel,
+                  clipOriginLabel, listsBrowserPathLabel] {
+        label.textColor = valueText
+    }
+
+    // Clip-view page: document surface + four demonstrative quadrant tiles.
+    clipView.backgroundColor = dark
+        ? NSColor(calibratedRed: 0.14, green: 0.14, blue: 0.15, alpha: 1.0) : .white
+    clipDocumentView.backgroundColor = dark
+        ? NSColor(calibratedRed: 0.17, green: 0.17, blue: 0.18, alpha: 1.0)
+        : NSColor(calibratedRed: 0.97, green: 0.97, blue: 0.97, alpha: 1.0)
+    clipTopLeftPane.backgroundColor = dark
+        ? NSColor(calibratedRed: 0.16, green: 0.24, blue: 0.36, alpha: 1.0)
+        : NSColor(calibratedRed: 0.84, green: 0.92, blue: 1.0, alpha: 1.0)
+    clipTopRightPane.backgroundColor = dark
+        ? NSColor(calibratedRed: 0.34, green: 0.29, blue: 0.14, alpha: 1.0)
+        : NSColor(calibratedRed: 1.0, green: 0.94, blue: 0.72, alpha: 1.0)
+    clipBottomLeftPane.backgroundColor = dark
+        ? NSColor(calibratedRed: 0.16, green: 0.30, blue: 0.18, alpha: 1.0)
+        : NSColor(calibratedRed: 0.86, green: 1.0, blue: 0.86, alpha: 1.0)
+    clipBottomRightPane.backgroundColor = dark
+        ? NSColor(calibratedRed: 0.34, green: 0.18, blue: 0.20, alpha: 1.0)
+        : NSColor(calibratedRed: 1.0, green: 0.86, blue: 0.88, alpha: 1.0)
+
+    // Split-view page: the two demonstrative panes.
+    splitLeftPane.backgroundColor = dark
+        ? NSColor(calibratedRed: 0.16, green: 0.25, blue: 0.37, alpha: 1.0)
+        : NSColor(calibratedRed: 0.86, green: 0.93, blue: 1.0, alpha: 1.0)
+    splitRightPane.backgroundColor = dark
+        ? NSColor(calibratedRed: 0.35, green: 0.28, blue: 0.17, alpha: 1.0)
+        : NSColor(calibratedRed: 1.0, green: 0.92, blue: 0.84, alpha: 1.0)
+
+    // A focused field is tinted with the (cached) focus color; re-apply so a
+    // switch while a field holds focus rebuilds its brush too.
+    updateFocusDisplay()
+
+    // The collection views' section header/footer bands are supplementary
+    // views built once from the launch appearance and not recreated on a
+    // repaint — reload so the delegate rebuilds them for the live appearance.
+    collectionView.reloadData()
+    listsCollectionView.reloadData()
+
+    contentView.needsDisplay = true
+}
+
 window.contentView = contentView
-showDemoPage(0)
+
+// Live Auto Layout resize: when the Auto Layout page is showing, stretch the
+// page + the resize-demo container to the window's content width and re-run the
+// solver, so dragging the window reflows the constraint-driven boxes in real
+// time. Other pages stay frame-based, so nothing else needs a resize pass.
+final class DemoWindowDelegate: NSWindowDelegate {
+    func windowDidResize(_ notification: NSNotification) {
+        MainActor.assumeIsolated {
+            guard !layoutPage.isHidden else {
+                return
+            }
+            let width = contentView.frame.size.width
+            layoutPage.frame = NSRect(origin: layoutPage.frame.origin,
+                                      size: NSSize(width: width, height: layoutPage.frame.size.height))
+            // Reflow the whole page to the new width.
+            reflowAutoLayoutPage(width: width)
+        }
+    }
+}
+let demoWindowDelegate = DemoWindowDelegate()
+window.delegate = demoWindowDelegate
+
+// --page N opens directly on a given page (handy for QA of a specific page).
+var initialPage = 0
+if let pageFlag = CommandLine.arguments.firstIndex(of: "--page"),
+   CommandLine.arguments.indices.contains(pageFlag + 1),
+   let page = Int(CommandLine.arguments[pageFlag + 1]) {
+    initialPage = page
+}
+pageSelector.selectItem(at: initialPage)
+showDemoPage(initialPage)
 updateFocusDisplay()
 
 if CommandLine.arguments.contains("--diagnose") {

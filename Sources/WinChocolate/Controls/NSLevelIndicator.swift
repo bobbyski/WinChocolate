@@ -22,6 +22,12 @@ open class NSLevelIndicator: NSControl {
         }
     }
 
+    /// The control's natural size (9.2): a standard-height indicator with
+    /// flexible width so constraints/frame decide how wide it runs.
+    open override var intrinsicContentSize: NSSize {
+        NSSize(width: NSView.noIntrinsicMetric, height: 18)
+    }
+
     /// Maximum represented value.
     open var maxValue: Double {
         didSet {
@@ -190,6 +196,24 @@ open class NSLevelIndicator: NSControl {
         min(max(Int(doubleValue.rounded()) - Int(minValue.rounded()), 0), itemCount)
     }
 
+    /// Appearance-aware fill colors for the framework-drawn styles (rating
+    /// stars, discrete-capacity segments, relevancy bars). The empty-slot track
+    /// lifts under dark so filled and unfilled items stay legible against the
+    /// dark control surface; rating and discrete capacity fill with the user's
+    /// Windows accent (the Fluent look, plan 8.3), while relevancy keeps the
+    /// Mac's neutral graphite. Pure and `isDark`-parameterized for testing.
+    /// Continuous capacity uses the native progress bar, so it isn't covered.
+    public static func winFillColors(for style: Style, isDark: Bool) -> (on: NSColor, off: NSColor) {
+        let off = isDark ? NSColor(white: 0.32, alpha: 1) : NSColor(white: 0.80, alpha: 1)
+        switch style {
+        case .relevancy:
+            let on = isDark ? NSColor(white: 0.78, alpha: 1) : NSColor(white: 0.40, alpha: 1)
+            return (on, off)
+        default:
+            return (.controlAccentColor, off)
+        }
+    }
+
     /// Draws the rating/discrete/relevancy representation.
     open override func draw(_ dirtyRect: NSRect) {
         guard usesCustomRendering else {
@@ -199,8 +223,9 @@ open class NSLevelIndicator: NSControl {
 
         let count = itemCount
         let filled = filledCount
-        let onColor = NSColor(calibratedRed: 0.20, green: 0.48, blue: 0.90, alpha: 1)
-        let offColor = NSColor(calibratedRed: 0.80, green: 0.82, blue: 0.85, alpha: 1)
+        let colors = NSLevelIndicator.winFillColors(for: levelIndicatorStyle, isDark: effectiveAppearance.winIsDark)
+        let onColor = colors.on
+        let offColor = colors.off
         let slot = bounds.size.width / CGFloat(count)
         let size = min(slot - 4, bounds.size.height - 4)
         let midY = bounds.size.height / 2

@@ -269,8 +269,24 @@ open class NSToolbar: NSObject {
 
     /// Replaces visible toolbar items with the supplied identifiers.
     open func setVisibleItemIdentifiers(_ identifiers: [NSToolbarItem.Identifier]) {
-        let replacementItems = identifiers.compactMap { identifier -> NSToolbarItem? in
-            itemForVisibleIdentifier(identifier, willBeInsertedIntoToolbar: true)
+        var replacementItems: [NSToolbarItem] = []
+        replacementItems.reserveCapacity(identifiers.count)
+        for identifier in identifiers {
+            guard var item = itemForVisibleIdentifier(identifier, willBeInsertedIntoToolbar: true) else {
+                continue
+            }
+            // A delegate may legitimately return one cached NSToolbarItem for
+            // every request of a structural identifier (the demo reuses a single
+            // separator instance). When two such identifiers arrive in the same
+            // pass, itemForVisibleIdentifier only guards against reusing items
+            // already in `self.items` — not ones we've just consumed here — so it
+            // hands back the same instance twice. Aliasing one item into two slots
+            // corrupts the index/identity operations the customization panel and
+            // renderer rely on, so mint a fresh instance instead.
+            if replacementItems.contains(where: { $0 === item }) {
+                item = NSToolbarItem(itemIdentifier: identifier)
+            }
+            replacementItems.append(item)
         }
 
         for item in items {
@@ -564,12 +580,31 @@ open class NSToolbarView: NSView {
     /// item overflows, matching the Mac's shrink-then-overflow behavior.
     private var winCustomViewShrink: CGFloat = 1
 
+    /// Token for the live appearance-change observer, removed on deinit.
+    private var winAppearanceObserver: NSObjectProtocol?
+
     /// Creates a toolbar view.
     public override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         // Blend with the window chrome the way AppKit toolbars extend the
         // title bar; a bottom hairline separates the strip from content.
         backgroundColor = .windowBackgroundColor
+        // The strip fill is resolved for the current appearance and cached as a
+        // brush; re-resolve it on a live system theme switch so the toolbar
+        // follows the window chrome instead of staying its old shade.
+        winAppearanceObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.winEffectiveAppearanceDidChangeNotification,
+            object: nil, queue: nil
+        ) { [weak self] _ in
+            self?.backgroundColor = .windowBackgroundColor
+            self?.needsDisplay = true
+        }
+    }
+
+    deinit {
+        if let winAppearanceObserver {
+            NotificationCenter.default.removeObserver(winAppearanceObserver)
+        }
     }
 
     /// The separator style after resolving `.automatic` for this presentation.
@@ -1232,9 +1267,13 @@ final class NSToolbarOverflowChevronView: NSView {
                 angle: -90
             )
         }
+        let onDarkStrip = metallicSlice == nil && NSApplication.shared.effectiveAppearance.winIsDark
+        let chevronColor = onDarkStrip
+            ? NSColor(calibratedWhite: 0.85, alpha: 1)
+            : NSColor(calibratedRed: 0.25, green: 0.27, blue: 0.30, alpha: 1.0)
         "»".draw(at: NSMakePoint(max((frame.size.width - 10) / 2, 0), max((frame.size.height - 18) / 2, 0)), withAttributes: [
             .font: NSFont.boldSystemFont(ofSize: 13),
-            .foregroundColor: NSColor(calibratedRed: 0.25, green: 0.27, blue: 0.30, alpha: 1.0),
+            .foregroundColor: chevronColor,
         ])
     }
 
@@ -1320,7 +1359,13 @@ private final class NSToolbarCompositeItemView: NSView {
     /// When the toolbar renders the metallic look, the tile paints its exact
     /// slice of the strip's chrome gradient (strip height + this tile's y
     /// offset) so the chrome reads continuous through the child windows.
-    var metallicSlice: (stripHeight: CGFloat, y: CGFloat)?
+    /// Set after creation, so re-resolve the label color (metallic = light
+    /// silver strip → dark text; unified dark → light text).
+    var metallicSlice: (stripHeight: CGFloat, y: CGFloat)? {
+        didSet {
+            updateNativeTextColor()
+        }
+    }
 
     override func draw(_ dirtyRect: NSRect) {
         guard let metallicSlice, backgroundColor == nil else {
@@ -1384,6 +1429,23 @@ private final class NSToolbarCompositeItemView: NSView {
         super.init(frame: frameRect)
         toolTip = item.toolTip
         backgroundColor = nil
+        // The label color contrasts with the strip (light text on a dark strip,
+        // dark text on light); re-resolve it on a live system theme switch.
+        winAppearanceObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.winEffectiveAppearanceDidChangeNotification,
+            object: nil, queue: nil
+        ) { [weak self] _ in
+            self?.updateNativeTextColor()
+            self?.needsDisplay = true
+        }
+    }
+
+    private var winAppearanceObserver: NSObjectProtocol?
+
+    deinit {
+        if let winAppearanceObserver {
+            NotificationCenter.default.removeObserver(winAppearanceObserver)
+        }
     }
 
     override var acceptsFirstResponder: Bool {
@@ -1430,9 +1492,19 @@ private final class NSToolbarCompositeItemView: NSView {
     }
 
     private func updateNativeTextColor(for handle: NativeHandle, backend: NativeControlBackend) {
-        let color = isEnabled
-            ? NSColor(calibratedRed: 0.08, green: 0.10, blue: 0.12, alpha: 1.0)
-            : NSColor(calibratedRed: 0.42, green: 0.44, blue: 0.46, alpha: 1.0)
+        // The label contrasts with the tile's background: the metallic look
+        // paints a light silver slice (dark text regardless of appearance),
+        // otherwise the tile is transparent over the strip, so a dark
+        // appearance needs light text.
+        let onDarkStrip = metallicSlice == nil && NSApplication.shared.effectiveAppearance.winIsDark
+        let color: NSColor
+        if onDarkStrip {
+            color = isEnabled ? NSColor(calibratedWhite: 0.92, alpha: 1) : NSColor(calibratedWhite: 0.55, alpha: 1)
+        } else {
+            color = isEnabled
+                ? NSColor(calibratedRed: 0.08, green: 0.10, blue: 0.12, alpha: 1.0)
+                : NSColor(calibratedRed: 0.42, green: 0.44, blue: 0.46, alpha: 1.0)
+        }
         backend.setTextColor(color, for: handle)
     }
 }
@@ -1469,6 +1541,12 @@ open class NSToolbarItem: NSObject {
 
         /// Creates an identifier from a raw string.
         public init(rawValue: String) {
+            self.rawValue = rawValue
+        }
+
+        /// Creates an identifier from a string, matching AppKit's
+        /// unlabeled convenience spelling.
+        public init(_ rawValue: String) {
             self.rawValue = rawValue
         }
 

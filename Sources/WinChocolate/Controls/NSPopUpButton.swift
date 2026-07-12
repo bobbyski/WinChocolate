@@ -59,6 +59,14 @@ open class NSPopUpButton: NSControl {
         self.pullsDown = flag
     }
 
+    /// The control's natural size (9.2): the widest item title measured with the
+    /// current font, plus the chevron and padding, at the standard pop-up height.
+    open override var intrinsicContentSize: NSSize {
+        let font = self.font ?? NSFont.systemFont(ofSize: 13)
+        let widest = itemTitles.map { $0.size(withAttributes: [.font: font]).width }.max() ?? 0
+        return NSSize(width: max(widest + 34, 60), height: 26)
+    }
+
     /// All item titles in display order.
     open var itemTitles: [String] {
         titles
@@ -232,6 +240,18 @@ open class NSPopUpButton: NSControl {
         }
 
         indexOfSelectedItem = index
+    }
+
+    /// Selects a menu item, or clears the selection for `nil`, matching
+    /// AppKit's shape. WinChocolate items are title-backed, so a non-nil
+    /// item selects by its title.
+    open func select(_ item: NSMenuItem?) {
+        guard let item else {
+            indexOfSelectedItem = -1
+            return
+        }
+
+        selectItem(withTitle: item.title)
     }
 
     /// Selects the first item matching a title.

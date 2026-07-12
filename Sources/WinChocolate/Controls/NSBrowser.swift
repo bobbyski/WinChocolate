@@ -1,4 +1,5 @@
 /// Delegate/data source for an AppKit-shaped browser.
+@MainActor
 public protocol NSBrowserDelegate: AnyObject {
     /// Returns the number of children below an item. `nil` is the root column.
     func browser(_ browser: NSBrowser, numberOfChildrenOfItem item: Any?) -> Int
@@ -24,7 +25,7 @@ public protocol NSBrowserDelegate: AnyObject {
 public extension NSBrowserDelegate {
     /// Default leaf behavior treats items with no children as leaves.
     func browser(_ browser: NSBrowser, isLeafItem item: Any?) -> Bool {
-        browser.delegate?.browser(browser, numberOfChildrenOfItem: item) == 0
+        winMainActor { browser.delegate?.browser(browser, numberOfChildrenOfItem: item) } == 0
     }
 
     /// Default: no delegate-provided column title.
@@ -49,11 +50,14 @@ public extension NSBrowserDelegate {
 /// the Mac-style item hierarchy API while the backend remains ordinary native
 /// child controls.
 open class NSBrowser: NSControl {
+    // Members are nonisolated: the @MainActor data-source protocol infers
+    // @MainActor on the class, but everything here reads nonisolated
+    // browser state, and all calls happen on the Win32 UI thread.
     private final class BrowserColumnDataSource: NSTableViewDataSource {
-        weak var browser: NSBrowser?
-        let column: Int
+        nonisolated(unsafe) weak var browser: NSBrowser?
+        nonisolated let column: Int
 
-        init(browser: NSBrowser, column: Int) {
+        nonisolated init(browser: NSBrowser, column: Int) {
             self.browser = browser
             self.column = column
         }
@@ -68,7 +72,7 @@ open class NSBrowser: NSControl {
                 return nil
             }
 
-            return browser.delegate?.browser(browser, objectValueForItem: item)
+            return winMainActor { browser.delegate?.browser(browser, objectValueForItem: item) }
                 ?? String(describing: item)
         }
     }
@@ -110,9 +114,9 @@ open class NSBrowser: NSControl {
                   let item = browser.item(atRow: row, inColumn: columnIndex) else {
                 return
             }
-            let isLeaf = browser.delegate?.browser(browser, isLeafItem: item) ?? true
+            let isLeaf = winMainActor { browser.delegate?.browser(browser, isLeafItem: item) } ?? true
             if browser.showsCellIcons {
-                let image = browser.delegate?.browser(browser, imageForItem: item)
+                let image = winMainActor { browser.delegate?.browser(browser, imageForItem: item) }
                 drawCellIcon(image: image, isLeaf: isLeaf, in: cellRect)
             }
             if !isLeaf {
@@ -189,7 +193,11 @@ open class NSBrowser: NSControl {
             titleLabel.isBordered = false
             titleLabel.alignment = .center
             titleLabel.font = NSFont.boldSystemFont(ofSize: 11)
-            titleLabel.backgroundColor = NSColor(white: 0.92, alpha: 1)
+            // The title strip follows the appearance so its text stays
+            // legible (light band on light, header tone on dark).
+            titleLabel.backgroundColor = NSApplication.shared.effectiveAppearance.winIsDark
+                ? NSColor(white: 0.24, alpha: 1)
+                : NSColor(white: 0.92, alpha: 1)
         }
     }
 
@@ -232,7 +240,7 @@ open class NSBrowser: NSControl {
         if let custom = customColumnTitles[column] {
             return custom
         }
-        if let delegateTitle = delegate?.browser(self, titleOfColumn: column) {
+        if let delegateTitle = winMainActor({ delegate?.browser(self, titleOfColumn: column) }) {
             return delegateTitle
         }
         guard column > 0, let item = selectedItem(inColumn: column - 1) else {
@@ -250,6 +258,23 @@ open class NSBrowser: NSControl {
 
     /// Number of visible browser columns.
     open private(set) var numberOfVisibleColumns: Int = 1
+
+    /// The index of the last loaded column, or `-1` before column zero loads.
+    open var lastColumn: Int {
+        columns.count - 1
+    }
+
+    /// Whether multiple rows may be selected in a column. Stored for AppKit
+    /// shape; the classic column tables select one row per column.
+    open var allowsMultipleSelection: Bool = false
+
+    /// Whether a horizontal scroller shows when columns overflow. Stored for
+    /// AppKit shape; the classic backend always allows horizontal scrolling.
+    open var hasHorizontalScroller: Bool = true
+
+    /// Whether the horizontal scroller hides when columns fit. Stored for
+    /// AppKit shape; see `hasHorizontalScroller`.
+    open var autohidesScroller: Bool = true
 
     /// Width assigned to each visible column.
     open var columnWidth: CGFloat = 160 {
@@ -274,7 +299,7 @@ open class NSBrowser: NSControl {
 
     /// The display string for an item (delegate value, else its description).
     private func displayString(for item: Any?) -> String {
-        if let value = delegate?.browser(self, objectValueForItem: item) {
+        if let value = winMainActor({ delegate?.browser(self, objectValueForItem: item) }) {
             return String(describing: value)
         }
         return item.map { String(describing: $0) } ?? ""
@@ -386,7 +411,7 @@ open class NSBrowser: NSControl {
             isUpdatingTableSelection = false
         }
         let item = columnItems[column][row]
-        if delegate?.browser(self, isLeafItem: item) == false {
+        if winMainActor({ delegate?.browser(self, isLeafItem: item) }) == false {
             reloadColumn(column + 1)
         } else {
             trimColumns(after: column)
@@ -431,13 +456,13 @@ open class NSBrowser: NSControl {
     }
 
     private func children(of item: Any?) -> [Any] {
-        let count = delegate?.browser(self, numberOfChildrenOfItem: item) ?? 0
+        let count = winMainActor { delegate?.browser(self, numberOfChildrenOfItem: item) } ?? 0
         guard count > 0 else {
             return []
         }
 
         return (0..<count).map { index in
-            delegate?.browser(self, child: index, ofItem: item) ?? ""
+            winMainActor { delegate?.browser(self, child: index, ofItem: item) } ?? ""
         }
     }
 

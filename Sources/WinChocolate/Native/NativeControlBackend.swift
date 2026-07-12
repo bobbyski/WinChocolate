@@ -12,6 +12,17 @@ public enum NativeScrollerPart: Sendable {
     case incrementLine
 }
 
+/// Backend-neutral scroller knob appearance, mapped from `NSScroller.KnobStyle`.
+///
+/// Windows renders the native (OS-themed) scrollbar, so this only selects the
+/// light/dark visual variant a backend can honor — `default` follows the
+/// window's appearance, `dark`/`light` force that theme on this one scroller.
+public enum NativeScrollerKnobStyle: Sendable, Equatable {
+    case `default`
+    case dark
+    case light
+}
+
 /// Native toolbar item descriptor used by backend toolbar renderers.
 public struct NativeToolbarItem: Equatable, Sendable {
     /// Stable item identifier.
@@ -294,6 +305,10 @@ extension NativeDrawingContext {
 }
 
 extension NativeControlBackend {
+    /// Default: a backend that does not surface double-clicks ignores the
+    /// registration (the drawn-cell table path dispatches its own).
+    public func registerTableDoubleClickAction(for handle: NativeHandle, action: @escaping () -> Void) {}
+
     /// Updates an image-view bitmap source with no tint.
     public func setImagePath(_ imagePath: String?, description: String, for handle: NativeHandle) {
         setImagePath(imagePath, description: description, tint: nil, for: handle)
@@ -302,6 +317,15 @@ extension NativeControlBackend {
     /// Replaces the clipboard with text and data representations, no file list.
     public func setClipboardContents(text: String?, dataRepresentations: [String: [UInt8]]) {
         setClipboardContents(text: text, dataRepresentations: dataRepresentations, filePaths: [])
+    }
+
+    /// Default: a backend that doesn't distinguish scroller appearance ignores
+    /// it (the native themed scrollbar is the presentation on that platform).
+    public func setScrollerAppearance(overlay: Bool, knobStyle: NativeScrollerKnobStyle, for handle: NativeHandle) {
+    }
+
+    /// Default: a backend without a windowing concept ignores full-screen.
+    public func setWindowFullScreen(_ fullScreen: Bool, for handle: NativeHandle) {
     }
 }
 
@@ -356,6 +380,10 @@ public protocol NativeControlBackend: AnyObject {
 
     /// Toggles a native window between zoomed (maximized) and normal.
     func toggleWindowZoom(_ handle: NativeHandle)
+
+    /// Enters or exits full-screen (borderless, display-covering) presentation,
+    /// restoring the prior frame and chrome on exit.
+    func setWindowFullScreen(_ fullScreen: Bool, for handle: NativeHandle)
 
     /// Moves a native window to the bottom of the z-order without activating.
     func orderWindowBack(_ handle: NativeHandle)
@@ -703,6 +731,11 @@ public protocol NativeControlBackend: AnyObject {
     /// Reports which part of a scroller the user last actuated.
     func scrollerPart(for handle: NativeHandle) -> NativeScrollerPart
 
+    /// Applies the scroller's appearance: `overlay` requests the thin
+    /// auto-hiding style (no standalone Win32 equivalent — the native themed
+    /// bar renders regardless), and `knobStyle` picks its light/dark variant.
+    func setScrollerAppearance(overlay: Bool, knobStyle: NativeScrollerKnobStyle, for handle: NativeHandle)
+
     /// Sets which side of the track a slider's tick marks are drawn on.
     func setSliderTickMarkPosition(aboveOrLeading: Bool, for handle: NativeHandle)
 
@@ -778,6 +811,10 @@ public protocol NativeControlBackend: AnyObject {
     /// Registers the action invoked when an in-place table-cell edit commits,
     /// carrying the row, column, and new text.
     func registerTableEditAction(for handle: NativeHandle, action: @escaping (Int, Int, String) -> Void)
+
+    /// Registers the action invoked when a table row is double-clicked; the
+    /// clicked row is available through `tableClickedRow(for:)`.
+    func registerTableDoubleClickAction(for handle: NativeHandle, action: @escaping () -> Void)
 
     /// Scrolls a native table row into view when possible.
     func scrollTableRowToVisible(_ row: Int, for handle: NativeHandle)
@@ -906,4 +943,11 @@ public protocol NativeControlBackend: AnyObject {
 
     /// Measures the rendered size of a single-line text run.
     func measureText(_ text: String, fontName: String, fontSize: CGFloat, weight: Int, italic: Bool) -> NSSize
+
+    /// Measures the rendered size of a text run wrapped at `maxWidth` (word
+    /// wrap): the returned height covers every line the text breaks into, and
+    /// the width is the widest line (≤ `maxWidth`). A non-positive `maxWidth`
+    /// measures as a single line. Lets layout know a multiline label's height
+    /// before any control exists.
+    func measureText(_ text: String, fontName: String, fontSize: CGFloat, weight: Int, italic: Bool, wrappingAt maxWidth: CGFloat) -> NSSize
 }

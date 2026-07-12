@@ -17,6 +17,18 @@ public protocol NSWindowDelegate: AnyObject {
 
     /// Tells the delegate the window was restored from the minimized state.
     func windowDidDeminiaturize(_ notification: NSNotification)
+
+    /// Tells the delegate the window is about to enter full screen.
+    func windowWillEnterFullScreen(_ notification: NSNotification)
+
+    /// Tells the delegate the window has entered full screen.
+    func windowDidEnterFullScreen(_ notification: NSNotification)
+
+    /// Tells the delegate the window is about to exit full screen.
+    func windowWillExitFullScreen(_ notification: NSNotification)
+
+    /// Tells the delegate the window has exited full screen.
+    func windowDidExitFullScreen(_ notification: NSNotification)
 }
 
 extension NSWindowDelegate {
@@ -39,6 +51,18 @@ extension NSWindowDelegate {
 
     /// Default no-op so delegates only implement the callbacks they need.
     public func windowDidDeminiaturize(_ notification: NSNotification) {}
+
+    /// Default no-op so delegates only implement the callbacks they need.
+    public func windowWillEnterFullScreen(_ notification: NSNotification) {}
+
+    /// Default no-op so delegates only implement the callbacks they need.
+    public func windowDidEnterFullScreen(_ notification: NSNotification) {}
+
+    /// Default no-op so delegates only implement the callbacks they need.
+    public func windowWillExitFullScreen(_ notification: NSNotification) {}
+
+    /// Default no-op so delegates only implement the callbacks they need.
+    public func windowDidExitFullScreen(_ notification: NSNotification) {}
 }
 
 /// A top-level application window.
@@ -80,6 +104,32 @@ open class NSWindow: NSResponder {
 
         /// A panel that does not become key/activate when shown.
         public static let nonactivatingPanel = StyleMask(rawValue: 1 << 6)
+
+        /// A heads-up-display style panel (dark translucent chrome on
+        /// AppKit; the classic backend renders a standard utility panel).
+        public static let hudWindow = StyleMask(rawValue: 1 << 7)
+
+        /// Present while the window occupies the full screen. AppKit adds this
+        /// to `styleMask` for the duration of full-screen mode; WinChocolate
+        /// does the same (see `toggleFullScreen`).
+        public static let fullScreen = StyleMask(rawValue: 1 << 7)
+    }
+
+    /// How a window participates in spaces and full screen, matching AppKit's
+    /// `NSWindow.CollectionBehavior`. WinChocolate stores the value for API
+    /// fidelity; only the full-screen flags affect behavior on Windows.
+    public struct CollectionBehavior: OptionSet, Sendable {
+        public let rawValue: Int
+        public init(rawValue: Int) { self.rawValue = rawValue }
+
+        /// The window can enter full screen as a primary full-screen window.
+        public static let fullScreenPrimary = CollectionBehavior(rawValue: 1 << 7)
+
+        /// The window can join another window's full-screen space.
+        public static let fullScreenAuxiliary = CollectionBehavior(rawValue: 1 << 8)
+
+        /// The window cannot be made full screen.
+        public static let fullScreenNone = CollectionBehavior(rawValue: 1 << 9)
     }
 
     /// Whether the window shows its title text.
@@ -118,7 +168,15 @@ open class NSWindow: NSResponder {
 
         /// The level for modal panels.
         public static let modalPanel = Level(rawValue: 8)
+
+        /// The level for status-bar items, above floating panels.
+        public static let statusBar = Level(rawValue: 25)
     }
+
+    /// Whether closing releases the window (AppKit memory management).
+    /// Stored for source compatibility — Swift/ARC owns WinChocolate
+    /// windows, so the flag changes nothing here.
+    open var isReleasedWhenClosed: Bool = true
 
     /// Window backing store strategy.
     public enum BackingStoreType: Sendable {
@@ -170,8 +228,28 @@ open class NSWindow: NSResponder {
 
     private var standardButtons: [ButtonType: NSButton] = [:]
 
-    /// The window style mask.
-    public let styleMask: StyleMask
+    /// The style mask the window was created with (without the transient
+    /// full-screen flag).
+    private let baseStyleMask: StyleMask
+
+    /// The window style mask. Reports `.fullScreen` while in full-screen mode,
+    /// matching AppKit (the base mask is preserved for restore).
+    open var styleMask: StyleMask {
+        winIsFullScreen ? baseStyleMask.union(.fullScreen) : baseStyleMask
+    }
+
+    /// Whether the window currently occupies the full screen.
+    open private(set) var isFullScreen: Bool {
+        get { winIsFullScreen }
+        set { winIsFullScreen = newValue }
+    }
+
+    private var winIsFullScreen = false
+
+    /// How the window participates in full screen. Stored for API fidelity; on
+    /// Windows only the presence of `.fullScreenPrimary`/`.fullScreenAuxiliary`
+    /// (i.e. not `.fullScreenNone`) gates whether `toggleFullScreen` acts.
+    open var collectionBehavior: CollectionBehavior = []
 
     /// The window's z-ordering level.
     ///
@@ -282,7 +360,18 @@ open class NSWindow: NSResponder {
     public private(set) var nativeHandle: NativeHandle?
 
     /// The responder currently receiving keyboard focus in this window.
-    public private(set) weak var firstResponder: NSResponder?
+    public private(set) weak var firstResponder: NSResponder? {
+        didSet {
+            if firstResponder !== oldValue {
+                onFirstResponderChange?(self)
+            }
+        }
+    }
+
+    /// Swift-native callback invoked after the first responder changes —
+    /// the observation surface AppKit consumers get from KVO, which has no
+    /// ObjC-runtime equivalent here.
+    open var onFirstResponderChange: ((NSWindow) -> Void)?
 
     /// The window delegate, consulted for close decisions and lifecycle.
     open weak var delegate: NSWindowDelegate?
@@ -351,7 +440,7 @@ open class NSWindow: NSResponder {
         defer flag: Bool
     ) {
         self.frame = contentRect
-        self.styleMask = style
+        self.baseStyleMask = style
         self.backingType = backingStoreType
         self.isDeferred = flag
         self.nativeBackend = NSApplication.shared.nativeBackend
@@ -367,7 +456,7 @@ open class NSWindow: NSResponder {
         nativeBackend: NativeControlBackend
     ) {
         self.frame = contentRect
-        self.styleMask = style
+        self.baseStyleMask = style
         self.backingType = backingStoreType
         self.isDeferred = flag
         self.nativeBackend = nativeBackend
@@ -687,6 +776,9 @@ open class NSWindow: NSResponder {
     private func nativeWindowDidResize(to size: NSSize) {
         frame = NSRect(origin: frame.origin, size: size)
         layoutToolbarAndContent()
+        // Run the layout pass synchronously so live resize tracks the new
+        // size instead of waiting for the next pump tick.
+        contentView?.layoutSubtreeIfNeeded()
         delegate?.windowDidResize(NSNotification(name: "NSWindowDidResizeNotification", object: self))
     }
 
@@ -755,6 +847,42 @@ open class NSWindow: NSResponder {
     open func zoom(_ sender: Any?) {
         let handle = realizeNativePeer()
         nativeBackend.toggleWindowZoom(handle)
+    }
+
+    /// Toggles full-screen mode.
+    ///
+    /// AppKit slides the title bar away and merges the toolbar into it; Windows
+    /// has no equivalent title-bar merge, so WinChocolate presents the honest
+    /// Windows full screen — a borderless window covering the display — and the
+    /// toolbar stays put as the window's top strip (still fully functional).
+    /// A window whose `collectionBehavior` is `.fullScreenNone` won't toggle.
+    open func toggleFullScreen(_ sender: Any?) {
+        guard !collectionBehavior.contains(.fullScreenNone) else {
+            return
+        }
+
+        let handle = realizeNativePeer()
+        let entering = !winIsFullScreen
+        let willName = entering ? "NSWindowWillEnterFullScreenNotification" : "NSWindowWillExitFullScreenNotification"
+        let didName = entering ? "NSWindowDidEnterFullScreenNotification" : "NSWindowDidExitFullScreenNotification"
+
+        if entering {
+            delegate?.windowWillEnterFullScreen(NSNotification(name: willName, object: self))
+        } else {
+            delegate?.windowWillExitFullScreen(NSNotification(name: willName, object: self))
+        }
+
+        winIsFullScreen = entering
+        nativeBackend.setWindowFullScreen(entering, for: handle)
+        // The toolbar/content re-layout for the new frame (the toolbar remains
+        // the top strip — no title-bar merge on Windows).
+        layoutToolbarAndContent()
+
+        if entering {
+            delegate?.windowDidEnterFullScreen(NSNotification(name: didName, object: self))
+        } else {
+            delegate?.windowDidExitFullScreen(NSNotification(name: didName, object: self))
+        }
     }
 
     /// Moves the window to the back of the z-order without activating it.

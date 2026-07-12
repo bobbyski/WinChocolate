@@ -36,6 +36,23 @@ public struct NSColor: Equatable, Sendable {
         NSApplication.shared.effectiveAppearance.winIsDark ? dark : light
     }
 
+    /// Returns a color resolving to one value in light mode and another in
+    /// dark, per the application's effective appearance at call time.
+    ///
+    /// AppKit's closure-based `NSColor(name:dynamicProvider:)` re-resolves
+    /// per draw; WinChocolate colors are values, so consumers re-fetch after
+    /// an appearance change (the same process-wide boundary as the named
+    /// system colors here).
+    public static func dynamic(light: NSColor, dark: NSColor) -> NSColor {
+        winDynamic(light: light, dark: dark)
+    }
+
+    /// The neutral control face color (button/bezel body fill).
+    public static var controlColor: NSColor {
+        winDynamic(light: NSColor(white: 1, alpha: 1),
+                   dark: NSColor(white: 0.25, alpha: 1))
+    }
+
     /// Standard text color.
     public static var textColor: NSColor {
         winDynamic(light: NSColor(calibratedRed: 0, green: 0, blue: 0, alpha: 1),

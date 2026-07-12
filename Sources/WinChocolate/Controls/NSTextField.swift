@@ -11,6 +11,10 @@ public enum NSTextAlignment: Sendable {
 
     /// Natural alignment for the writing direction (left here).
     case natural
+
+    /// Fully-justified text. Native edit controls have no justified mode,
+    /// so rendering falls back to the natural alignment.
+    case justified
 }
 
 /// The methods a text field delegate uses to observe editing.
@@ -109,6 +113,10 @@ open class NSTextField: NSControl {
                 return
             }
 
+            // The text drives the field's intrinsic size (9.2), so a change
+            // schedules a layout pass for any constraint layout hosting it.
+            invalidateIntrinsicContentSize()
+
             guard let nativeHandle else {
                 return
             }
@@ -206,16 +214,18 @@ open class NSTextField: NSControl {
         }
     }
 
-    /// The text field font, when explicitly set.
-    open var font: NSFont? {
-        didSet {
-            guard let nativeHandle else {
-                return
-            }
-
-            realizedBackend?.setFont(font, for: nativeHandle)
+    /// The field's content as an attributed string.
+    ///
+    /// The classic peer renders plain text; the attributed form is stored so
+    /// runs survive round-trips while the plain projection drives display.
+    open var attributedStringValue: NSAttributedString {
+        get { storedAttributedStringValue ?? NSAttributedString(string: stringValue) }
+        set {
+            storedAttributedStringValue = newValue
+            stringValue = newValue.string
         }
     }
+    private var storedAttributedStringValue: NSAttributedString?
 
     /// Swift-native action invoked when user editing changes the string value.
     open var onTextChanged: ((NSTextField) -> Void)?
@@ -226,10 +236,41 @@ open class NSTextField: NSControl {
         super.init(frame: frameRect)
     }
 
+    /// The field's natural size for Auto Layout (9.2): its text measured with
+    /// the current font, plus padding for the bezel/border. A wrapping
+    /// multi-line field reports no intrinsic width so constraints can widen it.
+    open override var intrinsicContentSize: NSSize {
+        let measured = (stringValue.isEmpty ? " " : stringValue)
+            .size(withAttributes: [.font: font ?? NSFont.systemFont(ofSize: 12)])
+        let horizontalPadding: CGFloat = isBezeled ? 8 : (isBordered ? 6 : 4)
+        let verticalPadding: CGFloat = isBezeled ? 6 : (isBordered ? 4 : 2)
+        let width = isMultiline ? NSView.noIntrinsicMetric : measured.width + horizontalPadding
+        return NSSize(width: width, height: measured.height + verticalPadding)
+    }
+
     /// Creates a text field with text and a frame.
     public init(string stringValue: String, frame frameRect: NSRect) {
         self.stringValue = stringValue
         super.init(frame: frameRect)
+    }
+
+    /// Creates a text field with an initial string, matching AppKit's shape.
+    public convenience init(string stringValue: String) {
+        self.init(string: stringValue, frame: .zero)
+    }
+
+    /// Creates a non-editable label, matching AppKit's convenience shape.
+    public convenience init(labelWithString stringValue: String) {
+        self.init(string: stringValue, frame: .zero)
+        isEditable = false
+        isSelectable = false
+        isBordered = false
+        drawsBackground = false
+    }
+
+    /// Creates a wrapping non-editable label, matching AppKit's shape.
+    public convenience init(wrappingLabelWithString stringValue: String) {
+        self.init(labelWithString: stringValue)
     }
 
     /// Creates a non-editable label-style text field.

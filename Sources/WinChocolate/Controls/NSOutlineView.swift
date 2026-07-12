@@ -1,4 +1,5 @@
 /// Data source for an AppKit-shaped outline view.
+@MainActor
 public protocol NSOutlineViewDataSource: AnyObject {
     /// Returns the number of children below an item. `nil` means the root.
     func outlineView(_ outlineView: NSOutlineView, numberOfChildrenOfItem item: Any?) -> Int
@@ -22,9 +23,17 @@ public extension NSOutlineViewDataSource {
 
 /// Delegate that can vend per-column cell views for an outline's items,
 /// matching AppKit's `NSOutlineViewDelegate` view-based hook.
+@MainActor
 public protocol NSOutlineViewDelegate: AnyObject {
     /// Returns a view to host for a column and item, or `nil` for drawn text.
     func outlineView(_ outlineView: NSOutlineView, viewFor tableColumn: NSTableColumn?, item: Any) -> NSView?
+
+    /// Returns a custom row height for an item, or a non-positive value for
+    /// the outline's default height.
+    func outlineView(_ outlineView: NSOutlineView, heightOfRowByItem item: Any) -> CGFloat
+
+    /// Tells the delegate the outline's selection changed.
+    func outlineViewSelectionDidChange(_ notification: NSNotification)
 }
 
 public extension NSOutlineViewDelegate {
@@ -32,6 +41,14 @@ public extension NSOutlineViewDelegate {
     func outlineView(_ outlineView: NSOutlineView, viewFor tableColumn: NSTableColumn?, item: Any) -> NSView? {
         nil
     }
+
+    /// Default: the outline's standard row height.
+    func outlineView(_ outlineView: NSOutlineView, heightOfRowByItem item: Any) -> CGFloat {
+        -1
+    }
+
+    /// Default no-op so delegates only implement the callbacks they need.
+    func outlineViewSelectionDidChange(_ notification: NSNotification) {}
 }
 
 /// A tree-shaped table view.
@@ -51,21 +68,46 @@ open class NSOutlineView: NSTableView {
     /// column, ahead of the cell text.
     private let disclosureWidth: CGFloat = 14
 
+    // The adapter's members are nonisolated: the protocols are @MainActor
+    // (inferring @MainActor on this class), but everything it touches on
+    // the owner is nonisolated control state, and every call happens on the
+    // Win32 UI thread.
     private final class OutlineTableAdapter: NSTableViewDataSource, NSTableViewDelegate {
-        weak var owner: NSOutlineView?
+        nonisolated(unsafe) weak var owner: NSOutlineView?
 
-        func numberOfRows(in tableView: NSTableView) -> Int {
+        nonisolated init() {}
+
+        nonisolated func numberOfRows(in tableView: NSTableView) -> Int {
             owner?.visibleRows.count ?? 0
         }
 
-        func tableView(_ tableView: NSTableView, objectValueFor tableColumn: NSTableColumn?, row: Int) -> Any? {
+        nonisolated func tableView(_ tableView: NSTableView, objectValueFor tableColumn: NSTableColumn?, row: Int) -> Any? {
             owner?.objectValue(for: tableColumn, row: row)
         }
 
         /// Bridges the drawn table's per-cell view request to the outline
         /// delegate's item-based hook.
-        func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
+        nonisolated func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
             owner?.hostedView(for: tableColumn, row: row)
+        }
+
+        /// Bridges the drawn table's row-height request to the outline
+        /// delegate's item-based hook.
+        nonisolated func tableView(_ tableView: NSTableView, heightOfRow row: Int) -> CGFloat {
+            owner?.hostedRowHeight(row: row) ?? -1
+        }
+
+        /// Forwards table selection changes as outline selection changes.
+        nonisolated func tableViewSelectionDidChange(_ notification: NSNotification) {
+            guard let owner else {
+                return
+            }
+
+            winMainActor {
+                owner.outlineDelegate?.outlineViewSelectionDidChange(
+                    NSNotification(name: "NSOutlineViewSelectionDidChangeNotification", object: owner)
+                )
+            }
         }
     }
 
@@ -93,7 +135,40 @@ open class NSOutlineView: NSTableView {
         guard let outlineDelegate, visibleRows.indices.contains(row) else {
             return nil
         }
-        return outlineDelegate.outlineView(self, viewFor: tableColumn, item: visibleRows[row].item)
+        let item = visibleRows[row].item
+        return winMainActor { outlineDelegate.outlineView(self, viewFor: tableColumn, item: item) }
+    }
+
+    /// Bridges a drawn-row height request to the outline delegate's
+    /// item-based hook. Non-positive means the default height.
+    func hostedRowHeight(row: Int) -> CGFloat {
+        guard let outlineDelegate, visibleRows.indices.contains(row) else {
+            return -1
+        }
+        let item = visibleRows[row].item
+        return winMainActor { outlineDelegate.outlineView(self, heightOfRowByItem: item) }
+    }
+
+    /// The column showing the disclosure hierarchy. Stored for AppKit shape;
+    /// the drawn outline always disclosure-decorates its first column.
+    open var outlineTableColumn: NSTableColumn?
+
+    /// Expands an item, optionally expanding its whole subtree.
+    open func expandItem(_ item: Any?, expandChildren: Bool) {
+        expandItem(item)
+        guard expandChildren, let item, let outlineDataSource else {
+            return
+        }
+
+        let count = winMainActor { outlineDataSource.outlineView(self, numberOfChildrenOfItem: item) }
+        for index in 0..<count {
+            let child = winMainActor { outlineDataSource.outlineView(self, child: index, ofItem: item) }
+            if winMainActor({ outlineDataSource.outlineView(self, isItemExpandable: child) }) {
+                expandItem(child, expandChildren: true)
+            } else {
+                expandItem(child)
+            }
+        }
     }
 
     /// Width used for each indentation level in the first column.
@@ -117,9 +192,29 @@ open class NSOutlineView: NSTableView {
 
     /// Reloads the visible outline rows.
     open override func reloadData() {
+        // Selection in an outline is by item, not by row index: after an
+        // expand/collapse the rows shift, so capture the selected items' keys
+        // against the current rows, then restore the selection to wherever those
+        // items now sit. Items whose parent collapsed out of view are no longer
+        // present and are dropped, so the selection never lands on a different
+        // item than the one the user picked.
+        let selectedKeys = Set(selectedRowIndexes.compactMap { row -> String? in
+            visibleRows.indices.contains(row) ? key(for: visibleRows[row].item) : nil
+        })
+
         rebuildVisibleRows()
         dataSource = outlineAdapter
         super.reloadData()
+
+        guard !selectedKeys.isEmpty else {
+            return
+        }
+        let restored = Set(visibleRows.indices.filter { selectedKeys.contains(key(for: visibleRows[$0].item)) })
+        if restored.isEmpty {
+            deselectAll(nil)
+        } else {
+            selectRowIndexes(restored, byExtendingSelection: false)
+        }
     }
 
     /// Expands an item.
@@ -171,7 +266,7 @@ open class NSOutlineView: NSTableView {
             return false
         }
 
-        return outlineDataSource?.outlineView(self, isItemExpandable: item) ?? false
+        return winMainActor { outlineDataSource?.outlineView(self, isItemExpandable: item) ?? false }
     }
 
     /// Returns the visible item at a row.
@@ -299,15 +394,15 @@ open class NSOutlineView: NSTableView {
             return
         }
 
-        let count = outlineDataSource.outlineView(self, numberOfChildrenOfItem: item)
+        let count = winMainActor { outlineDataSource.outlineView(self, numberOfChildrenOfItem: item) }
         guard count > 0 else {
             return
         }
 
         for index in 0..<count {
-            let child = outlineDataSource.outlineView(self, child: index, ofItem: item)
+            let child = winMainActor { outlineDataSource.outlineView(self, child: index, ofItem: item) }
             visibleRows.append(OutlineRow(item: child, level: level, parent: item))
-            if outlineDataSource.outlineView(self, isItemExpandable: child),
+            if winMainActor({ outlineDataSource.outlineView(self, isItemExpandable: child) }),
                expandedItemKeys.contains(key(for: child)) {
                 appendChildren(of: child, level: level + 1)
             }
@@ -320,7 +415,7 @@ open class NSOutlineView: NSTableView {
         }
 
         let outlineRow = visibleRows[row]
-        let value = outlineDataSource?.outlineView(self, objectValueFor: tableColumn, byItem: outlineRow.item)
+        let value = winMainActor { outlineDataSource?.outlineView(self, objectValueFor: tableColumn, byItem: outlineRow.item) }
             ?? String(describing: outlineRow.item)
 
         // Indentation and the disclosure triangle are drawn (see the hooks
@@ -334,7 +429,7 @@ open class NSOutlineView: NSTableView {
 
         let indent = String(repeating: "  ", count: outlineRow.level)
         let marker: String
-        if outlineDataSource?.outlineView(self, isItemExpandable: outlineRow.item) == true {
+        if winMainActor({ outlineDataSource?.outlineView(self, isItemExpandable: outlineRow.item) }) == true {
             marker = isItemExpanded(outlineRow.item) ? "- " : "+ "
         } else {
             marker = "  "

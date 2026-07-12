@@ -84,6 +84,34 @@ public struct NSFont: Equatable, Sendable {
         NSFont(name: "Segoe UI", size: fontSize, weight: weight)
     }
 
+    /// Dynamic-type text styles, matching AppKit's names.
+    ///
+    /// Windows has no system dynamic-type ramp, so each style maps to the
+    /// fixed point size AppKit uses at the default content size on macOS.
+    public enum TextStyle: Sendable {
+        case largeTitle, title1, title2, title3
+        case headline, subheadline
+        case body, callout, footnote
+        case caption1, caption2
+    }
+
+    /// Returns the system font for a text style, matching AppKit's shape.
+    public static func preferredFont(forTextStyle style: TextStyle) -> NSFont {
+        switch style {
+        case .largeTitle: systemFont(ofSize: 26)
+        case .title1: systemFont(ofSize: 22)
+        case .title2: systemFont(ofSize: 17)
+        case .title3: systemFont(ofSize: 15)
+        case .headline: boldSystemFont(ofSize: 13)
+        case .subheadline: systemFont(ofSize: 11)
+        case .body: systemFont(ofSize: 13)
+        case .callout: systemFont(ofSize: 12)
+        case .footnote: systemFont(ofSize: 10)
+        case .caption1: systemFont(ofSize: 10)
+        case .caption2: systemFont(ofSize: 10)
+        }
+    }
+
     /// Whether the font renders bold on a boolean bold/regular peer.
     public var isBold: Bool {
         weight.isBold

@@ -40,17 +40,37 @@ open class NSSound: NSObject {
         super.init()
     }
 
+    /// Whether the sound was started and not stopped.
+    ///
+    /// `PlaySoundW` gives no completion signal, so this reflects the last
+    /// play/stop request rather than live playback state — a sound that
+    /// finished on its own still reads as playing until `stop()`.
+    open private(set) var isPlaying = false
+
+    /// The playback volume, 0–1. Stored for AppKit shape; `PlaySoundW`
+    /// has no per-sound volume control, so the value does not attenuate
+    /// playback (a waveform backend would honor it).
+    open var volume: Float = 1
+
     /// Starts playing the sound asynchronously; returns whether it started.
     @discardableResult
     open func play() -> Bool {
-        winPlayNSSound(filePath: filePath, alias: filePath == nil ? name : nil)
+        let started = winPlayNSSound(filePath: filePath, alias: filePath == nil ? name : nil)
+        isPlaying = started
+        return started
     }
 
     /// Stops asynchronous playback.
     @discardableResult
     open func stop() -> Bool {
         winStopNSSound()
+        isPlaying = false
         return true
+    }
+
+    /// Plays the system alert sound.
+    open class func beep() {
+        winMessageBeep()
     }
 }
 
@@ -82,7 +102,15 @@ private func withWideSound<Result>(_ string: String, _ body: (UnsafePointer<UInt
     units.append(0)
     return units.withUnsafeBufferPointer { body($0.baseAddress) }
 }
+@_silgen_name("MessageBeep")
+private func winMessageBeepW(_ uType: UInt32) -> Int32
+
+private func winMessageBeep() {
+    // MB_OK: the default system beep.
+    _ = winMessageBeepW(0)
+}
 #else
 private func winPlayNSSound(filePath: String?, alias: String?) -> Bool { false }
 private func winStopNSSound() {}
+private func winMessageBeep() {}
 #endif

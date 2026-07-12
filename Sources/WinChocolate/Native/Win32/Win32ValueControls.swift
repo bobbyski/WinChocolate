@@ -34,6 +34,9 @@ extension Win32NativeControlBackend {
         )
         setProgressIndicatorRange(minValue: minValue, maxValue: maxValue, for: handle)
         setProgressIndicatorValue(value, for: handle)
+        if let hwnd = hwnd(from: handle) {
+            applyDarkProgressColorsIfNeeded(hwnd)
+        }
         return handle
     }
 
@@ -105,9 +108,17 @@ extension Win32NativeControlBackend {
             }
         } else {
             subclassControlForTabKey(handle)
-            // The drop-down calendar honors the same explicit palette.
             if let hwnd = hwnd(from: handle) {
+                // The drop-down calendar honors the explicit palette (applied
+                // fresh at DTN_DROPDOWN too). The closed field has no dark
+                // theme part and no color API — `DarkMode_CFD` only darkens
+                // the hot/open states, so the resting field is owner-drawn
+                // dark by the framework (plan 8.5, WM_PAINT in the subclass).
                 applyDarkDropDownCalendarColorsIfNeeded(hwnd)
+                if NSApplication.shared.effectiveAppearance.winIsDark {
+                    darkDatePickerFieldHandles.insert(handle.rawValue)
+                    _ = winInvalidateRect(hwnd, nil, 1)
+                }
             }
         }
         setDatePickerDate(date, minDate: minDate, maxDate: maxDate, for: handle)
@@ -358,6 +369,28 @@ extension Win32NativeControlBackend {
     /// Reports the scroller part actuated by the last scroll message.
     public func scrollerPart(for handle: NativeHandle) -> NativeScrollerPart {
         scrollerParts[handle.rawValue] ?? .none
+    }
+
+    /// Applies the scroller's appearance. Windows draws the native themed
+    /// scrollbar (there is no standalone-control overlay style), so `overlay`
+    /// has no visual effect here; `knobStyle` selects this scroller's light or
+    /// dark visual-styles theme (`.default` follows the window's appearance).
+    public func setScrollerAppearance(overlay: Bool, knobStyle: NativeScrollerKnobStyle, for handle: NativeHandle) {
+        guard let hwnd = hwnd(from: handle) else {
+            return
+        }
+
+        let dark: Bool
+        switch knobStyle {
+        case .dark:
+            dark = true
+        case .light:
+            dark = false
+        case .default:
+            dark = NSApplication.shared.effectiveAppearance.winIsDark
+        }
+        _ = withWideString(dark ? "DarkMode_Explorer" : "Explorer") { winSetWindowTheme(hwnd, $0, nil) }
+        _ = winInvalidateRect(hwnd, nil, 1)
     }
 
     /// Maps a Win32 scroll notification code to a backend-neutral part.

@@ -1,3 +1,7 @@
+/// The methods a token-field delegate implements, matching AppKit's shape:
+/// token fields report text changes through the text-field delegate surface.
+public protocol NSTokenFieldDelegate: NSTextFieldDelegate {}
+
 /// A tokenizing text field.
 ///
 /// This first slice keeps AppKit's `NSTokenField` name and token/object-value
@@ -10,6 +14,12 @@ open class NSTokenField: NSTextField {
 
         /// Plain text token appearance.
         case plain
+
+        /// Square-cornered token appearance.
+        case squared
+
+        /// Square-cornered tokens without a filled background.
+        case plainSquared
     }
 
     /// Callback for completion candidates.
@@ -53,6 +63,11 @@ open class NSTokenField: NSTextField {
         isSelectable = true
     }
 
+    /// Creates a token field with a zero frame, matching AppKit's shape.
+    public convenience init() {
+        self.init(frame: .zero)
+    }
+
     /// Creates a token field with an initial token list.
     public init(tokens: [String], frame frameRect: NSRect) {
         super.init(string: tokens.joined(separator: ", "), frame: frameRect)
@@ -81,6 +96,23 @@ open class NSTokenField: NSTextField {
         return super.createNativePeer(in: backend, parent: parent)
     }
 
+    /// Appearance-aware chip fill/border/text colors. The capsule tints the
+    /// user's Windows accent (the Fluent look, plan 8.3): a pale accent wash with
+    /// dark text under light, a deep accent fill with light text under dark, so
+    /// the chips read as tokens in either theme instead of a fixed light island.
+    /// Pure and `isDark`-parameterized for testing.
+    public static func winChipColors(isDark: Bool) -> (fill: NSColor, border: NSColor, text: NSColor) {
+        let accent = NSColor.controlAccentColor
+        if isDark {
+            return (fill: accent.blended(withFraction: 0.55, of: .black) ?? accent,
+                    border: accent,
+                    text: .white)
+        }
+        return (fill: accent.blended(withFraction: 0.80, of: .white) ?? accent,
+                border: accent.blended(withFraction: 0.35, of: .white) ?? accent,
+                text: .black)
+    }
+
     /// Draws the tokens as rounded chips.
     open override func draw(_ dirtyRect: NSRect) {
         guard usesChipRendering else {
@@ -88,10 +120,11 @@ open class NSTokenField: NSTextField {
             return
         }
 
-        let chipColor = NSColor(calibratedRed: 0.85, green: 0.91, blue: 1.0, alpha: 1)
-        let borderColor = NSColor(calibratedRed: 0.40, green: 0.58, blue: 0.85, alpha: 1)
+        let colors = NSTokenField.winChipColors(isDark: effectiveAppearance.winIsDark)
+        let chipColor = colors.fill
+        let borderColor = colors.border
         let attributes: [NSAttributedString.Key: Any] = [
-            .foregroundColor: NSColor.black,
+            .foregroundColor: colors.text,
             .font: NSFont.systemFont(ofSize: 12)
         ]
         let horizontalPadding: CGFloat = 10

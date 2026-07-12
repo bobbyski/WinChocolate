@@ -25,15 +25,10 @@ extension NSView {
         rect.contains(point)
     }
 
-    /// Lays out this view's subtree if it has been flagged as needing layout.
-    public func layoutSubtreeIfNeeded() {
-        if needsLayout {
-            layout()
-            needsLayout = false
-        }
+    /// Flags the view's intrinsic size as stale, scheduling a layout pass so the
+    /// solver re-reads `intrinsicContentSize` (9.2). A control whose content
+    /// (e.g. text) changed its natural size calls this to re-lay-out.
+    public func invalidateIntrinsicContentSize() {
+        needsLayout = true
     }
-
-    /// Flags the view's intrinsic size as stale. A no-op until a constraint
-    /// solver exists, but keeps call sites source-compatible.
-    public func invalidateIntrinsicContentSize() {}
 }

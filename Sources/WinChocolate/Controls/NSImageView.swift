@@ -100,19 +100,25 @@ open class NSImage: NSObject {
         super.init()
     }
 
+    /// An explicit tint applied when this image draws, taking precedence
+    /// over template tinting. The AppKit-shaped way to bake a tinted copy
+    /// (`withTintColor`-style) without a bitmap-compositing pipeline.
+    open var winTint: NSColor?
+
     /// Draws the image scaled into a rectangle of the current graphics context.
     ///
     /// Template images (`isTemplate`) render as the current fill color shaped
     /// by the image's alpha, matching AppKit's template drawing; set a color
     /// (`NSColor.set()`) before drawing to pick the tint (black by default).
-    /// Only file-backed images draw; named and data-backed images are a no-op
-    /// until in-memory bitmap decoding lands.
+    /// An explicit `winTint` wins over both. Only file-backed images draw;
+    /// named and data-backed images are a no-op until in-memory bitmap
+    /// decoding lands.
     open func draw(in rect: NSRect) {
         guard let filePath, let context = NSGraphicsContext.current else {
             return
         }
 
-        context.nativeContext.drawImage(atPath: filePath, in: rect, tint: isTemplate ? context.fillColor : nil)
+        context.nativeContext.drawImage(atPath: filePath, in: rect, tint: winTint ?? (isTemplate ? context.fillColor : nil))
     }
 
     /// Draws the image into a rectangle, ignoring the source crop, compositing
@@ -215,6 +221,15 @@ open class NSImageView: NSControl {
 
         /// Draw a button-style frame.
         case button
+    }
+
+    /// The control's natural size (9.2): the displayed image's size, or no
+    /// intrinsic size when there is no image (constraints/frame decide).
+    open override var intrinsicContentSize: NSSize {
+        if let image {
+            return image.size
+        }
+        return NSSize(width: NSView.noIntrinsicMetric, height: NSView.noIntrinsicMetric)
     }
 
     /// The displayed image.

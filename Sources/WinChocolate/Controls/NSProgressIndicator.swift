@@ -3,6 +3,15 @@
 /// This first slice supports the determinate bar style used by many AppKit
 /// apps. The native Windows backend maps it to a progress bar control.
 open class NSProgressIndicator: NSControl {
+    /// The control's natural size (9.2): a fixed square for the spinning style,
+    /// and a standard-height bar with flexible width otherwise.
+    open override var intrinsicContentSize: NSSize {
+        if style == .spinning {
+            return NSSize(width: 32, height: 32)
+        }
+        return NSSize(width: NSView.noIntrinsicMetric, height: 20)
+    }
+
     /// Progress indicator visual style.
     public enum Style: Sendable {
         /// Horizontal bar progress indicator.
@@ -166,6 +175,19 @@ open class NSProgressIndicator: NSControl {
         (-0.8660254, 0.5), (-1, 0), (-0.8660254, -0.5), (-0.5, -0.8660254),
     ]
 
+    /// The gray shade (`0` black … `1` white) of the spinner dot `age` steps
+    /// behind the leading dot. On light the leading dot is dark (0.15) fading to
+    /// light (0.87); on dark that inverts — bright (0.95) fading to a near-dark
+    /// (0.23) — so the sweep is visible against either background. Stopped-but-
+    /// shown dots sit at a mid gray legible on both. Pure/testable.
+    public static func winSpinnerShade(age: Int, animating: Bool, isDark: Bool) -> CGFloat {
+        guard animating else {
+            return isDark ? 0.62 : 0.6
+        }
+        let t = CGFloat(age) / 11
+        return isDark ? (0.95 - t * 0.72) : (0.15 + t * 0.72)
+    }
+
     /// Draws the spinner: twelve dots around the center whose opacity fades
     /// behind the leading dot, sweeping clockwise while animating.
     open override func draw(_ dirtyRect: NSRect) {
@@ -187,12 +209,16 @@ open class NSProgressIndicator: NSControl {
         let dotRadius = max(1.5, radius * 0.18)
         let orbit = radius - dotRadius
 
+        let isDark = effectiveAppearance.winIsDark
         for (index, direction) in Self.spinnerDirections.enumerated() {
             // GDI fills are opaque, so the sweep is shown with solid gray shades
-            // (and a slightly larger leading dot) rather than alpha fading: the
-            // leading dot is darkest, trailing dots lighten around the ring.
+            // (and a slightly larger leading dot) rather than alpha fading. On a
+            // light surface the leading dot is darkest and the trail lightens
+            // toward the background; on a dark surface that inverts — the leading
+            // dot is brightest and the trail fades toward the dark background —
+            // so the spinner stays visible in either theme.
             let age = (index - spinnerPhase + 12) % 12
-            let shade = isAnimating ? (0.15 + CGFloat(age) / 11 * 0.72) : 0.6
+            let shade = NSProgressIndicator.winSpinnerShade(age: age, animating: isAnimating, isDark: isDark)
             NSColor(white: shade, alpha: 1).setFill()
             let size = isAnimating ? dotRadius * (1.15 - CGFloat(age) / 11 * 0.35) : dotRadius
             let dotCenter = NSPoint(x: center.x + direction.dx * orbit, y: center.y + direction.dy * orbit)

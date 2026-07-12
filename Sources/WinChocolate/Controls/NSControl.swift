@@ -16,6 +16,10 @@ open class NSControl: NSView {
         case mixed = -1
     }
 
+    /// AppKit hangs image placement off `NSControl`; WinChocolate declares
+    /// it on `NSButton`, so mirror the AppKit spelling here.
+    public typealias ImagePosition = NSButton.ImagePosition
+
     /// Object intended to receive the action.
     open weak var target: AnyObject?
 
@@ -41,14 +45,21 @@ open class NSControl: NSView {
     /// Whether the control draws itself in a highlighted state.
     open var isHighlighted: Bool = false
 
-    /// Resizes the control to fit its content. The base control keeps its frame;
-    /// subclasses with measurable content override this.
-    open func sizeToFit() {}
+    /// Resizes the control to fit its content, using `sizeThatFits`.
+    open func sizeToFit() {
+        setFrameSize(sizeThatFits(frame.size))
+    }
 
-    /// Returns the size the control would prefer for the given size. The base
-    /// implementation returns the current frame size; subclasses refine it.
+    /// Returns the size the control would prefer. The base implementation uses
+    /// the control's `intrinsicContentSize` on each axis where it has one
+    /// (falling back to the current frame extent on an axis reporting
+    /// `noIntrinsicMetric`), so any control that reports an intrinsic size is
+    /// measured correctly without overriding this.
     open func sizeThatFits(_ size: NSSize) -> NSSize {
-        frame.size
+        let intrinsic = intrinsicContentSize
+        let width = intrinsic.width == NSView.noIntrinsicMetric ? frame.size.width : intrinsic.width
+        let height = intrinsic.height == NSView.noIntrinsicMetric ? frame.size.height : intrinsic.height
+        return NSSize(width: width, height: height)
     }
 
     /// Whether the control accepts user interaction.
@@ -90,11 +101,27 @@ open class NSControl: NSView {
         }
     }
 
+    /// The control's font, when explicitly set (AppKit declares this on
+    /// `NSControl`, so buttons, popups, and fields all take it). `nil` keeps
+    /// the standard control font.
+    open var font: NSFont? {
+        didSet {
+            guard let nativeHandle else {
+                return
+            }
+
+            realizedBackend?.setFont(font, for: nativeHandle)
+        }
+    }
+
     /// Ensures the control has a native peer and registers its action bridge.
     @discardableResult
     open override func realizeNativePeer(in backend: NativeControlBackend, parent: NativeHandle?) -> NativeHandle {
         let handle = super.realizeNativePeer(in: backend, parent: parent)
         backend.setEnabled(isEnabled, for: handle)
+        if font != nil {
+            backend.setFont(font, for: handle)
+        }
         backend.registerAction(for: handle) { [weak self] in
             guard let self else {
                 return

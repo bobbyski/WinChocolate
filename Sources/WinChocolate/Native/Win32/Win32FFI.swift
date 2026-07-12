@@ -469,6 +469,26 @@ struct NMUPDOWN {
     var iDelta: Int32 = 0
 }
 
+/// `NMCUSTOMDRAW` — the custom-draw notification payload (used to give the
+/// dark list-view header light title text).
+struct NMCUSTOMDRAW {
+    var hdr: NMHDR = NMHDR()
+    var dwDrawStage: DWORD = 0
+    var hdc: HDC?
+    var rc: RECT = RECT()
+    var dwItemSpec: UInt = 0
+    var uItemState: UINT = 0
+    var lItemlParam: LPARAM = 0
+}
+
+/// `NM_CUSTOMDRAW` (NM_FIRST − 12, as an unsigned notification code).
+let nmCustomDraw: UINT = 0xFFFF_FFF4
+let cddsPrePaint: DWORD = 0x0000_0001
+let cddsItemPrePaint: DWORD = 0x0001_0001
+let cdrfDoDefault: LRESULT = 0x0000_0000
+let cdrfSkipDefault: LRESULT = 0x0000_0004
+let cdrfNotifyItemDraw: LRESULT = 0x0000_0020
+
 struct HDHITTESTINFO {
     var pt: POINT = POINT()
     var flags: UINT = 0
@@ -1400,6 +1420,12 @@ func winEnumDisplayMonitors(
 
 @_silgen_name("GetMonitorInfoW")
 func winGetMonitorInfoW(_ monitor: UnsafeMutableRawPointer?, _ info: UnsafeMutablePointer<MONITORINFOW>?) -> Int32
+
+@_silgen_name("MonitorFromWindow")
+func winMonitorFromWindow(_ hwnd: HWND?, _ flags: DWORD) -> UnsafeMutableRawPointer?
+
+/// `MonitorFromWindow` flag: return the display nearest the window.
+let monitorDefaultToNearest: DWORD = 0x0000_0002
 let gwlExStyle: Int32 = -20
 let wsExClientEdge: DWORD = 0x0000_0200
 let wsExToolWindow: DWORD = 0x0000_0080
@@ -1412,6 +1438,8 @@ let wmMouseHWheel: UINT = 0x020e
 let wmSetFocus: UINT = 0x0007
 let wmKillFocus: UINT = 0x0008
 let htCaption: Int = 2
+/// Rich edit: EM_GETCHARFORMAT (WM_USER + 58).
+let emGetCharFormat: UINT = wmUser + 58
 /// Rich edit: EM_SETBKGNDCOLOR (WM_USER + 67).
 let emSetBkgndColor: UINT = wmUser + 67
 /// Rich edit: EM_SETCHARFORMAT (WM_USER + 68).
@@ -1472,6 +1500,7 @@ let wmNotify: UINT = 0x004e
 let wmPaint: UINT = 0x000f
 let wmEraseBackground: UINT = 0x0014
 let wmSetFont: UINT = 0x0030
+let wmGetFont: UINT = 0x0031
 let wmCommand: UINT = 0x0111
 let wmUser: UINT = 0x0400
 let stmSetImage: UINT = 0x0172
@@ -1520,8 +1549,12 @@ let wmNCLButtonDown: UINT = 0x00a1
 let hcbtActivate: Int32 = 5
 let transparentBkMode: Int32 = 1
 let dtCenter: UINT = 0x00000001
+let dtRight: UINT = 0x00000002
 let dtVCenter: UINT = 0x00000004
+let dtWordBreak: UINT = 0x00000010
 let dtSingleLine: UINT = 0x00000020
+let dtNoPrefix: UINT = 0x00000800
+let dtCalcRect: UINT = 0x00000400
 let dtEndEllipsis: UINT = 0x00008000
 let wmApp: UINT = 0x8000
 let wmWinChocolateAsync: UINT = wmApp + 1
@@ -1549,6 +1582,7 @@ let esCenter: DWORD = 0x0001
 let esRight: DWORD = 0x0002
 let emSetCueBanner: UINT = 0x1501
 let pbmSetBarColor: UINT = 0x0409
+let pbmSetBkColor: UINT = 0x2001 // CCM_SETBKCOLOR
 let wmGetMinMaxInfo: UINT = 0x0024
 let sbmSetScrollInfo: UINT = 0x00e9
 let sbmGetScrollInfo: UINT = 0x00ea
@@ -1573,6 +1607,10 @@ let lvmInsertItemW: UINT = lvmFirst + 77
 let lvmInsertColumnW: UINT = lvmFirst + 97
 let lvmSetItemTextW: UINT = lvmFirst + 116
 let lvmSetExtendedListViewStyle: UINT = lvmFirst + 54
+/// List-view color messages (the dark row background/text under dark).
+let lvmSetBkColor: UINT = lvmFirst + 1
+let lvmSetTextColor: UINT = lvmFirst + 36
+let lvmSetTextBkColor: UINT = lvmFirst + 38
 let tcmFirst: UINT = 0x1300
 let tcmGetCurSel: UINT = tcmFirst + 11
 let tcmSetCurSel: UINT = tcmFirst + 12
@@ -1591,6 +1629,8 @@ let tbSetButtonInfoW: UINT = wmUser + 64
 let enChange: UInt = 0x0300
 let lbnSelChange: UInt = 1
 let nmClick: UINT = 0xfffffffe
+/// NM_DBLCLK = NM_FIRST(0) - 3.
+let nmDblclk: UINT = 0xfffffffd
 let lvnItemChanged: UINT = 0xffffff9b
 let lvnColumnClick: UINT = 0xffffff94
 /// LVN_BEGINLABELEDITW = LVN_FIRST(-100) - 75.
@@ -1603,6 +1643,8 @@ let lvnBeginDrag: UINT = 0xffffff93
 let lvsEditLabels: DWORD = 0x0200
 let lvmEditLabelW: UINT = lvmFirst + 118
 /// Header control: get/set item and sort-indicator format bits.
+let hdmGetItemCount: UINT = hdmFirst + 0
+let hdmGetItemRect: UINT = hdmFirst + 7
 let hdmGetItemW: UINT = hdmFirst + 11
 let hdmSetItemW: UINT = hdmFirst + 12
 let hdiFormat: UINT = 0x0004
@@ -1665,6 +1707,10 @@ let mcscMonthBk: Int = 4
 let mcscTrailingText: Int = 5
 /// `DTM_SETMCCOLOR` (the date-time picker's drop-down calendar palette).
 let dtmSetMCColor: UINT = 0x1006
+/// `DTM_GETMONTHCAL`: the live drop-down calendar's window, while dropped.
+let dtmGetMonthCal: UINT = 0x1008
+/// `DTN_DROPDOWN`: the picker's calendar is about to appear.
+let dtnDropDown: UINT = UInt32(bitPattern: -754)
 let bmSetImage: UINT = 0x00f7
 let bsBitmap: DWORD = 0x0080
 let udsWrap: DWORD = 0x0001
@@ -1694,6 +1740,18 @@ let vkLMenu: Int32 = 0xa4
 let vkRMenu: Int32 = 0xa5
 let gwlpWndProc: Int32 = -4
 let gwChild: UINT = 5
+let gwHwndNext: UINT = 2
+let wmSettingChange: UINT = 0x001A
+let rdwFrame: UINT = 0x0400
+let clrDefault: DWORD = 0xFF00_0000
+let gclpHbrBackground: Int32 = -10
+
+@_silgen_name("GetClassNameW")
+func winGetClassNameW(_ hwnd: HWND?, _ buffer: UnsafeMutablePointer<UInt16>, _ maxCount: Int32) -> Int32
+
+@_silgen_name("SetClassLongPtrW")
+func winSetClassLongPtrW(_ hwnd: HWND?, _ index: Int32, _ value: LONG_PTR) -> LONG_PTR
+
 let dlgcWantTab: LRESULT = 0x0002
 let idOK: Int32 = 1
 let idYes: Int32 = 6

@@ -392,6 +392,12 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     /// Last actuated scroller part by handle.
     private var scrollerParts: [NativeHandle: NativeScrollerPart] = [:]
 
+    /// Recorded scroller overlay flag by handle (test-visible).
+    public private(set) var scrollerOverlays: [NativeHandle: Bool] = [:]
+
+    /// Recorded scroller knob style by handle (test-visible).
+    public private(set) var scrollerKnobStyles: [NativeHandle: NativeScrollerKnobStyle] = [:]
+
     /// Registered text change actions by handle.
     public private(set) var textChangeActions: [NativeHandle: (String) -> Void] = [:]
 
@@ -591,6 +597,9 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     /// Zoomed (maximized) windows, by handle.
     public private(set) var zoomedWindows: Set<NativeHandle> = []
 
+    /// Handles currently in full-screen presentation (test-visible).
+    public private(set) var fullScreenWindows: Set<NativeHandle> = []
+
     /// Windows ordered to the back, in request order.
     public private(set) var windowsOrderedBack: [NativeHandle] = []
 
@@ -630,6 +639,15 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     /// Whether a recorded window is zoomed.
     public func isWindowZoomed(_ handle: NativeHandle) -> Bool {
         zoomedWindows.contains(handle)
+    }
+
+    /// Records a window entering or exiting full-screen presentation.
+    public func setWindowFullScreen(_ fullScreen: Bool, for handle: NativeHandle) {
+        if fullScreen {
+            fullScreenWindows.insert(handle)
+        } else {
+            fullScreenWindows.remove(handle)
+        }
     }
 
     /// Registered window-move actions by handle.
@@ -1518,6 +1536,12 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
         scrollerParts[handle] ?? .none
     }
 
+    /// Records the scroller's requested appearance.
+    public func setScrollerAppearance(overlay: Bool, knobStyle: NativeScrollerKnobStyle, for handle: NativeHandle) {
+        scrollerOverlays[handle] = overlay
+        scrollerKnobStyles[handle] = knobStyle
+    }
+
     /// Test helper: pretends the user actuated a scroller part, optionally
     /// moving the value, and fires the registered action (mirroring the Win32
     /// scroll-message path).
@@ -1630,6 +1654,7 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     public private(set) var tableEditableHandles: Set<NativeHandle> = []
     public private(set) var tableSortIndicators: [NativeHandle: (column: Int, ascending: Bool)] = [:]
     private var tableEditActionsByHandle: [NativeHandle: (Int, Int, String) -> Void] = [:]
+    private var tableDoubleClickActionsByHandle: [NativeHandle: () -> Void] = [:]
 
     /// Records native multiple-selection enablement.
     public func setTableAllowsMultipleSelection(_ allows: Bool, for handle: NativeHandle) {
@@ -1677,6 +1702,17 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     /// Test hook: commits an in-place edit as if the user typed it.
     public func simulateTableEdit(row: Int, column: Int, text: String, for handle: NativeHandle) {
         tableEditActionsByHandle[handle]?(row, column, text)
+    }
+
+    /// Records the row double-click callback.
+    public func registerTableDoubleClickAction(for handle: NativeHandle, action: @escaping () -> Void) {
+        tableDoubleClickActionsByHandle[handle] = action
+    }
+
+    /// Test hook: double-clicks a row as if the user did, updating the clicked row.
+    public func simulateTableDoubleClick(row: Int, for handle: NativeHandle) {
+        records[handle]?.tableClickedRow = row
+        tableDoubleClickActionsByHandle[handle]?()
     }
 
     /// Test hook: sets the native selection and fires the table action.
@@ -1942,6 +1978,42 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
         NSMakeSize(CGFloat(text.count) * fontSize * 0.55, fontSize * 1.35)
     }
 
+    /// Deterministic word-wrap estimate: the single-line metrics (`0.55 ×
+    /// pointSize` per character, `1.35 × pointSize` per line) greedily packed
+    /// into `maxWidth`-wide lines. Height is line count × line height; width is
+    /// the widest packed line (≤ `maxWidth`).
+    public func measureText(_ text: String, fontName: String, fontSize: CGFloat, weight: Int, italic: Bool, wrappingAt maxWidth: CGFloat) -> NSSize {
+        let charWidth = fontSize * 0.55
+        let lineHeight = fontSize * 1.35
+        guard maxWidth > 0, charWidth > 0 else {
+            return measureText(text, fontName: fontName, fontSize: fontSize, weight: weight, italic: italic)
+        }
+
+        let maxChars = max(1, Int(maxWidth / charWidth))
+        var lineCount = 0
+        var widestChars = 0
+        for paragraph in text.split(separator: "\n", omittingEmptySubsequences: false) {
+            var currentChars = 0
+            var lineStarted = false
+            for word in paragraph.split(separator: " ", omittingEmptySubsequences: false) {
+                let addition = lineStarted ? word.count + 1 : word.count
+                if lineStarted, currentChars + addition > maxChars {
+                    lineCount += 1
+                    widestChars = max(widestChars, currentChars)
+                    currentChars = word.count
+                } else {
+                    currentChars += addition
+                }
+                lineStarted = true
+            }
+            lineCount += 1
+            widestChars = max(widestChars, currentChars)
+        }
+
+        let width = min(CGFloat(widestChars) * charWidth, maxWidth)
+        return NSMakeSize(width, CGFloat(max(lineCount, 1)) * lineHeight)
+    }
+
     /// Records native progress indeterminate state.
 
     public func setProgressIndicatorIndeterminate(_ isIndeterminate: Bool, animating: Bool, for handle: NativeHandle) {
@@ -1998,8 +2070,21 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     }
 
     /// Fires a scheduled timer's action, standing in for a message-loop tick.
+    /// Pair with `scheduledTimers` to test timer-coalesced code headlessly:
+    /// schedule through the run loop, then `fireTimer(id)` (or `fireDueTimers`)
+    /// to pump one tick deterministically.
     public func fireTimer(_ identifier: UInt) {
         timerActions[identifier]?()
+    }
+
+    /// Fires every scheduled timer's action once — a whole "message-loop tick"
+    /// for headless tests of coalesced re-render paths (a Timer-batched layout
+    /// pass fires here rather than waiting on a real run loop). Iterates a
+    /// snapshot so a timer that reschedules during its action doesn't recurse.
+    public func fireDueTimers() {
+        for timer in scheduledTimers {
+            timerActions[timer.identifier]?()
+        }
     }
 
     /// The most recently registered key-equivalent handler.

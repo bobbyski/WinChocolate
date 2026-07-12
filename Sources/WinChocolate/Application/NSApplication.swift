@@ -51,6 +51,24 @@ public final class NSApplication: NSObject {
     /// (see NSAppearance.swift); `nil` follows the system theme.
     var winAppearanceOverride: NSAppearance?
 
+    /// Posted when the effective appearance changes because the user flipped the
+    /// system dark/light theme while the app was running (the app follows the
+    /// system — no `appearance` override). Application code that caches
+    /// appearance-derived values can observe this to refresh. The framework's
+    /// own windows and controls are already re-themed and repainted by the time
+    /// this posts.
+    public static let winEffectiveAppearanceDidChangeNotification =
+        Notification.Name("WinChocolateEffectiveAppearanceDidChange")
+
+    /// Posts `winEffectiveAppearanceDidChangeNotification` (called by the Win32
+    /// backend after it refreshes windows for a live system theme switch).
+    public func winPostEffectiveAppearanceDidChange() {
+        NotificationCenter.default.post(
+            name: NSApplication.winEffectiveAppearanceDidChangeNotification,
+            object: self
+        )
+    }
+
     /// Windows known to the application.
     public private(set) var windows: [NSWindow] = []
 
@@ -201,3 +219,23 @@ extension NSApplication: @unchecked Sendable {}
 
 /// AppKit-compatible global application alias.
 public let NSApp = NSApplication.shared
+
+/// Starts the application: wires the delegate (if given) and runs the shared
+/// `NSApplication`'s lifecycle and native event loop. The AppKit-shaped entry
+/// point for `@main` apps (a `SwiftUI`-style `App.main()` or an
+/// `NSApplicationDelegate` `main()` can call this instead of hand-rolling
+/// `NSApplication.shared` + `run()`). Returns 0 like AppKit's variant.
+///
+/// There is no `Info.plist` principal-class lookup here (Windows has no such
+/// bundle), so the delegate is passed explicitly rather than read from the
+/// bundle; a `nil` delegate runs the app with whatever delegate is already
+/// set on `NSApplication.shared`.
+@discardableResult
+public func NSApplicationMain(delegate: NSApplicationDelegate? = nil) -> Int32 {
+    let application = NSApplication.shared
+    if let delegate {
+        application.delegate = delegate
+    }
+    application.run()
+    return 0
+}

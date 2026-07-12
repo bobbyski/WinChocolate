@@ -1,8 +1,17 @@
+/// The methods a search-field delegate implements, matching AppKit's shape:
+/// search fields report text changes through the text-field delegate surface.
+public protocol NSSearchFieldDelegate: NSTextFieldDelegate {}
+
 /// A single-line search field control.
 ///
 /// This first slice preserves the AppKit name and text-change/search action
 /// shape while using the same native edit peer as `NSTextField`.
 open class NSSearchField: NSTextField {
+    /// Creates a search field with a zero frame, matching AppKit's shape.
+    public convenience init() {
+        self.init(frame: .zero)
+    }
+
     /// Recent search strings tracked by the application.
     open var recentSearches: [String] = []
 

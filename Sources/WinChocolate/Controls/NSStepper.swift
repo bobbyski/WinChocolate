@@ -6,6 +6,13 @@
 open class NSStepper: NSControl {
     private var isUpdatingValueFromNative = false
 
+    /// The stepper's natural size for Auto Layout (9.2): AppKit's fixed
+    /// up/down control metrics, so it hugs to a compact fixed box in a stack or
+    /// grid rather than stretching.
+    open override var intrinsicContentSize: NSSize {
+        NSSize(width: 19, height: 27)
+    }
+
     /// The stepper's minimum value.
     open var minValue: Double {
         didSet {
