@@ -601,6 +601,7 @@ do {
     let toolbar = NSToolbar(identifier: "main")
     let open = NSToolbarItem(itemIdentifier: "open")
     open.label = "Open"
+    open.image = NSImage(named: "document-open-symbolic")
     open.onAction = { _ in opened += 1 }
     toolbar.addItem(open)
     toolbar.addItem(.flexibleSpace())
@@ -612,7 +613,10 @@ do {
     let specs = backend.toolbars[window.handle.rawValue]
     check(specs?.count == 3, "toolbar installs three items")
     check(specs?[0].label == "Open" && specs?[2].label == "Save", "item labels preserved in order")
+    check(specs?[0].iconName == "document-open-symbolic", "toolbar item icon reaches the backend")
+    check(specs?[2].iconName == nil, "an item without an image has no icon")
     check(specs?[1].isFlexibleSpace == true, "flexible space carried through the seam")
+    check(NSImage(named: "") == nil, "an empty image name is rejected (AppKit init? semantics)")
 
     backend.simulateToolbarActivate(window.handle, item: 0)
     check(opened == 1, "toolbar item action fires")

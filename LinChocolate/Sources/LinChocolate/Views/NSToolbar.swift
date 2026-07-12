@@ -12,6 +12,9 @@ public final class NSToolbarItem {
     /// The button's title.
     public var label: String = ""
 
+    /// The item's icon (AppKit's `NSToolbarItem.image`).
+    public var image: NSImage?
+
     /// Called when the user clicks the item.
     public var onAction: ((NSToolbarItem) -> Void)?
 
@@ -58,6 +61,7 @@ public final class NSToolbar {
             NativeToolbarItemSpec(
                 identifier: item.itemIdentifier,
                 label: item.label,
+                iconName: item.image?.iconName,
                 isFlexibleSpace: item.itemIdentifier == NSToolbarItem.flexibleSpaceIdentifier,
                 action: item.itemIdentifier == NSToolbarItem.flexibleSpaceIdentifier ? nil : { [weak item] in
                     guard let item else { return }

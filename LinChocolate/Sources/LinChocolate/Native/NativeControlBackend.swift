@@ -19,11 +19,14 @@ public struct NativeFontSpec: Equatable {
 public struct NativeToolbarItemSpec {
     public let identifier: String
     public let label: String
+    /// GTK icon-theme name for the item's image, or nil for a text-only item.
+    public let iconName: String?
     public let isFlexibleSpace: Bool
     public let action: (() -> Void)?
-    public init(identifier: String, label: String, isFlexibleSpace: Bool = false, action: (() -> Void)? = nil) {
+    public init(identifier: String, label: String, iconName: String? = nil, isFlexibleSpace: Bool = false, action: (() -> Void)? = nil) {
         self.identifier = identifier
         self.label = label
+        self.iconName = iconName
         self.isFlexibleSpace = isFlexibleSpace
         self.action = action
     }

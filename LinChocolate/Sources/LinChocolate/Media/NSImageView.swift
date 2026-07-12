@@ -6,7 +6,7 @@ public final class NSImageView: NSView {
 
     /// The displayed image (nil clears the view).
     public var image: NSImage? {
-        didSet { backend.setImagePath(image?.path, for: handle) }
+        didSet { backend.setImagePath(image.flatMap { $0.path }, for: handle) }
     }
 
     /// Creates an empty image view.

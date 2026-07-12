@@ -665,6 +665,7 @@ NSApp.mainMenu = mainMenu
 let toolbar = NSToolbar(identifier: "main")
 let openItem = NSToolbarItem(itemIdentifier: "open")
 openItem.label = "Open"
+openItem.image = NSImage(named: "document-open-symbolic")
 openItem.onAction = { _ in
     let panel = NSOpenPanel()
     echo.stringValue = panel.runModal() == NSModalResponseOK
@@ -672,6 +673,7 @@ openItem.onAction = { _ in
 }
 let saveItem = NSToolbarItem(itemIdentifier: "save")
 saveItem.label = "Save"
+saveItem.image = NSImage(named: "document-save-symbolic")
 saveItem.onAction = { _ in
     let panel = NSSavePanel()
     panel.nameFieldStringValue = "untitled.txt"
@@ -680,6 +682,7 @@ saveItem.onAction = { _ in
 }
 let infoItem = NSToolbarItem(itemIdentifier: "info")
 infoItem.label = "Info"
+infoItem.image = NSImage(named: "dialog-information-symbolic")
 infoItem.onAction = { _ in
     let alert = NSAlert()
     alert.messageText = "Toolbar"

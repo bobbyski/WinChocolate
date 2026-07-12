@@ -411,7 +411,21 @@ public final class GTKNativeControlBackend: NativeControlBackend {
                 gtk_box_append(asBox(OpaquePointer(bar)), spacer)
                 continue
             }
-            let button = gtk_button_new_with_label(item.label)!
+            let button: UnsafeMutablePointer<GtkWidget>
+            if let iconName = item.iconName {
+                // Icon above label (the classic macOS toolbar item layout).
+                button = gtk_button_new()!
+                let content = gtk_box_new(GTK_ORIENTATION_VERTICAL, 2)!
+                let icon = gtk_image_new_from_icon_name(iconName)!
+                gtk_image_set_pixel_size(OpaquePointer(icon), 22)
+                gtk_box_append(asBox(OpaquePointer(content)), icon)
+                if !item.label.isEmpty {
+                    gtk_box_append(asBox(OpaquePointer(content)), gtk_label_new(item.label))
+                }
+                gtk_button_set_child(asButton(OpaquePointer(button)), content)
+            } else {
+                button = gtk_button_new_with_label(item.label)!
+            }
             if let action = item.action {
                 let actionBox = ActionBox(action)
                 g_signal_connect_data(
