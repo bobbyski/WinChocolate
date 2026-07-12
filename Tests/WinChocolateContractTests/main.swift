@@ -298,6 +298,62 @@ func testLayoutControlIntrinsicSizes() {
 }
 
 @MainActor
+func testWinCoreGraphicsPNGDecode() {
+    // Build a minimal 2×2 truecolor PNG by hand: signature, IHDR, one IDAT
+    // holding a stored-block zlib stream of two filtered scanlines (row 0
+    // None-filtered, row 1 Up-filtered), IEND. This exercises the full path —
+    // chunk parsing, inflate (stored block), and unfiltering (None + Up).
+    func chunk(_ type: String, _ data: [UInt8]) -> [UInt8] {
+        let length = data.count
+        var out: [UInt8] = [
+            UInt8((length >> 24) & 0xFF), UInt8((length >> 16) & 0xFF),
+            UInt8((length >> 8) & 0xFF), UInt8(length & 0xFF),
+        ]
+        out.append(contentsOf: Array(type.utf8))
+        out.append(contentsOf: data)
+        out.append(contentsOf: [0, 0, 0, 0]) // CRC (not validated)
+        return out
+    }
+    let ihdr: [UInt8] = [0, 0, 0, 2,  0, 0, 0, 2,  8, 2, 0, 0, 0] // 2×2, 8-bit, RGB
+    // Filtered scanlines: row0 None → red, green; row1 Up → blue, yellow.
+    let raw: [UInt8] = [0, 255, 0, 0,  0, 255, 0,
+                        2,   1, 0, 255, 255,  0, 0]
+    var idat: [UInt8] = [0x78, 0x01,       // zlib header
+                         0x01,             // BFINAL=1, BTYPE=00 (stored)
+                         0x0E, 0x00,        // LEN = 14
+                         0xF1, 0xFF]        // NLEN = ~14
+    idat.append(contentsOf: raw)
+    idat.append(contentsOf: [0, 0, 0, 0])  // Adler-32 (ignored)
+    var png: [UInt8] = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]
+    png.append(contentsOf: chunk("IHDR", ihdr))
+    png.append(contentsOf: chunk("IDAT", idat))
+    png.append(contentsOf: chunk("IEND", []))
+
+    guard let image = CGImage.decodePNG(png) else {
+        expect(false, "The hand-built PNG should decode.")
+        return
+    }
+    expect(image.width == 2 && image.height == 2,
+        "PNG dimensions should be 2×2: got \(image.width)×\(image.height).")
+    // Top row (None filter): red, green.
+    expect(image.pixel(atX: 0, y: 0).map { [$0.r, $0.g, $0.b, $0.a] } == [255, 0, 0, 255],
+        "PNG (0,0) should be red: got \(String(describing: image.pixel(atX: 0, y: 0))).")
+    expect(image.pixel(atX: 1, y: 0).map { [$0.r, $0.g, $0.b, $0.a] } == [0, 255, 0, 255],
+        "PNG (1,0) should be green.")
+    // Bottom row (Up filter reconstructs against the top row): blue, yellow.
+    expect(image.pixel(atX: 0, y: 1).map { [$0.r, $0.g, $0.b, $0.a] } == [0, 0, 255, 255],
+        "PNG (0,1) should be blue (Up-filter reconstruction): got \(String(describing: image.pixel(atX: 0, y: 1))).")
+    expect(image.pixel(atX: 1, y: 1).map { [$0.r, $0.g, $0.b, $0.a] } == [255, 255, 0, 255],
+        "PNG (1,1) should be yellow.")
+
+    // The format-sniffing entry point routes PNG signatures to the PNG path.
+    expect(CGImage.decode(png)?.width == 2, "decode() should sniff and route a PNG.")
+    // And it still round-trips BMP through the same door.
+    expect(CGImage.decode(image.encodeBMP())?.pixel(atX: 1, y: 1)?.g == 255,
+        "decode() should also handle BMP bytes.")
+}
+
+@MainActor
 func testWinCoreGraphicsTransformsAndBMPCodec() {
     // The geometry types come from the re-exported WinCoreGraphics module.
     // Affine transforms: composition, application, and inversion.
@@ -5725,6 +5781,48 @@ final class AppearanceProbeView: NSView {
     }
 }
 
+final class DataImageProbeView: NSView {
+    var image: NSImage?
+    override func draw(_ dirtyRect: NSRect) {
+        image?.draw(in: NSMakeRect(0, 0, 20, 20))
+    }
+}
+
+@MainActor
+func testDataBackedNSImageDecodesAndDrawsPixels() {
+    // A data-backed NSImage decodes through WinCoreGraphics (13.6) and draws
+    // its pixels, closing the 3.13 in-memory boundary. Build a 2×2 BMP.
+    let pixels: [UInt8] = [255, 0, 0, 255,   0, 255, 0, 255,
+                           0, 0, 255, 255,   255, 255, 0, 255]
+    guard let source = CGImage(width: 2, height: 2, rgbaPixels: pixels) else {
+        expect(false, "CGImage should build from RGBA."); return
+    }
+    let bmp = Data(source.encodeBMP())
+    guard let image = NSImage(data: bmp) else {
+        expect(false, "NSImage(data:) should accept BMP data."); return
+    }
+
+    // Decoding populates the CGImage and the (previously zero) logical size.
+    expect(image.winCGImage?.width == 2, "Data-backed NSImage should decode a 2-wide CGImage.")
+    expect(image.size == NSSize(width: 2, height: 2),
+        "NSImage.size should come from the decoded bitmap: got \(image.size).")
+
+    // Drawing records an in-memory bitmap blit (not a file path).
+    let backend = InMemoryNativeControlBackend()
+    let view = DataImageProbeView(frame: NSMakeRect(0, 0, 20, 20))
+    view.image = image
+    let handle = view.realizeNativePeer(in: backend, parent: nil)
+    let recording = backend.performDraw(for: handle, in: view.bounds)
+    expect(recording.bitmapImages.count == 1, "The data-backed image should draw once as a bitmap.")
+    if let drawn = recording.bitmapImages.first {
+        expect(drawn.width == 2 && drawn.height == 2 && drawn.byteCount == 16,
+            "The recorded bitmap should be 2×2 RGBA: got \(drawn.width)×\(drawn.height), \(drawn.byteCount) bytes.")
+        expect(winClose(drawn.rect.size.width, 20) && drawn.tint == nil,
+            "The bitmap should draw untinted into the 20-pt destination rect.")
+    }
+    expect(recording.images.isEmpty, "A data-backed image should not take the file-path draw.")
+}
+
 @MainActor
 func testCurrentDrawingAppearanceFollowsTheDrawingView() {
     // Outside a draw pass, currentDrawing falls back to the application's
@@ -10114,6 +10212,7 @@ testLayoutMarginsGuideInsetsChild()
 testControlIntrinsicContentSizes()
 testLayoutControlIntrinsicSizes()
 testWinCoreGraphicsTransformsAndBMPCodec()
+testWinCoreGraphicsPNGDecode()
 testBaselineAnchorsAlignAcrossViews()
 testCrossHierarchyConstraintUsesNestedFixedInput()
 testStackViewGravityAreasAndEqualCentering()
@@ -10272,6 +10371,7 @@ testAppearanceResolvesSystemThemeAndOverrides()
 testDarkAppearanceDrivesDynamicColorsAndDrawnTable()
 testToolbarStripGoesDarkUnderDarkAppearance()
 testCurrentDrawingAppearanceFollowsTheDrawingView()
+testDataBackedNSImageDecodesAndDrawsPixels()
 testSystemAccentColorDrivesAccentAndSelection()
 testWrappedTextMeasurementBreaksIntoLines()
 testFireDueTimersPumpsScheduledTimers()

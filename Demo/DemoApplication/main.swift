@@ -504,7 +504,23 @@ final class DemoCoreGraphicsView: NSView {
                 }
             }
         }
+
+        // 5) NSImage(data:): the same sprite as PNG bytes, decoded by
+        // WinCoreGraphics and blitted through the data-backed draw path — the
+        // 3.13 in-memory boundary, now closed.
+        "NSImage(data:) → CGImage".draw(at: NSMakePoint(inset.origin.x + 840, inset.origin.y + 10), withAttributes: attributes)
+        if let dataImage = Self.dataBackedSprite {
+            dataImage.draw(in: NSMakeRect(inset.origin.x + 850, inset.origin.y + 40, 96, 96))
+        }
     }
+
+    /// The sprite re-expressed as a BMP-data-backed `NSImage`, so the demo
+    /// exercises the full data → CGImage → native-blit path live. (The demo is
+    /// single-threaded on the UI thread, so the unchecked static is safe.)
+    nonisolated(unsafe) static let dataBackedSprite: NSImage? = {
+        guard let sprite else { return nil }
+        return NSImage(data: Data(sprite.encodeBMP()))
+    }()
 }
 
 // MARK: - "New in 3.x" showcase views

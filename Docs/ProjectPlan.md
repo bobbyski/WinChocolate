@@ -33,7 +33,7 @@ Phase 6 · Toolbar API Parity               ████████████
 Phase 8 · Modern Windows Appearance        █████████████████████████  100%  ✅ Done
 Phase 9 · Auto Layout                      █████████████████████████  100%  ✅ Done
 Phase 7 · WinFoundation Bridge             ██████████████████░░░░░░░░   68%  🔄 In Progress (discovery-driven)
-Phase 13 · WinCoreGraphics                 ███████████████████░░░░░░   77%  🔄 In Progress
+Phase 13 · WinCoreGraphics                 █████████████████████████  100%  ✅ Done
 Phase 10 · Focus, Accessibility, Polish    █████░░░░░░░░░░░░░░░░░░░░░   21%  🔄 In Progress
 Phase 11 · Cross-Platform Test Apps        ░░░░░░░░░░░░░░░░░░░░░░░░░░    0%  ⏳ Pending
 Phase 15 · NIB / XIB Support               ░░░░░░░░░░░░░░░░░░░░░░░░░░    0%  ⏳ Pending
@@ -393,7 +393,7 @@ Treat these as API-freeze items: additive changes are fine; renames/removals nee
 
 ---
 
-## Phase 13 — WinCoreGraphics 🔄 77%
+## Phase 13 — WinCoreGraphics ✅ Done (100%)
 
 *(New phase, 2026-07-06.)* A **separate but related library** providing CoreGraphics-shaped API (`import CoreGraphics` swaps to `import WinCoreGraphics`, or arrives re-exported through WinChocolate). Like the WinFoundation bridge, this phase is **discovery-driven — items are filled in as AppKit work and ported app code expose holes** — so the deliberate phases run ahead of it in execution order. Seed inventory below; the geometry aliases that 3.4 placed inside WinChocolate (`CGRect`/`CGPoint`/`CGSize`/`CGVector`/`CGFloat`) are the migration seam.
 
@@ -404,8 +404,8 @@ Treat these as API-freeze items: additive changes are fine; renames/removals nee
 | 13.3 | `CGContext` | ✅ Done | The consumed op set landed with the ActiveUI R3 compat layer (`CGCompat.swift`): save/restore, fill/stroke colors, line width/cap, addPath/addArc, fill/stroke/clip (+rect/ellipse), translate/scale/rotate, linear gradient over the native primitive, radial gradient rasterized as rings. Per the 13.1 boundary it lives in WinChocolate (it *is* `NSGraphicsContext`); expansion of the op surface is discovery-driven (13.7). Exercised end-to-end by the demo's CoreGraphics page. |
 | 13.4 | `CGPath` / `CGMutablePath` | ✅ Done | Landed with R3: move/addLine/addCurve/addQuadCurve/addRect/addEllipse/addRoundedRect flattening to the native path segments `NSBezierPath` uses. Same 13.1 boundary; demo-exercised (the curved leaf + rounded clips). |
 | 13.5 | `CGColor` / `CGColorSpace` | ✅ Done | Landed with R3: `CGColor = NSColor` (+ `.cgColor`), minimal `CGColorSpace` (device RGB/gray stand-ins). The typealias *is* the design — matching Apple's bridged reality — per the 13.1 boundary. |
-| 13.6 | `CGImage` + bitmap codecs | 🔄 In Progress | ~40% — **`CGImage` landed 2026-07-12**: an RGBA8 pixel-owning image type in WinCoreGraphics (width/height/bytesPerRow, `pixel(atX:y:)`) with a **BMP codec** (decode: uncompressed 24/32-bit, bottom-up and top-down; encode: 32-bit) — the framework's first honest in-memory bitmap representation. Contract-tested (BMP round-trip preserves every pixel including alpha; header shape; out-of-bounds reads nil) and demo-proven (the CoreGraphics page's sprite is encoded → decoded → rendered live). **Remaining:** PNG/JPEG decode, and wiring `NSImage` to draw from a `CGImage` (closing the 3.13 data-backed boundary). |
-| 13.7 | Discovery log | 🔄 Standing | Holes surfaced by app code or AppKit work land here as first-class items (per the scope-to-the-surface rule), then graduate to numbered rows. Nothing filed yet since the 13.1–13.6 landing. |
+| 13.6 | `CGImage` + bitmap codecs | ✅ Done | **Closed 2026-07-12.** `CGImage` is an RGBA8 pixel-owning type in WinCoreGraphics (width/height/bytesPerRow, `pixel(atX:y:)`). Codecs: a **BMP codec** (decode 24/32-bit bottom-up + top-down; encode 32-bit) and a **pure-Swift PNG decoder** — a full **DEFLATE/zlib inflater** (`Inflate.swift`: stored + fixed + dynamic Huffman, canonical code decode, length/distance back-references) under a PNG chunk parser (IHDR/IDAT/IEND, 8-bit grayscale/RGB/gray+alpha/RGBA, all five scanline filters incl. Paeth) → RGBA. Dependency-free (matches the module's design). A sniffing `CGImage.decode(_:)` routes by signature. **The 3.13 data-backed boundary is closed:** a new `NativeDrawingContext.drawImage(rgbaPixels:width:height:in:tint:)` (Win32: a GDI+ `Scan0` ARGB bitmap drawn with `DrawImageRectRectI`, so alpha composites and templates tint through the same color matrix as the file path; InMemory: recorded) lets `NSImage(data:)` decode to a cached `CGImage` and blit its pixels — data-backed images now draw (and `NSImage.size` derives from the decoded bitmap). Contract-tested (`testWinCoreGraphicsPNGDecode`: a hand-built stored-block PNG decodes with None + Up filter reconstruction; `testDataBackedNSImageDecodesAndDrawsPixels`: a BMP-data `NSImage` decodes, sizes, and records a bitmap blit not a file draw) and demo-proven (the CoreGraphics page renders a sprite as raw CGImage pixels **and** as a scaled, alpha-composited `NSImage(data:)`). **Deferred, not dropped (→ 13.7):** JPEG decode (a large DCT/Huffman decoder; GDI+ covers file-backed JPEGs at the framework boundary today) and 16-bit/palette/interlaced PNG variants. |
+| 13.7 | Discovery log | 🔄 Standing | Holes surfaced by app code or AppKit work land here as first-class items (per the scope-to-the-surface rule), then graduate to numbered rows. **Filed (deferred from 13.6):** JPEG decode, and 16-bit / palette / interlaced PNG variants — pulled in only when a consumer needs them (GDI+ decodes file-backed JPEGs at the framework boundary today). A standing channel does not gate phase completion. |
 
 ---
 

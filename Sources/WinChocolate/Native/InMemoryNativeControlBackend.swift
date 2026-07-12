@@ -69,6 +69,24 @@ public final class RecordingDrawingContext: NativeDrawingContext {
         }
     }
 
+    /// A recorded in-memory (data-backed) bitmap draw.
+    public struct BitmapImage: Equatable {
+        public let width: Int
+        public let height: Int
+        public let rect: NSRect
+        public let tint: NSColor?
+        /// The RGBA byte count supplied (width*height*4), for assertions.
+        public let byteCount: Int
+
+        public init(width: Int, height: Int, rect: NSRect, tint: NSColor?, byteCount: Int) {
+            self.width = width
+            self.height = height
+            self.rect = rect
+            self.tint = tint
+            self.byteCount = byteCount
+        }
+    }
+
     /// A recorded linear-gradient command.
     public struct Gradient: Equatable {
         /// The gradient color stops in order.
@@ -108,6 +126,9 @@ public final class RecordingDrawingContext: NativeDrawingContext {
     /// Image commands in draw order.
     public private(set) var images: [Image] = []
 
+    /// In-memory bitmap draws in order (data-backed images).
+    public private(set) var bitmapImages: [BitmapImage] = []
+
     /// Linear-gradient commands in draw order.
     public private(set) var gradients: [Gradient] = []
 
@@ -139,6 +160,11 @@ public final class RecordingDrawingContext: NativeDrawingContext {
     /// Records an image command.
     public func drawImage(atPath path: String, in rect: NSRect, tint: NSColor?) {
         images.append(Image(path: path, rect: rect, tint: tint))
+    }
+
+    /// Records an in-memory bitmap draw.
+    public func drawImage(rgbaPixels: [UInt8], width: Int, height: Int, in rect: NSRect, tint: NSColor?) {
+        bitmapImages.append(BitmapImage(width: width, height: height, rect: rect, tint: tint, byteCount: rgbaPixels.count))
     }
 
     /// Records a linear-gradient command.

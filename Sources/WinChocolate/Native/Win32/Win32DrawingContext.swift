@@ -127,6 +127,64 @@ internal final class Win32DrawingContext: NativeDrawingContext {
         _ = winSelectObject(memoryContext, previousBitmap ?? nil)
     }
 
+    /// Draws an in-memory RGBA8 bitmap through GDI+ (so alpha composites over
+    /// the existing pixels) scaled into a rectangle. A `tint` renders it as a
+    /// template via the same color matrix the file path uses. This is the draw
+    /// path a data-backed `NSImage` (decoded to a `CGImage`) takes.
+    internal func drawImage(rgbaPixels: [UInt8], width: Int, height: Int, in rect: NSRect, tint: NSColor?) {
+        guard width > 0, height > 0,
+              rgbaPixels.count == width * height * 4,
+              Win32GdiPlusImageDecoder.ensureStarted() else {
+            return
+        }
+
+        // GDI+ 32bppARGB is B,G,R,A in memory; swizzle from our R,G,B,A.
+        var bgra = [UInt8](repeating: 0, count: rgbaPixels.count)
+        for pixel in stride(from: 0, to: rgbaPixels.count, by: 4) {
+            bgra[pixel] = rgbaPixels[pixel + 2]     // B
+            bgra[pixel + 1] = rgbaPixels[pixel + 1] // G
+            bgra[pixel + 2] = rgbaPixels[pixel]     // R
+            bgra[pixel + 3] = rgbaPixels[pixel + 3] // A
+        }
+
+        bgra.withUnsafeMutableBytes { buffer in
+            var image: UnsafeMutableRawPointer?
+            guard winGdipCreateBitmapFromScan0(
+                Int32(width), Int32(height), Int32(width * 4),
+                gdiplusPixelFormat32bppARGB, buffer.baseAddress, &image
+            ) == gdiplusOkStatus, let image else {
+                return
+            }
+            defer { _ = winGdipDisposeImage(image) }
+
+            var graphics: UnsafeMutableRawPointer?
+            guard winGdipCreateFromHDC(deviceContext, &graphics) == gdiplusOkStatus, let graphics else {
+                return
+            }
+            defer { _ = winGdipDeleteGraphics(graphics) }
+
+            // Optional template tint through the color matrix (file-path parity).
+            var attributes: UnsafeMutableRawPointer?
+            if let tint, winGdipCreateImageAttributes(&attributes) == gdiplusOkStatus {
+                let matrix = Win32GdiPlusImageDecoder.tintColorMatrix(
+                    red: Float(tint.redComponent), green: Float(tint.greenComponent),
+                    blue: Float(tint.blueComponent), alpha: Float(tint.alphaComponent))
+                _ = matrix.withUnsafeBufferPointer {
+                    winGdipSetImageAttributesColorMatrix(attributes, 0, 1, $0.baseAddress, nil, 0)
+                }
+            }
+            defer { if let attributes { _ = winGdipDisposeImageAttributes(attributes) } }
+
+            _ = winGdipDrawImageRectRectI(
+                graphics, image,
+                Int32(rect.origin.x.rounded()), Int32(rect.origin.y.rounded()),
+                Int32(rect.size.width.rounded()), Int32(rect.size.height.rounded()),
+                0, 0, Int32(width), Int32(height),
+                gdiplusUnitPixel, attributes, nil, nil
+            )
+        }
+    }
+
     /// Draws an image tinted through a GDI+ color matrix (template rendering).
     private func drawTintedImage(atPath path: String, in rect: NSRect, tint: NSColor) {
         guard Win32GdiPlusImageDecoder.ensureStarted() else {

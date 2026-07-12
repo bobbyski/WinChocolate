@@ -279,6 +279,11 @@ public protocol NativeDrawingContext: AnyObject {
     /// tint color while the image's own alpha shapes the result.
     func drawImage(atPath path: String, in rect: NSRect, tint: NSColor?)
 
+    /// Draws an in-memory RGBA8 bitmap (top row first, `width*height*4` bytes)
+    /// scaled to fill a rectangle — the path a data-backed `NSImage` decoded to
+    /// a `CGImage` takes. `tint` renders it as a template as in the file form.
+    func drawImage(rgbaPixels: [UInt8], width: Int, height: Int, in rect: NSRect, tint: NSColor?)
+
     /// Fills a rectangle with a linear gradient along an angle in degrees.
     ///
     /// Stops are ordered by location within 0...1. Angle 0 runs left to right
@@ -302,6 +307,10 @@ extension NativeDrawingContext {
     public func drawImage(atPath path: String, in rect: NSRect) {
         drawImage(atPath: path, in: rect, tint: nil)
     }
+
+    /// Default: a backend without an in-memory bitmap path ignores it. Real
+    /// backends (Win32 DIB blit, the in-memory recorder) override.
+    public func drawImage(rgbaPixels: [UInt8], width: Int, height: Int, in rect: NSRect, tint: NSColor?) {}
 }
 
 extension NativeControlBackend {

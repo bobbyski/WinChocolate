@@ -105,20 +105,48 @@ open class NSImage: NSObject {
     /// (`withTintColor`-style) without a bitmap-compositing pipeline.
     open var winTint: NSColor?
 
+    /// The decoded in-memory bitmap, lazily produced from `data` (BMP/PNG) the
+    /// first time it is needed and cached. This is the WinCoreGraphics (13.6)
+    /// backing that closes the data-backed drawing boundary; file-backed images
+    /// still blit their decoded file directly.
+    private var winDecodedImage: CGImage??
+
+    /// The data-backed image decoded to a `CGImage`, or `nil` when there is no
+    /// data or it is an unsupported format. Result is memoized.
+    open var winCGImage: CGImage? {
+        if let cached = winDecodedImage {
+            return cached
+        }
+        let decoded = data.flatMap { CGImage.decode(Array($0)) }
+        winDecodedImage = .some(decoded)
+        if let decoded, size == .zero {
+            size = NSSize(width: CGFloat(decoded.width), height: CGFloat(decoded.height))
+        }
+        return decoded
+    }
+
     /// Draws the image scaled into a rectangle of the current graphics context.
     ///
     /// Template images (`isTemplate`) render as the current fill color shaped
     /// by the image's alpha, matching AppKit's template drawing; set a color
     /// (`NSColor.set()`) before drawing to pick the tint (black by default).
-    /// An explicit `winTint` wins over both. Only file-backed images draw;
-    /// named and data-backed images are a no-op until in-memory bitmap
-    /// decoding lands.
+    /// An explicit `winTint` wins over both. File-backed images blit their
+    /// decoded file; **data-backed images decode through WinCoreGraphics (13.6)
+    /// and blit their pixels** — the in-memory boundary noted in 3.13 is closed
+    /// (named-only images without data still no-op).
     open func draw(in rect: NSRect) {
-        guard let filePath, let context = NSGraphicsContext.current else {
+        guard let context = NSGraphicsContext.current else {
             return
         }
+        let tint = winTint ?? (isTemplate ? context.fillColor : nil)
 
-        context.nativeContext.drawImage(atPath: filePath, in: rect, tint: winTint ?? (isTemplate ? context.fillColor : nil))
+        if let filePath {
+            context.nativeContext.drawImage(atPath: filePath, in: rect, tint: tint)
+            return
+        }
+        if let image = winCGImage {
+            context.nativeContext.drawImage(rgbaPixels: image.pixels, width: image.width, height: image.height, in: rect, tint: tint)
+        }
     }
 
     /// Draws the image into a rectangle, ignoring the source crop, compositing
