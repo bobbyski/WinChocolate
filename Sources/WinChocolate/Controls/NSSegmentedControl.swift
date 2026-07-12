@@ -233,6 +233,20 @@ open class NSSegmentedControl: NSControl {
         return segments[segment].label
     }
 
+    /// The control's natural size (9.2): each segment's label measured with the
+    /// current font plus per-segment padding, at the standard control height, so
+    /// a layout-created segmented control (e.g. a tab bar) isn't measured 0×0.
+    open override var intrinsicContentSize: NSSize {
+        let font = self.font ?? NSFont.systemFont(ofSize: 13)
+        var width: CGFloat = 0
+        for index in 0..<segmentCount {
+            let text = label(forSegment: index) ?? ""
+            let measured = (text.isEmpty ? " " : text).size(withAttributes: [.font: font])
+            width += measured.width + 20
+        }
+        return NSSize(width: max(width, 30), height: 24)
+    }
+
     /// Sets the image for a segment. File-backed images render in the drawn
     /// control (image left of the label when both are present, else centered);
     /// template images tint to the label color. Named/symbol images without a

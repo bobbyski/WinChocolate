@@ -50,6 +50,20 @@ open class NSDatePicker: NSControl {
         }
     }
 
+    /// The control's natural size (9.2): the calendar style is a fixed square;
+    /// the text-field styles measure a representative date string with the
+    /// current font plus the stepper/padding at the standard control height.
+    open override var intrinsicContentSize: NSSize {
+        if datePickerStyle == .clockAndCalendar {
+            return NSSize(width: 139, height: 148)
+        }
+        let font = self.font ?? NSFont.systemFont(ofSize: 13)
+        let sample = "00/00/0000 00:00:00 PM"
+        let measured = sample.size(withAttributes: [.font: font])
+        let stepper: CGFloat = datePickerStyle == .textFieldAndStepper ? 16 : 0
+        return NSSize(width: measured.width + 12 + stepper, height: 24)
+    }
+
     /// Requested visual style.
     open var datePickerStyle: Style = .textFieldAndStepper
 

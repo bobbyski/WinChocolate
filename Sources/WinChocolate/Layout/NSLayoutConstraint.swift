@@ -153,7 +153,11 @@ public final class NSLayoutConstraint {
         guard let first = firstItem else {
             return nil
         }
-        guard let second = secondItem else {
+        // A self-referential constraint (both items the same view, e.g. an
+        // aspect-ratio `width == height`) constrains the view's own frame, which
+        // its superview lays out — so it must own the constraint, exactly like a
+        // single-item constant constraint.
+        guard let second = secondItem, second !== first else {
             return first.superview ?? first
         }
         return NSView.winNearestCommonAncestor(first, second) ?? first.superview ?? first

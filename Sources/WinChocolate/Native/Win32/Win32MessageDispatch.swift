@@ -516,6 +516,22 @@ extension Win32NativeControlBackend {
                 tableClickedColumns[handle.rawValue] = clickedColumn
                 action()
                 return 0
+            case nmDblclk:
+                guard let doubleAction = tableDoubleClickActions[handle.rawValue] else {
+                    return nil
+                }
+
+                let hit = tableHitTest(at: notification.ptAction, hwnd: source)
+                let clickedRow = hit.row >= 0 ? hit.row : Int(notification.iItem)
+                let clickedColumn = hit.column >= 0 ? hit.column : Int(notification.iSubItem)
+                guard clickedRow >= 0 else {
+                    return nil
+                }
+
+                tableClickedRows[handle.rawValue] = clickedRow
+                tableClickedColumns[handle.rawValue] = clickedColumn
+                doubleAction()
+                return 0
             case lvnItemChanged:
                 guard notification.iItem >= 0,
                       (notification.uChanged & lvifState) != 0,

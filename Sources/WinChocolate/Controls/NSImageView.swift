@@ -223,6 +223,15 @@ open class NSImageView: NSControl {
         case button
     }
 
+    /// The control's natural size (9.2): the displayed image's size, or no
+    /// intrinsic size when there is no image (constraints/frame decide).
+    open override var intrinsicContentSize: NSSize {
+        if let image {
+            return image.size
+        }
+        return NSSize(width: NSView.noIntrinsicMetric, height: NSView.noIntrinsicMetric)
+    }
+
     /// The displayed image.
     open var image: NSImage? {
         didSet {

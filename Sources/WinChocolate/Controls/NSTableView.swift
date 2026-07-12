@@ -820,6 +820,9 @@ open class NSTableView: NSControl {
         backend.registerTableEditAction(for: handle) { [weak self] row, column, text in
             self?.commitEdit(row: row, column: column, text: text)
         }
+        backend.registerTableDoubleClickAction(for: handle) { [weak self] in
+            self?.sendDoubleAction()
+        }
         backend.registerAction(for: handle) { [weak self, weak backend] in
             guard let self, let backend, let nativeHandle = self.nativeHandle else {
                 return

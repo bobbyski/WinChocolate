@@ -1654,6 +1654,7 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     public private(set) var tableEditableHandles: Set<NativeHandle> = []
     public private(set) var tableSortIndicators: [NativeHandle: (column: Int, ascending: Bool)] = [:]
     private var tableEditActionsByHandle: [NativeHandle: (Int, Int, String) -> Void] = [:]
+    private var tableDoubleClickActionsByHandle: [NativeHandle: () -> Void] = [:]
 
     /// Records native multiple-selection enablement.
     public func setTableAllowsMultipleSelection(_ allows: Bool, for handle: NativeHandle) {
@@ -1701,6 +1702,17 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     /// Test hook: commits an in-place edit as if the user typed it.
     public func simulateTableEdit(row: Int, column: Int, text: String, for handle: NativeHandle) {
         tableEditActionsByHandle[handle]?(row, column, text)
+    }
+
+    /// Records the row double-click callback.
+    public func registerTableDoubleClickAction(for handle: NativeHandle, action: @escaping () -> Void) {
+        tableDoubleClickActionsByHandle[handle] = action
+    }
+
+    /// Test hook: double-clicks a row as if the user did, updating the clicked row.
+    public func simulateTableDoubleClick(row: Int, for handle: NativeHandle) {
+        records[handle]?.tableClickedRow = row
+        tableDoubleClickActionsByHandle[handle]?()
     }
 
     /// Test hook: sets the native selection and fires the table action.

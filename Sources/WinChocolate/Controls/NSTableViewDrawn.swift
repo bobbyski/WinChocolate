@@ -828,8 +828,10 @@ extension NSTableView {
             winExternalDragRow = row
         }
 
-        // Double-click a drawn (non-hosted) cell in an editable column → edit.
+        // Double-click sends the table's double-action (AppKit parity), then a
+        // drawn (non-hosted) cell in an editable column begins editing.
         if event.clickCount >= 2 {
+            sendDoubleAction()
             let column = winColumnAtX(point.x)
             if column >= 0 {
                 winBeginDrawnEdit(row: row, column: column)

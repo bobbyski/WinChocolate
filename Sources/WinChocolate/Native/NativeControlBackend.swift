@@ -305,6 +305,10 @@ extension NativeDrawingContext {
 }
 
 extension NativeControlBackend {
+    /// Default: a backend that does not surface double-clicks ignores the
+    /// registration (the drawn-cell table path dispatches its own).
+    public func registerTableDoubleClickAction(for handle: NativeHandle, action: @escaping () -> Void) {}
+
     /// Updates an image-view bitmap source with no tint.
     public func setImagePath(_ imagePath: String?, description: String, for handle: NativeHandle) {
         setImagePath(imagePath, description: description, tint: nil, for: handle)
@@ -807,6 +811,10 @@ public protocol NativeControlBackend: AnyObject {
     /// Registers the action invoked when an in-place table-cell edit commits,
     /// carrying the row, column, and new text.
     func registerTableEditAction(for handle: NativeHandle, action: @escaping (Int, Int, String) -> Void)
+
+    /// Registers the action invoked when a table row is double-clicked; the
+    /// clicked row is available through `tableClickedRow(for:)`.
+    func registerTableDoubleClickAction(for handle: NativeHandle, action: @escaping () -> Void)
 
     /// Scrolls a native table row into view when possible.
     func scrollTableRowToVisible(_ row: Int, for handle: NativeHandle)

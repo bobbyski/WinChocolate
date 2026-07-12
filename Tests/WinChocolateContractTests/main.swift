@@ -266,6 +266,38 @@ func testControlIntrinsicContentSizes() {
 }
 
 @MainActor
+func testLayoutControlIntrinsicSizes() {
+    // Controls that a layout system creates without a frame must measure > 0 so
+    // they don't collapse to 0×0 (the ActiveUI demo-walk blocker, R11).
+    let segmented = NSSegmentedControl(labels: ["One", "Two", "Three"], frame: .zero)
+    expect(segmented.intrinsicContentSize.width > 60 && winClose(segmented.intrinsicContentSize.height, 24),
+        "Segmented control should measure its labels: got \(segmented.intrinsicContentSize).")
+
+    let spinner = NSProgressIndicator(frame: .zero)
+    spinner.style = .spinning
+    expect(winClose(spinner.intrinsicContentSize.width, 32) && winClose(spinner.intrinsicContentSize.height, 32),
+        "Spinning progress indicator should be 32×32: got \(spinner.intrinsicContentSize).")
+
+    let well = NSColorWell(frame: .zero)
+    expect(winClose(well.intrinsicContentSize.width, 44) && winClose(well.intrinsicContentSize.height, 23),
+        "Color well should report standard 44×23: got \(well.intrinsicContentSize).")
+    // The base NSControl.sizeThatFits now derives from intrinsicContentSize, so
+    // consumers that call sizeThatFits (rather than reading the anchor) also work.
+    let fitted = well.sizeThatFits(.zero)
+    expect(winClose(fitted.width, 44) && winClose(fitted.height, 23),
+        "sizeThatFits should follow intrinsicContentSize: got \(fitted).")
+
+    let level = NSLevelIndicator(frame: .zero)
+    expect(winClose(level.intrinsicContentSize.height, 18),
+        "Level indicator should report standard height 18: got \(level.intrinsicContentSize).")
+
+    let popup = NSPopUpButton(frame: .zero, pullsDown: false)
+    popup.addItem(withTitle: "A reasonably long item title")
+    expect(popup.intrinsicContentSize.width > 60 && winClose(popup.intrinsicContentSize.height, 26),
+        "Pop-up button should measure its widest item + chevron: got \(popup.intrinsicContentSize).")
+}
+
+@MainActor
 func testStackViewCustomSpacingAndHiddenViews() {
     func iv(_ w: CGFloat, _ h: CGFloat) -> IntrinsicSizeView { IntrinsicSizeView(NSSize(width: w, height: h)) }
     let a = iv(40, 20), b = iv(40, 20), c = iv(40, 20)
@@ -1477,6 +1509,26 @@ func testTableViewSelectionOptionsAndHelpers() {
     tableView.selectAll(nil)
 
     expect(tableView.numberOfSelectedRows == 3, "Table view selectAll did not select all rows.")
+}
+
+@MainActor
+func testTableViewDoubleClickSendsDoubleAction() {
+    let backend = InMemoryNativeControlBackend()
+    let tableView = NSTableView(frame: NSMakeRect(0, 0, 300, 160))
+    let dataSource = RecordingTableDataSource()
+    tableView.addTableColumn(NSTableColumn(identifier: "name"))
+    tableView.dataSource = dataSource
+    tableView.reloadData()
+
+    var doubleClickedRow = -99
+    tableView.onDoubleAction = { table in doubleClickedRow = table.clickedRow }
+    let handle = tableView.realizeNativePeer(in: backend, parent: nil)
+
+    // A native double-click (NM_DBLCLK) fires the table's double-action with the
+    // clicked row exposed through `clickedRow` (AppKit parity).
+    backend.simulateTableDoubleClick(row: 2, for: handle)
+    expect(doubleClickedRow == 2,
+        "Double-click should fire onDoubleAction with clickedRow 2: got \(doubleClickedRow).")
 }
 
 @MainActor
@@ -9850,6 +9902,7 @@ testStackViewCustomSpacingAndHiddenViews()
 testAspectRatioCrossAxisConstraints()
 testLayoutMarginsGuideInsetsChild()
 testControlIntrinsicContentSizes()
+testLayoutControlIntrinsicSizes()
 testAutoLayoutResizeReflowsConstraints()
 testAutoLayoutSiblingChainInequalityAndFixedAnchor()
 testWindowTitleVisibilityBlanksCaption()
@@ -9872,6 +9925,7 @@ testTableColumnStoresAppKitIdentifierShape()
 testTableViewReloadsRowsFromDataSource()
 testTableViewColumnMovementAndRemoval()
 testTableViewSelectionOptionsAndHelpers()
+testTableViewDoubleClickSendsDoubleAction()
 testTableViewStoresDisplayOptionsAndSetObjectValue()
 testTableViewDelegateViewHeightAndSortHooks()
 testTableViewTabKeyMovesThroughKeyViewLoop()
