@@ -127,6 +127,19 @@ public protocol NativeControlBackend: AnyObject {
     /// re-theme in place.
     func setAppearanceDark(_ dark: Bool)
 
+    // MARK: Pasteboard & drag-and-drop
+    /// Pushes a string to the system clipboard.
+    func setClipboardString(_ string: String)
+    /// Reads the last string set on the clipboard (nil if none).
+    func clipboardString() -> String?
+    /// Registers `handle` as a drop destination for `types`. On a drop, calls
+    /// `onDrop(droppedString, x, y)` in the view's AppKit coordinates; the
+    /// return value reports whether the drop was accepted.
+    func registerDropTarget(for handle: NativeHandle, types: [String], onDrop: @escaping (String, Double, Double) -> Bool)
+    /// Registers `handle` as a drag source; `provider` supplies the string
+    /// carried when the user drags it (nil cancels).
+    func registerDragSource(for handle: NativeHandle, provider: @escaping () -> String?)
+
     // MARK: Views & controls
     /// Creates a container view (absolute child placement, like AppKit frames).
     func createView(frame: NSRect) -> NativeHandle

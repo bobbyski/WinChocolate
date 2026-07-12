@@ -816,6 +816,103 @@ do {
     NSApplication.shared.appearance = nil   // leave the shared app as we found it
 }
 
+// MARK: 24 — Pasteboard & drag-and-drop (NSPasteboard + NSView DnD)
+do {
+    let backend = InMemoryNativeControlBackend()
+    NSApplication.shared.nativeBackend = backend
+
+    // Pasteboard copy/paste round-trip.
+    let pb = NSPasteboard.general
+    let before = pb.clearContents()
+    check(pb.setString("hello clipboard", forType: .string), "setString reports success")
+    check(pb.string(forType: .string) == "hello clipboard", "string round-trips through the board")
+    check(backend.clipboard == "hello clipboard", "general board pushes to the system clipboard")
+    check(pb.clearContents() == before + 1, "clearContents bumps the change count")
+    check(pb.string(forType: .string) == nil, "cleared board holds nothing")
+
+    // A drop destination consumes a dropped string.
+    let dropZone = NSView(frame: NSMakeRect(0, 0, 200, 100))
+    var dropped: String?
+    var enteredMask: NSDragOperation = .none
+    dropZone.onDraggingEntered = { info in
+        enteredMask = info.draggingSourceOperationMask
+        return .copy
+    }
+    dropZone.onPerformDragOperation = { info in
+        dropped = info.draggingPasteboard.string(forType: .string)
+        return true
+    }
+    dropZone.registerForDraggedTypes([.string])
+    check(backend.dropTargetTypes[dropZone.handle.rawValue] == ["public.utf8-plain-text"],
+          "registered dragged types reach the backend")
+    let accepted = backend.simulateDrop("dragged text", at: NSMakePoint(10, 20), on: dropZone.handle)
+    check(accepted == true, "destination accepts the drop")
+    check(dropped == "dragged text", "performDragOperation reads the drop off the pasteboard")
+    check(enteredMask == .copy, "draggingEntered sees the source operation mask")
+
+    // A destination that rejects in draggingEntered blocks the drop.
+    let picky = NSView(frame: NSMakeRect(0, 0, 50, 50))
+    var pickyGotDrop = false
+    picky.onDraggingEntered = { _ in .none }
+    picky.onPerformDragOperation = { _ in pickyGotDrop = true; return true }
+    picky.registerForDraggedTypes([.string])
+    check(backend.simulateDrop("nope", on: picky.handle) == false, "draggingEntered .none rejects the drop")
+    check(pickyGotDrop == false, "rejected drop never reaches performDragOperation")
+
+    // Source → destination transfer via a real drag session.
+    let source = NSView(frame: NSMakeRect(0, 0, 40, 40))
+    source.registerDraggingSource { "payload from source" }
+    var landed: String?
+    let target = NSView(frame: NSMakeRect(0, 0, 40, 40))
+    target.onPerformDragOperation = { info in landed = info.draggingPasteboard.string(forType: .string); return true }
+    target.registerForDraggedTypes([.string])
+    check(backend.simulateDragAndDrop(from: source.handle, to: target.handle) == true, "drag session completes")
+    check(landed == "payload from source", "the source's provided string arrives at the destination")
+}
+
+// MARK: 25 — Composed text layouts (NSForm + NSMatrix)
+do {
+    let backend = InMemoryNativeControlBackend()
+    NSApplication.shared.nativeBackend = backend
+
+    // NSForm: labelled rows backed by real text fields.
+    let form = NSForm(frame: NSMakeRect(0, 0, 256, 92))
+    form.titleWidth = 72
+    let nameCell = form.addEntry("Name:")
+    let statusCell = form.addEntry("Status:")
+    check(form.cells.count == 2, "form tracks its rows")
+    check(backend.subviews[form.handle.rawValue]?.count == 4, "each row adds a label + a field")
+    nameCell.stringValue = "LinChocolate"
+    check(form.textField(at: 0)?.stringValue == "LinChocolate", "cell value reaches the row's field")
+    form.setStringValue("Native", at: 1)
+    check(statusCell.stringValue == "Native", "setStringValue(at:) writes the row")
+    check(backend.text(for: statusCell.textField.handle) == "Native", "field text reaches the backend")
+    // The row's field is a live text field: editing it drives onTextChange.
+    var edited: String?
+    form.textField(at: 1)?.onTextChange = { edited = $0.stringValue }
+    backend.simulateTextChange(statusCell.textField.handle, "Edited")
+    check(edited == "Edited", "editing a form field fires onTextChange")
+
+    // NSMatrix: a rows×columns button grid.
+    let matrix = NSMatrix(frame: NSMakeRect(0, 0, 240, 72), mode: .trackModeMatrix,
+                          prototype: NSButtonCell(title: "Choice"),
+                          numberOfRows: 2, numberOfColumns: 2)
+    matrix.cellSize = NSMakeSize(104, 28)
+    matrix.intercellSpacing = NSMakeSize(8, 8)
+    check(backend.subviews[matrix.handle.rawValue]?.count == 4, "matrix builds one button per cell")
+    check(matrix.selectedRow == -1 && matrix.selectedColumn == -1, "matrix starts unselected")
+    matrix.selectCell(atRow: 0, column: 1)
+    check(matrix.selectedRow == 0 && matrix.selectedColumn == 1, "selectCell records the selection")
+
+    var firedRC: (Int, Int)?
+    matrix.onAction = { m in firedRC = (m.selectedRow, m.selectedColumn) }
+    // Clicking the bottom-right cell (row 1, col 1) selects it and fires onAction.
+    let cells = matrix.subviews   // row-major: [ (0,0),(0,1),(1,0),(1,1) ]
+    backend.simulateClick(cells[3].handle)
+    check(matrix.selectedRow == 1 && matrix.selectedColumn == 1, "clicking a cell selects it")
+    check(firedRC?.0 == 1 && firedRC?.1 == 1, "cell click fires onAction with the cell's row/column")
+}
+
 if failures == 0 {
     print("\nAll contract tests passed.")
 } else {

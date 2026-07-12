@@ -172,6 +172,49 @@ public final class GTKNativeControlBackend: NativeControlBackend {
         g_value_unset(&value)
     }
 
+    // MARK: Pasteboard & drag-and-drop
+    private var clipboardMirror: String?
+
+    public func setClipboardString(_ string: String) {
+        clipboardMirror = string
+        guard let display = gdk_display_get_default() else { return }
+        let clipboard = gdk_display_get_clipboard(display)
+        var value = GValue()
+        _ = g_value_init(&value, GType(16 << 2))   // G_TYPE_STRING
+        g_value_set_string(&value, string)
+        gdk_clipboard_set_value(clipboard, &value)
+        g_value_unset(&value)
+    }
+
+    // System-clipboard reads are async in GTK4; return the last value we set.
+    // Inbound cross-app paste is a later parity item.
+    public func clipboardString() -> String? { clipboardMirror }
+
+    public func registerDropTarget(for handle: NativeHandle, types: [String], onDrop: @escaping (String, Double, Double) -> Bool) {
+        guard let w = widget(handle) else { return }
+        // String drops only in this slice (G_TYPE_STRING); copy is enough.
+        let target = gtk_drop_target_new(GType(16 << 2), GDK_ACTION_COPY)
+        let box = DropBox(onDrop)
+        g_signal_connect_data(
+            UnsafeMutableRawPointer(target), "drop",
+            unsafeBitCast(gtkDropTrampoline, to: GCallback.self),
+            Unmanaged.passRetained(box).toOpaque(), boxRelease, GConnectFlags(rawValue: 0)
+        )
+        gtk_widget_add_controller(asWidget(w), target)
+    }
+
+    public func registerDragSource(for handle: NativeHandle, provider: @escaping () -> String?) {
+        guard let w = widget(handle) else { return }
+        let source = gtk_drag_source_new()
+        let box = DragProviderBox(provider)
+        g_signal_connect_data(
+            UnsafeMutableRawPointer(source), "prepare",
+            unsafeBitCast(gtkDragPrepareTrampoline, to: GCallback.self),
+            Unmanaged.passRetained(box).toOpaque(), boxRelease, GConnectFlags(rawValue: 0)
+        )
+        gtk_widget_add_controller(asWidget(w), source)
+    }
+
     // MARK: Windows
     public func createWindow(title: String, frame: NSRect, styleMask: NSWindow.StyleMask) -> NativeHandle {
         let win = gtk_window_new()!
@@ -1274,6 +1317,14 @@ private final class WidgetBox {
     let widget: UnsafeMutablePointer<GtkWidget>
     init(widget: UnsafeMutablePointer<GtkWidget>) { self.widget = widget }
 }
+private final class DropBox {
+    let onDrop: (String, Double, Double) -> Bool
+    init(_ onDrop: @escaping (String, Double, Double) -> Bool) { self.onDrop = onDrop }
+}
+private final class DragProviderBox {
+    let provider: () -> String?
+    init(_ provider: @escaping () -> String?) { self.provider = provider }
+}
 
 private final class DrawBox {
     weak var backend: GTKNativeControlBackend?
@@ -1666,6 +1717,37 @@ private let gtkColorSetTrampoline: @convention(c) (UnsafeMutableRawPointer?, gpo
 }
 
 /// Releases a boxed closure of any box type when GLib tears the connection down.
+/// Handler for `GtkDropTarget::drop` — extracts the dropped string and flips
+/// the drop point into AppKit's bottom-left coordinates. Returns whether the
+/// destination accepted the drop.
+private let gtkDropTrampoline: @convention(c) (UnsafeMutableRawPointer?, UnsafePointer<GValue>?, Double, Double, gpointer?) -> gboolean = { target, value, x, y, userData in
+    guard let value, let userData else { return gboolean(0) }
+    let cString = g_value_get_string(value)
+    let string = cString.map { String(cString: $0) } ?? ""
+    var appKitY = y
+    if let target {
+        let widget = gtk_event_controller_get_widget(OpaquePointer(target))
+        appKitY = Double(gtk_widget_get_height(widget)) - y
+    }
+    let accepted = Unmanaged<DropBox>.fromOpaque(userData).takeUnretainedValue().onDrop(string, x, appKitY)
+    return gboolean(accepted ? 1 : 0)
+}
+
+/// Handler for `GtkDragSource::prepare` — wraps the provided string in a
+/// `GdkContentProvider` (built from a GValue, since `gdk_content_provider_new_typed`
+/// is C-variadic). Returning nil cancels the drag.
+private let gtkDragPrepareTrampoline: @convention(c) (UnsafeMutableRawPointer?, Double, Double, gpointer?) -> OpaquePointer? = { _, _, _, userData in
+    guard let userData,
+          let string = Unmanaged<DragProviderBox>.fromOpaque(userData).takeUnretainedValue().provider()
+    else { return nil }
+    var value = GValue()
+    _ = g_value_init(&value, GType(16 << 2))   // G_TYPE_STRING
+    g_value_set_string(&value, string)
+    let provider = gdk_content_provider_new_for_value(&value)
+    g_value_unset(&value)
+    return OpaquePointer(provider)
+}
+
 private let boxRelease: GClosureNotify = { data, _ in
     guard let data else { return }
     Unmanaged<AnyObject>.fromOpaque(data).release()
