@@ -1,0 +1,23 @@
+# Convenience alternative to run-linux.sh for the Ring 1 loop.
+#
+#   docker compose run --rm dev              # interactive shell
+#   docker compose run --rm dev swift run GTKHelloSpike
+#
+# You must still authorize XQuartz first (once per login):
+#   open -a XQuartz && /opt/X11/bin/xhost + 127.0.0.1
+# and enable XQuartz > Settings > Security > "Allow connections from network clients".
+services:
+  dev:
+    build:
+      context: .
+      args:
+        SWIFT_TAG: 6.0-noble
+    image: linchocolate-dev
+    environment:
+      DISPLAY: host.docker.internal:0
+      GSK_RENDERER: ${GSK_RENDERER:-cairo}
+    volumes:
+      - .:/work
+    working_dir: /work
+    stdin_open: true
+    tty: true
