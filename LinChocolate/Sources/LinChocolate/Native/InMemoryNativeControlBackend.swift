@@ -173,6 +173,27 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
         guard let items = toolbars[window.rawValue], index < items.count else { return }
         items[index].action?()
     }
+
+    /// The palette items from the most recent customization request.
+    public private(set) var toolbarCustomizationItems: [NativeToolbarPaletteItem] = []
+    private var toolbarCustomizationToggle: ((String, Bool) -> Void)?
+    private var toolbarCustomizationClose: (() -> Void)?
+    public func runToolbarCustomization(_ items: [NativeToolbarPaletteItem],
+                                        onToggle: @escaping (String, Bool) -> Void,
+                                        onClose: @escaping () -> Void,
+                                        for window: NativeHandle) {
+        toolbarCustomizationItems = items
+        toolbarCustomizationToggle = onToggle
+        toolbarCustomizationClose = onClose
+    }
+    /// Test hook: toggles an item in the open customization palette.
+    public func simulateToolbarCustomizationToggle(_ identifier: String, on: Bool) {
+        toolbarCustomizationToggle?(identifier, on)
+    }
+    /// Test hook: closes the open customization palette.
+    public func simulateToolbarCustomizationClose() {
+        toolbarCustomizationClose?()
+    }
     public func runAlert(message: String, informative: String, buttons: [String], for window: NativeHandle?) -> Int {
         alerts.append((message: message, informative: informative, buttons: buttons))
         return nextAlertResponse

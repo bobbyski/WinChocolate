@@ -1139,6 +1139,68 @@ do {
     check(backend.shownPopovers.count == 1, "re-showing works and reuses one popover")
 }
 
+// MARK: 31 — Toolbar customization (NSToolbarDelegate + palette)
+final class CustomizeDelegate: NSToolbarDelegate {
+    let items: [String: NSToolbarItem]
+    init(_ items: [String: NSToolbarItem]) { self.items = items }
+    func toolbarAllowedItemIdentifiers(_ t: NSToolbar) -> [String] { ["open", "save", "info"] }
+    func toolbarDefaultItemIdentifiers(_ t: NSToolbar) -> [String] { ["open", "save"] }
+    func toolbar(_ t: NSToolbar, itemForItemIdentifier id: String, willBeInsertedIntoToolbar f: Bool) -> NSToolbarItem? {
+        items[id]
+    }
+}
+do {
+    let backend = InMemoryNativeControlBackend()
+    NSApplication.shared.nativeBackend = backend
+
+    let window = NSWindow(contentRect: NSMakeRect(0, 0, 400, 300), styleMask: [.titled], backing: .buffered, defer: false)
+    let toolbar = NSToolbar(identifier: "custom")
+    func item(_ id: String, _ label: String) -> NSToolbarItem {
+        let i = NSToolbarItem(itemIdentifier: id); i.label = label; return i
+    }
+    let delegate = CustomizeDelegate(["open": item("open", "Open"), "save": item("save", "Save"), "info": item("info", "Info")])
+    toolbar.allowsUserCustomization = true
+    toolbar.delegate = delegate
+    window.toolbar = toolbar
+
+    // Delegate default identifiers populate the toolbar (info is absent).
+    check(backend.toolbars[window.handle.rawValue]?.map { $0.label } == ["Open", "Save"], "delegate default items populate the toolbar")
+
+    // Customization palette: allowed items become palette rows, with the
+    // currently-present ones checked.
+    check(!toolbar.customizationPaletteIsRunning, "palette starts closed")
+    toolbar.runCustomizationPalette(nil)
+    check(toolbar.customizationPaletteIsRunning, "runCustomizationPalette opens it")
+    let palette = backend.toolbarCustomizationItems
+    check(palette.map { $0.identifier } == ["open", "save", "info"], "palette lists the allowed identifiers")
+    check(palette.first { $0.identifier == "info" }?.isInToolbar == false, "an absent item shows unchecked")
+    check(palette.first { $0.identifier == "open" }?.isInToolbar == true, "a present item shows checked")
+
+    // Toggling "info" on adds it to the toolbar live.
+    backend.simulateToolbarCustomizationToggle("info", on: true)
+    check(backend.toolbars[window.handle.rawValue]?.contains { $0.label == "Info" } == true, "toggling an item on adds it to the toolbar")
+    // Toggling "save" off removes it.
+    backend.simulateToolbarCustomizationToggle("save", on: false)
+    check(backend.toolbars[window.handle.rawValue]?.contains { $0.label == "Save" } == false, "toggling an item off removes it")
+
+    backend.simulateToolbarCustomizationClose()
+    check(!toolbar.customizationPaletteIsRunning, "closing the palette clears the running flag")
+
+    // Programmatic insert/remove also refresh the installed toolbar.
+    toolbar.insertItem(withItemIdentifier: "save", at: 0)
+    check(backend.toolbars[window.handle.rawValue]?.first?.label == "Save", "insertItem places the item at the index")
+    let countBefore = backend.toolbars[window.handle.rawValue]?.count ?? 0
+    toolbar.removeItem(at: 0)
+    check(backend.toolbars[window.handle.rawValue]?.count == countBefore - 1, "removeItem drops an item")
+
+    // Customization requires opt-in.
+    let locked = NSToolbar(identifier: "locked")
+    locked.delegate = delegate
+    window.toolbar = locked
+    locked.runCustomizationPalette(nil)
+    check(!locked.customizationPaletteIsRunning, "runCustomizationPalette is a no-op without allowsUserCustomization")
+}
+
 if failures == 0 {
     print("\nAll contract tests passed.")
 } else {

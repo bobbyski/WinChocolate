@@ -689,10 +689,38 @@ infoItem.onAction = { _ in
     alert.informativeText = "The Apple-look toolbar exception, on Linux."
     alert.runModal()
 }
+let customizeItem = NSToolbarItem(itemIdentifier: "customize")
+customizeItem.label = "Customize"
+customizeItem.paletteLabel = "Customize Toolbar"
+customizeItem.image = NSImage(named: "emblem-system-symbolic")
+customizeItem.onAction = { _ in toolbar.runCustomizationPalette(nil) }
+
+final class DemoToolbarDelegate: NSToolbarDelegate {
+    let provider: (String) -> NSToolbarItem?
+    init(_ provider: @escaping (String) -> NSToolbarItem?) { self.provider = provider }
+    func toolbarAllowedItemIdentifiers(_ t: NSToolbar) -> [String] {
+        ["open", "save", "info", "customize", NSToolbarItem.flexibleSpaceIdentifier]
+    }
+    func toolbar(_ t: NSToolbar, itemForItemIdentifier id: String, willBeInsertedIntoToolbar f: Bool) -> NSToolbarItem? {
+        provider(id)
+    }
+}
+let toolbarDelegate = DemoToolbarDelegate { id in
+    switch id {
+    case "open": return openItem
+    case "save": return saveItem
+    case "info": return infoItem
+    case "customize": return customizeItem
+    default: return nil
+    }
+}
+toolbar.allowsUserCustomization = true
+toolbar.delegate = toolbarDelegate
 toolbar.addItem(openItem)
 toolbar.addItem(saveItem)
 toolbar.addItem(.flexibleSpace())
 toolbar.addItem(infoItem)
+toolbar.addItem(customizeItem)
 window.toolbar = toolbar
 
 window.contentView = tabView

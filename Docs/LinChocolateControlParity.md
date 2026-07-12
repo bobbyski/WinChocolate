@@ -34,7 +34,7 @@ here (Goal 2 — native modern look).
 | `NSSegmentedControl` | linked `GtkToggleButton`s in a `GtkBox` | ✅ | Composed control (GTK's segmented idiom, "linked" CSS class); per-segment `toggled` → `selectedSegment` / `onAction`. |
 | `NSMenu` / `NSMenuItem` | `GtkPopoverMenuBar` + `GMenu`/`GSimpleAction` | ✅ | `NSApp.mainMenu` installs an in-window menu bar on every window; separators become GMenu sections; item actions are window-scoped GActions ("win.mN"). **Key equivalents**: `keyEquivalent`/`keyEquivalentModifierMask` (Command→Control on Linux) → a `GtkShortcut` on a window `GtkShortcutController` (parse-string trigger + `gtk_named_action_new`) plus the GMenu `accel` display attribute. Verified: Ctrl+R fired a File-menu item. |
 | `NSGradient` | Cairo gradient patterns | ✅ | `init?(colors:)`/`init?(starting:ending:)`/`init?(colorsAndLocations:)`; `draw(in:angle:)` (linear, 0°=L→R / 90°=bottom→top), `draw(in path:angle:)` (save → clip to path → gradient → restore), `draw(inRadial:)`. `cairo_pattern_create_linear/radial` + `add_color_stop_rgba`. Angle endpoints span the rect's projection. |
-| `NSPopover` / `NSViewController` | `GtkPopover` | 🔄 | `contentViewController` view becomes the popover child; `show(relativeTo:of:preferredEdge:)` sets the parent, flips the AppKit rect to the view's GTK pointing rect, maps `NSRectEdge`→`GtkPositionType`, and `gtk_popover_popup`s; `performClose`→`popdown`. `autohide` + non-composited flatten (no arrow) + the standalone-popover dismissal fallback. Builds clean / contract-tested; live visual needs XQuartz (GtkPopover doesn't render on headless Xvfb). |
+| `NSPopover` / `NSViewController` | `GtkPopover` | 🔄 | `contentViewController` view becomes the popover child; `show(relativeTo:of:preferredEdge:)` sets the parent, flips the AppKit rect to the view's GTK pointing rect, maps `NSRectEdge`→`GtkPositionType`, and `gtk_popover_popup`s; `performClose`→`popdown`. `autohide` + non-composited flatten (no arrow) + the standalone-popover dismissal fallback. **Verified rendering** (Xvfb: the popover shows anchored under its button and stays open) once the buggy `is-active` self-dismissal was removed. |
 | `NSTabView` / `NSTabViewItem` | `GtkNotebook` | ✅ | Tabbed pages; `switch-page` → `indexOfSelectedTab` / `onSelectionChange`; programmatic `selectTabViewItem(at:)`. |
 | `NSBox` | `GtkFrame` | ✅ | Titled group box; `contentView` via kind-routed `setContentView`. |
 | `NSScrollView` / `NSClipView` / `NSScroller` | `GtkScrolledWindow` (+ its `GtkAdjustment`s / scrollbars) | ✅ | `documentView` scrolls when larger than the frame. `hasVertical/HorizontalScroller` → `gtk_scrolled_window_set_policy` (automatic vs. never); `scroll(to:)` sets the `GtkAdjustment` value; `documentVisibleRect`; `onScroll` fires from the adjustments' `value-changed`. `contentView` (`NSClipView`): `bounds.origin` = scroll offset (flipped clip, y grows down), `documentRect`, `scroll(to:)`. `verticalScroller`/`horizontalScroller` (`NSScroller`): `doubleValue`/`knobProportion`/`isVisible` derived from offset ÷ (document − viewport). **Overlay scrolling is off** (`gtk_scrolled_window_set_overlay_scrolling(false)`) so scrollbars reserve a gutter like AppKit's legacy scrollers — the floating overlay bar otherwise draws as an opaque strip clipping content on non-composited XQuartz instead of the viewport resizing. |
@@ -53,7 +53,7 @@ here (Goal 2 — native modern look).
 | `NSColor` as `textColor` | per-widget CSS (`color`) | ✅ | On `NSTextField`/`NSTextView`; same provider as the font (rebuilt together). |
 | `NSOutlineView` | `GtkColumnView` + `GtkTreeListModel` + `GtkTreeExpander` | ✅ | AppKit-shaped `NSOutlineViewDataSource` (children/expandable/value by item). Items addressed by index paths ("0.2"): the tree create-func builds child path lists on expand; the API resolves paths back to data-source items. Column 0 carries native expand arrows. |
 | `NSCollectionView` | `GtkGridView` (in a scroller, 3–4 columns) | ✅ | Count-only string-list model + one tile factory; `representedObjectForItemAt` supplies tile text (full `NSCollectionViewItem` view controllers are a later parity item). `selectionIndexes` (single) + `onSelectionChange`. |
-| `NSToolbar` / `NSToolbarItem` | composed styled `GtkBox` (**Apple-look exception**) | ✅ | The one deliberate non-native look (Goal 2): light gradient strip, hairline bottom border, flat hover-highlighted buttons; flexible-space item; docks under the menu bar via `NSWindow.toolbar`. **Icons**: `NSToolbarItem.image = NSImage(named:)` renders as a `GtkImage` (22px) above the label — the classic macOS item layout; the name resolves against the GTK icon theme (e.g. `document-open-symbolic`). Delegate-based item management + customization sheet are later parity items. |
+| `NSToolbar` / `NSToolbarItem` | composed styled `GtkBox` (**Apple-look exception**) | ✅ | The one deliberate non-native look (Goal 2): light gradient strip, hairline bottom border, flat hover-highlighted buttons; flexible-space item; docks under the menu bar via `NSWindow.toolbar`. **Icons**: `NSToolbarItem.image = NSImage(named:)` renders as a `GtkImage` (22px) above the label — the classic macOS item layout; the name resolves against the GTK icon theme (e.g. `document-open-symbolic`). **Customization**: `NSToolbarDelegate` (allowed/default identifiers + `itemForItemIdentifier:`), `allowsUserCustomization`, `insertItem`/`removeItem`, and `runCustomizationPalette(_:)` → a composed sheet (a `GtkCheckButton` per allowed item, checked = present) that adds/removes items live. Delegate default identifiers populate the toolbar on assignment. |
 | `NSImage` | `GtkPicture` (file) / `GtkImage` icon (named) | ✅ | `init?(contentsOfFile:)` decodes a file (`GtkPicture`, aspect-fit); `init?(named:)` carries an icon-theme name resolved by the GTK icon theme where it's shown (toolbar items, …). `init?(systemSymbolName:)` (SF-Symbol → GTK icon mapping) is a planned addition. |
 | `NSLayoutConstraint` / anchors | *(no GTK peer — pure solver)* | 🔄 | Auto Layout is resolved entirely in Swift and applied through the existing `setFrame` seam, so it's backend-agnostic (identical on GTK and in-memory). `LayoutSolver` turns active **equality** constraints into a linear system and solves by Gaussian elimination (RREF); under-constrained dimensions fall back to the current frame. Anchors: `leading/trailing/left/right/centerX` (X), `top/bottom/centerY` (Y), `width/height` (Dimension) with constant + multiplier. `translatesAutoresizingMaskIntoConstraints` picks solver-driven vs. fixed. Inequalities, priority tie-breaking, intrinsic-size hugging/compression, and live resize re-layout are later parity items. |
 | `NSAppearance` / dark mode | `GtkSettings` `gtk-application-prefer-dark-theme` | 🔄 | App-scoped: `NSApp.appearance = .darkAqua` flips the display-wide dark-theme preference (set via a `GValue` — `g_object_set` is C-variadic and uncallable from Swift), re-theming every live control at once. `effectiveAppearance.isDark` is queryable from custom `draw(_:)`. The Apple-look toolbar tracks the appearance too (its CSS uses theme-named colors). Per-view appearance overrides are a later parity item. |
@@ -104,15 +104,20 @@ look):
 3. `gtk_popover_set_has_arrow(false)` on dropdown-internal popovers — the
    arrow's tail geometry is compiled into GTK and cannot be styled away.
 4. Outside-click dismissal fallback — popovers normally auto-dismiss via a
-   pointer grab, which doesn't take effect here, leaving menus stuck open. A
-   capture-phase `GtkGestureClick` on each window (plus a `notify::is-active`
-   handler) pops down any visible **standalone** popover in its subtree
-   (dropdown/combo lists). It must **not** descend into `GtkPopoverMenuBar`
-   subtrees: opening a menu popover deactivates the window (separate X surface),
-   which fired the is-active handler and popped the menu down the instant it
-   opened — File/Help menus appeared dead. The walk now skips menu-bar subtrees;
-   GTK manages menu-bar menu dismissal (Escape / another top-level item /
-   activation) natively.
+   pointer grab, which doesn't take effect here, leaving open popovers stuck. A
+   capture-phase `GtkGestureClick` on each window pops down any *other* visible
+   popover before the click lands (it runs before the target handler, so it
+   never closes a popover the same click is opening). Two things it must NOT do,
+   both learned the hard way — opening an autohide popover briefly deactivates
+   the toplevel (the popover grabs its own surface):
+   - **No `notify::is-active` dismissal.** An earlier is-active handler popped a
+     popover down the instant it opened (window went inactive) — this silently
+     broke the combo-box dropdown *and* `NSPopover`, and made it look like they
+     never rendered on Xvfb. Removed entirely; the capture-click handler covers
+     in-window outside clicks.
+   - **Don't descend into `GtkPopoverMenuBar` subtrees** — reaching the open
+     menu popover inside would close menus on open. GTK manages menu-bar
+     dismissal (Escape / another top-level item / activation) natively.
 
 Diagnosed by pixel-sampling captures (the band was exactly the popover
 surface's top rows); each layer removed a slice of the black. The dismissal

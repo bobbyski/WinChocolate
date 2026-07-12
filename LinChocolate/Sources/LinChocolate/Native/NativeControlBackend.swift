@@ -82,6 +82,18 @@ public struct NativeTextRun: Equatable {
     }
 }
 
+/// One row of the toolbar customization palette.
+public struct NativeToolbarPaletteItem {
+    public let identifier: String
+    public let label: String
+    public let isInToolbar: Bool
+    public init(identifier: String, label: String, isInToolbar: Bool) {
+        self.identifier = identifier
+        self.label = label
+        self.isInToolbar = isInToolbar
+    }
+}
+
 /// Platform-neutral description of one menu-bar item, used to carry `NSMenu`
 /// structures across the backend seam without the seam knowing API types.
 public struct NativeMenuItemSpec {
@@ -141,6 +153,12 @@ public protocol NativeControlBackend: AnyObject {
     func installMenuBar(_ menus: [NativeMenuSpec], on window: NativeHandle)
     /// Installs (or replaces) the Apple-look toolbar under the menu bar.
     func installToolbar(_ items: [NativeToolbarItemSpec], on window: NativeHandle)
+    /// Shows the toolbar customization palette: one toggle per allowed item.
+    /// Toggling calls `onToggle(identifier, isOn)`; closing calls `onClose`.
+    func runToolbarCustomization(_ items: [NativeToolbarPaletteItem],
+                                 onToggle: @escaping (String, Bool) -> Void,
+                                 onClose: @escaping () -> Void,
+                                 for window: NativeHandle)
     /// Shows a modal alert and blocks until a button is pressed; returns the
     /// pressed button's index in `buttons` (AppKit order: first = default,
     /// shown rightmost).

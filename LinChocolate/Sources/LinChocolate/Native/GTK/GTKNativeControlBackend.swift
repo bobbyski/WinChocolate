@@ -236,10 +236,16 @@ public final class GTKNativeControlBackend: NativeControlBackend {
     }
 
     /// Popovers normally dismiss on outside click via a pointer grab, but that
-    /// grab does not take effect on non-composited X11 (XQuartz), leaving menus
-    /// stuck open. Fallback: a capture-phase click handler on the window that
-    /// pops down any open popover. Clicks inside a popover are on its own
-    /// surface and never reach this handler, so item activation is unaffected.
+    /// grab does not take effect on non-composited X11 (XQuartz), leaving open
+    /// popovers stuck. Fallback: a capture-phase click handler on the window
+    /// that pops down any *other* open popover before the click lands. Clicks
+    /// inside a popover are on its own surface and never reach this handler, so
+    /// item activation is unaffected.
+    ///
+    /// We deliberately do NOT dismiss on `notify::is-active`: opening an
+    /// autohide popover briefly deactivates the toplevel window (the popover
+    /// grabs its own surface), and reacting to that would pop the popover down
+    /// the instant it opens — which broke the combo-box dropdown and `NSPopover`.
     private func installPopoverDismissFallback(on windowWidget: UnsafeMutablePointer<GtkWidget>) {
         guard nonComposited else { return }
         let gesture = gtk_gesture_click_new()!
@@ -252,13 +258,6 @@ public final class GTKNativeControlBackend: NativeControlBackend {
             Unmanaged.passRetained(box).toOpaque(), boxRelease, GConnectFlags(rawValue: 0)
         )
         gtk_widget_add_controller(windowWidget, gesture)
-        // Also dismiss when the window deactivates (click on desktop/other app).
-        let activeBox = WidgetBox(widget: windowWidget)
-        g_signal_connect_data(
-            UnsafeMutableRawPointer(windowWidget), "notify::is-active",
-            unsafeBitCast(gtkWindowActiveTrampoline, to: GCallback.self),
-            Unmanaged.passRetained(activeBox).toOpaque(), boxRelease, GConnectFlags(rawValue: 0)
-        )
     }
     public func setContentView(_ view: NativeHandle, for window: NativeHandle) {
         guard let w = widget(window), let v = widget(view) else { return }
@@ -440,6 +439,60 @@ public final class GTKNativeControlBackend: NativeControlBackend {
         let anchor = windowMenuBars[window.rawValue]
         gtk_box_insert_child_after(asBox(box), bar, anchor.map(asWidget))
         windowToolbars[window.rawValue] = OpaquePointer(bar)
+    }
+    public func runToolbarCustomization(_ items: [NativeToolbarPaletteItem],
+                                        onToggle: @escaping (String, Bool) -> Void,
+                                        onClose: @escaping () -> Void,
+                                        for window: NativeHandle) {
+        let panel = gtk_window_new()!
+        gtk_window_set_title(asWindow(OpaquePointer(panel)), "Customize Toolbar")
+        gtk_window_set_resizable(asWindow(OpaquePointer(panel)), gboolean(0))
+        if let parent = widget(window) {
+            gtk_window_set_transient_for(asWindow(OpaquePointer(panel)), asWindow(parent))
+        }
+        if !nonComposited { gtk_window_set_modal(asWindow(OpaquePointer(panel)), gboolean(1)) }
+
+        let vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 8)!
+        gtk_widget_set_margin_top(vbox, 20); gtk_widget_set_margin_bottom(vbox, 16)
+        gtk_widget_set_margin_start(vbox, 24); gtk_widget_set_margin_end(vbox, 24)
+        let heading = gtk_label_new("Toolbar items:")!
+        gtk_widget_add_css_class(heading, "title-4")
+        gtk_box_append(asBox(OpaquePointer(vbox)), heading)
+
+        for item in items {
+            let check = gtk_check_button_new_with_label(item.label)!
+            gtk_check_button_set_active(asCheckButton(OpaquePointer(check)), gboolean(item.isInToolbar ? 1 : 0))
+            let toggleBox = ToolbarToggleBox(id: item.identifier, action: onToggle)
+            g_signal_connect_data(
+                UnsafeMutableRawPointer(check), "toggled",
+                unsafeBitCast(gtkToolbarToggleTrampoline, to: GCallback.self),
+                Unmanaged.passRetained(toggleBox).toOpaque(), boxRelease, GConnectFlags(rawValue: 0)
+            )
+            gtk_box_append(asBox(OpaquePointer(vbox)), check)
+        }
+
+        let done = gtk_button_new_with_label("Done")!
+        let doneBox = ActionBox {
+            onClose()
+            gtk_window_destroy(UnsafeMutablePointer<GtkWindow>(OpaquePointer(panel)))
+        }
+        g_signal_connect_data(
+            UnsafeMutableRawPointer(done), "clicked",
+            unsafeBitCast(gtkActionTrampoline, to: GCallback.self),
+            Unmanaged.passRetained(doneBox).toOpaque(), boxRelease, GConnectFlags(rawValue: 0)
+        )
+        gtk_box_append(asBox(OpaquePointer(vbox)), done)
+
+        // The window-close (X) also ends the palette session.
+        let closeBox = ActionBox { onClose() }
+        g_signal_connect_data(
+            UnsafeMutableRawPointer(panel), "close-request",
+            unsafeBitCast(gtkCloseRequestTrampoline, to: GCallback.self),
+            Unmanaged.passRetained(closeBox).toOpaque(), boxRelease, GConnectFlags(rawValue: 0)
+        )
+
+        gtk_window_set_child(asWindow(OpaquePointer(panel)), vbox)
+        gtk_window_present(asWindow(OpaquePointer(panel)))
     }
     public func runOpenPanel(directory: String?, for window: NativeHandle?) -> String? {
         runFileDialog(open: true, directory: directory, suggestedName: nil, for: window)
@@ -1724,6 +1777,24 @@ private final class OutlineBox {
     init(backend: GTKNativeControlBackend) { self.backend = backend }
 }
 
+/// Carries a customization-palette row's identifier + toggle closure.
+private final class ToolbarToggleBox {
+    let id: String
+    let action: (String, Bool) -> Void
+    init(id: String, action: @escaping (String, Bool) -> Void) {
+        self.id = id
+        self.action = action
+    }
+}
+
+/// Handler for a customization-palette checkbox `toggled` — reports (id, on).
+private let gtkToolbarToggleTrampoline: @convention(c) (UnsafeMutableRawPointer?, gpointer?) -> Void = { button, userData in
+    guard let button, let userData else { return }
+    let active = gtk_check_button_get_active(UnsafeMutablePointer<GtkCheckButton>(OpaquePointer(button))) != 0
+    let box = Unmanaged<ToolbarToggleBox>.fromOpaque(userData).takeUnretainedValue()
+    box.action(box.id, active)
+}
+
 /// Carries a table's identity to the sorter-changed and row-activate handlers.
 private final class TableSignalBox {
     weak var backend: GTKNativeControlBackend?
@@ -1899,17 +1970,10 @@ private func popdownVisiblePopovers(under widget: UnsafeMutablePointer<GtkWidget
     }
 }
 
-/// Handler for the window's `notify::is-active` — dismisses popovers when the
-/// window deactivates (covers clicks landing outside the app entirely).
-private let gtkWindowActiveTrampoline: @convention(c) (UnsafeMutableRawPointer?, UnsafeMutableRawPointer?, gpointer?) -> Void = { window, _, userData in
-    guard let window, let userData else { return }
-    guard gtk_window_is_active(UnsafeMutablePointer<GtkWindow>(OpaquePointer(window))) == 0 else { return }
-    let box = Unmanaged<WidgetBox>.fromOpaque(userData).takeUnretainedValue()
-    popdownVisiblePopovers(under: box.widget)
-}
-
 /// Handler for the window's capture-phase `GtkGestureClick::pressed` — the
-/// outside-click popover dismissal fallback for non-composited displays.
+/// outside-click popover dismissal fallback for non-composited displays. Runs
+/// before the click lands, so it dismisses a previously-open popover without
+/// ever closing one that this same click is about to open.
 private let gtkDismissPopoversTrampoline: @convention(c) (UnsafeMutableRawPointer?, gint, gdouble, gdouble, gpointer?) -> Void = { _, _, _, _, userData in
     guard let userData else { return }
     let box = Unmanaged<WidgetBox>.fromOpaque(userData).takeUnretainedValue()
