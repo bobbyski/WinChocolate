@@ -215,6 +215,18 @@ open class NSTextField: NSControl {
         super.init(frame: frameRect)
     }
 
+    /// The field's natural size for Auto Layout (9.2): its text measured with
+    /// the current font, plus padding for the bezel/border. A wrapping
+    /// multi-line field reports no intrinsic width so constraints can widen it.
+    open override var intrinsicContentSize: NSSize {
+        let measured = (stringValue.isEmpty ? " " : stringValue)
+            .size(withAttributes: [.font: font ?? NSFont.systemFont(ofSize: 12)])
+        let horizontalPadding: CGFloat = isBezeled ? 8 : (isBordered ? 6 : 4)
+        let verticalPadding: CGFloat = isBezeled ? 6 : (isBordered ? 4 : 2)
+        let width = isMultiline ? NSView.noIntrinsicMetric : measured.width + horizontalPadding
+        return NSSize(width: width, height: measured.height + verticalPadding)
+    }
+
     /// Creates a text field with text and a frame.
     public init(string stringValue: String, frame frameRect: NSRect) {
         self.stringValue = stringValue

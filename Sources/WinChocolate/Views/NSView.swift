@@ -182,6 +182,14 @@ open class NSView: NSResponder {
     /// container for these, solving its subviews' frames from them.
     var winActiveConstraints: [NSLayoutConstraint] = []
 
+    /// Per-axis content-hugging priorities (how strongly the view resists
+    /// growing past its intrinsic size); AppKit's default is `defaultLow` (250).
+    var winContentHuggingPriority: (horizontal: Float, vertical: Float) = (250, 250)
+
+    /// Per-axis compression-resistance priorities (how strongly the view resists
+    /// shrinking below its intrinsic size); AppKit's default is `defaultHigh` (750).
+    var winCompressionResistancePriority: (horizontal: Float, vertical: Float) = (750, 750)
+
     /// Lays out the view's subviews. Subclasses override to position children.
     open func layout() {}
 

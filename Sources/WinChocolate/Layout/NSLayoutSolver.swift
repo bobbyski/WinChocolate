@@ -93,22 +93,40 @@ enum NSLayoutSolver {
                 equations.append(equation)
             }
         }
+        // Each solved view with an intrinsic metric on this axis contributes
+        // two implicit inequalities: it resists shrinking below the intrinsic
+        // size (compression resistance) and growing past it (content hugging),
+        // at the view's per-axis priorities — exactly AppKit's model.
+        for (i, view) in solved.enumerated() {
+            let intrinsic = isHorizontal ? view.intrinsicContentSize.width : view.intrinsicContentSize.height
+            guard intrinsic != NSView.noIntrinsicMetric else {
+                continue
+            }
+            let sizeIndex = vars(for: i).sizeIndex
+            let compression = isHorizontal
+                ? view.winCompressionResistancePriority.horizontal : view.winCompressionResistancePriority.vertical
+            let hugging = isHorizontal
+                ? view.winContentHuggingPriority.horizontal : view.winContentHuggingPriority.vertical
+            equations.append(AxisEquation(
+                terms: [(index: sizeIndex, coeff: 1)], rhs: Double(intrinsic),
+                relation: .greaterThanOrEqual, priority: compression))
+            equations.append(AxisEquation(
+                terms: [(index: sizeIndex, coeff: 1)], rhs: Double(intrinsic),
+                relation: .lessThanOrEqual, priority: hugging))
+        }
+
         guard !equations.isEmpty else {
             return nil
         }
 
-        // Project in ascending priority order so higher-priority constraints
-        // are applied last in each sweep and win any conflict — required
-        // constraints (projected last) always hold at the end of a sweep, and
-        // the final iteration leaves them satisfied. A well-posed system
-        // converges and breaks early; genuine conflicts run to the cap with the
-        // higher-priority side satisfied.
-        equations.sort { $0.priority < $1.priority }
-        let maxIterations = 2000
         let epsilon = 1e-8
-        for _ in 0..<maxIterations {
+        let maxIterations = 1000
+
+        // Project once onto every equation (a Kaczmarz sweep), skipping already
+        // satisfied inequalities; returns the largest single-variable change.
+        func sweep(_ eqs: [AxisEquation]) -> Double {
             var maxDelta = 0.0
-            for equation in equations {
+            for equation in eqs {
                 let lhs = equation.terms.reduce(0.0) { $0 + $1.coeff * values[$1.index] }
                 let residual = lhs - equation.rhs
                 switch equation.relation {
@@ -125,9 +143,33 @@ enum NSLayoutSolver {
                     maxDelta = max(maxDelta, abs(delta))
                 }
             }
-            if maxDelta < epsilon {
-                break
+            return maxDelta
+        }
+
+        // Fully satisfy a (self-consistent) equation set.
+        func converge(_ eqs: [AxisEquation]) {
+            guard !eqs.isEmpty else { return }
+            for _ in 0..<maxIterations where sweep(eqs) >= epsilon {}
+        }
+
+        // Solve by strict priority tiers (a Cassowary-style hierarchy): commit
+        // the highest priority first, then let each lower tier move only within
+        // the freedom the committed tiers leave — after applying a lower tier we
+        // fully re-converge the committed (higher-priority) constraints, so they
+        // always win. This is what makes a low-priority intrinsic size yield to
+        // a required edge pin even when that pin spans two variables (x + width).
+        let tierPriorities = Set(equations.map { $0.priority }).sorted(by: >)
+        var committed: [AxisEquation] = []
+        for priority in tierPriorities {
+            let tier = equations.filter { $0.priority == priority }
+            for _ in 0..<maxIterations {
+                let delta = sweep(tier)
+                converge(committed)
+                if delta < epsilon {
+                    break
+                }
             }
+            committed.append(contentsOf: tier)
         }
 
         return (0..<solved.count).map { (pos: values[$0 * 2], size: values[$0 * 2 + 1]) }
