@@ -45,7 +45,10 @@ public final class GTKNativeControlBackend: NativeControlBackend {
     private var tableLists: [UInt: OpaquePointer] = [:]       // table -> GtkStringList model
     private var tableRowCounts: [UInt: Int] = [:]
     private var tableColumnCounts: [UInt: Int] = [:]
+    private var tableColumnObjects: [UInt: [OpaquePointer]] = [:] // table -> GtkColumnViewColumn list
     private var tableProviders: [UInt: (Int, Int) -> String] = [:]
+    private var tableSortActions: [UInt: (Int, Bool) -> Void] = [:]     // (columnIndex, ascending)
+    private var tableActivateActions: [UInt: (Int) -> Void] = [:]       // double-click / Enter (row)
     private var collectionLists: [UInt: OpaquePointer] = [:]  // collection -> GtkStringList
     private var collectionItemCounts: [UInt: Int] = [:]
     private var collectionProviders: [UInt: (Int) -> String] = [:]
@@ -693,7 +696,54 @@ public final class GTKNativeControlBackend: NativeControlBackend {
         let column = gtk_column_view_column_new(title, factory)!   // factory is opaque
         gtk_column_view_column_set_expand(column, gboolean(1))
         gtk_column_view_append_column(cv, column)
+        tableColumnObjects[table.rawValue, default: []].append(column)
         tableColumnCounts[table.rawValue] = columnIndex + 1
+    }
+    public func setTableColumnTitle(_ title: String, columnIndex: Int, for table: NativeHandle) {
+        guard let columns = tableColumnObjects[table.rawValue], columnIndex < columns.count else { return }
+        gtk_column_view_column_set_title(columns[columnIndex], title)
+    }
+    public func setColumnSortable(_ columnIndex: Int, for table: NativeHandle) {
+        guard let columns = tableColumnObjects[table.rawValue], columnIndex < columns.count else { return }
+        // A no-op custom sorter makes the header clickable and drives the view's
+        // GtkColumnViewSorter; the actual re-sort happens Swift-side (the model
+        // is count-only), so we only need the header click + indicator + signal.
+        let sorter = gtk_custom_sorter_new(nil, nil, nil)
+        gtk_column_view_column_set_sorter(columns[columnIndex], UnsafeMutablePointer<GtkSorter>(sorter))
+    }
+    public func setSortChangeAction(for table: NativeHandle, action: @escaping (Int, Bool) -> Void) {
+        tableSortActions[table.rawValue] = action
+        guard let cv = tableColumnViews[table.rawValue],
+              let sorter = gtk_column_view_get_sorter(cv) else { return }
+        let box = TableSignalBox(backend: self, table: table.rawValue)
+        g_signal_connect_data(
+            UnsafeMutableRawPointer(sorter), "changed",
+            unsafeBitCast(gtkSorterChangedTrampoline, to: GCallback.self),
+            Unmanaged.passRetained(box).toOpaque(), boxRelease, GConnectFlags(rawValue: 0)
+        )
+    }
+    public func setRowActivateAction(for table: NativeHandle, action: @escaping (Int) -> Void) {
+        tableActivateActions[table.rawValue] = action
+        guard let cv = tableColumnViews[table.rawValue] else { return }
+        let box = TableSignalBox(backend: self, table: table.rawValue)
+        g_signal_connect_data(
+            UnsafeMutableRawPointer(cv), "activate",
+            unsafeBitCast(gtkRowActivateTrampoline, to: GCallback.self),
+            Unmanaged.passRetained(box).toOpaque(), boxRelease, GConnectFlags(rawValue: 0)
+        )
+    }
+    /// Called from the sorter-changed trampoline: maps the primary sort column
+    /// back to its index and reports (index, ascending) to the Swift action.
+    func handleSorterChanged(table: UInt, sorter: OpaquePointer) {
+        guard let columns = tableColumnObjects[table], let action = tableSortActions[table],
+              let primary = gtk_column_view_sorter_get_primary_sort_column(sorter) else { return }
+        guard let index = columns.firstIndex(of: primary) else { return }
+        let ascending = gtk_column_view_sorter_get_primary_sort_order(sorter) == GTK_SORT_ASCENDING
+        action(index, ascending)
+    }
+    /// Called from the row-activate trampoline (double-click / Enter).
+    func handleRowActivate(table: UInt, position: Int) {
+        tableActivateActions[table]?(position)
     }
     public func setTableRowCount(_ count: Int, for table: NativeHandle) {
         guard let list = tableLists[table.rawValue] else { return }
@@ -1565,6 +1615,31 @@ private final class OutlineBox {
     weak var backend: GTKNativeControlBackend?
     var outline: UInt = 0   // assigned right after the handle is allocated
     init(backend: GTKNativeControlBackend) { self.backend = backend }
+}
+
+/// Carries a table's identity to the sorter-changed and row-activate handlers.
+private final class TableSignalBox {
+    weak var backend: GTKNativeControlBackend?
+    let table: UInt
+    init(backend: GTKNativeControlBackend, table: UInt) {
+        self.backend = backend
+        self.table = table
+    }
+}
+
+/// Handler for the column view's `GtkColumnViewSorter::changed` — a header was
+/// clicked; report the primary sort column + order to the Swift side.
+private let gtkSorterChangedTrampoline: @convention(c) (UnsafeMutableRawPointer?, guint, gpointer?) -> Void = { sorter, _, userData in
+    guard let sorter, let userData else { return }
+    let box = Unmanaged<TableSignalBox>.fromOpaque(userData).takeUnretainedValue()
+    box.backend?.handleSorterChanged(table: box.table, sorter: OpaquePointer(sorter))
+}
+
+/// Handler for `GtkColumnView::activate` — a row was double-clicked / Entered.
+private let gtkRowActivateTrampoline: @convention(c) (UnsafeMutableRawPointer?, guint, gpointer?) -> Void = { _, position, userData in
+    guard let userData else { return }
+    let box = Unmanaged<TableSignalBox>.fromOpaque(userData).takeUnretainedValue()
+    box.backend?.handleRowActivate(table: box.table, position: Int(position))
 }
 private final class OutlineColumnBox {
     weak var backend: GTKNativeControlBackend?

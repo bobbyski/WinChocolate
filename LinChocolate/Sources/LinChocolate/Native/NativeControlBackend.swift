@@ -177,6 +177,16 @@ public protocol NativeControlBackend: AnyObject {
     func createTableView(frame: NSRect) -> NativeHandle
     /// Appends a titled column to a table.
     func addTableColumn(title: String, to table: NativeHandle)
+    /// Updates an existing column's header title.
+    func setTableColumnTitle(_ title: String, columnIndex: Int, for table: NativeHandle)
+    /// Makes a column's header clickable to sort (reports via `setSortChangeAction`).
+    func setColumnSortable(_ columnIndex: Int, for table: NativeHandle)
+    /// Registers the action fired when the user clicks a sortable header;
+    /// passes the column index and whether the new order is ascending.
+    func setSortChangeAction(for table: NativeHandle, action: @escaping (Int, Bool) -> Void)
+    /// Registers the action fired when a row is activated (double-click / Enter);
+    /// passes the row index.
+    func setRowActivateAction(for table: NativeHandle, action: @escaping (Int) -> Void)
     /// Sets the number of rows and re-binds visible cells.
     func setTableRowCount(_ count: Int, for table: NativeHandle)
     /// Supplies cell text on demand: `(row, columnIndex) -> String`.

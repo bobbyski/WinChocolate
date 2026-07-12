@@ -7,6 +7,7 @@
 
 import LinChocolate
 import Foundation
+import class LinChocolate.NSSortDescriptor   // ours (Foundation's Linux one lacks `key:`)
 
 let app = NSApplication.shared
 app.nativeBackend = GTKNativeControlBackend()   // native Linux backend (GTK4)
@@ -209,6 +210,15 @@ final class DemoTableData: NSTableViewDataSource {
         guard row < rows.count else { return nil }
         return tableColumn?.identifier == "status" ? rows[row].status : rows[row].name
     }
+    func tableView(_ tableView: NSTableView, sortDescriptorsDidChange old: [NSSortDescriptor]) {
+        guard let descriptor = tableView.sortDescriptors.first else { return }
+        let key = descriptor.key
+        rows.sort { a, b in
+            let (l, r) = key == "status" ? (a.status, b.status) : (a.name, b.name)
+            return descriptor.ascending ? l < r : l > r
+        }
+        tableView.reloadData()
+    }
 }
 let tableData = DemoTableData()
 
@@ -252,10 +262,16 @@ let tableTitle = NSTextField(labelWithString: "Projects (NSTableView):", frame: 
 let table = NSTableView(frame: NSMakeRect(24, r6.next(200), 486, 200))
 let nameColumn = NSTableColumn(identifier: "name");   nameColumn.title = "Name"
 let statusColumn = NSTableColumn(identifier: "status"); statusColumn.title = "Status"
+nameColumn.sortDescriptorPrototype = NSSortDescriptor(key: "name", ascending: true)
+statusColumn.sortDescriptorPrototype = NSSortDescriptor(key: "status", ascending: true)
 table.addTableColumn(nameColumn)
 table.addTableColumn(statusColumn)
 table.dataSource = tableData
-let tableResult = NSTextField(labelWithString: "Selected: —", frame: NSMakeRect(24, r6.next(24), 486, 24))
+let tableResult = NSTextField(labelWithString: "Click a header to sort; double-click a row.", frame: NSMakeRect(24, r6.next(24), 486, 24))
+table.onDoubleClick = { row in
+    tableResult.stringValue = row < tableData.rows.count
+        ? "Opened: \(tableData.rows[row].name)" : "Opened: —"
+}
 
 let outlineTitle = NSTextField(labelWithString: "Departments (NSOutlineView):", frame: NSMakeRect(24, r6.next(22), 300, 22))
 let outline = NSOutlineView(frame: NSMakeRect(24, r6.next(170), 486, 170))
@@ -488,9 +504,46 @@ demoMatrix.onAction = { m in
     matrixEcho.stringValue = "Matrix selected: row \(m.selectedRow + 1), column \(m.selectedColumn + 1)"
 }
 
+// MARK: - Page 13 · Browser (NSBrowser column navigation)
+final class DemoBrowserData: NSBrowserDelegate {
+    let roots = ["Application", "Controls", "Tables"]
+    let children = [
+        "Application": ["NSApplication", "NSWindow", "NSMenu", "NSAlert"],
+        "Controls": ["NSButton", "NSTextField", "NSComboBox", "NSBrowser"],
+        "Tables": ["NSTableView", "NSOutlineView", "NSTableColumn", "NSScrollView"],
+    ]
+    func browser(_ b: NSBrowser, numberOfChildrenOfItem item: Any?) -> Int {
+        guard let item else { return roots.count }
+        return children[String(describing: item)]?.count ?? 0
+    }
+    func browser(_ b: NSBrowser, child index: Int, ofItem item: Any?) -> Any {
+        guard let item else { return roots[index] }
+        return children[String(describing: item)]?[index] ?? ""
+    }
+    func browser(_ b: NSBrowser, isLeafItem item: Any?) -> Bool {
+        guard let item else { return false }
+        return children[String(describing: item)] == nil
+    }
+}
+let browserPage = NSView(frame: NSMakeRect(0, 0, pageWidth, pageHeight))
+var r13 = Rows(top: pageHeight - 16)
+let browserTitle = NSTextField(labelWithString: "Column browser (NSBrowser) — click through the columns:", frame: NSMakeRect(24, r13.next(24), 500, 22))
+browserPage.addSubview(browserTitle)
+let demoBrowser = NSBrowser(frame: NSMakeRect(24, r13.next(300), 486, 300))
+demoBrowser.columnWidth = 162
+let browserData = DemoBrowserData()
+demoBrowser.delegate = browserData
+demoBrowser.loadColumnZero()
+demoBrowser.setTitle("Frameworks", ofColumn: 0)
+browserPage.addSubview(demoBrowser)
+let browserPath = NSTextField(labelWithString: "Path: /", frame: NSMakeRect(24, r13.next(24), 640, 22))
+browserPath.font = .boldSystemFont(ofSize: 12)
+browserPage.addSubview(browserPath)
+demoBrowser.onAction = { b in browserPath.stringValue = "Path: \(b.path())" }
+
 // MARK: - Tab view assembly
 let tabView = NSTabView(frame: NSMakeRect(0, 0, pageWidth, pageHeight + 60))
-for (label, page) in [("Basics", basics), ("Values", values), ("Pickers", pickers), ("Text", textPage), ("Layout", layoutPage), ("Table", tablePage), ("Grid", gridPage), ("Drawing", drawingPage), ("Auto Layout", autoLayoutPage), ("Appearance", appearancePage), ("Drag & Drop", dndPage), ("Forms", formsPage)] {
+for (label, page) in [("Basics", basics), ("Values", values), ("Pickers", pickers), ("Text", textPage), ("Layout", layoutPage), ("Table", tablePage), ("Grid", gridPage), ("Drawing", drawingPage), ("Auto Layout", autoLayoutPage), ("Appearance", appearancePage), ("Drag & Drop", dndPage), ("Forms", formsPage), ("Browser", browserPage)] {
     let item = NSTabViewItem()
     item.label = label
     item.view = page

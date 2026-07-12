@@ -82,6 +82,9 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     public private(set) var displayRequests: [UInt: Int] = [:]
     private var drawHandlers: [UInt: (NativeGraphicsContext, Double, Double) -> Void] = [:]
     public private(set) var tableColumns: [UInt: [String]] = [:]
+    public private(set) var sortableColumns: [UInt: Set<Int>] = [:]
+    private var sortActions: [UInt: (Int, Bool) -> Void] = [:]
+    private var rowActivateActions: [UInt: (Int) -> Void] = [:]
     public private(set) var tableRowCounts: [UInt: Int] = [:]
     private var tableCellProviders: [UInt: (Int, Int) -> String] = [:]
     public private(set) var collectionItemCounts: [UInt: Int] = [:]
@@ -347,6 +350,28 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     }
     public func addTableColumn(title: String, to table: NativeHandle) {
         tableColumns[table.rawValue, default: []].append(title)
+    }
+    public func setTableColumnTitle(_ title: String, columnIndex: Int, for table: NativeHandle) {
+        guard var cols = tableColumns[table.rawValue], columnIndex < cols.count else { return }
+        cols[columnIndex] = title
+        tableColumns[table.rawValue] = cols
+    }
+    public func setColumnSortable(_ columnIndex: Int, for table: NativeHandle) {
+        sortableColumns[table.rawValue, default: []].insert(columnIndex)
+    }
+    public func setSortChangeAction(for table: NativeHandle, action: @escaping (Int, Bool) -> Void) {
+        sortActions[table.rawValue] = action
+    }
+    public func setRowActivateAction(for table: NativeHandle, action: @escaping (Int) -> Void) {
+        rowActivateActions[table.rawValue] = action
+    }
+    /// Test hook: simulates a click on a sortable column header.
+    public func simulateSortColumn(_ columnIndex: Int, ascending: Bool, on table: NativeHandle) {
+        sortActions[table.rawValue]?(columnIndex, ascending)
+    }
+    /// Test hook: simulates activating a row (double-click / Enter).
+    public func simulateRowActivate(_ row: Int, on table: NativeHandle) {
+        rowActivateActions[table.rawValue]?(row)
     }
     public func setTableRowCount(_ count: Int, for table: NativeHandle) {
         tableRowCounts[table.rawValue] = count

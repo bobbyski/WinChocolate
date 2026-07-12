@@ -6,8 +6,20 @@ public final class NSTableColumn {
     /// Stable identifier used by data sources to tell columns apart.
     public let identifier: String
 
-    /// The header title.
-    public var title: String
+    /// The table + index this column was added to (set on `addTableColumn`).
+    weak var table: NSTableView?
+    var columnIndex: Int = -1
+
+    /// The header title. Updating it re-titles the live header.
+    public var title: String {
+        didSet { table?.retitleColumn(columnIndex, title) }
+    }
+
+    /// If set, the column's header becomes clickable and clicking it delivers a
+    /// derived `NSSortDescriptor` to the data source.
+    public var sortDescriptorPrototype: NSSortDescriptor? {
+        didSet { if sortDescriptorPrototype != nil { table?.makeColumnSortable(columnIndex) } }
+    }
 
     public init(identifier: String) {
         self.identifier = identifier
@@ -15,10 +27,18 @@ public final class NSTableColumn {
     }
 }
 
-/// AppKit-shaped table data source: row count plus per-cell values.
+/// AppKit-shaped table data source: row count plus per-cell values, and an
+/// optional sort-change hook.
 public protocol NSTableViewDataSource: AnyObject {
     func numberOfRows(in tableView: NSTableView) -> Int
     func tableView(_ tableView: NSTableView, objectValueFor tableColumn: NSTableColumn?, row: Int) -> Any?
+    /// Called after the user clicks a sortable header and `sortDescriptors`
+    /// updates; the data source re-sorts its model and reloads. Default: no-op.
+    func tableView(_ tableView: NSTableView, sortDescriptorsDidChange oldDescriptors: [NSSortDescriptor])
+}
+
+public extension NSTableViewDataSource {
+    func tableView(_ tableView: NSTableView, sortDescriptorsDidChange oldDescriptors: [NSSortDescriptor]) {}
 }
 
 /// AppKit-shaped column table (GtkColumnView in a scroller). Configure columns
@@ -37,8 +57,14 @@ public final class NSTableView: NSView {
     /// The selected row (−1 when nothing is selected).
     public private(set) var selectedRow: Int = -1
 
+    /// The active sort descriptors (updated when a sortable header is clicked).
+    public var sortDescriptors: [NSSortDescriptor] = []
+
     /// Called when the user changes the row selection.
     public var onSelectionChange: ((NSTableView) -> Void)?
+
+    /// Called when a row is activated (double-click / Enter); passes the row.
+    public var onDoubleClick: ((Int) -> Void)?
 
     /// Creates an empty table.
     public override init(frame: NSRect) {
@@ -56,12 +82,42 @@ public final class NSTableView: NSView {
             self.selectedRow = row             // sync silently
             self.onSelectionChange?(self)
         }
+        backend.setSortChangeAction(for: handle) { [weak self] columnIndex, ascending in
+            guard let self, columnIndex < self.tableColumns.count else { return }
+            let old = self.sortDescriptors
+            let key = self.tableColumns[columnIndex].sortDescriptorPrototype?.key
+            self.sortDescriptors = [NSSortDescriptor(key: key, ascending: ascending)]
+            self.dataSource?.tableView(self, sortDescriptorsDidChange: old)
+        }
+        backend.setRowActivateAction(for: handle) { [weak self] row in
+            guard let self else { return }
+            self.selectedRow = row
+            self.onDoubleClick?(row)
+        }
     }
 
     /// Appends `column`.
     public func addTableColumn(_ column: NSTableColumn) {
+        let index = tableColumns.count
+        column.table = self
+        column.columnIndex = index
         tableColumns.append(column)
         backend.addTableColumn(title: column.title, to: handle)
+        if column.sortDescriptorPrototype != nil {
+            backend.setColumnSortable(index, for: handle)
+        }
+    }
+
+    /// Updates a column's live header title (used by `NSTableColumn.title`).
+    func retitleColumn(_ index: Int, _ title: String) {
+        guard index >= 0 else { return }
+        backend.setTableColumnTitle(title, columnIndex: index, for: handle)
+    }
+
+    /// Makes a column's header clickable for sorting (used when a prototype is set).
+    func makeColumnSortable(_ index: Int) {
+        guard index >= 0 else { return }
+        backend.setColumnSortable(index, for: handle)
     }
 
     /// Re-queries the data source and re-renders every cell.

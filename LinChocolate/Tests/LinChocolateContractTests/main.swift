@@ -7,6 +7,9 @@
 
 import LinChocolate
 import Foundation
+// swift-corelibs-foundation also exports NSSortDescriptor (deprecated, no `key:`
+// init); pull LinChocolate's into direct scope so the name resolves to ours.
+import class LinChocolate.NSSortDescriptor
 
 var failures = 0
 // Top-level `main.swift` code is @MainActor in Swift 6, so `failures` is
@@ -953,6 +956,111 @@ do {
     check(scrollView.documentVisibleRect.origin.y == 0, "scrollToBeginningOfDocument returns to the top")
     scrollView.scrollToEndOfDocument()
     check(scrollView.documentVisibleRect.origin.y == 300, "scrollToEndOfDocument aligns the document end to the viewport bottom")
+}
+
+// MARK: 27 — Table sorting + double-click (NSSortDescriptor)
+final class SortableTableSource: NSTableViewDataSource {
+    var rows = ["Beta", "Alpha", "Gamma"]
+    var lastSortKey: String?
+    var lastAscending: Bool?
+    func numberOfRows(in tableView: NSTableView) -> Int { rows.count }
+    func tableView(_ t: NSTableView, objectValueFor c: NSTableColumn?, row: Int) -> Any? { rows[row] }
+    func tableView(_ t: NSTableView, sortDescriptorsDidChange old: [NSSortDescriptor]) {
+        guard let d = t.sortDescriptors.first else { return }
+        lastSortKey = d.key
+        lastAscending = d.ascending
+        rows.sort(by: d.ascending ? { $0 < $1 } : { $0 > $1 })
+        t.reloadData()
+    }
+}
+do {
+    let backend = InMemoryNativeControlBackend()
+    NSApplication.shared.nativeBackend = backend
+
+    let table = NSTableView(frame: NSMakeRect(0, 0, 300, 200))
+    let nameCol = NSTableColumn(identifier: "name")
+    nameCol.title = "Name"
+    nameCol.sortDescriptorPrototype = NSSortDescriptor(key: "name", ascending: true)
+    table.addTableColumn(nameCol)
+    let source = SortableTableSource()
+    table.dataSource = source
+
+    check(backend.sortableColumns[table.handle.rawValue]?.contains(0) == true, "column with a prototype becomes sortable")
+    check(backend.tableColumns[table.handle.rawValue]?.first == "Name", "column header title reaches the backend")
+
+    // Live retitle.
+    nameCol.title = "Renamed"
+    check(backend.tableColumns[table.handle.rawValue]?.first == "Renamed", "retitling a column updates the live header")
+
+    // Header click (descending) → sortDescriptors update + data source re-sorts.
+    backend.simulateSortColumn(0, ascending: false, on: table.handle)
+    check(table.sortDescriptors.first?.key == "name", "clicking a header sets the column's sort key")
+    check(table.sortDescriptors.first?.ascending == false, "sort direction reflects the click")
+    check(source.lastSortKey == "name" && source.lastAscending == false, "data source's sortDescriptorsDidChange fires")
+    check(source.rows == ["Gamma", "Beta", "Alpha"], "data source re-sorted descending")
+
+    // Reversed descriptor helper.
+    check(NSSortDescriptor(key: "x", ascending: true).reversedSortDescriptor.ascending == false, "reversedSortDescriptor flips direction")
+
+    // Double-click activation.
+    var activated: Int?
+    table.onDoubleClick = { activated = $0 }
+    backend.simulateRowActivate(2, on: table.handle)
+    check(activated == 2, "onDoubleClick fires with the activated row")
+    check(table.selectedRow == 2, "row activation also selects the row")
+}
+
+// MARK: 28 — NSBrowser (column navigation)
+final class DemoBrowser: NSBrowserDelegate {
+    let roots = ["Application", "Controls", "Tables"]
+    let children = [
+        "Application": ["NSApplication", "NSWindow"],
+        "Controls": ["NSButton", "NSTextField", "NSBrowser"],
+        "Tables": ["NSTableView", "NSOutlineView"],
+    ]
+    func browser(_ b: NSBrowser, numberOfChildrenOfItem item: Any?) -> Int {
+        guard let item else { return roots.count }
+        return children[String(describing: item)]?.count ?? 0
+    }
+    func browser(_ b: NSBrowser, child index: Int, ofItem item: Any?) -> Any {
+        guard let item else { return roots[index] }
+        return children[String(describing: item)]?[index] ?? ""
+    }
+    func browser(_ b: NSBrowser, isLeafItem item: Any?) -> Bool {
+        guard let item else { return false }
+        return children[String(describing: item)] == nil
+    }
+}
+do {
+    let backend = InMemoryNativeControlBackend()
+    NSApplication.shared.nativeBackend = backend
+
+    let browser = NSBrowser(frame: NSMakeRect(0, 0, 480, 150))
+    browser.columnWidth = 160
+    let delegate = DemoBrowser()
+    browser.delegate = delegate
+    browser.loadColumnZero()
+
+    check(browser.numberOfRows(inColumn: 0) == 3, "column zero shows the root items")
+    check(browser.numberOfRows(inColumn: 1) == 0, "deeper columns empty until a parent is selected")
+    check(browser.path() == "/", "path starts at root")
+
+    // Drill into "Controls" (index 1) → column 1 shows its 3 children.
+    browser.selectRow(1, inColumn: 0)
+    check(browser.numberOfRows(inColumn: 1) == 3, "selecting a parent populates the next column")
+    check(browser.path() == "/Controls", "path reflects the first selection")
+    check(browser.selectedRow(inColumn: 0) == 1, "selectedRow(inColumn:) reports the selection")
+
+    // Drill into "NSTextField" (index 1 of Controls).
+    browser.selectRow(1, inColumn: 1)
+    check(browser.path() == "/Controls/NSTextField", "path extends through the second column")
+    // NSTextField is a leaf → column 2 empty.
+    check(browser.numberOfRows(inColumn: 2) == 0, "a leaf selection leaves the next column empty")
+
+    // Re-selecting a shallower column truncates the deeper path.
+    browser.selectRow(2, inColumn: 0)   // "Tables"
+    check(browser.path() == "/Tables", "changing a shallow selection truncates the path")
+    check(browser.numberOfRows(inColumn: 1) == 2, "and repopulates the next column for the new parent")
 }
 
 if failures == 0 {
