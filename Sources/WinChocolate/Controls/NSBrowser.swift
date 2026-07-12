@@ -1,4 +1,5 @@
 /// Delegate/data source for an AppKit-shaped browser.
+@MainActor
 public protocol NSBrowserDelegate: AnyObject {
     /// Returns the number of children below an item. `nil` is the root column.
     func browser(_ browser: NSBrowser, numberOfChildrenOfItem item: Any?) -> Int
@@ -24,7 +25,7 @@ public protocol NSBrowserDelegate: AnyObject {
 public extension NSBrowserDelegate {
     /// Default leaf behavior treats items with no children as leaves.
     func browser(_ browser: NSBrowser, isLeafItem item: Any?) -> Bool {
-        browser.delegate?.browser(browser, numberOfChildrenOfItem: item) == 0
+        winMainActor { browser.delegate?.browser(browser, numberOfChildrenOfItem: item) } == 0
     }
 
     /// Default: no delegate-provided column title.
@@ -68,7 +69,7 @@ open class NSBrowser: NSControl {
                 return nil
             }
 
-            return browser.delegate?.browser(browser, objectValueForItem: item)
+            return winMainActor { browser.delegate?.browser(browser, objectValueForItem: item) }
                 ?? String(describing: item)
         }
     }
@@ -110,9 +111,9 @@ open class NSBrowser: NSControl {
                   let item = browser.item(atRow: row, inColumn: columnIndex) else {
                 return
             }
-            let isLeaf = browser.delegate?.browser(browser, isLeafItem: item) ?? true
+            let isLeaf = winMainActor { browser.delegate?.browser(browser, isLeafItem: item) } ?? true
             if browser.showsCellIcons {
-                let image = browser.delegate?.browser(browser, imageForItem: item)
+                let image = winMainActor { browser.delegate?.browser(browser, imageForItem: item) }
                 drawCellIcon(image: image, isLeaf: isLeaf, in: cellRect)
             }
             if !isLeaf {
@@ -236,7 +237,7 @@ open class NSBrowser: NSControl {
         if let custom = customColumnTitles[column] {
             return custom
         }
-        if let delegateTitle = delegate?.browser(self, titleOfColumn: column) {
+        if let delegateTitle = winMainActor({ delegate?.browser(self, titleOfColumn: column) }) {
             return delegateTitle
         }
         guard column > 0, let item = selectedItem(inColumn: column - 1) else {
@@ -278,7 +279,7 @@ open class NSBrowser: NSControl {
 
     /// The display string for an item (delegate value, else its description).
     private func displayString(for item: Any?) -> String {
-        if let value = delegate?.browser(self, objectValueForItem: item) {
+        if let value = winMainActor({ delegate?.browser(self, objectValueForItem: item) }) {
             return String(describing: value)
         }
         return item.map { String(describing: $0) } ?? ""
@@ -390,7 +391,7 @@ open class NSBrowser: NSControl {
             isUpdatingTableSelection = false
         }
         let item = columnItems[column][row]
-        if delegate?.browser(self, isLeafItem: item) == false {
+        if winMainActor({ delegate?.browser(self, isLeafItem: item) }) == false {
             reloadColumn(column + 1)
         } else {
             trimColumns(after: column)
@@ -435,13 +436,13 @@ open class NSBrowser: NSControl {
     }
 
     private func children(of item: Any?) -> [Any] {
-        let count = delegate?.browser(self, numberOfChildrenOfItem: item) ?? 0
+        let count = winMainActor { delegate?.browser(self, numberOfChildrenOfItem: item) } ?? 0
         guard count > 0 else {
             return []
         }
 
         return (0..<count).map { index in
-            delegate?.browser(self, child: index, ofItem: item) ?? ""
+            winMainActor { delegate?.browser(self, child: index, ofItem: item) } ?? ""
         }
     }
 

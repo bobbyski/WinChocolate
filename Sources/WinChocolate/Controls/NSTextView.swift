@@ -1,4 +1,5 @@
 /// The methods a text view delegate uses to respond to editing.
+@MainActor
 public protocol NSTextViewDelegate: AnyObject {
     /// Tells the delegate that editing changed the text view's text.
     func textDidChange(_ notification: NSNotification)
@@ -383,7 +384,7 @@ open class NSTextView: NSControl {
             registerTypingUndo(previousText: previousText, text: text)
         }
         onTextChanged?(self)
-        delegate?.textDidChange(NSNotification(name: Self.textDidChangeNotification, object: self))
+        winMainActor { delegate?.textDidChange(NSNotification(name: Self.textDidChangeNotification, object: self)) }
     }
 
     /// Registers undo state for one native edit, coalescing typing bursts.
@@ -451,7 +452,7 @@ open class NSTextView: NSControl {
         objectValue = text
         selectedRange = NSMakeRange(text.utf16.count, 0)
         onTextChanged?(self)
-        delegate?.textDidChange(NSNotification(name: Self.textDidChangeNotification, object: self))
+        winMainActor { delegate?.textDidChange(NSNotification(name: Self.textDidChangeNotification, object: self)) }
     }
 }
 

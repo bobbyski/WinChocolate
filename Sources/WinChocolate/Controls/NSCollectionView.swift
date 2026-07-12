@@ -1,4 +1,5 @@
 /// Data source for an AppKit-shaped collection view.
+@MainActor
 public protocol NSCollectionViewDataSource: AnyObject {
     /// Returns the number of sections.
     func numberOfSections(in collectionView: NSCollectionView) -> Int
@@ -26,6 +27,7 @@ public extension NSCollectionViewDataSource {
 }
 
 /// Delegate for collection-view selection notifications.
+@MainActor
 public protocol NSCollectionViewDelegate: AnyObject {
     /// Called after items are selected.
     func collectionView(_ collectionView: NSCollectionView, didSelectItemsAt indexPaths: Set<IndexPath>)
@@ -222,12 +224,12 @@ open class NSCollectionView: NSControl {
         itemsByIndexPath.removeAll()
         orderedIndexPaths.removeAll()
 
-        let sectionCount = dataSource?.numberOfSections(in: self) ?? 0
+        let sectionCount = winMainActor { dataSource?.numberOfSections(in: self) } ?? 0
         for section in 0..<sectionCount {
-            let itemCount = dataSource?.collectionView(self, numberOfItemsInSection: section) ?? 0
+            let itemCount = winMainActor { dataSource?.collectionView(self, numberOfItemsInSection: section) } ?? 0
             for itemIndex in 0..<itemCount {
                 let indexPath = IndexPath(item: itemIndex, section: section)
-                guard let item = dataSource?.collectionView(self, itemForRepresentedObjectAt: indexPath) else {
+                guard let item = winMainActor({ dataSource?.collectionView(self, itemForRepresentedObjectAt: indexPath) }) else {
                     continue
                 }
 
@@ -314,11 +316,11 @@ open class NSCollectionView: NSControl {
             return
         }
 
-        let sectionCount = dataSource?.numberOfSections(in: self) ?? 0
+        let sectionCount = winMainActor { dataSource?.numberOfSections(in: self) } ?? 0
         for section in 0..<sectionCount {
             let indexPath = IndexPath(item: 0, section: section)
             for (offset, kind) in [Self.elementKindSectionHeader, Self.elementKindSectionFooter].enumerated() {
-                guard let view = dataSource?.collectionView(self, viewForSupplementaryElementOfKind: kind, at: indexPath) else {
+                guard let view = winMainActor({ dataSource?.collectionView(self, viewForSupplementaryElementOfKind: kind, at: indexPath) }) else {
                     continue
                 }
                 addSubview(view)
@@ -359,7 +361,7 @@ open class NSCollectionView: NSControl {
 
         let selected = selectionIndexPaths.subtracting(oldSelection)
         if !selected.isEmpty {
-            delegate?.collectionView(self, didSelectItemsAt: selected)
+            winMainActor { delegate?.collectionView(self, didSelectItemsAt: selected) }
             sendAction()
         }
     }
@@ -376,7 +378,7 @@ open class NSCollectionView: NSControl {
         updateItemSelectionState()
         let deselected = oldSelection.subtracting(selectionIndexPaths)
         if !deselected.isEmpty {
-            delegate?.collectionView(self, didDeselectItemsAt: deselected)
+            winMainActor { delegate?.collectionView(self, didDeselectItemsAt: deselected) }
         }
     }
 
@@ -390,7 +392,7 @@ open class NSCollectionView: NSControl {
         selectionIndexPaths.removeAll()
         updateItemSelectionState()
         if !oldSelection.isEmpty {
-            delegate?.collectionView(self, didDeselectItemsAt: oldSelection)
+            winMainActor { delegate?.collectionView(self, didDeselectItemsAt: oldSelection) }
         }
     }
 

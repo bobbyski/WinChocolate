@@ -1,4 +1,5 @@
 /// Data source for an AppKit-shaped table view.
+@MainActor
 public protocol NSTableViewDataSource: AnyObject {
     /// Returns the number of rows in the table.
     func numberOfRows(in tableView: NSTableView) -> Int
@@ -24,6 +25,7 @@ public protocol NSTableViewDataSource: AnyObject {
 }
 
 /// Delegate for table-view notifications.
+@MainActor
 public protocol NSTableViewDelegate: AnyObject {
     /// Called after the selected row changes.
     func tableViewSelectionDidChange(_ notification: NSNotification)
@@ -238,7 +240,7 @@ open class NSTableView: NSControl {
     /// Current table sort descriptors.
     open var sortDescriptors: [NSSortDescriptor] = [] {
         didSet {
-            delegate?.tableView(self, sortDescriptorsDidChange: oldValue)
+            winMainActor { delegate?.tableView(self, sortDescriptorsDidChange: oldValue) }
         }
     }
 
@@ -621,12 +623,12 @@ open class NSTableView: NSControl {
             return nil
         }
 
-        return delegate?.tableView(self, viewFor: tableColumn(at: column), row: row)
+        return winMainActor { delegate?.tableView(self, viewFor: tableColumn(at: column), row: row) }
     }
 
     /// Returns the delegate-provided height for a row.
     open func heightOfRow(_ row: Int) -> CGFloat {
-        delegate?.tableView(self, heightOfRow: row) ?? rowHeight
+        winMainActor { delegate?.tableView(self, heightOfRow: row) } ?? rowHeight
     }
 
     /// Sets a model value through the data source.
@@ -635,7 +637,7 @@ open class NSTableView: NSControl {
             return
         }
 
-        dataSource?.tableView(self, setObjectValue: object, for: tableColumn, row: row)
+        winMainActor { dataSource?.tableView(self, setObjectValue: object, for: tableColumn, row: row) }
         reloadData()
     }
 
@@ -664,7 +666,7 @@ open class NSTableView: NSControl {
         let columns = columnIndexes.isEmpty ? Set(tableColumns.indices) : columnIndexes
         for row in rowIndexes where rowValues.indices.contains(row) {
             for column in columns where tableColumns.indices.contains(column) {
-                let value = dataSource?.tableView(self, objectValueFor: tableColumns[column], row: row)
+                let value = winMainActor { dataSource?.tableView(self, objectValueFor: tableColumns[column], row: row) }
                 let text = winDisplayString(from: value)
                 rowValues[row][column] = text
                 if rowRawValues.indices.contains(row), rowRawValues[row].indices.contains(column) {
@@ -679,7 +681,7 @@ open class NSTableView: NSControl {
 
     /// Reloads all rows from the data source.
     open func reloadData() {
-        let count = dataSource?.numberOfRows(in: self) ?? 0
+        let count = winMainActor { dataSource?.numberOfRows(in: self) } ?? 0
         var nextRows: [[String]] = []
         var nextRaw: [[Any?]] = []
 
@@ -687,7 +689,7 @@ open class NSTableView: NSControl {
             var strings: [String] = []
             var raws: [Any?] = []
             for column in tableColumns {
-                let value = dataSource?.tableView(self, objectValueFor: column, row: row)
+                let value = winMainActor { dataSource?.tableView(self, objectValueFor: column, row: row) }
                 raws.append(value)
                 strings.append(winDisplayString(from: value))
             }
@@ -888,7 +890,7 @@ open class NSTableView: NSControl {
             needsDisplay = true
         }
         onSelectionChanged?(self)
-        delegate?.tableViewSelectionDidChange(NSNotification(name: Self.selectionDidChangeNotification, object: self))
+        winMainActor { delegate?.tableViewSelectionDidChange(NSNotification(name: Self.selectionDidChangeNotification, object: self)) }
     }
 }
 
