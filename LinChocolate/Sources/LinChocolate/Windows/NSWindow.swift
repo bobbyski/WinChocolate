@@ -6,7 +6,7 @@ import Foundation
 /// application by default (a single-window convenience for this slice; the
 /// AppKit `applicationShouldTerminateAfterLastWindowClosed` policy is a later
 /// parity item).
-public final class NSWindow {
+open class NSWindow {
 
     /// Window style options. A subset of AppKit's, matching WinChocolate's shape.
     public struct StyleMask: OptionSet, Sendable {

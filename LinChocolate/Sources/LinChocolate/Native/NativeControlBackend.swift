@@ -326,6 +326,8 @@ public protocol NativeControlBackend: AnyObject {
     func setFrame(_ frame: NSRect, for handle: NativeHandle)
     /// Enables or disables a control.
     func setEnabled(_ isEnabled: Bool, for handle: NativeHandle)
+    /// Shows or hides a control.
+    func setHidden(_ isHidden: Bool, for handle: NativeHandle)
     /// Applies a font to a control's text.
     func setFont(_ font: NativeFontSpec, for handle: NativeHandle)
     /// Applies a foreground text color to a control.

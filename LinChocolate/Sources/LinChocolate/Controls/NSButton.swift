@@ -15,6 +15,13 @@ public final class NSButton: NSView {
     /// Called when the button is clicked (push button) or toggled (checkbox).
     public var onAction: ((NSButton) -> Void)?
 
+    // Look/behavior flags accepted for API parity (GTK buttons style natively).
+    public var bezelStyle: NSButtonBezelStyle = .rounded
+    public var isBordered: Bool = true
+    public var imagePosition: Int = 0
+    public var image: NSImage?
+    public var keyEquivalent: String = ""
+
     private var backingIsOn = false
 
     /// For checkbox buttons: whether it is checked. Setting it updates the

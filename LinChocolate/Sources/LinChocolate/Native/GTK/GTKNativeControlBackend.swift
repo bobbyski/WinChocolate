@@ -1231,6 +1231,10 @@ public final class GTKNativeControlBackend: NativeControlBackend {
         guard let w = widget(handle) else { return }
         gtk_widget_set_sensitive(asWidget(w), gboolean(isEnabled ? 1 : 0))
     }
+    public func setHidden(_ isHidden: Bool, for handle: NativeHandle) {
+        guard let w = widget(handle) else { return }
+        gtk_widget_set_visible(asWidget(w), gboolean(isHidden ? 0 : 1))
+    }
     public func setStyledText(_ runs: [NativeTextRun], for handle: NativeHandle) {
         guard let w = widget(handle) else { return }
         // Attributed text renders via Pango markup on the label.

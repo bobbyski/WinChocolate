@@ -19,6 +19,25 @@ open class NSView {
     /// The view's bounds — its own coordinate space, origin at (0, 0).
     public var bounds: NSRect { NSMakeRect(0, 0, frame.width, frame.height) }
 
+    /// Whether the view is hidden.
+    public var isHidden: Bool = false {
+        didSet { backend.setHidden(isHidden, for: handle) }
+    }
+
+    /// The view's background color (honored by controls that draw a background).
+    public var backgroundColor: NSColor?
+
+    /// The tooltip shown on hover.
+    public var toolTip: String?
+
+    /// The key-view loop links (AppKit's focus chain). Stored for API parity;
+    /// native focus traversal is a later item.
+    public weak var nextKeyView: NSView?
+    public weak var previousKeyView: NSView?
+
+    /// The view's identifier (AppKit's `NSUserInterfaceItemIdentifier`).
+    public var identifier: String?
+
     /// Opaque backend handle for this view. Exposed for advanced/testing use
     /// (e.g. simulating input against a specific control).
     public let handle: NativeHandle
@@ -158,4 +177,42 @@ open class NSView {
     public func registerDraggingSource(_ provider: @escaping () -> String?) {
         backend.registerDragSource(for: handle, provider: provider)
     }
+
+    // MARK: - Responder / event surface (NSResponder)
+    //
+    // Override points so AppKit-shaped custom views compile and can be routed to
+    // later. Native GTK controls handle their own input; actual delivery to
+    // these is a later parity item — they exist so the same source builds.
+
+    open var acceptsFirstResponder: Bool { false }
+    @discardableResult open func becomeFirstResponder() -> Bool { true }
+    @discardableResult open func resignFirstResponder() -> Bool { true }
+
+    open func mouseDown(with event: NSEvent) {}
+    open func mouseUp(with event: NSEvent) {}
+    open func mouseDragged(with event: NSEvent) {}
+    open func mouseMoved(with event: NSEvent) {}
+    open func mouseEntered(with event: NSEvent) {}
+    open func mouseExited(with event: NSEvent) {}
+    open func rightMouseDown(with event: NSEvent) {}
+    open func scrollWheel(with event: NSEvent) {}
+    open func keyDown(with event: NSEvent) {}
+    open func keyUp(with event: NSEvent) {}
+
+    open func resetCursorRects() {}
+    open func addCursorRect(_ rect: NSRect, cursor: NSCursor) {}
+    open func updateTrackingAreas() {}
+    public private(set) var trackingAreas: [NSTrackingArea] = []
+    public func addTrackingArea(_ area: NSTrackingArea) { trackingAreas.append(area) }
+    public func removeTrackingArea(_ area: NSTrackingArea) { trackingAreas.removeAll { $0 === area } }
+
+    /// Point conversion (identity stub — LinChocolate views currently share the
+    /// window's coordinate space).
+    public func convert(_ point: NSPoint, from view: NSView?) -> NSPoint { point }
+    public func convert(_ point: NSPoint, to view: NSView?) -> NSPoint { point }
+
+    // Drag-destination method form (mirrors the `onDraggingEntered` closures).
+    open func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation { .copy }
+    open func draggingExited(_ sender: NSDraggingInfo?) {}
+    open func performDragOperation(_ sender: NSDraggingInfo) -> Bool { false }
 }

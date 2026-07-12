@@ -13,6 +13,15 @@ let package = Package(
     products: [
         .library(name: "LinChocolate", targets: ["LinChocolate"]),
         .executable(name: "LinChocolateDemo", targets: ["LinChocolateDemo"])
+        // NOTE: the shared WinChocolate demo ("RealDemo") is a work-in-progress
+        // port (plan L15) and is intentionally NOT wired into this package yet:
+        // its source is a symlink into the parent repo (../Demo/DemoApplication),
+        // which only resolves when the *repo root* is mounted — not under
+        // run-linux.sh's LinChocolate-only mount. It also doesn't compile yet.
+        // Build it during development from the repo root:
+        //   docker run --rm -v "$PWD":/work -w /work/LinChocolate \
+        //     linchocolate-dev swift build --target RealDemo
+        // (re-enable the product/target below once it compiles cleanly.)
     ],
     targets: [
         // Thin C-interop binding to GTK4, resolved via pkg-config `gtk4`.
@@ -38,6 +47,16 @@ let package = Package(
             path: "Sources/LinChocolateDemo",
             exclude: ["Resources"]
         ),
+
+        // The shared WinChocolate demo source (symlinked from ../Demo), built
+        // against LinChocolate — the AppKit-compat proof (plan L15). Kept out of
+        // the default build for now; re-enable + add the product above once it
+        // compiles (build it via the repo-root mount shown above meanwhile).
+        // .executableTarget(
+        //     name: "RealDemo",
+        //     dependencies: ["LinChocolate"],
+        //     path: "Sources/RealDemo"
+        // ),
 
         // Hermetic contract tests (in-memory backend, no display).
         .executableTarget(

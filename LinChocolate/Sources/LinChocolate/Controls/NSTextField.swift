@@ -24,6 +24,18 @@ public final class NSTextField: NSView {
     /// Called after the user edits an editable field (never fired for labels).
     public var onTextChange: ((NSTextField) -> Void)?
 
+    // Apple-look/behavior flags accepted for API parity; GTK renders labels vs
+    // fields natively, so these are mostly presentational hints today.
+    public var isBordered: Bool = true
+    public var isBezeled: Bool = true
+    public var drawsBackground: Bool = true
+    public var isEditable: Bool = true
+    public var isSelectable: Bool = true
+    public var placeholderString: String?
+    public var alignment: NSTextAlignment = .natural
+    public var usesSingleLineMode: Bool = true
+    public var maximumNumberOfLines: Int = 0
+
     /// The text's foreground color (nil = theme default).
     public var textColor: NSColor? {
         didSet {

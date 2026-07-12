@@ -25,6 +25,10 @@ public final class NSSegmentedControl: NSView {
     /// Called when the user selects a segment.
     public var onAction: ((NSSegmentedControl) -> Void)?
 
+    /// Segment style (accepted for API parity; GTK styles natively).
+    public var segmentStyle: NSSegmentedControlStyle = .automatic
+    public var trackingMode: Int = 0
+
     /// Creates a segmented control with one segment per label.
     public init(labels: [String], frame: NSRect) {
         self.segmentLabels = labels

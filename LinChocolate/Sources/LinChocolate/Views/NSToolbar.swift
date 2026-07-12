@@ -21,6 +21,12 @@ public final class NSToolbarItem {
     /// The item's icon (AppKit's `NSToolbarItem.image`).
     public var image: NSImage?
 
+    /// Size constraints + tooltip + enabled state (accepted for API parity).
+    public var minSize: NSSize = .zero
+    public var maxSize: NSSize = .zero
+    public var toolTip: String?
+    public var isEnabled: Bool = true
+
     /// Called when the user clicks the item.
     public var onAction: ((NSToolbarItem) -> Void)?
 

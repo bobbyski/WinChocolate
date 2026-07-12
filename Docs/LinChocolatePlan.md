@@ -22,7 +22,7 @@ Phase L12 · Appearance & Accessibility      ██████████░�
 Phase L13 · Advanced Interaction            ████████░░░░░░░░░░░░░░░░░░   30%  🔄 Pasteboard + drag & drop done; printing / documents remain
 ── Verification & convergence ────────────────────────────────
 Phase L14 · Linux VMs & Distribution        ░░░░░░░░░░░░░░░░░░░░░░░░░░    0%  ⏳ Ring 2; packaging
-Phase L15 · Three-Platform Proof            ░░░░░░░░░░░░░░░░░░░░░░░░░░    0%  ⏳ Unmodified WinChocolate demo/apps
+Phase L15 · Three-Platform Proof            ████░░░░░░░░░░░░░░░░░░░░░░   15%  🔄 Tri-target shared-source pipeline up; driving compiles down (see AppKit divergences doc)
 Phase L16 · Pi Cleanup                      ░░░░░░░░░░░░░░░░░░░░░░░░░░    0%  ⏳ Ring 3; real Pi hardware
 Phase L17 · Shared-Core Convergence         ░░░░░░░░░░░░░░░░░░░░░░░░░░    0%  ⏳ Deferred (post-WinChocolate-stable)
 ```
@@ -268,14 +268,17 @@ This is a **cross-cutting deliverable, not a serial phase** (like the test matri
 | L14.3 | WSLg secondary loop | ⏳ Pending | Document the Ring 1b WSLg loop so the demo runs on the Windows machine over Wayland/XWayland. |
 | L14.4 | CI | ⏳ Pending | Wire the container ring (build + contract tests) into CI; define the periodic verification cadence. |
 
-## Phase L15 — Three-Platform Proof ⏳
+## Phase L15 — Three-Platform Proof 🔄
 
 **Milestone:** the **WinChocolate demo and Phase 11 apps build and run unmodified on macOS, Windows, and Linux** (the concrete proof of Goal 1 — see the Demo Parity section), verified through all rings, with Linux-only gaps logged back into this plan.
 
+**Pipeline (done):** the shared demo (`Demo/DemoApplication/main.swift`) now selects the library with a tri-target conditional import (LinChocolate / WinChocolate / real AppKit); a `RealDemo` target in `LinChocolate/Package.swift` builds that same source (symlinked) against LinChocolate; LinChocolate re-exports Foundation (`FoundationBridge.swift`) as WinChocolate re-exports WinFoundation. Compile-error trajectory driving down: real demo vs LinChocolate 2,555 → ~1,527; vs real AppKit (host `swiftc`) 1,006 → ~858 with the additive shim `Demo/AppKitCompat.swift`.
+
 | # | Item | Status | Notes |
 |---|---|---|---|
-| L15.1 | Unmodified demo & apps | ⏳ Pending | The WinChocolate demo and Phase 11 apps build and run unmodified on all three platforms via the conditional-import idiom; the dual-platform harness grows a third target. |
-| L15.2 | Parity gap log | ⏳ Pending | Linux-only gaps (and Wayland-vs-X11 or Pi-only gaps) feed back into this plan the way WinChocolate 11.7 feeds the Windows phases. |
+| L15.1 | Unmodified demo & apps | 🔄 In progress | The WinChocolate demo builds from one source against all three via the conditional-import idiom (pipeline in place). Remaining: finish the LinChocolate API surface the demo uses, and the additive AppKit convenience shim. |
+| L15.2 | Parity gap log | 🔄 In progress | See [AppKitCompatibilityDivergences.md](AppKitCompatibilityDivergences.md) — the AppKit type-check surfaced the exact convenience surface + three *hard divergences* (Identifier-as-String, non-`@MainActor` helpers, settable `previousKeyView`). |
+| L15.3 | Mirror AppKit-divergence fixes | ⏳ Pending (blocked on WinChocolate) | **Once the WinChocolate AppKit-divergence update lands** (per [AppKitCompatibilityDivergences.md](AppKitCompatibilityDivergences.md)), mirror the framework-side fixes in LinChocolate to match Apple exactly: (a) promote `NSToolbarItem.Identifier` / `NSUserInterfaceItemIdentifier` from the current `String` typealias to a real `RawRepresentable`+`ExpressibleByStringLiteral` struct; (b) make `NSView.previousKeyView` get-only and derive it internally from `nextKeyView` assignments. Then re-sync the shared demo and re-run all three compiles. |
 
 ## Phase L16 — Pi Cleanup ⏳
 

@@ -1,5 +1,17 @@
+// One source, three libraries — the AppKit-compatibility proof. On Linux
+// `import LinChocolate` (GTK), on Windows `import WinChocolate` (Win32), and on
+// macOS the real Apple `AppKit` (the ground truth both are faithful to). The
+// same demo is written once against Apple's API; platform-only bits are
+// `#if`-guarded.
+#if canImport(LinChocolate)
+import LinChocolate
+#elseif canImport(WinChocolate)
 import WinChocolate
+#elseif canImport(AppKit)
+import AppKit
+#endif
 
+#if canImport(WinChocolate)
 // The framework defaults to the modern presentation (ComCtl32 v6 visual
 // styles, plan 8.4); pass --classic to compare against the unthemed classic
 // look. Must be selected before the application (and its backend) is
@@ -7,8 +19,14 @@ import WinChocolate
 if CommandLine.arguments.contains("--classic") {
     WinPresentation.selected = .classic
 }
+#endif
 
 let app = NSApplication.shared
+#if canImport(LinChocolate)
+// The one Linux-specific line: install the native GTK backend before any
+// windows/controls are created (WinChocolate wires its Win32 backend itself).
+app.nativeBackend = GTKNativeControlBackend()
+#endif
 
 // The demo follows the Windows system theme by default (AppKit's behavior:
 // no override means the effective appearance tracks the system). --light and

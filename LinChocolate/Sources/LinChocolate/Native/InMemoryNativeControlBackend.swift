@@ -562,6 +562,8 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     public func setText(_ text: String, for handle: NativeHandle) { texts[handle.rawValue] = text }
     public func setFrame(_ frame: NSRect, for handle: NativeHandle) { frames[handle.rawValue] = frame }
     public func setEnabled(_ isEnabled: Bool, for handle: NativeHandle) { enabledStates[handle.rawValue] = isEnabled }
+    public private(set) var hiddenStates: [UInt: Bool] = [:]
+    public func setHidden(_ isHidden: Bool, for handle: NativeHandle) { hiddenStates[handle.rawValue] = isHidden }
     public func setFont(_ font: NativeFontSpec, for handle: NativeHandle) { fonts[handle.rawValue] = font }
     public func setTextColor(_ color: NSColor, for handle: NativeHandle) { textColors[handle.rawValue] = color }
     public func setMaterial(_ material: String, for handle: NativeHandle) { materials[handle.rawValue] = material }
