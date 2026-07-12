@@ -28,6 +28,19 @@ public final class NSApplication {
     /// The application's windows, in creation order (AppKit's `windows`).
     public internal(set) var windows: [NSWindow] = []
 
+    /// The application-wide appearance. Setting it (e.g. to `.darkAqua`) flips
+    /// GTK's theme so every existing and future control re-themes at once.
+    /// `nil` means the system default (light).
+    public var appearance: NSAppearance? {
+        didSet { nativeBackend.setAppearanceDark(appearance?.isDark ?? false) }
+    }
+
+    /// The appearance actually in effect (never nil), as in AppKit. Custom
+    /// `draw(_:)` code can branch on `effectiveAppearance.isDark`.
+    public var effectiveAppearance: NSAppearance {
+        appearance ?? .aqua
+    }
+
     /// The menu bar, as in AppKit: a menu whose top-level items each carry a
     /// submenu. Installs on every window (Linux draws the bar in-window).
     public var mainMenu: NSMenu? {

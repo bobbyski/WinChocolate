@@ -119,4 +119,10 @@ open class NSView {
     public func layoutSubtreeIfNeeded() {
         LayoutSolver.solve(container: self)
     }
+
+    /// The appearance in effect for this view. Application-scoped for now
+    /// (per-view overrides are a later parity item), so this follows the app.
+    public var effectiveAppearance: NSAppearance {
+        NSApplication.shared.effectiveAppearance
+    }
 }

@@ -57,6 +57,7 @@ public final class GTKNativeControlBackend: NativeControlBackend {
     private var outlineCellTextProviders: [UInt: (String, Int) -> String] = [:]
     private var widgetFonts: [UInt: NativeFontSpec] = [:]     // style state per widget
     private var widgetTextColors: [UInt: NSColor] = [:]
+    private var materialProviders: [UInt: OpaquePointer] = [:] // material CSS per visual-effect view
     private var widgetStyleProviders: [UInt: OpaquePointer] = [:]  // current CSS provider
     private var menuActionCounter = 0                         // unique GAction names
     private var nonComposited = false                         // display lacks alpha compositing
@@ -75,18 +76,23 @@ public final class GTKNativeControlBackend: NativeControlBackend {
     /// bottom border and flat, hover-highlighted text buttons.
     private func installToolbarStyle() {
         guard let display = gdk_display_get_default() else { return }
+        // Colors are expressed against GTK's theme-named colors (not literals)
+        // so the strip tracks the app appearance: a subtle light gradient in
+        // Aqua, a subtle dark one in Dark Aqua — matching macOS, whose toolbar
+        // also follows the system appearance. Hover/active and the hairline use
+        // the foreground color at low alpha, which reads correctly in both.
         let css = """
             .linchocolate-toolbar {
                 padding: 5px 8px;
-                background: linear-gradient(to bottom, #fdfdfd, #f0f0f0);
-                border-bottom: 1px solid rgba(0,0,0,0.18);
+                background: linear-gradient(to bottom, shade(@theme_bg_color, 1.06), shade(@theme_bg_color, 0.98));
+                border-bottom: 1px solid alpha(@theme_fg_color, 0.18);
             }
             .linchocolate-toolbar button {
                 background: none; border: none; box-shadow: none;
                 padding: 3px 12px; border-radius: 6px;
             }
-            .linchocolate-toolbar button:hover { background: rgba(0,0,0,0.07); }
-            .linchocolate-toolbar button:active { background: rgba(0,0,0,0.14); }
+            .linchocolate-toolbar button:hover { background: alpha(@theme_fg_color, 0.10); }
+            .linchocolate-toolbar button:active { background: alpha(@theme_fg_color, 0.18); }
             """
         let provider = gtk_css_provider_new()!
         gtk_css_provider_load_from_data(provider, css, gssize(css.utf8.count))
@@ -150,6 +156,20 @@ public final class GTKNativeControlBackend: NativeControlBackend {
     public func terminateApplication() {
         guard let loop = mainLoop else { return }
         g_main_loop_quit(loop)
+    }
+
+    // MARK: Appearance
+    /// Toggles GTK's display-wide dark-theme preference. GtkSettings has no
+    /// typed setter for this property, and `g_object_set` is C-variadic
+    /// (uncallable from Swift), so set it through a GValue.
+    public func setAppearanceDark(_ dark: Bool) {
+        guard let settings = gtk_settings_get_default() else { return }
+        var value = GValue()
+        _ = g_value_init(&value, GType(5 << 2))   // G_TYPE_BOOLEAN = 5 << G_TYPE_FUNDAMENTAL_SHIFT
+        g_value_set_boolean(&value, gboolean(dark ? 1 : 0))
+        g_object_set_property(UnsafeMutablePointer<GObject>(settings),
+                              "gtk-application-prefer-dark-theme", &value)
+        g_value_unset(&value)
     }
 
     // MARK: Windows
@@ -982,6 +1002,32 @@ public final class GTKNativeControlBackend: NativeControlBackend {
     public func setTextColor(_ color: NSColor, for handle: NativeHandle) {
         widgetTextColors[handle.rawValue] = color
         applyWidgetStyle(for: handle)
+    }
+
+    /// Applies a theme-derived background to an `NSVisualEffectView`. The shade
+    /// is expressed against GTK's theme-named colors (`@theme_bg_color`, …), so
+    /// it flips automatically when the app switches to dark appearance — no real
+    /// blur (XQuartz is non-composited), just a material-shaded surface.
+    public func setMaterial(_ material: String, for handle: NativeHandle) {
+        guard let w = widget(handle) else { return }
+        let background: String
+        switch material {
+        case "sidebar", "underWindowBackground": background = "shade(@theme_bg_color, 0.93)"
+        case "titlebar", "headerView":           background = "shade(@theme_bg_color, 1.05)"
+        case "menu", "popover", "sheet":         background = "@theme_base_color"
+        case "hudWindow":                        background = "alpha(@theme_fg_color, 0.55)"
+        default:                                 background = "@theme_bg_color"
+        }
+        let css = "* { background: \(background); }"
+        let context = gtk_widget_get_style_context(asWidget(w))
+        if let old = materialProviders[handle.rawValue] {
+            gtk_style_context_remove_provider(context, old)
+        }
+        let provider = gtk_css_provider_new()!
+        gtk_css_provider_load_from_data(provider, css, gssize(css.utf8.count))
+        // 700 sits between the app (600) and per-widget font/color (800) layers.
+        gtk_style_context_add_provider(context, OpaquePointer(provider), 700)
+        materialProviders[handle.rawValue] = OpaquePointer(provider)
     }
 
     /// Rebuilds and installs the widget-scoped CSS provider carrying the

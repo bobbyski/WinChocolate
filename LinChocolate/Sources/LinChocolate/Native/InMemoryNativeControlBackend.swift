@@ -91,6 +91,10 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     private var outlineChildCountProviders: [UInt: (String) -> Int] = [:]
     private var outlineCellTextProviders: [UInt: (String, Int) -> String] = [:]
     private var tokensChangeActions: [UInt: ([String]) -> Void] = [:]
+    /// Whether the app is currently in dark appearance.
+    public private(set) var appearanceIsDark = false
+    /// The material (raw value) applied to each visual-effect view.
+    public private(set) var materials: [UInt: String] = [:]
     /// Alerts shown so far (message, informative, buttons), newest last.
     public private(set) var alerts: [(message: String, informative: String, buttons: [String])] = []
     /// The button index `runAlert` returns, standing in for the user's press.
@@ -160,6 +164,9 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
         savePanelRuns.append((directory: directory, suggestedName: suggestedName))
         return nextSavePanelPath
     }
+
+    // MARK: Appearance
+    public func setAppearanceDark(_ dark: Bool) { appearanceIsDark = dark }
 
     // MARK: Views & controls
     public func createView(frame: NSRect) -> NativeHandle {
@@ -413,6 +420,7 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     public func setEnabled(_ isEnabled: Bool, for handle: NativeHandle) { enabledStates[handle.rawValue] = isEnabled }
     public func setFont(_ font: NativeFontSpec, for handle: NativeHandle) { fonts[handle.rawValue] = font }
     public func setTextColor(_ color: NSColor, for handle: NativeHandle) { textColors[handle.rawValue] = color }
+    public func setMaterial(_ material: String, for handle: NativeHandle) { materials[handle.rawValue] = material }
     public func setStyledText(_ runs: [NativeTextRun], for handle: NativeHandle) {
         styledTexts[handle.rawValue] = runs
         texts[handle.rawValue] = runs.map(\.text).joined()

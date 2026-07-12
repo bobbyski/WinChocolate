@@ -781,6 +781,41 @@ do {
     check(v1.translatesAutoresizingMaskIntoConstraints == false, "opted-in view is solver-driven")
 }
 
+// MARK: 23 — Appearance & materials (NSAppearance + NSVisualEffectView)
+do {
+    let backend = InMemoryNativeControlBackend()
+    NSApplication.shared.nativeBackend = backend
+    NSApplication.shared.appearance = nil
+
+    check(NSApplication.shared.effectiveAppearance == .aqua, "default effective appearance is aqua (light)")
+    check(backend.appearanceIsDark == false, "backend starts light")
+    check(NSAppearance.darkAqua.isDark && !NSAppearance.aqua.isDark, "isDark distinguishes the variants")
+
+    NSApplication.shared.appearance = .darkAqua
+    check(backend.appearanceIsDark == true, "setting darkAqua flips the backend to dark")
+    check(NSApplication.shared.effectiveAppearance.isDark, "effectiveAppearance reports dark")
+
+    // A view's effectiveAppearance follows the app.
+    let view = NSView(frame: NSMakeRect(0, 0, 10, 10))
+    check(view.effectiveAppearance.isDark, "a view's effective appearance tracks the app")
+
+    NSApplication.shared.appearance = .aqua
+    check(backend.appearanceIsDark == false, "switching back to aqua un-darkens the backend")
+
+    // NSVisualEffectView carries its material across the seam.
+    let sidebar = NSVisualEffectView(frame: NSMakeRect(0, 0, 200, 400), material: .sidebar)
+    check(backend.materials[sidebar.handle.rawValue] == "sidebar", "visual-effect view records its material")
+    sidebar.material = .hudWindow
+    check(backend.materials[sidebar.handle.rawValue] == "hudWindow", "changing material writes through")
+    // It's a real NSView — it hosts subviews.
+    let child = NSButton(title: "In material", frame: NSMakeRect(8, 8, 100, 24))
+    sidebar.addSubview(child)
+    check(backend.subviews[sidebar.handle.rawValue]?.contains(child.handle.rawValue) == true,
+          "visual-effect view hosts subviews like any NSView")
+
+    NSApplication.shared.appearance = nil   // leave the shared app as we found it
+}
+
 if failures == 0 {
     print("\nAll contract tests passed.")
 } else {

@@ -362,9 +362,44 @@ NSLayoutConstraint.activate([
 ])
 constraintBed.layoutSubtreeIfNeeded()
 
+// MARK: - Page 10 · Appearance (NSAppearance dark mode + NSVisualEffectView)
+let appearancePage = NSView(frame: NSMakeRect(0, 0, pageWidth, pageHeight))
+var r10 = Rows(top: pageHeight - 16)
+
+let appearanceLabel = NSTextField(labelWithString: "Theme:", frame: NSMakeRect(24, r10.cursor - 30, 90, 24))
+let themeToggle = NSSegmentedControl(labels: ["Light", "Dark"], frame: NSMakeRect(120, r10.next(34), 200, 34))
+appearancePage.addSubview(appearanceLabel)
+appearancePage.addSubview(themeToggle)
+
+// Sample controls that visibly re-theme when the appearance flips.
+let sampleField = NSTextField(string: "Editable text re-themes", frame: NSMakeRect(24, r10.next(30), 300, 30))
+let buttonRowY = r10.next(32)
+let sampleButton = NSButton(title: "A button", frame: NSMakeRect(24, buttonRowY, 140, 32))
+let sampleCheck = NSButton(checkboxWithTitle: "A checkbox", frame: NSMakeRect(180, buttonRowY + 4, 160, 24))
+appearancePage.addSubview(sampleField)
+appearancePage.addSubview(sampleButton)
+appearancePage.addSubview(sampleCheck)
+
+// NSVisualEffectView material panels, each labelled.
+let materialsLabel = NSTextField(labelWithString: "NSVisualEffectView materials:", frame: NSMakeRect(24, r10.next(24), 360, 22))
+appearancePage.addSubview(materialsLabel)
+let panelsTop = r10.next(150)
+let materials: [(NSVisualEffectView.Material, String)] = [(.sidebar, "sidebar"), (.contentBackground, "content"), (.hudWindow, "hud")]
+for (i, entry) in materials.enumerated() {
+    let panel = NSVisualEffectView(frame: NSMakeRect(24 + Double(i) * 165, panelsTop, 150, 140), material: entry.0)
+    let caption = NSTextField(labelWithString: entry.1, frame: NSMakeRect(10, 108, 130, 22))
+    panel.addSubview(caption)
+    appearancePage.addSubview(panel)
+}
+
+themeToggle.onAction = { seg in
+    NSApplication.shared.appearance = seg.selectedSegment == 1 ? .darkAqua : .aqua
+}
+themeToggle.selectedSegment = 0
+
 // MARK: - Tab view assembly
 let tabView = NSTabView(frame: NSMakeRect(0, 0, pageWidth, pageHeight + 60))
-for (label, page) in [("Basics", basics), ("Values", values), ("Pickers", pickers), ("Text", textPage), ("Layout", layoutPage), ("Table", tablePage), ("Grid", gridPage), ("Drawing", drawingPage), ("Auto Layout", autoLayoutPage)] {
+for (label, page) in [("Basics", basics), ("Values", values), ("Pickers", pickers), ("Text", textPage), ("Layout", layoutPage), ("Table", tablePage), ("Grid", gridPage), ("Drawing", drawingPage), ("Auto Layout", autoLayoutPage), ("Appearance", appearancePage)] {
     let item = NSTabViewItem()
     item.label = label
     item.view = page

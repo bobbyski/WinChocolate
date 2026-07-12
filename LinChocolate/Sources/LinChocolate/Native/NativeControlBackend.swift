@@ -122,6 +122,11 @@ public protocol NativeControlBackend: AnyObject {
     /// Shows a modal save-file dialog; returns the chosen path, or nil on cancel.
     func runSavePanel(directory: String?, suggestedName: String?, for window: NativeHandle?) -> String?
 
+    // MARK: Appearance
+    /// Switches the whole app between light and dark themes. Existing controls
+    /// re-theme in place.
+    func setAppearanceDark(_ dark: Bool)
+
     // MARK: Views & controls
     /// Creates a container view (absolute child placement, like AppKit frames).
     func createView(frame: NSRect) -> NativeHandle
@@ -232,6 +237,9 @@ public protocol NativeControlBackend: AnyObject {
     func setFont(_ font: NativeFontSpec, for handle: NativeHandle)
     /// Applies a foreground text color to a control.
     func setTextColor(_ color: NSColor, for handle: NativeHandle)
+    /// Applies a material (`NSVisualEffectView.Material` raw value) to a view,
+    /// giving it a theme-aware tinted background.
+    func setMaterial(_ material: String, for handle: NativeHandle)
     /// Replaces a label's content with styled runs (attributed text).
     func setStyledText(_ runs: [NativeTextRun], for handle: NativeHandle)
     /// Registers custom drawing for a container view: `(context, width, height)`
