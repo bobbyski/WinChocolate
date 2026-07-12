@@ -118,6 +118,113 @@ func testAutoLayoutIntrinsicContentSize() {
         "A longer label should have a wider intrinsic width.")
 }
 
+func testStackViewDistributionsAlignmentAndInsets() {
+    func iv(_ w: CGFloat, _ h: CGFloat) -> IntrinsicSizeView { IntrinsicSizeView(NSSize(width: w, height: h)) }
+
+    // A: horizontal .fill — views keep intrinsic size, leftover shared equally.
+    let a = NSStackView(views: [iv(40, 20), iv(60, 20), iv(30, 20)])
+    a.orientation = .horizontal
+    a.distribution = .fill
+    a.spacing = 10
+    a.frame = NSMakeRect(0, 0, 300, 50)
+    a.layoutSubtreeIfNeeded()
+    // leftover = 300 - 20(spacing) - 130(intrinsic) = 150 → +50 each → [90,110,80].
+    expect(winClose(a.arrangedSubviews[0].frame.origin.x, 0) && winClose(a.arrangedSubviews[0].frame.size.width, 90),
+        "Fill v0 wrong: got \(a.arrangedSubviews[0].frame).")
+    expect(winClose(a.arrangedSubviews[1].frame.origin.x, 100) && winClose(a.arrangedSubviews[1].frame.size.width, 110),
+        "Fill v1 wrong: got \(a.arrangedSubviews[1].frame).")
+    expect(winClose(a.arrangedSubviews[2].frame.origin.x, 220) && winClose(a.arrangedSubviews[2].frame.size.width, 80),
+        "Fill v2 wrong: got \(a.arrangedSubviews[2].frame).")
+    // Cross axis: default center — height 20 in 50 → y = 15.
+    expect(winClose(a.arrangedSubviews[0].frame.origin.y, 15) && winClose(a.arrangedSubviews[0].frame.size.height, 20),
+        "Fill cross-centering wrong: got \(a.arrangedSubviews[0].frame).")
+
+    // B: horizontal .fillEqually — every view the same width.
+    let b = NSStackView(views: [iv(40, 20), iv(60, 20), iv(30, 20)])
+    b.distribution = .fillEqually
+    b.spacing = 10
+    b.frame = NSMakeRect(0, 0, 320, 40)
+    b.layoutSubtreeIfNeeded()
+    // each = (320 - 20) / 3 = 100.
+    for (i, v) in b.arrangedSubviews.enumerated() {
+        expect(winClose(v.frame.size.width, 100), "fillEqually v\(i) width should be 100: got \(v.frame.size.width).")
+    }
+    expect(winClose(b.arrangedSubviews[1].frame.origin.x, 110), "fillEqually v1 x should be 110: got \(b.arrangedSubviews[1].frame.origin.x).")
+
+    // C: vertical .fill.
+    let c = NSStackView(views: [iv(40, 30), iv(40, 50)])
+    c.orientation = .vertical
+    c.spacing = 8
+    c.frame = NSMakeRect(0, 0, 60, 200)
+    c.layoutSubtreeIfNeeded()
+    // heights: leftover = 200 - 8 - 80 = 112 → +56 each → [86,106]; x centered = 10.
+    expect(winClose(c.arrangedSubviews[0].frame.origin.y, 0) && winClose(c.arrangedSubviews[0].frame.size.height, 86)
+        && winClose(c.arrangedSubviews[0].frame.origin.x, 10),
+        "Vertical v0 wrong: got \(c.arrangedSubviews[0].frame).")
+    expect(winClose(c.arrangedSubviews[1].frame.origin.y, 94) && winClose(c.arrangedSubviews[1].frame.size.height, 106),
+        "Vertical v1 wrong: got \(c.arrangedSubviews[1].frame).")
+
+    // D: horizontal .equalSpacing — intrinsic sizes, gaps grow to fill.
+    let d = NSStackView(views: [iv(40, 20), iv(40, 20), iv(40, 20)])
+    d.distribution = .equalSpacing
+    d.spacing = 5
+    d.frame = NSMakeRect(0, 0, 300, 40)
+    d.layoutSubtreeIfNeeded()
+    // free = 300 - 120 = 180; gap = 180/2 = 90 → x = 0, 130, 260.
+    expect(winClose(d.arrangedSubviews[1].frame.origin.x, 130) && winClose(d.arrangedSubviews[2].frame.origin.x, 260),
+        "equalSpacing positions wrong: got \(d.arrangedSubviews.map { $0.frame.origin.x }).")
+
+    // E: cross-axis alignment leading vs trailing (horizontal → .top/.bottom).
+    let e = NSStackView(views: [iv(40, 20)])
+    e.frame = NSMakeRect(0, 0, 100, 50)
+    e.alignment = .top
+    e.layoutSubtreeIfNeeded()
+    expect(winClose(e.arrangedSubviews[0].frame.origin.y, 0), "Top alignment should place at y=0: got \(e.arrangedSubviews[0].frame.origin.y).")
+    e.alignment = .bottom
+    e.layoutSubtreeIfNeeded()
+    expect(winClose(e.arrangedSubviews[0].frame.origin.y, 30), "Bottom alignment should place at y=30: got \(e.arrangedSubviews[0].frame.origin.y).")
+
+    // F: intrinsicContentSize from arranged content + spacing + insets.
+    let f = NSStackView(views: [iv(40, 20), iv(60, 30)])
+    f.spacing = 10
+    f.edgeInsets = NSEdgeInsets(top: 5, left: 8, bottom: 5, right: 8)
+    let size = f.intrinsicContentSize
+    // width = 40+60+10 + 16 = 126; height = max(20,30) + 10 = 40.
+    expect(winClose(size.width, 126) && winClose(size.height, 40),
+        "Stack intrinsic size wrong: got \(size).")
+}
+
+func testStackViewComposesWithSolverAndResizes() {
+    // A stack pinned to all edges of a container: the solver sizes the stack,
+    // then the stack arranges its views — and both track a container resize.
+    let container = NSView(frame: NSMakeRect(0, 0, 300, 50))
+    let stack = NSStackView(views: [IntrinsicSizeView(NSSize(width: 20, height: 20)),
+                                    IntrinsicSizeView(NSSize(width: 20, height: 20)),
+                                    IntrinsicSizeView(NSSize(width: 20, height: 20))])
+    stack.distribution = .fillEqually
+    stack.spacing = 0
+    stack.translatesAutoresizingMaskIntoConstraints = false
+    container.addSubview(stack)
+    NSLayoutConstraint.activate([
+        stack.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+        stack.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+        stack.topAnchor.constraint(equalTo: container.topAnchor),
+        stack.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+    ])
+    container.layoutSubtreeIfNeeded()
+    expect(winClose(stack.frame.size.width, 300), "Stack should fill the container: got \(stack.frame.size.width).")
+    expect(winClose(stack.arrangedSubviews[0].frame.size.width, 100),
+        "fillEqually in a 300 stack should give 100 each: got \(stack.arrangedSubviews[0].frame.size.width).")
+
+    // Resize the container — the stack refills and its views re-split.
+    container.frame = NSMakeRect(0, 0, 600, 50)
+    container.layoutSubtreeIfNeeded()
+    expect(winClose(stack.frame.size.width, 600), "Stack should track the resized container: got \(stack.frame.size.width).")
+    expect(winClose(stack.arrangedSubviews[2].frame.origin.x, 400)
+        && winClose(stack.arrangedSubviews[2].frame.size.width, 200),
+        "fillEqually should re-split to 200 each on resize: got \(stack.arrangedSubviews[2].frame).")
+}
+
 func testAutoLayoutResizeReflowsConstraints() {
     // The real test of a constraint layout: when the container resizes, every
     // constraint-driven subview must reflow. Each scenario lays out at one
@@ -9249,6 +9356,8 @@ testWindowRealizationCreatesNativeHierarchy()
 testWindowToggleFullScreenTracksStateAndDelegate()
 testAutoLayoutPinsEdgesFixedSizeAndCenter()
 testAutoLayoutIntrinsicContentSize()
+testStackViewDistributionsAlignmentAndInsets()
+testStackViewComposesWithSolverAndResizes()
 testAutoLayoutResizeReflowsConstraints()
 testAutoLayoutSiblingChainInequalityAndFixedAnchor()
 testWindowTitleVisibilityBlanksCaption()

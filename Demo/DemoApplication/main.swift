@@ -3700,11 +3700,32 @@ NSLayoutConstraint.activate([
 ])
 resizeContainer.layoutSubtreeIfNeeded()
 
+// NSStackView (9.4): a horizontal row and a vertical column, each arranging its
+// views with a distribution + spacing. The horizontal one also stretches with
+// the window (see the resize handler) to show the stack refilling live.
+let stackHeader = showcaseSectionLabel("NSStackView (9.4)", NSMakeRect(24, 388, 400, 20))
+let hStackCaption = bezelCaption("Horizontal .fillEqually, spacing 8", NSMakeRect(24, 414, 520, 18))
+let hStack = NSStackView(views: [layoutBox(layoutBlue), layoutBox(layoutGreen), layoutBox(layoutRed), layoutBox(layoutOrange)])
+hStack.orientation = .horizontal
+hStack.distribution = .fillEqually
+hStack.spacing = 8
+hStack.frame = NSMakeRect(24, 436, 620, 56)
+hStack.layoutSubtreeIfNeeded()
+
+let vStackCaption = bezelCaption("Vertical .fillEqually", NSMakeRect(680, 414, 260, 18))
+let vStack = NSStackView(views: [layoutBox(layoutPurple), layoutBox(layoutBlue), layoutBox(layoutGreen)])
+vStack.orientation = .vertical
+vStack.distribution = .fillEqually
+vStack.spacing = 6
+vStack.frame = NSMakeRect(680, 436, 130, 110)
+vStack.layoutSubtreeIfNeeded()
+
 for view in [
     layoutIntro, layoutHeader,
     demo1Caption, demo1, demo2Caption, demo2,
     demo3Caption, demo3, demo4Caption, demo4,
-    resizeDemoCaption, resizeContainer
+    resizeDemoCaption, resizeContainer,
+    stackHeader, hStackCaption, hStack, vStackCaption, vStack
 ] as [NSView] {
     layoutPage.addSubview(view)
 }
