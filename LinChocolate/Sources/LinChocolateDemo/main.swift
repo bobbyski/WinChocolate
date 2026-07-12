@@ -176,9 +176,13 @@ split.setPosition(200)
 
 let scrollLabel = NSTextField(labelWithString: "Scroll view (tall document):", frame: NSMakeRect(24, r5.next(22), 300, 22))
 let scroll = NSScrollView(frame: NSMakeRect(24, r5.next(200), 486, 200))
-let document = NSView(frame: NSMakeRect(0, 0, 440, 600))
-var docRows = Rows(top: 600 - 10)
-for i in 1...12 {
+// Size the document to exactly fit its rows (no trailing empty space), so
+// scrolling to the end lands the last row against the bottom edge.
+let rowCount = 12, rowStride = 38.0, docTopMargin = 10.0, docBottomMargin = 10.0
+let documentHeight = docTopMargin + Double(rowCount) * rowStride - (rowStride - 24) + docBottomMargin
+let document = NSView(frame: NSMakeRect(0, 0, 440, documentHeight))
+var docRows = Rows(top: documentHeight - docTopMargin)
+for i in 1...rowCount {
     document.addSubview(NSTextField(labelWithString: "Scrollable row \(i)", frame: NSMakeRect(16, docRows.next(24), 300, 24)))
 }
 scroll.documentView = document
@@ -187,7 +191,7 @@ let scrollButtonY = r5.next(28)
 let scrollButton = NSButton(title: "Scroll to bottom", frame: NSMakeRect(24, scrollButtonY, 150, 28))
 let scrollInfo = NSTextField(labelWithString: "Offset: (0, 0)", frame: NSMakeRect(184, scrollButtonY + 3, 320, 22))
 scroll.onScroll = { p in scrollInfo.stringValue = "Offset: (\(Int(p.x)), \(Int(p.y)))" }
-scrollButton.onAction = { _ in scroll.scroll(to: NSMakePoint(0, 400)) }
+scrollButton.onAction = { _ in scroll.scrollToEndOfDocument() }
 
 for control in [splitLabel, split, scrollLabel, scroll, scrollButton, scrollInfo] as [NSView] {
     layoutPage.addSubview(control)

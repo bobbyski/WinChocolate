@@ -946,6 +946,13 @@ do {
     backend.simulateScroll(to: NSMakePoint(0, 999), on: scrollView.handle)
     check(scrollView.documentVisibleRect.origin.y == 300, "over-scroll clamps to the bottom")
     check(abs(scrollView.verticalScroller.doubleValue - 1.0) < 0.001, "scroller knob at the end")
+
+    // scrollToEndOfDocument lands exactly at the max offset (last content at the
+    // bottom edge, not overshot); scrollToBeginningOfDocument returns to the top.
+    scrollView.scrollToBeginningOfDocument()
+    check(scrollView.documentVisibleRect.origin.y == 0, "scrollToBeginningOfDocument returns to the top")
+    scrollView.scrollToEndOfDocument()
+    check(scrollView.documentVisibleRect.origin.y == 300, "scrollToEndOfDocument aligns the document end to the viewport bottom")
 }
 
 if failures == 0 {

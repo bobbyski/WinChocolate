@@ -50,6 +50,20 @@ public final class NSScrollView: NSView {
         contentView.scroll(to: point)
     }
 
+    /// Scrolls so the end of the document sits at the bottom of the viewport
+    /// (AppKit's `scrollToEndOfDocument:`). The offset is clamped to the range,
+    /// so the last content aligns to the bottom edge rather than overshooting.
+    public func scrollToEndOfDocument(_ sender: Any? = nil) {
+        let document = backend.scrollDocumentSize(for: handle)
+        let visible = backend.scrollVisibleSize(for: handle)
+        scroll(to: NSMakePoint(0, max(0, document.height - visible.height)))
+    }
+
+    /// Scrolls to the top of the document (AppKit's `scrollToBeginningOfDocument:`).
+    public func scrollToBeginningOfDocument(_ sender: Any? = nil) {
+        scroll(to: .zero)
+    }
+
     private func applyScrollerPolicy() {
         backend.setScrollerPolicy(vertical: hasVerticalScroller,
                                   horizontal: hasHorizontalScroller, for: handle)
