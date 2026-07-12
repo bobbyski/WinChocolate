@@ -870,6 +870,49 @@ do {
     check(landed == "payload from source", "the source's provided string arrives at the destination")
 }
 
+// MARK: 25 — Composed text layouts (NSForm + NSMatrix)
+do {
+    let backend = InMemoryNativeControlBackend()
+    NSApplication.shared.nativeBackend = backend
+
+    // NSForm: labelled rows backed by real text fields.
+    let form = NSForm(frame: NSMakeRect(0, 0, 256, 92))
+    form.titleWidth = 72
+    let nameCell = form.addEntry("Name:")
+    let statusCell = form.addEntry("Status:")
+    check(form.cells.count == 2, "form tracks its rows")
+    check(backend.subviews[form.handle.rawValue]?.count == 4, "each row adds a label + a field")
+    nameCell.stringValue = "LinChocolate"
+    check(form.textField(at: 0)?.stringValue == "LinChocolate", "cell value reaches the row's field")
+    form.setStringValue("Native", at: 1)
+    check(statusCell.stringValue == "Native", "setStringValue(at:) writes the row")
+    check(backend.text(for: statusCell.textField.handle) == "Native", "field text reaches the backend")
+    // The row's field is a live text field: editing it drives onTextChange.
+    var edited: String?
+    form.textField(at: 1)?.onTextChange = { edited = $0.stringValue }
+    backend.simulateTextChange(statusCell.textField.handle, "Edited")
+    check(edited == "Edited", "editing a form field fires onTextChange")
+
+    // NSMatrix: a rows×columns button grid.
+    let matrix = NSMatrix(frame: NSMakeRect(0, 0, 240, 72), mode: .trackModeMatrix,
+                          prototype: NSButtonCell(title: "Choice"),
+                          numberOfRows: 2, numberOfColumns: 2)
+    matrix.cellSize = NSMakeSize(104, 28)
+    matrix.intercellSpacing = NSMakeSize(8, 8)
+    check(backend.subviews[matrix.handle.rawValue]?.count == 4, "matrix builds one button per cell")
+    check(matrix.selectedRow == -1 && matrix.selectedColumn == -1, "matrix starts unselected")
+    matrix.selectCell(atRow: 0, column: 1)
+    check(matrix.selectedRow == 0 && matrix.selectedColumn == 1, "selectCell records the selection")
+
+    var firedRC: (Int, Int)?
+    matrix.onAction = { m in firedRC = (m.selectedRow, m.selectedColumn) }
+    // Clicking the bottom-right cell (row 1, col 1) selects it and fires onAction.
+    let cells = matrix.subviews   // row-major: [ (0,0),(0,1),(1,0),(1,1) ]
+    backend.simulateClick(cells[3].handle)
+    check(matrix.selectedRow == 1 && matrix.selectedColumn == 1, "clicking a cell selects it")
+    check(firedRC?.0 == 1 && firedRC?.1 == 1, "cell click fires onAction with the cell's row/column")
+}
+
 if failures == 0 {
     print("\nAll contract tests passed.")
 } else {

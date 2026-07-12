@@ -439,9 +439,48 @@ dropWell.onPerformDragOperation = { info in
 }
 dndPage.addSubview(dropWell)
 
+// MARK: - Page 12 · Forms (NSForm + NSMatrix composed layouts)
+let formsPage = NSView(frame: NSMakeRect(0, 0, pageWidth, pageHeight))
+var r12 = Rows(top: pageHeight - 16)
+
+let formHeading = NSTextField(labelWithString: "NSForm (labelled rows):", frame: NSMakeRect(24, r12.next(24), 360, 22))
+formHeading.font = .boldSystemFont(ofSize: 13)
+formsPage.addSubview(formHeading)
+
+let demoForm = NSForm(frame: NSMakeRect(24, r12.next(80), 400, 80))
+demoForm.titleWidth = 72
+let nameEntry = demoForm.addEntry("Name:")
+let statusEntry = demoForm.addEntry("Status:")
+nameEntry.stringValue = "LinChocolate"
+statusEntry.stringValue = "Native"
+formsPage.addSubview(demoForm)
+
+let formEcho = NSTextField(labelWithString: "Form status: Native", frame: NSMakeRect(24, r12.next(24), 460, 22))
+formsPage.addSubview(formEcho)
+demoForm.textField(at: 1)?.onTextChange = { field in
+    formEcho.stringValue = "Form status: \(field.stringValue)"
+}
+
+let matrixHeading = NSTextField(labelWithString: "NSMatrix (button grid):", frame: NSMakeRect(24, r12.next(28), 360, 22))
+matrixHeading.font = .boldSystemFont(ofSize: 13)
+formsPage.addSubview(matrixHeading)
+
+let demoMatrix = NSMatrix(frame: NSMakeRect(24, r12.next(72), 240, 72), mode: .trackModeMatrix,
+                          prototype: NSButtonCell(title: "Choice"), numberOfRows: 2, numberOfColumns: 2)
+demoMatrix.cellSize = NSMakeSize(104, 28)
+demoMatrix.intercellSpacing = NSMakeSize(8, 8)
+demoMatrix.selectCell(atRow: 0, column: 0)
+formsPage.addSubview(demoMatrix)
+
+let matrixEcho = NSTextField(labelWithString: "Matrix selected: —", frame: NSMakeRect(24, r12.next(24), 460, 22))
+formsPage.addSubview(matrixEcho)
+demoMatrix.onAction = { m in
+    matrixEcho.stringValue = "Matrix selected: row \(m.selectedRow + 1), column \(m.selectedColumn + 1)"
+}
+
 // MARK: - Tab view assembly
 let tabView = NSTabView(frame: NSMakeRect(0, 0, pageWidth, pageHeight + 60))
-for (label, page) in [("Basics", basics), ("Values", values), ("Pickers", pickers), ("Text", textPage), ("Layout", layoutPage), ("Table", tablePage), ("Grid", gridPage), ("Drawing", drawingPage), ("Auto Layout", autoLayoutPage), ("Appearance", appearancePage), ("Drag & Drop", dndPage)] {
+for (label, page) in [("Basics", basics), ("Values", values), ("Pickers", pickers), ("Text", textPage), ("Layout", layoutPage), ("Table", tablePage), ("Grid", gridPage), ("Drawing", drawingPage), ("Auto Layout", autoLayoutPage), ("Appearance", appearancePage), ("Drag & Drop", dndPage), ("Forms", formsPage)] {
     let item = NSTabViewItem()
     item.label = label
     item.view = page
