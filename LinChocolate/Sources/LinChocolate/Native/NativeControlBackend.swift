@@ -229,6 +229,19 @@ public protocol NativeControlBackend: AnyObject {
     func createBox(title: String, frame: NSRect) -> NativeHandle
     /// Creates a scroll container (`setContentView` installs its document view).
     func createScrollView(frame: NSRect) -> NativeHandle
+    /// Sets whether each scroller may appear (true = show when needed).
+    func setScrollerPolicy(vertical: Bool, horizontal: Bool, for handle: NativeHandle)
+    /// Scrolls so the content offset (distance from the top-left of the
+    /// document) becomes `(x, y)`, clamped to the scrollable range.
+    func setScrollOffset(x: Double, y: Double, for handle: NativeHandle)
+    /// The current content offset (distance scrolled from the top-left).
+    func scrollOffset(for handle: NativeHandle) -> (x: Double, y: Double)
+    /// The document (total scrollable content) size.
+    func scrollDocumentSize(for handle: NativeHandle) -> (width: Double, height: Double)
+    /// The visible viewport size (the clip view's size).
+    func scrollVisibleSize(for handle: NativeHandle) -> (width: Double, height: Double)
+    /// Registers the action fired when the scroll offset changes; passes `(x, y)`.
+    func setScrollChangeAction(for handle: NativeHandle, action: @escaping (Double, Double) -> Void)
     /// Creates a two-pane split container. `vertical` follows AppKit: a
     /// vertical *divider*, panes side by side.
     func createSplitView(vertical: Bool, frame: NSRect) -> NativeHandle

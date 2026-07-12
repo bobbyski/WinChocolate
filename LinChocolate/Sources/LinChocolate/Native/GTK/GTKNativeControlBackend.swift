@@ -921,6 +921,46 @@ public final class GTKNativeControlBackend: NativeControlBackend {
         gtk_widget_set_size_request(sw, Int32(frame.width), Int32(frame.height))
         return allocate(sw, .scrollView, frame: frame)
     }
+    public func setScrollerPolicy(vertical: Bool, horizontal: Bool, for handle: NativeHandle) {
+        guard let w = widget(handle) else { return }
+        gtk_scrolled_window_set_policy(w,   // GtkScrolledWindow is opaque
+            horizontal ? GTK_POLICY_AUTOMATIC : GTK_POLICY_NEVER,
+            vertical ? GTK_POLICY_AUTOMATIC : GTK_POLICY_NEVER)
+    }
+    public func setScrollOffset(x: Double, y: Double, for handle: NativeHandle) {
+        guard let w = widget(handle) else { return }
+        gtk_adjustment_set_value(gtk_scrolled_window_get_hadjustment(w), x)
+        gtk_adjustment_set_value(gtk_scrolled_window_get_vadjustment(w), y)
+    }
+    public func scrollOffset(for handle: NativeHandle) -> (x: Double, y: Double) {
+        guard let w = widget(handle) else { return (0, 0) }
+        return (gtk_adjustment_get_value(gtk_scrolled_window_get_hadjustment(w)),
+                gtk_adjustment_get_value(gtk_scrolled_window_get_vadjustment(w)))
+    }
+    public func scrollDocumentSize(for handle: NativeHandle) -> (width: Double, height: Double) {
+        guard let w = widget(handle) else { return (0, 0) }
+        return (gtk_adjustment_get_upper(gtk_scrolled_window_get_hadjustment(w)),
+                gtk_adjustment_get_upper(gtk_scrolled_window_get_vadjustment(w)))
+    }
+    public func scrollVisibleSize(for handle: NativeHandle) -> (width: Double, height: Double) {
+        guard let w = widget(handle) else { return (0, 0) }
+        return (gtk_adjustment_get_page_size(gtk_scrolled_window_get_hadjustment(w)),
+                gtk_adjustment_get_page_size(gtk_scrolled_window_get_vadjustment(w)))
+    }
+    public func setScrollChangeAction(for handle: NativeHandle, action: @escaping (Double, Double) -> Void) {
+        guard let w = widget(handle),
+              let hadj = gtk_scrolled_window_get_hadjustment(w),
+              let vadj = gtk_scrolled_window_get_vadjustment(w) else { return }
+        let box = ScrollBox(hadj: hadj, vadj: vadj, action: action)
+        // Both adjustments drive the same box; retain once per connection.
+        for adjustment in [hadj, vadj] {
+            g_signal_connect_data(
+                UnsafeMutableRawPointer(adjustment), "value-changed",
+                unsafeBitCast(gtkScrollChangedTrampoline, to: GCallback.self),
+                Unmanaged.passRetained(box).toOpaque(), boxRelease, GConnectFlags(rawValue: 0)
+            )
+        }
+    }
     public func createSplitView(vertical: Bool, frame: NSRect) -> NativeHandle {
         // AppKit "vertical" = vertical divider = panes side by side, which is
         // GTK's *horizontal* orientation.
@@ -1324,6 +1364,14 @@ private final class DropBox {
 private final class DragProviderBox {
     let provider: () -> String?
     init(_ provider: @escaping () -> String?) { self.provider = provider }
+}
+private final class ScrollBox {
+    let hadj: UnsafeMutablePointer<GtkAdjustment>
+    let vadj: UnsafeMutablePointer<GtkAdjustment>
+    let action: (Double, Double) -> Void
+    init(hadj: UnsafeMutablePointer<GtkAdjustment>, vadj: UnsafeMutablePointer<GtkAdjustment>, action: @escaping (Double, Double) -> Void) {
+        self.hadj = hadj; self.vadj = vadj; self.action = action
+    }
 }
 
 private final class DrawBox {
@@ -1746,6 +1794,14 @@ private let gtkDragPrepareTrampoline: @convention(c) (UnsafeMutableRawPointer?, 
     let provider = gdk_content_provider_new_for_value(&value)
     g_value_unset(&value)
     return OpaquePointer(provider)
+}
+
+/// Handler for `GtkAdjustment::value-changed` — reads both adjustments' current
+/// values (the box carries them) and reports the new `(x, y)` scroll offset.
+private let gtkScrollChangedTrampoline: @convention(c) (UnsafeMutableRawPointer?, gpointer?) -> Void = { _, userData in
+    guard let userData else { return }
+    let box = Unmanaged<ScrollBox>.fromOpaque(userData).takeUnretainedValue()
+    box.action(gtk_adjustment_get_value(box.hadj), gtk_adjustment_get_value(box.vadj))
 }
 
 private let boxRelease: GClosureNotify = { data, _ in

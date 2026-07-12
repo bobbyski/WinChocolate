@@ -433,6 +433,45 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     public func createScrollView(frame: NSRect) -> NativeHandle {
         let h = allocate(.scrollView); frames[h.rawValue] = frame; return h
     }
+
+    /// Whether each scroller is allowed to appear, per scroll view.
+    public private(set) var scrollerPolicies: [UInt: (vertical: Bool, horizontal: Bool)] = [:]
+    private var scrollOffsets: [UInt: NSPoint] = [:]
+    private var scrollActions: [UInt: (Double, Double) -> Void] = [:]
+
+    public func setScrollerPolicy(vertical: Bool, horizontal: Bool, for handle: NativeHandle) {
+        scrollerPolicies[handle.rawValue] = (vertical, horizontal)
+    }
+    public func scrollDocumentSize(for handle: NativeHandle) -> (width: Double, height: Double) {
+        // The document view's frame is the scrollable content size.
+        let docFrame = contentViews[handle.rawValue].flatMap { frames[$0] } ?? frames[handle.rawValue] ?? .zero
+        return (Double(docFrame.width), Double(docFrame.height))
+    }
+    public func scrollVisibleSize(for handle: NativeHandle) -> (width: Double, height: Double) {
+        let frame = frames[handle.rawValue] ?? .zero
+        return (Double(frame.width), Double(frame.height))
+    }
+    public func setScrollOffset(x: Double, y: Double, for handle: NativeHandle) {
+        // Clamp to the scrollable range, as GTK's adjustments do.
+        let doc = scrollDocumentSize(for: handle), vis = scrollVisibleSize(for: handle)
+        let cx = min(max(0, x), max(0, doc.width - vis.width))
+        let cy = min(max(0, y), max(0, doc.height - vis.height))
+        scrollOffsets[handle.rawValue] = NSMakePoint(CGFloat(cx), CGFloat(cy))
+        scrollActions[handle.rawValue]?(cx, cy)
+    }
+    public func scrollOffset(for handle: NativeHandle) -> (x: Double, y: Double) {
+        let p = scrollOffsets[handle.rawValue] ?? .zero
+        return (Double(p.x), Double(p.y))
+    }
+    public func setScrollChangeAction(for handle: NativeHandle, action: @escaping (Double, Double) -> Void) {
+        scrollActions[handle.rawValue] = action
+    }
+
+    /// Test hook: simulates the user scrolling to `(x, y)` (clamped), firing the
+    /// scroll-change action.
+    public func simulateScroll(to point: NSPoint, on handle: NativeHandle) {
+        setScrollOffset(x: Double(point.x), y: Double(point.y), for: handle)
+    }
     public func createSplitView(vertical: Bool, frame: NSRect) -> NativeHandle {
         let h = allocate(.splitView); frames[h.rawValue] = frame; return h
     }

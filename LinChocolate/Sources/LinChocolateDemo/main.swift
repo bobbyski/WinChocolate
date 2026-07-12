@@ -183,7 +183,13 @@ for i in 1...12 {
 }
 scroll.documentView = document
 
-for control in [splitLabel, split, scrollLabel, scroll] as [NSView] {
+let scrollButtonY = r5.next(28)
+let scrollButton = NSButton(title: "Scroll to bottom", frame: NSMakeRect(24, scrollButtonY, 150, 28))
+let scrollInfo = NSTextField(labelWithString: "Offset: (0, 0)", frame: NSMakeRect(184, scrollButtonY + 3, 320, 22))
+scroll.onScroll = { p in scrollInfo.stringValue = "Offset: (\(Int(p.x)), \(Int(p.y)))" }
+scrollButton.onAction = { _ in scroll.scroll(to: NSMakePoint(0, 400)) }
+
+for control in [splitLabel, split, scrollLabel, scroll, scrollButton, scrollInfo] as [NSView] {
     layoutPage.addSubview(control)
 }
 

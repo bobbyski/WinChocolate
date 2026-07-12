@@ -913,6 +913,41 @@ do {
     check(firedRC?.0 == 1 && firedRC?.1 == 1, "cell click fires onAction with the cell's row/column")
 }
 
+// MARK: 26 — Scrolling stack (NSScrollView + NSClipView + NSScroller)
+do {
+    let backend = InMemoryNativeControlBackend()
+    NSApplication.shared.nativeBackend = backend
+
+    // 200×100 viewport onto a 200×400 document.
+    let scrollView = NSScrollView(frame: NSMakeRect(0, 0, 200, 100))
+    let document = NSView(frame: NSMakeRect(0, 0, 200, 400))
+    scrollView.documentView = document
+
+    check(scrollView.contentView.documentRect == NSMakeRect(0, 0, 200, 400), "clip view reports the document rect")
+    check(scrollView.documentVisibleRect == NSMakeRect(0, 0, 200, 100), "visible rect starts at the top-left")
+    check(scrollView.verticalScroller.isVisible, "vertical scroller shows when content overflows")
+    check(!scrollView.horizontalScroller.isVisible, "horizontal scroller hidden when content fits width")
+    check(abs(scrollView.verticalScroller.knobProportion - 0.25) < 0.001, "knob proportion = visible/document (100/400)")
+
+    // Scroller policy reaches the backend.
+    scrollView.hasHorizontalScroller = false
+    check(backend.scrollerPolicies[scrollView.handle.rawValue]?.horizontal == false, "scroller policy reaches the backend")
+
+    // Programmatic scroll, clamped to the range and reported.
+    var scrolled: NSPoint?
+    scrollView.onScroll = { scrolled = $0 }
+    scrollView.scroll(to: NSMakePoint(0, 150))
+    check(scrollView.documentVisibleRect.origin.y == 150, "scroll(to:) moves the visible rect")
+    check(scrollView.contentView.bounds.origin.y == 150, "clip view bounds origin follows the offset")
+    check(scrolled == NSMakePoint(0, 150), "onScroll fires with the new offset")
+    check(abs(scrollView.verticalScroller.doubleValue - 0.5) < 0.001, "scroller knob at 0.5 (150 of 300 range)")
+
+    // Over-scroll clamps to the max offset (document 400 − visible 100 = 300).
+    backend.simulateScroll(to: NSMakePoint(0, 999), on: scrollView.handle)
+    check(scrollView.documentVisibleRect.origin.y == 300, "over-scroll clamps to the bottom")
+    check(abs(scrollView.verticalScroller.doubleValue - 1.0) < 0.001, "scroller knob at the end")
+}
+
 if failures == 0 {
     print("\nAll contract tests passed.")
 } else {
