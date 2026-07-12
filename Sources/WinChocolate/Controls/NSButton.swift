@@ -214,6 +214,30 @@ open class NSButton: NSControl {
         super.init(frame: frameRect)
     }
 
+    /// Creates a standard push button, matching AppKit's convenience shape.
+    /// The target/action pair is stored; dispatch runs through `onAction`.
+    public convenience init(title: String, target: AnyObject?, action: Selector?) {
+        self.init(title: title, frame: .zero)
+        self.target = target
+        self.action = action
+    }
+
+    /// Creates a checkbox, matching AppKit's convenience shape.
+    public convenience init(checkboxWithTitle title: String, target: AnyObject?, action: Selector?) {
+        self.init(title: title, frame: .zero)
+        setButtonType(.switchButton)
+        self.target = target
+        self.action = action
+    }
+
+    /// Creates a radio button, matching AppKit's convenience shape.
+    public convenience init(radioButtonWithTitle title: String, target: AnyObject?, action: Selector?) {
+        self.init(title: title, frame: .zero)
+        setButtonType(.radioButton)
+        self.target = target
+        self.action = action
+    }
+
     /// Creates the native Windows button peer.
     open override func createNativePeer(in backend: NativeControlBackend, parent: NativeHandle?) -> NativeHandle {
         if usesFrameworkDrawnBezel {

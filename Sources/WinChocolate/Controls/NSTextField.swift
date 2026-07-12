@@ -233,6 +233,25 @@ open class NSTextField: NSControl {
         super.init(frame: frameRect)
     }
 
+    /// Creates a text field with an initial string, matching AppKit's shape.
+    public convenience init(string stringValue: String) {
+        self.init(string: stringValue, frame: .zero)
+    }
+
+    /// Creates a non-editable label, matching AppKit's convenience shape.
+    public convenience init(labelWithString stringValue: String) {
+        self.init(string: stringValue, frame: .zero)
+        isEditable = false
+        isSelectable = false
+        isBordered = false
+        drawsBackground = false
+    }
+
+    /// Creates a wrapping non-editable label, matching AppKit's shape.
+    public convenience init(wrappingLabelWithString stringValue: String) {
+        self.init(labelWithString: stringValue)
+    }
+
     /// Creates a non-editable label-style text field.
     public static func label(withString stringValue: String) -> NSTextField {
         let field = NSTextField(string: stringValue, frame: NSZeroRect)

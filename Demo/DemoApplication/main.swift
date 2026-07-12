@@ -3720,15 +3720,93 @@ vStack.spacing = 6
 vStack.frame = NSMakeRect(680, 436, 130, 110)
 vStack.layoutSubtreeIfNeeded()
 
+// NSGridView (9.5): a label-and-field form — column 0 sizes to the widest label
+// and right-aligns them, column 1 is a fixed width the field boxes fill.
+func formLabel(_ text: String) -> NSTextField {
+    let label = NSTextField(string: text, frame: .zero)
+    label.isEditable = false
+    label.isBordered = false
+    label.drawsBackground = false
+    return label
+}
+func fieldBox() -> NSTextField {
+    // A real editable field so the form actually accepts focus and typing.
+    let field = NSTextField(string: "", frame: NSMakeRect(0, 0, 120, 22))
+    field.isEditable = true
+    field.isBezeled = true
+    field.isBordered = true
+    return field
+}
+let gridCaption = bezelCaption("NSGridView form (label : field, 9.5)", NSMakeRect(840, 414, 280, 18))
+let formGrid = NSGridView(views: [
+    [formLabel("Name:"), fieldBox()],
+    [formLabel("Email address:"), fieldBox()],
+    [formLabel("Role:"), fieldBox()],
+])
+formGrid.rowSpacing = 8
+formGrid.columnSpacing = 10
+formGrid.column(at: 0).xPlacement = .trailing
+formGrid.column(at: 1).width = 130
+formGrid.column(at: 1).xPlacement = .fill
+formGrid.frame = NSMakeRect(840, 436, 270, 110)
+formGrid.layoutSubtreeIfNeeded()
+
 for view in [
     layoutIntro, layoutHeader,
     demo1Caption, demo1, demo2Caption, demo2,
     demo3Caption, demo3, demo4Caption, demo4,
     resizeDemoCaption, resizeContainer,
-    stackHeader, hStackCaption, hStack, vStackCaption, vStack
+    stackHeader, hStackCaption, hStack, vStackCaption, vStack,
+    gridCaption, formGrid
 ] as [NSView] {
     layoutPage.addSubview(view)
 }
+
+// Reflow the whole Auto Layout page from the current width: the four top demos
+// become equal columns, the resize strip spans full width, and on the bottom
+// row the form pins right, the vertical stack sits to its left, and the
+// horizontal stack fills the remaining space. Each container re-runs the solver
+// so its constraint-driven contents adapt. Called at startup and on resize.
+@MainActor
+func reflowAutoLayoutPage(width pageWidth: CGFloat) {
+    let margin: CGFloat = 24
+    let gap: CGFloat = 18
+    let available = max(pageWidth - margin * 2, 240)
+
+    // Top row: four equal-width demo columns.
+    let colWidth = max((available - gap * 3) / 4, 120)
+    let topCaptions = [demo1Caption, demo2Caption, demo3Caption, demo4Caption]
+    let topContainers = [demo1, demo2, demo3, demo4]
+    for i in 0..<4 {
+        let x = margin + CGFloat(i) * (colWidth + gap)
+        topCaptions[i].frame = NSMakeRect(x, 60, colWidth, 18)
+        topContainers[i].frame = NSMakeRect(x, 84, colWidth, 150)
+        topContainers[i].layoutSubtreeIfNeeded()
+    }
+
+    // Middle: the live-reflow strip spans the full width.
+    resizeDemoCaption.frame = NSMakeRect(margin, 250, available, 18)
+    resizeContainer.frame = NSMakeRect(margin, 274, available, 90)
+    resizeContainer.layoutSubtreeIfNeeded()
+
+    // Bottom row: form pinned to the right, vertical stack to its left, and the
+    // horizontal stack filling everything left of them.
+    let formWidth: CGFloat = 270
+    let vStackWidth: CGFloat = 130
+    let formX = pageWidth - margin - formWidth
+    let vStackX = formX - 30 - vStackWidth
+    gridCaption.frame = NSMakeRect(formX, 414, formWidth, 18)
+    formGrid.frame = NSMakeRect(formX, 436, formWidth, 110)
+    formGrid.layoutSubtreeIfNeeded()
+    vStackCaption.frame = NSMakeRect(vStackX, 414, 200, 18)
+    vStack.frame = NSMakeRect(vStackX, 436, vStackWidth, 110)
+    vStack.layoutSubtreeIfNeeded()
+    let hStackWidth = max(vStackX - 20 - margin, 200)
+    hStackCaption.frame = NSMakeRect(margin, 414, hStackWidth, 18)
+    hStack.frame = NSMakeRect(margin, 436, hStackWidth, 56)
+    hStack.layoutSubtreeIfNeeded()
+}
+reflowAutoLayoutPage(width: 1120)
 
 // Follow a live system dark/light switch (8.5). The framework re-themes and
 // repaints its own windows/controls; the demo re-applies the few colors it
@@ -3820,10 +3898,8 @@ final class DemoWindowDelegate: NSWindowDelegate {
             let width = contentView.frame.size.width
             layoutPage.frame = NSRect(origin: layoutPage.frame.origin,
                                       size: NSSize(width: width, height: layoutPage.frame.size.height))
-            resizeContainer.frame = NSRect(origin: resizeContainer.frame.origin,
-                                           size: NSSize(width: max(width - 48, 240),
-                                                        height: resizeContainer.frame.size.height))
-            resizeContainer.layoutSubtreeIfNeeded()
+            // Reflow the whole page to the new width.
+            reflowAutoLayoutPage(width: width)
         }
     }
 }

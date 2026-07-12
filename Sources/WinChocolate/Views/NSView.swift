@@ -169,7 +169,20 @@ open class NSView: NSResponder {
     public static let noIntrinsicMetric: CGFloat = -1
 
     /// Whether the view has been flagged as needing layout.
-    open var needsLayout: Bool = false
+    ///
+    /// Setting `true` schedules a coalesced layout pass for the containing
+    /// window (see `NSLayoutPump`); the flag clears when
+    /// `layoutSubtreeIfNeeded()` visits the view. Marks on views not yet in
+    /// a window stay set and are honored by the window's next layout pass.
+    open var needsLayout: Bool = false {
+        didSet {
+            guard needsLayout, let window else {
+                return
+            }
+
+            NSLayoutPump.shared.scheduleLayout(for: window)
+        }
+    }
 
     /// Whether the view's frame is managed by autoresizing rather than
     /// constraints. When `false`, this view's frame is computed by the Auto
@@ -192,6 +205,57 @@ open class NSView: NSResponder {
 
     /// Lays out the view's subviews. Subclasses override to position children.
     open func layout() {}
+
+    /// The view's context menu, shown on right-click when set.
+    open var menu: NSMenu?
+
+    /// Shows the view's context menu on right-click, matching AppKit's
+    /// default responder behavior; without a menu the event travels up the
+    /// responder chain as before.
+    open override func rightMouseDown(with event: NSEvent) {
+        if let menu {
+            _ = menu.popUp(positioning: nil, at: convert(event.locationInWindow, from: nil), in: self)
+            return
+        }
+        super.rightMouseDown(with: event)
+    }
+
+    // Stored accessibility strings. Narrator/UIA wiring is a later slice;
+    // storing them keeps AppKit-shaped consumers building and preserves the
+    // values for when the backend exposes them.
+    private var storedAccessibilityLabel: String?
+    private var storedAccessibilityValue: String?
+    private var storedAccessibilityHelp: String?
+
+    /// Sets the accessibility label read by assistive technology.
+    open func setAccessibilityLabel(_ label: String?) {
+        storedAccessibilityLabel = label
+    }
+
+    /// The accessibility label read by assistive technology.
+    open func accessibilityLabel() -> String? {
+        storedAccessibilityLabel
+    }
+
+    /// Sets the accessibility value read by assistive technology.
+    open func setAccessibilityValue(_ value: Any?) {
+        storedAccessibilityValue = value.map { String(describing: $0) }
+    }
+
+    /// The accessibility value read by assistive technology.
+    open func accessibilityValue() -> Any? {
+        storedAccessibilityValue
+    }
+
+    /// Sets the accessibility help text read by assistive technology.
+    open func setAccessibilityHelp(_ help: String?) {
+        storedAccessibilityHelp = help
+    }
+
+    /// The accessibility help text read by assistive technology.
+    open func accessibilityHelp() -> String? {
+        storedAccessibilityHelp
+    }
 
     /// The view's mouse-tracking areas.
     public private(set) var trackingAreas: [NSTrackingArea] = []
@@ -302,6 +366,12 @@ open class NSView: NSResponder {
     open func concludeDragOperation(_ sender: NSDraggingInfo?) {}
 
     /// Creates a view with a frame.
+    /// Creates a view with a zero frame, matching AppKit's shape. ActiveUI
+    /// and other frame-assigning consumers size views after creation.
+    public convenience override init() {
+        self.init(frame: .zero)
+    }
+
     public init(frame frameRect: NSRect) {
         self.frame = frameRect
         super.init()

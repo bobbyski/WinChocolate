@@ -118,6 +118,91 @@ func testAutoLayoutIntrinsicContentSize() {
         "A longer label should have a wider intrinsic width.")
 }
 
+func testGridViewContentSizingAndPlacement() {
+    func iv(_ w: CGFloat, _ h: CGFloat) -> IntrinsicSizeView { IntrinsicSizeView(NSSize(width: w, height: h)) }
+
+    // A 2×2 grid: columns size to the widest content, rows to the tallest.
+    let c00 = iv(30, 20), c01 = iv(50, 20)
+    let c10 = iv(60, 24), c11 = iv(40, 16)
+    let grid = NSGridView(views: [[c00, c01], [c10, c11]])
+    grid.columnSpacing = 10
+    grid.rowSpacing = 8
+    grid.layoutSubtreeIfNeeded()
+
+    // Column widths: col0 = max(30,60)=60, col1 = max(50,40)=50.
+    // Row heights: row0 = max(20,20)=20, row1 = max(24,16)=24.
+    // Intrinsic: 60+50+10 = 120 wide, 20+24+8 = 52 tall.
+    expect(winClose(grid.intrinsicContentSize.width, 120) && winClose(grid.intrinsicContentSize.height, 52),
+        "Grid intrinsic size wrong: got \(grid.intrinsicContentSize).")
+    // Default placement is x=.leading, y=.center.
+    expect(winClose(c00.frame.origin.x, 0) && winClose(c00.frame.origin.y, 0),
+        "Cell (0,0) wrong: got \(c00.frame).")
+    expect(winClose(c01.frame.origin.x, 70) && winClose(c01.frame.origin.y, 0),
+        "Cell (1,0) should start after col0 + spacing (70): got \(c01.frame).")
+    expect(winClose(c10.frame.origin.y, 28),
+        "Cell (0,1) should start after row0 + spacing (28): got \(c10.frame.origin.y).")
+    // c11 (40×16) centered vertically in the 24-tall row: y = 28 + (24-16)/2 = 32.
+    expect(winClose(c11.frame.origin.x, 70) && winClose(c11.frame.origin.y, 32),
+        "Cell (1,1) should be x=70, y-centered at 32: got \(c11.frame).")
+
+    // Placement within a wider (explicit) column.
+    let only = iv(40, 20)
+    let g2 = NSGridView(views: [[only]])
+    g2.column(at: 0).width = 100
+    g2.xPlacement = .trailing
+    g2.layoutSubtreeIfNeeded()
+    expect(winClose(only.frame.origin.x, 60), "Trailing placement should right-align (x=60): got \(only.frame.origin.x).")
+    g2.xPlacement = .center
+    g2.layoutSubtreeIfNeeded()
+    expect(winClose(only.frame.origin.x, 30), "Center placement should center (x=30): got \(only.frame.origin.x).")
+    g2.xPlacement = .fill
+    g2.layoutSubtreeIfNeeded()
+    expect(winClose(only.frame.origin.x, 0) && winClose(only.frame.size.width, 100),
+        "Fill placement should stretch to the column width: got \(only.frame).")
+}
+
+func testGridViewHiddenStructureAndSolver() {
+    func iv(_ w: CGFloat, _ h: CGFloat) -> IntrinsicSizeView { IntrinsicSizeView(NSSize(width: w, height: h)) }
+
+    // Hiding a column excludes it from sizing and layout.
+    let a = iv(30, 20), b = iv(50, 20)
+    let grid = NSGridView(views: [[a, b]])
+    grid.columnSpacing = 10
+    grid.column(at: 0).isHidden = true
+    grid.layoutSubtreeIfNeeded()
+    expect(winClose(grid.intrinsicContentSize.width, 50),
+        "Hidden column should leave only col1's width (50): got \(grid.intrinsicContentSize.width).")
+    expect(winClose(b.frame.origin.x, 0), "The visible column should start at x=0: got \(b.frame.origin.x).")
+
+    // Structure mutation: adding rows/columns grows the grid.
+    let empty = NSGridView(frame: .zero)
+    _ = empty.addRow(with: [iv(20, 20), iv(20, 20)])
+    _ = empty.addRow(with: [iv(20, 20), iv(20, 20)])
+    expect(empty.numberOfRows == 2 && empty.numberOfColumns == 2,
+        "addRow should build a 2×2 grid: got \(empty.numberOfRows)×\(empty.numberOfColumns).")
+    _ = empty.addColumn(with: [iv(20, 20), iv(20, 20)])
+    expect(empty.numberOfColumns == 3, "addColumn should widen to 3 columns: got \(empty.numberOfColumns).")
+
+    // Composition: a grid pinned into a container is sized to its intrinsic
+    // size by the solver, then arranges its cells.
+    let container = NSView(frame: NSMakeRect(0, 0, 400, 300))
+    let c11 = iv(40, 16)
+    let composed = NSGridView(views: [[iv(30, 20), iv(50, 20)], [iv(60, 24), c11]])
+    composed.columnSpacing = 10
+    composed.rowSpacing = 8
+    composed.translatesAutoresizingMaskIntoConstraints = false
+    container.addSubview(composed)
+    NSLayoutConstraint.activate([
+        composed.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+        composed.topAnchor.constraint(equalTo: container.topAnchor),
+    ])
+    container.layoutSubtreeIfNeeded()
+    expect(winClose(composed.frame.size.width, 120) && winClose(composed.frame.size.height, 52),
+        "Solver should size the grid to its intrinsic size: got \(composed.frame.size).")
+    expect(winClose(c11.frame.origin.x, 70) && winClose(c11.frame.origin.y, 32),
+        "Grid cell should be placed after the solver sizes the grid: got \(c11.frame).")
+}
+
 func testStackViewDistributionsAlignmentAndInsets() {
     func iv(_ w: CGFloat, _ h: CGFloat) -> IntrinsicSizeView { IntrinsicSizeView(NSSize(width: w, height: h)) }
 
@@ -9358,6 +9443,8 @@ testAutoLayoutPinsEdgesFixedSizeAndCenter()
 testAutoLayoutIntrinsicContentSize()
 testStackViewDistributionsAlignmentAndInsets()
 testStackViewComposesWithSolverAndResizes()
+testGridViewContentSizingAndPlacement()
+testGridViewHiddenStructureAndSolver()
 testAutoLayoutResizeReflowsConstraints()
 testAutoLayoutSiblingChainInequalityAndFixedAnchor()
 testWindowTitleVisibilityBlanksCaption()
@@ -11193,5 +11280,58 @@ testDrawnTableRowReorderDragMovesRow()
 testDrawnTableMultiRowReorderMovesSelection()
 testDrawnTableRowDragsOutViaPasteboardWriter()
 testDrawnTableAcceptsExternalRowDrop()
+
+final class LayoutCountingView: NSView {
+    var layoutCount = 0
+    override func layout() {
+        layoutCount += 1
+    }
+}
+
+func testNeedsLayoutArmsCoalescedPumpFlush() {
+    clearApplicationWindows()
+    let previousBackend = NSApplication.shared.nativeBackend
+    let backend = InMemoryNativeControlBackend()
+    NSApplication.shared.nativeBackend = backend
+    defer {
+        NSApplication.shared.nativeBackend = previousBackend
+        clearApplicationWindows()
+    }
+
+    let window = NSWindow(
+        contentRect: NSMakeRect(0, 0, 300, 200),
+        styleMask: [.titled],
+        backing: .buffered,
+        defer: false,
+        nativeBackend: backend
+    )
+    let content = LayoutCountingView(frame: NSMakeRect(0, 0, 300, 200))
+    let child = LayoutCountingView(frame: NSMakeRect(0, 0, 50, 50))
+    content.addSubview(child)
+    window.contentView = content
+
+    // Marking two views in the same window arms exactly one flush timer on
+    // the current backend — the marks coalesce.
+    let timersBefore = backend.scheduledTimers.count
+    content.needsLayout = true
+    child.needsLayout = true
+    expect(backend.scheduledTimers.count == timersBefore + 1,
+           "needsLayout marks should arm exactly one coalesced flush timer; armed \(backend.scheduledTimers.count - timersBefore).")
+
+    // The message-loop tick runs one layout pass over the window subtree and
+    // clears the flags.
+    backend.fireDueTimers()
+    expect(content.layoutCount == 1 && child.layoutCount == 1,
+           "Pump flush should lay out the window subtree once. Got content \(content.layoutCount), child \(child.layoutCount).")
+    expect(!content.needsLayout && !child.needsLayout,
+           "Pump flush should clear needsLayout.")
+
+    // A fresh mark after the flush arms a new timer (the pump re-arms).
+    content.needsLayout = true
+    expect(backend.scheduledTimers.count == timersBefore + 2,
+           "A mark after a flush should arm a new flush timer.")
+}
+
+testNeedsLayoutArmsCoalescedPumpFlush()
 
 print("WinChocolate contract tests passed.")

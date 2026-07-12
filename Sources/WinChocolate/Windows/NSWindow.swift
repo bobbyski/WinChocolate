@@ -753,6 +753,9 @@ open class NSWindow: NSResponder {
     private func nativeWindowDidResize(to size: NSSize) {
         frame = NSRect(origin: frame.origin, size: size)
         layoutToolbarAndContent()
+        // Run the layout pass synchronously so live resize tracks the new
+        // size instead of waiting for the next pump tick.
+        contentView?.layoutSubtreeIfNeeded()
         delegate?.windowDidResize(NSNotification(name: "NSWindowDidResizeNotification", object: self))
     }
 
