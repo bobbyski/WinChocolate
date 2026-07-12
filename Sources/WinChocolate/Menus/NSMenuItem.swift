@@ -45,7 +45,7 @@ open class NSMenuItem: NSObject {
 
     /// Creates a blank item, matching AppKit's shape — callers set the title
     /// or attach a submenu afterwards.
-    public convenience init() {
+    public override convenience init() {
         self.init(title: "", action: nil, keyEquivalent: "")
     }
 
