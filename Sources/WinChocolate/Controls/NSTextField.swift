@@ -236,6 +236,14 @@ open class NSTextField: NSControl {
         super.init(frame: frameRect)
     }
 
+    /// The field's baseline sits above its bottom edge by the bezel/border
+    /// padding plus an approximated font descent (~21% of the point size, the
+    /// typical ratio for UI faces; exact per-font metrics are a refinement).
+    open override var baselineOffsetFromBottom: CGFloat {
+        let pad: CGFloat = isBezeled ? 3 : (isBordered ? 2 : 1)
+        return pad + (font ?? NSFont.systemFont(ofSize: 12)).pointSize * 0.21
+    }
+
     /// The field's natural size for Auto Layout (9.2): its text measured with
     /// the current font, plus padding for the bezel/border. A wrapping
     /// multi-line field reports no intrinsic width so constraints can widen it.

@@ -50,7 +50,7 @@ open class NSTableRowView: NSView {
     /// The fill actually painted: selection color when selected, else the base.
     private var effectiveFill: NSColor? {
         if isSelected, selectionHighlightStyle != .none {
-            return isEmphasized ? .selectedTextBackgroundColor : NSColor(white: 0.85, alpha: 1)
+            return isEmphasized ? .selectedTextBackgroundColor : .unemphasizedSelectedContentBackgroundColor
         }
         return baseBackgroundColor
     }

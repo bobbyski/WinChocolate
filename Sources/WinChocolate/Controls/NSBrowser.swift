@@ -149,15 +149,17 @@ open class NSBrowser: NSControl {
                 return
             }
             if isLeaf {
-                // Document: a page with two text lines.
+                // Document: a page with two text lines. Appearance-aware so the
+                // page isn't a bright island on the dark browser column.
+                let isDark = NSApplication.shared.effectiveAppearance.winIsDark
                 let page = NSRect(x: left + 1, y: cy - 6, width: 11, height: 13)
-                NSColor.white.setFill()
+                (isDark ? NSColor(white: 0.28, alpha: 1) : NSColor.white).setFill()
                 NSBezierPath(rect: page).fill()
                 NSColor(white: 0.55, alpha: 1).setStroke()
                 let border = NSBezierPath(rect: page)
                 border.lineWidth = 1
                 border.stroke()
-                NSColor(white: 0.7, alpha: 1).setStroke()
+                (isDark ? NSColor(white: 0.5, alpha: 1) : NSColor(white: 0.7, alpha: 1)).setStroke()
                 for dy in [3, 7] {
                     let line = NSBezierPath()
                     line.move(to: NSMakePoint(page.minX + 2, page.minY + CGFloat(dy)))

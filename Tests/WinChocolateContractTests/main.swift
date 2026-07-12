@@ -298,6 +298,169 @@ func testLayoutControlIntrinsicSizes() {
 }
 
 @MainActor
+func testBaselineAnchorsAlignAcrossViews() {
+    // Baselines resolve through baselineOffsetFromBottom (0 for plain views, so
+    // baseline == bottom); a text field reports a positive descent offset.
+    expect(NSTextField(labelWithString: "Hi").baselineOffsetFromBottom > 0,
+        "A text field should report a positive baseline offset.")
+
+    let container = NSView(frame: NSMakeRect(0, 0, 200, 100))
+    let a = IntrinsicSizeView(NSSize(width: 40, height: 20))
+    let b = IntrinsicSizeView(NSSize(width: 40, height: 30))
+    a.translatesAutoresizingMaskIntoConstraints = false
+    b.translatesAutoresizingMaskIntoConstraints = false
+    container.addSubview(a)
+    container.addSubview(b)
+    NSLayoutConstraint.activate([
+        a.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+        a.topAnchor.constraint(equalTo: container.topAnchor, constant: 10),
+        b.leadingAnchor.constraint(equalTo: a.trailingAnchor, constant: 10),
+        b.lastBaselineAnchor.constraint(equalTo: a.lastBaselineAnchor),
+    ])
+    container.layoutSubtreeIfNeeded()
+    // a spans y 10..30 (baseline 30); b (30 tall, offset 0) hangs from the same
+    // baseline, so its top is 0.
+    expect(winClose(a.frame.origin.y, 10) && winClose(b.frame.origin.y, 0),
+        "Baseline-aligned views should share a baseline: a=\(a.frame) b=\(b.frame).")
+}
+
+@MainActor
+func testCrossHierarchyConstraintUsesNestedFixedInput() {
+    // A constraint may reference a view *inside* a nested container: the nested
+    // view is a fixed input converted into the outer container's coordinates.
+    let container = NSView(frame: NSMakeRect(0, 0, 200, 100))
+    let nest = NSView(frame: NSMakeRect(20, 10, 80, 50))
+    let inner = NSView(frame: NSMakeRect(5, 5, 30, 20))
+    nest.addSubview(inner)
+    container.addSubview(nest)
+
+    let solved = NSView(frame: .zero)
+    solved.translatesAutoresizingMaskIntoConstraints = false
+    container.addSubview(solved)
+    NSLayoutConstraint.activate([
+        solved.leadingAnchor.constraint(equalTo: inner.trailingAnchor), // 25 + 30 = 55
+        solved.topAnchor.constraint(equalTo: inner.bottomAnchor),       // 15 + 20 = 35
+        solved.widthAnchor.constraint(equalToConstant: 40),
+        solved.heightAnchor.constraint(equalToConstant: 10),
+    ])
+    container.layoutSubtreeIfNeeded()
+    expect(winClose(solved.frame.origin.x, 55) && winClose(solved.frame.origin.y, 35),
+        "Cross-hierarchy fixed input should convert to container coordinates: got \(solved.frame).")
+}
+
+@MainActor
+func testStackViewGravityAreasAndEqualCentering() {
+    func iv(_ w: CGFloat, _ h: CGFloat) -> IntrinsicSizeView { IntrinsicSizeView(NSSize(width: w, height: h)) }
+
+    // Gravity areas: leading packs at the start, center centers as a block,
+    // trailing packs at the end; views keep their intrinsic sizes.
+    let stack = NSStackView(frame: NSMakeRect(0, 0, 300, 40))
+    stack.orientation = .horizontal
+    stack.distribution = .gravityAreas
+    stack.spacing = 10
+    let lead = iv(40, 20), mid = iv(60, 20), tail = iv(50, 20)
+    stack.addView(lead, in: .leading)
+    stack.addView(mid, in: .center)
+    stack.addView(tail, in: .trailing)
+    stack.layoutSubtreeIfNeeded()
+    expect(winClose(lead.frame.origin.x, 0), "Leading gravity should pack at 0: got \(lead.frame.origin.x).")
+    expect(winClose(mid.frame.origin.x, 120), "Center gravity should center at 120: got \(mid.frame.origin.x).")
+    expect(winClose(tail.frame.origin.x, 250), "Trailing gravity should end at the edge: got \(tail.frame.origin.x).")
+    expect(stack.views(in: .center).count == 1 && stack.views(in: .center)[0] === mid,
+        "views(in:) should report the center-area view.")
+
+    // equalCentering: centers equally spaced across the axis (slots of 100 →
+    // centers 50/150/250 → origins 30/130/230 for 40-wide views).
+    let centering = NSStackView(frame: NSMakeRect(0, 0, 300, 40))
+    centering.orientation = .horizontal
+    centering.distribution = .equalCentering
+    let e1 = iv(40, 20), e2 = iv(40, 20), e3 = iv(40, 20)
+    centering.addArrangedSubview(e1)
+    centering.addArrangedSubview(e2)
+    centering.addArrangedSubview(e3)
+    centering.layoutSubtreeIfNeeded()
+    expect(winClose(e1.frame.origin.x, 30) && winClose(e2.frame.origin.x, 130) && winClose(e3.frame.origin.x, 230),
+        "equalCentering should space centers equally: got \(e1.frame.origin.x)/\(e2.frame.origin.x)/\(e3.frame.origin.x).")
+}
+
+@MainActor
+func testStackViewBaselineAlignment() {
+    // .lastBaseline in a horizontal stack hangs every view from the deepest
+    // common baseline (offsets 0 → bottoms align at the tallest view's bottom).
+    let stack = NSStackView(frame: NSMakeRect(0, 0, 200, 40))
+    stack.orientation = .horizontal
+    stack.alignment = .lastBaseline
+    let short = IntrinsicSizeView(NSSize(width: 40, height: 20))
+    let tall = IntrinsicSizeView(NSSize(width: 40, height: 30))
+    stack.addArrangedSubview(short)
+    stack.addArrangedSubview(tall)
+    stack.layoutSubtreeIfNeeded()
+    expect(winClose(short.frame.origin.y, 10) && winClose(tall.frame.origin.y, 0),
+        "Baseline alignment should align bottoms at the common baseline: short=\(short.frame) tall=\(tall.frame).")
+}
+
+@MainActor
+func testGridViewStretchesAndBaselineAlignsRows() {
+    func iv(_ w: CGFloat, _ h: CGFloat) -> IntrinsicSizeView { IntrinsicSizeView(NSSize(width: w, height: h)) }
+
+    // An over-sized grid distributes extra space to content-sized tracks.
+    // Fitting size: cols 60+50+10 = 120, rows 20+24+8 = 52. Frame 160×72 →
+    // +40 width (20 per column), +20 height (10 per row).
+    let c00 = iv(30, 20), c01 = iv(50, 20)
+    let c10 = iv(60, 24), c11 = iv(40, 16)
+    let grid = NSGridView(views: [[c00, c01], [c10, c11]])
+    grid.columnSpacing = 10
+    grid.rowSpacing = 8
+    grid.frame = NSMakeRect(0, 0, 160, 72)
+    grid.layoutSubtreeIfNeeded()
+    expect(winClose(c01.frame.origin.x, 90),
+        "Stretched col0 (60+20) should push col1 to x=90: got \(c01.frame.origin.x).")
+    expect(winClose(c00.frame.origin.y, 5),
+        "Row stretched to 30 should center 20-tall content at y=5: got \(c00.frame.origin.y).")
+
+    // Baseline row alignment: contents hang from the row's common baseline.
+    let b0 = iv(40, 20), b1 = iv(40, 30)
+    let baselineGrid = NSGridView(views: [[b0, b1]])
+    baselineGrid.rowAlignment = .lastBaseline
+    baselineGrid.layoutSubtreeIfNeeded()
+    expect(winClose(b0.frame.origin.y, 10) && winClose(b1.frame.origin.y, 0),
+        "Baseline row alignment should align bottoms (offsets 0): b0=\(b0.frame) b1=\(b1.frame).")
+}
+
+@MainActor
+func testAutoresizingMaskMixesWithConstraintsThroughResize() {
+    // 9.3 both directions: a mask-driven (translates == true) view resizes with
+    // its container via autoresizing, and a constraint-driven sibling re-solves
+    // against the new fixed frame.
+    let container = NSView(frame: NSMakeRect(0, 0, 200, 100))
+    let masked = NSView(frame: NSMakeRect(0, 0, 100, 20))
+    masked.autoresizingMask = [.width]
+    container.addSubview(masked)
+
+    let solved = NSView(frame: .zero)
+    solved.translatesAutoresizingMaskIntoConstraints = false
+    container.addSubview(solved)
+    NSLayoutConstraint.activate([
+        solved.leadingAnchor.constraint(equalTo: masked.trailingAnchor),
+        solved.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+        solved.topAnchor.constraint(equalTo: container.topAnchor),
+        solved.heightAnchor.constraint(equalToConstant: 20),
+    ])
+    container.layoutSubtreeIfNeeded()
+    expect(winClose(solved.frame.origin.x, 100) && winClose(solved.frame.size.width, 100),
+        "Solved view should fill from the masked view's edge: got \(solved.frame).")
+
+    // Widen the container: the mask grows the fixed view, the solver re-fits
+    // the constrained one against it.
+    container.frame = NSMakeRect(0, 0, 300, 100)
+    container.layoutSubtreeIfNeeded()
+    expect(winClose(masked.frame.size.width, 200),
+        "Autoresizing width should track the container (+100): got \(masked.frame.size.width).")
+    expect(winClose(solved.frame.origin.x, 200) && winClose(solved.frame.size.width, 100),
+        "Solved view should re-fit after the masked view grew: got \(solved.frame).")
+}
+
+@MainActor
 func testStackViewCustomSpacingAndHiddenViews() {
     func iv(_ w: CGFloat, _ h: CGFloat) -> IntrinsicSizeView { IntrinsicSizeView(NSSize(width: w, height: h)) }
     let a = iv(40, 20), b = iv(40, 20), c = iv(40, 20)
@@ -5477,11 +5640,15 @@ func testDarkAppearanceDrivesDynamicColorsAndDrawnTable() {
            "The dark text color should be light.")
     expect(NSColor.selectedTextColor == .white,
            "Dark selections should use light text.")
+    expect(NSColor.unemphasizedSelectedContentBackgroundColor.whiteComponent < 0.5,
+           "The unemphasized (non-key) selection fill should darken under dark mode, not stay a light island.")
 
     // ...and flip back with an explicit light override.
     NSApplication.shared.appearance = NSAppearance(named: .aqua)
     expect(NSColor.windowBackgroundColor == .white,
            "The light window background should be white.")
+    expect(NSColor.unemphasizedSelectedContentBackgroundColor.whiteComponent > 0.7,
+           "The unemphasized selection fill should be a light gray under light mode.")
     NSApplication.shared.appearance = nil
 
     // The drawn table renders its dark skin: a dark body fill and light
@@ -9903,6 +10070,12 @@ testAspectRatioCrossAxisConstraints()
 testLayoutMarginsGuideInsetsChild()
 testControlIntrinsicContentSizes()
 testLayoutControlIntrinsicSizes()
+testBaselineAnchorsAlignAcrossViews()
+testCrossHierarchyConstraintUsesNestedFixedInput()
+testStackViewGravityAreasAndEqualCentering()
+testStackViewBaselineAlignment()
+testGridViewStretchesAndBaselineAlignsRows()
+testAutoresizingMaskMixesWithConstraintsThroughResize()
 testAutoLayoutResizeReflowsConstraints()
 testAutoLayoutSiblingChainInequalityAndFixedAnchor()
 testWindowTitleVisibilityBlanksCaption()

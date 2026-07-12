@@ -187,6 +187,12 @@ open class NSView: NSResponder {
     /// Sentinel used by `intrinsicContentSize` when a dimension has no natural size.
     public static let noIntrinsicMetric: CGFloat = -1
 
+    /// The distance from the view's bottom edge up to its text baseline, used
+    /// by baseline anchors and baseline alignment. A plain view's baseline is
+    /// its bottom edge (0), matching AppKit; text controls override with a
+    /// descent-derived offset.
+    open var baselineOffsetFromBottom: CGFloat { 0 }
+
     /// Whether the view has been flagged as needing layout.
     ///
     /// Setting `true` schedules a coalesced layout pass for the containing
