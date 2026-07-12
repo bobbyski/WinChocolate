@@ -16,6 +16,9 @@ open class NSView {
         didSet { backend.setFrame(frame, for: handle) }
     }
 
+    /// The view's bounds — its own coordinate space, origin at (0, 0).
+    public var bounds: NSRect { NSMakeRect(0, 0, frame.width, frame.height) }
+
     /// Opaque backend handle for this view. Exposed for advanced/testing use
     /// (e.g. simulating input against a specific control).
     public let handle: NativeHandle

@@ -1063,6 +1063,78 @@ do {
     check(browser.numberOfRows(inColumn: 1) == 2, "and repopulates the next column for the new parent")
 }
 
+// MARK: 29 — Gradients + arcs + rounded rects (NSGradient / NSBezierPath)
+final class GradientCanvas: NSView {
+    override func draw(_ dirtyRect: NSRect) {
+        NSGradient(starting: .red, ending: .blue)?.draw(in: NSMakeRect(0, 0, 100, 50), angle: 90)
+        let circle = NSBezierPath()
+        circle.appendArc(withCenter: NSMakePoint(50, 50), radius: 20, startAngle: 0, endAngle: 360)
+        NSColor.green.setFill()
+        circle.fill()
+        let capsule = NSBezierPath(roundedRect: NSMakeRect(10, 10, 80, 40), xRadius: 8, yRadius: 8)
+        NSGradient(colorsAndLocations: (.red, 0), (.green, 0.5), (.blue, 1))?.draw(in: capsule, angle: 45)
+    }
+}
+do {
+    let backend = InMemoryNativeControlBackend()
+    NSApplication.shared.nativeBackend = backend
+
+    let canvas = GradientCanvas(frame: NSMakeRect(0, 0, 120, 80))
+    canvas.needsDisplay = true
+    let ops = backend.lastDrawOps[canvas.handle.rawValue] ?? []
+
+    check(ops.contains { $0.hasPrefix("linearGradient[1.00,0.00,0.00;0.00,0.00,1.00]@90") },
+          "linear gradient fills a rect with its stops at the given angle")
+    check(ops.contains("arc(50,50,20)"), "appendArc reaches the context as an arc op")
+    // Path-clipped gradient: save → build path → clip → gradient → restore.
+    let save = ops.firstIndex(of: "save"), clip = ops.firstIndex(of: "clip"), restore = ops.firstIndex(of: "restore")
+    check(save != nil && clip != nil && restore != nil && save! < clip! && clip! < restore!,
+          "path gradient clips inside a save/restore scope")
+    check(ops.contains { $0.hasPrefix("linearGradient[1.00,0.00,0.00;0.00,1.00,0.00;0.00,0.00,1.00]") },
+          "three-stop gradient carries all stops")
+    // Rounded rect builds four Bézier corners + four edges.
+    check(ops.filter { $0.hasPrefix("curve") }.count >= 4, "rounded rect uses four Bézier corners")
+
+    check(NSGradient(colors: [.red])?.numberOfColorStops == nil, "a one-color gradient is nil (needs ≥2)")
+    check(NSGradient(colors: [.red, .green, .blue])?.numberOfColorStops == 3, "colors init spaces stops evenly")
+
+    let path = NSBezierPath(roundedRect: NSMakeRect(10, 20, 100, 40), xRadius: 5, yRadius: 5)
+    check(!path.isEmpty, "rounded rect path is non-empty")
+    check(abs(path.bounds.width - 100) < 0.01 && abs(path.bounds.minX - 10) < 0.01, "path bounds cover the rect")
+}
+
+// MARK: 30 — NSPopover
+do {
+    let backend = InMemoryNativeControlBackend()
+    NSApplication.shared.nativeBackend = backend
+
+    let anchor = NSButton(title: "Anchor", frame: NSMakeRect(0, 0, 80, 30))
+    let content = NSView(frame: .zero)
+    content.addSubview(NSTextField(labelWithString: "Hello", frame: NSMakeRect(8, 8, 100, 20)))
+
+    let popover = NSPopover()
+    popover.behavior = .transient
+    popover.contentSize = NSMakeSize(220, 120)
+    popover.contentViewController = NSViewController(view: content)
+
+    check(!popover.isShown, "popover starts hidden")
+    check(backend.shownPopovers.isEmpty, "no popovers shown initially")
+
+    popover.show(relativeTo: anchor.bounds, of: anchor, preferredEdge: .maxY)
+    check(popover.isShown, "show marks the popover shown")
+    check(backend.shownPopovers.count == 1, "the popover reaches the backend as shown")
+    check(content.frame.size == NSMakeSize(220, 120), "content view is sized to contentSize")
+    check(backend.popoverContents.values.contains(content.handle.rawValue), "content installs into the popover")
+
+    popover.performClose(nil)
+    check(!popover.isShown, "performClose hides the popover")
+    check(backend.shownPopovers.isEmpty, "closing removes it from the backend")
+
+    // Re-show reuses the same popover handle.
+    popover.show(relativeTo: anchor.bounds, of: anchor, preferredEdge: .maxY)
+    check(backend.shownPopovers.count == 1, "re-showing works and reuses one popover")
+}
+
 if failures == 0 {
     print("\nAll contract tests passed.")
 } else {

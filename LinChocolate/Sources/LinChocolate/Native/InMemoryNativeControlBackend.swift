@@ -18,9 +18,21 @@ public final class RecordingGraphicsContext: NativeGraphicsContext {
     public func curve(toX x: Double, y: Double, c1x: Double, c1y: Double, c2x: Double, c2y: Double) {
         ops.append("curve(\(Int(x)),\(Int(y)))")
     }
+    public func addArc(centerX: Double, centerY: Double, radius: Double, startAngleRadians: Double, endAngleRadians: Double, clockwise: Bool) {
+        ops.append("arc(\(Int(centerX)),\(Int(centerY)),\(Int(radius)))")
+    }
     public func closePath() { ops.append("close") }
     public func fillPath() { ops.append("fill") }
     public func strokePath() { ops.append("stroke") }
+    public func saveState() { ops.append("save") }
+    public func restoreState() { ops.append("restore") }
+    public func clipToCurrentPath() { ops.append("clip") }
+    public func fillLinearGradient(_ stops: [NativeGradientStop], inRect rect: NSRect, angleDegrees: Double) {
+        ops.append("linearGradient[\(stops.map { rgb($0.color) }.joined(separator: ";"))]@\(Int(angleDegrees))")
+    }
+    public func fillRadialGradient(_ stops: [NativeGradientStop], inRect rect: NSRect) {
+        ops.append("radialGradient[\(stops.map { rgb($0.color) }.joined(separator: ";"))]")
+    }
 }
 
 /// A backend that records state in memory instead of touching a display.
@@ -176,6 +188,21 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
 
     // MARK: Appearance
     public func setAppearanceDark(_ dark: Bool) { appearanceIsDark = dark }
+
+    // MARK: Popover
+    public private(set) var popoverContents: [UInt: UInt] = [:]
+    public private(set) var shownPopovers: Set<UInt> = []
+    public func createPopover() -> NativeHandle { allocate(.view) }
+    public func setPopoverContent(_ content: NativeHandle, size: NSSize, for popover: NativeHandle) {
+        popoverContents[popover.rawValue] = content.rawValue
+        frames[content.rawValue] = NSMakeRect(0, 0, size.width, size.height)
+    }
+    public func showPopover(_ popover: NativeHandle, relativeTo view: NativeHandle, rect: NSRect, edge: Int) {
+        shownPopovers.insert(popover.rawValue)
+    }
+    public func closePopover(_ popover: NativeHandle) {
+        shownPopovers.remove(popover.rawValue)
+    }
 
     // MARK: Pasteboard & drag-and-drop
     public func setClipboardString(_ string: String) { clipboard = string }

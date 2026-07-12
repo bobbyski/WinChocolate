@@ -1,5 +1,16 @@
 import Foundation
 
+/// AppKit-shaped keyboard modifier flags (subset), for menu key equivalents.
+public struct NSEventModifierFlags: OptionSet, Sendable {
+    public let rawValue: UInt
+    public init(rawValue: UInt) { self.rawValue = rawValue }
+    public static let capsLock = NSEventModifierFlags(rawValue: 1 << 0)
+    public static let shift = NSEventModifierFlags(rawValue: 1 << 1)
+    public static let control = NSEventModifierFlags(rawValue: 1 << 2)
+    public static let option = NSEventModifierFlags(rawValue: 1 << 3)
+    public static let command = NSEventModifierFlags(rawValue: 1 << 4)
+}
+
 /// AppKit-shaped menu item: a titled entry with an action, or a separator.
 public final class NSMenuItem {
 
@@ -11,6 +22,22 @@ public final class NSMenuItem {
 
     /// Called when the user picks the item.
     public var onAction: ((NSMenuItem) -> Void)?
+
+    /// The key (e.g. "n") that triggers the item; empty = none.
+    public var keyEquivalent: String = ""
+
+    /// Modifiers for the key equivalent (Command maps to Control on Linux).
+    public var keyEquivalentModifierMask: NSEventModifierFlags = .command
+
+    /// The GTK accelerator string (e.g. "<Control>n"), or nil if no key set.
+    var gtkAccelerator: String? {
+        guard !keyEquivalent.isEmpty else { return nil }
+        var mods = ""
+        if keyEquivalentModifierMask.contains(.control) || keyEquivalentModifierMask.contains(.command) { mods += "<Control>" }
+        if keyEquivalentModifierMask.contains(.shift) { mods += "<Shift>" }
+        if keyEquivalentModifierMask.contains(.option) { mods += "<Alt>" }
+        return mods + keyEquivalent.lowercased()
+    }
 
     /// Creates a titled, actionable item.
     public init(title: String, onAction: ((NSMenuItem) -> Void)? = nil) {
@@ -75,6 +102,7 @@ public final class NSMenu {
                 NativeMenuItemSpec(
                     title: sub.title,
                     isSeparator: sub.isSeparatorItem,
+                    accelerator: sub.gtkAccelerator,
                     action: sub.isSeparatorItem ? nil : { [weak sub] in
                         guard let sub else { return }
                         sub.onAction?(sub)

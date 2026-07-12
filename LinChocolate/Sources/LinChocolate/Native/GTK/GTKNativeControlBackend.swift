@@ -143,6 +143,7 @@ public final class GTKNativeControlBackend: NativeControlBackend {
     private func asFrame(_ p: OpaquePointer) -> UnsafeMutablePointer<GtkFrame> { .init(p) }
     private func asBox(_ p: OpaquePointer) -> UnsafeMutablePointer<GtkBox> { .init(p) }
     private func asToggle(_ p: OpaquePointer) -> UnsafeMutablePointer<GtkToggleButton> { .init(p) }
+    private func asPopover(_ p: OpaquePointer) -> UnsafeMutablePointer<GtkPopover> { .init(p) }
     private func asMenuModel(_ p: OpaquePointer) -> UnsafeMutablePointer<GMenuModel> { .init(p) }
     // GtkProgressBar, GtkDropDown, GtkLevelBar and GtkSpinButton are opaque in the
     // import — their functions take OpaquePointer directly. GtkTextBuffer is nominal.
@@ -289,6 +290,9 @@ public final class GTKNativeControlBackend: NativeControlBackend {
         // separators become GMenu section boundaries.
         let root = g_menu_new()!
         let group = g_simple_action_group_new()!
+        // Key equivalents become GtkShortcuts on a window-scoped controller.
+        let shortcuts = gtk_shortcut_controller_new()!
+        gtk_shortcut_controller_set_scope(shortcuts, GTK_SHORTCUT_SCOPE_MANAGED)
         for menu in menus {
             let submenu = g_menu_new()!
             var section = g_menu_new()!
@@ -300,7 +304,18 @@ public final class GTKNativeControlBackend: NativeControlBackend {
                 }
                 menuActionCounter += 1
                 let name = "m\(menuActionCounter)"
-                g_menu_append(section, item.title, "win.\(name)")
+                if let accel = item.accelerator {
+                    let menuItem = g_menu_item_new(item.title, "win.\(name)")!
+                    g_menu_item_set_attribute_value(menuItem, "accel", g_variant_new_string(accel))
+                    g_menu_append_item(section, menuItem)
+                    g_object_unref(UnsafeMutableRawPointer(menuItem))
+                    if let trigger = gtk_shortcut_trigger_parse_string(accel) {
+                        let shortcut = gtk_shortcut_new(trigger, gtk_named_action_new("win.\(name)"))
+                        gtk_shortcut_controller_add_shortcut(shortcuts, shortcut)
+                    }
+                } else {
+                    g_menu_append(section, item.title, "win.\(name)")
+                }
                 let gaction = g_simple_action_new(name, nil)!
                 if let action = item.action {
                     let box = ActionBox(action)
@@ -316,6 +331,7 @@ public final class GTKNativeControlBackend: NativeControlBackend {
             g_menu_append_submenu(root, menu.title, asMenuModel(submenu))
         }
         gtk_widget_insert_action_group(asWidget(w), "win", OpaquePointer(group))
+        gtk_widget_add_controller(asWidget(w), shortcuts)
 
         // Replace any existing bar, then put the new one at the top of the box.
         if let oldBar = windowMenuBars[window.rawValue] {
@@ -454,6 +470,40 @@ public final class GTKNativeControlBackend: NativeControlBackend {
             unsafeBitCast(gtkCloseRequestTrampoline, to: GCallback.self),
             Unmanaged.passRetained(box).toOpaque(), boxRelease, GConnectFlags(rawValue: 0)
         )
+    }
+
+    // MARK: Popover
+    private var popoverParented: Set<UInt> = []
+    public func createPopover() -> NativeHandle {
+        let pop = gtk_popover_new()!
+        gtk_popover_set_autohide(asPopover(OpaquePointer(pop)), gboolean(1))
+        if nonComposited { gtk_popover_set_has_arrow(asPopover(OpaquePointer(pop)), gboolean(0)) }
+        return allocate(pop, .view, frame: .zero)
+    }
+    public func setPopoverContent(_ content: NativeHandle, size: NSSize, for popover: NativeHandle) {
+        guard let pop = widget(popover), let c = widget(content) else { return }
+        gtk_widget_set_size_request(asWidget(c), Int32(size.width), Int32(size.height))
+        gtk_popover_set_child(asPopover(pop), asWidget(c))
+    }
+    public func showPopover(_ popover: NativeHandle, relativeTo view: NativeHandle, rect: NSRect, edge: Int) {
+        guard let pop = widget(popover), let v = widget(view) else { return }
+        if !popoverParented.contains(popover.rawValue) {
+            gtk_widget_set_parent(asWidget(pop), asWidget(v))
+            popoverParented.insert(popover.rawValue)
+        }
+        // Flip the AppKit rect into the view's GTK (top-left) coordinates.
+        let viewHeight = Double(gtk_widget_get_height(asWidget(v)))
+        var pointing = GdkRectangle(x: Int32(rect.minX), y: Int32(viewHeight - Double(rect.maxY)),
+                                    width: Int32(rect.width), height: Int32(rect.height))
+        gtk_popover_set_pointing_to(asPopover(pop), &pointing)
+        // NSRectEdge raw: minX=0, minY=1, maxX=2, maxY=3.
+        let position: GtkPositionType = edge == 0 ? GTK_POS_LEFT : edge == 2 ? GTK_POS_RIGHT : GTK_POS_BOTTOM
+        gtk_popover_set_position(asPopover(pop), position)
+        gtk_popover_popup(asPopover(pop))
+    }
+    public func closePopover(_ popover: NativeHandle) {
+        guard let pop = widget(popover) else { return }
+        gtk_popover_popdown(asPopover(pop))
     }
 
     // MARK: Views & controls
@@ -1465,6 +1515,17 @@ final class CairoGraphicsContext: NativeGraphicsContext {
     func curve(toX x: Double, y: Double, c1x: Double, c1y: Double, c2x: Double, c2y: Double) {
         cairo_curve_to(cr, c1x, c1y, c2x, c2y, x, y)
     }
+    func addArc(centerX: Double, centerY: Double, radius: Double, startAngleRadians: Double, endAngleRadians: Double, clockwise: Bool) {
+        // AppKit's default (counter-clockwise) maps to cairo_arc: in our
+        // y-flipped space that reads counter-clockwise on screen, and — unlike
+        // cairo_arc_negative — a full 0…2π sweep stays a full circle instead of
+        // normalizing to a zero-length arc.
+        if clockwise {
+            cairo_arc_negative(cr, centerX, centerY, radius, startAngleRadians, endAngleRadians)
+        } else {
+            cairo_arc(cr, centerX, centerY, radius, startAngleRadians, endAngleRadians)
+        }
+    }
     func closePath() { cairo_close_path(cr) }
     func fillPath() {
         cairo_set_source_rgba(cr, Double(fillColor.redComponent), Double(fillColor.greenComponent),
@@ -1476,6 +1537,38 @@ final class CairoGraphicsContext: NativeGraphicsContext {
                               Double(strokeColor.blueComponent), Double(strokeColor.alphaComponent))
         cairo_set_line_width(cr, lineWidth)
         cairo_stroke(cr)
+    }
+    func saveState() { cairo_save(cr) }
+    func restoreState() { cairo_restore(cr) }
+    func clipToCurrentPath() { cairo_clip(cr) }
+
+    /// Applies the stops to a cairo pattern and fills `rect` with it.
+    private func fill(rect: NSRect, pattern: OpaquePointer, stops: [NativeGradientStop]) {
+        for stop in stops {
+            cairo_pattern_add_color_stop_rgba(pattern, Double(stop.location),
+                Double(stop.color.redComponent), Double(stop.color.greenComponent),
+                Double(stop.color.blueComponent), Double(stop.color.alphaComponent))
+        }
+        cairo_set_source(cr, pattern)
+        cairo_rectangle(cr, Double(rect.minX), Double(rect.minY), Double(rect.width), Double(rect.height))
+        cairo_fill(cr)
+        cairo_pattern_destroy(pattern)
+    }
+    func fillLinearGradient(_ stops: [NativeGradientStop], inRect rect: NSRect, angleDegrees: Double) {
+        // Gradient axis through the rect center; half-length spans the rect's
+        // projection so 0° fills across the width and 90° up the height.
+        let radians = angleDegrees * .pi / 180
+        let dx = cos(radians), dy = sin(radians)
+        let cx = Double(rect.midX), cy = Double(rect.midY)
+        let half = abs(dx) * Double(rect.width) / 2 + abs(dy) * Double(rect.height) / 2
+        let pattern = cairo_pattern_create_linear(cx - dx * half, cy - dy * half, cx + dx * half, cy + dy * half)!
+        fill(rect: rect, pattern: pattern, stops: stops)
+    }
+    func fillRadialGradient(_ stops: [NativeGradientStop], inRect rect: NSRect) {
+        let cx = Double(rect.midX), cy = Double(rect.midY)
+        let radius = max(Double(rect.width), Double(rect.height)) / 2
+        let pattern = cairo_pattern_create_radial(cx, cy, 0, cx, cy, radius)!
+        fill(rect: rect, pattern: pattern, stops: stops)
     }
 }
 

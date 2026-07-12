@@ -68,6 +68,25 @@ for control in [counter, button, disable, sizeLabel, sizeResult, small, medium, 
     basics.addSubview(control)
 }
 
+// NSPopover anchored to a button (transient GtkPopover).
+let popoverButton = NSButton(title: "Show Popover", frame: NSMakeRect(340, 470, 160, 34))
+basics.addSubview(popoverButton)
+let basicsPopover = NSPopover()
+let popoverBody = NSView(frame: NSMakeRect(0, 0, 240, 110))
+let popTitle = NSTextField(labelWithString: "NSPopover", frame: NSMakeRect(16, 72, 200, 22))
+popTitle.font = .boldSystemFont(ofSize: 14)
+let popInfo = NSTextField(labelWithString: "A transient GtkPopover.", frame: NSMakeRect(16, 46, 220, 22))
+let popClose = NSButton(title: "Close", frame: NSMakeRect(16, 10, 80, 28))
+for c in [popTitle, popInfo, popClose] as [NSView] { popoverBody.addSubview(c) }
+basicsPopover.contentSize = NSMakeSize(240, 110)
+basicsPopover.behavior = .transient
+basicsPopover.contentViewController = NSViewController(view: popoverBody)
+popoverButton.onAction = { _ in
+    if basicsPopover.isShown { basicsPopover.performClose(nil) }
+    else { basicsPopover.show(relativeTo: popoverButton.bounds, of: popoverButton, preferredEdge: .maxY) }
+}
+popClose.onAction = { _ in basicsPopover.performClose(nil) }
+
 // MARK: - Page 2 · Values
 let values = NSView(frame: NSMakeRect(0, 0, pageWidth, pageHeight))
 var r2 = Rows(top: pageHeight - 16)
@@ -338,6 +357,20 @@ final class DemoCanvasView: NSView {
         diagonal.line(to: NSMakePoint(470, 220))
         diagonal.lineWidth = 6
         diagonal.stroke()
+
+        // Linear gradient filling a rounded-rect "capsule".
+        let capsule = NSBezierPath(roundedRect: NSMakeRect(30, 30, 200, 90), xRadius: 24, yRadius: 24)
+        NSGradient(starting: NSColor(red: 0.45, green: 0.30, blue: 0.75),
+                   ending: NSColor(red: 0.90, green: 0.55, blue: 0.90))?.draw(in: capsule, angle: -60)
+        NSColor(red: 0.35, green: 0.22, blue: 0.58).setStroke()
+        capsule.lineWidth = 2
+        capsule.stroke()
+
+        // Radial gradient in a filled circle (appendArc).
+        let orb = NSBezierPath()
+        orb.appendArc(withCenter: NSMakePoint(360, 130), radius: 55, startAngle: 0, endAngle: 360)
+        NSGradient(colorsAndLocations: (NSColor.white, 0),
+                                       (NSColor(red: 0.20, green: 0.55, blue: 0.95), 1))?.draw(in: orb, angle: 90)
     }
 }
 
@@ -601,12 +634,14 @@ let mainMenu = NSMenu()
 
 let fileItem = NSMenuItem(title: "File")
 let fileMenu = NSMenu(title: "File")
-fileMenu.addItem(withTitle: "Reset Counter") { _ in
+let resetItem = fileMenu.addItem(withTitle: "Reset Counter") { _ in
     clicks = 0
     counter.stringValue = "Clicks: 0 (reset)"
 }
+resetItem.keyEquivalent = "r"   // ⌘R → Ctrl+R on Linux
 fileMenu.addItem(.separator())
-fileMenu.addItem(withTitle: "Quit") { _ in NSApp.terminate(nil) }
+let quitItem = fileMenu.addItem(withTitle: "Quit") { _ in NSApp.terminate(nil) }
+quitItem.keyEquivalent = "q"
 mainMenu.addItem(fileItem)
 mainMenu.setSubmenu(fileMenu, for: fileItem)
 

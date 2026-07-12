@@ -29,6 +29,16 @@ public struct NativeToolbarItemSpec {
     }
 }
 
+/// One color stop of a gradient (location in 0...1).
+public struct NativeGradientStop: Equatable {
+    public let color: NSColor
+    public let location: CGFloat
+    public init(color: NSColor, location: CGFloat) {
+        self.color = color
+        self.location = location
+    }
+}
+
 /// Platform drawing surface handed to a view's draw handler. Path-based:
 /// build a path with the primitive ops, then fill or stroke it (both consume
 /// the path). Backed by Cairo on GTK and by an op recorder in tests.
@@ -40,9 +50,21 @@ public protocol NativeGraphicsContext: AnyObject {
     func move(toX x: Double, y: Double)
     func line(toX x: Double, y: Double)
     func curve(toX x: Double, y: Double, c1x: Double, c1y: Double, c2x: Double, c2y: Double)
+    /// Appends an arc to the current path (angles in radians, AppKit space).
+    func addArc(centerX: Double, centerY: Double, radius: Double, startAngleRadians: Double, endAngleRadians: Double, clockwise: Bool)
     func closePath()
     func fillPath()
     func strokePath()
+    /// Saves / restores the drawing state (clip, source) for scoped clipping.
+    func saveState()
+    func restoreState()
+    /// Intersects the clip region with the current path (consumes the path).
+    func clipToCurrentPath()
+    /// Fills `rect` with a linear gradient at `angleDegrees` (0 = left→right,
+    /// 90 = bottom→top, AppKit convention).
+    func fillLinearGradient(_ stops: [NativeGradientStop], inRect rect: NSRect, angleDegrees: Double)
+    /// Fills `rect` with a radial gradient centered in it.
+    func fillRadialGradient(_ stops: [NativeGradientStop], inRect rect: NSRect)
 }
 
 /// One styled run of text (carries `NSAttributedString` content across the seam).
@@ -62,10 +84,13 @@ public struct NativeTextRun: Equatable {
 public struct NativeMenuItemSpec {
     public let title: String
     public let isSeparator: Bool
+    /// GTK accelerator string for the key equivalent (e.g. "<Control>n"), or nil.
+    public let accelerator: String?
     public let action: (() -> Void)?
-    public init(title: String, isSeparator: Bool = false, action: (() -> Void)? = nil) {
+    public init(title: String, isSeparator: Bool = false, accelerator: String? = nil, action: (() -> Void)? = nil) {
         self.title = title
         self.isSeparator = isSeparator
+        self.accelerator = accelerator
         self.action = action
     }
 }
@@ -139,6 +164,17 @@ public protocol NativeControlBackend: AnyObject {
     /// Registers `handle` as a drag source; `provider` supplies the string
     /// carried when the user drags it (nil cancels).
     func registerDragSource(for handle: NativeHandle, provider: @escaping () -> String?)
+
+    // MARK: Popover
+    /// Creates a popover (a `GtkPopover`), initially empty and unattached.
+    func createPopover() -> NativeHandle
+    /// Installs `content` as the popover's child and sizes it.
+    func setPopoverContent(_ content: NativeHandle, size: NSSize, for popover: NativeHandle)
+    /// Anchors the popover to `view` (pointing at `rect` in the view's AppKit
+    /// coordinates, `edge` = `NSRectEdge` raw value) and pops it up.
+    func showPopover(_ popover: NativeHandle, relativeTo view: NativeHandle, rect: NSRect, edge: Int)
+    /// Pops the popover down.
+    func closePopover(_ popover: NativeHandle)
 
     // MARK: Views & controls
     /// Creates a container view (absolute child placement, like AppKit frames).
