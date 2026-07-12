@@ -43,6 +43,12 @@ open class NSMenuItem: NSObject {
     /// Swift-native action invoked by `performAction()`.
     open var onAction: ((NSMenuItem) -> Void)?
 
+    /// Creates a blank item, matching AppKit's shape — callers set the title
+    /// or attach a submenu afterwards.
+    public convenience init() {
+        self.init(title: "", action: nil, keyEquivalent: "")
+    }
+
     /// Creates a menu item.
     public init(title string: String, action selector: Selector?, keyEquivalent charCode: String) {
         self.title = string

@@ -1,3 +1,17 @@
+/// How text is wrapped or truncated at line ends, matching AppKit's names.
+///
+/// Stored on paragraph styles so label/field truncation intent survives
+/// copy/edit cycles; the classic renderer honors word wrapping and end
+/// ellipsis, other modes render as their nearest supported form.
+public enum NSLineBreakMode: Sendable {
+    case byWordWrapping
+    case byCharWrapping
+    case byClipping
+    case byTruncatingHead
+    case byTruncatingTail
+    case byTruncatingMiddle
+}
+
 /// Paragraph-level text attributes, matching AppKit's `NSParagraphStyle`.
 ///
 /// This slice carries the paragraph properties real ports set — alignment,
@@ -12,6 +26,7 @@ open class NSParagraphStyle: NSObject {
     var storedHeadIndent: CGFloat = 0
     var storedTailIndent: CGFloat = 0
     var storedFirstLineHeadIndent: CGFloat = 0
+    var storedLineBreakMode: NSLineBreakMode = .byWordWrapping
 
     /// The default paragraph style (natural alignment, zero spacing).
     open class var `default`: NSParagraphStyle {
@@ -36,6 +51,9 @@ open class NSParagraphStyle: NSObject {
     /// The indentation of the first line.
     open var firstLineHeadIndent: CGFloat { storedFirstLineHeadIndent }
 
+    /// How text wraps or truncates at line ends.
+    open var lineBreakMode: NSLineBreakMode { storedLineBreakMode }
+
     /// Creates a default paragraph style.
     public override init() {
         super.init()
@@ -50,6 +68,7 @@ open class NSParagraphStyle: NSObject {
         copy.storedHeadIndent = storedHeadIndent
         copy.storedTailIndent = storedTailIndent
         copy.storedFirstLineHeadIndent = storedFirstLineHeadIndent
+        copy.storedLineBreakMode = storedLineBreakMode
         return copy
     }
 
@@ -61,6 +80,7 @@ open class NSParagraphStyle: NSObject {
             && lhs.storedHeadIndent == rhs.storedHeadIndent
             && lhs.storedTailIndent == rhs.storedTailIndent
             && lhs.storedFirstLineHeadIndent == rhs.storedFirstLineHeadIndent
+            && lhs.storedLineBreakMode == rhs.storedLineBreakMode
     }
 }
 
@@ -96,6 +116,11 @@ open class NSMutableParagraphStyle: NSParagraphStyle {
         set { storedFirstLineHeadIndent = newValue }
     }
 
+    open override var lineBreakMode: NSLineBreakMode {
+        get { storedLineBreakMode }
+        set { storedLineBreakMode = newValue }
+    }
+
     /// Copies every property from another paragraph style.
     open func setParagraphStyle(_ style: NSParagraphStyle) {
         storedAlignment = style.storedAlignment
@@ -104,5 +129,6 @@ open class NSMutableParagraphStyle: NSParagraphStyle {
         storedHeadIndent = style.storedHeadIndent
         storedTailIndent = style.storedTailIndent
         storedFirstLineHeadIndent = style.storedFirstLineHeadIndent
+        storedLineBreakMode = style.storedLineBreakMode
     }
 }
