@@ -66,6 +66,42 @@ extension NSView {
         constraints.forEach { removeConstraint($0) }
     }
 
+    // MARK: - Content size priorities
+
+    /// The priority with which the view resists growing past its intrinsic size
+    /// on an axis.
+    public func contentHuggingPriority(for orientation: NSLayoutConstraint.Orientation) -> NSLayoutConstraint.Priority {
+        NSLayoutConstraint.Priority(orientation == .horizontal
+            ? winContentHuggingPriority.horizontal : winContentHuggingPriority.vertical)
+    }
+
+    /// Sets the view's content-hugging priority on an axis.
+    public func setContentHuggingPriority(_ priority: NSLayoutConstraint.Priority, for orientation: NSLayoutConstraint.Orientation) {
+        if orientation == .horizontal {
+            winContentHuggingPriority.horizontal = priority.rawValue
+        } else {
+            winContentHuggingPriority.vertical = priority.rawValue
+        }
+        winSetNeedsLayout()
+    }
+
+    /// The priority with which the view resists shrinking below its intrinsic
+    /// size on an axis.
+    public func contentCompressionResistancePriority(for orientation: NSLayoutConstraint.Orientation) -> NSLayoutConstraint.Priority {
+        NSLayoutConstraint.Priority(orientation == .horizontal
+            ? winCompressionResistancePriority.horizontal : winCompressionResistancePriority.vertical)
+    }
+
+    /// Sets the view's content-compression-resistance priority on an axis.
+    public func setContentCompressionResistancePriority(_ priority: NSLayoutConstraint.Priority, for orientation: NSLayoutConstraint.Orientation) {
+        if orientation == .horizontal {
+            winCompressionResistancePriority.horizontal = priority.rawValue
+        } else {
+            winCompressionResistancePriority.vertical = priority.rawValue
+        }
+        winSetNeedsLayout()
+    }
+
     // MARK: - Layout pass
 
     /// Flags this view (and its layout container chain) as needing layout.

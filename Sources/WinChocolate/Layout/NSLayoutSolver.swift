@@ -93,6 +93,28 @@ enum NSLayoutSolver {
                 equations.append(equation)
             }
         }
+        // Each solved view with an intrinsic metric on this axis contributes
+        // two implicit inequalities: it resists shrinking below the intrinsic
+        // size (compression resistance) and growing past it (content hugging),
+        // at the view's per-axis priorities — exactly AppKit's model.
+        for (i, view) in solved.enumerated() {
+            let intrinsic = isHorizontal ? view.intrinsicContentSize.width : view.intrinsicContentSize.height
+            guard intrinsic != NSView.noIntrinsicMetric else {
+                continue
+            }
+            let sizeIndex = vars(for: i).sizeIndex
+            let compression = isHorizontal
+                ? view.winCompressionResistancePriority.horizontal : view.winCompressionResistancePriority.vertical
+            let hugging = isHorizontal
+                ? view.winContentHuggingPriority.horizontal : view.winContentHuggingPriority.vertical
+            equations.append(AxisEquation(
+                terms: [(index: sizeIndex, coeff: 1)], rhs: Double(intrinsic),
+                relation: .greaterThanOrEqual, priority: compression))
+            equations.append(AxisEquation(
+                terms: [(index: sizeIndex, coeff: 1)], rhs: Double(intrinsic),
+                relation: .lessThanOrEqual, priority: hugging))
+        }
+
         guard !equations.isEmpty else {
             return nil
         }

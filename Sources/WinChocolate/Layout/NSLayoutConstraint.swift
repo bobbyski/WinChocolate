@@ -33,6 +33,13 @@ public final class NSLayoutConstraint {
         case greaterThanOrEqual = 1
     }
 
+    /// The axis a content-size priority applies to, matching AppKit's
+    /// `NSLayoutConstraint.Orientation`.
+    public enum Orientation: Int, Sendable {
+        case horizontal = 0
+        case vertical = 1
+    }
+
     /// The strength of a constraint, matching AppKit's `NSLayoutConstraint.Priority`.
     public struct Priority: RawRepresentable, Equatable, Comparable, Sendable {
         public var rawValue: Float

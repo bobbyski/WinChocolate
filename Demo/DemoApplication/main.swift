@@ -967,12 +967,14 @@ let drawingPage = DemoPageView(frame: NSMakeRect(0, 144, 1120, 560))
 let showcasePage = DemoPageView(frame: NSMakeRect(0, 144, 1120, 560))
 let listsPage = DemoPageView(frame: NSMakeRect(0, 144, 1120, 560))
 let bezelsPage = DemoPageView(frame: NSMakeRect(0, 144, 1120, 560))
+let layoutPage = DemoPageView(frame: NSMakeRect(0, 144, 1120, 560))
 valuesPage.isHidden = true
 tablesPage.isHidden = true
 drawingPage.isHidden = true
 showcasePage.isHidden = true
 listsPage.isHidden = true
 bezelsPage.isHidden = true
+layoutPage.isHidden = true
 let counterLabel = NSTextField(string: "Clicks: 0", frame: NSMakeRect(32, 36, 300, 24))
 let statusLabel = NSTextField(string: "Ready", frame: NSMakeRect(32, 74, 640, 24))
 let focusLabel = NSTextField(string: "Focus: none", frame: NSMakeRect(744, 74, 300, 24))
@@ -1862,7 +1864,7 @@ datePicker.maxDate = Date(timeIntervalSince1970: 1_893_456_000)
 datePicker.datePickerElements = [.yearMonthDay, .hourMinuteSecond]
 dateValueLabel.textColor = demoValueTextColor
 dateValueLabel.stringValue = datePicker.stringValue
-pageSelector.addItems(withTitles: ["Controls", "Values", "Tables/Media", "Drawing", "New in 3.x", "Lists (5.x)", "Bezels (8.3)"])
+pageSelector.addItems(withTitles: ["Controls", "Values", "Tables/Media", "Drawing", "New in 3.x", "Lists (5.x)", "Bezels (8.3)", "Auto Layout (9.x)"])
 imageLabel.font = NSFont.boldSystemFont(ofSize: 12)
 imageView.image = NSImage(contentsOfFile: demoArtworkPath) ?? NSImage(named: "WinChocolate artwork")
 imageView.imageFrameStyle = .grayBezel
@@ -2085,6 +2087,7 @@ func showDemoPage(_ index: Int) {
     showcasePage.isHidden = index != 4
     listsPage.isHidden = index != 5
     bezelsPage.isHidden = index != 6
+    layoutPage.isHidden = index != 7
     updateFocusDisplay()
 }
 
@@ -2860,6 +2863,7 @@ contentView.addSubview(drawingPage)
 contentView.addSubview(showcasePage)
 contentView.addSubview(listsPage)
 contentView.addSubview(bezelsPage)
+contentView.addSubview(layoutPage)
 
 controlsPage.addSubview(editableLabel)
 controlsPage.addSubview(editableTextField)
@@ -3391,8 +3395,8 @@ editMenuController.textView = notesTextView
 // menu entry.
 let viewMenuItem = NSMenuItem(title: "View", action: nil, keyEquivalent: "")
 let viewMenu = NSMenu(title: "View")
-for (index, pageTitle) in ["Controls Page", "Values Page", "Tables/Media Page", "Drawing Page", "New in 3.x Page", "Lists Page"].enumerated() {
-    // Ctrl+1...Ctrl+5 switch pages (the .command mask maps onto Ctrl on Windows).
+for (index, pageTitle) in ["Controls Page", "Values Page", "Tables/Media Page", "Drawing Page", "New in 3.x Page", "Lists Page", "Bezels Page", "Auto Layout Page"].enumerated() {
+    // Ctrl+1...Ctrl+8 switch pages (the .command mask maps onto Ctrl on Windows).
     let item = NSMenuItem(title: pageTitle, action: nil, keyEquivalent: "\(index + 1)")
     item.onAction = { _ in
         pageSelector.selectItem(at: index)
@@ -3564,6 +3568,147 @@ for control in [
     bezelsPage.addSubview(control)
 }
 
+// ── Auto Layout (9.x) page ───────────────────────────────────────────
+// Every box on this page is positioned by the constraint solver
+// (`NSLayoutConstraint` + anchors + intrinsic sizes), not a fixed frame:
+// each demo container adds constraint-driven subviews and calls
+// `layoutSubtreeIfNeeded()` to compute their frames.
+let layoutIntro = bezelCaption(
+    "Every box below is positioned by the Auto Layout solver (NSLayoutConstraint + anchors), not a fixed frame.",
+    NSMakeRect(24, 10, 1040, 20))
+let layoutHeader = showcaseSectionLabel(
+    "NSLayoutConstraint + anchors + intrinsic sizes (9.1/9.2)", NSMakeRect(24, 36, 660, 20))
+
+func layoutDemoContainer(at x: CGFloat) -> NSView {
+    let container = NSView(frame: NSMakeRect(x, 84, 250, 150))
+    container.backgroundColor = NSColor(calibratedWhite: 0.30, alpha: 1)
+    return container
+}
+func layoutBox(_ color: NSColor) -> NSView {
+    let box = NSView(frame: .zero)
+    box.translatesAutoresizingMaskIntoConstraints = false
+    box.backgroundColor = color
+    return box
+}
+let layoutBlue = NSColor(calibratedRed: 0.30, green: 0.56, blue: 0.95, alpha: 1)
+let layoutGreen = NSColor(calibratedRed: 0.30, green: 0.75, blue: 0.45, alpha: 1)
+let layoutRed = NSColor(calibratedRed: 0.90, green: 0.36, blue: 0.36, alpha: 1)
+let layoutOrange = NSColor(calibratedRed: 0.95, green: 0.64, blue: 0.24, alpha: 1)
+let layoutPurple = NSColor(calibratedRed: 0.66, green: 0.44, blue: 0.90, alpha: 1)
+
+// Demo 1: pin all four edges with a 12pt inset — the box fills the container.
+let demo1Caption = bezelCaption("Pinned to edges (inset 12)", NSMakeRect(24, 60, 250, 18))
+let demo1 = layoutDemoContainer(at: 24)
+let demo1Box = layoutBox(layoutBlue)
+demo1.addSubview(demo1Box)
+NSLayoutConstraint.activate([
+    demo1Box.leadingAnchor.constraint(equalTo: demo1.leadingAnchor, constant: 12),
+    demo1Box.trailingAnchor.constraint(equalTo: demo1.trailingAnchor, constant: -12),
+    demo1Box.topAnchor.constraint(equalTo: demo1.topAnchor, constant: 12),
+    demo1Box.bottomAnchor.constraint(equalTo: demo1.bottomAnchor, constant: -12),
+])
+demo1.layoutSubtreeIfNeeded()
+
+// Demo 2: fixed 90×48, centered in the container.
+let demo2Caption = bezelCaption("Fixed 90×48, centered", NSMakeRect(292, 60, 250, 18))
+let demo2 = layoutDemoContainer(at: 292)
+let demo2Box = layoutBox(layoutGreen)
+demo2.addSubview(demo2Box)
+NSLayoutConstraint.activate([
+    demo2Box.widthAnchor.constraint(equalToConstant: 90),
+    demo2Box.heightAnchor.constraint(equalToConstant: 48),
+    demo2Box.centerXAnchor.constraint(equalTo: demo2.centerXAnchor),
+    demo2Box.centerYAnchor.constraint(equalTo: demo2.centerYAnchor),
+])
+demo2.layoutSubtreeIfNeeded()
+
+// Demo 3: a horizontal sibling chain — equal widths, 10pt gaps.
+let demo3Caption = bezelCaption("Sibling chain (equal, gap 10)", NSMakeRect(560, 60, 250, 18))
+let demo3 = layoutDemoContainer(at: 560)
+let boxA = layoutBox(layoutRed)
+let boxB = layoutBox(layoutOrange)
+let boxC = layoutBox(layoutPurple)
+demo3.addSubview(boxA)
+demo3.addSubview(boxB)
+demo3.addSubview(boxC)
+NSLayoutConstraint.activate([
+    boxA.leadingAnchor.constraint(equalTo: demo3.leadingAnchor, constant: 12),
+    boxA.topAnchor.constraint(equalTo: demo3.topAnchor, constant: 12),
+    boxA.bottomAnchor.constraint(equalTo: demo3.bottomAnchor, constant: -12),
+    boxA.widthAnchor.constraint(equalToConstant: 44),
+    boxB.leadingAnchor.constraint(equalTo: boxA.trailingAnchor, constant: 10),
+    boxB.topAnchor.constraint(equalTo: boxA.topAnchor),
+    boxB.bottomAnchor.constraint(equalTo: boxA.bottomAnchor),
+    boxB.widthAnchor.constraint(equalTo: boxA.widthAnchor),
+    boxC.leadingAnchor.constraint(equalTo: boxB.trailingAnchor, constant: 10),
+    boxC.topAnchor.constraint(equalTo: boxA.topAnchor),
+    boxC.bottomAnchor.constraint(equalTo: boxA.bottomAnchor),
+    boxC.widthAnchor.constraint(equalTo: boxA.widthAnchor),
+])
+demo3.layoutSubtreeIfNeeded()
+
+// Demo 4: intrinsic-sized labels stacked in a column (width from text).
+let demo4Caption = bezelCaption("Intrinsic-sized labels (column)", NSMakeRect(828, 60, 250, 18))
+let demo4 = layoutDemoContainer(at: 828)
+let layoutLabel1 = NSTextField(string: "Short", frame: .zero)
+let layoutLabel2 = NSTextField(string: "A considerably longer label", frame: .zero)
+for label in [layoutLabel1, layoutLabel2] {
+    label.translatesAutoresizingMaskIntoConstraints = false
+    label.isEditable = false
+    label.isBordered = false
+    label.drawsBackground = true
+    label.backgroundColor = layoutBlue
+    label.textColor = .white
+}
+demo4.addSubview(layoutLabel1)
+demo4.addSubview(layoutLabel2)
+NSLayoutConstraint.activate([
+    layoutLabel1.leadingAnchor.constraint(equalTo: demo4.leadingAnchor, constant: 12),
+    layoutLabel1.topAnchor.constraint(equalTo: demo4.topAnchor, constant: 16),
+    layoutLabel2.leadingAnchor.constraint(equalTo: layoutLabel1.leadingAnchor),
+    layoutLabel2.topAnchor.constraint(equalTo: layoutLabel1.bottomAnchor, constant: 12),
+])
+demo4.layoutSubtreeIfNeeded()
+
+// Live resize demo: left/right boxes pinned to the edges, the middle box fills
+// the gap. The window-resize handler (below) widens this container and re-runs
+// the solver, so dragging the window reflows the middle box in real time.
+let resizeDemoCaption = bezelCaption(
+    "Resize the window → the green middle box reflows live (left/right pinned to the edges, middle fills the gap).",
+    NSMakeRect(24, 250, 1000, 18))
+let resizeContainer = NSView(frame: NSMakeRect(24, 274, 1072, 90))
+resizeContainer.backgroundColor = NSColor(calibratedWhite: 0.30, alpha: 1)
+let resizeLeft = layoutBox(layoutBlue)
+let resizeMiddle = layoutBox(layoutGreen)
+let resizeRight = layoutBox(layoutRed)
+resizeContainer.addSubview(resizeLeft)
+resizeContainer.addSubview(resizeMiddle)
+resizeContainer.addSubview(resizeRight)
+NSLayoutConstraint.activate([
+    resizeLeft.leadingAnchor.constraint(equalTo: resizeContainer.leadingAnchor, constant: 12),
+    resizeLeft.widthAnchor.constraint(equalToConstant: 70),
+    resizeLeft.topAnchor.constraint(equalTo: resizeContainer.topAnchor, constant: 12),
+    resizeLeft.bottomAnchor.constraint(equalTo: resizeContainer.bottomAnchor, constant: -12),
+    resizeRight.trailingAnchor.constraint(equalTo: resizeContainer.trailingAnchor, constant: -12),
+    resizeRight.widthAnchor.constraint(equalToConstant: 70),
+    resizeRight.topAnchor.constraint(equalTo: resizeLeft.topAnchor),
+    resizeRight.bottomAnchor.constraint(equalTo: resizeLeft.bottomAnchor),
+    resizeMiddle.leadingAnchor.constraint(equalTo: resizeLeft.trailingAnchor, constant: 10),
+    resizeMiddle.trailingAnchor.constraint(equalTo: resizeRight.leadingAnchor, constant: -10),
+    resizeMiddle.topAnchor.constraint(equalTo: resizeLeft.topAnchor),
+    resizeMiddle.bottomAnchor.constraint(equalTo: resizeLeft.bottomAnchor),
+])
+resizeContainer.layoutSubtreeIfNeeded()
+
+for view in [
+    layoutIntro, layoutHeader,
+    demo1Caption, demo1, demo2Caption, demo2,
+    demo3Caption, demo3, demo4Caption, demo4,
+    resizeDemoCaption, resizeContainer
+] as [NSView] {
+    layoutPage.addSubview(view)
+}
+
 // Follow a live system dark/light switch (8.5). The framework re-themes and
 // repaints its own windows/controls; the demo re-applies the few colors it
 // caches at startup (the status/focus bands) and redraws. Skipped implicitly
@@ -3640,6 +3785,30 @@ _ = NotificationCenter.default.addObserver(
 }
 
 window.contentView = contentView
+
+// Live Auto Layout resize: when the Auto Layout page is showing, stretch the
+// page + the resize-demo container to the window's content width and re-run the
+// solver, so dragging the window reflows the constraint-driven boxes in real
+// time. Other pages stay frame-based, so nothing else needs a resize pass.
+final class DemoWindowDelegate: NSWindowDelegate {
+    func windowDidResize(_ notification: NSNotification) {
+        MainActor.assumeIsolated {
+            guard !layoutPage.isHidden else {
+                return
+            }
+            let width = contentView.frame.size.width
+            layoutPage.frame = NSRect(origin: layoutPage.frame.origin,
+                                      size: NSSize(width: width, height: layoutPage.frame.size.height))
+            resizeContainer.frame = NSRect(origin: resizeContainer.frame.origin,
+                                           size: NSSize(width: max(width - 48, 240),
+                                                        height: resizeContainer.frame.size.height))
+            resizeContainer.layoutSubtreeIfNeeded()
+        }
+    }
+}
+let demoWindowDelegate = DemoWindowDelegate()
+window.delegate = demoWindowDelegate
+
 // --page N opens directly on a given page (handy for QA of a specific page).
 var initialPage = 0
 if let pageFlag = CommandLine.arguments.firstIndex(of: "--page"),

@@ -56,6 +56,172 @@ func testAutoLayoutPinsEdgesFixedSizeAndCenter() {
         "Fixed-size centered subview frame wrong: got \(centered.frame).")
 }
 
+final class IntrinsicSizeView: NSView {
+    var intrinsic: NSSize
+    init(_ size: NSSize) {
+        intrinsic = size
+        super.init(frame: .zero)
+    }
+    override var intrinsicContentSize: NSSize { intrinsic }
+}
+
+func testAutoLayoutIntrinsicContentSize() {
+    // A constraint-driven view with an intrinsic size and no size constraints
+    // sizes itself to the intrinsic size (hugging + compression resistance).
+    let container = NSView(frame: NSMakeRect(0, 0, 200, 100))
+    let label = IntrinsicSizeView(NSSize(width: 80, height: 24))
+    label.translatesAutoresizingMaskIntoConstraints = false
+    container.addSubview(label)
+    NSLayoutConstraint.activate([
+        label.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+        label.topAnchor.constraint(equalTo: container.topAnchor),
+    ])
+    container.layoutSubtreeIfNeeded()
+    expect(winClose(label.frame.size.width, 80) && winClose(label.frame.size.height, 24),
+        "Intrinsic-size view should adopt its intrinsic size: got \(label.frame.size).")
+
+    // Compression resistance (defaultHigh) beats a low-priority smaller width.
+    let label2 = IntrinsicSizeView(NSSize(width: 80, height: 24))
+    label2.translatesAutoresizingMaskIntoConstraints = false
+    container.addSubview(label2)
+    let small = label2.widthAnchor.constraint(equalToConstant: 40)
+    small.priority = .defaultLow
+    NSLayoutConstraint.activate([
+        label2.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+        label2.topAnchor.constraint(equalTo: container.topAnchor),
+        small,
+    ])
+    container.layoutSubtreeIfNeeded()
+    expect(label2.frame.size.width >= 79,
+        "Compression resistance should keep width at the intrinsic 80 over a low-priority 40: got \(label2.frame.size.width).")
+
+    // A required width overrides the intrinsic size entirely.
+    let label3 = IntrinsicSizeView(NSSize(width: 80, height: 24))
+    label3.translatesAutoresizingMaskIntoConstraints = false
+    container.addSubview(label3)
+    NSLayoutConstraint.activate([
+        label3.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+        label3.topAnchor.constraint(equalTo: container.topAnchor),
+        label3.widthAnchor.constraint(equalToConstant: 150),
+    ])
+    container.layoutSubtreeIfNeeded()
+    expect(winClose(label3.frame.size.width, 150),
+        "A required width should override the intrinsic size: got \(label3.frame.size.width).")
+
+    // A real NSTextField reports an intrinsic size derived from its text, so
+    // Auto Layout can size labels without an explicit width.
+    let shortLabel = NSTextField(string: "Hi", frame: .zero)
+    let longLabel = NSTextField(string: "A considerably longer label", frame: .zero)
+    expect(shortLabel.intrinsicContentSize.width > 0 && shortLabel.intrinsicContentSize.height > 0,
+        "An NSTextField should report a positive intrinsic size: got \(shortLabel.intrinsicContentSize).")
+    expect(longLabel.intrinsicContentSize.width > shortLabel.intrinsicContentSize.width,
+        "A longer label should have a wider intrinsic width.")
+}
+
+func testAutoLayoutResizeReflowsConstraints() {
+    // The real test of a constraint layout: when the container resizes, every
+    // constraint-driven subview must reflow. Each scenario lays out at one
+    // size, resizes the container, re-runs the solver, and checks the frames.
+
+    // A: edges pinned with insets — the box tracks the container's size.
+    let containerA = NSView(frame: NSMakeRect(0, 0, 200, 100))
+    let boxA = NSView(frame: .zero)
+    boxA.translatesAutoresizingMaskIntoConstraints = false
+    containerA.addSubview(boxA)
+    NSLayoutConstraint.activate([
+        boxA.leadingAnchor.constraint(equalTo: containerA.leadingAnchor, constant: 12),
+        boxA.trailingAnchor.constraint(equalTo: containerA.trailingAnchor, constant: -12),
+        boxA.topAnchor.constraint(equalTo: containerA.topAnchor, constant: 10),
+        boxA.bottomAnchor.constraint(equalTo: containerA.bottomAnchor, constant: -10),
+    ])
+    containerA.layoutSubtreeIfNeeded()
+    expect(winClose(boxA.frame.size.width, 176) && winClose(boxA.frame.size.height, 80),
+        "Edge-pinned box wrong at 200×100: got \(boxA.frame).")
+    containerA.frame = NSMakeRect(0, 0, 400, 200)
+    containerA.layoutSubtreeIfNeeded()
+    expect(winClose(boxA.frame.origin.x, 12) && winClose(boxA.frame.origin.y, 10)
+        && winClose(boxA.frame.size.width, 376) && winClose(boxA.frame.size.height, 180),
+        "Edge-pinned box should reflow to the larger container: got \(boxA.frame).")
+
+    // B: fixed size, centered — re-centers on resize.
+    let containerB = NSView(frame: NSMakeRect(0, 0, 200, 100))
+    let boxB = NSView(frame: .zero)
+    boxB.translatesAutoresizingMaskIntoConstraints = false
+    containerB.addSubview(boxB)
+    NSLayoutConstraint.activate([
+        boxB.widthAnchor.constraint(equalToConstant: 40),
+        boxB.heightAnchor.constraint(equalToConstant: 20),
+        boxB.centerXAnchor.constraint(equalTo: containerB.centerXAnchor),
+        boxB.centerYAnchor.constraint(equalTo: containerB.centerYAnchor),
+    ])
+    containerB.layoutSubtreeIfNeeded()
+    expect(winClose(boxB.frame.origin.x, 80) && winClose(boxB.frame.origin.y, 40),
+        "Centered box wrong at 200×100: got \(boxB.frame).")
+    containerB.frame = NSMakeRect(0, 0, 400, 200)
+    containerB.layoutSubtreeIfNeeded()
+    expect(winClose(boxB.frame.origin.x, 180) && winClose(boxB.frame.origin.y, 90)
+        && winClose(boxB.frame.size.width, 40) && winClose(boxB.frame.size.height, 20),
+        "Centered box should re-center and keep its size on resize: got \(boxB.frame).")
+
+    // C: proportional width (50% of the container) — tracks the container.
+    let containerC = NSView(frame: NSMakeRect(0, 0, 200, 100))
+    let boxC = NSView(frame: .zero)
+    boxC.translatesAutoresizingMaskIntoConstraints = false
+    containerC.addSubview(boxC)
+    NSLayoutConstraint.activate([
+        boxC.leadingAnchor.constraint(equalTo: containerC.leadingAnchor),
+        boxC.topAnchor.constraint(equalTo: containerC.topAnchor),
+        boxC.heightAnchor.constraint(equalToConstant: 30),
+        boxC.widthAnchor.constraint(equalTo: containerC.widthAnchor, multiplier: 0.5),
+    ])
+    containerC.layoutSubtreeIfNeeded()
+    expect(winClose(boxC.frame.size.width, 100),
+        "Proportional box should be half the 200-wide container: got \(boxC.frame.size.width).")
+    containerC.frame = NSMakeRect(0, 0, 360, 120)
+    containerC.layoutSubtreeIfNeeded()
+    expect(winClose(boxC.frame.size.width, 180),
+        "Proportional box should track to half the 360-wide container: got \(boxC.frame.size.width).")
+
+    // D: a flexible middle — A pinned leading, C pinned trailing, B fills the
+    // gap. B's width is entirely determined by the container width.
+    let containerD = NSView(frame: NSMakeRect(0, 0, 200, 60))
+    let dA = NSView(frame: .zero), dB = NSView(frame: .zero), dC = NSView(frame: .zero)
+    for v in [dA, dB, dC] {
+        v.translatesAutoresizingMaskIntoConstraints = false
+        containerD.addSubview(v)
+    }
+    NSLayoutConstraint.activate([
+        dA.leadingAnchor.constraint(equalTo: containerD.leadingAnchor),
+        dA.widthAnchor.constraint(equalToConstant: 30),
+        dC.trailingAnchor.constraint(equalTo: containerD.trailingAnchor),
+        dC.widthAnchor.constraint(equalToConstant: 30),
+        dB.leadingAnchor.constraint(equalTo: dA.trailingAnchor, constant: 8),
+        dB.trailingAnchor.constraint(equalTo: dC.leadingAnchor, constant: -8),
+        dA.topAnchor.constraint(equalTo: containerD.topAnchor),
+        dA.heightAnchor.constraint(equalToConstant: 20),
+        dB.topAnchor.constraint(equalTo: dA.topAnchor),
+        dB.heightAnchor.constraint(equalTo: dA.heightAnchor),
+        dC.topAnchor.constraint(equalTo: dA.topAnchor),
+        dC.heightAnchor.constraint(equalTo: dA.heightAnchor),
+    ])
+    containerD.layoutSubtreeIfNeeded()
+    expect(winClose(dB.frame.origin.x, 38) && winClose(dB.frame.size.width, 124),
+        "Flexible middle wrong at width 200 (expected x=38 w=124): got \(dB.frame).")
+    containerD.frame = NSMakeRect(0, 0, 400, 60)
+    containerD.layoutSubtreeIfNeeded()
+    expect(winClose(dC.frame.origin.x, 370),
+        "Trailing-pinned box should move to the new right edge: got \(dC.frame.origin.x).")
+    expect(winClose(dB.frame.origin.x, 38) && winClose(dB.frame.size.width, 324),
+        "Flexible middle should absorb the extra width (expected x=38 w=324): got \(dB.frame).")
+
+    // Round-trip: resizing back to the original size restores the exact layout
+    // (no drift from the previous solve seeding the next).
+    containerD.frame = NSMakeRect(0, 0, 200, 60)
+    containerD.layoutSubtreeIfNeeded()
+    expect(winClose(dB.frame.origin.x, 38) && winClose(dB.frame.size.width, 124),
+        "Resizing back should restore the original layout with no drift: got \(dB.frame).")
+}
+
 func testAutoLayoutSiblingChainInequalityAndFixedAnchor() {
     // A sibling chain: A pinned to the leading edge, B trailing of A with a gap.
     let container = NSView(frame: NSMakeRect(0, 0, 200, 100))
@@ -9082,6 +9248,8 @@ func testAlertBeginSheetModalDeliversResponse() {
 testWindowRealizationCreatesNativeHierarchy()
 testWindowToggleFullScreenTracksStateAndDelegate()
 testAutoLayoutPinsEdgesFixedSizeAndCenter()
+testAutoLayoutIntrinsicContentSize()
+testAutoLayoutResizeReflowsConstraints()
 testAutoLayoutSiblingChainInequalityAndFixedAnchor()
 testWindowTitleVisibilityBlanksCaption()
 testWindowStandardButtonsAndStyleFlags()
