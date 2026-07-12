@@ -1690,8 +1690,17 @@ private let gtkTableSelectionChangedTrampoline: @convention(c) (UnsafeMutableRaw
 /// popping them down trips a Gtk-CRITICAL assertion on every click.
 private let popoverTypeNames: Set<String> = ["GtkPopover", "GtkPopoverMenu", "GtkTreePopover"]
 
-/// Recursively pops down any *mapped* popover in `widget`'s subtree (dropdown
-/// lists, menu-bar menus, combo popups).
+/// Menu-bar subtrees the dismissal walk must NOT descend into. The menu bar
+/// owns a `GtkPopoverMenu` for the open menu; GTK manages its lifetime (open on
+/// click, close on Escape / activation / clicking another top-level item). If
+/// our fallback reaches in and pops it down, the menu closes the instant it
+/// opens — i.e. menus stop working. So skip these subtrees entirely; the
+/// fallback only needs to reach the *standalone* popovers below (dropdown and
+/// combo-box lists), which are not inside the menu bar.
+private let menuBarTypeNames: Set<String> = ["GtkPopoverMenuBar", "GtkPopoverMenuBarItem"]
+
+/// Recursively pops down any *mapped* standalone popover in `widget`'s subtree
+/// (dropdown lists, combo popups), skipping menu-bar menus.
 private func popdownVisiblePopovers(under widget: UnsafeMutablePointer<GtkWidget>) {
     var child = gtk_widget_get_first_child(widget)
     while let c = child {
@@ -1701,7 +1710,7 @@ private func popdownVisiblePopovers(under widget: UnsafeMutablePointer<GtkWidget
             if gtk_widget_get_mapped(c) != 0 {
                 gtk_popover_popdown(UnsafeMutablePointer<GtkPopover>(OpaquePointer(c)))
             }
-        } else {
+        } else if !menuBarTypeNames.contains(typeName) {
             popdownVisiblePopovers(under: c)
         }
         child = gtk_widget_get_next_sibling(c)

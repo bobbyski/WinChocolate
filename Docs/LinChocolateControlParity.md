@@ -100,9 +100,14 @@ look):
    arrow's tail geometry is compiled into GTK and cannot be styled away.
 4. Outside-click dismissal fallback — popovers normally auto-dismiss via a
    pointer grab, which doesn't take effect here, leaving menus stuck open. A
-   capture-phase `GtkGestureClick` on each window pops down any visible
-   popover in its subtree. Clicks inside a popover are on its own surface and
-   never reach the handler, so item activation is unaffected.
+   capture-phase `GtkGestureClick` on each window (plus a `notify::is-active`
+   handler) pops down any visible **standalone** popover in its subtree
+   (dropdown/combo lists). It must **not** descend into `GtkPopoverMenuBar`
+   subtrees: opening a menu popover deactivates the window (separate X surface),
+   which fired the is-active handler and popped the menu down the instant it
+   opened — File/Help menus appeared dead. The walk now skips menu-bar subtrees;
+   GTK manages menu-bar menu dismissal (Escape / another top-level item /
+   activation) natively.
 
 Diagnosed by pixel-sampling captures (the band was exactly the popover
 surface's top rows); each layer removed a slice of the black. The dismissal
