@@ -125,4 +125,34 @@ open class NSView {
     public var effectiveAppearance: NSAppearance {
         NSApplication.shared.effectiveAppearance
     }
+
+    // MARK: - Drag & drop
+
+    /// Called when a drag enters this destination; return the operation to
+    /// allow (`.none` rejects the drop). AppKit's `draggingEntered(_:)`.
+    public var onDraggingEntered: ((NSDraggingInfo) -> NSDragOperation)?
+
+    /// Called to consume a drop; return whether it was accepted. AppKit's
+    /// `performDragOperation(_:)`.
+    public var onPerformDragOperation: ((NSDraggingInfo) -> Bool)?
+
+    /// Registers this view as a drop destination for the given types (string
+    /// types are honored in this slice). AppKit's `registerForDraggedTypes(_:)`.
+    public func registerForDraggedTypes(_ types: [NSPasteboard.PasteboardType]) {
+        backend.registerDropTarget(for: handle, types: types.map(\.rawValue)) { [weak self] string, x, y in
+            guard let self else { return false }
+            let info = DraggingInfo(pasteboard: .transient(string: string),
+                                    location: NSMakePoint(x, y))
+            if let entered = self.onDraggingEntered, entered(info) == .none { return false }
+            return self.onPerformDragOperation?(info) ?? false
+        }
+    }
+
+    /// Makes this view a drag source that carries the string returned by
+    /// `provider` when the user drags it (`nil` cancels the drag). The
+    /// pragmatic Linux shape of AppKit's `NSDraggingSource` /
+    /// `beginDraggingSession` — GTK initiates the drag from the widget itself.
+    public func registerDraggingSource(_ provider: @escaping () -> String?) {
+        backend.registerDragSource(for: handle, provider: provider)
+    }
 }

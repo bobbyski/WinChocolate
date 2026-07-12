@@ -95,6 +95,12 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     public private(set) var appearanceIsDark = false
     /// The material (raw value) applied to each visual-effect view.
     public private(set) var materials: [UInt: String] = [:]
+    /// The last string pushed to the clipboard.
+    public private(set) var clipboard: String?
+    /// The dragged types each drop target accepts.
+    public private(set) var dropTargetTypes: [UInt: [String]] = [:]
+    private var dropHandlers: [UInt: (String, Double, Double) -> Bool] = [:]
+    private var dragProviders: [UInt: () -> String?] = [:]
     /// Alerts shown so far (message, informative, buttons), newest last.
     public private(set) var alerts: [(message: String, informative: String, buttons: [String])] = []
     /// The button index `runAlert` returns, standing in for the user's press.
@@ -167,6 +173,32 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
 
     // MARK: Appearance
     public func setAppearanceDark(_ dark: Bool) { appearanceIsDark = dark }
+
+    // MARK: Pasteboard & drag-and-drop
+    public func setClipboardString(_ string: String) { clipboard = string }
+    public func clipboardString() -> String? { clipboard }
+    public func registerDropTarget(for handle: NativeHandle, types: [String], onDrop: @escaping (String, Double, Double) -> Bool) {
+        dropTargetTypes[handle.rawValue] = types
+        dropHandlers[handle.rawValue] = onDrop
+    }
+    public func registerDragSource(for handle: NativeHandle, provider: @escaping () -> String?) {
+        dragProviders[handle.rawValue] = provider
+    }
+
+    /// Test hook: simulates a drop of `string` on a target at `(x, y)`; returns
+    /// whether the destination accepted it (nil = no target registered).
+    @discardableResult
+    public func simulateDrop(_ string: String, at point: NSPoint = .zero, on handle: NativeHandle) -> Bool? {
+        dropHandlers[handle.rawValue]?(string, Double(point.x), Double(point.y))
+    }
+
+    /// Test hook: simulates the user dragging `source` and dropping on `target`,
+    /// transferring the source's provided string. Returns whether it was accepted.
+    @discardableResult
+    public func simulateDragAndDrop(from source: NativeHandle, to target: NativeHandle, at point: NSPoint = .zero) -> Bool? {
+        guard let string = dragProviders[source.rawValue]?() else { return false }
+        return simulateDrop(string, at: point, on: target)
+    }
 
     // MARK: Views & controls
     public func createView(frame: NSRect) -> NativeHandle {

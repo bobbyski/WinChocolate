@@ -816,6 +816,60 @@ do {
     NSApplication.shared.appearance = nil   // leave the shared app as we found it
 }
 
+// MARK: 24 — Pasteboard & drag-and-drop (NSPasteboard + NSView DnD)
+do {
+    let backend = InMemoryNativeControlBackend()
+    NSApplication.shared.nativeBackend = backend
+
+    // Pasteboard copy/paste round-trip.
+    let pb = NSPasteboard.general
+    let before = pb.clearContents()
+    check(pb.setString("hello clipboard", forType: .string), "setString reports success")
+    check(pb.string(forType: .string) == "hello clipboard", "string round-trips through the board")
+    check(backend.clipboard == "hello clipboard", "general board pushes to the system clipboard")
+    check(pb.clearContents() == before + 1, "clearContents bumps the change count")
+    check(pb.string(forType: .string) == nil, "cleared board holds nothing")
+
+    // A drop destination consumes a dropped string.
+    let dropZone = NSView(frame: NSMakeRect(0, 0, 200, 100))
+    var dropped: String?
+    var enteredMask: NSDragOperation = .none
+    dropZone.onDraggingEntered = { info in
+        enteredMask = info.draggingSourceOperationMask
+        return .copy
+    }
+    dropZone.onPerformDragOperation = { info in
+        dropped = info.draggingPasteboard.string(forType: .string)
+        return true
+    }
+    dropZone.registerForDraggedTypes([.string])
+    check(backend.dropTargetTypes[dropZone.handle.rawValue] == ["public.utf8-plain-text"],
+          "registered dragged types reach the backend")
+    let accepted = backend.simulateDrop("dragged text", at: NSMakePoint(10, 20), on: dropZone.handle)
+    check(accepted == true, "destination accepts the drop")
+    check(dropped == "dragged text", "performDragOperation reads the drop off the pasteboard")
+    check(enteredMask == .copy, "draggingEntered sees the source operation mask")
+
+    // A destination that rejects in draggingEntered blocks the drop.
+    let picky = NSView(frame: NSMakeRect(0, 0, 50, 50))
+    var pickyGotDrop = false
+    picky.onDraggingEntered = { _ in .none }
+    picky.onPerformDragOperation = { _ in pickyGotDrop = true; return true }
+    picky.registerForDraggedTypes([.string])
+    check(backend.simulateDrop("nope", on: picky.handle) == false, "draggingEntered .none rejects the drop")
+    check(pickyGotDrop == false, "rejected drop never reaches performDragOperation")
+
+    // Source → destination transfer via a real drag session.
+    let source = NSView(frame: NSMakeRect(0, 0, 40, 40))
+    source.registerDraggingSource { "payload from source" }
+    var landed: String?
+    let target = NSView(frame: NSMakeRect(0, 0, 40, 40))
+    target.onPerformDragOperation = { info in landed = info.draggingPasteboard.string(forType: .string); return true }
+    target.registerForDraggedTypes([.string])
+    check(backend.simulateDragAndDrop(from: source.handle, to: target.handle) == true, "drag session completes")
+    check(landed == "payload from source", "the source's provided string arrives at the destination")
+}
+
 if failures == 0 {
     print("\nAll contract tests passed.")
 } else {

@@ -397,9 +397,51 @@ themeToggle.onAction = { seg in
 }
 themeToggle.selectedSegment = 0
 
+// MARK: - Page 11 · Drag & Drop (NSPasteboard + NSView DnD)
+let dndPage = NSView(frame: NSMakeRect(0, 0, pageWidth, pageHeight))
+var r11 = Rows(top: pageHeight - 16)
+
+// Copy / paste through NSPasteboard.general.
+let copyLabel = NSTextField(labelWithString: "Clipboard:", frame: NSMakeRect(24, r11.next(24) + 2, 90, 22))
+let copyField = NSTextField(string: "Copy me", frame: NSMakeRect(120, copyLabel.frame.minY - 4, 200, 30))
+let copyButton = NSButton(title: "Copy", frame: NSMakeRect(330, copyLabel.frame.minY - 5, 80, 30))
+let pasteButton = NSButton(title: "Paste", frame: NSMakeRect(418, copyLabel.frame.minY - 5, 80, 30))
+let pasteResult = NSTextField(labelWithString: "Pasted: —", frame: NSMakeRect(120, r11.next(24), 380, 22))
+for c in [copyLabel, copyField, copyButton, pasteButton, pasteResult] as [NSView] { dndPage.addSubview(c) }
+copyButton.onAction = { _ in
+    NSPasteboard.general.clearContents()
+    NSPasteboard.general.setString(copyField.stringValue, forType: .string)
+}
+pasteButton.onAction = { _ in
+    pasteResult.stringValue = "Pasted: \(NSPasteboard.general.string(forType: .string) ?? "—")"
+}
+
+// Drag a chip from the source onto the drop zone.
+let dndHint = NSTextField(labelWithString: "Drag the chip onto the well:", frame: NSMakeRect(24, r11.next(28), 360, 22))
+dndPage.addSubview(dndHint)
+let zonesTop = r11.next(150)
+
+let dragChip = NSVisualEffectView(frame: NSMakeRect(24, zonesTop, 150, 140), material: .hudWindow)
+let chipCaption = NSTextField(labelWithString: "Drag me →", frame: NSMakeRect(20, 60, 120, 22))
+dragChip.addSubview(chipCaption)
+dragChip.registerDraggingSource { "🍫 dropped payload" }
+dndPage.addSubview(dragChip)
+
+let dropWell = NSVisualEffectView(frame: NSMakeRect(220, zonesTop, 260, 140), material: .sidebar)
+let dropCaption = NSTextField(labelWithString: "Drop here", frame: NSMakeRect(16, 100, 200, 22))
+let dropContents = NSTextField(labelWithString: "(empty)", frame: NSMakeRect(16, 60, 230, 22))
+dropWell.addSubview(dropCaption)
+dropWell.addSubview(dropContents)
+dropWell.registerForDraggedTypes([.string])
+dropWell.onPerformDragOperation = { info in
+    dropContents.stringValue = info.draggingPasteboard.string(forType: .string) ?? "(empty)"
+    return true
+}
+dndPage.addSubview(dropWell)
+
 // MARK: - Tab view assembly
 let tabView = NSTabView(frame: NSMakeRect(0, 0, pageWidth, pageHeight + 60))
-for (label, page) in [("Basics", basics), ("Values", values), ("Pickers", pickers), ("Text", textPage), ("Layout", layoutPage), ("Table", tablePage), ("Grid", gridPage), ("Drawing", drawingPage), ("Auto Layout", autoLayoutPage), ("Appearance", appearancePage)] {
+for (label, page) in [("Basics", basics), ("Values", values), ("Pickers", pickers), ("Text", textPage), ("Layout", layoutPage), ("Table", tablePage), ("Grid", gridPage), ("Drawing", drawingPage), ("Auto Layout", autoLayoutPage), ("Appearance", appearancePage), ("Drag & Drop", dndPage)] {
     let item = NSTabViewItem()
     item.label = label
     item.view = page
