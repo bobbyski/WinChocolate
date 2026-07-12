@@ -919,6 +919,12 @@ public final class GTKNativeControlBackend: NativeControlBackend {
     public func createScrollView(frame: NSRect) -> NativeHandle {
         let sw = gtk_scrolled_window_new()!
         gtk_widget_set_size_request(sw, Int32(frame.width), Int32(frame.height))
+        // Reserve a permanent gutter for the scrollbar instead of floating it
+        // over the content (AppKit's legacy scrollers take space). GTK's overlay
+        // scrollbar otherwise draws atop the right edge — and on a non-composited
+        // display (XQuartz) that overlay renders as an opaque strip clipping the
+        // content rather than the viewport resizing to make room for it.
+        gtk_scrolled_window_set_overlay_scrolling(OpaquePointer(sw), gboolean(0))
         return allocate(sw, .scrollView, frame: frame)
     }
     public func setScrollerPolicy(vertical: Bool, horizontal: Bool, for handle: NativeHandle) {
@@ -974,8 +980,16 @@ public final class GTKNativeControlBackend: NativeControlBackend {
         let count = splitPaneCounts[splitView.rawValue, default: 0]
         if count == 0 {
             gtk_paned_set_start_child(paned, asWidget(p))   // GtkPaned is opaque
+            // Pin the leading pane to the divider position (don't let it grow to
+            // its natural width and push the divider right).
+            gtk_paned_set_resize_start_child(paned, gboolean(0))
+            gtk_paned_set_shrink_start_child(paned, gboolean(0))
         } else {
             gtk_paned_set_end_child(paned, asWidget(p))
+            // The trailing pane fills the remaining width but never shrinks below
+            // its content — otherwise the pane's box is clipped on the right.
+            gtk_paned_set_resize_end_child(paned, gboolean(1))
+            gtk_paned_set_shrink_end_child(paned, gboolean(0))
         }
         splitPaneCounts[splitView.rawValue] = count + 1
     }
