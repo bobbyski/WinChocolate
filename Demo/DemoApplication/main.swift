@@ -1,5 +1,15 @@
+// Phase 16 (macOS cross-check): the same demo source builds against
+// WinChocolate on Windows and against the real AppKit on macOS, so the two
+// renderings of the identical app can be compared side by side. The
+// macOS-side shims (WinChocolate conveniences like `onAction` expressed over
+// real AppKit) live in PlatformShims.swift and grow as 16.2 proceeds.
+#if os(Windows)
 import WinChocolate
+#else
+import AppKit
+#endif
 
+#if os(Windows)
 // The framework defaults to the modern presentation (ComCtl32 v6 visual
 // styles, plan 8.4); pass --classic to compare against the unthemed classic
 // look. Must be selected before the application (and its backend) is
@@ -7,6 +17,7 @@ import WinChocolate
 if CommandLine.arguments.contains("--classic") {
     WinPresentation.selected = .classic
 }
+#endif
 
 let app = NSApplication.shared
 
@@ -350,6 +361,149 @@ final class DemoGradientsView: NSView {
         NSColor(calibratedRed: 0.61, green: 0.43, blue: 0.16, alpha: 1).setStroke()
         oval.lineWidth = 2
         oval.stroke()
+    }
+}
+
+// MARK: - WinCoreGraphics (Phase 13) showcase view
+
+/// An artboard drawn entirely through the CoreGraphics-shaped surface —
+/// `CGContext` (paths, gradients, transforms via save/rotate/translate) and a
+/// `CGImage` round-tripped through the BMP codec, rendered as scaled pixels.
+final class DemoCoreGraphicsView: NSView {
+    /// An 8×8 heart sprite decoded from BMP bytes the view itself encoded —
+    /// the codec round-trips in the running demo, not just in tests.
+    static let sprite: CGImage? = {
+        let w = 8, h = 8
+        let heart: [String] = [
+            "........",
+            ".XX..XX.",
+            "XXXXXXXX",
+            "XXXXXXXX",
+            ".XXXXXX.",
+            "..XXXX..",
+            "...XX...",
+            "........",
+        ]
+        var rgba = [UInt8]()
+        rgba.reserveCapacity(w * h * 4)
+        for row in heart {
+            for character in row {
+                if character == "X" {
+                    rgba.append(contentsOf: [214, 60, 80, 255])
+                } else {
+                    rgba.append(contentsOf: [0, 0, 0, 0])
+                }
+            }
+        }
+        guard let source = CGImage(width: w, height: h, rgbaPixels: rgba) else { return nil }
+        return CGImage.decodeBMP(source.encodeBMP())
+    }()
+
+    override func draw(_ dirtyRect: NSRect) {
+        guard let context = NSGraphicsContext.current?.cgContext else { return }
+        let dark = NSAppearance.currentDrawing().winIsDark
+
+        // Artboard backdrop, matching the Drawing page's appearance behavior.
+        let inset = NSMakeRect(4, 4, frame.size.width - 8, frame.size.height - 8)
+        context.setFillColor(dark ? NSColor(calibratedRed: 0.17, green: 0.17, blue: 0.18, alpha: 1)
+                                  : NSColor(calibratedRed: 0.98, green: 0.98, blue: 0.96, alpha: 1))
+        let backdrop = CGMutablePath()
+        backdrop.addRoundedRect(in: inset, cornerWidth: 10, cornerHeight: 10)
+        context.addPath(backdrop)
+        context.fillPath()
+
+        let label = dark ? NSColor(white: 0.85, alpha: 1) : NSColor(white: 0.25, alpha: 1)
+        let attributes: [NSAttributedString.Key: Any] = [
+            .foregroundColor: label,
+            .font: NSFont.systemFont(ofSize: 11)
+        ]
+
+        // 1) CGMutablePath: a curved leaf, filled and stroked.
+        "CGPath curves".draw(at: NSMakePoint(inset.origin.x + 16, inset.origin.y + 10), withAttributes: attributes)
+        let leafOrigin = NSMakePoint(inset.origin.x + 30, inset.origin.y + 40)
+        let leaf = CGMutablePath()
+        leaf.move(to: CGPoint(x: leafOrigin.x, y: leafOrigin.y + 70))
+        leaf.addCurve(to: CGPoint(x: leafOrigin.x + 70, y: leafOrigin.y),
+                      control1: CGPoint(x: leafOrigin.x, y: leafOrigin.y + 10),
+                      control2: CGPoint(x: leafOrigin.x + 10, y: leafOrigin.y))
+        leaf.addCurve(to: CGPoint(x: leafOrigin.x, y: leafOrigin.y + 70),
+                      control1: CGPoint(x: leafOrigin.x + 60, y: leafOrigin.y + 70),
+                      control2: CGPoint(x: leafOrigin.x, y: leafOrigin.y + 70))
+        context.setFillColor(NSColor(calibratedRed: 0.30, green: 0.62, blue: 0.36, alpha: 1))
+        context.addPath(leaf)
+        context.fillPath()
+        context.setStrokeColor(dark ? NSColor(white: 0.8, alpha: 1) : NSColor(white: 0.3, alpha: 1))
+        context.setLineWidth(1.5)
+        context.addPath(leaf)
+        context.strokePath()
+
+        // 2) Gradients: a linear ramp in a rounded clip + a radial disc.
+        "Linear + radial gradients".draw(at: NSMakePoint(inset.origin.x + 160, inset.origin.y + 10), withAttributes: attributes)
+        if let ramp = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(),
+                                 colors: [NSColor(calibratedRed: 0.98, green: 0.60, blue: 0.20, alpha: 1),
+                                          NSColor(calibratedRed: 0.55, green: 0.20, blue: 0.65, alpha: 1)] as CFArray,
+                                 locations: [0, 1]) {
+            context.saveGState()
+            let rampRect = NSMakeRect(inset.origin.x + 170, inset.origin.y + 34, 120, 80)
+            let clipPath = CGMutablePath()
+            clipPath.addRoundedRect(in: rampRect, cornerWidth: 8, cornerHeight: 8)
+            context.addPath(clipPath)
+            context.clip()
+            context.drawLinearGradient(ramp,
+                                       start: CGPoint(x: rampRect.minX, y: rampRect.minY),
+                                       end: CGPoint(x: rampRect.maxX, y: rampRect.maxY),
+                                       options: [])
+            context.restoreGState()
+        }
+        if let glow = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(),
+                                 colors: [NSColor(calibratedRed: 0.35, green: 0.65, blue: 0.95, alpha: 1),
+                                          NSColor(calibratedRed: 0.08, green: 0.18, blue: 0.38, alpha: 1)] as CFArray,
+                                 locations: [0, 1]) {
+            context.drawRadialGradient(glow,
+                                       startCenter: CGPoint(x: inset.origin.x + 355, y: inset.origin.y + 74),
+                                       startRadius: 2,
+                                       endCenter: CGPoint(x: inset.origin.x + 355, y: inset.origin.y + 74),
+                                       endRadius: 40,
+                                       options: [])
+        }
+
+        // 3) Transforms: one square, stamped around a ring with
+        // save/translate/rotate — the classic transform rosette.
+        "Transform rosette".draw(at: NSMakePoint(inset.origin.x + 440, inset.origin.y + 10), withAttributes: attributes)
+        let rosetteCenter = CGPoint(x: inset.origin.x + 500, y: inset.origin.y + 78)
+        let petals = 10
+        for index in 0..<petals {
+            context.saveGState()
+            context.translateBy(x: rosetteCenter.x, y: rosetteCenter.y)
+            context.rotate(by: CGFloat(index) * (2 * .pi / CGFloat(petals)))
+            context.translateBy(x: 26, y: 0)
+            let shade = 0.35 + 0.6 * Double(index) / Double(petals)
+            context.setFillColor(NSColor(calibratedRed: shade, green: 0.30, blue: 1 - shade, alpha: 1))
+            context.fill(CGRect(x: -8, y: -8, width: 16, height: 16))
+            context.restoreGState()
+        }
+
+        // 4) CGImage: the BMP-round-tripped sprite, drawn as scaled pixels.
+        "CGImage via BMP codec".draw(at: NSMakePoint(inset.origin.x + 650, inset.origin.y + 10), withAttributes: attributes)
+        if let sprite = Self.sprite {
+            let cell: CGFloat = 11
+            let originX = inset.origin.x + 660
+            let originY = inset.origin.y + 34
+            for y in 0..<sprite.height {
+                for x in 0..<sprite.width {
+                    guard let pixel = sprite.pixel(atX: x, y: y), pixel.a > 0 else { continue }
+                    context.setFillColor(NSColor(
+                        calibratedRed: CGFloat(pixel.r) / 255,
+                        green: CGFloat(pixel.g) / 255,
+                        blue: CGFloat(pixel.b) / 255,
+                        alpha: CGFloat(pixel.a) / 255
+                    ))
+                    context.fill(CGRect(x: originX + CGFloat(x) * cell,
+                                        y: originY + CGFloat(y) * cell,
+                                        width: cell - 1, height: cell - 1))
+                }
+            }
+        }
     }
 }
 
@@ -968,6 +1122,7 @@ let showcasePage = DemoPageView(frame: NSMakeRect(0, 144, 1120, 560))
 let listsPage = DemoPageView(frame: NSMakeRect(0, 144, 1120, 560))
 let bezelsPage = DemoPageView(frame: NSMakeRect(0, 144, 1120, 560))
 let layoutPage = DemoPageView(frame: NSMakeRect(0, 144, 1120, 560))
+let coreGraphicsPage = DemoPageView(frame: NSMakeRect(0, 144, 1120, 560))
 valuesPage.isHidden = true
 tablesPage.isHidden = true
 drawingPage.isHidden = true
@@ -975,6 +1130,7 @@ showcasePage.isHidden = true
 listsPage.isHidden = true
 bezelsPage.isHidden = true
 layoutPage.isHidden = true
+coreGraphicsPage.isHidden = true
 let counterLabel = NSTextField(string: "Clicks: 0", frame: NSMakeRect(32, 36, 300, 24))
 let statusLabel = NSTextField(string: "Ready", frame: NSMakeRect(32, 74, 640, 24))
 let focusLabel = NSTextField(string: "Focus: none", frame: NSMakeRect(744, 74, 300, 24))
@@ -1864,7 +2020,7 @@ datePicker.maxDate = Date(timeIntervalSince1970: 1_893_456_000)
 datePicker.datePickerElements = [.yearMonthDay, .hourMinuteSecond]
 dateValueLabel.textColor = demoValueTextColor
 dateValueLabel.stringValue = datePicker.stringValue
-pageSelector.addItems(withTitles: ["Controls", "Values", "Tables/Media", "Drawing", "New in 3.x", "Lists (5.x)", "Bezels (8.3)", "Auto Layout (9.x)"])
+pageSelector.addItems(withTitles: ["Controls", "Values", "Tables/Media", "Drawing", "New in 3.x", "Lists (5.x)", "Bezels (8.3)", "Auto Layout (9.x)", "CoreGraphics (13)"])
 imageLabel.font = NSFont.boldSystemFont(ofSize: 12)
 imageView.image = NSImage(contentsOfFile: demoArtworkPath) ?? NSImage(named: "WinChocolate artwork")
 imageView.imageFrameStyle = .grayBezel
@@ -2088,6 +2244,7 @@ func showDemoPage(_ index: Int) {
     listsPage.isHidden = index != 5
     bezelsPage.isHidden = index != 6
     layoutPage.isHidden = index != 7
+    coreGraphicsPage.isHidden = index != 8
     updateFocusDisplay()
 }
 
@@ -2864,6 +3021,7 @@ contentView.addSubview(showcasePage)
 contentView.addSubview(listsPage)
 contentView.addSubview(bezelsPage)
 contentView.addSubview(layoutPage)
+contentView.addSubview(coreGraphicsPage)
 
 controlsPage.addSubview(editableLabel)
 controlsPage.addSubview(editableTextField)
@@ -3395,7 +3553,7 @@ editMenuController.textView = notesTextView
 // menu entry.
 let viewMenuItem = NSMenuItem(title: "View", action: nil, keyEquivalent: "")
 let viewMenu = NSMenu(title: "View")
-for (index, pageTitle) in ["Controls Page", "Values Page", "Tables/Media Page", "Drawing Page", "New in 3.x Page", "Lists Page", "Bezels Page", "Auto Layout Page"].enumerated() {
+for (index, pageTitle) in ["Controls Page", "Values Page", "Tables/Media Page", "Drawing Page", "New in 3.x Page", "Lists Page", "Bezels Page", "Auto Layout Page", "CoreGraphics Page"].enumerated() {
     // Ctrl+1...Ctrl+8 switch pages (the .command mask maps onto Ctrl on Windows).
     let item = NSMenuItem(title: pageTitle, action: nil, keyEquivalent: "\(index + 1)")
     item.onAction = { _ in
@@ -3814,6 +3972,20 @@ func reflowAutoLayoutPage(width pageWidth: CGFloat) {
     hStack.layoutSubtreeIfNeeded()
 }
 reflowAutoLayoutPage(width: 1120)
+
+// ── CoreGraphics (Phase 13) page ─────────────────────────────────────
+// Everything on the artboard is drawn through the CoreGraphics-shaped
+// surface: CGMutablePath curves, CGGradient (linear in a clip + radial),
+// saveGState/translate/rotate transforms, and a CGImage round-tripped
+// through the WinCoreGraphics BMP codec, rendered from its pixels.
+let cgIntro = NSTextField(labelWithString: "Drawn through the CG surface — CGPath, CGGradient, CGContext transforms, and a CGImage decoded by the WinCoreGraphics BMP codec.")
+cgIntro.frame = NSMakeRect(24, 24, 1072, 18)
+let cgArtboard = DemoCoreGraphicsView(frame: NSMakeRect(24, 52, 1072, 180))
+let cgFootnote = NSTextField(labelWithString: "The geometry types (CGRect, CGPoint, CGAffineTransform…) come from the standalone WinCoreGraphics module, re-exported by WinChocolate — Apple's layering, where NSRect is CGRect.")
+cgFootnote.frame = NSMakeRect(24, 244, 1072, 18)
+for view in [cgIntro, cgArtboard, cgFootnote] as [NSView] {
+    coreGraphicsPage.addSubview(view)
+}
 
 // Follow a live system dark/light switch (8.5). The framework re-themes and
 // repaints its own windows/controls; the demo re-applies the few colors it

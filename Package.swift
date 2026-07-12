@@ -9,6 +9,10 @@ let package = Package(
             name: "WinChocolate",
             targets: ["WinChocolate"]
         ),
+        .library(
+            name: "WinCoreGraphics",
+            targets: ["WinCoreGraphics"]
+        ),
         .executable(
             name: "WinChocolateDemo",
             targets: ["WinChocolateDemo"]
@@ -21,9 +25,22 @@ let package = Package(
         .package(path: "WinFoundation")
     ],
     targets: [
+        // CoreGraphics-shaped value types (plan Phase 13): pure geometry +
+        // bitmap types with no platform dependencies. WinChocolate re-exports
+        // it, so `CGRect`/`CGImage`-shaped source compiles unchanged; the
+        // drawing-facing CG surface (CGContext/CGColor/CGPath over the native
+        // backend) stays in WinChocolate's compat layer, where those types
+        // genuinely are the AppKit objects.
+        .target(
+            name: "WinCoreGraphics",
+            swiftSettings: [
+                .swiftLanguageVersion(.v5)
+            ]
+        ),
         .target(
             name: "WinChocolate",
             dependencies: [
+                "WinCoreGraphics",
                 .product(name: "WinFoundation", package: "WinFoundation")
             ],
             swiftSettings: [
@@ -38,17 +55,17 @@ let package = Package(
                 .swiftLanguageVersion(.v5)
             ],
             linkerSettings: [
-                .linkedLibrary("User32"),
-                .linkedLibrary("Gdi32"),
-                .linkedLibrary("Gdiplus"),
-                .linkedLibrary("Comctl32"),
-                .linkedLibrary("Comdlg32"),
-                .linkedLibrary("Shell32"),
-                .linkedLibrary("Ole32"),
-                .linkedLibrary("Winmm"),
-                .linkedLibrary("Advapi32"),
-                .linkedLibrary("Dwmapi"),
-                .linkedLibrary("UxTheme")
+                .linkedLibrary("User32", .when(platforms: [.windows])),
+                .linkedLibrary("Gdi32", .when(platforms: [.windows])),
+                .linkedLibrary("Gdiplus", .when(platforms: [.windows])),
+                .linkedLibrary("Comctl32", .when(platforms: [.windows])),
+                .linkedLibrary("Comdlg32", .when(platforms: [.windows])),
+                .linkedLibrary("Shell32", .when(platforms: [.windows])),
+                .linkedLibrary("Ole32", .when(platforms: [.windows])),
+                .linkedLibrary("Winmm", .when(platforms: [.windows])),
+                .linkedLibrary("Advapi32", .when(platforms: [.windows])),
+                .linkedLibrary("Dwmapi", .when(platforms: [.windows])),
+                .linkedLibrary("UxTheme", .when(platforms: [.windows]))
             ]
         ),
         .executableTarget(
@@ -61,7 +78,12 @@ let package = Package(
         ),
         .executableTarget(
             name: "WinChocolateDemo",
-            dependencies: ["WinChocolate"],
+            // On Windows the demo runs over WinChocolate; on macOS it builds
+            // against the real AppKit instead (plan Phase 16, the rendering
+            // cross-check), so the framework dependency is Windows-only.
+            dependencies: [
+                .target(name: "WinChocolate", condition: .when(platforms: [.windows]))
+            ],
             path: "Demo/DemoApplication",
             exclude: ["Resources"],
             linkerSettings: [

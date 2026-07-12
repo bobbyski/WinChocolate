@@ -298,6 +298,49 @@ func testLayoutControlIntrinsicSizes() {
 }
 
 @MainActor
+func testWinCoreGraphicsTransformsAndBMPCodec() {
+    // The geometry types come from the re-exported WinCoreGraphics module.
+    // Affine transforms: composition, application, and inversion.
+    let move = CGAffineTransform(translationX: 10, y: 20)
+    expect(CGPoint(x: 1, y: 2).applying(move) == CGPoint(x: 11, y: 22),
+        "Translation should offset the point.")
+    let quarterTurn = CGAffineTransform(rotationAngle: .pi / 2)
+    let rotated = CGPoint(x: 1, y: 0).applying(quarterTurn)
+    expect(winClose(rotated.x, 0) && winClose(rotated.y, 1),
+        "A quarter turn should map (1,0) to (0,1): got \(rotated).")
+    let scaledThenMoved = CGAffineTransform(scaleX: 2, y: 3).concatenating(move)
+    expect(CGPoint(x: 1, y: 1).applying(scaledThenMoved) == CGPoint(x: 12, y: 23),
+        "Concatenation should apply scale then translation.")
+    let roundTrip = CGPoint(x: 7, y: -3).applying(move).applying(move.inverted())
+    expect(winClose(roundTrip.x, 7) && winClose(roundTrip.y, -3),
+        "Inverting a transform should round-trip a point.")
+
+    // CGImage: RGBA pixels round-trip through the BMP codec.
+    let pixels: [UInt8] = [
+        255, 0, 0, 255,   0, 255, 0, 255,   // red, green
+        0, 0, 255, 255,   255, 255, 0, 128, // blue, translucent yellow
+    ]
+    guard let image = CGImage(width: 2, height: 2, rgbaPixels: pixels) else {
+        expect(false, "CGImage should accept a matching RGBA buffer.")
+        return
+    }
+    let encoded = image.encodeBMP()
+    expect(encoded.count == 54 + 16 && encoded[0] == 0x42 && encoded[1] == 0x4D,
+        "The encoded BMP should have the header + 16 pixel bytes: got \(encoded.count).")
+    guard let decoded = CGImage.decodeBMP(encoded) else {
+        expect(false, "The encoded BMP should decode.")
+        return
+    }
+    expect(decoded.width == 2 && decoded.height == 2 && decoded.pixels == pixels,
+        "The BMP round-trip should preserve every pixel (alpha included).")
+    let corner = decoded.pixel(atX: 1, y: 1)
+    expect(corner?.r == 255 && corner?.g == 255 && corner?.b == 0 && corner?.a == 128,
+        "pixel(atX:y:) should read the translucent yellow corner.")
+    expect(decoded.pixel(atX: 2, y: 0) == nil,
+        "Out-of-bounds pixel reads should return nil.")
+}
+
+@MainActor
 func testBaselineAnchorsAlignAcrossViews() {
     // Baselines resolve through baselineOffsetFromBottom (0 for plain views, so
     // baseline == bottom); a text field reports a positive descent offset.
@@ -10070,6 +10113,7 @@ testAspectRatioCrossAxisConstraints()
 testLayoutMarginsGuideInsetsChild()
 testControlIntrinsicContentSizes()
 testLayoutControlIntrinsicSizes()
+testWinCoreGraphicsTransformsAndBMPCodec()
 testBaselineAnchorsAlignAcrossViews()
 testCrossHierarchyConstraintUsesNestedFixedInput()
 testStackViewGravityAreasAndEqualCentering()
