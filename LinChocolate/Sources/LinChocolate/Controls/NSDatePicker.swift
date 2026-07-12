@@ -19,6 +19,12 @@ public final class NSDatePicker: NSView {
 
     /// Called when the user picks a day.
     public var onDateChange: ((NSDatePicker) -> Void)?
+    /// WinChocolate/AppKit control-action alias + text value (accepted for parity).
+    public var onAction: ((NSDatePicker) -> Void)? {
+        get { onDateChange }
+        set { onDateChange = newValue }
+    }
+    public var stringValue: String { "\(dateValue)" }
 
     /// Creates a calendar date picker showing `date`.
     public init(date: Date = Date(), frame: NSRect) {

@@ -21,12 +21,14 @@ public struct NSControlStateValue: Equatable, Sendable {
 public enum NSButtonBezelStyle: Sendable {
     case rounded, regularSquare, disclosure, shadowlessSquare, circular
     case texturedRounded, recessed, roundRect, inline, smallSquare
+    case roundedDisclosure, helpButton, textured
 }
 
 /// Button types (accepted for API parity).
 public enum NSButtonType: Sendable {
     case momentaryLight, pushOnPushOff, toggle, `switch`, radio
     case momentaryChange, onOff, momentaryPushIn
+    case radioButton, switchButton, accelerator, multiLevelAccelerator
 }
 
 /// Segmented-control styles.

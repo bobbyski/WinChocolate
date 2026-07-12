@@ -4,9 +4,9 @@ import Foundation
 /// `onValueChange`; `doubleValue` reflects the current value.
 public final class NSStepper: NSView {
 
-    public let minValue: Double
-    public let maxValue: Double
-    public let increment: Double
+    public var minValue: Double
+    public var maxValue: Double
+    public var increment: Double
 
     private var backingValue: Double
 
@@ -22,6 +22,17 @@ public final class NSStepper: NSView {
 
     /// Called as the user steps the value.
     public var onValueChange: ((NSStepper) -> Void)?
+
+    /// AppKit-shaped alias for `onValueChange`.
+    public var onAction: ((NSStepper) -> Void)? {
+        get { onValueChange }
+        set { onValueChange = newValue }
+    }
+
+    /// AppKit's frame-only initializer: a `0…100` stepper (step 1) at 0.
+    public override convenience init(frame: NSRect) {
+        self.init(value: 0, minValue: 0, maxValue: 100, increment: 1, frame: frame)
+    }
 
     /// Creates a stepper over `[minValue, maxValue]` starting at `value`.
     public init(value: Double, minValue: Double, maxValue: Double, increment: Double = 1, frame: NSRect) {

@@ -58,6 +58,12 @@ public final class NSMatrix: NSView {
         layoutCells()
     }
 
+    /// The button backing the cell at `(row, column)`, if any.
+    public func button(atRow row: Int, column: Int) -> NSButton? {
+        guard cellButtons.indices.contains(row), cellButtons[row].indices.contains(column) else { return nil }
+        return cellButtons[row][column]
+    }
+
     /// Selects a cell without firing the action.
     public func selectCell(atRow row: Int, column: Int) {
         guard cellButtons.indices.contains(row),

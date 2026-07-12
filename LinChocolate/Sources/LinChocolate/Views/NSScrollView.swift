@@ -35,6 +35,14 @@ public final class NSScrollView: NSView {
     /// Fired when the user (or `scroll(to:)`) changes the scroll offset.
     public var onScroll: ((NSPoint) -> Void)?
 
+    /// Zoom magnification (accepted for API parity; not yet applied natively).
+    public var magnification: CGFloat = 1
+    public var allowsMagnification: Bool = false
+    public var minMagnification: CGFloat = 0.25
+    public var maxMagnification: CGFloat = 4
+    public var hasVerticalRuler: Bool = false
+    public var hasHorizontalRuler: Bool = false
+
     /// Creates an empty scroll view.
     public override init(frame: NSRect) {
         let backend = NSApplication.shared.nativeBackend

@@ -21,6 +21,16 @@ public final class NSFont {
         self.spec = NativeFontSpec(family: name, size: Double(size))
     }
 
+    /// Creates a font with an explicit weight and italic flag (weights at or
+    /// above `.semibold` render bold on the GTK backend).
+    public init?(name: String, size: CGFloat, weight: NSFont.Weight, italic: Bool = false) {
+        self.fontName = name
+        self.pointSize = size
+        self.spec = NativeFontSpec(family: name, size: Double(size),
+                                   bold: weight.rawValue >= NSFont.Weight.semibold.rawValue,
+                                   italic: italic)
+    }
+
     private init(spec: NativeFontSpec, name: String) {
         self.fontName = name
         self.pointSize = CGFloat(spec.size)

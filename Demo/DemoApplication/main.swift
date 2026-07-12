@@ -2953,8 +2953,19 @@ valuesPage.addSubview(timerTickLabel)
 // A repeating run-loop Timer ticking the label once per second.
 var timerTicks = 0
 Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
+    // Real Foundation (LinChocolate and AppKit) types this block @Sendable, so
+    // touching the main-actor UI globals directly won't type-check; hop to the
+    // main actor. WinChocolate's WinFoundation block inherits the main actor, so
+    // it stays synchronous and unchanged.
+    #if canImport(WinChocolate)
     timerTicks += 1
     timerTickLabel.stringValue = "Timer: \(timerTicks)s"
+    #else
+    Task { @MainActor in
+        timerTicks += 1
+        timerTickLabel.stringValue = "Timer: \(timerTicks)s"
+    }
+    #endif
 }
 
 drawingPage.addSubview(canvasLabel)
@@ -3837,11 +3848,13 @@ reflowAutoLayoutPage(width: 1120)
 // repaints its own windows/controls; the demo re-applies the few colors it
 // caches at startup (the status/focus bands) and redraws. Skipped implicitly
 // when --light/--dark pin an override, since the framework won't post then.
-_ = NotificationCenter.default.addObserver(
-    forName: NSApplication.winEffectiveAppearanceDidChangeNotification,
-    object: nil,
-    queue: nil
-) { _ in
+// Body of the appearance-change handler, factored out so the observer block can
+// dispatch to it. Real Foundation (LinChocolate/AppKit) types the observer block
+// @Sendable, so it can't touch the main-actor UI globals directly — it hops to
+// the main actor below; WinChocolate's block inherits the main actor and calls
+// this synchronously.
+@MainActor
+func applyLiveAppearanceRefresh() {
     let dark = NSApplication.shared.effectiveAppearance.winIsDark
     // The content view was given a background resolved at launch; re-resolve it
     // (windowBackgroundColor is dynamic) so the page surface follows the switch.
@@ -3906,6 +3919,18 @@ _ = NotificationCenter.default.addObserver(
     listsCollectionView.reloadData()
 
     contentView.needsDisplay = true
+}
+
+_ = NotificationCenter.default.addObserver(
+    forName: NSApplication.winEffectiveAppearanceDidChangeNotification,
+    object: nil,
+    queue: nil
+) { _ in
+    #if canImport(WinChocolate)
+    applyLiveAppearanceRefresh()
+    #else
+    Task { @MainActor in applyLiveAppearanceRefresh() }
+    #endif
 }
 
 window.contentView = contentView

@@ -35,6 +35,13 @@ public final class NSTextField: NSView {
     public var alignment: NSTextAlignment = .natural
     public var usesSingleLineMode: Bool = true
     public var maximumNumberOfLines: Int = 0
+    public weak var delegate: NSTextFieldDelegate?
+    public var formatter: Formatter?
+    /// AppKit's `objectValue`; setting a value updates `stringValue`.
+    public var objectValue: Any? {
+        get { stringValue }
+        set { if let newValue { stringValue = "\(newValue)" } }
+    }
 
     /// The text's foreground color (nil = theme default).
     public var textColor: NSColor? {

@@ -30,6 +30,11 @@ public final class NSCollectionView: NSView {
     /// Called when the user changes the selection.
     public var onSelectionChange: ((NSCollectionView) -> Void)?
 
+    /// Layout + delegate (accepted for API parity; the grid layout is native).
+    public var collectionViewLayout: NSCollectionViewLayout?
+    public weak var delegate: (AnyObject)?
+    public func selectItems(at indexPaths: Set<IndexPath>, scrollPosition: Int) {}
+
     /// Creates an empty collection view.
     public override init(frame: NSRect) {
         let backend = NSApplication.shared.nativeBackend

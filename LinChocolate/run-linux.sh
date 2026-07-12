@@ -16,6 +16,9 @@ set -euo pipefail
 
 IMAGE="linchocolate-dev"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Mount the *repo root* (parent of LinChocolate) so the shared demo source that
+# RealDemo symlinks to (../Demo/DemoApplication) resolves inside the container.
+REPO="$(cd "$HERE/.." && pwd)"
 export PATH="/opt/X11/bin:$PATH"   # XQuartz ships xhost/Xquartz here
 
 command -v xhost >/dev/null 2>&1 || {
@@ -74,7 +77,7 @@ run_args=(
     --rm -it
     -e "DISPLAY=${HOST_IP}:0"
     -e "GSK_RENDERER=${GSK_RENDERER:-cairo}"
-    -v "$HERE":/work -w /work
+    -v "$REPO":/work -w /work/LinChocolate
     "$IMAGE"
 )
 

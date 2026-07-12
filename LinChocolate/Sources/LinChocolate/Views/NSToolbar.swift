@@ -26,6 +26,8 @@ public final class NSToolbarItem {
     public var maxSize: NSSize = .zero
     public var toolTip: String?
     public var isEnabled: Bool = true
+    /// A custom view for the item (accepted; the composed strip uses buttons).
+    public var view: NSView?
 
     /// Called when the user clicks the item.
     public var onAction: ((NSToolbarItem) -> Void)?
@@ -77,6 +79,14 @@ public final class NSToolbar {
 
     /// Whether the user may customize the toolbar.
     public var allowsUserCustomization: Bool = false
+
+    /// Display mode + config autosave (accepted for API parity).
+    public enum DisplayMode: Sendable { case `default`, iconAndLabel, iconOnly, labelOnly }
+    public var displayMode: DisplayMode = .default
+    public var autosavesConfiguration: Bool = false
+    /// WinChocolate's Apple-look toggle (metallic/unified) — accepted no-op.
+    public var winAppleLook: WinAppleLook = .unified
+    public enum WinAppleLook: Sendable { case unified, metallic }
 
     /// The customization delegate. Assigning it loads the default items.
     public weak var delegate: NSToolbarDelegate? {

@@ -40,6 +40,12 @@ open class NSWindow {
         }
     }
 
+    /// Delegate + content-size constraints + key-view root (accepted for parity).
+    public weak var delegate: NSWindowDelegate?
+    public var contentMinSize: NSSize = .zero
+    public var contentMaxSize: NSSize = NSMakeSize(100000, 100000)
+    public weak var initialFirstResponder: NSView?
+
     /// Creates a window with the given content rect and style.
     public init(contentRect: NSRect, styleMask: StyleMask, backing: BackingStoreType, defer flag: Bool) {
         self.backend = NSApplication.shared.nativeBackend

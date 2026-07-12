@@ -26,6 +26,20 @@ public final class NSPopUpButton: NSView {
     /// Called when the user picks a different item.
     public var onSelectionChange: ((NSPopUpButton) -> Void)?
 
+    /// Whether the button is a pull-down menu (accepted for API parity).
+    public var pullsDown: Bool = false
+    private var itemTags: [Int: Int] = [:]
+    public func setTag(_ tag: Int, forItemAt index: Int) { itemTags[index] = tag }
+    public func tag(atIndex index: Int) -> Int { itemTags[index] ?? 0 }
+    /// The tag of the selected item (AppKit's `selectedTag()` method form).
+    public func selectedTag() -> Int { itemTags[indexOfSelectedItem] ?? 0 }
+
+    /// Creates an empty pop-up button (AppKit's `init(frame:pullsDown:)`).
+    public convenience init(frame: NSRect, pullsDown: Bool) {
+        self.init(items: [], frame: frame)
+        self.pullsDown = pullsDown
+    }
+
     /// Creates a pop-up button showing `items` (first item selected).
     public init(items: [String], frame: NSRect) {
         self.itemTitles = items

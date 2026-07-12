@@ -39,11 +39,30 @@ public final class NSMenuItem {
         return mods + keyEquivalent.lowercased()
     }
 
+    // AppKit-standard members (accepted for parity; selector dispatch maps a
+    // couple of well-known actions, others are no-ops until responder routing).
+    public var action: String?
+    public weak var target: AnyObject?
+    public var isEnabled: Bool = true
+    public var tag: Int = 0
+    public var state: NSControlStateValue = .off
+    public var submenu: NSMenu?
+    public var image: NSImage?
+
     /// Creates a titled, actionable item.
     public init(title: String, onAction: ((NSMenuItem) -> Void)? = nil) {
         self.title = title
         self.isSeparatorItem = false
         self.onAction = onAction
+    }
+
+    /// AppKit's `init(title:action:keyEquivalent:)` (selector-string action).
+    public convenience init(title: String, action: String?, keyEquivalent: String) {
+        let closure: ((NSMenuItem) -> Void)? = (action == "terminate:")
+            ? { _ in NSApplication.shared.terminate(nil) } : nil
+        self.init(title: title, onAction: closure)
+        self.action = action
+        self.keyEquivalent = keyEquivalent
     }
 
     private init(separator: Bool) {

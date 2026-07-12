@@ -19,6 +19,15 @@ public final class NSTokenField: NSView {
 
     /// Called after the user adds or removes a token.
     public var onTokensChange: ((NSTokenField) -> Void)?
+    /// Alias for the token list (`tokens`) + text-change hook, for demo parity.
+    public var tokens: [String] {
+        get { objectValue }
+        set { objectValue = newValue }
+    }
+    public var onTextChanged: ((NSTokenField) -> Void)? {
+        get { onTokensChange }
+        set { onTokensChange = newValue }
+    }
 
     /// Creates a token field with initial `tokens`.
     public init(tokens: [String] = [], frame: NSRect) {

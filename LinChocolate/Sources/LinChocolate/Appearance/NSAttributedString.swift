@@ -12,6 +12,14 @@ public extension NSAttributedString.Key {
     static let foregroundColor = NSAttributedString.Key(rawValue: "NSColor")
     /// Font attribute (an `NSFont`), as defined by AppKit.
     static let font = NSAttributedString.Key(rawValue: "NSFont")
+    /// Underline-style attribute (an `NSUnderlineStyle` raw value).
+    static let underlineStyle = NSAttributedString.Key(rawValue: "NSUnderline")
+    /// Background-color attribute (an `NSColor`).
+    static let backgroundColor = NSAttributedString.Key(rawValue: "NSBackgroundColor")
+    /// Strikethrough-style attribute.
+    static let strikethroughStyle = NSAttributedString.Key(rawValue: "NSStrikethrough")
+    /// Paragraph-style attribute.
+    static let paragraphStyle = NSAttributedString.Key(rawValue: "NSParagraphStyle")
 }
 
 extension NSAttributedString {

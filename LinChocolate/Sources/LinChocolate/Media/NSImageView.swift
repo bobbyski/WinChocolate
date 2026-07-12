@@ -9,6 +9,21 @@ public final class NSImageView: NSView {
         didSet { backend.setImagePath(image.flatMap { $0.path }, for: handle) }
     }
 
+    /// How the image scales within the view (AppKit's `NSImageScaling`).
+    public enum ImageScaling: Sendable {
+        case scaleProportionallyDown, scaleAxesIndependently, scaleNone, scaleProportionallyUpOrDown
+    }
+    /// How the image aligns (AppKit's `NSImageAlignment`).
+    public enum ImageAlignment: Sendable {
+        case alignCenter, alignTop, alignTopLeft, alignTopRight, alignLeft, alignBottom
+        case alignBottomLeft, alignBottomRight, alignRight
+    }
+
+    /// Tint + scaling + alignment (accepted for API parity).
+    public var contentTintColor: NSColor?
+    public var imageScaling: ImageScaling = .scaleProportionallyDown
+    public var imageAlignment: ImageAlignment = .alignCenter
+
     /// Creates an empty image view.
     public override init(frame: NSRect) {
         let backend = NSApplication.shared.nativeBackend

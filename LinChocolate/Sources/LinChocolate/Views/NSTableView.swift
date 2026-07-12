@@ -15,6 +15,12 @@ public final class NSTableColumn {
         didSet { table?.retitleColumn(columnIndex, title) }
     }
 
+    /// Column width (accepted for API parity; GtkColumnView sizes columns).
+    public var width: CGFloat = 100
+    public var minWidth: CGFloat = 0
+    public var maxWidth: CGFloat = 1000
+    public var isEditable: Bool = false
+
     /// If set, the column's header becomes clickable and clicking it delivers a
     /// derived `NSSortDescriptor` to the data source.
     public var sortDescriptorPrototype: NSSortDescriptor? {
@@ -59,6 +65,56 @@ public final class NSTableView: NSView {
 
     /// The active sort descriptors (updated when a sortable header is clicked).
     public var sortDescriptors: [NSSortDescriptor] = []
+
+    /// The delegate (accepted for API parity; dispatch is a later item).
+    public weak var delegate: NSTableViewDelegate?
+
+    // Selection / column / grid options accepted for API parity.
+    public var usesAlternatingRowBackgroundColors: Bool = false
+    public var allowsMultipleSelection: Bool = false
+    public var allowsEmptySelection: Bool = true
+    public var allowsColumnSelection: Bool = false
+    public var allowsColumnReordering: Bool = true
+    public var allowsColumnResizing: Bool = true
+    public var gridStyleMask: NSTableViewGridLineStyle = .gridNone
+    public var rowHeight: CGFloat = 24
+    public var doubleAction: String?
+    public var nativeHandle: NativeHandle? { handle }
+    public var numberOfColumns: Int { tableColumns.count }
+    public var clickedRow: Int { selectedRow }
+    public var clickedColumn: Int { -1 }
+    /// WinChocolate-named action aliases (accepted for parity).
+    public var onAction: ((NSTableView) -> Void)?
+    public var onDoubleAction: ((NSTableView) -> Void)? {
+        get { _onDoubleAction }
+        set { _onDoubleAction = newValue; onDoubleClick = { [weak self] _ in if let self { newValue?(self) } } }
+    }
+    private var _onDoubleAction: ((NSTableView) -> Void)?
+    public var onSelectionChanged: ((NSTableView) -> Void)? {
+        get { onSelectionChange }
+        set { onSelectionChange = newValue }
+    }
+    /// Windows-only reorder handler (accepted no-op here).
+    public var winRowReorderHandler: (([Int], Int) -> Void)?
+    public func tableColumn(withIdentifier id: String) -> NSTableColumn? {
+        tableColumns.first { $0.identifier == id }
+    }
+    public func selectColumnIndexes(_ indexes: IndexSet, byExtendingSelection extend: Bool) {}
+
+    /// The current row count (from the data source).
+    public var numberOfRows: Int { dataSource?.numberOfRows(in: self) ?? 0 }
+
+    /// Selects rows by index set (single-selection today: the first index).
+    public func selectRowIndexes(_ indexes: IndexSet, byExtendingSelection extend: Bool) {
+        if let first = indexes.first { selectRow(at: first) }
+    }
+    public func value(atColumn column: Int, row: Int) -> String? {
+        guard column < tableColumns.count else { return nil }
+        let value = dataSource?.tableView(self, objectValueFor: tableColumns[column], row: row)
+        return value.map { "\($0)" }
+    }
+    /// A row background view (stub).
+    public func rowView(atRow row: Int, makeIfNecessary: Bool) -> NSTableRowView? { nil }
 
     /// Called when the user changes the row selection.
     public var onSelectionChange: ((NSTableView) -> Void)?

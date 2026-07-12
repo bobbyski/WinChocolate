@@ -19,6 +19,11 @@ public final class NSColorWell: NSView {
 
     /// Called when the user picks a color in the chooser.
     public var onColorChange: ((NSColorWell) -> Void)?
+    /// Control-action alias (accepted for API parity).
+    public var onAction: ((NSColorWell) -> Void)? {
+        get { onColorChange }
+        set { onColorChange = newValue }
+    }
 
     /// Creates a color well showing `color`.
     public init(color: NSColor = .blue, frame: NSRect) {

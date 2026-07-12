@@ -28,4 +28,29 @@ public final class NSImage {
         self.path = nil
         self.iconName = name
     }
+
+    /// Creates an SF-Symbol image (AppKit's `NSImage(systemSymbolName:…)`),
+    /// mapping the symbol name to the closest GTK theme icon on Linux.
+    public convenience init?(systemSymbolName name: String, accessibilityDescription: String?) {
+        self.init(named: NSImage.gtkIconName(forSymbol: name))
+    }
+
+    /// Best-effort SF-Symbol → GTK icon-theme name mapping.
+    static func gtkIconName(forSymbol symbol: String) -> String {
+        switch symbol {
+        case "folder", "folder.fill": return "folder-symbolic"
+        case "doc", "doc.text", "square.and.pencil": return "document-open-symbolic"
+        case "square.and.arrow.down": return "document-save-symbolic"
+        case "square.and.arrow.up": return "document-send-symbolic"
+        case "info.circle", "info": return "dialog-information-symbolic"
+        case "gearshape", "gear": return "emblem-system-symbolic"
+        case "trash": return "user-trash-symbolic"
+        case "plus": return "list-add-symbolic"
+        case "minus": return "list-remove-symbolic"
+        case "magnifyingglass": return "system-search-symbolic"
+        case "slider.horizontal.3": return "emblem-system-symbolic"
+        case "paintbrush", "paintpalette": return "applications-graphics-symbolic"
+        default: return symbol
+        }
+    }
 }

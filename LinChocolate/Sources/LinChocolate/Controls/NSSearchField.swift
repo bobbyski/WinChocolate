@@ -18,6 +18,24 @@ public final class NSSearchField: NSView {
     /// Called as the user edits the search text.
     public var onTextChange: ((NSSearchField) -> Void)?
 
+    /// AppKit-shaped alias for `onTextChange`.
+    public var onTextChanged: ((NSSearchField) -> Void)? {
+        get { onTextChange }
+        set { onTextChange = newValue }
+    }
+
+    /// Fired when the user commits the search (Return / clears the field).
+    /// Wired off the same text-change signal for now.
+    public var onAction: ((NSSearchField) -> Void)?
+
+    /// AppKit's placeholder text (accepted for parity).
+    public var placeholderString: String?
+
+    /// AppKit's frame-only initializer: an empty search field.
+    public override convenience init(frame: NSRect) {
+        self.init(string: "", frame: frame)
+    }
+
     /// Creates a search field.
     public init(string: String, frame: NSRect) {
         self.backingValue = string
@@ -28,6 +46,7 @@ public final class NSSearchField: NSView {
             guard let self else { return }
             self.backingValue = text          // sync silently
             self.onTextChange?(self)
+            self.onAction?(self)
         }
     }
 }

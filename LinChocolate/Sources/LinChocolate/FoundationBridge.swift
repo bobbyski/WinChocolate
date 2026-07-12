@@ -3,4 +3,4 @@
 // mirror of WinChocolate's FoundationBridge (which re-exports WinFoundation on
 // Windows). This lets the same demo/app source compile against either library
 // with a single conditional `import`.
-@_exported import Foundation
+@preconcurrency @_exported import Foundation

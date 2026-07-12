@@ -4,8 +4,8 @@ import Foundation
 /// through `onValueChange`; `doubleValue` reflects the current position.
 public final class NSSlider: NSView {
 
-    public let minValue: Double
-    public let maxValue: Double
+    public var minValue: Double
+    public var maxValue: Double
 
     private var backingValue: Double
 
@@ -23,6 +23,11 @@ public final class NSSlider: NSView {
     public var onValueChange: ((NSSlider) -> Void)?
 
     /// Creates a slider over `[minValue, maxValue]` starting at `value`.
+    /// AppKit's target/action form (no frame); gets a default size.
+    public convenience init(value: Double, minValue: Double, maxValue: Double, target: AnyObject?, action: String?) {
+        self.init(value: value, minValue: minValue, maxValue: maxValue, frame: NSMakeRect(0, 0, 120, 24))
+    }
+
     public init(value: Double, minValue: Double, maxValue: Double, frame: NSRect) {
         self.minValue = minValue
         self.maxValue = maxValue

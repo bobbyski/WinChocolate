@@ -17,7 +17,7 @@ open class NSView {
     }
 
     /// The view's bounds — its own coordinate space, origin at (0, 0).
-    public var bounds: NSRect { NSMakeRect(0, 0, frame.width, frame.height) }
+    open var bounds: NSRect { NSMakeRect(0, 0, frame.width, frame.height) }
 
     /// Whether the view is hidden.
     public var isHidden: Bool = false {
@@ -93,9 +93,21 @@ open class NSView {
     }
 
     /// Adds `view` as a subview, placing it at its frame within this view.
+    /// The view's parent in the hierarchy, or nil if unattached.
+    public internal(set) weak var superview: NSView?
+
     public func addSubview(_ view: NSView) {
         subviews.append(view)
+        view.superview = self
         backend.addSubview(view.handle, to: handle)
+    }
+
+    /// Detaches the view from its parent. Native detach isn't modeled yet, so
+    /// the widget is hidden; the logical hierarchy is updated.
+    public func removeFromSuperview() {
+        superview?.subviews.removeAll { $0 === self }
+        superview = nil
+        backend.setHidden(true, for: handle)
     }
 
     // MARK: - Auto Layout
