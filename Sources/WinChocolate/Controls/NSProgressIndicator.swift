@@ -3,6 +3,15 @@
 /// This first slice supports the determinate bar style used by many AppKit
 /// apps. The native Windows backend maps it to a progress bar control.
 open class NSProgressIndicator: NSControl {
+    /// The control's natural size (9.2): a fixed square for the spinning style,
+    /// and a standard-height bar with flexible width otherwise.
+    open override var intrinsicContentSize: NSSize {
+        if style == .spinning {
+            return NSSize(width: 32, height: 32)
+        }
+        return NSSize(width: NSView.noIntrinsicMetric, height: 20)
+    }
+
     /// Progress indicator visual style.
     public enum Style: Sendable {
         /// Horizontal bar progress indicator.

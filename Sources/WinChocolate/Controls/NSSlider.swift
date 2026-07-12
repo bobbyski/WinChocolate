@@ -112,6 +112,16 @@ open class NSSlider: NSControl {
         }
     }
 
+    /// The slider's natural size for Auto Layout (9.2): a fixed thickness across
+    /// its axis (matching AppKit's control metric), and no intrinsic length
+    /// along it so constraints stretch it. Tick marks add thickness, as in AppKit.
+    open override var intrinsicContentSize: NSSize {
+        let thickness: CGFloat = numberOfTickMarks > 0 ? 24 : 21
+        return isVertical
+            ? NSSize(width: thickness, height: NSView.noIntrinsicMetric)
+            : NSSize(width: NSView.noIntrinsicMetric, height: thickness)
+    }
+
     /// The value of the tick mark closest to a value.
     open func closestTickMarkValue(toValue value: Double) -> Double {
         guard numberOfTickMarks > 1 else {

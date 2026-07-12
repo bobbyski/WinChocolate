@@ -46,6 +46,7 @@ public extension NSCollectionViewDelegate {
 
 /// Flow-layout delegate that supplies a per-item size (and, later, per-section
 /// insets/spacing). Matches `NSCollectionViewDelegateFlowLayout`.
+@MainActor
 public protocol NSCollectionViewDelegateFlowLayout: NSCollectionViewDelegate {
     /// The size for the item at an index path. Return `.zero` to fall back to
     /// the layout's uniform `itemSize`.
@@ -95,6 +96,10 @@ open class NSCollectionViewItem: NSObject {
     }
 }
 
+/// Marker for views a collection hosts as supplementary elements, matching
+/// AppKit's protocol name (the classic slice needs no members).
+public protocol NSCollectionViewElement: AnyObject {}
+
 /// A grid of reusable item views.
 ///
 /// This first slice composes child views in a fixed-size grid. It preserves the
@@ -128,6 +133,16 @@ open class NSCollectionView: NSControl {
         }
     }
 
+    /// The element-kind string type, matching AppKit's name.
+    public typealias SupplementaryElementKind = String
+
+    /// The insertion-gap indicator kind requested during drag sessions.
+    public static let elementKindInterItemGapIndicator = "NSCollectionElementKindInterItemGapIndicator"
+
+    /// Whether items can be selected by clicking. Stored for AppKit shape;
+    /// the classic slice always routes clicks to selection.
+    open var isSelectable: Bool = true
+
     /// The supplementary element kind for a section header.
     public static let elementKindSectionHeader = "NSCollectionElementKindSectionHeader"
 
@@ -155,8 +170,19 @@ open class NSCollectionView: NSControl {
     /// Whether no selection is allowed.
     open var allowsEmptySelection: Bool = true
 
-    /// Current selected index paths.
-    public private(set) var selectionIndexPaths: Set<IndexPath> = []
+    /// Current selected index paths. Settable, matching AppKit; assignment
+    /// syncs each visible item's selected state.
+    open var selectionIndexPaths: Set<IndexPath> = [] {
+        didSet {
+            guard selectionIndexPaths != oldValue else {
+                return
+            }
+
+            for (path, item) in itemsByIndexPath {
+                item.isSelected = selectionIndexPaths.contains(path)
+            }
+        }
+    }
 
     private var itemsByIndexPath: [IndexPath: NSCollectionViewItem] = [:]
     private var orderedIndexPaths: [IndexPath] = []

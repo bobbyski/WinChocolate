@@ -45,14 +45,21 @@ open class NSControl: NSView {
     /// Whether the control draws itself in a highlighted state.
     open var isHighlighted: Bool = false
 
-    /// Resizes the control to fit its content. The base control keeps its frame;
-    /// subclasses with measurable content override this.
-    open func sizeToFit() {}
+    /// Resizes the control to fit its content, using `sizeThatFits`.
+    open func sizeToFit() {
+        setFrameSize(sizeThatFits(frame.size))
+    }
 
-    /// Returns the size the control would prefer for the given size. The base
-    /// implementation returns the current frame size; subclasses refine it.
+    /// Returns the size the control would prefer. The base implementation uses
+    /// the control's `intrinsicContentSize` on each axis where it has one
+    /// (falling back to the current frame extent on an axis reporting
+    /// `noIntrinsicMetric`), so any control that reports an intrinsic size is
+    /// measured correctly without overriding this.
     open func sizeThatFits(_ size: NSSize) -> NSSize {
-        frame.size
+        let intrinsic = intrinsicContentSize
+        let width = intrinsic.width == NSView.noIntrinsicMetric ? frame.size.width : intrinsic.width
+        let height = intrinsic.height == NSView.noIntrinsicMetric ? frame.size.height : intrinsic.height
+        return NSSize(width: width, height: height)
     }
 
     /// Whether the control accepts user interaction.

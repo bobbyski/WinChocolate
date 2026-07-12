@@ -63,6 +63,21 @@ open class NSBox: NSView {
         (titlePosition == .noTitle || title.isEmpty) ? 0 : 16
     }
 
+    /// The box's natural size (9.2): its content view's size plus the margins on
+    /// each edge and the title band, so a box wrapping laid-out content isn't
+    /// measured 0×0.
+    open override var intrinsicContentSize: NSSize {
+        var contentSize = NSSize.zero
+        if let contentView {
+            let intrinsic = contentView.intrinsicContentSize
+            contentSize.width = intrinsic.width == NSView.noIntrinsicMetric ? contentView.frame.size.width : intrinsic.width
+            contentSize.height = intrinsic.height == NSView.noIntrinsicMetric ? contentView.frame.size.height : intrinsic.height
+        }
+        let width = contentSize.width + contentViewMargins.width * 2
+        let height = contentSize.height + contentViewMargins.height * 2 + winTitleBandHeight
+        return NSSize(width: max(width, 24), height: max(height, winTitleBandHeight + 8))
+    }
+
     /// Places the content view within the border and margins (top-left
     /// origin; the title band sits at the top).
     open override func layout() {

@@ -48,6 +48,13 @@ public func CGColorSpaceCreateDeviceRGB() -> CGColorSpace {
 /// Core Foundation array stand-in for the `colors as CFArray` gradient idiom.
 public typealias CFArray = [Any]
 
+/// Line-cap styles, matching Core Graphics' names.
+public enum CGLineCap: Sendable {
+    case butt
+    case round
+    case square
+}
+
 // MARK: - Paths
 
 /// An immutable drawing path, matching Core Graphics' shape.
@@ -337,6 +344,12 @@ extension NSGraphicsContext {
         winLineWidth = width
     }
 
+    /// Sets the stroke line-cap style. Stored for CG shape; the native
+    /// stroke primitive renders its default caps.
+    public func setLineCap(_ cap: CGLineCap) {
+        winLineCap = cap
+    }
+
     // MARK: Transforms
 
     /// Translates the user space.
@@ -361,6 +374,19 @@ extension NSGraphicsContext {
     /// Sets the pending path for the next fill/stroke/clip operation.
     public func addPath(_ path: CGPath) {
         winPendingSegments.append(contentsOf: path.winSegments.map(winTransformed))
+    }
+
+    /// Appends a circular arc to the pending path.
+    public func addArc(
+        center: CGPoint,
+        radius: CGFloat,
+        startAngle: CGFloat,
+        endAngle: CGFloat,
+        clockwise: Bool
+    ) {
+        let path = CGMutablePath()
+        path.addArc(center: center, radius: radius, startAngle: startAngle, endAngle: endAngle, clockwise: clockwise)
+        addPath(path)
     }
 
     /// Fills the pending path with the fill color.

@@ -17,6 +17,12 @@ open class NSColorWell: NSControl {
         case expanded
     }
 
+    /// The control's natural size (9.2): AppKit's standard color-well metrics,
+    /// so a layout-created well isn't measured 0×0.
+    open override var intrinsicContentSize: NSSize {
+        NSSize(width: 44, height: 23)
+    }
+
     /// The color well's presentation style.
     open var colorWellStyle: Style = .default
 

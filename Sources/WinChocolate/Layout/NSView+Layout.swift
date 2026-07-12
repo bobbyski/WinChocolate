@@ -66,6 +66,78 @@ extension NSView {
         constraints.forEach { removeConstraint($0) }
     }
 
+    // MARK: - Layout guides
+
+    /// The layout guides owned by this view.
+    public var layoutGuides: [NSLayoutGuide] { winLayoutGuides }
+
+    /// Adds an invisible layout guide, backing it with a hidden spacer subview
+    /// so the solver places it like any sibling (matching AppKit).
+    public func addLayoutGuide(_ guide: NSLayoutGuide) {
+        guard !winLayoutGuides.contains(where: { $0 === guide }) else {
+            return
+        }
+        guide.owningView = self
+        winLayoutGuides.append(guide)
+        if guide.backing.superview !== self {
+            addSubview(guide.backing)
+        }
+        winSetNeedsLayout()
+    }
+
+    /// Removes a layout guide and its backing spacer view.
+    public func removeLayoutGuide(_ guide: NSLayoutGuide) {
+        winLayoutGuides.removeAll { $0 === guide }
+        if guide.backing.superview === self {
+            guide.backing.removeFromSuperview()
+        }
+        guide.owningView = nil
+        winSetNeedsLayout()
+    }
+
+    /// A guide inset from the view's edges by `directionalLayoutMargins`, matching
+    /// AppKit's `layoutMarginsGuide`. Constrain subviews to it to keep them inside
+    /// the margins; it re-derives its edge constraints when the margins change.
+    public var layoutMarginsGuide: NSLayoutGuide {
+        if let existing = winLayoutMarginsGuide {
+            return existing
+        }
+        let guide = NSLayoutGuide()
+        guide.identifier = "NSView-margin-guide"
+        addLayoutGuide(guide)
+        winLayoutMarginsGuide = guide
+        winInstallLayoutMarginsConstraints()
+        return guide
+    }
+
+    /// Installs the four edge constraints pinning the margins guide inside the
+    /// view by the current margins.
+    private func winInstallLayoutMarginsConstraints() {
+        guard let guide = winLayoutMarginsGuide else {
+            return
+        }
+        let m = directionalLayoutMargins
+        let constraints = [
+            guide.leadingAnchor.constraint(equalTo: leadingAnchor, constant: m.leading),
+            guide.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -m.trailing),
+            guide.topAnchor.constraint(equalTo: topAnchor, constant: m.top),
+            guide.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -m.bottom),
+        ]
+        addConstraints(constraints)
+        winLayoutMarginsConstraints = constraints
+    }
+
+    /// Re-derives the margins-guide edge constraints after the margins change.
+    func winUpdateLayoutMarginsConstraints() {
+        guard winLayoutMarginsGuide != nil else {
+            return
+        }
+        removeConstraints(winLayoutMarginsConstraints)
+        winLayoutMarginsConstraints = []
+        winInstallLayoutMarginsConstraints()
+        winSetNeedsLayout()
+    }
+
     // MARK: - Content size priorities
 
     /// The priority with which the view resists growing past its intrinsic size

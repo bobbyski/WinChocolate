@@ -138,8 +138,8 @@ extension NSTableView {
         guard let delegate else {
             return false
         }
-        return delegate.tableView(self, viewFor: tableColumns[0], row: 0) != nil
-            || delegate.tableView(self, rowViewFor: 0) != nil
+        return winMainActor { delegate.tableView(self, viewFor: tableColumns[0], row: 0) != nil
+            || delegate.tableView(self, rowViewFor: 0) != nil }
     }
 
     /// Whether the drawn table hides its header (all columns untitled).
@@ -179,7 +179,7 @@ extension NSTableView {
     /// that differs is a genuine per-row customization and is honored.
     func winRowHeight(_ row: Int) -> CGFloat {
         if let delegate {
-            let h = delegate.tableView(self, heightOfRow: row)
+            let h = winMainActor { delegate.tableView(self, heightOfRow: row) }
             if h > 0, h != rowHeight {
                 return max(16, h)
             }
@@ -828,8 +828,10 @@ extension NSTableView {
             winExternalDragRow = row
         }
 
-        // Double-click a drawn (non-hosted) cell in an editable column → edit.
+        // Double-click sends the table's double-action (AppKit parity), then a
+        // drawn (non-hosted) cell in an editable column begins editing.
         if event.clickCount >= 2 {
+            sendDoubleAction()
             let column = winColumnAtX(point.x)
             if column >= 0 {
                 winBeginDrawnEdit(row: row, column: column)
@@ -875,7 +877,7 @@ extension NSTableView {
         let row = winExternalDragRow
         winExternalDragRow = -1
         guard row >= 0, row < numberOfRows,
-              let writer = winMainActor { dataSource?.tableView(self, pasteboardWriterForRow: row) } else {
+              let writer = winMainActor({ dataSource?.tableView(self, pasteboardWriterForRow: row) }) else {
             return
         }
         let item = NSDraggingItem(pasteboardWriter: writer)

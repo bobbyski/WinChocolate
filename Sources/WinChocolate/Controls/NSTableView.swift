@@ -44,6 +44,11 @@ public protocol NSTableViewDelegate: AnyObject {
 }
 
 public extension NSTableViewDataSource {
+    /// Default: no display value (view-based tables vend views instead).
+    func tableView(_ tableView: NSTableView, objectValueFor tableColumn: NSTableColumn?, row: Int) -> Any? {
+        nil
+    }
+
     /// Default no-op setter for read-only tables.
     func tableView(_ tableView: NSTableView, setObjectValue object: Any?, for tableColumn: NSTableColumn?, row: Int) {}
 
@@ -164,6 +169,29 @@ open class NSTableView: NSControl {
 
     /// Requested row height.
     open var rowHeight: CGFloat = 17
+
+    /// Whether rows measure themselves automatically. Stored for AppKit
+    /// shape; the drawn table asks the delegate's `heightOfRow` either way.
+    open var usesAutomaticRowHeights: Bool = false
+
+    /// Re-reads the heights of the given rows from the delegate.
+    ///
+    /// The drawn table queries heights on every paint, so a repaint is the
+    /// whole refresh.
+    open func noteHeightOfRows(withIndexesChanged indexes: IndexSet) {
+        needsDisplay = true
+    }
+
+    /// Selects rows by an `IndexSet`, matching AppKit's signature.
+    open func selectRowIndexes(_ indexes: IndexSet, byExtendingSelection extend: Bool) {
+        selectRowIndexes(Set(indexes), byExtendingSelection: extend)
+    }
+
+    /// Reloads specific rows/columns by `IndexSet`, matching AppKit's
+    /// signature.
+    open func reloadData(forRowIndexes rowIndexes: IndexSet, columnIndexes: IndexSet) {
+        reloadData(forRowIndexes: Set(rowIndexes), columnIndexes: Set(columnIndexes))
+    }
 
     /// Space between table cells.
     open var intercellSpacing: NSSize = NSMakeSize(3, 2)
@@ -732,6 +760,8 @@ open class NSTableView: NSControl {
     }
 
     /// Routes clicks in a framework-drawn table to row selection / sorting.
+    /// Double-click dispatch lives in the selection extension
+    /// (NSTableViewSelection.swift).
     open override func mouseDown(with event: NSEvent) {
         if winIsDrawn {
             winDrawnMouseDown(event)
@@ -766,7 +796,7 @@ open class NSTableView: NSControl {
             return false
         }
         let row = winIsDrawn ? winDropInsertionIndex(atY: sender.draggingLocation.y) : numberOfRows
-        return dataSource.tableView(self, acceptDrop: sender, row: row)
+        return winMainActor { dataSource.tableView(self, acceptDrop: sender, row: row) }
     }
 
     /// Ensures native table state and selection dispatch are wired.
@@ -789,6 +819,9 @@ open class NSTableView: NSControl {
         }
         backend.registerTableEditAction(for: handle) { [weak self] row, column, text in
             self?.commitEdit(row: row, column: column, text: text)
+        }
+        backend.registerTableDoubleClickAction(for: handle) { [weak self] in
+            self?.sendDoubleAction()
         }
         backend.registerAction(for: handle) { [weak self, weak backend] in
             guard let self, let backend, let nativeHandle = self.nativeHandle else {

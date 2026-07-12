@@ -99,6 +99,18 @@ open class NSComboBox: NSTextField {
         items.firstIndex(of: stringValue) ?? -1
     }
 
+    /// The control's natural size (9.2): the widest item (or current text)
+    /// measured with the current font, plus the drop-down chevron and padding,
+    /// at the standard combo-box height.
+    open override var intrinsicContentSize: NSSize {
+        let font = self.font ?? NSFont.systemFont(ofSize: 13)
+        var widest = stringValue.size(withAttributes: [.font: font]).width
+        for value in objectValues {
+            widest = max(widest, value.size(withAttributes: [.font: font]).width)
+        }
+        return NSSize(width: max(widest + 30, 60), height: 26)
+    }
+
     /// All item object values as strings.
     open var objectValues: [String] {
         items

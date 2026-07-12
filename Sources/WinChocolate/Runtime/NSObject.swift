@@ -8,3 +8,17 @@ open class NSObject {
     /// Creates a root object.
     public init() {}
 }
+
+extension NSObject: Equatable {
+    /// Identity equality, matching `NSObject`'s default `isEqual(_:)`.
+    public static func == (lhs: NSObject, rhs: NSObject) -> Bool {
+        lhs === rhs
+    }
+}
+
+extension NSObject: Hashable {
+    /// Identity hash, matching `NSObject`'s default `hash`.
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(ObjectIdentifier(self))
+    }
+}

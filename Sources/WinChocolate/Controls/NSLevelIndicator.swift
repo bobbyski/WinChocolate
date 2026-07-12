@@ -22,6 +22,12 @@ open class NSLevelIndicator: NSControl {
         }
     }
 
+    /// The control's natural size (9.2): a standard-height indicator with
+    /// flexible width so constraints/frame decide how wide it runs.
+    open override var intrinsicContentSize: NSSize {
+        NSSize(width: NSView.noIntrinsicMetric, height: 18)
+    }
+
     /// Maximum represented value.
     open var maxValue: Double {
         didSet {

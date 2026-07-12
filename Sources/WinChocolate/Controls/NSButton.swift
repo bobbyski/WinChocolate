@@ -47,6 +47,7 @@ open class NSButton: NSControl {
     open var title: String {
         didSet {
             syncDisplayedTitle()
+            invalidateIntrinsicContentSize()
         }
     }
 
@@ -192,6 +193,41 @@ open class NSButton: NSControl {
 
     /// Whether the button draws a border.
     open var isBordered: Bool = true
+
+    /// The button's natural size for Auto Layout (9.2): its title measured with
+    /// the current font, padded for the bezel, and widened/heightened for an
+    /// image when one is shown. A bordered push button also keeps a minimum
+    /// height so it matches AppKit's standard control metrics.
+    open override var intrinsicContentSize: NSSize {
+        let text = displayedTitle
+        let measured = text.isEmpty
+            ? NSSize(width: 0, height: (font ?? NSFont.systemFont(ofSize: 12)).pointSize + 4)
+            : text.size(withAttributes: [.font: font ?? NSFont.systemFont(ofSize: 12)])
+        let hPad: CGFloat = isBordered ? 28 : 8
+        let vPad: CGFloat = isBordered ? 10 : 4
+        var width = measured.width + hPad
+        var height = measured.height + vPad
+        if let image, imagePosition != .noImage {
+            let imageSize = image.size
+            switch imagePosition {
+            case .imageOnly:
+                width = imageSize.width + 8
+                height = imageSize.height + 8
+            case .imageLeft, .imageRight, .imageLeading, .imageTrailing:
+                width += imageSize.width + 6
+                height = max(height, imageSize.height + vPad)
+            case .imageAbove, .imageBelow:
+                width = max(width, imageSize.width + hPad)
+                height += imageSize.height + 6
+            case .noImage:
+                break
+            }
+        }
+        if isBordered {
+            height = max(height, 22)
+        }
+        return NSSize(width: width, height: height)
+    }
 
     /// Whether switch-style buttons can enter the mixed state.
     open var allowsMixedState: Bool = false

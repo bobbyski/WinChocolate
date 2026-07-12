@@ -223,6 +223,11 @@ extension Win32NativeControlBackend {
         tableEditActions[handle.rawValue] = action
     }
 
+    /// Registers the row double-click callback (fired from NM_DBLCLK).
+    public func registerTableDoubleClickAction(for handle: NativeHandle, action: @escaping () -> Void) {
+        tableDoubleClickActions[handle.rawValue] = action
+    }
+
     /// Scrolls a native table row into view.
     public func scrollTableRowToVisible(_ row: Int, for handle: NativeHandle) {
         guard row >= 0,

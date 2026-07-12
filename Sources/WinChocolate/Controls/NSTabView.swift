@@ -39,6 +39,29 @@ open class NSTabView: NSControl {
     private var selectedIndex: Int = -1
     private var isUpdatingSelectionFromNative = false
 
+    /// The tab view's natural size (9.2): the largest tab item's content plus the
+    /// tab-bar band and border, wide enough for the tab labels, so a
+    /// layout-created tab view isn't measured 0×0.
+    open override var intrinsicContentSize: NSSize {
+        let font = self.font ?? NSFont.systemFont(ofSize: 13)
+        var contentWidth: CGFloat = 0
+        var contentHeight: CGFloat = 0
+        var tabsWidth: CGFloat = 0
+        for item in items {
+            tabsWidth += item.label.size(withAttributes: [.font: font]).width + 24
+            if let view = item.view {
+                let intrinsic = view.intrinsicContentSize
+                let width = intrinsic.width == NSView.noIntrinsicMetric ? view.frame.size.width : intrinsic.width
+                let height = intrinsic.height == NSView.noIntrinsicMetric ? view.frame.size.height : intrinsic.height
+                contentWidth = max(contentWidth, width)
+                contentHeight = max(contentHeight, height)
+            }
+        }
+        let tabBarHeight: CGFloat = 28
+        return NSSize(width: max(contentWidth + 24, tabsWidth, 80),
+                      height: contentHeight + tabBarHeight + 16)
+    }
+
     /// Swift-native callback invoked when tab selection changes.
     open var onSelectionChanged: ((NSTabView) -> Void)?
 
