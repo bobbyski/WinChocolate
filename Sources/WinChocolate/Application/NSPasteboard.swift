@@ -21,6 +21,12 @@ open class NSPasteboard: NSObject {
             self.rawValue = rawValue
         }
 
+        /// Creates a pasteboard type from a string, matching AppKit's
+        /// unlabeled convenience spelling.
+        public init(_ rawValue: String) {
+            self.rawValue = rawValue
+        }
+
         /// Plain text.
         public static let string = PasteboardType(rawValue: "public.utf8-plain-text")
 

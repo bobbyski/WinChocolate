@@ -70,6 +70,9 @@ open class NSGraphicsContext {
     /// The CG shim's stroke width.
     var winLineWidth: CGFloat = 1
 
+    /// The CG shim's line cap (stored; native strokes render default caps).
+    var winLineCap: CGLineCap = .butt
+
     /// Creates a context over a backend drawing surface.
     internal init(nativeContext: NativeDrawingContext) {
         self.nativeContext = nativeContext

@@ -222,6 +222,20 @@ open class NSView: NSResponder {
     /// shrinking below its intrinsic size); AppKit's default is `defaultHigh` (750).
     var winCompressionResistancePriority: (horizontal: Float, vertical: Float) = (750, 750)
 
+    /// Invisible layout guides owned by this view (see `NSLayoutGuide`).
+    var winLayoutGuides: [NSLayoutGuide] = []
+
+    /// The view's writing-direction-relative layout margins, used by
+    /// `layoutMarginsGuide`. AppKit's default is 8pt on every edge.
+    public var directionalLayoutMargins = NSDirectionalEdgeInsets(top: 8, leading: 8, bottom: 8, trailing: 8) {
+        didSet { winUpdateLayoutMarginsConstraints() }
+    }
+
+    /// The lazily-created margins guide inset from the view's edges (see
+    /// `layoutMarginsGuide`), and the four edge constraints positioning it.
+    var winLayoutMarginsGuide: NSLayoutGuide?
+    var winLayoutMarginsConstraints: [NSLayoutConstraint] = []
+
     /// Lays out the view's subviews. Subclasses override to position children.
     open func layout() {}
 
@@ -309,14 +323,49 @@ open class NSView: NSResponder {
         return window?.isKeyWindow ?? true
     }
 
+    /// Gesture recognizers attached through `addGestureRecognizer`; the
+    /// view forwards its mouse events to each (see NSGestureRecognizer.swift).
+    var winGestureRecognizers: [NSGestureRecognizer] = []
+
+    /// Forwards a press to attached gesture recognizers, then up the chain.
+    open override func mouseDown(with event: NSEvent) {
+        for recognizer in winGestureRecognizers {
+            recognizer.mouseDown(with: event)
+        }
+        super.mouseDown(with: event)
+    }
+
+    /// Forwards a drag to attached gesture recognizers, then up the chain.
+    open override func mouseDragged(with event: NSEvent) {
+        for recognizer in winGestureRecognizers {
+            recognizer.mouseDragged(with: event)
+        }
+        super.mouseDragged(with: event)
+    }
+
+    /// Forwards a release to attached gesture recognizers, then up the chain.
+    open override func mouseUp(with event: NSEvent) {
+        for recognizer in winGestureRecognizers {
+            recognizer.mouseUp(with: event)
+        }
+        super.mouseUp(with: event)
+    }
+
     /// Resolves hover state against the tracking areas for a mouse position,
-    /// sending `mouseEntered`/`mouseExited` to each area's owner.
+    /// sending `mouseEntered`/`mouseExited` to each area's owner — and
+    /// `mouseMoved` to owners of areas that asked for movement.
     func resolveTrackingAreas(with event: NSEvent) {
         guard !trackingAreas.isEmpty else {
             return
         }
 
         let point = convert(event.locationInWindow, from: nil)
+        for area in trackingAreas where area.options.contains(.mouseMoved) {
+            let region = area.options.contains(.inVisibleRect) ? bounds : area.rect
+            if isTrackingActive(area), region.contains(point) {
+                trackingResponder(for: area)?.mouseMoved(with: event)
+            }
+        }
         for area in trackingAreas where area.options.contains(.mouseEnteredAndExited) {
             let identity = ObjectIdentifier(area)
             let region = area.options.contains(.inVisibleRect) ? bounds : area.rect

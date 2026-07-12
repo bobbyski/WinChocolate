@@ -59,6 +59,20 @@ open class NSTextView: NSControl {
     /// Whether editing changes register with the undo manager.
     open var allowsUndo = false
 
+    /// Whether the view participates in font-panel changes. Stored for
+    /// AppKit shape; rich text views apply `changeFont(_:)` regardless.
+    open var usesFontPanel: Bool = false
+
+    /// Creates a scroll view wrapping a fresh text view as its document,
+    /// matching AppKit's factory shape.
+    public class func scrollableTextView() -> NSScrollView {
+        let scrollView = NSScrollView(frame: NSRect(origin: NSZeroPoint, size: NSMakeSize(200, 100)))
+        let textView = NSTextView(frame: NSRect(origin: NSZeroPoint, size: NSMakeSize(200, 100)))
+        scrollView.documentView = textView
+        scrollView.hasVerticalScroller = true
+        return scrollView
+    }
+
     private var storedUndoManager: NSUndoManager?
 
     /// The undo manager recording this text view's edits.

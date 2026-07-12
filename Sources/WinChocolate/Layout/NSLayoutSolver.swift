@@ -47,21 +47,47 @@ enum NSLayoutSolver {
         }
 
         let containerBounds = NSRect(origin: .zero, size: container.frame.size)
-        let horizontal = solveAxis(
-            constraints: constraints, container: container, containerBounds: containerBounds,
-            solved: solved, indexOf: indexOf, isHorizontal: true
-        )
-        let vertical = solveAxis(
-            constraints: constraints, container: container, containerBounds: containerBounds,
-            solved: solved, indexOf: indexOf, isHorizontal: false
-        )
 
-        for (i, view) in solved.enumerated() {
-            let x = horizontal.map { $0[i].pos } ?? view.frame.origin.x
-            let w = horizontal.map { max($0[i].size, 0) } ?? view.frame.size.width
-            let y = vertical.map { $0[i].pos } ?? view.frame.origin.y
-            let h = vertical.map { max($0[i].size, 0) } ?? view.frame.size.height
-            view.frame = NSRect(x: x, y: y, width: w, height: h)
+        // A constraint whose two attributes live on different axes (an
+        // aspect-ratio / cross-axis constraint, e.g. `width == height`) couples
+        // the axes: the cross-axis term is folded in as a constant read from the
+        // current geometry, so we re-solve both axes a few times until the
+        // coupled frames settle. Decoupled systems converge in one pass, so a
+        // single pass is used unless a cross-axis constraint is present.
+        let hasCrossAxis = constraints.contains {
+            $0.secondItem != nil && $0.firstAttribute != .notAnAttribute
+                && $0.secondAttribute != .notAnAttribute
+                && $0.firstAttribute.isHorizontal != $0.secondAttribute.isHorizontal
+        }
+        let outerPasses = hasCrossAxis ? 16 : 1
+
+        for _ in 0..<outerPasses {
+            let horizontal = solveAxis(
+                constraints: constraints, container: container, containerBounds: containerBounds,
+                solved: solved, indexOf: indexOf, isHorizontal: true
+            )
+            let vertical = solveAxis(
+                constraints: constraints, container: container, containerBounds: containerBounds,
+                solved: solved, indexOf: indexOf, isHorizontal: false
+            )
+
+            var maxDelta = 0.0
+            for (i, view) in solved.enumerated() {
+                let x = horizontal.map { CGFloat($0[i].pos) } ?? view.frame.origin.x
+                let w = horizontal.map { CGFloat(max($0[i].size, 0)) } ?? view.frame.size.width
+                let y = vertical.map { CGFloat($0[i].pos) } ?? view.frame.origin.y
+                let h = vertical.map { CGFloat(max($0[i].size, 0)) } ?? view.frame.size.height
+                let newFrame = NSRect(x: x, y: y, width: w, height: h)
+                maxDelta = max(maxDelta,
+                    abs(Double(newFrame.origin.x - view.frame.origin.x)),
+                    abs(Double(newFrame.origin.y - view.frame.origin.y)),
+                    abs(Double(newFrame.size.width - view.frame.size.width)),
+                    abs(Double(newFrame.size.height - view.frame.size.height)))
+                view.frame = newFrame
+            }
+            if maxDelta < 0.01 {
+                break
+            }
         }
     }
 
@@ -193,7 +219,8 @@ enum NSLayoutSolver {
         }
         guard let firstExpr = attributeExpression(
             view: first, attribute: constraint.firstAttribute,
-            container: container, containerBounds: containerBounds, indexOf: indexOf, vars: vars
+            container: container, containerBounds: containerBounds, indexOf: indexOf,
+            isHorizontal: isHorizontal, vars: vars
         ) else {
             return nil
         }
@@ -204,7 +231,8 @@ enum NSLayoutSolver {
         if let second = constraint.secondItem {
             guard let secondExpr = attributeExpression(
                 view: second, attribute: constraint.secondAttribute,
-                container: container, containerBounds: containerBounds, indexOf: indexOf, vars: vars
+                container: container, containerBounds: containerBounds, indexOf: indexOf,
+                isHorizontal: isHorizontal, vars: vars
             ) else {
                 return nil
             }
@@ -244,8 +272,19 @@ enum NSLayoutSolver {
         container: NSView,
         containerBounds: NSRect,
         indexOf: [ObjectIdentifier: Int],
+        isHorizontal: Bool,
         vars: (Int) -> AxisVars
     ) -> Expression? {
+        // A reference to the *other* axis (an aspect-ratio constraint's second
+        // dimension): fold it as a constant from the current geometry so the
+        // outer solve loop couples the axes. This keeps the per-axis solve
+        // linear while still honoring `width == height`-style constraints.
+        if attribute != .notAnAttribute && attribute.isHorizontal != isHorizontal {
+            if view === container {
+                return Expression(terms: [], constant: containerConstant(attribute, bounds: containerBounds))
+            }
+            return Expression(terms: [], constant: fixedConstant(attribute, frame: view.frame))
+        }
         // Container attribute → constant from its bounds.
         if view === container {
             return Expression(terms: [], constant: containerConstant(attribute, bounds: containerBounds))

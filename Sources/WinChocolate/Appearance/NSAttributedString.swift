@@ -444,6 +444,13 @@ extension NSMutableAttributedString {
     public convenience init() {
         self.init(string: "")
     }
+
+    /// Replaces the whole content with another attributed string's text and
+    /// runs, matching AppKit's shape.
+    public func setAttributedString(_ attrString: NSAttributedString) {
+        units = attrString.units
+        runs = attrString.runs
+    }
 }
 
 extension String {

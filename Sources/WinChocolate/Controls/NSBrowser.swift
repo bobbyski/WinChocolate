@@ -50,11 +50,14 @@ public extension NSBrowserDelegate {
 /// the Mac-style item hierarchy API while the backend remains ordinary native
 /// child controls.
 open class NSBrowser: NSControl {
+    // Members are nonisolated: the @MainActor data-source protocol infers
+    // @MainActor on the class, but everything here reads nonisolated
+    // browser state, and all calls happen on the Win32 UI thread.
     private final class BrowserColumnDataSource: NSTableViewDataSource {
-        weak var browser: NSBrowser?
-        let column: Int
+        nonisolated(unsafe) weak var browser: NSBrowser?
+        nonisolated let column: Int
 
-        init(browser: NSBrowser, column: Int) {
+        nonisolated init(browser: NSBrowser, column: Int) {
             self.browser = browser
             self.column = column
         }
@@ -255,6 +258,23 @@ open class NSBrowser: NSControl {
 
     /// Number of visible browser columns.
     open private(set) var numberOfVisibleColumns: Int = 1
+
+    /// The index of the last loaded column, or `-1` before column zero loads.
+    open var lastColumn: Int {
+        columns.count - 1
+    }
+
+    /// Whether multiple rows may be selected in a column. Stored for AppKit
+    /// shape; the classic column tables select one row per column.
+    open var allowsMultipleSelection: Bool = false
+
+    /// Whether a horizontal scroller shows when columns overflow. Stored for
+    /// AppKit shape; the classic backend always allows horizontal scrolling.
+    open var hasHorizontalScroller: Bool = true
+
+    /// Whether the horizontal scroller hides when columns fit. Stored for
+    /// AppKit shape; see `hasHorizontalScroller`.
+    open var autohidesScroller: Bool = true
 
     /// Width assigned to each visible column.
     open var columnWidth: CGFloat = 160 {

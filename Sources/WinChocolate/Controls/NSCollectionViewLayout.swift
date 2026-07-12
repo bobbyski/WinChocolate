@@ -40,6 +40,12 @@ open class NSCollectionViewLayout {
     open var collectionViewContentSize: NSSize {
         .zero
     }
+
+    /// Marks the layout dirty and reflows the collection, matching AppKit's
+    /// shape.
+    open func invalidateLayout() {
+        collectionView?.reloadData()
+    }
 }
 
 /// The scrolling axis a flow layout wraps against.
@@ -130,12 +136,12 @@ open class NSCollectionViewFlowLayout: NSCollectionViewLayout {
         // The available cross-axis extent: width for vertical scroll (viewport
         // or item width, whichever is larger), height for horizontal scroll.
         let viewport = collectionView.enclosingScrollView?.contentView.bounds.size ?? collectionView.frame.size
-        let sectionCount = dataSource.numberOfSections(in: collectionView)
+        let sectionCount = winMainActor { dataSource.numberOfSections(in: collectionView) }
 
         // Per-item size hook (variable-size flow), falling back to `itemSize`.
         let flowDelegate = collectionView.delegate as? NSCollectionViewDelegateFlowLayout
         func size(at indexPath: IndexPath) -> NSSize {
-            if let delegateSize = flowDelegate?.collectionView(collectionView, layout: self, sizeForItemAt: indexPath),
+            if let delegateSize = winMainActor({ flowDelegate?.collectionView(collectionView, layout: self, sizeForItemAt: indexPath) }),
                delegateSize.width > 0, delegateSize.height > 0 {
                 return delegateSize
             }
@@ -157,7 +163,7 @@ open class NSCollectionViewFlowLayout: NSCollectionViewLayout {
                     maxX = max(maxX, available)
                 }
                 y += sectionInset.top
-                let count = dataSource.collectionView(collectionView, numberOfItemsInSection: section)
+                let count = winMainActor { dataSource.collectionView(collectionView, numberOfItemsInSection: section) }
                 let rightEdge = available - sectionInset.right
                 var x = sectionInset.left
                 var lineHeight: CGFloat = 0
@@ -200,7 +206,7 @@ open class NSCollectionViewFlowLayout: NSCollectionViewLayout {
             var maxY: CGFloat = 0
             for section in 0..<sectionCount {
                 x += sectionInset.left
-                let count = dataSource.collectionView(collectionView, numberOfItemsInSection: section)
+                let count = winMainActor { dataSource.collectionView(collectionView, numberOfItemsInSection: section) }
                 let bottomEdge = available - sectionInset.bottom
                 var y = sectionInset.top
                 var columnWidth: CGFloat = 0

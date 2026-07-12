@@ -18,10 +18,12 @@ NSApplication.shared.appearance = NSAppearance(named: .aqua)
 expect(WinPresentation.selected == .modern, "The presentation should default to modern (8.4).")
 WinPresentation.selected = .classic
 
+@MainActor
 func winClose(_ a: CGFloat, _ b: CGFloat, _ tol: CGFloat = 0.5) -> Bool {
     abs(a - b) < tol
 }
 
+@MainActor
 func testAutoLayoutPinsEdgesFixedSizeAndCenter() {
     // Pinning all four edges to the superview with insets sizes and positions
     // the subview exactly.
@@ -65,6 +67,7 @@ final class IntrinsicSizeView: NSView {
     override var intrinsicContentSize: NSSize { intrinsic }
 }
 
+@MainActor
 func testAutoLayoutIntrinsicContentSize() {
     // A constraint-driven view with an intrinsic size and no size constraints
     // sizes itself to the intrinsic size (hugging + compression resistance).
@@ -118,6 +121,7 @@ func testAutoLayoutIntrinsicContentSize() {
         "A longer label should have a wider intrinsic width.")
 }
 
+@MainActor
 func testGridViewContentSizingAndPlacement() {
     func iv(_ w: CGFloat, _ h: CGFloat) -> IntrinsicSizeView { IntrinsicSizeView(NSSize(width: w, height: h)) }
 
@@ -161,6 +165,7 @@ func testGridViewContentSizingAndPlacement() {
         "Fill placement should stretch to the column width: got \(only.frame).")
 }
 
+@MainActor
 func testGridViewCellMergingSpans() {
     func iv(_ w: CGFloat, _ h: CGFloat) -> IntrinsicSizeView { IntrinsicSizeView(NSSize(width: w, height: h)) }
 
@@ -190,6 +195,77 @@ func testGridViewCellMergingSpans() {
         "After unmerge the header should occupy just its own column (50): got \(header.frame.size.width).")
 }
 
+@MainActor
+func testAspectRatioCrossAxisConstraints() {
+    // A `height == width` constraint couples the axes; the solver's outer
+    // alternating loop folds the cross-axis dimension as a constant and settles.
+    let container = NSView(frame: NSMakeRect(0, 0, 200, 200))
+    let box = NSView(frame: .zero)
+    box.translatesAutoresizingMaskIntoConstraints = false
+    container.addSubview(box)
+    NSLayoutConstraint.activate([
+        box.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+        box.topAnchor.constraint(equalTo: container.topAnchor),
+        box.widthAnchor.constraint(equalToConstant: 120),
+        box.heightAnchor.constraint(equalTo: box.widthAnchor),
+    ])
+    container.layoutSubtreeIfNeeded()
+    expect(winClose(box.frame.size.width, 120) && winClose(box.frame.size.height, 120),
+        "1:1 aspect: height should follow width to 120: got \(box.frame.size).")
+
+    // A 2:1 aspect ratio the other way — width follows height.
+    let box2 = NSView(frame: .zero)
+    box2.translatesAutoresizingMaskIntoConstraints = false
+    container.addSubview(box2)
+    NSLayoutConstraint.activate([
+        box2.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+        box2.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+        box2.heightAnchor.constraint(equalToConstant: 40),
+        box2.widthAnchor.constraint(equalTo: box2.heightAnchor, multiplier: 2),
+    ])
+    container.layoutSubtreeIfNeeded()
+    expect(winClose(box2.frame.size.width, 80) && winClose(box2.frame.size.height, 40),
+        "2:1 aspect: width should follow height to 80: got \(box2.frame.size).")
+}
+
+@MainActor
+func testLayoutMarginsGuideInsetsChild() {
+    // A child pinned to the margins guide sits inset by directionalLayoutMargins.
+    let view = NSView(frame: NSMakeRect(0, 0, 200, 100))
+    view.directionalLayoutMargins = NSDirectionalEdgeInsets(top: 10, leading: 20, bottom: 10, trailing: 20)
+    let child = NSView(frame: .zero)
+    child.translatesAutoresizingMaskIntoConstraints = false
+    view.addSubview(child)
+    let guide = view.layoutMarginsGuide
+    NSLayoutConstraint.activate([
+        child.leadingAnchor.constraint(equalTo: guide.leadingAnchor),
+        child.trailingAnchor.constraint(equalTo: guide.trailingAnchor),
+        child.topAnchor.constraint(equalTo: guide.topAnchor),
+        child.bottomAnchor.constraint(equalTo: guide.bottomAnchor),
+    ])
+    view.layoutSubtreeIfNeeded()
+    expect(winClose(child.frame.origin.x, 20) && winClose(child.frame.origin.y, 10)
+        && winClose(child.frame.size.width, 160) && winClose(child.frame.size.height, 80),
+        "Margins guide should inset child to (20,10,160,80): got \(child.frame).")
+}
+
+@MainActor
+func testControlIntrinsicContentSizes() {
+    let button = NSButton(title: "OK", frame: .zero)
+    button.isBordered = true
+    expect(button.intrinsicContentSize.width > 0 && button.intrinsicContentSize.height >= 22,
+        "Bordered button should report a positive width and >=22 height: got \(button.intrinsicContentSize).")
+    let stepper = NSStepper(frame: .zero)
+    expect(winClose(stepper.intrinsicContentSize.width, 19) && winClose(stepper.intrinsicContentSize.height, 27),
+        "Stepper intrinsic should be 19x27: got \(stepper.intrinsicContentSize).")
+    let slider = NSSlider(frame: .zero)
+    slider.isVertical = false
+    expect(winClose(slider.intrinsicContentSize.height, 21)
+        && slider.intrinsicContentSize.width == NSView.noIntrinsicMetric,
+        "Horizontal slider should be 21 thick with flexible length: got \(slider.intrinsicContentSize).")
+}
+
+@MainActor
 func testStackViewCustomSpacingAndHiddenViews() {
     func iv(_ w: CGFloat, _ h: CGFloat) -> IntrinsicSizeView { IntrinsicSizeView(NSSize(width: w, height: h)) }
     let a = iv(40, 20), b = iv(40, 20), c = iv(40, 20)
@@ -217,6 +293,7 @@ func testStackViewCustomSpacingAndHiddenViews() {
         "With b hidden, c should follow a's custom gap to x=60: got \(c.frame.origin.x).")
 }
 
+@MainActor
 func testGridViewHiddenStructureAndSolver() {
     func iv(_ w: CGFloat, _ h: CGFloat) -> IntrinsicSizeView { IntrinsicSizeView(NSSize(width: w, height: h)) }
 
@@ -259,6 +336,7 @@ func testGridViewHiddenStructureAndSolver() {
         "Grid cell should be placed after the solver sizes the grid: got \(c11.frame).")
 }
 
+@MainActor
 func testStackViewDistributionsAlignmentAndInsets() {
     func iv(_ w: CGFloat, _ h: CGFloat) -> IntrinsicSizeView { IntrinsicSizeView(NSSize(width: w, height: h)) }
 
@@ -335,6 +413,7 @@ func testStackViewDistributionsAlignmentAndInsets() {
         "Stack intrinsic size wrong: got \(size).")
 }
 
+@MainActor
 func testStackViewComposesWithSolverAndResizes() {
     // A stack pinned to all edges of a container: the solver sizes the stack,
     // then the stack arranges its views — and both track a container resize.
@@ -366,6 +445,7 @@ func testStackViewComposesWithSolverAndResizes() {
         "fillEqually should re-split to 200 each on resize: got \(stack.arrangedSubviews[2].frame).")
 }
 
+@MainActor
 func testAutoLayoutResizeReflowsConstraints() {
     // The real test of a constraint layout: when the container resizes, every
     // constraint-driven subview must reflow. Each scenario lays out at one
@@ -470,6 +550,7 @@ func testAutoLayoutResizeReflowsConstraints() {
         "Resizing back should restore the original layout with no drift: got \(dB.frame).")
 }
 
+@MainActor
 func testAutoLayoutSiblingChainInequalityAndFixedAnchor() {
     // A sibling chain: A pinned to the leading edge, B trailing of A with a gap.
     let container = NSView(frame: NSMakeRect(0, 0, 200, 100))
@@ -527,6 +608,7 @@ func testAutoLayoutSiblingChainInequalityAndFixedAnchor() {
         "Follower should pin to the fixed sibling's trailing edge (40): got \(follower.frame).")
 }
 
+@MainActor
 func clearApplicationWindows() {
     for window in NSApplication.shared.windows {
         NSApplication.shared.removeWindowsItem(window)
@@ -562,6 +644,7 @@ final class RecordingToolbarDelegate: NSToolbarDelegate {
     }
 }
 
+@MainActor
 func testWindowRealizationCreatesNativeHierarchy() {
     let backend = InMemoryNativeControlBackend()
     let window = NSWindow(
@@ -603,6 +686,7 @@ final class FullScreenSpyDelegate: NSWindowDelegate {
     func windowDidExitFullScreen(_ notification: NSNotification) { didExit += 1 }
 }
 
+@MainActor
 func testWindowToggleFullScreenTracksStateAndDelegate() {
     let backend = InMemoryNativeControlBackend()
     let window = NSWindow(
@@ -647,6 +731,7 @@ func testWindowToggleFullScreenTracksStateAndDelegate() {
     clearApplicationWindows()
 }
 
+@MainActor
 func testWindowTitleVisibilityBlanksCaption() {
     let backend = InMemoryNativeControlBackend()
     let window = NSWindow(
@@ -673,6 +758,7 @@ func testWindowTitleVisibilityBlanksCaption() {
     clearApplicationWindows()
 }
 
+@MainActor
 func testWindowStandardButtonsAndStyleFlags() {
     let backend = InMemoryNativeControlBackend()
     let titled = NSWindow(
@@ -719,6 +805,7 @@ func testWindowStandardButtonsAndStyleFlags() {
     clearApplicationWindows()
 }
 
+@MainActor
 func testWindowStandardButtonHidingReflectsToCaption() {
     let backend = InMemoryNativeControlBackend()
     let window = NSWindow(
@@ -744,6 +831,7 @@ func testWindowStandardButtonHidingReflectsToCaption() {
     clearApplicationWindows()
 }
 
+@MainActor
 func testViewHierarchyMaintainsSuperviewOwnership() {
     let firstParent = NSView(frame: NSMakeRect(0, 0, 100, 100))
     let secondParent = NSView(frame: NSMakeRect(0, 0, 100, 100))
@@ -757,6 +845,7 @@ func testViewHierarchyMaintainsSuperviewOwnership() {
     expect(child.superview === secondParent, "Child superview was not updated.")
 }
 
+@MainActor
 func testViewInsertionReplacementTagsAndDescendants() {
     let parent = NSView(frame: NSMakeRect(0, 0, 200, 200))
     let first = NSView(frame: NSMakeRect(0, 0, 20, 20))
@@ -790,6 +879,7 @@ func testViewInsertionReplacementTagsAndDescendants() {
     expect(parent.viewWithTag(22) === replacement, "viewWithTag did not find replacement view.")
 }
 
+@MainActor
 func testViewCompatibilityMetadataStoresValues() {
     let view = NSView(frame: NSMakeRect(0, 0, 100, 100))
 
@@ -805,6 +895,7 @@ func testViewCompatibilityMetadataStoresValues() {
     expect(view.toolTip == "Hello", "toolTip was not stored.")
 }
 
+@MainActor
 func testViewTooltipSyncsToNativePeer() {
     let backend = InMemoryNativeControlBackend()
     let view = NSView(frame: NSMakeRect(0, 0, 100, 100))
@@ -823,6 +914,7 @@ func testViewTooltipSyncsToNativePeer() {
     expect(backend.records[handle]?.toolTip == nil, "Cleared tooltip was not sent to native peer.")
 }
 
+@MainActor
 func testGeometryConvenienceFunctions() {
     let rect = NSMakeRect(10, 20, 100, 50)
 
@@ -844,6 +936,7 @@ func testGeometryConvenienceFunctions() {
     expect(NSEqualRects(rect, NSMakeRect(10, 20, 100, 50)), "NSEqualRects rejected equal rects.")
 }
 
+@MainActor
 func testViewCoordinateConversionAndHitTesting() {
     let root = NSView(frame: NSMakeRect(0, 0, 300, 300))
     let parent = NSView(frame: NSMakeRect(20, 30, 200, 200))
@@ -864,6 +957,7 @@ func testViewCoordinateConversionAndHitTesting() {
     expect(root.hitTest(NSMakePoint(400, 400)) == nil, "Hit testing accepted a point outside bounds.")
 }
 
+@MainActor
 func testScrollViewHostsDocumentView() {
     let scrollView = NSScrollView(frame: NSMakeRect(0, 0, 200, 120))
     let documentView = NSView(frame: NSMakeRect(0, 0, 180, 240))
@@ -878,6 +972,7 @@ func testScrollViewHostsDocumentView() {
     expect(!scrollView.contentView.acceptsFirstResponder, "Clip view should skip key-view traversal.")
 }
 
+@MainActor
 func testScrollViewUsesNativePeerAndRealizesDocumentView() {
     let backend = InMemoryNativeControlBackend()
     let scrollView = NSScrollView(frame: NSMakeRect(0, 0, 200, 120))
@@ -898,6 +993,7 @@ func testScrollViewUsesNativePeerAndRealizesDocumentView() {
     expect(backend.records[handle]?.scrollViewViewportSize == NSMakeSize(200, 120), "Scroll view did not sync viewport size.")
 }
 
+@MainActor
 func testScrollViewNativeScrollbarActionUpdatesClipOrigin() {
     let backend = InMemoryNativeControlBackend()
     let scrollView = NSScrollView(frame: NSMakeRect(0, 0, 200, 120))
@@ -915,6 +1011,7 @@ func testScrollViewNativeScrollbarActionUpdatesClipOrigin() {
     expect(documentView.frame.origin == NSMakePoint(-40, -70), "Native scroll-view action did not move the document view.")
 }
 
+@MainActor
 func testClipViewScrollsDocumentView() {
     let clipView = NSClipView(frame: NSMakeRect(0, 0, 100, 80))
     let documentView = NSView(frame: NSMakeRect(0, 0, 180, 160))
@@ -1221,6 +1318,7 @@ final class TabRecordingWindow: NSWindow {
     }
 }
 
+@MainActor
 func testCellStoresStringAndObjectValues() {
     let cell = NSTextFieldCell(textCell: "Header")
 
@@ -1235,6 +1333,7 @@ func testCellStoresStringAndObjectValues() {
     expect(cell.objectValue as? String == "Updated", "Text cell stringValue did not update objectValue.")
 }
 
+@MainActor
 func testSortDescriptorStoresKeyDirectionAndReverse() {
     let descriptor = NSSortDescriptor(key: "name", ascending: true, selector: "compare:")
     let reversed = descriptor.reversedSortDescriptor
@@ -1247,6 +1346,7 @@ func testSortDescriptorStoresKeyDirectionAndReverse() {
     expect(reversed.selector == "compare:", "Reversed sort descriptor did not preserve selector.")
 }
 
+@MainActor
 func testTableCellAndRowViewsStoreState() {
     let cellView = NSTableCellView(frame: NSMakeRect(0, 0, 120, 24))
     let textField = NSTextField.label(withString: "Cell")
@@ -1268,6 +1368,7 @@ func testTableCellAndRowViewsStoreState() {
     expect(!rowView.shouldDrawSeparator, "Table row view separator state was not stored.")
 }
 
+@MainActor
 func testTableColumnStoresAppKitIdentifierShape() {
     let column = NSTableColumn(identifier: "name")
     let dataCell = NSTextFieldCell(textCell: "Data")
@@ -1294,6 +1395,7 @@ func testTableColumnStoresAppKitIdentifierShape() {
     expect(column.sortDescriptorPrototype === sortDescriptor, "Table column sort descriptor prototype was not stored.")
 }
 
+@MainActor
 func testTableViewReloadsRowsFromDataSource() {
     let tableView = NSTableView(frame: NSMakeRect(0, 0, 300, 160))
     let dataSource = RecordingTableDataSource()
@@ -1317,6 +1419,7 @@ func testTableViewReloadsRowsFromDataSource() {
     expect(tableView.value(for: note, row: 0) == "Compiler", "Table view did not load value for table column.")
 }
 
+@MainActor
 func testTableViewColumnMovementAndRemoval() {
     let tableView = NSTableView(frame: NSMakeRect(0, 0, 300, 160))
     let first = NSTableColumn(identifier: "first")
@@ -1337,6 +1440,7 @@ func testTableViewColumnMovementAndRemoval() {
     expect(tableView.column(withIdentifier: "second") == -1, "Removed table column was still found.")
 }
 
+@MainActor
 func testTableViewSelectionOptionsAndHelpers() {
     let tableView = NSTableView(frame: NSMakeRect(0, 0, 300, 160))
     let dataSource = RecordingTableDataSource()
@@ -1375,6 +1479,7 @@ func testTableViewSelectionOptionsAndHelpers() {
     expect(tableView.numberOfSelectedRows == 3, "Table view selectAll did not select all rows.")
 }
 
+@MainActor
 func testTableViewStoresDisplayOptionsAndSetObjectValue() {
     let tableView = NSTableView(frame: NSMakeRect(0, 0, 300, 160))
     let dataSource = RecordingTableDataSource()
@@ -1403,6 +1508,7 @@ func testTableViewStoresDisplayOptionsAndSetObjectValue() {
     expect(tableView.value(atColumn: 0, row: 1) == "Updated", "Table setObjectValue did not update through data source.")
 }
 
+@MainActor
 func testTableViewDelegateViewHeightAndSortHooks() {
     let tableView = NSTableView(frame: NSMakeRect(0, 0, 300, 160))
     let dataSource = RecordingTableDataSource()
@@ -1431,6 +1537,7 @@ func testTableViewDelegateViewHeightAndSortHooks() {
     expect(tableView.sortDescriptors.first === secondSort, "Table sort descriptors were not stored.")
 }
 
+@MainActor
 func testTableViewTabKeyMovesThroughKeyViewLoop() {
     let backend = InMemoryNativeControlBackend()
     let window = TabRecordingWindow(
@@ -1466,6 +1573,7 @@ func testTableViewTabKeyMovesThroughKeyViewLoop() {
     expect(window.firstResponder === nextButton, "Table view Shift-Tab did not move focus to previous key view.")
 }
 
+@MainActor
 func testSearchFieldTabKeyMovesThroughKeyViewLoop() {
     let backend = InMemoryNativeControlBackend()
     let window = TabRecordingWindow(
@@ -1513,6 +1621,7 @@ func testSearchFieldTabKeyMovesThroughKeyViewLoop() {
     expect(window.firstResponder === previousButton, "Search field Shift-Tab did not move focus to previous key view.")
 }
 
+@MainActor
 func testTableViewKeyboardNavigationUpdatesSelection() {
     let tableView = NSTableView(frame: NSMakeRect(0, 0, 300, 160))
     let dataSource = RecordingTableDataSource()
@@ -1546,6 +1655,7 @@ func testTableViewKeyboardNavigationUpdatesSelection() {
     expect(tableView.selectedRow == 0, "Home key did not move table selection to the first row.")
 }
 
+@MainActor
 func testTableViewKeyboardExtendedSelection() {
     let tableView = NSTableView(frame: NSMakeRect(0, 0, 300, 160))
     let dataSource = RecordingTableDataSource()
@@ -1561,6 +1671,7 @@ func testTableViewKeyboardExtendedSelection() {
     expect(tableView.selectedRowIndexes == [0, 1], "Shift-Down did not extend table selection.")
 }
 
+@MainActor
 func testTableViewColumnSelectionAndDoubleActionSurface() {
     let tableView = NSTableView(frame: NSMakeRect(0, 0, 300, 160))
     let dataSource = RecordingTableDataSource()
@@ -1598,6 +1709,7 @@ func testTableViewColumnSelectionAndDoubleActionSurface() {
     expect(tableView.numberOfSelectedColumns == 0, "Disabling column selection did not clear selected columns.")
 }
 
+@MainActor
 func testTableViewSortDescriptorPrototypeToggle() {
     let tableView = NSTableView(frame: NSMakeRect(0, 0, 300, 160))
     let dataSource = RecordingTableDataSource()
@@ -1626,6 +1738,7 @@ func testTableViewSortDescriptorPrototypeToggle() {
     expect(missingSort == nil, "Table returned a sort descriptor for a missing column.")
 }
 
+@MainActor
 func testOutlineViewFlattensExpandableItems() {
     let backend = InMemoryNativeControlBackend()
     let outlineView = NSOutlineView(frame: NSMakeRect(0, 0, 300, 160))
@@ -1695,6 +1808,7 @@ func testOutlineViewFlattensExpandableItems() {
     expect(outlineView.numberOfRows == 4, "Disclosure-triangle expand did not reveal child rows.")
 }
 
+@MainActor
 func testOutlineViewSelectionTracksItemAcrossExpandCollapse() {
     let outline = NSOutlineView(frame: NSMakeRect(0, 0, 300, 200))
     let source = RecordingOutlineDataSource()
@@ -1736,6 +1850,7 @@ final class HostingOutlineDelegate: NSOutlineViewDelegate {
     }
 }
 
+@MainActor
 func testOutlineViewHostsDelegateCellViews() {
     let backend = InMemoryNativeControlBackend()
     let outline = NSOutlineView(frame: NSMakeRect(0, 0, 240, 160))
@@ -1789,6 +1904,7 @@ final class TreeOutlineDataSource: NSOutlineViewDataSource {
     }
 }
 
+@MainActor
 func testOutlineViewCrossLevelDropTargetsParent() {
     let outline = NSOutlineView(frame: NSMakeRect(0, 0, 240, 160))
     let name = NSTableColumn(identifier: "name")
@@ -1817,6 +1933,7 @@ func testOutlineViewCrossLevelDropTargetsParent() {
     expect(received == nil, "Dropping a branch into its own subtree was not rejected. Got \(String(describing: received)).")
 }
 
+@MainActor
 func testOutlineViewSiblingReorderMovesItem() {
     let outline = NSOutlineView(frame: NSMakeRect(0, 0, 240, 160))
     let name = NSTableColumn(identifier: "name")
@@ -1854,6 +1971,7 @@ func testOutlineViewSiblingReorderMovesItem() {
            "Outline sibling reorder did not move Charlie to the end. Got \(source.roots).")
 }
 
+@MainActor
 func testBrowserLoadsColumnsAndTracksSelection() {
     let backend = InMemoryNativeControlBackend()
     let browser = NSBrowser(frame: NSMakeRect(0, 0, 320, 120))
@@ -1889,6 +2007,7 @@ func testBrowserLoadsColumnsAndTracksSelection() {
     expect(browser.subviews.compactMap { $0 as? NSScrollView }.count == 2, "Browser did not compose two visible scroll-view columns.")
 }
 
+@MainActor
 func testBrowserPathRoundTrips() {
     let browser = NSBrowser(frame: NSMakeRect(0, 0, 320, 120))
     let delegate = RecordingBrowserDelegate()
@@ -1910,6 +2029,7 @@ func testBrowserPathRoundTrips() {
     expect(!browser.setPath("/Application/DoesNotExist"), "setPath resolved a nonexistent leaf.")
 }
 
+@MainActor
 func testBrowserColumnTitles() {
     let browser = NSBrowser(frame: NSMakeRect(0, 0, 320, 120))
     let delegate = RecordingBrowserDelegate()
@@ -1962,6 +2082,7 @@ final class LeafBranchBrowserDelegate: NSBrowserDelegate {
     }
 }
 
+@MainActor
 func testBrowserDrawsBranchIndicatorOnNonLeafRows() {
     let backend = InMemoryNativeControlBackend()
     let browser = NSBrowser(frame: NSMakeRect(0, 0, 320, 120))
@@ -2010,6 +2131,7 @@ final class ImageBrowserDelegate: NSBrowserDelegate {
     }
 }
 
+@MainActor
 func testBrowserDrawsDelegateCellImage() {
     let backend = InMemoryNativeControlBackend()
     let browser = NSBrowser(frame: NSMakeRect(0, 0, 320, 120))
@@ -2031,6 +2153,7 @@ func testBrowserDrawsDelegateCellImage() {
            "Browser did not draw the delegate-provided cell image. Got \(recording.images.map { $0.path }).")
 }
 
+@MainActor
 func testIndexPathStoresCollectionComponents() {
     let indexPath = IndexPath(item: 3, section: 2)
     let appended = IndexPath(indexes: [1, 4]).appending(9)
@@ -2042,6 +2165,7 @@ func testIndexPathStoresCollectionComponents() {
     expect(appended.count == 3 && appended[2] == 9, "IndexPath appending did not add a component.")
 }
 
+@MainActor
 func testCollectionViewReloadsItemsAndTracksSelection() {
     let backend = InMemoryNativeControlBackend()
     let collectionView = NSCollectionView(frame: NSMakeRect(0, 0, 260, 96))
@@ -2099,6 +2223,7 @@ final class ReusingCollectionDataSource: NSCollectionViewDataSource {
     }
 }
 
+@MainActor
 func testCollectionViewRecyclesItemsViaMakeItem() {
     let cv = NSCollectionView(frame: NSMakeRect(0, 0, 260, 200))
     cv.register(NSCollectionViewItem.self, forItemWithIdentifier: ReusingCollectionDataSource.cellID)
@@ -2126,6 +2251,7 @@ func testCollectionViewRecyclesItemsViaMakeItem() {
            "Recycled items were not repopulated by the data source.")
 }
 
+@MainActor
 func testCollectionViewButtonItemClickSelectsItem() {
     let collectionView = NSCollectionView(frame: NSMakeRect(0, 0, 260, 96))
     let dataSource = RecordingCollectionDataSource()
@@ -2148,6 +2274,7 @@ func testCollectionViewButtonItemClickSelectsItem() {
     expect(actionCount == 1, "Collection button item click did not send collection action.")
 }
 
+@MainActor
 func testCollectionViewFlowLayoutArrangesSectionsAndSizesContent() {
     let collectionView = NSCollectionView(frame: NSMakeRect(0, 0, 230, 200))
     let dataSource = RecordingCollectionDataSource()  // section 0: 3 items, section 1: 2 items
@@ -2201,6 +2328,7 @@ final class VariableSizeFlowDelegate: NSCollectionViewDelegateFlowLayout {
     }
 }
 
+@MainActor
 func testCollectionFlowLayoutHonorsPerItemSizeFromDelegate() {
     let collectionView = NSCollectionView(frame: NSMakeRect(0, 0, 200, 200))
     let dataSource = VariableSizeCollectionDataSource()
@@ -2274,6 +2402,7 @@ final class CountingSupplementaryDataSource: NSCollectionViewDataSource {
     }
 }
 
+@MainActor
 func testCollectionRecyclesSupplementaryViewsAcrossRelayout() {
     let backend = InMemoryNativeControlBackend()
     let collectionView = NSCollectionView(frame: NSMakeRect(0, 0, 240, 200))
@@ -2311,6 +2440,7 @@ final class HorizontalSizeCollectionDataSource: NSCollectionViewDataSource {
     }
 }
 
+@MainActor
 func testCollectionFlowLayoutReservesSectionFooters() {
     let collectionView = NSCollectionView(frame: NSMakeRect(0, 0, 200, 400))
     let dataSource = HeaderCollectionDataSource()
@@ -2336,6 +2466,7 @@ func testCollectionFlowLayoutReservesSectionFooters() {
     expect(collectionView.subviews.contains { $0 === dataSource.footerViews[0] }, "Section 0 footer view was not hosted.")
 }
 
+@MainActor
 func testCollectionSupplementaryViewsHostInRealizedScrollView() {
     // Mirrors the demo: collection is a scroll-view document view, realized.
     let backend = InMemoryNativeControlBackend()
@@ -2364,6 +2495,7 @@ func testCollectionSupplementaryViewsHostInRealizedScrollView() {
     expect(footerFrame.size.height == 16, "Footer height wrong. Got \(footerFrame.size.height).")
 }
 
+@MainActor
 func testCollectionFlowLayoutHorizontalVariableSizePacking() {
     let collectionView = NSCollectionView(frame: NSMakeRect(0, 0, 200, 100))
     let dataSource = HorizontalSizeCollectionDataSource()
@@ -2390,6 +2522,7 @@ func testCollectionFlowLayoutHorizontalVariableSizePacking() {
     expect(layout.collectionViewContentSize.width == 60, "Horizontal content width wrong. Got \(layout.collectionViewContentSize.width).")
 }
 
+@MainActor
 func testCollectionFlowLayoutReservesAndHostsSectionHeaders() {
     let collectionView = NSCollectionView(frame: NSMakeRect(0, 0, 200, 400))
     let dataSource = HeaderCollectionDataSource()
@@ -2425,6 +2558,7 @@ func testCollectionFlowLayoutReservesAndHostsSectionHeaders() {
     expect(layout.collectionViewContentSize.height == 100, "Header-inclusive content height wrong. Got \(layout.collectionViewContentSize.height).")
 }
 
+@MainActor
 func testSliderStoresRangeValueAndSyncsNativePeer() {
     let backend = InMemoryNativeControlBackend()
     let slider = NSSlider(value: 25, minValue: 0, maxValue: 100, target: nil, action: "sliderChanged:")
@@ -2462,6 +2596,7 @@ func testSliderStoresRangeValueAndSyncsNativePeer() {
     expect(backend.sliderTicksAboveOrLeading[handle] == false, "tickMarkPosition .below did not restore ticks below.")
 }
 
+@MainActor
 func testSliderNativeActionUpdatesValue() {
     let backend = InMemoryNativeControlBackend()
     let slider = NSSlider(value: 1, minValue: 0, maxValue: 10, target: nil, action: nil)
@@ -2483,6 +2618,7 @@ func testSliderNativeActionUpdatesValue() {
     expect(actionCount == 1, "Slider native action was not dispatched.")
 }
 
+@MainActor
 func testSpinnerShadeInvertsForDarkAppearance() {
     // The leading dot (age 0) must be dark on light but bright on dark, and the
     // trailing dot (age 11) the reverse — so the sweep stays visible against
@@ -2497,6 +2633,7 @@ func testSpinnerShadeInvertsForDarkAppearance() {
     expect(darkLead > lightLead, "The dark leading dot must be brighter than the light one to show on the dark surface.")
 }
 
+@MainActor
 func testProgressIndicatorStoresRangeValueAndSyncsNativePeer() {
     let backend = InMemoryNativeControlBackend()
     let progress = NSProgressIndicator(frame: NSMakeRect(0, 0, 240, 16))
@@ -2525,6 +2662,7 @@ func testProgressIndicatorStoresRangeValueAndSyncsNativePeer() {
     expect(!progress.isAnimating, "Progress indicator did not stop animation state.")
 }
 
+@MainActor
 func testLevelIndicatorStoresRangeValueAndUsesProgressPeer() {
     let backend = InMemoryNativeControlBackend()
     let level = NSLevelIndicator(frame: NSMakeRect(0, 0, 160, 18))
@@ -2552,6 +2690,7 @@ func testLevelIndicatorStoresRangeValueAndUsesProgressPeer() {
     expect(!level.acceptsFirstResponder, "Non-editable level indicator should skip key-view traversal.")
 }
 
+@MainActor
 func testButtonBezelAndTextFieldBezel() {
     let backend = InMemoryNativeControlBackend()
 
@@ -2572,6 +2711,7 @@ func testButtonBezelAndTextFieldBezel() {
     expect(backend.bezeledTextFields[fieldHandle] == false, "Clearing isBezeled did not remove the bezel.")
 }
 
+@MainActor
 func testDisclosureButtonTogglesAndOrientsTriangle() {
     let backend = InMemoryNativeControlBackend()
 
@@ -2607,6 +2747,7 @@ func testDisclosureButtonTogglesAndOrientsTriangle() {
     expect(button.state == .off && fired == 2, "Second click should close the disclosure and fire the action.")
 }
 
+@MainActor
 func testFrameworkDrawnBezelStylesUseViewPeersAndInteract() {
     let backend = InMemoryNativeControlBackend()
 
@@ -2649,6 +2790,7 @@ func testFrameworkDrawnBezelStylesUseViewPeersAndInteract() {
         "The inline badge fill should be darker under dark appearance.")
 }
 
+@MainActor
 func testMinorControlCleanups() {
     let backend = InMemoryNativeControlBackend()
 
@@ -2689,6 +2831,7 @@ func testMinorControlCleanups() {
     expect(NSSound(named: "") == nil, "Empty sound name should fail init.")
 }
 
+@MainActor
 func testLevelIndicatorRatingUsesCustomView() {
     let backend = InMemoryNativeControlBackend()
 
@@ -2706,6 +2849,7 @@ func testLevelIndicatorRatingUsesCustomView() {
     expect(backend.records[barHandle]?.kind == "progressIndicator", "Continuous level indicator should use the progress peer.")
 }
 
+@MainActor
 func testLevelIndicatorFillColorsAreAppearanceAware() {
     // The framework-drawn styles must adapt to dark mode: the empty-slot track
     // lifts so filled/unfilled items stay distinct against the dark surface, and
@@ -2727,6 +2871,7 @@ func testLevelIndicatorFillColorsAreAppearanceAware() {
         "The dark relevancy fill should lift to stay visible on the dark surface.")
 }
 
+@MainActor
 func testLevelIndicatorEditableClickSetsValue() {
     let backend = InMemoryNativeControlBackend()
     let level = NSLevelIndicator(frame: NSMakeRect(0, 0, 120, 20))
@@ -2757,6 +2902,7 @@ func testLevelIndicatorEditableClickSetsValue() {
     expect(display.doubleValue == 0, "Non-editable level indicator should ignore clicks.")
 }
 
+@MainActor
 func testScrollerStoresValueAndSyncsNativePeer() {
     let backend = InMemoryNativeControlBackend()
     let scroller = NSScroller(frame: NSMakeRect(0, 0, 20, 120))
@@ -2781,6 +2927,7 @@ func testScrollerStoresValueAndSyncsNativePeer() {
     expect(backend.records[handle]?.sliderValue == 1, "Scroller clamped value was not synced.")
 }
 
+@MainActor
 func testScrollerNativeActionUpdatesValue() {
     let backend = InMemoryNativeControlBackend()
     let scroller = NSScroller(frame: NSMakeRect(0, 0, 120, 18))
@@ -2802,6 +2949,7 @@ func testScrollerNativeActionUpdatesValue() {
     expect(actionCount == 1, "Scroller native action was not dispatched.")
 }
 
+@MainActor
 func testScrollerHitPartReflectsGesture() {
     let backend = InMemoryNativeControlBackend()
     let scroller = NSScroller(frame: NSMakeRect(0, 0, 120, 18))
@@ -2821,6 +2969,7 @@ func testScrollerHitPartReflectsGesture() {
     }
 }
 
+@MainActor
 func testScrollerAppearancePropagatesToNativePeer() {
     let backend = InMemoryNativeControlBackend()
     let scroller = NSScroller(frame: NSMakeRect(0, 0, 120, 18))
@@ -2843,6 +2992,7 @@ func testScrollerAppearancePropagatesToNativePeer() {
            "Changing to the legacy style did not update the native peer.")
 }
 
+@MainActor
 func testDatePickerStoresDateRangeAndSyncsNativePeer() {
     let backend = InMemoryNativeControlBackend()
     let initialDate = Date(timeIntervalSince1970: 1_780_272_000)
@@ -2879,6 +3029,7 @@ func testDatePickerStoresDateRangeAndSyncsNativePeer() {
     expect(actionCount == 1, "Date picker native action did not fire.")
 }
 
+@MainActor
 func testDatePickerClockAndCalendarStyle() {
     let backend = InMemoryNativeControlBackend()
     let initialDate = Date(timeIntervalSince1970: 1_780_272_000)
@@ -2902,6 +3053,7 @@ func testDatePickerClockAndCalendarStyle() {
     expect(backend.records[fieldHandle]?.kind == "datePicker", "Default style should still use the field peer.")
 }
 
+@MainActor
 func testSegmentedControlStoresSegmentsAndDrawsOnAView() {
     let backend = InMemoryNativeControlBackend()
     let segmented = NSSegmentedControl(labels: ["One", "Two"], frame: NSMakeRect(0, 0, 160, 28))
@@ -2930,6 +3082,7 @@ func testSegmentedControlStoresSegmentsAndDrawsOnAView() {
     expect(abs(frames[1].size.width - 70) < 0.001, "The automatic segment should take the remaining width.")
 }
 
+@MainActor
 func testSegmentedControlDrawsSegmentImages() {
     let backend = InMemoryNativeControlBackend()
     let segmented = NSSegmentedControl(labels: ["", "Text"], frame: NSMakeRect(0, 0, 160, 28))
@@ -2958,6 +3111,7 @@ func testSegmentedControlDrawsSegmentImages() {
            "The labeled segment should still draw its text alongside image segments.")
 }
 
+@MainActor
 func testSegmentedControlSeparatedStyleGapsSegments() {
     // The pure spacing helper: only .separated stands segments apart.
     expect(NSSegmentedControl.winSegmentSpacing(for: .separated) > 0, "Separated style should introduce a gap.")
@@ -2981,6 +3135,7 @@ func testSegmentedControlSeparatedStyleGapsSegments() {
     expect(sFrames[1].origin.x + sFrames[1].size.width <= 160.001, "Separated segments should stay inside the control width.")
 }
 
+@MainActor
 func testSegmentedControlStyleDrivesCornerRadius() {
     // The style sets the outer corner radius the framework draws: a full pill for
     // .capsule (half the height), a modest rounding for the rounded family, and
@@ -3000,6 +3155,7 @@ func testSegmentedControlStyleDrivesCornerRadius() {
         "Corner radius should increase from square → roundRect → rounded → capsule.")
 }
 
+@MainActor
 func testSegmentedControlPerSegmentImageAndTag() {
     let segmented = NSSegmentedControl(labels: ["Grid", "List"], frame: NSMakeRect(0, 0, 160, 28))
 
@@ -3019,6 +3175,7 @@ func testSegmentedControlPerSegmentImageAndTag() {
     expect(segmented.image(forSegment: 1) == nil, "Unset segment image should be nil.")
 }
 
+@MainActor
 func testSegmentedControlPerSegmentMenu() {
     let backend = InMemoryNativeControlBackend()
     let segmented = NSSegmentedControl(labels: ["File", "Options"], frame: NSMakeRect(0, 0, 160, 28))
@@ -3042,6 +3199,7 @@ func testSegmentedControlPerSegmentMenu() {
     expect(segmented.selectedSegment == 0, "Clicking a plain segment should select it.")
 }
 
+@MainActor
 func testSegmentedControlActionSelectsSegment() {
     let segmented = NSSegmentedControl(labels: ["One", "Two"], frame: NSMakeRect(0, 0, 160, 28))
     var actionCount = 0
@@ -3059,6 +3217,7 @@ func testSegmentedControlActionSelectsSegment() {
     expect(actionCount == 1, "Segmented control action was not dispatched.")
 }
 
+@MainActor
 func testStepperStoresRangeIncrementAndSyncsNativePeer() {
     let backend = InMemoryNativeControlBackend()
     let stepper = NSStepper(frame: NSMakeRect(0, 0, 24, 48))
@@ -3092,6 +3251,7 @@ func testStepperStoresRangeIncrementAndSyncsNativePeer() {
     expect(stepper.doubleValue == 10, "Stepper did not wrap downward to maxValue.")
 }
 
+@MainActor
 func testStepperNativeActionUpdatesValue() {
     let backend = InMemoryNativeControlBackend()
     let stepper = NSStepper(frame: NSMakeRect(0, 0, 24, 48))
@@ -3116,6 +3276,7 @@ func testStepperNativeActionUpdatesValue() {
     expect(actionCount == 1, "Stepper native action was not dispatched.")
 }
 
+@MainActor
 func testSearchFieldTracksRecentSearchesAndNativeChanges() {
     let backend = InMemoryNativeControlBackend()
     let searchField = NSSearchField(frame: NSMakeRect(0, 0, 180, 28))
@@ -3139,6 +3300,7 @@ func testSearchFieldTracksRecentSearchesAndNativeChanges() {
     expect(actionCount == 2, "Search field cancel did not send action.")
 }
 
+@MainActor
 func testColorWellStoresColorAndSendsAction() {
     let backend = InMemoryNativeControlBackend()
     // A well click presents the shared color panel, which must land on the
@@ -3171,6 +3333,7 @@ func testColorWellStoresColorAndSendsAction() {
     expect(actionCount == 1, "Color well did not send action on click.")
 }
 
+@MainActor
 func testColorWellExpandedSwatchPalette() {
     clearApplicationWindows()
     let previousBackend = NSApplication.shared.nativeBackend
@@ -3204,6 +3367,7 @@ func testColorWellExpandedSwatchPalette() {
     expect(well.winSwatchPopover?.isShown == false, "Swatch pick did not close the palette.")
 }
 
+@MainActor
 func testTableViewNativePeerReceivesColumnsRowsAndSelection() {
     let backend = InMemoryNativeControlBackend()
     let tableView = NSTableView(frame: NSMakeRect(0, 0, 300, 160))
@@ -3231,6 +3395,7 @@ func testTableViewNativePeerReceivesColumnsRowsAndSelection() {
     expect(backend.records[handle]?.tableVisibleRow == 2, "Table visible-row request was not recorded.")
 }
 
+@MainActor
 func testTableViewNativeSelectionNotifiesDelegateAndAction() {
     let backend = InMemoryNativeControlBackend()
     let tableView = NSTableView(frame: NSMakeRect(0, 0, 300, 160))
@@ -3267,6 +3432,7 @@ func testTableViewNativeSelectionNotifiesDelegateAndAction() {
     expect(delegate.lastObject === tableView, "Table view delegate notification object was wrong.")
 }
 
+@MainActor
 func testTableViewActionCanReadSelectedRowValue() {
     let tableView = NSTableView(frame: NSMakeRect(0, 0, 300, 160))
     let dataSource = RecordingTableDataSource()
@@ -3292,6 +3458,7 @@ func testTableViewActionCanReadSelectedRowValue() {
     expect(actionValue == "Grace", "Table action could not read selected row value.")
 }
 
+@MainActor
 func testTableViewClickedRowAndColumnFollowSelection() {
     let tableView = NSTableView(frame: NSMakeRect(0, 0, 300, 160))
     let dataSource = RecordingTableDataSource()
@@ -3312,6 +3479,7 @@ func testTableViewClickedRowAndColumnFollowSelection() {
     expect(tableView.clickedColumn == 0, "Table clickedColumn did not follow selected column.")
 }
 
+@MainActor
 func testSplitViewArrangesSubviewsAndDividerPosition() {
     let splitView = NSSplitView(frame: NSMakeRect(0, 0, 300, 100))
     let first = NSView(frame: NSZeroRect)
@@ -3335,6 +3503,7 @@ func testSplitViewArrangesSubviewsAndDividerPosition() {
     expect(second.frame == NSMakeRect(0, 54, 300, 46), "Horizontal split did not size second pane evenly.")
 }
 
+@MainActor
 func testSubviewResponderChainTargetsSuperview() {
     let parent = NSView(frame: NSMakeRect(0, 0, 100, 100))
     let child = NSView(frame: NSMakeRect(0, 0, 20, 20))
@@ -3348,6 +3517,7 @@ func testSubviewResponderChainTargetsSuperview() {
     expect(child.nextResponder == nil, "Subview next responder was not cleared on removal.")
 }
 
+@MainActor
 func testResponderForwardsUnhandledEvents() {
     let child = NSResponder()
     let parent = RecordingResponder()
@@ -3365,6 +3535,7 @@ func testResponderForwardsUnhandledEvents() {
     expect(parent.keyDownCount == 1, "Key event did not forward to next responder.")
 }
 
+@MainActor
 func testWindowIsContentViewNextResponder() {
     let window = NSWindow(
         contentRect: NSMakeRect(0, 0, 100, 100),
@@ -3380,6 +3551,7 @@ func testWindowIsContentViewNextResponder() {
     expect(contentView.nextResponder === window, "Window was not content view's next responder.")
 }
 
+@MainActor
 func testWindowMakeFirstResponderFocusesNativeView() {
     let backend = InMemoryNativeControlBackend()
     let window = NSWindow(
@@ -3399,6 +3571,7 @@ func testWindowMakeFirstResponderFocusesNativeView() {
     expect(backend.focusedHandle == contentView.nativeHandle, "Backend did not receive native focus request.")
 }
 
+@MainActor
 func testWindowMakeFirstResponderHonorsResignFailure() {
     let backend = InMemoryNativeControlBackend()
     let window = NSWindow(
@@ -3416,6 +3589,7 @@ func testWindowMakeFirstResponderHonorsResignFailure() {
     expect(window.firstResponder === refusing, "Window first responder changed after resign failure.")
 }
 
+@MainActor
 func testApplicationTracksWindowListAndKeyMainWindow() {
     clearApplicationWindows()
 
@@ -3455,6 +3629,7 @@ func testApplicationTracksWindowListAndKeyMainWindow() {
     clearApplicationWindows()
 }
 
+@MainActor
 func testWindowSelectNextAndPreviousKeyView() {
     let backend = InMemoryNativeControlBackend()
     let window = NSWindow(
@@ -3488,6 +3663,7 @@ func testWindowSelectNextAndPreviousKeyView() {
     expect(backend.focusedHandle == first.nativeHandle, "Backend focus did not move to previous key view.")
 }
 
+@MainActor
 func testWindowSelectNextKeyViewSkipsDisabledExplicitTarget() {
     let window = NSWindow(
         contentRect: NSMakeRect(0, 0, 100, 100),
@@ -3517,6 +3693,7 @@ func testWindowSelectNextKeyViewSkipsDisabledExplicitTarget() {
     expect(window.firstResponder === fallback, "Window did not skip disabled key view target.")
 }
 
+@MainActor
 func testWindowSelectNextKeyViewSkipsHiddenContainerChildren() {
     let window = NSWindow(
         contentRect: NSMakeRect(0, 0, 140, 100),
@@ -3548,6 +3725,7 @@ func testWindowSelectNextKeyViewSkipsHiddenContainerChildren() {
     expect(window.firstResponder === fallback, "Window did not skip hidden key view container children.")
 }
 
+@MainActor
 func testNativeMouseDownDispatchesToView() {
     let backend = InMemoryNativeControlBackend()
     let view = RecordingView(frame: NSMakeRect(0, 0, 100, 100))
@@ -3560,6 +3738,7 @@ func testNativeMouseDownDispatchesToView() {
     expect(view.lastEvent == event, "Native mouse-down event was not forwarded intact.")
 }
 
+@MainActor
 func testNativeMouseDownOnControlMakesControlFirstResponder() {
     let backend = InMemoryNativeControlBackend()
     let window = NSWindow(
@@ -3586,6 +3765,7 @@ func testNativeMouseDownOnControlMakesControlFirstResponder() {
     expect(backend.focusedHandle == handle, "Native mouse-down on control did not request native focus.")
 }
 
+@MainActor
 func testNativeMouseUpDispatchesToView() {
     let backend = InMemoryNativeControlBackend()
     let view = RecordingView(frame: NSMakeRect(0, 0, 100, 100))
@@ -3598,6 +3778,7 @@ func testNativeMouseUpDispatchesToView() {
     expect(view.lastEvent == event, "Native mouse-up event was not forwarded intact.")
 }
 
+@MainActor
 func testNativeMouseMovedDispatchesToView() {
     let backend = InMemoryNativeControlBackend()
     let view = RecordingView(frame: NSMakeRect(0, 0, 100, 100))
@@ -3610,6 +3791,7 @@ func testNativeMouseMovedDispatchesToView() {
     expect(view.lastEvent == event, "Native mouse-moved event was not forwarded intact.")
 }
 
+@MainActor
 func testNativeMouseDraggedDispatchesToView() {
     let backend = InMemoryNativeControlBackend()
     let view = RecordingView(frame: NSMakeRect(0, 0, 100, 100))
@@ -3622,6 +3804,7 @@ func testNativeMouseDraggedDispatchesToView() {
     expect(view.lastEvent == event, "Native mouse-dragged event was not forwarded intact.")
 }
 
+@MainActor
 func testNativeKeyDownDispatchesToView() {
     let backend = InMemoryNativeControlBackend()
     let view = RecordingView(frame: NSMakeRect(0, 0, 100, 100))
@@ -3634,6 +3817,7 @@ func testNativeKeyDownDispatchesToView() {
     expect(view.lastEvent == event, "Native key-down event was not forwarded intact.")
 }
 
+@MainActor
 func testNativeKeyUpDispatchesToView() {
     let backend = InMemoryNativeControlBackend()
     let view = RecordingView(frame: NSMakeRect(0, 0, 100, 100))
@@ -3646,6 +3830,7 @@ func testNativeKeyUpDispatchesToView() {
     expect(view.lastEvent == event, "Native key-up event was not forwarded intact.")
 }
 
+@MainActor
 func testControlClosureActionIsInvoked() {
     let button = NSButton(title: "Run", frame: NSMakeRect(0, 0, 80, 24))
     var actionCount = 0
@@ -3660,6 +3845,7 @@ func testControlClosureActionIsInvoked() {
     expect(actionCount == 1, "Action closure was not invoked once.")
 }
 
+@MainActor
 func testButtonPerformClickHonorsEnabledState() {
     let button = NSButton(title: "Run", frame: NSMakeRect(0, 0, 80, 24))
     var actionCount = 0
@@ -3675,6 +3861,7 @@ func testButtonPerformClickHonorsEnabledState() {
     expect(actionCount == 1, "Disabled button still sent its action.")
 }
 
+@MainActor
 func testControlCompatibilityMetadataStoresValues() {
     let control = NSControl(frame: NSMakeRect(0, 0, 80, 24))
 
@@ -3685,6 +3872,7 @@ func testControlCompatibilityMetadataStoresValues() {
     expect(control.isContinuous, "Control continuous flag was not stored.")
 }
 
+@MainActor
 func testSwitchButtonTogglesStateOnPerformClick() {
     let checkbox = NSButton(title: "Check", frame: NSMakeRect(0, 0, 120, 24))
     checkbox.setButtonType(.switchButton)
@@ -3696,6 +3884,7 @@ func testSwitchButtonTogglesStateOnPerformClick() {
     expect(checkbox.state == .off, "Switch button did not toggle off.")
 }
 
+@MainActor
 func testButtonMixedStateAndCompatibilityProperties() {
     let checkbox = NSButton(title: "Check", frame: NSMakeRect(0, 0, 120, 24))
 
@@ -3714,6 +3903,7 @@ func testButtonMixedStateAndCompatibilityProperties() {
     expect(!checkbox.isBordered, "Button bordered flag was not stored.")
 }
 
+@MainActor
 func testRadioButtonClearsSiblingRadioButtons() {
     let parent = NSView(frame: NSMakeRect(0, 0, 300, 100))
     let first = NSButton(title: "First", frame: NSMakeRect(0, 0, 80, 24))
@@ -3730,6 +3920,7 @@ func testRadioButtonClearsSiblingRadioButtons() {
     expect(second.state == .on, "Second radio button was not selected.")
 }
 
+@MainActor
 func testRealizedViewStatePropagatesToBackend() {
     let backend = InMemoryNativeControlBackend()
     let view = NSView(frame: NSMakeRect(0, 0, 100, 100))
@@ -3742,6 +3933,7 @@ func testRealizedViewStatePropagatesToBackend() {
     expect(backend.records[handle]?.isHidden == true, "Hidden state did not reach backend.")
 }
 
+@MainActor
 func testWindowTitleAndFramePropagateToBackend() {
     let backend = InMemoryNativeControlBackend()
     let window = NSWindow(
@@ -3761,6 +3953,7 @@ func testWindowTitleAndFramePropagateToBackend() {
     expect(backend.records[handle]?.frame == NSMakeRect(10, 20, 300, 200), "Window frame update did not reach backend.")
 }
 
+@MainActor
 func testWindowContentSizeAndCenterUpdateFrame() {
     let backend = InMemoryNativeControlBackend()
     let window = NSWindow(
@@ -3787,6 +3980,7 @@ func testWindowContentSizeAndCenterUpdateFrame() {
     expect(backend.records[handle]?.frame == NSMakeRect(392, 304, 240, 160), "center did not reach backend.")
 }
 
+@MainActor
 func testNativeWindowResizeUpdatesContentAndAutoresizesSubviews() {
     let backend = InMemoryNativeControlBackend()
     let window = NSWindow(
@@ -3819,6 +4013,7 @@ func testNativeWindowResizeUpdatesContentAndAutoresizesSubviews() {
     expect(trailingView.frame == NSMakeRect(210, 140, 30, 20), "Autoresizing margins did not move trailing subview.")
 }
 
+@MainActor
 func testPanelStoresPanelStateAndOrdersFront() {
     clearApplicationWindows()
 
@@ -3869,6 +4064,7 @@ func testPanelStoresPanelStateAndOrdersFront() {
     clearApplicationWindows()
 }
 
+@MainActor
 func testPopoverShowsClosesAndReopensFromAnchorView() {
     clearApplicationWindows()
 
@@ -3923,6 +4119,7 @@ func testPopoverShowsClosesAndReopensFromAnchorView() {
     expect(panel.nativeHandle != nil, "Popover host panel did not reopen.")
 }
 
+@MainActor
 func testPopoverFlipsWhenClipped() {
     clearApplicationWindows()
     let previousBackend = NSApplication.shared.nativeBackend
@@ -3960,6 +4157,7 @@ func testPopoverFlipsWhenClipped() {
     expect(popover2.winResolvedEdge == .maxX, "Popover flipped a placement that fit on screen.")
 }
 
+@MainActor
 func testPopoverAnimatesFadesHost() {
     clearApplicationWindows()
 
@@ -4005,6 +4203,7 @@ func testPopoverAnimatesFadesHost() {
     expect(backend.fadedWindows[panelHandle] == false, "Animated popover did not fade its host out on close.")
 }
 
+@MainActor
 func testToolbarStoresItemsAndAttachesToWindow() {
     let window = NSWindow(
         contentRect: NSMakeRect(0, 0, 320, 200),
@@ -4055,6 +4254,7 @@ func testToolbarStoresItemsAndAttachesToWindow() {
     expect(replacement.window === window, "Replacing window toolbar did not attach new toolbar.")
 }
 
+@MainActor
 func testToolbarVisibilityAndItemActions() {
     let toolbar = NSToolbar(identifier: "actions")
     let item = NSToolbarItem(itemIdentifier: "click")
@@ -4099,6 +4299,7 @@ func testToolbarVisibilityAndItemActions() {
     expect(visibilityStates == [false, true], "Toolbar visibility change callback did not receive expected states.")
 }
 
+@MainActor
 func testToolbarCustomizationDelegateAndDefaultItems() {
     let toolbar = NSToolbar(identifier: "customizable")
     let delegate = RecordingToolbarDelegate()
@@ -4123,6 +4324,7 @@ func testToolbarCustomizationDelegateAndDefaultItems() {
     expect(toolbar.item(withIdentifier: "customize")?.label == "Customize", "Toolbar item store did not preserve hidden customization item.")
 }
 
+@MainActor
 func testToolbarCustomizationAllowsDuplicateStructuralItems() {
     let toolbar = NSToolbar(identifier: "customizable")
 
@@ -4156,6 +4358,7 @@ final class SharedSeparatorToolbarDelegate: NSToolbarDelegate {
     }
 }
 
+@MainActor
 func testToolbarKeepsDistinctSeparatorsWithSharedDelegateItem() {
     let delegate = SharedSeparatorToolbarDelegate()
     let toolbar = NSToolbar(identifier: "shared-separator")
@@ -4176,6 +4379,7 @@ func testToolbarKeepsDistinctSeparatorsWithSharedDelegateItem() {
     expect(toolbar.items[0] !== toolbar.items[1], "Restored shared delegate separators were aliased.")
 }
 
+@MainActor
 func testToolbarCustomizationPaletteShowsToolbarDropTargetAtTop() {
     clearApplicationWindows()
 
@@ -4220,6 +4424,7 @@ func testToolbarCustomizationPaletteShowsToolbarDropTargetAtTop() {
     clearApplicationWindows()
 }
 
+@MainActor
 func testToolbarCustomizationMovesExistingItemToEnd() {
     clearApplicationWindows()
 
@@ -4268,6 +4473,7 @@ func testToolbarCustomizationMovesExistingItemToEnd() {
     clearApplicationWindows()
 }
 
+@MainActor
 func testToolbarViewComposesItemsAndDispatchesActions() {
     let backend = InMemoryNativeControlBackend()
     let toolbar = NSToolbar(identifier: "native")
@@ -4362,6 +4568,7 @@ func testToolbarViewComposesItemsAndDispatchesActions() {
     )
 }
 
+@MainActor
 func testToolbarViewHostsCustomItemView() {
     let backend = InMemoryNativeControlBackend()
     let toolbar = NSToolbar(identifier: "customView")
@@ -4392,6 +4599,7 @@ func testToolbarViewHostsCustomItemView() {
     expect(backend.records[handle]?.toolbarItems.isEmpty == true, "Composed toolbar custom item should not reserve native toolbar separator space.")
 }
 
+@MainActor
 func testToolbarItemCreatesCompositeImageLabelView() {
     let backend = InMemoryNativeControlBackend()
     let item = NSToolbarItem(itemIdentifier: "open")
@@ -4420,6 +4628,7 @@ func testToolbarItemCreatesCompositeImageLabelView() {
     expect(backend.records[separatorHandle]?.drawsBackground == false, "Toolbar separator view should request a clear native background.")
 }
 
+@MainActor
 func testUserDefaultsRoundTripsPlistValues() {
     // Pure store logic (no disk).
     let memory = UserDefaults(persistsToDisk: false)
@@ -4459,6 +4668,7 @@ final class ToolbarValidationTarget: NSToolbarItemValidation {
     }
 }
 
+@MainActor
 func testToolbarItemValidationAndMenuForm() {
     let toolbar = NSToolbar(identifier: "validation")
     let item = NSToolbarItem(itemIdentifier: "save")
@@ -4506,6 +4716,7 @@ final class SelectionToolbarDelegate: NSToolbarDelegate {
     }
 }
 
+@MainActor
 func testToolbarSelectionAndDelegateCallbacks() {
     let toolbar = NSToolbar(identifier: "selection")
     let delegate = SelectionToolbarDelegate()
@@ -4552,6 +4763,7 @@ func testToolbarSelectionAndDelegateCallbacks() {
     expect(!toolbar.customizationPaletteIsRunning, "The customization palette should not report running by default.")
 }
 
+@MainActor
 func testToolbarStandardItemIdentifiers() {
     let toolbar = NSToolbar(identifier: "standard")
     // No delegate: standard Apple identifiers synthesize their built-in items.
@@ -4580,6 +4792,7 @@ final class AutosaveToolbarDelegate: NSToolbarDelegate {
     }
 }
 
+@MainActor
 func testToolbarAutosaveRoundTripsConfiguration() {
     let autosaveKey = "NSToolbar Configuration WinChocolateAutosaveTest"
     UserDefaults.standard.removeObject(forKey: autosaveKey)
@@ -4617,6 +4830,7 @@ func testToolbarAutosaveRoundTripsConfiguration() {
     UserDefaults.standard.removeObject(forKey: autosaveKey)
 }
 
+@MainActor
 func testToolbarBorderedItemRendersAsButton() {
     let backend = InMemoryNativeControlBackend()
     let toolbar = NSToolbar(identifier: "bordered")
@@ -4643,6 +4857,7 @@ func testToolbarBorderedItemRendersAsButton() {
     expect(fired == 1, "Clicking the bordered item button did not perform the item action.")
 }
 
+@MainActor
 func testToolbarCustomizationPaletteDimsInToolbarItems() {
     clearApplicationWindows()
 
@@ -4718,6 +4933,7 @@ final class DimmingToolbarDelegate: NSToolbarDelegate {
     }
 }
 
+@MainActor
 func testToolbarCustomizationDragShowsInsertionIndicator() {
     clearApplicationWindows()
 
@@ -4765,6 +4981,7 @@ func testToolbarCustomizationDragShowsInsertionIndicator() {
     clearApplicationWindows()
 }
 
+@MainActor
 func testToolbarModernIdentifiersRenderAsGaps() {
     let backend = InMemoryNativeControlBackend()
     let toolbar = NSToolbar(identifier: "modern")
@@ -4785,6 +5002,7 @@ func testToolbarModernIdentifiersRenderAsGaps() {
            "Tracking separators rendered as labeled items instead of gaps.")
 }
 
+@MainActor
 func testToolbarRightClickPopsContextMenu() {
     clearApplicationWindows()
 
@@ -4839,6 +5057,7 @@ func testToolbarRightClickPopsContextMenu() {
     clearApplicationWindows()
 }
 
+@MainActor
 func testToolbarItemRightClickAddsRemoveItem() {
     let backend = InMemoryNativeControlBackend()
     let toolbar = NSToolbar(identifier: "removable")
@@ -4869,6 +5088,7 @@ func testToolbarItemRightClickAddsRemoveItem() {
     expect(toolbar.items.isEmpty, "Remove Item did not remove the clicked toolbar item.")
 }
 
+@MainActor
 func testToolbarCenteredItemsLayOutCentered() {
     let backend = InMemoryNativeControlBackend()
     let toolbar = NSToolbar(identifier: "centered")
@@ -4898,6 +5118,7 @@ func testToolbarCenteredItemsLayOutCentered() {
     expect(abs(midX - 300) <= 4, "The centered item was not centered. midX = \(midX).")
 }
 
+@MainActor
 func testToolbarCustomViewItemsShrinkBeforeOverflow() {
     let backend = InMemoryNativeControlBackend()
     let toolbar = NSToolbar(identifier: "elastic")
@@ -4929,6 +5150,7 @@ func testToolbarCustomViewItemsShrinkBeforeOverflow() {
            "The custom view did not shrink between min and max. Got \(fieldView.frame.size.width).")
 }
 
+@MainActor
 func testToolbarItemGroupSelectsAndFires() {
     let backend = InMemoryNativeControlBackend()
     let toolbar = NSToolbar(identifier: "grouped")
@@ -4984,6 +5206,7 @@ func testToolbarItemGroupSelectsAndFires() {
     expect(!group.isSelected(at: 2), "selectAny did not toggle off on re-activation.")
 }
 
+@MainActor
 func testWindowToolbarActions() {
     clearApplicationWindows()
 
@@ -5012,6 +5235,7 @@ func testWindowToolbarActions() {
     clearApplicationWindows()
 }
 
+@MainActor
 func testToolbarMetallicLookDrawsGradientChrome() {
     let backend = InMemoryNativeControlBackend()
     let toolbar = NSToolbar(identifier: "looks")
@@ -5068,6 +5292,7 @@ func testToolbarMetallicLookDrawsGradientChrome() {
     }
 }
 
+@MainActor
 func testToolbarCustomizationDragOutTintsPreviewForRemoval() {
     clearApplicationWindows()
 
@@ -5113,6 +5338,7 @@ func testToolbarCustomizationDragOutTintsPreviewForRemoval() {
     clearApplicationWindows()
 }
 
+@MainActor
 func testToolbarPopupAndFieldItemsAlignVertically() {
     let backend = InMemoryNativeControlBackend()
     let toolbar = NSToolbar(identifier: "alignment")
@@ -5146,6 +5372,7 @@ func testToolbarPopupAndFieldItemsAlignVertically() {
            "The popup's layout height should match its visible closed-combo height. Got \(popup.frame.size.height).")
 }
 
+@MainActor
 func testWinPresentationSelectionAndModernSeparators() {
     // The modern default (8.4) is asserted at suite startup, before the
     // classic pin; here the pin should be in effect.
@@ -5177,6 +5404,7 @@ func testWinPresentationSelectionAndModernSeparators() {
            "The modern presentation should render automatic separators as gaps.")
 }
 
+@MainActor
 func testDarkAppearanceDrivesDynamicColorsAndDrawnTable() {
     // Route the app through a scriptable backend reporting a dark system
     // theme, with no appearance override (drop the suite's light pin).
@@ -5235,6 +5463,7 @@ final class AppearanceProbeView: NSView {
     }
 }
 
+@MainActor
 func testCurrentDrawingAppearanceFollowsTheDrawingView() {
     // Outside a draw pass, currentDrawing falls back to the application's
     // effective appearance (the suite's light pin).
@@ -5254,6 +5483,7 @@ func testCurrentDrawingAppearanceFollowsTheDrawingView() {
            "currentDrawing should restore after the draw pass.")
 }
 
+@MainActor
 func testToolbarStripGoesDarkUnderDarkAppearance() {
     NSApplication.shared.appearance = NSAppearance(named: .darkAqua)
     defer { NSApplication.shared.appearance = NSAppearance(named: .aqua) }
@@ -5272,6 +5502,7 @@ func testToolbarStripGoesDarkUnderDarkAppearance() {
            "The unified toolbar strip should be dark under the dark appearance. Got \(strip).")
 }
 
+@MainActor
 func testSystemAccentColorDrivesAccentAndSelection() {
     let backend = InMemoryNativeControlBackend()
     let previous = NSApplication.shared.nativeBackend
@@ -5297,6 +5528,7 @@ func testSystemAccentColorDrivesAccentAndSelection() {
            "The light-appearance selection tint should be lighter than the accent.")
 }
 
+@MainActor
 func testWrappedTextMeasurementBreaksIntoLines() {
     let backend = InMemoryNativeControlBackend()
     let text = "The quick brown fox jumps over the lazy dog"
@@ -5320,6 +5552,7 @@ func testWrappedTextMeasurementBreaksIntoLines() {
            "A non-positive wrap width should measure as a single line.")
 }
 
+@MainActor
 func testFireDueTimersPumpsScheduledTimers() {
     let backend = InMemoryNativeControlBackend()
     var firedA = 0
@@ -5336,6 +5569,7 @@ func testFireDueTimersPumpsScheduledTimers() {
     expect(firedA == 2 && firedB == 1, "fireDueTimers should fire every scheduled timer once.")
 }
 
+@MainActor
 func testControlFontAppliesToButtons() {
     // AppKit declares `font` on NSControl, so buttons take it — set before
     // realization it applies at realize; set after, it applies immediately.
@@ -5351,6 +5585,7 @@ func testControlFontAppliesToButtons() {
            "A post-realize control font should apply immediately.")
 }
 
+@MainActor
 func testStringEncodingIORoundTrips() {
     let sample = "Héllo, 世界 – ¡ok!"
 
@@ -5403,6 +5638,7 @@ func testStringEncodingIORoundTrips() {
     try? FileManager.default.removeItem(atPath: url.path)
 }
 
+@MainActor
 func testAppearanceResolvesSystemThemeAndOverrides() {
     let backend = InMemoryNativeControlBackend()
     let previousBackend = NSApplication.shared.nativeBackend
@@ -5452,6 +5688,7 @@ func testAppearanceResolvesSystemThemeAndOverrides() {
            "bestMatch should fall dark back to the light base.")
 }
 
+@MainActor
 func testDrawnTableModernPresentationRestylesHeaderChrome() {
     // Renders a one-column drawn table and returns the header chrome the draw
     // pass recorded: the header slab's fill color and the title's font weight.
@@ -5492,6 +5729,7 @@ func testDrawnTableModernPresentationRestylesHeaderChrome() {
            "The modern drawn header title should be regular weight.")
 }
 
+@MainActor
 func testToolbarOverflowCollapsesLowPriorityItems() {
     func makeToolbar() -> NSToolbar {
         let toolbar = NSToolbar(identifier: "overflow")
@@ -5521,6 +5759,7 @@ func testToolbarOverflowCollapsesLowPriorityItems() {
            "A wide strip overflowed items it could fit. Visible: \(wideToolbar.visibleItems?.count ?? -1).")
 }
 
+@MainActor
 func testWindowToolbarCreatesDockedComposedHostAndReservesContent() {
     let backend = InMemoryNativeControlBackend()
     let window = NSWindow(
@@ -5563,6 +5802,7 @@ func testWindowToolbarCreatesDockedComposedHostAndReservesContent() {
     )
 }
 
+@MainActor
 func testWindowToolbarHeightFollowsDisplayMode() {
     let backend = InMemoryNativeControlBackend()
     let window = NSWindow(
@@ -5604,6 +5844,7 @@ func testWindowToolbarHeightFollowsDisplayMode() {
     expect(contentView.frame == NSMakeRect(0, 34, 320, 186), "Small toolbar mode did not update reserved content space.")
 }
 
+@MainActor
 func testEditableTextFieldUsesEditableNativePeer() {
     let backend = InMemoryNativeControlBackend()
     let textField = NSTextField(string: "Seed", frame: NSMakeRect(0, 0, 120, 24))
@@ -5614,6 +5855,7 @@ func testEditableTextFieldUsesEditableNativePeer() {
     expect(backend.records[handle]?.kind == "editableTextField", "Editable text field did not request editable native peer.")
 }
 
+@MainActor
 func testSecureTextFieldUsesSecureNativePeer() {
     let backend = InMemoryNativeControlBackend()
     let secureField = NSSecureTextField(string: "Secret", frame: NSMakeRect(0, 0, 160, 24))
@@ -5630,6 +5872,7 @@ func testSecureTextFieldUsesSecureNativePeer() {
     expect(backend.records[handle]?.text == "Changed", "Secure text field changes did not sync to backend.")
 }
 
+@MainActor
 func testTextViewUsesMultilineNativePeerAndStoresText() {
     let backend = InMemoryNativeControlBackend()
     let textView = NSTextView(frame: NSMakeRect(0, 0, 220, 80))
@@ -5648,6 +5891,7 @@ func testTextViewUsesMultilineNativePeerAndStoresText() {
     expect(backend.records[handle]?.text == "Reset", "Text view setString did not update backend.")
 }
 
+@MainActor
 func testTextFieldFactoryConstructorsAndCompatibilityProperties() {
     let label = NSTextField.label(withString: "Label")
     let wrappingLabel = NSTextField.wrappingLabel(withString: "Wrapped")
@@ -5690,6 +5934,7 @@ func testTextFieldFactoryConstructorsAndCompatibilityProperties() {
     expect(textField.maximumNumberOfLines == 0, "maximumNumberOfLines did not store unlimited.")
 }
 
+@MainActor
 func testTextFieldMultilineRealizesMultilineEdit() {
     let backend = InMemoryNativeControlBackend()
 
@@ -5712,6 +5957,7 @@ func testTextFieldMultilineRealizesMultilineEdit() {
     expect(backend.multilineTextFields[labelHandle] == false, "A non-editable label should not use a multi-line edit peer.")
 }
 
+@MainActor
 func testFormComposesTextFieldsAndStoresCells() {
     let backend = InMemoryNativeControlBackend()
     let form = NSForm(frame: NSMakeRect(0, 0, 260, 90))
@@ -5751,6 +5997,7 @@ func testFormComposesTextFieldsAndStoresCells() {
     expect(form.cell(at: 0) === status, "Form did not preserve remaining cell after removal.")
 }
 
+@MainActor
 func testMatrixComposesButtonsAndTracksSelection() {
     let backend = InMemoryNativeControlBackend()
     let matrix = NSMatrix(
@@ -5811,6 +6058,7 @@ func testMatrixComposesButtonsAndTracksSelection() {
     expect(matrix.selectedCell() == nil, "Matrix deselect did not clear selected cell.")
 }
 
+@MainActor
 func testSwitchButtonUsesCheckboxNativePeer() {
     let backend = InMemoryNativeControlBackend()
     let checkbox = NSButton(title: "Check", frame: NSMakeRect(0, 0, 120, 24))
@@ -5823,6 +6071,7 @@ func testSwitchButtonUsesCheckboxNativePeer() {
     expect(backend.records[handle]?.buttonState == .on, "Switch button state was not synced to backend.")
 }
 
+@MainActor
 func testRadioButtonUsesRadioNativePeer() {
     let backend = InMemoryNativeControlBackend()
     let radioButton = NSButton(title: "Radio", frame: NSMakeRect(0, 0, 120, 24))
@@ -5835,6 +6084,7 @@ func testRadioButtonUsesRadioNativePeer() {
     expect(backend.records[handle]?.buttonState == .on, "Radio button state was not synced to backend.")
 }
 
+@MainActor
 func testPopUpButtonUsesNativePeerAndSelection() {
     let backend = InMemoryNativeControlBackend()
     let popUpButton = NSPopUpButton(frame: NSMakeRect(0, 0, 140, 80), pullsDown: false)
@@ -5849,6 +6099,7 @@ func testPopUpButtonUsesNativePeerAndSelection() {
     expect(popUpButton.titleOfSelectedItem == "Warning", "Pop-up button selected title was not reported.")
 }
 
+@MainActor
 func testPopUpButtonNativeActionUpdatesSelection() {
     let backend = InMemoryNativeControlBackend()
     let popUpButton = NSPopUpButton(frame: NSMakeRect(0, 0, 140, 80), pullsDown: false)
@@ -5869,6 +6120,7 @@ func testPopUpButtonNativeActionUpdatesSelection() {
     expect(actionCount == 1, "Pop-up button action was not sent.")
 }
 
+@MainActor
 func testPopUpButtonItemLookupAndRemoval() {
     let popUpButton = NSPopUpButton(frame: NSMakeRect(0, 0, 140, 80), pullsDown: false)
 
@@ -5896,6 +6148,7 @@ func testPopUpButtonItemLookupAndRemoval() {
     expect(popUpButton.indexOfSelectedItem == -1, "Pop-up selected index was not cleared.")
 }
 
+@MainActor
 func testComboBoxStoresItemsTextAndUsesNativePeer() {
     let backend = InMemoryNativeControlBackend()
     let comboBox = NSComboBox(frame: NSMakeRect(0, 0, 180, 28))
@@ -5921,6 +6174,7 @@ final class ComboSource: NSComboBoxDataSource {
     func comboBox(_ comboBox: NSComboBox, objectValueForItemAt index: Int) -> Any? { values[index] }
 }
 
+@MainActor
 func testComboBoxDataSourceSuppliesItems() {
     let backend = InMemoryNativeControlBackend()
     let comboBox = NSComboBox(frame: NSMakeRect(0, 0, 180, 28))
@@ -5947,6 +6201,7 @@ func testComboBoxDataSourceSuppliesItems() {
     expect(!comboBox.hasVerticalScroller, "hasVerticalScroller did not store.")
 }
 
+@MainActor
 func testComboBoxNativeTextChangeAndActionUpdateState() {
     let backend = InMemoryNativeControlBackend()
     let comboBox = NSComboBox(frame: NSMakeRect(0, 0, 180, 28))
@@ -5972,6 +6227,7 @@ func testComboBoxNativeTextChangeAndActionUpdateState() {
     expect(actionCount == 1, "Combo box action callback did not fire.")
 }
 
+@MainActor
 func testTokenFieldStoresTokensAndTokenizesNativeText() {
     let backend = InMemoryNativeControlBackend()
     let tokenField = NSTokenField(tokens: ["Cocoa", "AppKit"], frame: NSMakeRect(0, 0, 220, 28))
@@ -6005,6 +6261,7 @@ func testTokenFieldStoresTokensAndTokenizesNativeText() {
     expect(chips.tokens == ["A", "B"], "Rounded token field did not keep its token model.")
 }
 
+@MainActor
 func testTokenFieldChipColorsAreAppearanceAware() {
     // The rounded chips must not stay a fixed light island in dark mode: the
     // whole palette (fill/border/text) flips with appearance, and the chip text
@@ -6022,6 +6279,7 @@ func testTokenFieldChipColorsAreAppearanceAware() {
         "The dark chip fill should be darker than the light one across all channels.")
 }
 
+@MainActor
 func testPathControlStoresURLAndPathComponentCells() {
     let backend = InMemoryNativeControlBackend()
     let pathControl = NSPathControl(
@@ -6042,6 +6300,7 @@ func testPathControlStoresURLAndPathComponentCells() {
     expect(pathControl.pathComponentCells.contains { $0.title == "Code" }, "Path control setURL did not refresh component cells.")
 }
 
+@MainActor
 func testPathControlComponentURLsAndSelection() {
     let pathControl = NSPathControl(
         url: URL(fileURLWithPath: "C:\\AIResearch\\WinChocolate\\Code"),
@@ -6154,6 +6413,7 @@ private final class SingleStringDecoder: Decoder {
     }
 }
 
+@MainActor
 func testWinFoundationUUIDCodableMatchesAppleForm() {
     let uuid = UUID(uuidString: "00112233-4455-6677-8899-AABBCCDDEEFF")!
 
@@ -6183,6 +6443,7 @@ func testWinFoundationUUIDCodableMatchesAppleForm() {
     expect(threw, "Decoding an invalid UUID string should throw a DecodingError.")
 }
 
+@MainActor
 func testWinFoundationCompatibilitySurface() {
     let url = URL(fileURLWithPath: "C:\\AIResearch\\WinChocolate\\")
     expect(url.path == "C:\\AIResearch\\WinChocolate\\", "WinFoundation URL did not preserve directory-style trailing separator.")
@@ -6393,6 +6654,7 @@ func testWinFoundationCompatibilitySurface() {
     center.removeObserver(wildcardToken)
 }
 
+@MainActor
 func testImageViewStoresImageAndUsesNativePeer() {
     let backend = InMemoryNativeControlBackend()
     let imageView = NSImageView(frame: NSMakeRect(0, 0, 64, 64))
@@ -6430,6 +6692,7 @@ func testImageViewStoresImageAndUsesNativePeer() {
     expect(backend.records[handle]?.text == "Resources/Updated.bmp\nscale fit, bottom right", "Image view scaling/alignment changes did not sync.")
 }
 
+@MainActor
 func testTabViewStoresItemsSelectionAndUsesNativePeer() {
     let backend = InMemoryNativeControlBackend()
     let tabView = NSTabView(frame: NSMakeRect(0, 0, 220, 80))
@@ -6452,6 +6715,7 @@ func testTabViewStoresItemsSelectionAndUsesNativePeer() {
     expect(backend.records[handle]?.tabViewSelectedIndex == 1, "Tab view selection was not synced.")
 }
 
+@MainActor
 func testTabViewNativeSelectionDispatchesAction() {
     let backend = InMemoryNativeControlBackend()
     let tabView = NSTabView(frame: NSMakeRect(0, 0, 220, 80))
@@ -6475,6 +6739,7 @@ func testTabViewNativeSelectionDispatchesAction() {
     expect(selectionCount == 1, "Native tab selection callback did not fire.")
 }
 
+@MainActor
 func testNativeButtonActionMakesButtonFirstResponder() {
     let backend = InMemoryNativeControlBackend()
     let window = NSWindow(
@@ -6506,6 +6771,7 @@ func testNativeButtonActionMakesButtonFirstResponder() {
     expect(actionCount == 1, "Native button action did not send action.")
 }
 
+@MainActor
 func testNativePopUpActionMakesPopUpFirstResponder() {
     let backend = InMemoryNativeControlBackend()
     let window = NSWindow(
@@ -6533,6 +6799,7 @@ func testNativePopUpActionMakesPopUpFirstResponder() {
     expect(backend.focusedHandle == handle, "Native pop-up action did not request native focus.")
 }
 
+@MainActor
 func testNativeTextChangeMakesEditableTextFieldFirstResponder() {
     let backend = InMemoryNativeControlBackend()
     let window = NSWindow(
@@ -6561,6 +6828,7 @@ func testNativeTextChangeMakesEditableTextFieldFirstResponder() {
     expect(textField.stringValue == "Typed", "Native text change did not update string value.")
 }
 
+@MainActor
 func testNativeTextChangeMakesSecureTextFieldFirstResponder() {
     let backend = InMemoryNativeControlBackend()
     let window = NSWindow(
@@ -6588,6 +6856,7 @@ func testNativeTextChangeMakesSecureTextFieldFirstResponder() {
     expect(secureField.stringValue == "Typed", "Native secure text change did not update string value.")
 }
 
+@MainActor
 func testNativeTextChangeMakesTextViewFirstResponder() {
     let backend = InMemoryNativeControlBackend()
     let window = NSWindow(
@@ -6620,6 +6889,7 @@ func testNativeTextChangeMakesTextViewFirstResponder() {
     expect(callbackText == "Typed\nMore", "Native text view change did not invoke callback.")
 }
 
+@MainActor
 func testBoxUsesNativePeerAndSyncsTitle() {
     let backend = InMemoryNativeControlBackend()
     let box = NSBox(title: "Group", frame: NSMakeRect(0, 0, 200, 120))
@@ -6631,6 +6901,7 @@ func testBoxUsesNativePeerAndSyncsTitle() {
     expect(backend.records[handle]?.text == "Updated Group", "Box title was not synced to backend.")
 }
 
+@MainActor
 func testColorValuesClampComponents() {
     let color = NSColor(calibratedRed: 2, green: -1, blue: 0.25, alpha: 3)
 
@@ -6640,6 +6911,7 @@ func testColorValuesClampComponents() {
     expect(color.alphaComponent == 1, "Color alpha component did not clamp high.")
 }
 
+@MainActor
 func testViewAndTextFieldColorsSyncToBackend() {
     let backend = InMemoryNativeControlBackend()
     let view = NSView(frame: NSMakeRect(0, 0, 100, 100))
@@ -6659,6 +6931,7 @@ func testViewAndTextFieldColorsSyncToBackend() {
     expect(backend.records[textHandle]?.backgroundColor == NSColor(calibratedRed: 0.9, green: 0.95, blue: 1, alpha: 1), "Text field background color was not synced.")
 }
 
+@MainActor
 func testVisualEffectViewStoresMaterialAndUsesFallbackBackground() {
     let backend = InMemoryNativeControlBackend()
     let effectView = NSVisualEffectView(frame: NSMakeRect(0, 0, 180, 80))
@@ -6680,6 +6953,7 @@ func testVisualEffectViewStoresMaterialAndUsesFallbackBackground() {
     expect(backend.records[handle]?.backgroundColor == effectView.backgroundColor, "Visual effect material change did not update fallback background.")
 }
 
+@MainActor
 func testAppearanceSwitchNotificationReresolvesCachedBackgrounds() {
     // Views that cache a resolved background brush (built once from the launch
     // appearance) must re-resolve it when the system theme switches live —
@@ -6716,6 +6990,7 @@ func testAppearanceSwitchNotificationReresolvesCachedBackgrounds() {
            "The toolbar strip should re-resolve light after a live switch. Got \(lightStrip).")
 }
 
+@MainActor
 func testFontValuesClampSizeAndSyncToBackend() {
     let backend = InMemoryNativeControlBackend()
     let textField = NSTextField(string: "Font", frame: NSMakeRect(0, 0, 120, 24))
@@ -6732,6 +7007,7 @@ func testFontValuesClampSizeAndSyncToBackend() {
 }
 
 
+@MainActor
 func testRemovingRealizedSubviewDestroysNativePeer() {
     let backend = InMemoryNativeControlBackend()
     let parent = NSView(frame: NSMakeRect(0, 0, 100, 100))
@@ -6749,6 +7025,7 @@ func testRemovingRealizedSubviewDestroysNativePeer() {
     expect(backend.records[childHandle] == nil, "Child native record was not destroyed.")
 }
 
+@MainActor
 func testMainMenuQuitItemTerminatesApplication() {
     let backend = InMemoryNativeControlBackend()
     let app = NSApplication(nativeBackend: backend)
@@ -6768,6 +7045,7 @@ func testMainMenuQuitItemTerminatesApplication() {
     expect(backend.didTerminateApplication, "Quit menu item did not terminate the application.")
 }
 
+@MainActor
 func testMenuItemInsertionLookupAndRemoval() {
     let menu = NSMenu(title: "File")
     let open = menu.addItem(withTitle: "Open", action: nil, keyEquivalent: "o")
@@ -6801,6 +7079,7 @@ func testMenuItemInsertionLookupAndRemoval() {
     expect(menu.numberOfItems == 0, "removeAllItems did not clear menu.")
 }
 
+@MainActor
 func testMenuItemStateAndSeparatorContracts() {
     let separator = NSMenuItem.separator()
     let item = NSMenuItem(title: "Toggle", action: nil, keyEquivalent: "t")
@@ -6818,6 +7097,7 @@ func testMenuItemStateAndSeparatorContracts() {
     expect(item.keyEquivalentModifierMask.contains(.shift), "Menu item shift modifier was not stored.")
 }
 
+@MainActor
 func testAlertReturnsFirstButtonInMemory() {
     NSApplication.shared.nativeBackend = InMemoryNativeControlBackend()
     let alert = NSAlert()
@@ -6829,6 +7109,7 @@ func testAlertReturnsFirstButtonInMemory() {
     expect(response == .alertFirstButtonReturn, "In-memory alert did not return first button.")
 }
 
+@MainActor
 func testAlertRestoresKeyWindowAndFirstResponder() {
     clearApplicationWindows()
 
@@ -6862,6 +7143,7 @@ func testAlertRestoresKeyWindowAndFirstResponder() {
     NSApplication.shared.nativeBackend = InMemoryNativeControlBackend()
 }
 
+@MainActor
 func testSavePanelMapsOptionsAndReturnsChosenURL() {
     let backend = InMemoryNativeControlBackend()
     let previousBackend = NSApplication.shared.nativeBackend
@@ -6895,6 +7177,7 @@ func testSavePanelMapsOptionsAndReturnsChosenURL() {
     expect(!options.allowsMultipleSelection, "Save panel must not request multiple selection.")
 }
 
+@MainActor
 func testSavePanelCancelReturnsCancelAndClearsURL() {
     let backend = InMemoryNativeControlBackend()
     let previousBackend = NSApplication.shared.nativeBackend
@@ -6912,6 +7195,7 @@ func testSavePanelCancelReturnsCancelAndClearsURL() {
     expect(panel.url == nil, "Cancelled save panel should not expose a URL.")
 }
 
+@MainActor
 func testOpenPanelSupportsMultipleSelectionAndDirectories() {
     let backend = InMemoryNativeControlBackend()
     let previousBackend = NSApplication.shared.nativeBackend
@@ -6940,6 +7224,7 @@ func testOpenPanelSupportsMultipleSelectionAndDirectories() {
     expect(options.canChooseFiles, "Open panel did not forward file choosing.")
 }
 
+@MainActor
 func testOpenPanelBeginInvokesCompletionHandler() {
     let backend = InMemoryNativeControlBackend()
     let previousBackend = NSApplication.shared.nativeBackend
@@ -6980,6 +7265,7 @@ final class DrawingTestView: NSView {
     }
 }
 
+@MainActor
 func testViewDrawDispatchesPathsToBackendContext() {
     let backend = InMemoryNativeControlBackend()
     let view = DrawingTestView(frame: NSMakeRect(0, 0, 60, 60))
@@ -7023,6 +7309,7 @@ final class TextAndImageDrawingTestView: NSView {
     }
 }
 
+@MainActor
 func testViewDrawDispatchesTextAndImagesToBackendContext() {
     let backend = InMemoryNativeControlBackend()
     let view = TextAndImageDrawingTestView(frame: NSMakeRect(0, 0, 80, 80))
@@ -7064,6 +7351,7 @@ final class GradientAndClipTestView: NSView {
     }
 }
 
+@MainActor
 func testGradientAndClipCommandsReachBackendContext() {
     let backend = InMemoryNativeControlBackend()
     let view = GradientAndClipTestView(frame: NSMakeRect(0, 0, 120, 60))
@@ -7097,6 +7385,7 @@ func testGradientAndClipCommandsReachBackendContext() {
     expect(recording.fills.first?.color == .green, "Clipped fill did not carry its color.")
 }
 
+@MainActor
 func testUndoManagerRegistersUndoAndRedo() {
     final class Counter {
         var value = 0
@@ -7149,6 +7438,7 @@ func testUndoManagerRegistersUndoAndRedo() {
     expect(!limited.canUndo, "levelsOfUndo did not cap the undo stack.")
 }
 
+@MainActor
 func testTextViewUndoRestoresPreviousText() {
     let backend = InMemoryNativeControlBackend()
     let textView = NSTextView(frame: NSMakeRect(0, 0, 200, 80))
@@ -7213,6 +7503,7 @@ final class SplitResizeRecorder: NSSplitViewDelegate {
     }
 }
 
+@MainActor
 func testSplitViewDividerDragResizesPanes() {
     let backend = InMemoryNativeControlBackend()
     let split = NSSplitView(frame: NSMakeRect(0, 0, 208, 100))
@@ -7259,6 +7550,7 @@ final class CursorRectTestView: NSView {
     }
 }
 
+@MainActor
 func testCursorRectsFlowToBackendRegions() {
     let backend = InMemoryNativeControlBackend()
     let view = CursorRectTestView(frame: NSMakeRect(0, 0, 100, 100))
@@ -7300,6 +7592,7 @@ final class AutosaveTestDocument: NSDocument {
     }
 }
 
+@MainActor
 func testDocumentWindowCloseAsksToSaveAndAutosaves() {
     clearApplicationWindows()
     defer {
@@ -7356,6 +7649,7 @@ func testDocumentWindowCloseAsksToSaveAndAutosaves() {
     expect(!NSDocumentController.shared.documents.contains { $0 === document }, "Closing the last window did not close the document.")
 }
 
+@MainActor
 func testFileManagerCoversDocumentAppNeeds() {
     let manager = FileManager.default
     let root = manager.temporaryDirectory.appendingPathComponent("WinChocolateFMTest")
@@ -7444,6 +7738,7 @@ func testFileManagerCoversDocumentAppNeeds() {
     expect(manager.fileExists(atPath: documents[0].path), "The resolved Documents folder does not exist.")
 }
 
+@MainActor
 func testScrollToVisibleMovesTheClipView() {
     let backend = InMemoryNativeControlBackend()
     let scrollView = NSScrollView(frame: NSMakeRect(0, 0, 100, 100))
@@ -7471,6 +7766,7 @@ func testScrollToVisibleMovesTheClipView() {
     expect(!orphan.scrollToVisible(orphan.bounds), "scrollToVisible without a scroll view should report false.")
 }
 
+@MainActor
 func testTimerSchedulesFiresAndInvalidates() {
     let application = NSApplication.shared
     let backend = InMemoryNativeControlBackend()
@@ -7510,6 +7806,7 @@ func testTimerSchedulesFiresAndInvalidates() {
     expect(backend.canceledTimerIdentifiers.contains(oneShotIdentifier), "A one-shot timer did not cancel its native timer after firing.")
 }
 
+@MainActor
 func testTextViewFindAndReplace() {
     let backend = InMemoryNativeControlBackend()
     let textView = NSTextView(frame: NSMakeRect(0, 0, 300, 100))
@@ -7569,6 +7866,7 @@ final class KeyEquivalentTestView: NSView {
     }
 }
 
+@MainActor
 func testViewChainSeesKeyEquivalentsBeforeMenu() {
     clearApplicationWindows()
     defer {
@@ -7649,6 +7947,7 @@ final class NoteTestDocument: NSDocument {
     }
 }
 
+@MainActor
 func testDocumentWindowControllersSyncTitles() {
     clearApplicationWindows()
     defer {
@@ -7683,6 +7982,7 @@ func testDocumentWindowControllersSyncTitles() {
     expect(document.windowControllers.isEmpty, "close did not release the window controllers.")
 }
 
+@MainActor
 func testDocumentControllerNewDocumentMakesAndShowsWindows() {
     clearApplicationWindows()
     defer {
@@ -7706,6 +8006,7 @@ func testDocumentControllerNewDocumentMakesAndShowsWindows() {
     expect(!shared.documents.contains { $0 === document }, "close did not remove the document from the controller.")
 }
 
+@MainActor
 func testAttributedStringStoresStringAndAttributes() {
     let plain = NSAttributedString(string: "Plain")
     expect(plain.string == "Plain", "Attributed string did not store its characters.")
@@ -7754,6 +8055,7 @@ final class EventRecordingView: NSView {
     }
 }
 
+@MainActor
 func testRightMouseScrollAndClickCountReachTheView() {
     let backend = InMemoryNativeControlBackend()
     let view = EventRecordingView(frame: NSMakeRect(0, 0, 50, 50))
@@ -7770,6 +8072,7 @@ func testRightMouseScrollAndClickCountReachTheView() {
     expect(view.lastScrollDeltaY == -2, "Scroll wheel delta did not reach scrollWheel.")
 }
 
+@MainActor
 func testAlertCustomButtonsRunComposedModalPanel() {
     let backend = InMemoryNativeControlBackend()
     let previousBackend = NSApplication.shared.nativeBackend
@@ -7796,6 +8099,7 @@ func testAlertCustomButtonsRunComposedModalPanel() {
     expect(alert.suppressionButton?.state == .on, "Alert suppression button state was not preserved.")
 }
 
+@MainActor
 func testRunModalReturnsScriptedStopCode() {
     let backend = InMemoryNativeControlBackend()
     let window = NSWindow(
@@ -7835,6 +8139,7 @@ final class OtherMouseRecordingView: NSView {
     }
 }
 
+@MainActor
 func testOtherMouseButtonsReachTheView() {
     let backend = InMemoryNativeControlBackend()
     let view = OtherMouseRecordingView(frame: NSMakeRect(0, 0, 50, 50))
@@ -7854,6 +8159,7 @@ func testOtherMouseButtonsReachTheView() {
     expect(container.otherDownCount == 1, "Other mouse-down did not forward to the next responder.")
 }
 
+@MainActor
 func testMenuPerformKeyEquivalentMatchesControlAsCommand() {
     let menu = NSMenu(title: "Main")
     let fileItem = NSMenuItem(title: "File", action: nil, keyEquivalent: "")
@@ -7895,6 +8201,7 @@ func testMenuPerformKeyEquivalentMatchesControlAsCommand() {
     expect(savedCount == 3, "Backend key-equivalent handler did not perform the menu action.")
 }
 
+@MainActor
 func testMenuPopUpPerformsScriptedContextSelection() {
     let backend = InMemoryNativeControlBackend()
     let view = NSView(frame: NSMakeRect(0, 0, 100, 100))
@@ -7921,6 +8228,7 @@ func testMenuPopUpPerformsScriptedContextSelection() {
     expect(backend.poppedContextMenus.count == 2, "Cancelled context menu pop was not recorded.")
 }
 
+@MainActor
 func testCursorSetPushPopSyncToBackend() {
     let backend = InMemoryNativeControlBackend()
     let previousBackend = NSApplication.shared.nativeBackend
@@ -7943,6 +8251,7 @@ func testCursorSetPushPopSyncToBackend() {
     expect(NSCursor.current === NSCursor.iBeam, "Cursor pop did not update the current cursor.")
 }
 
+@MainActor
 func testProgressIndicatorIndeterminateSyncsToBackend() {
     let backend = InMemoryNativeControlBackend()
     let indicator = NSProgressIndicator(frame: NSMakeRect(0, 0, 120, 18))
@@ -7975,6 +8284,7 @@ final class RecordingTextViewDelegate: NSTextViewDelegate {
     }
 }
 
+@MainActor
 func testTextViewSelectionInsertionAndDelegate() {
     let backend = InMemoryNativeControlBackend()
     let textView = NSTextView(frame: NSMakeRect(0, 0, 240, 100))
@@ -8040,6 +8350,7 @@ final class TextContractDocument: NSDocument {
     }
 }
 
+@MainActor
 func testDocumentChangeCountAndOverridableDefaults() {
     let document = NSDocument()
 
@@ -8064,6 +8375,7 @@ func testDocumentChangeCountAndOverridableDefaults() {
     expect(document.displayName == "Report.txt", "Saved document did not use the file name as display name.")
 }
 
+@MainActor
 func testDocumentSavePanelFlowWritesAndReadsBack() {
     let backend = InMemoryNativeControlBackend()
     let previousBackend = NSApplication.shared.nativeBackend
@@ -8116,6 +8428,7 @@ func testDocumentSavePanelFlowWritesAndReadsBack() {
     expect(backend.fileDialogRequests.count == 2, "saveAs did not force a save panel.")
 }
 
+@MainActor
 func testDocumentControllerTracksDocumentsRecentsAndOpen() {
     let backend = InMemoryNativeControlBackend()
     let previousBackend = NSApplication.shared.nativeBackend
@@ -8225,6 +8538,7 @@ final class RecordingTextFieldDelegate: NSTextFieldDelegate {
     }
 }
 
+@MainActor
 func testTextFieldFormatterDisplaysAndParses() {
     let backend = InMemoryNativeControlBackend()
     let field = NSTextField(string: "", frame: NSMakeRect(0, 0, 120, 24))
@@ -8255,6 +8569,7 @@ func testTextFieldFormatterDisplaysAndParses() {
     expect(field.stringValue == "$99.50", "Field did not revert unparseable input to the last valid value.")
 }
 
+@MainActor
 func testNSNumberBoxing() {
     // Integers round-trip exactly and read as other widths.
     let three = NSNumber(value: 3)
@@ -8283,6 +8598,7 @@ func testNSNumberBoxing() {
     expect(seen.contains(NSNumber(value: 5.0)), "NSNumber hashing should match equal values.")
 }
 
+@MainActor
 func testNumberFormatterStylesAndParsing() {
     // Plain style: no grouping, no fraction.
     let plain = NumberFormatter()
@@ -8318,6 +8634,7 @@ func testNumberFormatterStylesAndParsing() {
     expect(decimal.string(for: "x") == nil, "string(for: unsupported) should be nil.")
 }
 
+@MainActor
 func testLocaleSystemPatterns() {
     // The current locale is read from the system and exposes usable patterns.
     let locale = Locale.current
@@ -8336,6 +8653,7 @@ func testLocaleSystemPatterns() {
     expect(formatter.string(from: date) == "6/1/2026", "Short style did not produce the US short date.")
 }
 
+@MainActor
 func testDateFormatterPatternsAndRoundTrip() {
     let formatter = DateFormatter()
 
@@ -8388,6 +8706,7 @@ func testDateFormatterPatternsAndRoundTrip() {
     expect(formatter.date(from: "not a date") == nil, "Bad input should parse to nil.")
 }
 
+@MainActor
 func testWindowMovableByBackgroundAndPanelKeyAndColorWell() {
     let backend = InMemoryNativeControlBackend()
     let previousBackend = NSApplication.shared.nativeBackend
@@ -8458,6 +8777,7 @@ func testWindowMovableByBackgroundAndPanelKeyAndColorWell() {
     expect(well.colorWellStyle == .minimal && !well.isBordered, "Color well style/border did not update.")
 }
 
+@MainActor
 func testDatePickerElementFormats() {
     let backend = InMemoryNativeControlBackend()
 
@@ -8488,6 +8808,7 @@ func testDatePickerElementFormats() {
     expect(stringPicker.stringValue == "6/1/2026", "Date-only stringValue was not the US short date.")
 }
 
+@MainActor
 func testButtonImageAndAlternateTitle() {
     let backend = InMemoryNativeControlBackend()
 
@@ -8515,6 +8836,7 @@ func testButtonImageAndAlternateTitle() {
     expect(backend.records[handle]?.buttonImagePath == nil, "Clearing the button image did not reach the backend.")
 }
 
+@MainActor
 func testTextFieldDelegateEditingCallbacks() {
     let backend = InMemoryNativeControlBackend()
     let field = NSTextField(string: "", frame: NSMakeRect(0, 0, 160, 24))
@@ -8543,6 +8865,7 @@ func testTextFieldDelegateEditingCallbacks() {
     expect(backend.focusChangeActions[labelHandle] == nil, "A label registered an editing focus watch.")
 }
 
+@MainActor
 func testPopUpButtonTagsAndPullsDown() {
     let popUp = NSPopUpButton(frame: NSMakeRect(0, 0, 120, 24), pullsDown: true)
     expect(popUp.pullsDown, "pullsDown flag was not retained from the initializer.")
@@ -8567,6 +8890,7 @@ func testPopUpButtonTagsAndPullsDown() {
     expect(popUp.indexOfItem(withTag: 10) == -1, "Removed item's tag lingered.")
 }
 
+@MainActor
 func testAlertHelpAndIconConfiguration() {
     let alert = NSAlert()
     alert.messageText = "Delete the file?"
@@ -8597,6 +8921,7 @@ func testAlertHelpAndIconConfiguration() {
     expect(alert.icon != nil, "Custom alert icon was not stored.")
 }
 
+@MainActor
 func testCommonControlDepthWiresToBackend() {
     let backend = InMemoryNativeControlBackend()
 
@@ -8660,6 +8985,7 @@ func testCommonControlDepthWiresToBackend() {
     expect(backend.records[levelHandle]?.progressBarColor == .red, "Critical threshold did not turn the bar red.")
 }
 
+@MainActor
 func testSegmentedControlKeyboardSelection() {
     let segmented = NSSegmentedControl(labels: ["One", "Two", "Three"], frame: NSMakeRect(0, 0, 180, 24))
     segmented.trackingMode = .selectOne
@@ -8686,6 +9012,7 @@ func testSegmentedControlKeyboardSelection() {
     expect(segmented.selectedSegment == 1, "Left arrow did not skip the disabled first segment.")
 }
 
+@MainActor
 func testWindowSizeLimitsAndPopoverDismiss() {
     let backend = InMemoryNativeControlBackend()
     let previousBackend = NSApplication.shared.nativeBackend
@@ -8729,6 +9056,7 @@ func testWindowSizeLimitsAndPopoverDismiss() {
     expect(backend.outsideClickDismissHandle == nil, "Dismiss watch was not torn down after closing.")
 }
 
+@MainActor
 func testFontTraitsWeightsAndDescriptor() {
     // Italic and the extended weight scale round-trip through NSFont.
     let base = NSFont(name: "Georgia", size: 14)
@@ -8773,6 +9101,7 @@ func testFontTraitsWeightsAndDescriptor() {
     expect(format?.font?.weight == .bold, "Bold-italic font lost its weight.")
 }
 
+@MainActor
 func testMutableAttributedStringRunsAndEnumeration() {
     let text = NSMutableAttributedString(string: "Hello World")
     expect(text.length == 11, "Length did not count UTF-16 units.")
@@ -8826,6 +9155,7 @@ func testMutableAttributedStringRunsAndEnumeration() {
     expect((substring.attribute(.foregroundColor, at: 1, effectiveRange: nil) as? NSColor) == .red, "attributedSubstring dropped run attributes.")
 }
 
+@MainActor
 func testTextStorageAppliesRunsToTextView() {
     let backend = InMemoryNativeControlBackend()
     let textView = NSTextView(frame: NSMakeRect(0, 0, 300, 100))
@@ -8856,6 +9186,7 @@ func testTextStorageAppliesRunsToTextView() {
     expect(storage.string == "typed text", "Native editing did not sync the text storage.")
 }
 
+@MainActor
 func testRTFWriterEmitsTablesRunsAndEscapes() {
     let text = NSMutableAttributedString(string: "Bold red — ok")
     text.addAttribute(.font, value: NSFont(name: "Georgia", size: 14, weight: .bold), range: NSMakeRange(0, 4))
@@ -8897,6 +9228,7 @@ func testRTFWriterEmitsTablesRunsAndEscapes() {
     expect(NSPasteboard.general.data(forType: .rtf) != nil, "Rich copy did not stage RTF data.")
 }
 
+@MainActor
 func testPasteboardAndTextViewClipboardActions() {
     let backend = InMemoryNativeControlBackend()
     let previousBackend = NSApplication.shared.nativeBackend
@@ -8972,6 +9304,7 @@ func testPasteboardAndTextViewClipboardActions() {
     expect(textView.string == "WorldHello ", "Cut modified a read-only text view.")
 }
 
+@MainActor
 func testRichTextViewAppliesRangeFormatting() {
     let backend = InMemoryNativeControlBackend()
     let manager = NSFontManager.shared
@@ -9015,6 +9348,7 @@ func testRichTextViewAppliesRangeFormatting() {
     expect(backend.records[handle]?.textRangeFormats.count == 3, "Plain-text changeFont leaked range formatting.")
 }
 
+@MainActor
 func testScrollViewWheelScrollingMovesContent() {
     let backend = InMemoryNativeControlBackend()
     let scrollView = NSScrollView(frame: NSMakeRect(0, 0, 200, 100))
@@ -9051,6 +9385,7 @@ func testScrollViewWheelScrollingMovesContent() {
     expect(scrollView.contentView.boundsOrigin.y == 300, "Wheel scroll did not clamp at the document bottom.")
 }
 
+@MainActor
 func testScrollViewMagnificationScalesGeometryAndDrawing() {
     let backend = InMemoryNativeControlBackend()
     let scrollView = NSScrollView(frame: NSMakeRect(0, 0, 200, 100))
@@ -9094,6 +9429,7 @@ func testScrollViewMagnificationScalesGeometryAndDrawing() {
     expect(scrollView.magnification == 2, "magnify(toFit:) did not compute the fitting magnification.")
 }
 
+@MainActor
 func testFloatingPanelStateReachesBackend() {
     let backend = InMemoryNativeControlBackend()
     let panel = NSPanel(
@@ -9135,6 +9471,7 @@ func testFloatingPanelStateReachesBackend() {
     expect(NSApplication.shared.mainWindow !== panel, "A panel became the application's main window.")
 }
 
+@MainActor
 func testColorPanelFloatsAndAppliesColorsLive() {
     let backend = InMemoryNativeControlBackend()
     let previousBackend = NSApplication.shared.nativeBackend
@@ -9209,6 +9546,7 @@ func testColorPanelFloatsAndAppliesColorsLive() {
     expect(colorWell.color == .white, "Deactivated color well still received panel colors.")
 }
 
+@MainActor
 func testFontPanelLiveApplyThroughFontManager() {
     let backend = InMemoryNativeControlBackend()
     let previousBackend = NSApplication.shared.nativeBackend
@@ -9302,6 +9640,7 @@ final class RealizationRecordingView: NSView {
     }
 }
 
+@MainActor
 func testAlertAccessoryViewJoinsComposedPanel() {
     let backend = InMemoryNativeControlBackend()
     let previousBackend = NSApplication.shared.nativeBackend
@@ -9339,6 +9678,7 @@ final class RecordingMenuValidator: NSMenuItemValidation {
     }
 }
 
+@MainActor
 func testSavePanelSheetPassesAnchorFrame() {
     clearApplicationWindows()
 
@@ -9372,6 +9712,7 @@ func testSavePanelSheetPassesAnchorFrame() {
     _ = panel.runModal()
     expect(backend.fileDialogRequests.last?.anchorFrame == nil, "Plain runModal should not anchor the dialog.")
 }
+@MainActor
 func testMenuUpdateRunsValidationAndAutoenables() {
     let menu = NSMenu(title: "Edit")
     let validator = RecordingMenuValidator()
@@ -9405,6 +9746,7 @@ func testMenuUpdateRunsValidationAndAutoenables() {
     expect(validated.isEnabled == false, "Manual enablement was overridden with autoenablesItems off.")
 }
 
+@MainActor
 func testStringSizeUsesBackendTextMetrics() {
     let backend = InMemoryNativeControlBackend()
     let previousBackend = NSApplication.shared.nativeBackend
@@ -9418,6 +9760,7 @@ func testStringSizeUsesBackendTextMetrics() {
     expect(size.height == 20 * 1.35, "String measurement height did not route through the backend metrics.")
 }
 
+@MainActor
 func testWindowSheetPositionsRunsModalAndEndsWithCode() {
     clearApplicationWindows()
 
@@ -9460,6 +9803,7 @@ func testWindowSheetPositionsRunsModalAndEndsWithCode() {
     expect(sheet.nativeHandle == nil, "endSheet did not close the sheet window.")
 }
 
+@MainActor
 func testAlertBeginSheetModalDeliversResponse() {
     clearApplicationWindows()
 
@@ -9503,6 +9847,9 @@ testGridViewContentSizingAndPlacement()
 testGridViewHiddenStructureAndSolver()
 testGridViewCellMergingSpans()
 testStackViewCustomSpacingAndHiddenViews()
+testAspectRatioCrossAxisConstraints()
+testLayoutMarginsGuideInsetsChild()
+testControlIntrinsicContentSizes()
 testAutoLayoutResizeReflowsConstraints()
 testAutoLayoutSiblingChainInequalityAndFixedAnchor()
 testWindowTitleVisibilityBlanksCaption()
@@ -9765,6 +10112,7 @@ testColorPanelFloatsAndAppliesColorsLive()
 testFontPanelLiveApplyThroughFontManager()
 testAlertAccessoryViewJoinsComposedPanel()
 
+@MainActor
 func testSourceCompatSurfaceGeometryColorFontImageView() {
     // Geometry: CoreGraphics aliases and Swift-idiomatic rect members.
     let rect: CGRect = CGRect(x: 10, y: 20, width: 100, height: 40)
@@ -9838,6 +10186,7 @@ func testSourceCompatSurfaceGeometryColorFontImageView() {
 
 testSourceCompatSurfaceGeometryColorFontImageView()
 
+@MainActor
 func testAlertButtonsCarryTagsKeyEquivalentsAndErrorInit() {
     // Buttons array holds the real button objects with AppKit response tags and
     // default key equivalents.
@@ -9882,6 +10231,7 @@ func testAlertButtonsCarryTagsKeyEquivalentsAndErrorInit() {
 
 testAlertButtonsCarryTagsKeyEquivalentsAndErrorInit()
 
+@MainActor
 func testColorPanelHSBModeAndAlpha() {
     let backend = InMemoryNativeControlBackend()
     let previousBackend = NSApplication.shared.nativeBackend
@@ -9922,6 +10272,7 @@ func testColorPanelHSBModeAndAlpha() {
 
 testColorPanelHSBModeAndAlpha()
 
+@MainActor
 func testSpinningIndicatorUsesCustomViewAndTimerSweep() {
     let backend = InMemoryNativeControlBackend()
     let previousBackend = NSApplication.shared.nativeBackend
@@ -9971,6 +10322,7 @@ final class TemplateImageDrawingTestView: NSView {
     }
 }
 
+@MainActor
 func testTemplateImagesTintInDrawAndImageView() {
     let backend = InMemoryNativeControlBackend()
 
@@ -10001,6 +10353,7 @@ func testTemplateImagesTintInDrawAndImageView() {
 
 testTemplateImagesTintInDrawAndImageView()
 
+@MainActor
 func testParagraphStyleAlignmentAndRTFRoundTrip() {
     // Paragraph styles: mutable copy semantics and value equality.
     let paragraph = NSMutableParagraphStyle()
@@ -10060,6 +10413,7 @@ func testParagraphStyleAlignmentAndRTFRoundTrip() {
 
 testParagraphStyleAlignmentAndRTFRoundTrip()
 
+@MainActor
 func testPasteboardObjectsAndFileURLs() {
     let backend = InMemoryNativeControlBackend()
     let previousBackend = NSApplication.shared.nativeBackend
@@ -10122,6 +10476,7 @@ final class HoverRecordingView: NSView {
     }
 }
 
+@MainActor
 func testTrackingAreasDeliverEnterAndExit() {
     let backend = InMemoryNativeControlBackend()
     let view = HoverRecordingView(frame: NSMakeRect(0, 0, 100, 100))
@@ -10177,6 +10532,7 @@ final class WindowStateRecordingDelegate: NSWindowDelegate {
     func windowDidDeminiaturize(_ notification: NSNotification) { deminiaturized += 1 }
 }
 
+@MainActor
 func testScreensAndWindowStateDepth() {
     let backend = InMemoryNativeControlBackend()
     backend.testScreens = [
@@ -10287,6 +10643,7 @@ final class TextDragSource: NSDraggingSource {
     }
 }
 
+@MainActor
 func testDragAndDropDestinationAndSource() {
     let backend = InMemoryNativeControlBackend()
 
@@ -10342,6 +10699,7 @@ final class PrintableTestView: NSView {
     }
 }
 
+@MainActor
 func testPrintOperationRendersViewDrawing() {
     let backend = InMemoryNativeControlBackend()
     let previousBackend = NSApplication.shared.nativeBackend
@@ -10380,6 +10738,7 @@ func testPrintOperationRendersViewDrawing() {
 
 testPrintOperationRendersViewDrawing()
 
+@MainActor
 func testTableViewMultipleSelectionEditingAndSorting() {
     let backend = InMemoryNativeControlBackend()
     let tableView = NSTableView(frame: NSMakeRect(0, 0, 300, 160))
@@ -10454,6 +10813,7 @@ final class ViewBasedTableDelegate: NSTableViewDelegate {
     }
 }
 
+@MainActor
 func testViewBasedTableHostsCellViews() {
     let backend = InMemoryNativeControlBackend()
     let tableView = NSTableView(frame: NSMakeRect(0, 0, 300, 200))
@@ -10503,6 +10863,7 @@ final class ManyRowTableDataSource: NSTableViewDataSource {
     func tableView(_ tableView: NSTableView, objectValueFor tableColumn: NSTableColumn?, row: Int) -> Any? { "row \(row)" }
 }
 
+@MainActor
 func testDrawnTableClipsCellTextToColumns() {
     let backend = InMemoryNativeControlBackend()
     let tableView = NSTableView(frame: NSMakeRect(0, 0, 200, 200))
@@ -10538,6 +10899,7 @@ final class LongTextTableDataSource: NSTableViewDataSource {
     }
 }
 
+@MainActor
 func testDrawnTableTruncatesLongCellTextWithEllipsis() {
     // Use the in-memory backend for text measurement so truncation is
     // deterministic (width = characters × pointSize × 0.55).
@@ -10582,6 +10944,7 @@ final class RecyclingCellDelegate: NSTableViewDelegate {
     }
 }
 
+@MainActor
 func testDrawnTableRecyclesCellViewsViaMakeView() {
     let backend = InMemoryNativeControlBackend()
     let tableView = NSTableView(frame: NSMakeRect(0, 0, 200, 200))
@@ -10619,6 +10982,7 @@ final class AttributedCellTableDataSource: NSTableViewDataSource {
     }
 }
 
+@MainActor
 func testDrawnTableRendersAttributedCellValue() {
     let backend = InMemoryNativeControlBackend()
     let tableView = NSTableView(frame: NSMakeRect(0, 0, 120, 100))
@@ -10641,6 +11005,7 @@ func testDrawnTableRendersAttributedCellValue() {
     expect(tableView.value(atColumn: 0, row: 0) == "Alert", "Attributed value's plain string was not cached.")
 }
 
+@MainActor
 func testTableColumnAutoresizing() {
     let backend = InMemoryNativeControlBackend()
     let tableView = NSTableView(frame: NSMakeRect(0, 0, 300, 100))
@@ -10680,6 +11045,7 @@ func testTableColumnAutoresizing() {
     expect(colA.width == 50 && colB.width == 50, "sizeToFit resized columns with autoresizing off.")
 }
 
+@MainActor
 func testDrawnTableScrollsAsScrollViewDocument() {
     let backend = InMemoryNativeControlBackend()
     let scrollView = NSScrollView(frame: NSMakeRect(0, 0, 300, 120))
@@ -10721,6 +11087,7 @@ testDrawnTableRendersAttributedCellValue()
 testDrawnTableRecyclesCellViewsViaMakeView()
 testTableColumnAutoresizing()
 
+@MainActor
 func testDrawnTablePinnedHeaderStaysAndSorts() {
     let backend = InMemoryNativeControlBackend()
     let scrollView = NSScrollView(frame: NSMakeRect(0, 0, 300, 120))
@@ -10762,6 +11129,7 @@ func testDrawnTablePinnedHeaderStaysAndSorts() {
 
 testDrawnTablePinnedHeaderStaysAndSorts()
 
+@MainActor
 func testDrawnTableHeaderColumnResize() {
     let backend = InMemoryNativeControlBackend()
     let scrollView = NSScrollView(frame: NSMakeRect(0, 0, 320, 120))
@@ -10799,6 +11167,7 @@ func testDrawnTableHeaderColumnResize() {
 
 testDrawnTableHeaderColumnResize()
 
+@MainActor
 func testDrawnTableHeaderColumnReorder() {
     func makeTable() -> (NSScrollView, NSTableView, NSView) {
         let backend = InMemoryNativeControlBackend()
@@ -10855,6 +11224,7 @@ final class VariableHeightTableDelegate: NSTableViewDelegate {
     }
 }
 
+@MainActor
 func testDrawnTableHonorsVariableRowHeights() {
     let backend = InMemoryNativeControlBackend()
     let tableView = NSTableView(frame: NSMakeRect(0, 0, 300, 400))
@@ -10921,6 +11291,7 @@ final class EditableDrawnDelegate: NSTableViewDelegate {
     }
 }
 
+@MainActor
 func testDrawnTableInPlaceEditCommitsToDataSource() {
     let backend = InMemoryNativeControlBackend()
     let tableView = NSTableView(frame: NSMakeRect(0, 0, 300, 200))
@@ -10980,6 +11351,7 @@ func testDrawnTableInPlaceEditCommitsToDataSource() {
 
 testDrawnTableInPlaceEditCommitsToDataSource()
 
+@MainActor
 func testDrawnTableReturnKeyBeginsEditingSelectedRow() {
     let backend = InMemoryNativeControlBackend()
     let tableView = NSTableView(frame: NSMakeRect(0, 0, 300, 200))
@@ -11043,6 +11415,7 @@ final class RowViewTableDelegate: NSTableViewDelegate {
     }
 }
 
+@MainActor
 func testDrawnTableHostsRowViewsWithSelectionFill() {
     let backend = InMemoryNativeControlBackend()
     let tableView = NSTableView(frame: NSMakeRect(0, 0, 300, 200))
@@ -11093,6 +11466,7 @@ func testDrawnTableHostsRowViewsWithSelectionFill() {
 
 testDrawnTableHostsRowViewsWithSelectionFill()
 
+@MainActor
 func testTableViewAutoDetectsViewBasedModeFromDelegate() {
     let backend = InMemoryNativeControlBackend()
 
@@ -11147,6 +11521,7 @@ final class DropTargetTableDataSource: NSTableViewDataSource {
     }
 }
 
+@MainActor
 func testDrawnTableAcceptsExternalRowDrop() {
     let backend = InMemoryNativeControlBackend()
     let tableView = NSTableView(frame: NSMakeRect(0, 0, 200, 200))
@@ -11191,6 +11566,7 @@ final class PasteboardRowDataSource: NSTableViewDataSource {
     func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> Any? { items[row] }
 }
 
+@MainActor
 func testDrawnTableRowDragsOutViaPasteboardWriter() {
     let backend = InMemoryNativeControlBackend()
     let tableView = NSTableView(frame: NSMakeRect(0, 0, 200, 300))
@@ -11229,6 +11605,7 @@ func testDrawnTableRowDragsOutViaPasteboardWriter() {
     expect(backend2.performedDrags.isEmpty, "A row with no pasteboard writer should not start a system drag.")
 }
 
+@MainActor
 func testDrawnTableRowReorderDragMovesRow() {
     let backend = InMemoryNativeControlBackend()
     let tableView = NSTableView(frame: NSMakeRect(0, 0, 200, 300))
@@ -11265,6 +11642,7 @@ func testDrawnTableRowReorderDragMovesRow() {
            "Row reorder did not move 'bravo' after 'charlie'. Got \(dataSource.items).")
 }
 
+@MainActor
 func testDrawnTableMultiRowReorderMovesSelection() {
     let backend = InMemoryNativeControlBackend()
     let tableView = NSTableView(frame: NSMakeRect(0, 0, 200, 300))
@@ -11298,6 +11676,7 @@ func testDrawnTableMultiRowReorderMovesSelection() {
            "Multi-row reorder did not move the selection to the end. Got \(dataSource.items).")
 }
 
+@MainActor
 func testTableHeaderViewTracksClickedColumnAndGeometry() {
     let backend = InMemoryNativeControlBackend()
     let tableView = NSTableView(frame: NSMakeRect(0, 0, 300, 160))
@@ -11347,6 +11726,7 @@ final class LayoutCountingView: NSView {
     }
 }
 
+@MainActor
 func testNeedsLayoutArmsCoalescedPumpFlush() {
     clearApplicationWindows()
     let previousBackend = NSApplication.shared.nativeBackend
