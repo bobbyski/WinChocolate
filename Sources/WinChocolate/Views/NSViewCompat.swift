@@ -25,7 +25,10 @@ extension NSView {
         rect.contains(point)
     }
 
-    /// Flags the view's intrinsic size as stale. A no-op until intrinsic-size
-    /// participation (plan 9.2) lands, but keeps call sites source-compatible.
-    public func invalidateIntrinsicContentSize() {}
+    /// Flags the view's intrinsic size as stale, scheduling a layout pass so the
+    /// solver re-reads `intrinsicContentSize` (9.2). A control whose content
+    /// (e.g. text) changed its natural size calls this to re-lay-out.
+    public func invalidateIntrinsicContentSize() {
+        needsLayout = true
+    }
 }

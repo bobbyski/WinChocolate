@@ -404,6 +404,48 @@ open class NSMutableAttributedString: NSAttributedString {
     }
 }
 
+extension NSAttributedString {
+    /// Returns the bounding size of the attributed text: run widths sum
+    /// along a line, the height is the tallest run's.
+    public func size() -> NSSize {
+        var width: CGFloat = 0
+        var height: CGFloat = 0
+        enumerateWinRuns { text, attributes in
+            let runSize = text.size(withAttributes: attributes)
+            width += runSize.width
+            height = max(height, runSize.height)
+        }
+        return NSSize(width: width, height: height)
+    }
+
+    /// Draws the attributed text with its top-left corner at a point in the
+    /// current graphics context, advancing across runs.
+    public func draw(at point: NSPoint) {
+        var x = point.x
+        enumerateWinRuns { text, attributes in
+            text.draw(at: NSPoint(x: x, y: point.y), withAttributes: attributes)
+            x += text.size(withAttributes: attributes).width
+        }
+    }
+
+    // Walks the attribute runs as (text, attributes) pairs.
+    private func enumerateWinRuns(_ body: (String, [Key: Any]) -> Void) {
+        var location = 0
+        for run in runs {
+            let runUnits = Array(units[location..<(location + run.length)])
+            body(String(decoding: runUnits, as: UTF16.self), run.attributes)
+            location += run.length
+        }
+    }
+}
+
+extension NSMutableAttributedString {
+    /// Creates an empty mutable attributed string, matching AppKit's shape.
+    public convenience init() {
+        self.init(string: "")
+    }
+}
+
 extension String {
     /// Draws the string with its top-left corner at a point in the current
     /// graphics context.

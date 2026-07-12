@@ -105,6 +105,10 @@ open class NSWindow: NSResponder {
         /// A panel that does not become key/activate when shown.
         public static let nonactivatingPanel = StyleMask(rawValue: 1 << 6)
 
+        /// A heads-up-display style panel (dark translucent chrome on
+        /// AppKit; the classic backend renders a standard utility panel).
+        public static let hudWindow = StyleMask(rawValue: 1 << 7)
+
         /// Present while the window occupies the full screen. AppKit adds this
         /// to `styleMask` for the duration of full-screen mode; WinChocolate
         /// does the same (see `toggleFullScreen`).
@@ -164,7 +168,15 @@ open class NSWindow: NSResponder {
 
         /// The level for modal panels.
         public static let modalPanel = Level(rawValue: 8)
+
+        /// The level for status-bar items, above floating panels.
+        public static let statusBar = Level(rawValue: 25)
     }
+
+    /// Whether closing releases the window (AppKit memory management).
+    /// Stored for source compatibility — Swift/ARC owns WinChocolate
+    /// windows, so the flag changes nothing here.
+    open var isReleasedWhenClosed: Bool = true
 
     /// Window backing store strategy.
     public enum BackingStoreType: Sendable {
@@ -348,7 +360,18 @@ open class NSWindow: NSResponder {
     public private(set) var nativeHandle: NativeHandle?
 
     /// The responder currently receiving keyboard focus in this window.
-    public private(set) weak var firstResponder: NSResponder?
+    public private(set) weak var firstResponder: NSResponder? {
+        didSet {
+            if firstResponder !== oldValue {
+                onFirstResponderChange?(self)
+            }
+        }
+    }
+
+    /// Swift-native callback invoked after the first responder changes —
+    /// the observation surface AppKit consumers get from KVO, which has no
+    /// ObjC-runtime equivalent here.
+    open var onFirstResponderChange: ((NSWindow) -> Void)?
 
     /// The window delegate, consulted for close decisions and lifecycle.
     open weak var delegate: NSWindowDelegate?

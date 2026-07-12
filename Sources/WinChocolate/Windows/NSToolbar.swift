@@ -1544,6 +1544,12 @@ open class NSToolbarItem: NSObject {
             self.rawValue = rawValue
         }
 
+        /// Creates an identifier from a string, matching AppKit's
+        /// unlabeled convenience spelling.
+        public init(_ rawValue: String) {
+            self.rawValue = rawValue
+        }
+
         /// Creates an identifier from a string literal.
         public init(stringLiteral value: String) {
             self.rawValue = value

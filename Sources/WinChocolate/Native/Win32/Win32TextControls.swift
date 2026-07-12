@@ -196,7 +196,7 @@ extension Win32NativeControlBackend {
             format.wAlignment = pfaCenter
         case .right:
             format.wAlignment = pfaRight
-        case .left, .natural:
+        case .left, .natural, .justified:
             format.wAlignment = pfaLeft
         }
         withUnsafePointer(to: &format) { pointer in
@@ -237,7 +237,7 @@ extension Win32NativeControlBackend {
             style |= LONG_PTR(esCenter)
         case .right:
             style |= LONG_PTR(esRight)
-        case .left, .natural:
+        case .left, .natural, .justified:
             break
         }
         _ = winSetWindowLongPtrW(hwnd, gwlStyle, style)

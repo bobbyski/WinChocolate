@@ -1,3 +1,5 @@
+import WinFoundation
+
 /// A cell in an `NSGridView`, hosting one content view.
 public final class NSGridCell {
     /// How a content view is positioned within its grid cell, matching AppKit's
@@ -13,8 +15,18 @@ public final class NSGridCell {
         case fill
     }
 
-    /// The view shown in this cell (or `nil` for an empty cell).
-    public internal(set) weak var contentView: NSView?
+    /// The view shown in this cell (or `nil` for an empty cell). Setting it
+    /// adds the view to the grid and detaches any previous content view.
+    public var contentView: NSView? {
+        didSet {
+            guard oldValue !== contentView else { return }
+            if oldValue?.superview === owner { oldValue?.removeFromSuperview() }
+            if let contentView, let owner, contentView.superview !== owner {
+                owner.addSubview(contentView)
+            }
+            owner?.winSetNeedsLayout()
+        }
+    }
 
     /// Cell-level horizontal placement; `.inherited` defers to the column/grid.
     public var xPlacement: Placement = .inherited {
@@ -145,6 +157,17 @@ open class NSGridView: NSView {
 
     private var columns: [NSGridColumn] = []
     private var rows: [NSGridRow] = []
+
+    /// A rectangular block of merged cells: the top-left cell's content spans
+    /// the whole block; the other cells are covered (empty).
+    private struct MergedRegion {
+        var columns: Range<Int>
+        var rows: Range<Int>
+        var headRow: Int { rows.lowerBound }
+        var headColumn: Int { columns.lowerBound }
+        func covers(row: Int, column: Int) -> Bool { rows.contains(row) && columns.contains(column) }
+    }
+    private var mergedRegions: [MergedRegion] = []
     /// Cells indexed `[rowIndex][columnIndex]`.
     private var cells: [[NSGridCell]] = []
 
@@ -258,6 +281,44 @@ open class NSGridView: NSView {
         relayout()
     }
 
+    // MARK: - Merging
+
+    /// Merges a rectangular block of cells into one: the top-left cell's content
+    /// view spans the whole block and the other cells are emptied, matching
+    /// AppKit's `mergeCells(inHorizontalRange:verticalRange:)`. Common uses are a
+    /// header spanning every column, or a wide field spanning two columns.
+    open func mergeCells(inHorizontalRange columnRange: NSRange, verticalRange rowRange: NSRange) {
+        let cols = columnRange.location..<columnRange.upperBound
+        let rowsRange = rowRange.location..<rowRange.upperBound
+        guard cols.lowerBound >= 0, rowsRange.lowerBound >= 0,
+              cols.upperBound <= columns.count, rowsRange.upperBound <= rows.count,
+              cols.count >= 1, rowsRange.count >= 1, cols.count * rowsRange.count > 1 else {
+            return
+        }
+        // Drop any existing region that overlaps the new block.
+        mergedRegions.removeAll { $0.columns.overlaps(cols) && $0.rows.overlaps(rowsRange) }
+        // Keep the head cell's content; empty every other cell in the block.
+        for r in rowsRange {
+            for c in cols where !(r == rowsRange.lowerBound && c == cols.lowerBound) {
+                cells[r][c].contentView = nil
+            }
+        }
+        mergedRegions.append(MergedRegion(columns: cols, rows: rowsRange))
+        relayout()
+    }
+
+    /// Removes the merge covering a cell, if any (its neighbours become
+    /// independent cells again).
+    open func unmergeCells(atColumnIndex columnIndex: Int, rowIndex: Int) {
+        mergedRegions.removeAll { $0.covers(row: rowIndex, column: columnIndex) }
+        relayout()
+    }
+
+    /// The merged region covering a cell, if any.
+    private func mergedRegion(row: Int, column: Int) -> MergedRegion? {
+        mergedRegions.first { $0.covers(row: row, column: column) }
+    }
+
     private func ensureColumnCount(_ count: Int) {
         while columns.count < count {
             let column = NSGridColumn()
@@ -315,26 +376,41 @@ open class NSGridView: NSView {
     private var visibleColumns: [Int] { columns.indices.filter { !columns[$0].isHidden } }
     private var visibleRows: [Int] { rows.indices.filter { !rows[$0].isHidden } }
 
-    /// Column widths, indexed by column index (hidden columns get 0).
+    /// Column widths, indexed by column index (hidden columns get 0). Cells in a
+    /// merged region are excluded — a spanning cell doesn't dictate any single
+    /// column's width; it just fills whatever the spanned columns become.
     private func columnWidths() -> [CGFloat] {
         columns.indices.map { c in
             guard !columns[c].isHidden else { return 0 }
             if columns[c].width != NSGridView.sizedForContent {
                 return columns[c].width
             }
-            let content = visibleRows.map { contentSize(cells[$0][c]).width }.max() ?? 0
+            // A cell that spans more than one column can't size a single column
+            // (its width belongs to the whole span), so it's excluded here; a
+            // cell merged only vertically still contributes its width.
+            let content = visibleRows.compactMap { r -> CGFloat? in
+                if let region = mergedRegion(row: r, column: c), region.columns.count > 1 { return nil }
+                return contentSize(cells[r][c]).width
+            }.max() ?? 0
             return content + columns[c].leadingPadding + columns[c].trailingPadding
         }
     }
 
-    /// Row heights, indexed by row index (hidden rows get 0).
+    /// Row heights, indexed by row index (hidden rows get 0). Merged cells are
+    /// excluded (see `columnWidths`).
     private func rowHeights() -> [CGFloat] {
         rows.indices.map { r in
             guard !rows[r].isHidden else { return 0 }
             if rows[r].height != NSGridView.sizedForContent {
                 return rows[r].height
             }
-            let content = visibleColumns.map { contentSize(cells[r][$0]).height }.max() ?? 0
+            // Excluded only when the cell spans more than one row (its height
+            // belongs to the whole vertical span); a horizontally-merged header
+            // still sizes the row it heads.
+            let content = visibleColumns.compactMap { c -> CGFloat? in
+                if let region = mergedRegion(row: r, column: c), region.rows.count > 1 { return nil }
+                return contentSize(cells[r][c]).height
+            }.max() ?? 0
             return content + rows[r].topPadding + rows[r].bottomPadding
         }
     }
@@ -371,6 +447,25 @@ open class NSGridView: NSView {
 
         for r in visibleRows {
             for c in visibleColumns {
+                // A merged region is laid out once, at its head cell; other
+                // covered cells are skipped.
+                if let region = mergedRegion(row: r, column: c) {
+                    guard r == region.headRow, c == region.headColumn else { continue }
+                    let cell = cells[r][c]
+                    guard let content = cell.contentView else { continue }
+                    let firstCol = region.columns.lowerBound
+                    let lastCol = region.columns.upperBound - 1
+                    let firstRow = region.rows.lowerBound
+                    let lastRow = region.rows.upperBound - 1
+                    let left = columnX[firstCol] + columns[firstCol].leadingPadding
+                    let right = columnX[lastCol] + widths[lastCol] - columns[lastCol].trailingPadding
+                    let top = rowY[firstRow] + rows[firstRow].topPadding
+                    let bottom = rowY[lastRow] + heights[lastRow] - rows[lastRow].bottomPadding
+                    let spanRect = NSRect(x: left, y: top, width: max(right - left, 0), height: max(bottom - top, 0))
+                    content.frame = placeContent(content, in: spanRect,
+                                                 x: resolvedX(cell), y: resolvedY(cell))
+                    continue
+                }
                 let cell = cells[r][c]
                 guard let content = cell.contentView else { continue }
                 let cellRect = NSRect(x: columnX[c] + columns[c].leadingPadding,

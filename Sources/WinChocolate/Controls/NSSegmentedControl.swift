@@ -143,6 +143,16 @@ open class NSSegmentedControl: NSControl {
         super.init(frame: frameRect)
     }
 
+    /// Creates a segmented control from labels, matching AppKit's
+    /// convenience shape. Target/action are stored; dispatch runs through
+    /// `onAction`.
+    public convenience init(labels: [String], trackingMode: TrackingMode, target: AnyObject?, action: Selector?) {
+        self.init(labels: labels, frame: .zero)
+        self.trackingMode = trackingMode
+        self.target = target
+        self.action = action
+    }
+
     /// Segmented controls take focus so arrow keys can move the selection.
     open override var acceptsFirstResponder: Bool {
         trackingMode != .momentary

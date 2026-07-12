@@ -21,6 +21,9 @@ open class NSDatePicker: NSControl {
         public static let yearMonthDay = ElementFlags(rawValue: 1 << 0)
         public static let hourMinuteSecond = ElementFlags(rawValue: 1 << 1)
         public static let timeZone = ElementFlags(rawValue: 1 << 2)
+
+        /// Hour and minute, without seconds.
+        public static let hourMinute = ElementFlags(rawValue: 1 << 3)
     }
 
     /// Selected date.
@@ -65,7 +68,7 @@ open class NSDatePicker: NSControl {
     /// machine). `nil` lets the native control use its own locale short date.
     private var nativeDateFormat: String? {
         let showsDate = datePickerElements.contains(.yearMonthDay)
-        let showsTime = datePickerElements.contains(.hourMinuteSecond)
+        let showsTime = datePickerElements.contains(.hourMinuteSecond) || datePickerElements.contains(.hourMinute)
         let locale = Locale.current
         switch (showsDate, showsTime) {
         case (true, true):
@@ -132,7 +135,7 @@ open class NSDatePicker: NSControl {
     /// follows the picker's elements (date, time, or both).
     open var stringValue: String {
         let formatter = DateFormatter()
-        let showsTime = datePickerElements.contains(.hourMinuteSecond)
+        let showsTime = datePickerElements.contains(.hourMinuteSecond) || datePickerElements.contains(.hourMinute)
         let showsDate = datePickerElements.contains(.yearMonthDay) || !showsTime
         formatter.dateStyle = showsDate ? .short : .none
         formatter.timeStyle = showsTime ? .medium : .none

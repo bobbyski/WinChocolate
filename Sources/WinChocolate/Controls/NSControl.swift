@@ -16,6 +16,10 @@ open class NSControl: NSView {
         case mixed = -1
     }
 
+    /// AppKit hangs image placement off `NSControl`; WinChocolate declares
+    /// it on `NSButton`, so mirror the AppKit spelling here.
+    public typealias ImagePosition = NSButton.ImagePosition
+
     /// Object intended to receive the action.
     open weak var target: AnyObject?
 

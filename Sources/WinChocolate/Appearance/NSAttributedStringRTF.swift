@@ -83,7 +83,7 @@ extension NSAttributedString {
                     controls += "\\qr"
                 case .left:
                     controls += "\\ql"
-                case .natural:
+                case .natural, .justified:
                     break
                 }
             }

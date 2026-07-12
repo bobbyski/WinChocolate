@@ -21,6 +21,55 @@ open class NSGraphicsContext {
     /// Color used by stroke operations until changed through `NSColor`.
     internal var strokeColor: NSColor = .black
 
+    // MARK: CG-shim state (see CGCompat.swift)
+
+    /// A 2×3 affine transform matching Core Graphics' layout:
+    /// `x' = a·x + c·y + tx`, `y' = b·x + d·y + ty`.
+    struct WinTransform {
+        var a: CGFloat = 1
+        var b: CGFloat = 0
+        var c: CGFloat = 0
+        var d: CGFloat = 1
+        var tx: CGFloat = 0
+        var ty: CGFloat = 0
+
+        /// Applies the transform to a point.
+        func apply(to point: NSPoint) -> NSPoint {
+            NSPoint(x: a * point.x + c * point.y + tx, y: b * point.x + d * point.y + ty)
+        }
+
+        /// Concatenates another transform before this one (CG's convention
+        /// for cumulative context transforms).
+        mutating func prepend(a pa: CGFloat, b pb: CGFloat, c pc: CGFloat, d pd: CGFloat, tx ptx: CGFloat, ty pty: CGFloat) {
+            let na = a * pa + c * pb
+            let nb = b * pa + d * pb
+            let nc = a * pc + c * pd
+            let nd = b * pc + d * pd
+            let ntx = a * ptx + c * pty + tx
+            let nty = b * ptx + d * pty + ty
+            (a, b, c, d, tx, ty) = (na, nb, nc, nd, ntx, nty)
+        }
+
+        /// The overall scale magnitude (for radius-like values).
+        var scaleMagnitude: CGFloat {
+            let sx = a * a + b * b
+            let sy = c * c + d * d
+            return sqrt(max(sx, sy))
+        }
+    }
+
+    /// The CG shim's current user-space transform.
+    var winTransform = WinTransform()
+
+    /// Saved transforms paired with `saveGState`/`restoreGState`.
+    var winTransformStack: [WinTransform] = []
+
+    /// The CG shim's pending path, consumed by fill/stroke/clip.
+    var winPendingSegments: [NativePathSegment] = []
+
+    /// The CG shim's stroke width.
+    var winLineWidth: CGFloat = 1
+
     /// Creates a context over a backend drawing surface.
     internal init(nativeContext: NativeDrawingContext) {
         self.nativeContext = nativeContext

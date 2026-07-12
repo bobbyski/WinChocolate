@@ -18,6 +18,18 @@ open class NSTabViewItem: NSObject {
     }
 }
 
+/// The methods a tab-view delegate uses to observe selection, matching
+/// AppKit's shape.
+public protocol NSTabViewDelegate: AnyObject {
+    /// Tells the delegate a tab item was selected.
+    func tabView(_ tabView: NSTabView, didSelect tabViewItem: NSTabViewItem?)
+}
+
+extension NSTabViewDelegate {
+    /// Default no-op so delegates only implement the callbacks they need.
+    public func tabView(_ tabView: NSTabView, didSelect tabViewItem: NSTabViewItem?) {}
+}
+
 /// A tab view control.
 ///
 /// This first slice stores AppKit-shaped tab items and maps labels to a native
@@ -29,6 +41,9 @@ open class NSTabView: NSControl {
 
     /// Swift-native callback invoked when tab selection changes.
     open var onSelectionChanged: ((NSTabView) -> Void)?
+
+    /// The delegate notified when tab selection changes.
+    open weak var delegate: NSTabViewDelegate?
 
     /// The current tab-view items.
     open var tabViewItems: [NSTabViewItem] {
@@ -94,6 +109,7 @@ open class NSTabView: NSControl {
             realizedBackend?.setTabViewSelectedIndex(selectedIndex, for: nativeHandle)
         }
         onSelectionChanged?(self)
+        delegate?.tabView(self, didSelect: selectedTabViewItem)
     }
 
     /// Returns the index of a tab item.
