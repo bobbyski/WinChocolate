@@ -68,6 +68,7 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     public private(set) var buttonStates: [UInt: Bool] = [:]
     public private(set) var doubleValues: [UInt: Double] = [:]
     public private(set) var selectedIndices: [UInt: Int] = [:]
+    public private(set) var popUpItems: [UInt: [String]] = [:]
     public private(set) var itemsByHandle: [UInt: [String]] = [:]
     private var ranges: [UInt: (min: Double, max: Double)] = [:]
     private var radioGroups: [UInt: [UInt]] = [:]   // member -> all members in its group
@@ -604,6 +605,10 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     }
     public func setSelectedIndex(_ index: Int, for handle: NativeHandle) {
         selectedIndices[handle.rawValue] = index
+    }
+    public func setPopUpItems(_ titles: [String], selectedIndex: Int, for handle: NativeHandle) {
+        popUpItems[handle.rawValue] = titles
+        selectedIndices[handle.rawValue] = selectedIndex
     }
     public func setToggleAction(for handle: NativeHandle, action: @escaping (Bool) -> Void) {
         toggleActions[handle.rawValue] = action

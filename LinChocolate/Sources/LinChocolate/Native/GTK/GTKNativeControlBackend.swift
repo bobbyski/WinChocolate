@@ -35,6 +35,7 @@ public final class GTKNativeControlBackend: NativeControlBackend {
     private var windowContents: [UInt: OpaquePointer] = [:]  // window -> current content widget
     private var windowMenuBars: [UInt: OpaquePointer] = [:]  // window -> GtkPopoverMenuBar
     private var windowToolbars: [UInt: OpaquePointer] = [:]  // window -> toolbar GtkBox
+    private var windowToolbarViews: [UInt: [OpaquePointer]] = [:] // window -> embedded view widgets (survive rebuild)
     private var segmentButtons: [UInt: [OpaquePointer]] = [:] // segmented -> its toggle buttons
     private var tokenEntries: [UInt: OpaquePointer] = [:]     // token field -> its entry
     private var tokenChips: [UInt: [OpaquePointer]] = [:]     // token field -> chip buttons
@@ -398,6 +399,14 @@ public final class GTKNativeControlBackend: NativeControlBackend {
     }
     public func installToolbar(_ items: [NativeToolbarItemSpec], on window: NativeHandle) {
         guard let box = windowBoxes[window.rawValue] else { return }
+        // Detach any embedded custom views (page selector, search field, …) from
+        // the old bar first so removing it doesn't destroy widgets we still own.
+        for view in windowToolbarViews[window.rawValue] ?? [] {
+            if gtk_widget_get_parent(asWidget(view)) != nil {
+                gtk_widget_unparent(asWidget(view))
+            }
+        }
+        windowToolbarViews[window.rawValue] = []
         if let old = windowToolbars[window.rawValue] {
             gtk_box_remove(asBox(box), asWidget(old))
         }
@@ -408,6 +417,17 @@ public final class GTKNativeControlBackend: NativeControlBackend {
                 let spacer = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0)!
                 gtk_widget_set_hexpand(spacer, gboolean(1))
                 gtk_box_append(asBox(OpaquePointer(bar)), spacer)
+                continue
+            }
+            // A view-based item (AppKit's NSToolbarItem.view): embed the control
+            // widget itself (a pop-up, a search field, …) rather than a button.
+            if let viewHandle = item.viewHandle, let viewWidget = widget(viewHandle) {
+                if gtk_widget_get_parent(asWidget(viewWidget)) != nil {
+                    gtk_widget_unparent(asWidget(viewWidget))
+                }
+                gtk_widget_set_valign(asWidget(viewWidget), GTK_ALIGN_CENTER)
+                gtk_box_append(asBox(OpaquePointer(bar)), asWidget(viewWidget))
+                windowToolbarViews[window.rawValue, default: []].append(viewWidget)
                 continue
             }
             let button: UnsafeMutablePointer<GtkWidget>
@@ -1362,6 +1382,16 @@ public final class GTKNativeControlBackend: NativeControlBackend {
             guard let selection = tableSelections[handle.rawValue] else { return }
             gtk_single_selection_set_selected(selection, guint(index))
         default:       gtk_drop_down_set_selected(w, guint(index))     // GtkDropDown is opaque
+        }
+    }
+    public func setPopUpItems(_ titles: [String], selectedIndex: Int, for handle: NativeHandle) {
+        guard let w = widget(handle) else { return }
+        // Rebuild the drop-down's model from a fresh GtkStringList.
+        let list = gtk_string_list_new(nil)!
+        for title in titles { gtk_string_list_append(list, title) }
+        gtk_drop_down_set_model(w, list)
+        if selectedIndex >= 0, selectedIndex < titles.count {
+            gtk_drop_down_set_selected(w, guint(selectedIndex))
         }
     }
     public func setDateValue(_ date: Date, for handle: NativeHandle) {

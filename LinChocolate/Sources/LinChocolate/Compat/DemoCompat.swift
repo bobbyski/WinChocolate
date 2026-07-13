@@ -90,13 +90,6 @@ public extension NSPopUpButton {
         get { onSelectionChange }
         set { onSelectionChange = newValue }
     }
-    func selectItem(at index: Int) { indexOfSelectedItem = index }
-    func selectItem(withTitle title: String) {
-        if let i = itemTitles.firstIndex(of: title) { indexOfSelectedItem = i }
-    }
-    // Items are fixed at construction in this slice; accepted no-op.
-    func addItems(withTitles titles: [String]) {}
-    func addItem(withTitle title: String) {}
 }
 
 public extension NSColorWell {

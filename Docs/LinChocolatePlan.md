@@ -278,7 +278,13 @@ This is a **cross-cutting deliverable, not a serial phase** (like the test matri
 
 **One genuine Foundation divergence, resolved in-source:** real Foundation types `Timer.scheduledTimer` and `NotificationCenter.addObserver` blocks `@Sendable`, so they can't touch the demo's main-actor UI globals; WinFoundation's blocks are not `@Sendable`. Extension overloads can't win resolution against Foundation's primary declarations, so the shared demo now hops to the main actor for the two affected callbacks under `#if !canImport(WinChocolate)` (LinChocolate + AppKit path) via `Task { @MainActor in … }`, leaving the WinChocolate path byte-for-byte synchronous. Logged in [AppKitCompatibilityDivergences.md](AppKitCompatibilityDivergences.md).
 
-**Remaining runtime polish:** headless run emits a few non-fatal `Gtk-CRITICAL` warnings (e.g. `gtk_fixed_put`/`gtk_check_button_set_active` from the new standalone-control + grid stubs) — the app stays up and renders; wiring those stubs to real widgets is follow-up.
+**✅ Menu + toolbar navigation working (2026-07-12).** You can now page through the whole demo on Linux two ways: the toolbar's **page-selector pop-up** ("Controls / Values / Tables·Media / Drawing / New in 3.x / Lists / Bezels / Auto Layout") and the **View menu** (Ctrl+1…8). Fixes:
+- **Toolbar item duplication** — the demo both sets a `delegate` (which auto-loads defaults) and calls `addItem` explicitly; the first explicit `addItem` now clears the delegate-loaded set (`NSToolbar.itemsAreDelegateLoaded`), so items appear once, not twice.
+- **View-based toolbar items** — `NSToolbarItem.view` (page pop-up, search field) now renders the real control widget in the GTK toolbar strip (via `NativeToolbarItemSpec.viewHandle` + widget reparenting that survives toolbar rebuilds) instead of a dead label.
+- **Dynamic pop-up items** — `NSPopUpButton.addItems(withTitles:)`/`removeAllItems`/`selectItem` were no-op stubs; now backed by a real `setPopUpItems` that rebuilds the `GtkDropDown` model (the page selector + alert-style pop-up were showing "(None)").
+- **Menu bar not showing** — the demo attaches submenus via `menuItem.submenu = …`, but `menuBarSpecs()` only read the parent's `setSubmenu` map; it now honors `item.submenu`, so the **WinChocolate / Edit / View** bar renders.
+
+**Remaining runtime polish:** headless run emits a few non-fatal `Gtk-CRITICAL` warnings (e.g. `gtk_fixed_put`/`gtk_check_button_set_active` from the new standalone-control + grid stubs) — the app stays up and renders; wiring those stubs to real widgets is follow-up. Several pages still have layout/visual gaps vs. the WinChocolate reference.
 
 | # | Item | Status | Notes |
 |---|---|---|---|

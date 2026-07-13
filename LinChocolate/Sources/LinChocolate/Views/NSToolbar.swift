@@ -93,6 +93,12 @@ public final class NSToolbar {
         didSet { loadDefaultItems() }
     }
 
+    /// True while `items` holds the delegate's auto-loaded defaults (not yet
+    /// overridden by an explicit `addItem`). The first explicit `addItem` clears
+    /// them, so a demo that both sets a delegate *and* populates via `addItem`
+    /// (as AppKit consumers do) ends up with one set, not two.
+    private var itemsAreDelegateLoaded = false
+
     /// Whether the customization palette is currently open.
     public private(set) var customizationPaletteIsRunning = false
 
@@ -105,6 +111,10 @@ public final class NSToolbar {
 
     /// Appends `item` and refreshes the installed toolbar.
     public func addItem(_ item: NSToolbarItem) {
+        if itemsAreDelegateLoaded {
+            items.removeAll()
+            itemsAreDelegateLoaded = false
+        }
         items.append(item)
         window?.reinstallToolbar()
     }
@@ -155,6 +165,7 @@ public final class NSToolbar {
                 label: item.label,
                 iconName: item.image?.iconName,
                 isFlexibleSpace: item.itemIdentifier == NSToolbarItem.flexibleSpaceIdentifier,
+                viewHandle: item.view?.handle,
                 action: item.itemIdentifier == NSToolbarItem.flexibleSpaceIdentifier ? nil : { [weak item] in
                     guard let item else { return }
                     item.onAction?(item)
@@ -175,6 +186,7 @@ public final class NSToolbar {
         let ids = delegate.toolbarDefaultItemIdentifiers(self)
         guard !ids.isEmpty else { return }
         items = ids.compactMap { makeItem($0) }
+        itemsAreDelegateLoaded = true
         window?.reinstallToolbar()
     }
 

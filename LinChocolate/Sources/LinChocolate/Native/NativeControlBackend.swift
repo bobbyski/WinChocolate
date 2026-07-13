@@ -22,12 +22,17 @@ public struct NativeToolbarItemSpec {
     /// GTK icon-theme name for the item's image, or nil for a text-only item.
     public let iconName: String?
     public let isFlexibleSpace: Bool
+    /// A custom control to embed for this item (AppKit's `NSToolbarItem.view`),
+    /// e.g. the page-selector pop-up or a search field. When set, the toolbar
+    /// hosts this widget instead of a plain button.
+    public let viewHandle: NativeHandle?
     public let action: (() -> Void)?
-    public init(identifier: String, label: String, iconName: String? = nil, isFlexibleSpace: Bool = false, action: (() -> Void)? = nil) {
+    public init(identifier: String, label: String, iconName: String? = nil, isFlexibleSpace: Bool = false, viewHandle: NativeHandle? = nil, action: (() -> Void)? = nil) {
         self.identifier = identifier
         self.label = label
         self.iconName = iconName
         self.isFlexibleSpace = isFlexibleSpace
+        self.viewHandle = viewHandle
         self.action = action
     }
 }
@@ -348,6 +353,9 @@ public protocol NativeControlBackend: AnyObject {
     func setDoubleValue(_ value: Double, for handle: NativeHandle)
     /// Sets a pop-up button's selected item index.
     func setSelectedIndex(_ index: Int, for handle: NativeHandle)
+    /// Rebuilds a pop-up button's item list (AppKit's `addItems`/`removeAllItems`)
+    /// and selects `selectedIndex`.
+    func setPopUpItems(_ titles: [String], selectedIndex: Int, for handle: NativeHandle)
     /// Sets a date picker's date.
     func setDateValue(_ date: Date, for handle: NativeHandle)
     /// Sets a color well's color.

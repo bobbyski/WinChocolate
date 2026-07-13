@@ -116,7 +116,9 @@ public final class NSMenu {
     /// a submenu becomes one menu-bar entry.
     func menuBarSpecs() -> [NativeMenuSpec] {
         items.compactMap { item in
-            guard let submenu = submenus[ObjectIdentifier(item)] else { return nil }
+            // A submenu may be attached either via `setSubmenu(_:for:)` (parent's
+            // `submenus` map) or the AppKit-style `menuItem.submenu` property.
+            guard let submenu = item.submenu ?? submenus[ObjectIdentifier(item)] else { return nil }
             let itemSpecs = submenu.items.map { sub in
                 NativeMenuItemSpec(
                     title: sub.title,
