@@ -75,7 +75,32 @@ public final class GTKNativeControlBackend: NativeControlBackend {
     public init() {
         gtk_init()
         applyNonCompositedFixups()
+        installCompactControlStyle()
         installToolbarStyle()
+    }
+
+    /// GTK's Adwaita theme gives controls a generous `min-height` (~34px), which
+    /// floors them above the demo's smaller frame heights, so a field sized 24px
+    /// still renders ~34px — noticeably chunkier than the Win32/macOS controls
+    /// the same layout targets. Drop the theme minimums and trim padding so each
+    /// control honors its requested frame and reads at a comparable density.
+    private func installCompactControlStyle() {
+        guard let display = gdk_display_get_default() else { return }
+        let css = """
+            button, entry, spinbutton, dropdown, dropdown button, combobox,
+            checkbutton, scale, levelbar, progressbar, calendar {
+                min-height: 0;
+            }
+            button { padding: 2px 10px; }
+            entry, spinbutton, dropdown button { padding: 1px 6px; min-height: 0; }
+            spinbutton button { padding: 0 4px; }
+            checkbutton { padding: 0; }
+            checkbutton check { min-height: 16px; min-width: 16px; }
+            """
+        let provider = gtk_css_provider_new()!
+        gtk_css_provider_load_from_data(provider, css, gssize(css.utf8.count))
+        // 590 < the toolbar/app provider (600) so per-widget rules still win.
+        gtk_style_context_add_provider_for_display(display, OpaquePointer(provider), 590)
     }
 
     /// Display-wide CSS for the Apple-look toolbar (the deliberate Apple
