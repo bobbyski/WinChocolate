@@ -16,6 +16,10 @@ public struct NativeFontSpec: Equatable {
 }
 
 /// Platform-neutral description of one toolbar item carried across the seam.
+/// The concrete kind a button should take on (AppKit's button types collapse
+/// to these three native shapes).
+public enum NativeButtonKind: Sendable { case push, checkbox, radio }
+
 public struct NativeToolbarItemSpec {
     public let identifier: String
     public let label: String
@@ -157,6 +161,9 @@ public protocol NativeControlBackend: AnyObject {
     /// Installs (or replaces) the menu bar shown at the top of `window`.
     func installMenuBar(_ menus: [NativeMenuSpec], on window: NativeHandle)
     /// Installs (or replaces) the Apple-look toolbar under the menu bar.
+    /// Records whether `handle` uses a top-left (flipped) coordinate system for
+    /// positioning its children, so subview placement flips Y appropriately.
+    func setViewFlipped(_ flipped: Bool, for handle: NativeHandle)
     func installToolbar(_ items: [NativeToolbarItemSpec], on window: NativeHandle)
     /// Shows the toolbar customization palette: one toggle per allowed item.
     /// Toggling calls `onToggle(identifier, isOn)`; closing calls `onClose`.
@@ -353,6 +360,14 @@ public protocol NativeControlBackend: AnyObject {
     func setDoubleValue(_ value: Double, for handle: NativeHandle)
     /// Sets a pop-up button's selected item index.
     func setSelectedIndex(_ index: Int, for handle: NativeHandle)
+    /// Orients a slider vertically or horizontally (AppKit's `isVertical`).
+    func setSliderVertical(_ vertical: Bool, for handle: NativeHandle)
+    /// Switches a date picker between the graphical calendar and the compact
+    /// text-field style (AppKit's `datePickerStyle`).
+    func setDatePickerGraphical(_ graphical: Bool, for handle: NativeHandle)
+    /// Rebuilds a button as a push button, checkbox, or radio (AppKit's
+    /// `setButtonType(_:)` applied to a control created as a plain button).
+    func setButtonKind(_ kind: NativeButtonKind, title: String, for handle: NativeHandle)
     /// Rebuilds a pop-up button's item list (AppKit's `addItems`/`removeAllItems`)
     /// and selects `selectedIndex`.
     func setPopUpItems(_ titles: [String], selectedIndex: Int, for handle: NativeHandle)

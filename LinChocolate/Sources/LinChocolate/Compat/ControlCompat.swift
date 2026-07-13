@@ -42,8 +42,6 @@ public extension NSButton {
         get { isOn ? .on : .off }
         set { isOn = (newValue == .on) }
     }
-    /// Accepted for API parity; the native control picks its own look.
-    func setButtonType(_ type: NSButtonType) {}
 }
 
 public extension NSTextField {

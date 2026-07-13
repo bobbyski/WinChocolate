@@ -26,12 +26,27 @@ public final class NSDatePicker: NSView {
     }
     public var stringValue: String { "\(dateValue)" }
 
-    /// Creates a calendar date picker showing `date`.
+    /// The presentation style (AppKit's `datePickerStyle`). The default compact
+    /// text-field style renders a small read-only field; `.clockAndCalendar`
+    /// swaps in a full month grid.
+    public var datePickerStyle: NSDatePickerStyle = .textFieldAndStepper {
+        didSet {
+            backend.setDatePickerGraphical(datePickerStyle == .clockAndCalendar, for: handle)
+            backend.setDateValue(backingDate, for: handle)
+            wireDateChange()
+        }
+    }
+
+    /// Creates a date picker showing `date`.
     public init(date: Date = Date(), frame: NSRect) {
         self.backingDate = date
         let backend = NSApplication.shared.nativeBackend
         let handle = backend.createDatePicker(date: date, frame: frame)
         super.init(frame: frame, handle: handle, backend: backend)
+        wireDateChange()
+    }
+
+    private func wireDateChange() {
         backend.setDateChangeAction(for: handle) { [weak self] date in
             guard let self else { return }
             self.backingDate = date            // sync silently

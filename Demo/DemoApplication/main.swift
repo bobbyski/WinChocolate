@@ -26,6 +26,10 @@ let app = NSApplication.shared
 // The one Linux-specific line: install the native GTK backend before any
 // windows/controls are created (WinChocolate wires its Win32 backend itself).
 app.nativeBackend = GTKNativeControlBackend()
+// This demo is authored top-left (Win32/WinChocolate use a top-left origin).
+// LinChocolate defaults to AppKit's bottom-left origin for its own demos, so opt
+// this one into a top-left origin so subview Y coordinates match WinChocolate.
+NSView.defaultIsFlipped = true
 #endif
 
 // The demo follows the Windows system theme by default (AppKit's behavior:

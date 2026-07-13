@@ -36,6 +36,9 @@ public final class GTKNativeControlBackend: NativeControlBackend {
     private var windowMenuBars: [UInt: OpaquePointer] = [:]  // window -> GtkPopoverMenuBar
     private var windowToolbars: [UInt: OpaquePointer] = [:]  // window -> toolbar GtkBox
     private var windowToolbarViews: [UInt: [OpaquePointer]] = [:] // window -> embedded view widgets (survive rebuild)
+    private var flippedViews: Set<UInt> = []  // parents that position children top-left
+    private var graphicalDatePickers: Set<UInt> = []  // date pickers shown as a GtkCalendar
+    private var radiosByParent: [UInt: [UInt]] = [:]   // radio buttons grouped per superview
     private var segmentButtons: [UInt: [OpaquePointer]] = [:] // segmented -> its toggle buttons
     private var tokenEntries: [UInt: OpaquePointer] = [:]     // token field -> its entry
     private var tokenChips: [UInt: [OpaquePointer]] = [:]     // token field -> chip buttons
@@ -704,7 +707,12 @@ public final class GTKNativeControlBackend: NativeControlBackend {
         let widget = cStrings.withUnsafeBufferPointer { gtk_drop_down_new_from_strings($0.baseAddress) }!
         for s in cStrings where s != nil { free(UnsafeMutableRawPointer(mutating: s)) }
         if selectedIndex >= 0 { gtk_drop_down_set_selected(OpaquePointer(widget), guint(selectedIndex)) }
-        gtk_widget_set_size_request(widget, Int32(frame.width), Int32(frame.height))
+        // A GtkDropDown fills its requested height, so honoring an oversized frame
+        // height (the demo gives the alert-style pop-up 96px of menu room) makes a
+        // giant button. Use the natural height and top-align, matching AppKit/
+        // WinChocolate, which render the pop-up at its normal control height.
+        gtk_widget_set_size_request(widget, Int32(frame.width), -1)
+        gtk_widget_set_valign(widget, GTK_ALIGN_START)
         stripPopoverArrows(of: widget)
         return allocate(widget, .popUp, frame: frame)
     }
@@ -733,11 +741,16 @@ public final class GTKNativeControlBackend: NativeControlBackend {
         return h
     }
     public func createLevelIndicator(value: Double, minValue: Double, maxValue: Double, frame: NSRect) -> NativeHandle {
-        let lb = gtk_level_bar_new_for_interval(minValue, maxValue)!
-        gtk_level_bar_set_value(OpaquePointer(lb), value)   // GtkLevelBar is opaque
-        gtk_widget_set_size_request(lb, Int32(frame.width), Int32(frame.height))
-        let h = allocate(lb, .level, frame: frame)
+        // AppKit's NSLevelIndicator is a fill bar. GtkLevelBar's natural width is
+        // unbounded and GtkFixed honors natural size (it can't be size-capped
+        // there), so render the capacity as a GtkProgressBar — which respects its
+        // size_request exactly and shows the same value/max fill fraction.
+        let pb = gtk_progress_bar_new()!
+        gtk_widget_set_size_request(pb, Int32(frame.width), Int32(frame.height))
+        gtk_widget_set_valign(pb, GTK_ALIGN_CENTER)
+        let h = allocate(pb, .level, frame: frame)
         ranges[h.rawValue] = (minValue, maxValue)
+        setDoubleValue(value, for: h)
         return h
     }
     public func createTextView(text: String, frame: NSRect) -> NativeHandle {
@@ -748,11 +761,53 @@ public final class GTKNativeControlBackend: NativeControlBackend {
         return allocate(tv, .textView, frame: frame)
     }
     public func createDatePicker(date: Date, frame: NSRect) -> NativeHandle {
-        let cal = gtk_calendar_new()!
-        gtk_widget_set_size_request(cal, Int32(frame.width), Int32(frame.height))
-        let h = allocate(cal, .datePicker, frame: frame)
+        // AppKit's default style is textFieldAndStepper — a compact field, not a
+        // full month grid. Render that as a read-only entry; clockAndCalendar
+        // swaps in a GtkCalendar via setDatePickerGraphical (whose natural size
+        // fits its 224×168 frame). A GtkCalendar in the compact 184×28 frame
+        // would overflow massively in a GtkFixed.
+        let entry = gtk_entry_new()!
+        gtk_editable_set_editable(OpaquePointer(entry), gboolean(0))
+        gtk_widget_set_size_request(entry, Int32(frame.width), Int32(frame.height))
+        let h = allocate(entry, .datePicker, frame: frame)
         setDateValue(date, for: h)
         return h
+    }
+    public func setButtonKind(_ kind: NativeButtonKind, title: String, for handle: NativeHandle) {
+        let raw = handle.rawValue
+        guard let old = widgets[raw] else { return }
+        let frame = frames[raw] ?? .zero
+        if gtk_widget_get_parent(asWidget(old)) != nil { gtk_widget_unparent(asWidget(old)) }
+        let new: UnsafeMutablePointer<GtkWidget>
+        switch kind {
+        case .push:     new = gtk_button_new_with_label(title)!;       kinds[raw] = .button
+        case .checkbox: new = gtk_check_button_new_with_label(title)!; kinds[raw] = .checkbox
+        case .radio:    new = gtk_check_button_new_with_label(title)!; kinds[raw] = .radio
+        }
+        gtk_widget_set_size_request(new, Int32(frame.width), Int32(frame.height))
+        widgets[raw] = OpaquePointer(new)
+        g_object_ref_sink(UnsafeMutableRawPointer(old))
+        g_object_unref(UnsafeMutableRawPointer(old))
+    }
+    public func setDatePickerGraphical(_ graphical: Bool, for handle: NativeHandle) {
+        let raw = handle.rawValue
+        guard graphical != graphicalDatePickers.contains(raw), let old = widgets[raw] else { return }
+        let frame = frames[raw] ?? .zero
+        if gtk_widget_get_parent(asWidget(old)) != nil { gtk_widget_unparent(asWidget(old)) }
+        let new: UnsafeMutablePointer<GtkWidget>
+        if graphical {
+            new = gtk_calendar_new()!
+            graphicalDatePickers.insert(raw)
+        } else {
+            new = gtk_entry_new()!
+            gtk_editable_set_editable(OpaquePointer(new), gboolean(0))
+            graphicalDatePickers.remove(raw)
+        }
+        gtk_widget_set_size_request(new, Int32(frame.width), Int32(frame.height))
+        widgets[raw] = OpaquePointer(new)
+        // Free the discarded (still-floating, unparented) widget.
+        g_object_ref_sink(UnsafeMutableRawPointer(old))
+        g_object_unref(UnsafeMutableRawPointer(old))
     }
     public func createColorWell(color: NSColor, frame: NSRect) -> NativeHandle {
         // GtkColorButton (via the GtkColorChooser interface) is deprecated in
@@ -1184,14 +1239,36 @@ public final class GTKNativeControlBackend: NativeControlBackend {
         guard let paned = widget(splitView) else { return }
         gtk_paned_set_position(paned, gint(position))
     }
+    public func setViewFlipped(_ flipped: Bool, for handle: NativeHandle) {
+        if flipped { flippedViews.insert(handle.rawValue) } else { flippedViews.remove(handle.rawValue) }
+    }
+
+    /// Whether `view` draws in a top-left (flipped) coordinate space.
+    func isViewFlipped(_ view: UInt) -> Bool { flippedViews.contains(view) }
+
+    /// The GTK (top-left) Y at which to place `childFrame` inside `parentRaw`.
+    /// A flipped parent already uses a top-left origin (Win32/WinChocolate), so
+    /// its child Y passes through; otherwise flip AppKit's bottom-left origin.
+    private func placementY(for childFrame: NSRect, in parentRaw: UInt) -> CGFloat {
+        if flippedViews.contains(parentRaw) { return childFrame.origin.y }
+        let parentHeight = frames[parentRaw]?.height ?? 0
+        return CoordinateSpace.gtkY(for: childFrame, parentHeight: parentHeight)
+    }
+
     public func addSubview(_ child: NativeHandle, to parent: NativeHandle) {
         guard let p = containerFixed(of: parent.rawValue), let c = widget(child) else { return }
         parents[child.rawValue] = parent.rawValue
         let childFrame = frames[child.rawValue] ?? .zero
-        // Flip AppKit's bottom-left origin to GTK's top-left for placement.
-        let parentHeight = frames[parent.rawValue]?.height ?? 0
-        let y = CoordinateSpace.gtkY(for: childFrame, parentHeight: parentHeight)
+        let y = placementY(for: childFrame, in: parent.rawValue)
         gtk_fixed_put(asFixed(p), asWidget(c), Double(childFrame.origin.x), Double(y))
+        // AppKit groups radio buttons that share a superview; mirror that so the
+        // GtkCheckButtons render round and behave mutually exclusively.
+        if kinds[child.rawValue] == .radio {
+            if let lead = radiosByParent[parent.rawValue]?.first, let leadW = widgets[lead] {
+                gtk_check_button_set_group(asCheckButton(c), asCheckButton(leadW))
+            }
+            radiosByParent[parent.rawValue, default: []].append(child.rawValue)
+        }
     }
 
     // MARK: Mutators
@@ -1220,12 +1297,14 @@ public final class GTKNativeControlBackend: NativeControlBackend {
             return
         }
 
-        gtk_widget_set_size_request(asWidget(w), Int32(frame.width), Int32(frame.height))
+        // Pop-ups keep their natural (control) height regardless of an oversized
+        // frame height (see createPopUpButton).
+        let requestHeight: Int32 = kinds[handle.rawValue] == .popUp ? -1 : Int32(frame.height)
+        gtk_widget_set_size_request(asWidget(w), Int32(frame.width), requestHeight)
 
-        // If placed in a parent GtkFixed, move to the new (flipped) position.
+        // If placed in a parent GtkFixed, move to the new position.
         if let parentRaw = parents[handle.rawValue], let p = containerFixed(of: parentRaw) {
-            let parentHeight = frames[parentRaw]?.height ?? 0
-            let y = CoordinateSpace.gtkY(for: frame, parentHeight: parentHeight)
+            let y = placementY(for: frame, in: parentRaw)
             gtk_fixed_move(asFixed(p), asWidget(w), Double(frame.origin.x), Double(y))
         }
     }
@@ -1367,7 +1446,10 @@ public final class GTKNativeControlBackend: NativeControlBackend {
         case .stepper:
             gtk_spin_button_set_value(w, value)   // GtkSpinButton is opaque
         case .level:
-            gtk_level_bar_set_value(w, value)   // GtkLevelBar is opaque
+            // Rendered as a GtkProgressBar; show value as a fill fraction.
+            let (lo, hi) = ranges[handle.rawValue] ?? (0, 1)
+            let fraction = hi > lo ? (value - lo) / (hi - lo) : 0
+            gtk_progress_bar_set_fraction(w, min(1, max(0, fraction)))
         default: break
         }
     }
@@ -1384,6 +1466,14 @@ public final class GTKNativeControlBackend: NativeControlBackend {
         default:       gtk_drop_down_set_selected(w, guint(index))     // GtkDropDown is opaque
         }
     }
+    public func setSliderVertical(_ vertical: Bool, for handle: NativeHandle) {
+        guard let w = widget(handle), kinds[handle.rawValue] == .slider else { return }
+        gtk_orientable_set_orientation(
+            w, vertical ? GTK_ORIENTATION_VERTICAL : GTK_ORIENTATION_HORIZONTAL)
+        // AppKit's vertical slider puts the minimum at the bottom; GtkScale's
+        // vertical default puts it at the top, so invert to match.
+        gtk_range_set_inverted(asRange(w), gboolean(vertical ? 1 : 0))
+    }
     public func setPopUpItems(_ titles: [String], selectedIndex: Int, for handle: NativeHandle) {
         guard let w = widget(handle) else { return }
         // Rebuild the drop-down's model from a fresh GtkStringList.
@@ -1398,7 +1488,12 @@ public final class GTKNativeControlBackend: NativeControlBackend {
         guard let w = widget(handle) else { return }
         // GtkCalendar navigates via a GDateTime; unix-local keeps Date exact.
         guard let gdt = g_date_time_new_from_unix_local(gint64(date.timeIntervalSince1970)) else { return }
-        gtk_calendar_select_day(w, gdt)   // GtkCalendar is opaque
+        if graphicalDatePickers.contains(handle.rawValue) {
+            gtk_calendar_select_day(w, gdt)   // GtkCalendar is opaque
+        } else if let text = g_date_time_format(gdt, "%Y-%m-%d %H:%M:%S") {
+            gtk_editable_set_text(w, text)    // compact read-only entry
+            g_free(gpointer(text))
+        }
         g_date_time_unref(gdt)
     }
     public func setColor(_ color: NSColor, for handle: NativeHandle) {
@@ -1513,7 +1608,9 @@ public final class GTKNativeControlBackend: NativeControlBackend {
         )
     }
     public func setDateChangeAction(for handle: NativeHandle, action: @escaping (Date) -> Void) {
-        guard let w = widget(handle) else { return }
+        // Only the graphical (GtkCalendar) style emits day-selected; the compact
+        // entry is display-only.
+        guard let w = widget(handle), graphicalDatePickers.contains(handle.rawValue) else { return }
         let box = DateActionBox(action)
         g_signal_connect_data(
             UnsafeMutableRawPointer(w), "day-selected",
@@ -1601,11 +1698,13 @@ private final class DrawBox {
 /// Cairo-backed graphics context: NSBezierPath ops map 1:1 onto the cairo_t.
 final class CairoGraphicsContext: NativeGraphicsContext {
     private let cr: OpaquePointer
+    /// Whether drawing happens in a top-left (y-down) space; affects arc winding.
+    private let flipped: Bool
     private var fillColor = NSColor.black
     private var strokeColor = NSColor.black
     private var lineWidth = 1.0
 
-    init(cr: OpaquePointer) { self.cr = cr }
+    init(cr: OpaquePointer, flipped: Bool = false) { self.cr = cr; self.flipped = flipped }
 
     func setFillColor(_ color: NSColor) { fillColor = color }
     func setStrokeColor(_ color: NSColor) { strokeColor = color }
@@ -1617,14 +1716,16 @@ final class CairoGraphicsContext: NativeGraphicsContext {
         cairo_curve_to(cr, c1x, c1y, c2x, c2y, x, y)
     }
     func addArc(centerX: Double, centerY: Double, radius: Double, startAngleRadians: Double, endAngleRadians: Double, clockwise: Bool) {
-        // AppKit's default (counter-clockwise) maps to cairo_arc: in our
-        // y-flipped space that reads counter-clockwise on screen, and — unlike
-        // cairo_arc_negative — a full 0…2π sweep stays a full circle instead of
-        // normalizing to a zero-length arc.
-        if clockwise {
-            cairo_arc_negative(cr, centerX, centerY, radius, startAngleRadians, endAngleRadians)
-        } else {
+        // `cairo_arc` sweeps by increasing angle: counter-clockwise on screen in
+        // a y-up (unflipped, axis-scaled) space, but clockwise in a y-down
+        // (flipped/top-left) space. Pick the sweep so the visual winding matches
+        // the requested `clockwise`, and prefer `cairo_arc` for a given winding
+        // since a full 0…2π sweep stays a circle (cairo_arc_negative collapses it).
+        let useForwardSweep = flipped ? clockwise : !clockwise
+        if useForwardSweep {
             cairo_arc(cr, centerX, centerY, radius, startAngleRadians, endAngleRadians)
+        } else {
+            cairo_arc_negative(cr, centerX, centerY, radius, startAngleRadians, endAngleRadians)
         }
     }
     func closePath() { cairo_close_path(cr) }
@@ -1679,9 +1780,15 @@ private let gtkDrawFunc: @convention(c) (UnsafeMutablePointer<GtkDrawingArea>?, 
     guard let cr, let userData else { return }
     let box = Unmanaged<DrawBox>.fromOpaque(userData).takeUnretainedValue()
     cairo_save(cr)
-    cairo_translate(cr, 0, Double(height))
-    cairo_scale(cr, 1, -1)
-    let context = CairoGraphicsContext(cr: cr)
+    // A flipped view (top-left origin, e.g. the WinChocolate demo) draws in
+    // GTK's native space directly; an unflipped AppKit view (bottom-left, +Y up)
+    // needs the axis flip.
+    let flipped = box.backend?.isViewFlipped(box.view) ?? false
+    let context = CairoGraphicsContext(cr: cr, flipped: flipped)
+    if !flipped {
+        cairo_translate(cr, 0, Double(height))
+        cairo_scale(cr, 1, -1)
+    }
     box.backend?.dispatchDraw(view: box.view, context: context, width: Double(width), height: Double(height))
     cairo_restore(cr)
 }

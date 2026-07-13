@@ -43,8 +43,12 @@ public final class NSForm: NSView {
     @discardableResult
     public func addEntry(_ title: String) -> NSFormCell {
         let index = cells.count
-        // AppKit bottom-left coordinates: the first row sits at the top.
-        let y = frame.height - Double(index + 1) * rowHeight + (rowHeight - 24)
+        // The first row sits at the top in both conventions. Flipped (top-left):
+        // rows increase downward from y=0. Unflipped (AppKit bottom-left): rows
+        // descend from the top edge.
+        let y = isFlipped
+            ? Double(index) * rowHeight
+            : frame.height - Double(index + 1) * rowHeight + (rowHeight - 24)
         let label = NSTextField(labelWithString: title,
                                 frame: NSMakeRect(0, y, titleWidth, 24))
         let field = NSTextField(string: "",

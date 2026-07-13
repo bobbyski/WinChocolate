@@ -22,6 +22,11 @@ public final class NSSlider: NSView {
     /// Called as the user moves the slider.
     public var onValueChange: ((NSSlider) -> Void)?
 
+    /// Whether the slider is oriented vertically (AppKit's `isVertical`).
+    public var isVertical: Bool = false {
+        didSet { backend.setSliderVertical(isVertical, for: handle) }
+    }
+
     /// Creates a slider over `[minValue, maxValue]` starting at `value`.
     /// AppKit's target/action form (no frame); gets a default size.
     public convenience init(value: Double, minValue: Double, maxValue: Double, target: AnyObject?, action: String?) {

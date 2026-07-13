@@ -69,6 +69,9 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     public private(set) var doubleValues: [UInt: Double] = [:]
     public private(set) var selectedIndices: [UInt: Int] = [:]
     public private(set) var popUpItems: [UInt: [String]] = [:]
+    public private(set) var flippedViews: [UInt: Bool] = [:]
+    public private(set) var sliderVerticals: [UInt: Bool] = [:]
+    public private(set) var datePickerGraphical: [UInt: Bool] = [:]
     public private(set) var itemsByHandle: [UInt: [String]] = [:]
     private var ranges: [UInt: (min: Double, max: Double)] = [:]
     private var radioGroups: [UInt: [UInt]] = [:]   // member -> all members in its group
@@ -557,6 +560,23 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     }
     public func addSubview(_ child: NativeHandle, to parent: NativeHandle) {
         subviews[parent.rawValue, default: []].append(child.rawValue)
+    }
+    public func setViewFlipped(_ flipped: Bool, for handle: NativeHandle) {
+        flippedViews[handle.rawValue] = flipped
+    }
+    public func setSliderVertical(_ vertical: Bool, for handle: NativeHandle) {
+        sliderVerticals[handle.rawValue] = vertical
+    }
+    public func setDatePickerGraphical(_ graphical: Bool, for handle: NativeHandle) {
+        datePickerGraphical[handle.rawValue] = graphical
+    }
+    public func setButtonKind(_ kind: NativeButtonKind, title: String, for handle: NativeHandle) {
+        switch kind {
+        case .push:     kinds[handle.rawValue] = .button
+        case .checkbox: kinds[handle.rawValue] = .checkbox
+        case .radio:    kinds[handle.rawValue] = .radio
+        }
+        texts[handle.rawValue] = title
     }
 
     // MARK: Mutators

@@ -76,7 +76,6 @@ public extension NSSlider {
     var intValue: Int { Int(doubleValue) }
     var numberOfTickMarks: Int { get { 0 } set {} }
     var allowsTickMarkValuesOnly: Bool { get { false } set {} }
-    var isVertical: Bool { get { false } set {} }
     var tickMarkPosition: Int { get { 0 } set {} }
     var onAction: ((NSSlider) -> Void)? { get { onValueChange } set { onValueChange = newValue } }
 }
@@ -311,7 +310,6 @@ public extension NSCollectionView {
 }
 
 public extension NSDatePicker {
-    var datePickerStyle: NSDatePickerStyle { get { .textFieldAndStepper } set {} }
     var datePickerElements: NSDatePickerElementFlags { get { .yearMonthDay } set {} }
     var datePickerMode: Int { get { 0 } set {} }
     var minDate: Date? { get { nil } set {} }

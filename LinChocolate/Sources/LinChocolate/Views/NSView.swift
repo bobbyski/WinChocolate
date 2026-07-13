@@ -96,9 +96,25 @@ open class NSView {
     /// The view's parent in the hierarchy, or nil if unattached.
     public internal(set) weak var superview: NSView?
 
+    /// App-wide default for `isFlipped`. AppKit's default is `false` (bottom-left
+    /// origin, +Y up), which the native `LinChocolateDemo` is authored against.
+    /// The shared WinChocolate demo is authored top-left (Win32/WinChocolate use
+    /// a top-left origin), so `RealDemo` sets this to `true`.
+    nonisolated(unsafe) public static var defaultIsFlipped = false
+
+    /// Whether this view uses a top-left origin (AppKit's `NSView.isFlipped`).
+    /// When true, a subview's `frame.origin.y` is measured from the top; when
+    /// false, from the bottom (AppKit's default). Override in a subclass, or set
+    /// `NSView.defaultIsFlipped` to change it app-wide.
+    open var isFlipped: Bool { NSView.defaultIsFlipped }
+
     public func addSubview(_ view: NSView) {
         subviews.append(view)
         view.superview = self
+        // Record this parent's flip (for positioning children) and the child's
+        // own flip (for its own drawing coordinate space).
+        backend.setViewFlipped(isFlipped, for: handle)
+        backend.setViewFlipped(view.isFlipped, for: view.handle)
         backend.addSubview(view.handle, to: handle)
     }
 

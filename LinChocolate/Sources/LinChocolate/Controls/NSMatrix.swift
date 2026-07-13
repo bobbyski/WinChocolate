@@ -79,7 +79,10 @@ public final class NSMatrix: NSView {
         for r in 0..<rows {
             for c in 0..<columns {
                 let x = Double(c) * (cw + hs)
-                let y = frame.height - Double(r + 1) * ch - Double(r) * vs
+                // Row 0 at the top in both conventions.
+                let y = isFlipped
+                    ? Double(r) * (ch + vs)
+                    : frame.height - Double(r + 1) * ch - Double(r) * vs
                 cellButtons[r][c].frame = NSMakeRect(x, y, cw, ch)
             }
         }

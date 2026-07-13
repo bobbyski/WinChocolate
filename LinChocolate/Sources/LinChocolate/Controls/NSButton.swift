@@ -73,6 +73,31 @@ public final class NSButton: NSView {
         }
     }
 
+    /// Converts a plain button into a checkbox or radio (AppKit's
+    /// `setButtonType(_:)`). Recreates the native control and re-wires its
+    /// toggle. Call before adding the button to a view; radios auto-group with
+    /// siblings in the same superview.
+    public func setButtonType(_ type: NSButtonType) {
+        switch type {
+        case .switch, .switchButton, .toggle, .onOff, .pushOnPushOff:
+            backend.setButtonKind(.checkbox, title: title, for: handle)
+            rewireToggle(radio: false)
+        case .radio, .radioButton:
+            backend.setButtonKind(.radio, title: title, for: handle)
+            rewireToggle(radio: true)
+        default:
+            break   // momentary/push styles stay a plain button
+        }
+    }
+
+    private func rewireToggle(radio: Bool) {
+        backend.setToggleAction(for: handle) { [weak self] on in
+            guard let self else { return }
+            self.backingIsOn = on
+            if !radio || on { self.onAction?(self) }
+        }
+    }
+
     /// Groups radio buttons for mutual exclusion. They should share a superview.
     public static func group(_ radios: [NSButton]) {
         guard let backend = radios.first?.backend else { return }
