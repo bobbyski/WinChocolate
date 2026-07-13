@@ -120,9 +120,21 @@ open class NSDraggingItem: NSObject {
     /// The object providing the item's pasteboard representations.
     public let pasteboardWriter: Any
 
-    /// The item's drag frame (stored; the classic backend shows the standard
-    /// system drag cursor rather than a rendered image).
+    /// The item's drag frame.
     open var draggingFrame: NSRect = .zero
+
+    /// The image drawn under the cursor during the drag, if the source supplied
+    /// one via `setDraggingFrame(_:contents:)` (10.11). `nil` falls back to the
+    /// standard system drag cursor.
+    open var winDragImage: NSImage?
+
+    /// Sets the item's drag frame and the image shown under the cursor,
+    /// matching AppKit's `setDraggingFrame(_:contents:)`. `contents` is an
+    /// `NSImage`; other types leave the drag imageless.
+    open func setDraggingFrame(_ frame: NSRect, contents: Any?) {
+        draggingFrame = frame
+        winDragImage = contents as? NSImage
+    }
 
     /// Creates a dragging item for a pasteboard writer.
     public init(pasteboardWriter: Any) {
@@ -152,6 +164,11 @@ public enum NSDraggingContext: Sendable {
 open class NSDraggingSession: NSObject {
     /// Whether the content was dropped on a target (vs the drag canceling).
     public internal(set) var winDropped = false
+
+    /// The rendered drag image shown under the cursor for this session, taken
+    /// from the first item that supplied one (10.11). The Win32 backend feeds
+    /// it to the OLE drag helper; a `nil` image uses the system drag cursor.
+    public internal(set) var winDragImage: NSImage?
 
     /// The dragged items.
     public let draggingItems: [NSDraggingItem]
@@ -262,6 +279,7 @@ extension NSView {
     @discardableResult
     public func beginDraggingSession(with items: [NSDraggingItem], event: NSEvent, source: NSDraggingSource) -> NSDraggingSession {
         let session = NSDraggingSession(items: items)
+        session.winDragImage = items.first(where: { $0.winDragImage != nil })?.winDragImage
         _ = source.draggingSession(session, sourceOperationMaskFor: .outsideApplication)
 
         var text: String?

@@ -28,6 +28,14 @@ public final class Win32NativeControlBackend: NativeControlBackend {
     var scrollWheelActions: [UInt: (NSEvent) -> Void] = [:]
     var activeCursorName: String?
     var cursorRegions: [UInt: [NativeCursorRegion]] = [:]
+    // The shared tooltips_class32 host window and the control HWNDs that have a
+    // tool registered on it (so a repeat set updates rather than re-adds).
+    var tooltipWindow: HWND?
+    var tooltipRegisteredControls: Set<UInt> = []
+    // The last device rect (x, y, w, h) each window/control was moved to, so a
+    // `setFrame` to an unchanged rect skips the native `MoveWindow` (which would
+    // repaint and flicker). Cleared on control teardown.
+    var lastFrameDeviceRects: [UInt: (Int32, Int32, Int32, Int32)] = [:]
     var timerActions: [UInt: () -> Void] = [:]
     var keyEquivalentHandler: ((NSEvent) -> Bool)?
     var drawActions: [UInt: (NativeDrawingContext, NSRect) -> Void] = [:]
@@ -114,8 +122,36 @@ public final class Win32NativeControlBackend: NativeControlBackend {
     var nativeMenuRegistry: [UInt: (menu: NSMenu, entries: [(identifier: UInt, item: NSMenuItem)])] = [:]
 
     /// Creates a Win32 backend.
+    /// The primary display's device scale (device pixels per logical point),
+    /// e.g. 1.0 at 96 DPI, 1.5 at 144 DPI (10.7). Point-based frames, fonts,
+    /// custom-view paint transforms, text measurement, and input coordinates
+    /// all convert through this. It is 1.0 when the display is at 100% (or when
+    /// DPI awareness could not be declared), which makes the scaling a strict
+    /// no-op on the common path.
+    var winDeviceScale: CGFloat = 1
+
     public init() {
         Self.activeBackend = self
+        // Declare per-monitor-v2 DPI awareness before any window or device
+        // context exists, so Windows renders our GDI content and native
+        // controls at the real display DPI instead of bitmap-scaling them soft
+        // (10.7). Fall back to system-DPI awareness on pre-1703 Windows.
+        //
+        // Only adopt a manual device scale when *we* successfully declared
+        // awareness: if the process is already DPI-aware (e.g. a manifest set
+        // it) our call fails, and the safest assumption is that geometry is
+        // still being handled as before — scaling manually on top would
+        // double-scale at HiDPI. In that case winDeviceScale stays 1 (the
+        // point≈pixel path), a strict no-op.
+        let declaredAwareness =
+            winSetProcessDpiAwarenessContext(winDpiAwarenessPerMonitorV2) != 0 ||
+            winSetProcessDPIAware() != 0
+        if declaredAwareness {
+            let systemDpi = winGetDpiForSystem()
+            if systemDpi > 0 {
+                winDeviceScale = CGFloat(systemDpi) / 96.0
+            }
+        }
         // The modern presentation (plan 8.2) binds ComCtl32 v6 visual styles
         // before any window class or common control exists; classic keeps the
         // unthemed v5 look. One-way for the process lifetime.
@@ -123,6 +159,17 @@ public final class Win32NativeControlBackend: NativeControlBackend {
             Self.enableModernVisualStyles()
         }
     }
+
+    /// The device scale used by point↔pixel conversions (overrides the
+    /// protocol default so `NSScreen.winDisplayScale` and callers see the real
+    /// DPI the process declared awareness for).
+    public func winDisplayScale() -> CGFloat { winDeviceScale }
+
+    /// Converts a point-space value to device pixels at the current scale.
+    func winToDevice(_ value: CGFloat) -> Int32 { Int32((value * winDeviceScale).rounded()) }
+
+    /// Converts a device-pixel value back to point space.
+    func winToPoints(_ value: CGFloat) -> CGFloat { value / winDeviceScale }
 
     /// Starts the native Windows event loop.
     public func runApplication() {
@@ -368,6 +415,8 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         }
 
         let menuHandle = commandIdentifier.flatMap { HMENU(bitPattern: Int($0)) }
+        // Controls are created in device pixels at the display scale (10.7);
+        // a no-op at 100%.
         let childHwnd = withWideString(className) { nativeClassName in
             withWideString(text) { nativeText in
                 winCreateWindowExW(
@@ -375,10 +424,10 @@ public final class Win32NativeControlBackend: NativeControlBackend {
                     nativeClassName,
                     nativeText,
                     style,
-                    Int32(frame.origin.x),
-                    Int32(frame.origin.y),
-                    Int32(frame.size.width),
-                    Int32(frame.size.height),
+                    winToDevice(frame.origin.x),
+                    winToDevice(frame.origin.y),
+                    winToDevice(frame.size.width),
+                    winToDevice(frame.size.height),
                     parentHwnd,
                     menuHandle,
                     winGetModuleHandleW(nil),
@@ -416,16 +465,21 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         return nativeHandle(from: childHwnd)
     }
 
-    private var defaultControlFont: HFONT?
+    // Internal (not private) so the WM_DPICHANGED handler in another file can
+    // drop the cached font to rebuild it at the new scale (10.7).
+    var defaultControlFont: HFONT?
 
     private func defaultUIFont() -> HFONT? {
         if let defaultControlFont {
             return defaultControlFont
         }
 
+        // 12pt at the display scale (10.7) so native control text is crisp at
+        // HiDPI; a no-op at 100%.
+        let pixelHeight = Int32((12 * winDeviceScale).rounded())
         let font = withWideString("Segoe UI") { faceName in
             winCreateFontW(
-                -12,
+                -pixelHeight,
                 0,
                 0,
                 0,

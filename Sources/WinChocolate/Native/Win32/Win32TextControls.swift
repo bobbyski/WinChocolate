@@ -384,7 +384,9 @@ extension Win32NativeControlBackend {
             return
         }
 
-        let fontHeight = -Int32((font.pointSize * 96.0 / 72.0).rounded())
+        // Points → pixels at 96 DPI, then × the display scale (10.7) so the
+        // native control renders crisp at HiDPI. A no-op at 100%.
+        let fontHeight = -Int32((font.pointSize * 96.0 / 72.0 * winDeviceScale).rounded())
         let nativeFont = withWideString(font.fontName) { faceName in
             winCreateFontW(
                 fontHeight,

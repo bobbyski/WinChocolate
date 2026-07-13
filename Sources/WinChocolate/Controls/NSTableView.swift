@@ -395,6 +395,13 @@ open class NSTableView: NSControl {
     var winDrawnEditField: NSTextField?
     var winDrawnEditRow = -1
     var winDrawnEditColumn = -1
+
+    /// Whether a drawn cell is currently being edited in the overlay editor.
+    public var winIsEditingDrawnCell: Bool { winDrawnEditField != nil }
+    /// The row currently being edited in the drawn overlay, or `-1`.
+    public var winEditingRow: Int { winDrawnEditRow }
+    /// The column currently being edited in the drawn overlay, or `-1`.
+    public var winEditingColumn: Int { winDrawnEditColumn }
     /// Shared delegate that commits the drawn-cell overlay on editing end.
     lazy var winCellEditor: WinDrawnCellEditor = {
         let editor = WinDrawnCellEditor()
@@ -677,6 +684,65 @@ open class NSTableView: NSControl {
         }
 
         return rowValues[rowIndex][columnIndex]
+    }
+
+    // MARK: Accessibility
+    //
+    // The framework-drawn table draws its own cells, so — unlike a control
+    // backed by a native window — it has no child views for assistive tech to
+    // find. Instead it publishes a synthetic element tree: the table is an
+    // `AXTable` whose children are `AXRow`s, each holding one `AXCell` per
+    // column carrying that cell's text. This is the moved-from-5.1 data-view
+    // accessibility work; `NSOutlineView` refines the rows to `AXOutline`.
+
+    /// The role the drawn table reports. A single-column table with no header
+    /// reads as a list, matching AppKit's source-list heuristic.
+    open override var winIntrinsicAccessibilityRole: NSAccessibilityRole {
+        tableColumns.count <= 1 && !winReportsAsOutline ? .list : winReportsAsOutline ? .outline : .table
+    }
+
+    /// Subclasses (`NSOutlineView`) set this so the shared child-building path
+    /// tags rows as outline rows.
+    open var winReportsAsOutline: Bool { false }
+
+    /// Approximate window-space frame of a data row, derived from `rowHeight`.
+    /// Assistive technology uses it only for hit-testing, so the fixed-height
+    /// approximation is acceptable for variable-height rows.
+    open func winAccessibilityRowFrame(_ row: Int) -> NSRect {
+        let step = rowHeight + intercellSpacing.height
+        let local = NSRect(x: 0, y: CGFloat(row) * step, width: bounds.width, height: rowHeight)
+        return convert(local, to: nil)
+    }
+
+    open override func accessibilityChildren() -> [Any]? {
+        // The data-driven row/cell tree is the table's accessibility surface:
+        // it carries every cell's text whether the table draws its own cells
+        // or hosts cell views, so assistive technology and the contract tests
+        // see the same structure. An explicit app override still wins.
+        if let explicit = winExplicitAccessibilityChildren { return explicit }
+        guard numberOfRows > 0 else { return nil }
+        var rows: [NSAccessibilityProtocol] = []
+        for row in 0..<numberOfRows {
+            let rowElement = NSAccessibilityElement()
+            rowElement.setAccessibilityRole(.row)
+            rowElement.setAccessibilitySubrole(winReportsAsOutline ? .outlineRow : .tableRow)
+            rowElement.accessibilityFrameInParentSpace = winAccessibilityRowFrame(row)
+            rowElement.winAccessibilityParent = self
+            var cells: [NSAccessibilityProtocol] = []
+            for column in 0..<max(1, tableColumns.count) {
+                let cell = NSAccessibilityElement()
+                cell.setAccessibilityRole(.cell)
+                cell.setAccessibilityValue(value(atColumn: column, row: row) ?? "")
+                if tableColumns.indices.contains(column) {
+                    cell.setAccessibilityLabel(tableColumns[column].title)
+                }
+                cell.accessibilityFrameInParentSpace = winAccessibilityRowFrame(row)
+                cells.append(cell)
+            }
+            rowElement.setAccessibilityChildren(cells)
+            rows.append(rowElement)
+        }
+        return rows
     }
 
     /// Returns the value for a column object and row.

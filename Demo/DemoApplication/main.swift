@@ -364,6 +364,56 @@ final class DemoGradientsView: NSView {
     }
 }
 
+// MARK: - Scroll-stress paint-heavy view
+
+/// A deliberately expensive-to-paint view: a full-width base gradient plus a
+/// dense grid of individual gradient tiles (dozens of `NSGradient.draw` calls
+/// per `draw(_:)`). Used on the scroll-stress page so scrolling and resizing
+/// exercise the repaint pipeline with slow content, making flicker/coalescing
+/// issues obvious.
+final class DemoSlowGradientView: NSView {
+    var label: String = ""
+    /// Grid density — higher means slower paint.
+    var columns = 18
+    var rows = 4
+
+    override var acceptsFirstResponder: Bool { false }
+
+    override func draw(_ dirtyRect: NSRect) {
+        let dark = NSAppearance.currentDrawing().winIsDark
+        (dark ? NSColor(calibratedRed: 0.14, green: 0.14, blue: 0.16, alpha: 1)
+              : NSColor(calibratedRed: 0.96, green: 0.96, blue: 0.98, alpha: 1)).setFill()
+        NSRectFill(NSMakeRect(0, 0, frame.size.width, frame.size.height))
+
+        // Full-width multi-stop base gradient.
+        NSGradient(colorsAndLocations:
+            (NSColor(calibratedRed: 0.30, green: 0.62, blue: 0.86, alpha: 1), 0),
+            (NSColor(calibratedRed: 0.55, green: 0.35, blue: 0.80, alpha: 1), 0.5),
+            (NSColor(calibratedRed: 0.90, green: 0.45, blue: 0.35, alpha: 1), 1)
+        )?.draw(in: NSMakeRect(0, 0, frame.size.width, frame.size.height), angle: 20)
+
+        // A dense grid of individual gradient tiles — the expensive part.
+        let tileW = frame.size.width / CGFloat(columns)
+        let tileH = frame.size.height / CGFloat(rows)
+        for r in 0..<rows {
+            for c in 0..<columns {
+                let t = CGFloat((r * columns + c) % 24) / 24.0
+                let rect = NSMakeRect(CGFloat(c) * tileW + 2, CGFloat(r) * tileH + 2,
+                                      max(1, tileW - 4), max(1, tileH - 4))
+                NSGradient(
+                    starting: NSColor(calibratedRed: t, green: 0.55, blue: 1 - t, alpha: 1),
+                    ending: NSColor(calibratedRed: 1 - t, green: 0.75, blue: t, alpha: 1)
+                )?.draw(in: rect, angle: CGFloat((c * 20) % 360))
+            }
+        }
+
+        label.draw(at: NSMakePoint(10, 6), withAttributes: [
+            .font: NSFont.boldSystemFont(ofSize: 12),
+            .foregroundColor: NSColor.white
+        ])
+    }
+}
+
 // MARK: - WinCoreGraphics (Phase 13) showcase view
 
 /// An artboard drawn entirely through the CoreGraphics-shaped surface —
@@ -1139,6 +1189,7 @@ let listsPage = DemoPageView(frame: NSMakeRect(0, 144, 1120, 560))
 let bezelsPage = DemoPageView(frame: NSMakeRect(0, 144, 1120, 560))
 let layoutPage = DemoPageView(frame: NSMakeRect(0, 144, 1120, 560))
 let coreGraphicsPage = DemoPageView(frame: NSMakeRect(0, 144, 1120, 560))
+let stressPage = DemoPageView(frame: NSMakeRect(0, 144, 1120, 560))
 valuesPage.isHidden = true
 tablesPage.isHidden = true
 drawingPage.isHidden = true
@@ -1147,6 +1198,7 @@ listsPage.isHidden = true
 bezelsPage.isHidden = true
 layoutPage.isHidden = true
 coreGraphicsPage.isHidden = true
+stressPage.isHidden = true
 let counterLabel = NSTextField(string: "Clicks: 0", frame: NSMakeRect(32, 36, 300, 24))
 let statusLabel = NSTextField(string: "Ready", frame: NSMakeRect(32, 74, 640, 24))
 let focusLabel = NSTextField(string: "Focus: none", frame: NSMakeRect(744, 74, 300, 24))
@@ -2036,7 +2088,7 @@ datePicker.maxDate = Date(timeIntervalSince1970: 1_893_456_000)
 datePicker.datePickerElements = [.yearMonthDay, .hourMinuteSecond]
 dateValueLabel.textColor = demoValueTextColor
 dateValueLabel.stringValue = datePicker.stringValue
-pageSelector.addItems(withTitles: ["Controls", "Values", "Tables/Media", "Drawing", "New in 3.x", "Lists (5.x)", "Bezels (8.3)", "Auto Layout (9.x)", "CoreGraphics (13)"])
+pageSelector.addItems(withTitles: ["Controls", "Values", "Tables/Media", "Drawing", "New in 3.x", "Lists (5.x)", "Bezels (8.3)", "Auto Layout (9.x)", "CoreGraphics (13)", "Scroll Stress"])
 imageLabel.font = NSFont.boldSystemFont(ofSize: 12)
 imageView.image = NSImage(contentsOfFile: demoArtworkPath) ?? NSImage(named: "WinChocolate artwork")
 imageView.imageFrameStyle = .grayBezel
@@ -2261,6 +2313,7 @@ func showDemoPage(_ index: Int) {
     bezelsPage.isHidden = index != 6
     layoutPage.isHidden = index != 7
     coreGraphicsPage.isHidden = index != 8
+    stressPage.isHidden = index != 9
     updateFocusDisplay()
 }
 
@@ -2315,6 +2368,78 @@ outlineView.reloadData()
 outlineView.selectRowIndexes([0], byExtendingSelection: false)
 outlineScrollView.hasVerticalScroller = true
 outlineScrollView.documentView = outlineView
+
+// MARK: - Scroll-stress page (flicker/paint tuning)
+//
+// A tall scrolling document packed with many native controls and interspersed
+// with deliberately paint-heavy gradient bands, so scrolling and resizing this
+// page exercise the repaint/coalescing pipeline under load.
+let stressHeader = NSTextField(string: "Scroll stress — many controls + slow gradient bands. Scroll and resize to check for flicker.",
+                               frame: NSMakeRect(12, 6, 1060, 22))
+stressHeader.isEditable = false
+stressHeader.isBordered = false
+stressHeader.drawsBackground = false
+stressHeader.font = NSFont.boldSystemFont(ofSize: 13)
+stressPage.addSubview(stressHeader)
+
+let stressScrollView = NSScrollView(frame: NSMakeRect(12, 34, 1096, 512))
+stressScrollView.hasVerticalScroller = true
+let stressDocView = NSView(frame: NSMakeRect(0, 0, 1060, 10))
+
+var stressY: CGFloat = 12
+for i in 0..<28 {
+    let rowLabel = NSTextField(string: "Row \(i + 1)", frame: NSMakeRect(12, stressY + 2, 64, 20))
+    rowLabel.isEditable = false
+    rowLabel.isBordered = false
+    rowLabel.drawsBackground = false
+    stressDocView.addSubview(rowLabel)
+
+    let field = NSTextField(string: "Editable field \(i + 1)", frame: NSMakeRect(84, stressY, 180, 24))
+    field.isEditable = true
+    stressDocView.addSubview(field)
+
+    let rowButton = NSButton(title: "Button \(i + 1)", frame: NSMakeRect(276, stressY, 120, 26))
+    stressDocView.addSubview(rowButton)
+
+    let slider = NSSlider(frame: NSMakeRect(408, stressY, 150, 24))
+    slider.minValue = 0
+    slider.maxValue = 100
+    slider.doubleValue = Double((i * 7) % 100)
+    stressDocView.addSubview(slider)
+
+    let popup = NSPopUpButton(frame: NSMakeRect(570, stressY, 130, 26))
+    popup.addItems(withTitles: ["Alpha", "Beta", "Gamma", "Delta"])
+    popup.selectItem(at: i % 4)
+    stressDocView.addSubview(popup)
+
+    let check = NSButton(title: "Enabled", frame: NSMakeRect(712, stressY, 96, 24))
+    check.setButtonType(.switchButton)
+    check.state = (i % 2 == 0) ? .on : .off
+    stressDocView.addSubview(check)
+
+    let combo = NSComboBox(frame: NSMakeRect(818, stressY, 120, 26))
+    combo.addItems(withObjectValues: ["One", "Two", "Three"])
+    stressDocView.addSubview(combo)
+
+    let well = NSColorWell(frame: NSMakeRect(948, stressY, 44, 26))
+    well.color = DemoCanvasView.palette[i % DemoCanvasView.palette.count]
+    stressDocView.addSubview(well)
+
+    stressY += 36
+
+    // Every four rows, drop in an expensive gradient band.
+    if i % 4 == 3 {
+        let band = DemoSlowGradientView(frame: NSMakeRect(12, stressY, 1000, 120))
+        band.label = "Slow gradient band \(i / 4 + 1) — dozens of gradient fills per paint"
+        stressDocView.addSubview(band)
+        stressY += 132
+    }
+}
+
+stressDocView.frame = NSMakeRect(0, 0, 1060, stressY + 12)
+stressScrollView.documentView = stressDocView
+stressPage.addSubview(stressScrollView)
+
 contentView.nextKeyView = button
 editableTextField.nextKeyView = secureTextField
 secureTextField.nextKeyView = alertButton
@@ -3038,6 +3163,7 @@ contentView.addSubview(listsPage)
 contentView.addSubview(bezelsPage)
 contentView.addSubview(layoutPage)
 contentView.addSubview(coreGraphicsPage)
+contentView.addSubview(stressPage)
 
 controlsPage.addSubview(editableLabel)
 controlsPage.addSubview(editableTextField)
@@ -3569,7 +3695,7 @@ editMenuController.textView = notesTextView
 // menu entry.
 let viewMenuItem = NSMenuItem(title: "View", action: nil, keyEquivalent: "")
 let viewMenu = NSMenu(title: "View")
-for (index, pageTitle) in ["Controls Page", "Values Page", "Tables/Media Page", "Drawing Page", "New in 3.x Page", "Lists Page", "Bezels Page", "Auto Layout Page", "CoreGraphics Page"].enumerated() {
+for (index, pageTitle) in ["Controls Page", "Values Page", "Tables/Media Page", "Drawing Page", "New in 3.x Page", "Lists Page", "Bezels Page", "Auto Layout Page", "CoreGraphics Page", "Scroll Stress Page"].enumerated() {
     // Ctrl+1...Ctrl+8 switch pages (the .command mask maps onto Ctrl on Windows).
     let item = NSMenuItem(title: pageTitle, action: nil, keyEquivalent: "\(index + 1)")
     item.onAction = { _ in
@@ -4102,12 +4228,17 @@ let demoWindowDelegate = DemoWindowDelegate()
 window.delegate = demoWindowDelegate
 
 // --page N opens directly on a given page (handy for QA of a specific page).
+// Page 9 is the scroll-stress page. `--stress` is a shortcut for it.
 var initialPage = 0
 if let pageFlag = CommandLine.arguments.firstIndex(of: "--page"),
    CommandLine.arguments.indices.contains(pageFlag + 1),
    let page = Int(CommandLine.arguments[pageFlag + 1]) {
     initialPage = page
 }
+if CommandLine.arguments.contains("--stress") {
+    initialPage = 9
+}
+initialPage = max(0, min(initialPage, pageSelector.numberOfItems - 1))
 pageSelector.selectItem(at: initialPage)
 showDemoPage(initialPage)
 updateFocusDisplay()

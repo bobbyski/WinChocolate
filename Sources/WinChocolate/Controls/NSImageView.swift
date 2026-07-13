@@ -188,6 +188,16 @@ public enum NSCompositingOperation: Int, Sendable {
 /// The first backend slice records the image name and uses a native static peer
 /// as a placeholder. Real bitmap loading and drawing are future work.
 open class NSImageView: NSControl {
+    // MARK: Accessibility
+
+    /// An image view reports `.image`; its label defaults to the underlying
+    /// image's accessibility description (the alt text set at image creation).
+    open override var winIntrinsicAccessibilityRole: NSAccessibilityRole { .image }
+    open override var winIntrinsicAccessibilityLabel: String? {
+        let description = image?.accessibilityDescription ?? ""
+        return description.isEmpty ? nil : description
+    }
+
     /// How the image is scaled inside the image view.
     public enum ImageScaling: Sendable {
         /// Scale down proportionally when the image is larger than the view.

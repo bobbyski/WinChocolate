@@ -18,6 +18,15 @@ open class NSScreen: NSObject {
     /// Per-monitor DPI awareness would surface real scales here.
     open var backingScaleFactor: CGFloat { 1 }
 
+    /// The real device scale factor of the primary display (device pixels per
+    /// logical point) read from the system DPI — 1.0 at 96 DPI, 1.5 at 144 DPI
+    /// (10.7). This surfaces the physical scale even while the process runs
+    /// DPI-virtualized; the coordinated point→device-pixel scaling and
+    /// per-monitor-v2 declaration are tracked on plan item 10.7.
+    open var winDisplayScale: CGFloat {
+        NSApplication.shared.nativeBackend.winDisplayScale()
+    }
+
     init(frame: NSRect, visibleFrame: NSRect) {
         self.frame = frame
         self.visibleFrame = visibleFrame

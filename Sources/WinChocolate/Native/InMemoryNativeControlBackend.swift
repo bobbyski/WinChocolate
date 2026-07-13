@@ -334,6 +334,9 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
         /// Recorded tooltip text.
         public var toolTip: String?
 
+        /// Recorded explicit accessibility name (from `accessibilityLabel`).
+        public var accessibilityName: String?
+
         /// Recorded font.
         public var font: NSFont?
 
@@ -1168,8 +1171,13 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
         records[handle] = record
     }
 
+    /// Number of `setFrame` calls that reached the backend per handle. Used to
+    /// verify the framework coalesces duplicate frame pushes (flicker guard).
+    public private(set) var setFrameCallCounts: [NativeHandle: Int] = [:]
+
     /// Updates a recorded control frame.
     public func setFrame(_ frame: NSRect, for handle: NativeHandle) {
+        setFrameCallCounts[handle, default: 0] += 1
         guard var record = records[handle] else {
             return
         }
@@ -1352,6 +1360,22 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
         }
 
         record.toolTip = toolTip
+        records[handle] = record
+    }
+
+    /// The display scale reported by `winDisplayScale()`, scriptable for tests.
+    public var scriptedDisplayScale: CGFloat = 1.0
+
+    /// Returns the scripted display scale.
+    public func winDisplayScale() -> CGFloat { scriptedDisplayScale }
+
+    /// Records the explicit accessibility name pushed from `accessibilityLabel`.
+    public func setAccessibilityName(_ name: String?, for handle: NativeHandle) {
+        guard var record = records[handle] else {
+            return
+        }
+
+        record.accessibilityName = name
         records[handle] = record
     }
 

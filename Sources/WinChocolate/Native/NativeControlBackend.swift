@@ -318,6 +318,20 @@ extension NativeControlBackend {
     /// registration (the drawn-cell table path dispatches its own).
     public func registerTableDoubleClickAction(for handle: NativeHandle, action: @escaping () -> Void) {}
 
+    /// The primary display's scale factor (device pixels per logical point):
+    /// 1.0 at 96 DPI, 1.5 at 144 DPI, and so on. Default 1.0; the Win32 backend
+    /// reads the real DPI. This is the queryable half of per-monitor DPI
+    /// awareness (10.7); applying the scale to all device-pixel geometry and
+    /// declaring per-monitor-v2 awareness is the coordinated native pass tracked
+    /// on that item.
+    public func winDisplayScale() -> CGFloat { 1.0 }
+
+    /// Default: a backend with no accessibility channel ignores the name. The
+    /// Win32 backend overrides to annotate the control's accessible name so
+    /// assistive technology reads the app's explicit `accessibilityLabel`
+    /// instead of the control's window text; the in-memory backend records it.
+    public func setAccessibilityName(_ name: String?, for handle: NativeHandle) {}
+
     /// Updates an image-view bitmap source with no tint.
     public func setImagePath(_ imagePath: String?, description: String, for handle: NativeHandle) {
         setImagePath(imagePath, description: description, tint: nil, for: handle)
@@ -677,6 +691,12 @@ public protocol NativeControlBackend: AnyObject {
 
     /// Updates a native control's tooltip text.
     func setToolTip(_ toolTip: String?, for handle: NativeHandle)
+
+    /// Annotates a native control's accessibility name (from the AppKit
+    /// `accessibilityLabel`). A default no-op is provided, but declaring it a
+    /// requirement makes it a dynamic-dispatch customization point so the
+    /// Win32 and in-memory backends' overrides are actually called.
+    func setAccessibilityName(_ name: String?, for handle: NativeHandle)
 
     /// Updates a native control's font.
     func setFont(_ font: NSFont?, for handle: NativeHandle)

@@ -81,6 +81,21 @@ public final class WinDrawnCellEditor: NSTextFieldDelegate {
     public func controlTextDidEndEditing(_ obj: NSNotification) {
         table?.winCommitDrawnEdit()
     }
+
+    /// Intercepts the field editor's Tab/Backtab so editing commits and moves
+    /// to the next/previous editable cell instead of letting Windows move focus
+    /// off the field — AppKit's `control(_:textView:doCommandBy:)` contract.
+    public func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
+        guard let table else { return false }
+        switch commandSelector {
+        case "insertTab:":
+            return table.winAdvanceDrawnEdit(reversed: false)
+        case "insertBacktab:":
+            return table.winAdvanceDrawnEdit(reversed: true)
+        default:
+            return false
+        }
+    }
 }
 
 /// The non-scrolling header strip for a framework-drawn table hosted in a
@@ -758,6 +773,50 @@ extension NSTableView {
         winDrawnEditRow = -1
         winDrawnEditColumn = -1
         field.removeFromSuperview()
+    }
+
+    /// The next editable, non-hosted drawn cell after `(row, column)`, scanning
+    /// forward (or backward when `reversed`) across columns and then wrapping to
+    /// the next/previous row. Returns `nil` when there is no further editable
+    /// cell — matching AppKit, where Tab past the last field ends editing.
+    func winNextEditableDrawnCell(afterRow row: Int, column: Int, reversed: Bool) -> (row: Int, column: Int)? {
+        guard numberOfRows > 0, !tableColumns.isEmpty else { return nil }
+        let columnCount = tableColumns.count
+        var r = row
+        var c = column
+        // Bound the walk so a table with no other editable cell terminates.
+        for _ in 0..<(numberOfRows * columnCount) {
+            if reversed {
+                c -= 1
+                if c < 0 { c = columnCount - 1; r -= 1 }
+            } else {
+                c += 1
+                if c >= columnCount { c = 0; r += 1 }
+            }
+            guard r >= 0, r < numberOfRows else { return nil }
+            if tableColumns[c].isEditable, !winCellIsHosted(row: r, column: c) {
+                return (r, c)
+            }
+        }
+        return nil
+    }
+
+    /// Tab/Backtab inside the drawn cell editor: commits the current edit and
+    /// begins editing the next (or previous) editable cell, selecting its row.
+    /// Returns whether editing advanced; `false` means there was nowhere to go
+    /// (the caller lets editing end, as AppKit does).
+    @discardableResult
+    public func winAdvanceDrawnEdit(reversed: Bool) -> Bool {
+        guard winDrawnEditField != nil else { return false }
+        let fromRow = winDrawnEditRow
+        let fromColumn = winDrawnEditColumn
+        guard let next = winNextEditableDrawnCell(afterRow: fromRow, column: fromColumn, reversed: reversed) else {
+            return false
+        }
+        winCommitDrawnEdit()
+        selectRowIndexes(IndexSet(integer: next.row), byExtendingSelection: false)
+        winBeginDrawnEdit(row: next.row, column: next.column)
+        return true
     }
 
     /// Handles a click in the drawn table: selects the hit row, or sorts on a

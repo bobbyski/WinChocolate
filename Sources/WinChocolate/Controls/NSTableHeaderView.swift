@@ -47,4 +47,33 @@ open class NSTableHeaderView: NSView {
         }
         return NSRect(x: x, y: 0, width: max(20, tableView.tableColumns[column].width), height: headerHeight)
     }
+
+    /// Half-width of the resize hot-zone straddling each column boundary.
+    private let resizeHotZone: CGFloat = 4
+
+    /// The x positions of the resizable column boundaries (each column's
+    /// trailing edge). The last column's edge is included so the table's own
+    /// right edge is draggable, matching AppKit.
+    open func winColumnBoundaries() -> [CGFloat] {
+        guard let tableView else { return [] }
+        var boundaries: [CGFloat] = []
+        var x: CGFloat = 0
+        for column in tableView.tableColumns {
+            x += max(20, column.width)
+            boundaries.append(x)
+        }
+        return boundaries
+    }
+
+    /// Shows the left-right resize cursor (↔) while the pointer hovers a column
+    /// boundary, so users discover column resizing — the follow-up the class
+    /// comment tracked. The resize hit-test itself already exists on the table.
+    open override func resetCursorRects() {
+        guard tableView?.allowsColumnResizing ?? false else { return }
+        for edge in winColumnBoundaries() {
+            let rect = NSRect(x: edge - resizeHotZone, y: 0,
+                              width: resizeHotZone * 2, height: headerHeight)
+            addCursorRect(rect, cursor: .resizeLeftRight)
+        }
+    }
 }

@@ -1123,6 +1123,30 @@ func winGlobalFree(_ memory: UnsafeMutableRawPointer?) -> UnsafeMutableRawPointe
 @_silgen_name("SetGraphicsMode")
 func winSetGraphicsMode(_ deviceContext: HDC?, _ mode: Int32) -> Int32
 
+// MARK: - Per-monitor DPI awareness (10.7)
+
+/// DPI_AWARENESS_CONTEXT is an opaque handle passed by value; the well-known
+/// per-monitor-v2 handle is -4 (as a pointer-sized sentinel), system-aware -2.
+let winDpiAwarenessPerMonitorV2 = UnsafeMutableRawPointer(bitPattern: Int(bitPattern: UInt(bitPattern: -4)))
+let winDpiAwarenessSystem = UnsafeMutableRawPointer(bitPattern: Int(bitPattern: UInt(bitPattern: -2)))
+
+/// Opts the process into a DPI-awareness mode (Windows 10 1703+). Returns
+/// nonzero on success.
+@_silgen_name("SetProcessDpiAwarenessContext")
+func winSetProcessDpiAwarenessContext(_ context: UnsafeMutableRawPointer?) -> Int32
+
+/// Legacy fallback: system-DPI awareness (Vista+).
+@_silgen_name("SetProcessDPIAware")
+func winSetProcessDPIAware() -> Int32
+
+/// The DPI of the display that a window is on (Windows 10 1607+). 96 = 100%.
+@_silgen_name("GetDpiForWindow")
+func winGetDpiForWindow(_ hwnd: HWND?) -> UINT
+
+/// The system DPI (Windows 10 1607+). 96 = 100%.
+@_silgen_name("GetDpiForSystem")
+func winGetDpiForSystem() -> UINT
+
 @_silgen_name("SetWorldTransform")
 func winSetWorldTransform(_ deviceContext: HDC?, _ transform: UnsafePointer<XFORM>) -> Int32
 
@@ -1742,6 +1766,8 @@ let gwlpWndProc: Int32 = -4
 let gwChild: UINT = 5
 let gwHwndNext: UINT = 2
 let wmSettingChange: UINT = 0x001A
+/// WM_DPICHANGED: a window moved to a display with a different DPI (10.7).
+let wmDpiChanged: UINT = 0x02E0
 let rdwFrame: UINT = 0x0400
 let clrDefault: DWORD = 0xFF00_0000
 let gclpHbrBackground: Int32 = -10

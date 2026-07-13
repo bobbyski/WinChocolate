@@ -248,6 +248,37 @@ open class NSButton: NSControl {
         }
     }
 
+    // MARK: Accessibility
+
+    /// A checkbox reports `.checkBox`, a radio button `.radioButton`, and a
+    /// push button `.button` — exactly as AppKit maps `buttonType`.
+    open override var winIntrinsicAccessibilityRole: NSAccessibilityRole {
+        switch buttonType {
+        case .switchButton: return .checkBox
+        case .radioButton: return .radioButton
+        case .momentaryPushIn: return .button
+        }
+    }
+
+    /// The button's title is both its title and its label for assistive tech.
+    open override var winIntrinsicAccessibilityTitle: String? {
+        displayedTitle.isEmpty ? nil : displayedTitle
+    }
+    open override var winIntrinsicAccessibilityLabel: String? {
+        winIntrinsicAccessibilityTitle
+    }
+
+    /// Toggle buttons report their state as the AppKit value (1 on, 0 off,
+    /// 2 mixed); a push button has no persistent value.
+    open override var winIntrinsicAccessibilityValue: Any? {
+        switch buttonType {
+        case .switchButton, .radioButton:
+            return state == .mixed ? 2 : state.rawValue
+        case .momentaryPushIn:
+            return nil
+        }
+    }
+
     /// Creates a button with a frame.
     public override init(frame frameRect: NSRect) {
         self.title = ""
