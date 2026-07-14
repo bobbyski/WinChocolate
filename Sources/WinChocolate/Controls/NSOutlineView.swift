@@ -58,6 +58,9 @@ public extension NSOutlineViewDelegate {
 /// per-level indentation on its first column (via the drawn-cell hooks), with
 /// clicks on the triangle expanding/collapsing the item.
 open class NSOutlineView: NSTableView {
+    /// An outline reports `AXOutline` with `AXOutlineRow` rows.
+    open override var winReportsAsOutline: Bool { true }
+
     private struct OutlineRow {
         var item: Any
         var level: Int

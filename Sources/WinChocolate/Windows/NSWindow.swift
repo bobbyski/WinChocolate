@@ -499,27 +499,78 @@ open class NSWindow: NSResponder {
         nativeBackend.setHidden(true, for: nativeHandle)
     }
 
+    /// The sheet currently attached to this window, if any (AppKit's
+    /// `attachedSheet`). While a sheet is attached, additional `beginSheet`
+    /// calls queue behind it.
+    open internal(set) var attachedSheet: NSWindow?
+
+    /// The window this window is a sheet of, if any (AppKit's `sheetParent`).
+    open internal(set) weak var sheetParent: NSWindow?
+
+    // Sheets requested while another sheet is attached, presented FIFO as each
+    // preceding sheet ends — matching AppKit's sheet queue.
+    private var winQueuedSheets: [(NSWindow, ((NSApplication.ModalResponse) -> Void)?)] = []
+
+    /// The vertical inset from this window's top at which an attached sheet
+    /// hangs: the title area, plus the toolbar strip when a visible toolbar is
+    /// docked, so the sheet drops below the toolbar rather than under the bare
+    /// title bar (the positioning owned here, moved from 6.2).
+    open var winSheetTopInset: CGFloat {
+        var inset: CGFloat = 56
+        if let toolbar, toolbar.isVisible {
+            inset += toolbarHeight
+        }
+        return inset
+    }
+
+    /// The origin at which a sheet of the given size attaches: horizontally
+    /// centered, dropped below the title area (and toolbar, if any).
+    open func winSheetOrigin(for sheetSize: NSSize) -> NSPoint {
+        NSMakePoint(
+            frame.origin.x + max((frame.size.width - sheetSize.width) / 2, 0),
+            frame.origin.y + winSheetTopInset
+        )
+    }
+
     /// Presents a window as a sheet attached to this window.
     ///
-    /// The classic backend runs sheets as application-modal sessions
-    /// positioned under this window's title area; the handler receives the
-    /// code passed to `endSheet(_:returnCode:)`. Window-modal sheets with
-    /// slide animation arrive with the modern appearance.
+    /// The sheet attaches below the title area (and any docked toolbar), links
+    /// to this window through `sheetParent`/`attachedSheet`, and runs a modal
+    /// session that blocks this window; the handler receives the code passed to
+    /// `endSheet(_:returnCode:)`. A second `beginSheet` while a sheet is
+    /// attached queues behind it. Slide animation and parent dimming arrive
+    /// with the modern appearance.
     open func beginSheet(_ sheetWindow: NSWindow, completionHandler handler: ((NSApplication.ModalResponse) -> Void)? = nil) {
+        // A sheet is already up — queue this one behind it.
+        if attachedSheet != nil {
+            winQueuedSheets.append((sheetWindow, handler))
+            return
+        }
+        winPresentSheet(sheetWindow, completionHandler: handler)
+    }
+
+    private func winPresentSheet(_ sheetWindow: NSWindow, completionHandler handler: ((NSApplication.ModalResponse) -> Void)?) {
         let sheetSize = sheetWindow.frame.size
-        let origin = NSMakePoint(
-            frame.origin.x + max((frame.size.width - sheetSize.width) / 2, 0),
-            frame.origin.y + 56
-        )
-        sheetWindow.setFrame(NSRect(origin: origin, size: sheetSize), display: true)
+        sheetWindow.setFrame(NSRect(origin: winSheetOrigin(for: sheetSize), size: sheetSize), display: true)
+        attachedSheet = sheetWindow
+        sheetWindow.sheetParent = self
         let response = NSApplication.shared.runModal(for: sheetWindow)
         handler?(response)
     }
 
-    /// Ends a sheet session presented with `beginSheet(_:completionHandler:)`.
+    /// Ends a sheet session presented with `beginSheet(_:completionHandler:)`,
+    /// unlinks it, and presents the next queued sheet if one is waiting.
     open func endSheet(_ sheetWindow: NSWindow, returnCode: NSApplication.ModalResponse = .OK) {
         NSApplication.shared.stopModal(withCode: returnCode)
         sheetWindow.close()
+        if attachedSheet === sheetWindow {
+            attachedSheet = nil
+        }
+        sheetWindow.sheetParent = nil
+        if !winQueuedSheets.isEmpty {
+            let (next, handler) = winQueuedSheets.removeFirst()
+            winPresentSheet(next, completionHandler: handler)
+        }
     }
 
     /// Makes the window the key window.

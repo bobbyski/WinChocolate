@@ -26,6 +26,25 @@ extension Win32NativeControlBackend {
             // the message too.
             winHandleSettingChange()
             return nil
+        case wmDpiChanged:
+            // The window moved to a display with a different DPI (10.7). Adopt
+            // the new device scale and take the OS-suggested window rectangle
+            // (lParam is a RECT*), which resizes the window and re-runs the
+            // framework's layout at the new scale.
+            let newDpi = CGFloat((wParam >> 16) & 0xffff)
+            if newDpi > 0 {
+                winDeviceScale = newDpi / 96.0
+                defaultControlFont = nil  // rebuilt at the new scale on demand
+            }
+            if let hwnd, lParam != 0,
+               let suggested = UnsafePointer<RECT>(bitPattern: UInt(bitPattern: lParam)) {
+                let rect = suggested.pointee
+                _ = winSetWindowPos(hwnd, nil, rect.left, rect.top,
+                                    rect.right - rect.left, rect.bottom - rect.top,
+                                    swpNoZOrder | swpNoActivate)
+                _ = winRedrawWindow(hwnd, nil, nil, rdwInvalidate | rdwErase | rdwAllChildren)
+            }
+            return 0
         case wmGetMinMaxInfo:
             // Constrain user resizing to the window's content size limits,
             // converting each content size to the outer window rect.
@@ -1220,7 +1239,10 @@ extension Win32NativeControlBackend {
     private func point(from lParam: LPARAM) -> NSPoint {
         let x = Int16(bitPattern: UInt16(lParam & 0xffff))
         let y = Int16(bitPattern: UInt16((lParam >> 16) & 0xffff))
-        return NSMakePoint(CGFloat(x), CGFloat(y))
+        // Windows reports mouse coordinates in device pixels; convert back to
+        // logical points so the framework hit-tests in point space (10.7).
+        // A no-op at 100%.
+        return NSMakePoint(winToPoints(CGFloat(x)), winToPoints(CGFloat(y)))
     }
 
     private func mouseLocation(from lParam: LPARAM, in hwnd: HWND?) -> NSPoint {

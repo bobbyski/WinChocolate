@@ -1,56 +1,17 @@
-/// A floating-point scalar used by WinChocolate geometry types.
-public typealias CGFloat = Double
+// The geometry value types are owned by WinCoreGraphics (plan 13.1/13.2) —
+// exactly Apple's layering, where `NSRect` *is* `CGRect`. The module is
+// re-exported so `import WinChocolate` keeps providing `CGRect`/`CGFloat`
+// and the rest of the CG-named surface unchanged.
+@_exported import WinCoreGraphics
 
-/// A two-dimensional point.
-public struct NSPoint: Equatable, Sendable {
-    /// The horizontal coordinate.
-    public var x: CGFloat
+/// AppKit point alias over the CoreGraphics type, matching Apple.
+public typealias NSPoint = CGPoint
 
-    /// The vertical coordinate.
-    public var y: CGFloat
+/// AppKit size alias over the CoreGraphics type, matching Apple.
+public typealias NSSize = CGSize
 
-    /// Creates a point from horizontal and vertical coordinates.
-    public init(x: CGFloat, y: CGFloat) {
-        self.x = x
-        self.y = y
-    }
-}
-
-/// A two-dimensional size.
-public struct NSSize: Equatable, Sendable {
-    /// The width value.
-    public var width: CGFloat
-
-    /// The height value.
-    public var height: CGFloat
-
-    /// Creates a size from width and height values.
-    public init(width: CGFloat, height: CGFloat) {
-        self.width = width
-        self.height = height
-    }
-}
-
-/// A rectangle represented by an origin and size.
-public struct NSRect: Equatable, Sendable {
-    /// The rectangle origin.
-    public var origin: NSPoint
-
-    /// The rectangle size.
-    public var size: NSSize
-
-    /// Creates a rectangle from an origin and size.
-    public init(origin: NSPoint, size: NSSize) {
-        self.origin = origin
-        self.size = size
-    }
-
-    /// Creates a rectangle from individual coordinate and dimension values.
-    public init(x: CGFloat, y: CGFloat, width: CGFloat, height: CGFloat) {
-        self.origin = NSPoint(x: x, y: y)
-        self.size = NSSize(width: width, height: height)
-    }
-}
+/// AppKit rectangle alias over the CoreGraphics type, matching Apple.
+public typealias NSRect = CGRect
 
 /// A zero-valued point.
 public let NSZeroPoint = NSPoint(x: 0, y: 0)
@@ -149,142 +110,8 @@ public func NSInsetRect(_ rect: NSRect, _ deltaX: CGFloat, _ deltaY: CGFloat) ->
     )
 }
 
-// MARK: - CoreGraphics-compatible aliases
-
-/// CoreGraphics point alias, so `CGPoint` source compiles unchanged.
-public typealias CGPoint = NSPoint
-
-/// CoreGraphics size alias.
-public typealias CGSize = NSSize
-
-/// CoreGraphics rectangle alias.
-public typealias CGRect = NSRect
-
-/// A two-dimensional vector (a delta), matching CoreGraphics' `CGVector`.
-public struct CGVector: Equatable, Sendable {
-    public var dx: CGFloat
-    public var dy: CGFloat
-
-    public init(dx: CGFloat, dy: CGFloat) {
-        self.dx = dx
-        self.dy = dy
-    }
-
-    public init() {
-        self.dx = 0
-        self.dy = 0
-    }
-
-    public static let zero = CGVector(dx: 0, dy: 0)
-}
-
-// MARK: - Swift-idiomatic geometry members
-
-extension NSPoint {
-    /// The point at the origin.
-    public static let zero = NSPoint(x: 0, y: 0)
-}
-
-extension NSSize {
-    /// The zero size.
-    public static let zero = NSSize(width: 0, height: 0)
-}
-
-extension NSRect {
-    /// The zero rectangle.
-    public static let zero = NSRect(x: 0, y: 0, width: 0, height: 0)
-
-    /// The smallest x-coordinate (standardized for negative widths).
-    public var minX: CGFloat { min(origin.x, origin.x + size.width) }
-    /// The center x-coordinate.
-    public var midX: CGFloat { (minX + maxX) / 2 }
-    /// The largest x-coordinate.
-    public var maxX: CGFloat { max(origin.x, origin.x + size.width) }
-    /// The smallest y-coordinate.
-    public var minY: CGFloat { min(origin.y, origin.y + size.height) }
-    /// The center y-coordinate.
-    public var midY: CGFloat { (minY + maxY) / 2 }
-    /// The largest y-coordinate.
-    public var maxY: CGFloat { max(origin.y, origin.y + size.height) }
-    /// The rectangle width (non-negative).
-    public var width: CGFloat { abs(size.width) }
-    /// The rectangle height (non-negative).
-    public var height: CGFloat { abs(size.height) }
-    /// Whether the rectangle has zero area.
-    public var isEmpty: Bool { size.width == 0 || size.height == 0 }
-
-    /// A rectangle with a non-negative width and height.
-    public var standardized: NSRect {
-        var rect = self
-        if rect.size.width < 0 {
-            rect.origin.x += rect.size.width
-            rect.size.width = -rect.size.width
-        }
-        if rect.size.height < 0 {
-            rect.origin.y += rect.size.height
-            rect.size.height = -rect.size.height
-        }
-        return rect
-    }
-
-    /// The smallest integral rectangle that contains this one.
-    public var integral: NSRect {
-        let standardized = self.standardized
-        let x = standardized.origin.x.rounded(.down)
-        let y = standardized.origin.y.rounded(.down)
-        let maxX = (standardized.origin.x + standardized.size.width).rounded(.up)
-        let maxY = (standardized.origin.y + standardized.size.height).rounded(.up)
-        return NSRect(x: x, y: y, width: maxX - x, height: maxY - y)
-    }
-
-    /// Returns a rectangle inset on all sides.
-    public func insetBy(dx: CGFloat, dy: CGFloat) -> NSRect {
-        NSRect(x: origin.x + dx, y: origin.y + dy, width: size.width - dx * 2, height: size.height - dy * 2)
-    }
-
-    /// Returns a rectangle offset by the given amounts.
-    public func offsetBy(dx: CGFloat, dy: CGFloat) -> NSRect {
-        NSRect(x: origin.x + dx, y: origin.y + dy, width: size.width, height: size.height)
-    }
-
-    /// Returns whether a point lies inside the rectangle (half-open).
-    public func contains(_ point: NSPoint) -> Bool {
-        let rect = standardized
-        return point.x >= rect.minX && point.x < rect.maxX && point.y >= rect.minY && point.y < rect.maxY
-    }
-
-    /// Returns whether another rectangle is fully inside this one.
-    public func contains(_ rect: NSRect) -> Bool {
-        let a = standardized, b = rect.standardized
-        return b.minX >= a.minX && b.maxX <= a.maxX && b.minY >= a.minY && b.maxY <= a.maxY
-    }
-
-    /// Returns whether two rectangles overlap.
-    public func intersects(_ rect: NSRect) -> Bool {
-        let a = standardized, b = rect.standardized
-        return !(a.maxX <= b.minX || b.maxX <= a.minX || a.maxY <= b.minY || b.maxY <= a.minY)
-    }
-
-    /// Returns the smallest rectangle containing both rectangles.
-    public func union(_ rect: NSRect) -> NSRect {
-        if isEmpty { return rect.standardized }
-        if rect.isEmpty { return standardized }
-        let a = standardized, b = rect.standardized
-        let x = min(a.minX, b.minX), y = min(a.minY, b.minY)
-        return NSRect(x: x, y: y, width: max(a.maxX, b.maxX) - x, height: max(a.maxY, b.maxY) - y)
-    }
-
-    /// Returns the overlapping rectangle, or the zero rectangle when disjoint.
-    public func intersection(_ rect: NSRect) -> NSRect {
-        let a = standardized, b = rect.standardized
-        let x = max(a.minX, b.minX), y = max(a.minY, b.minY)
-        let right = min(a.maxX, b.maxX), bottom = min(a.maxY, b.maxY)
-        guard right > x && bottom > y else {
-            return .zero
-        }
-        return NSRect(x: x, y: y, width: right - x, height: bottom - y)
-    }
-}
+// (The CG-named aliases, `CGVector`, and the Swift-idiomatic rect members now
+// live in WinCoreGraphics — see CGGeometry.swift there.)
 
 // MARK: - Additional C-style geometry functions
 

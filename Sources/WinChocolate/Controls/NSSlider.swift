@@ -40,6 +40,12 @@ open class NSSlider: NSControl {
         }
     }
 
+    // MARK: Accessibility
+
+    /// A slider reports `.slider`; its accessibility value is its current value.
+    open override var winIntrinsicAccessibilityRole: NSAccessibilityRole { .slider }
+    open override var winIntrinsicAccessibilityValue: Any? { doubleValue }
+
     /// The slider's current integer value.
     open var intValue: Int32 {
         get {

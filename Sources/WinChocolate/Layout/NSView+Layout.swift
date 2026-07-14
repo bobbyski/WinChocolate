@@ -33,6 +33,13 @@ extension NSView {
     /// The view's vertical-center anchor.
     public var centerYAnchor: NSLayoutYAxisAnchor { NSLayoutYAxisAnchor(item: self, attribute: .centerY) }
 
+    /// The view's first-baseline anchor (single-line model: resolves through
+    /// `baselineOffsetFromBottom`, coinciding with the last baseline).
+    public var firstBaselineAnchor: NSLayoutYAxisAnchor { NSLayoutYAxisAnchor(item: self, attribute: .firstBaseline) }
+
+    /// The view's last-baseline anchor.
+    public var lastBaselineAnchor: NSLayoutYAxisAnchor { NSLayoutYAxisAnchor(item: self, attribute: .lastBaseline) }
+
     // MARK: - Installing constraints
 
     /// The constraints installed directly on this view (as their container).

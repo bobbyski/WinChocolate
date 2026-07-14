@@ -293,6 +293,7 @@ enum NSLayoutSolver {
         if let index = indexOf[ObjectIdentifier(view)] {
             let v = vars(index)
             let (posCoeff, sizeCoeff): (Double, Double)
+            var constant = 0.0
             switch attribute {
             case .left, .leading, .top:
                 (posCoeff, sizeCoeff) = (1, 0)
@@ -302,19 +303,49 @@ enum NSLayoutSolver {
                 (posCoeff, sizeCoeff) = (0, 1)
             case .centerX, .centerY:
                 (posCoeff, sizeCoeff) = (1, 0.5)
+            case .firstBaseline, .lastBaseline:
+                // Baseline = bottom - the view's baseline offset (single-line
+                // model: first and last baseline coincide).
+                (posCoeff, sizeCoeff) = (1, 1)
+                constant = -Double(view.baselineOffsetFromBottom)
             case .notAnAttribute:
                 return nil
             }
             var terms: [(index: Int, coeff: Double)] = []
             if posCoeff != 0 { terms.append((index: v.posIndex, coeff: posCoeff)) }
             if sizeCoeff != 0 { terms.append((index: v.sizeIndex, coeff: sizeCoeff)) }
-            return Expression(terms: terms, constant: 0)
+            return Expression(terms: terms, constant: constant)
         }
         // A fixed direct subview (autoresizing) → constant from its frame.
         if view.superview === container {
-            return Expression(terms: [], constant: fixedConstant(attribute, frame: view.frame))
+            return Expression(terms: [], constant: fixedConstant(attribute, frame: view.frame,
+                                                                 baselineOffset: view.baselineOffsetFromBottom))
         }
-        // Neither the container nor a direct subview — outside this slice.
+        // A deeper descendant (a view inside a nested container): a constraint
+        // can reference it as a *fixed input* by converting its frame into the
+        // container's coordinates — its own frame is laid out by its immediate
+        // superview, not solved here.
+        if let converted = frameInContainer(of: view, container: container) {
+            return Expression(terms: [], constant: fixedConstant(attribute, frame: converted,
+                                                                 baselineOffset: view.baselineOffsetFromBottom))
+        }
+        // Not in the container's tree at all — outside this constraint system.
+        return nil
+    }
+
+    /// The view's frame expressed in `container` coordinates, or `nil` when the
+    /// view is not a descendant of the container.
+    private static func frameInContainer(of view: NSView, container: NSView) -> NSRect? {
+        var frame = view.frame
+        var ancestor = view.superview
+        while let current = ancestor {
+            if current === container {
+                return frame
+            }
+            frame.origin.x += current.frame.origin.x
+            frame.origin.y += current.frame.origin.y
+            ancestor = current.superview
+        }
         return nil
     }
 
@@ -322,7 +353,8 @@ enum NSLayoutSolver {
         switch attribute {
         case .left, .leading, .top: return 0
         case .right, .trailing: return Double(bounds.size.width)
-        case .bottom: return Double(bounds.size.height)
+        // A plain container's baseline is its bottom edge.
+        case .bottom, .firstBaseline, .lastBaseline: return Double(bounds.size.height)
         case .width: return Double(bounds.size.width)
         case .height: return Double(bounds.size.height)
         case .centerX: return Double(bounds.size.width) / 2
@@ -331,12 +363,18 @@ enum NSLayoutSolver {
         }
     }
 
-    private static func fixedConstant(_ attribute: NSLayoutConstraint.Attribute, frame: NSRect) -> Double {
+    private static func fixedConstant(
+        _ attribute: NSLayoutConstraint.Attribute,
+        frame: NSRect,
+        baselineOffset: CGFloat = 0
+    ) -> Double {
         switch attribute {
         case .left, .leading: return Double(frame.origin.x)
         case .right, .trailing: return Double(frame.origin.x + frame.size.width)
         case .top: return Double(frame.origin.y)
         case .bottom: return Double(frame.origin.y + frame.size.height)
+        case .firstBaseline, .lastBaseline:
+            return Double(frame.origin.y + frame.size.height - baselineOffset)
         case .width: return Double(frame.size.width)
         case .height: return Double(frame.size.height)
         case .centerX: return Double(frame.origin.x + frame.size.width / 2)

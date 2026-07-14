@@ -27,7 +27,11 @@ extension Win32NativeControlBackend {
             // A non-activating panel takes no key focus when shown.
             extendedStyle |= wsExNoActivate
         }
-        let outerSize = outerWindowSize(forContentSize: frame.size, style: style, hasMenu: usesMainMenu)
+        // The content rect is in logical points; size the outer window in
+        // device pixels at the display scale (10.7). A no-op at 100%.
+        let dpi = winDeviceScale
+        let deviceContentSize = NSSize(width: frame.size.width * dpi, height: frame.size.height * dpi)
+        let outerSize = outerWindowSize(forContentSize: deviceContentSize, style: style, hasMenu: usesMainMenu)
         let hwnd = withWideString(winChocolateWindowClassName) { className in
             withWideString(title) { windowTitle in
                 winCreateWindowExW(
@@ -35,8 +39,8 @@ extension Win32NativeControlBackend {
                     className,
                     windowTitle,
                     style,
-                    Int32(frame.origin.x),
-                    Int32(frame.origin.y),
+                    Int32((frame.origin.x * dpi).rounded()),
+                    Int32((frame.origin.y * dpi).rounded()),
                     outerSize.width,
                     outerSize.height,
                     nil,
@@ -177,34 +181,41 @@ extension Win32NativeControlBackend {
 
     /// The primary monitor's pixel frame.
     public func primaryScreenFrame() -> NSRect {
-        NSRect(x: 0, y: 0, width: CGFloat(winGetSystemMetrics(smCxScreen)), height: CGFloat(winGetSystemMetrics(smCyScreen)))
+        // System metrics are device pixels; report the frame in logical points
+        // so window centering/placement stays point-based (10.7).
+        NSRect(x: 0, y: 0,
+               width: winToPoints(CGFloat(winGetSystemMetrics(smCxScreen))),
+               height: winToPoints(CGFloat(winGetSystemMetrics(smCyScreen))))
     }
 
     /// Enumerates the attached monitors: full frame plus work area, primary first.
     public func screenDescriptions() -> [NativeScreenDescription] {
         final class MonitorCollector {
             var screens: [NativeScreenDescription] = []
+            var scale: CGFloat = 1
         }
 
         let collector = MonitorCollector()
+        collector.scale = winDeviceScale  // report monitor frames in points (10.7)
         let context = Unmanaged.passUnretained(collector).toOpaque()
         _ = winEnumDisplayMonitors(nil, nil, { monitor, _, _, data in
             var info = MONITORINFOW()
             info.cbSize = UINT(MemoryLayout<MONITORINFOW>.stride)
             if winGetMonitorInfoW(monitor, &info) != 0 {
                 let collector = Unmanaged<MonitorCollector>.fromOpaque(UnsafeRawPointer(bitPattern: data)!).takeUnretainedValue()
+                let s = collector.scale
                 let description = NativeScreenDescription(
                     frame: NSRect(
-                        x: CGFloat(info.rcMonitor.left),
-                        y: CGFloat(info.rcMonitor.top),
-                        width: CGFloat(info.rcMonitor.right - info.rcMonitor.left),
-                        height: CGFloat(info.rcMonitor.bottom - info.rcMonitor.top)
+                        x: CGFloat(info.rcMonitor.left) / s,
+                        y: CGFloat(info.rcMonitor.top) / s,
+                        width: CGFloat(info.rcMonitor.right - info.rcMonitor.left) / s,
+                        height: CGFloat(info.rcMonitor.bottom - info.rcMonitor.top) / s
                     ),
                     visibleFrame: NSRect(
-                        x: CGFloat(info.rcWork.left),
-                        y: CGFloat(info.rcWork.top),
-                        width: CGFloat(info.rcWork.right - info.rcWork.left),
-                        height: CGFloat(info.rcWork.bottom - info.rcWork.top)
+                        x: CGFloat(info.rcWork.left) / s,
+                        y: CGFloat(info.rcWork.top) / s,
+                        width: CGFloat(info.rcWork.right - info.rcWork.left) / s,
+                        height: CGFloat(info.rcWork.bottom - info.rcWork.top) / s
                     )
                 )
                 // MONITORINFOF_PRIMARY: keep the primary display first.
@@ -383,6 +394,7 @@ extension Win32NativeControlBackend {
         hidesOnDeactivateHandles.remove(handle.rawValue)
         deactivateHiddenHandles.remove(handle.rawValue)
         contentScales.removeValue(forKey: handle.rawValue)
+        lastFrameDeviceRects.removeValue(forKey: handle.rawValue)
         richTextHandles.remove(handle.rawValue)
         multilineTextHandles.remove(handle.rawValue)
         windowDragViewHandles.remove(handle.rawValue)
@@ -448,6 +460,7 @@ extension Win32NativeControlBackend {
         _ = winDestroyWindow(hwnd)
         controlActions.removeValue(forKey: handle.rawValue)
         contentScales.removeValue(forKey: handle.rawValue)
+        lastFrameDeviceRects.removeValue(forKey: handle.rawValue)
         richTextHandles.remove(handle.rawValue)
         multilineTextHandles.remove(handle.rawValue)
         windowDragViewHandles.remove(handle.rawValue)
@@ -508,44 +521,78 @@ extension Win32NativeControlBackend {
             return
         }
 
+        // All incoming frames are in logical points; convert to device pixels
+        // at the display scale (10.7). A no-op at 100% (scale 1).
+        let dpi = winDeviceScale
+
         // Top-level frames are content-area sizes; grow to the outer rect so
         // the client area matches, mirroring the creation path.
         if windowHandles.contains(handle), let style = windowStyles[handle.rawValue] {
+            let deviceContentSize = NSSize(width: frame.size.width * dpi, height: frame.size.height * dpi)
             let outerSize = outerWindowSize(
-                forContentSize: frame.size,
+                forContentSize: deviceContentSize,
                 style: style,
                 hasMenu: windowMenuFlags[handle.rawValue] ?? false
             )
-            _ = winMoveWindow(hwnd, Int32(frame.origin.x), Int32(frame.origin.y), outerSize.width, outerSize.height, 1)
+            let rect = (Int32((frame.origin.x * dpi).rounded()), Int32((frame.origin.y * dpi).rounded()), outerSize.width, outerSize.height)
+            let previous = lastFrameDeviceRects[handle.rawValue]
+            if previous == nil || previous! != rect {
+                lastFrameDeviceRects[handle.rawValue] = rect
+                let sizeChanged = previous == nil || previous!.2 != rect.2 || previous!.3 != rect.3
+                if sizeChanged {
+                    _ = winMoveWindow(hwnd, rect.0, rect.1, rect.2, rect.3, 1)
+                } else {
+                    // Pure window move (drag): copy pixels instead of repainting.
+                    _ = winSetWindowPos(hwnd, nil, rect.0, rect.1, 0, 0, swpNoSize | swpNoZOrder | swpNoActivate)
+                }
+            }
             return
         }
 
-        // Magnified custom views occupy their logical frame times the
-        // content scale on screen; drawing scales through a matching
-        // world transform during paint.
-        var scaledFrame = frame
-        if let scale = contentScales[handle.rawValue], scale != 1 {
-            scaledFrame = NSRect(
-                x: frame.origin.x * scale,
-                y: frame.origin.y * scale,
-                width: frame.size.width * scale,
-                height: frame.size.height * scale
-            )
-        }
+        // Child controls occupy their logical frame times the device scale
+        // (10.7 DPI) and any per-view magnification (3.3); custom-view drawing
+        // scales through a matching world transform during paint.
+        let scale = dpi * (contentScales[handle.rawValue] ?? 1)
+        let scaledFrame = scale == 1 ? frame : NSRect(
+            x: frame.origin.x * scale,
+            y: frame.origin.y * scale,
+            width: frame.size.width * scale,
+            height: frame.size.height * scale
+        )
 
-        _ = winMoveWindow(
-            hwnd,
+        let rect = (
             Int32(scaledFrame.origin.x),
             Int32(scaledFrame.origin.y),
             Int32(scaledFrame.size.width),
-            Int32(max(scaledFrame.size.height, comboBoxDropdownHeights[handle.rawValue] ?? scaledFrame.size.height)),
-            1
+            Int32(max(scaledFrame.size.height, comboBoxDropdownHeights[handle.rawValue] ?? scaledFrame.size.height))
         )
+        // Skip the native move (and its repaint) when the control is already at
+        // this exact device rect — the duplicate-update flicker guard.
+        let previous = lastFrameDeviceRects[handle.rawValue]
+        guard previous == nil || previous! != rect else {
+            return
+        }
+        lastFrameDeviceRects[handle.rawValue] = rect
 
-        // Custom views can overlap sibling children (drag previews); moving
-        // them must repaint the trail they leave across those siblings.
-        if customViewHandles.contains(handle.rawValue), let parent = winGetParent(hwnd) {
-            _ = winRedrawWindow(parent, nil, nil, rdwInvalidate | rdwErase | rdwAllChildren)
+        let sizeChanged = previous == nil || previous!.2 != rect.2 || previous!.3 != rect.3
+        if sizeChanged {
+            // A resize genuinely changes content extent, so repaint the control.
+            _ = winMoveWindow(hwnd, rect.0, rect.1, rect.2, rect.3, 1)
+            // A shrinking custom view can uncover siblings behind it; repaint
+            // the area it vacated so no stale pixels remain.
+            if customViewHandles.contains(handle.rawValue), let parent = winGetParent(hwnd) {
+                _ = winRedrawWindow(parent, nil, nil, rdwInvalidate | rdwErase | rdwAllChildren)
+            }
+        } else {
+            // A pure move (the scroll/reposition hot path): SetWindowPos copies
+            // the window's existing pixels to the new position and invalidates
+            // only the genuinely-new regions (the strip scrolled into view and
+            // the area vacated on the parent). This replaces
+            // MoveWindow(bRepaint: true) — which repainted the *entire* (often
+            // large) window every step — and the blanket parent+all-children
+            // redraw that erased and repainted the whole scroll area each notch.
+            // The result is smooth, minimal-repaint scrolling.
+            _ = winSetWindowPos(hwnd, nil, rect.0, rect.1, 0, 0, swpNoSize | swpNoZOrder | swpNoActivate)
         }
     }
 
@@ -608,10 +655,11 @@ extension Win32NativeControlBackend {
         _ = winSetFocus(hwnd)
     }
 
-    /// Updates native tooltip text.
+    /// Updates native tooltip text, backed by a shared tooltips_class32 host
+    /// so hovering the control shows the AppKit `toolTip` as a native bubble.
     public func setToolTip(_ toolTip: String?, for handle: NativeHandle) {
-        // Stored at the backend boundary for now; native tooltips will be backed
-        // by tooltips_class32 when the control wrapper is added.
+        guard let controlHwnd = hwnd(from: handle) else { return }
+        applyNativeToolTip(toolTip, forControl: controlHwnd)
     }
 
     private func createNativeMenu(from menu: NSMenu?) -> HMENU? {

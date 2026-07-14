@@ -105,9 +105,11 @@ extension Win32NativeControlBackend {
         // Custom content drawn through `NSView.draw(_:)` paints above the
         // background and below any composed toolbar glyphs.
         if let drawAction = drawActions[handle.rawValue] {
-            // Magnified views draw in logical coordinates through a GDI
-            // world transform, which scales paths, text, and blits alike.
-            let scale = contentScales[handle.rawValue] ?? 1
+            // Views draw in logical (point) coordinates through a GDI world
+            // transform, which scales paths, text, and blits alike. The factor
+            // is the display's device scale (10.7, DPI) times any per-view
+            // magnification (3.3), so custom drawing renders crisp at HiDPI.
+            let scale = winDeviceScale * (contentScales[handle.rawValue] ?? 1)
             let dirtyRect = NSMakeRect(
                 0,
                 0,

@@ -298,6 +298,268 @@ func testLayoutControlIntrinsicSizes() {
 }
 
 @MainActor
+func testWinCoreGraphicsPNGDecode() {
+    // Build a minimal 2×2 truecolor PNG by hand: signature, IHDR, one IDAT
+    // holding a stored-block zlib stream of two filtered scanlines (row 0
+    // None-filtered, row 1 Up-filtered), IEND. This exercises the full path —
+    // chunk parsing, inflate (stored block), and unfiltering (None + Up).
+    func chunk(_ type: String, _ data: [UInt8]) -> [UInt8] {
+        let length = data.count
+        var out: [UInt8] = [
+            UInt8((length >> 24) & 0xFF), UInt8((length >> 16) & 0xFF),
+            UInt8((length >> 8) & 0xFF), UInt8(length & 0xFF),
+        ]
+        out.append(contentsOf: Array(type.utf8))
+        out.append(contentsOf: data)
+        out.append(contentsOf: [0, 0, 0, 0]) // CRC (not validated)
+        return out
+    }
+    let ihdr: [UInt8] = [0, 0, 0, 2,  0, 0, 0, 2,  8, 2, 0, 0, 0] // 2×2, 8-bit, RGB
+    // Filtered scanlines: row0 None → red, green; row1 Up → blue, yellow.
+    let raw: [UInt8] = [0, 255, 0, 0,  0, 255, 0,
+                        2,   1, 0, 255, 255,  0, 0]
+    var idat: [UInt8] = [0x78, 0x01,       // zlib header
+                         0x01,             // BFINAL=1, BTYPE=00 (stored)
+                         0x0E, 0x00,        // LEN = 14
+                         0xF1, 0xFF]        // NLEN = ~14
+    idat.append(contentsOf: raw)
+    idat.append(contentsOf: [0, 0, 0, 0])  // Adler-32 (ignored)
+    var png: [UInt8] = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]
+    png.append(contentsOf: chunk("IHDR", ihdr))
+    png.append(contentsOf: chunk("IDAT", idat))
+    png.append(contentsOf: chunk("IEND", []))
+
+    guard let image = CGImage.decodePNG(png) else {
+        expect(false, "The hand-built PNG should decode.")
+        return
+    }
+    expect(image.width == 2 && image.height == 2,
+        "PNG dimensions should be 2×2: got \(image.width)×\(image.height).")
+    // Top row (None filter): red, green.
+    expect(image.pixel(atX: 0, y: 0).map { [$0.r, $0.g, $0.b, $0.a] } == [255, 0, 0, 255],
+        "PNG (0,0) should be red: got \(String(describing: image.pixel(atX: 0, y: 0))).")
+    expect(image.pixel(atX: 1, y: 0).map { [$0.r, $0.g, $0.b, $0.a] } == [0, 255, 0, 255],
+        "PNG (1,0) should be green.")
+    // Bottom row (Up filter reconstructs against the top row): blue, yellow.
+    expect(image.pixel(atX: 0, y: 1).map { [$0.r, $0.g, $0.b, $0.a] } == [0, 0, 255, 255],
+        "PNG (0,1) should be blue (Up-filter reconstruction): got \(String(describing: image.pixel(atX: 0, y: 1))).")
+    expect(image.pixel(atX: 1, y: 1).map { [$0.r, $0.g, $0.b, $0.a] } == [255, 255, 0, 255],
+        "PNG (1,1) should be yellow.")
+
+    // The format-sniffing entry point routes PNG signatures to the PNG path.
+    expect(CGImage.decode(png)?.width == 2, "decode() should sniff and route a PNG.")
+    // And it still round-trips BMP through the same door.
+    expect(CGImage.decode(image.encodeBMP())?.pixel(atX: 1, y: 1)?.g == 255,
+        "decode() should also handle BMP bytes.")
+}
+
+@MainActor
+func testWinCoreGraphicsTransformsAndBMPCodec() {
+    // The geometry types come from the re-exported WinCoreGraphics module.
+    // Affine transforms: composition, application, and inversion.
+    let move = CGAffineTransform(translationX: 10, y: 20)
+    expect(CGPoint(x: 1, y: 2).applying(move) == CGPoint(x: 11, y: 22),
+        "Translation should offset the point.")
+    let quarterTurn = CGAffineTransform(rotationAngle: .pi / 2)
+    let rotated = CGPoint(x: 1, y: 0).applying(quarterTurn)
+    expect(winClose(rotated.x, 0) && winClose(rotated.y, 1),
+        "A quarter turn should map (1,0) to (0,1): got \(rotated).")
+    let scaledThenMoved = CGAffineTransform(scaleX: 2, y: 3).concatenating(move)
+    expect(CGPoint(x: 1, y: 1).applying(scaledThenMoved) == CGPoint(x: 12, y: 23),
+        "Concatenation should apply scale then translation.")
+    let roundTrip = CGPoint(x: 7, y: -3).applying(move).applying(move.inverted())
+    expect(winClose(roundTrip.x, 7) && winClose(roundTrip.y, -3),
+        "Inverting a transform should round-trip a point.")
+
+    // CGImage: RGBA pixels round-trip through the BMP codec.
+    let pixels: [UInt8] = [
+        255, 0, 0, 255,   0, 255, 0, 255,   // red, green
+        0, 0, 255, 255,   255, 255, 0, 128, // blue, translucent yellow
+    ]
+    guard let image = CGImage(width: 2, height: 2, rgbaPixels: pixels) else {
+        expect(false, "CGImage should accept a matching RGBA buffer.")
+        return
+    }
+    let encoded = image.encodeBMP()
+    expect(encoded.count == 54 + 16 && encoded[0] == 0x42 && encoded[1] == 0x4D,
+        "The encoded BMP should have the header + 16 pixel bytes: got \(encoded.count).")
+    guard let decoded = CGImage.decodeBMP(encoded) else {
+        expect(false, "The encoded BMP should decode.")
+        return
+    }
+    expect(decoded.width == 2 && decoded.height == 2 && decoded.pixels == pixels,
+        "The BMP round-trip should preserve every pixel (alpha included).")
+    let corner = decoded.pixel(atX: 1, y: 1)
+    expect(corner?.r == 255 && corner?.g == 255 && corner?.b == 0 && corner?.a == 128,
+        "pixel(atX:y:) should read the translucent yellow corner.")
+    expect(decoded.pixel(atX: 2, y: 0) == nil,
+        "Out-of-bounds pixel reads should return nil.")
+}
+
+@MainActor
+func testBaselineAnchorsAlignAcrossViews() {
+    // Baselines resolve through baselineOffsetFromBottom (0 for plain views, so
+    // baseline == bottom); a text field reports a positive descent offset.
+    expect(NSTextField(labelWithString: "Hi").baselineOffsetFromBottom > 0,
+        "A text field should report a positive baseline offset.")
+
+    let container = NSView(frame: NSMakeRect(0, 0, 200, 100))
+    let a = IntrinsicSizeView(NSSize(width: 40, height: 20))
+    let b = IntrinsicSizeView(NSSize(width: 40, height: 30))
+    a.translatesAutoresizingMaskIntoConstraints = false
+    b.translatesAutoresizingMaskIntoConstraints = false
+    container.addSubview(a)
+    container.addSubview(b)
+    NSLayoutConstraint.activate([
+        a.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+        a.topAnchor.constraint(equalTo: container.topAnchor, constant: 10),
+        b.leadingAnchor.constraint(equalTo: a.trailingAnchor, constant: 10),
+        b.lastBaselineAnchor.constraint(equalTo: a.lastBaselineAnchor),
+    ])
+    container.layoutSubtreeIfNeeded()
+    // a spans y 10..30 (baseline 30); b (30 tall, offset 0) hangs from the same
+    // baseline, so its top is 0.
+    expect(winClose(a.frame.origin.y, 10) && winClose(b.frame.origin.y, 0),
+        "Baseline-aligned views should share a baseline: a=\(a.frame) b=\(b.frame).")
+}
+
+@MainActor
+func testCrossHierarchyConstraintUsesNestedFixedInput() {
+    // A constraint may reference a view *inside* a nested container: the nested
+    // view is a fixed input converted into the outer container's coordinates.
+    let container = NSView(frame: NSMakeRect(0, 0, 200, 100))
+    let nest = NSView(frame: NSMakeRect(20, 10, 80, 50))
+    let inner = NSView(frame: NSMakeRect(5, 5, 30, 20))
+    nest.addSubview(inner)
+    container.addSubview(nest)
+
+    let solved = NSView(frame: .zero)
+    solved.translatesAutoresizingMaskIntoConstraints = false
+    container.addSubview(solved)
+    NSLayoutConstraint.activate([
+        solved.leadingAnchor.constraint(equalTo: inner.trailingAnchor), // 25 + 30 = 55
+        solved.topAnchor.constraint(equalTo: inner.bottomAnchor),       // 15 + 20 = 35
+        solved.widthAnchor.constraint(equalToConstant: 40),
+        solved.heightAnchor.constraint(equalToConstant: 10),
+    ])
+    container.layoutSubtreeIfNeeded()
+    expect(winClose(solved.frame.origin.x, 55) && winClose(solved.frame.origin.y, 35),
+        "Cross-hierarchy fixed input should convert to container coordinates: got \(solved.frame).")
+}
+
+@MainActor
+func testStackViewGravityAreasAndEqualCentering() {
+    func iv(_ w: CGFloat, _ h: CGFloat) -> IntrinsicSizeView { IntrinsicSizeView(NSSize(width: w, height: h)) }
+
+    // Gravity areas: leading packs at the start, center centers as a block,
+    // trailing packs at the end; views keep their intrinsic sizes.
+    let stack = NSStackView(frame: NSMakeRect(0, 0, 300, 40))
+    stack.orientation = .horizontal
+    stack.distribution = .gravityAreas
+    stack.spacing = 10
+    let lead = iv(40, 20), mid = iv(60, 20), tail = iv(50, 20)
+    stack.addView(lead, in: .leading)
+    stack.addView(mid, in: .center)
+    stack.addView(tail, in: .trailing)
+    stack.layoutSubtreeIfNeeded()
+    expect(winClose(lead.frame.origin.x, 0), "Leading gravity should pack at 0: got \(lead.frame.origin.x).")
+    expect(winClose(mid.frame.origin.x, 120), "Center gravity should center at 120: got \(mid.frame.origin.x).")
+    expect(winClose(tail.frame.origin.x, 250), "Trailing gravity should end at the edge: got \(tail.frame.origin.x).")
+    expect(stack.views(in: .center).count == 1 && stack.views(in: .center)[0] === mid,
+        "views(in:) should report the center-area view.")
+
+    // equalCentering: centers equally spaced across the axis (slots of 100 →
+    // centers 50/150/250 → origins 30/130/230 for 40-wide views).
+    let centering = NSStackView(frame: NSMakeRect(0, 0, 300, 40))
+    centering.orientation = .horizontal
+    centering.distribution = .equalCentering
+    let e1 = iv(40, 20), e2 = iv(40, 20), e3 = iv(40, 20)
+    centering.addArrangedSubview(e1)
+    centering.addArrangedSubview(e2)
+    centering.addArrangedSubview(e3)
+    centering.layoutSubtreeIfNeeded()
+    expect(winClose(e1.frame.origin.x, 30) && winClose(e2.frame.origin.x, 130) && winClose(e3.frame.origin.x, 230),
+        "equalCentering should space centers equally: got \(e1.frame.origin.x)/\(e2.frame.origin.x)/\(e3.frame.origin.x).")
+}
+
+@MainActor
+func testStackViewBaselineAlignment() {
+    // .lastBaseline in a horizontal stack hangs every view from the deepest
+    // common baseline (offsets 0 → bottoms align at the tallest view's bottom).
+    let stack = NSStackView(frame: NSMakeRect(0, 0, 200, 40))
+    stack.orientation = .horizontal
+    stack.alignment = .lastBaseline
+    let short = IntrinsicSizeView(NSSize(width: 40, height: 20))
+    let tall = IntrinsicSizeView(NSSize(width: 40, height: 30))
+    stack.addArrangedSubview(short)
+    stack.addArrangedSubview(tall)
+    stack.layoutSubtreeIfNeeded()
+    expect(winClose(short.frame.origin.y, 10) && winClose(tall.frame.origin.y, 0),
+        "Baseline alignment should align bottoms at the common baseline: short=\(short.frame) tall=\(tall.frame).")
+}
+
+@MainActor
+func testGridViewStretchesAndBaselineAlignsRows() {
+    func iv(_ w: CGFloat, _ h: CGFloat) -> IntrinsicSizeView { IntrinsicSizeView(NSSize(width: w, height: h)) }
+
+    // An over-sized grid distributes extra space to content-sized tracks.
+    // Fitting size: cols 60+50+10 = 120, rows 20+24+8 = 52. Frame 160×72 →
+    // +40 width (20 per column), +20 height (10 per row).
+    let c00 = iv(30, 20), c01 = iv(50, 20)
+    let c10 = iv(60, 24), c11 = iv(40, 16)
+    let grid = NSGridView(views: [[c00, c01], [c10, c11]])
+    grid.columnSpacing = 10
+    grid.rowSpacing = 8
+    grid.frame = NSMakeRect(0, 0, 160, 72)
+    grid.layoutSubtreeIfNeeded()
+    expect(winClose(c01.frame.origin.x, 90),
+        "Stretched col0 (60+20) should push col1 to x=90: got \(c01.frame.origin.x).")
+    expect(winClose(c00.frame.origin.y, 5),
+        "Row stretched to 30 should center 20-tall content at y=5: got \(c00.frame.origin.y).")
+
+    // Baseline row alignment: contents hang from the row's common baseline.
+    let b0 = iv(40, 20), b1 = iv(40, 30)
+    let baselineGrid = NSGridView(views: [[b0, b1]])
+    baselineGrid.rowAlignment = .lastBaseline
+    baselineGrid.layoutSubtreeIfNeeded()
+    expect(winClose(b0.frame.origin.y, 10) && winClose(b1.frame.origin.y, 0),
+        "Baseline row alignment should align bottoms (offsets 0): b0=\(b0.frame) b1=\(b1.frame).")
+}
+
+@MainActor
+func testAutoresizingMaskMixesWithConstraintsThroughResize() {
+    // 9.3 both directions: a mask-driven (translates == true) view resizes with
+    // its container via autoresizing, and a constraint-driven sibling re-solves
+    // against the new fixed frame.
+    let container = NSView(frame: NSMakeRect(0, 0, 200, 100))
+    let masked = NSView(frame: NSMakeRect(0, 0, 100, 20))
+    masked.autoresizingMask = [.width]
+    container.addSubview(masked)
+
+    let solved = NSView(frame: .zero)
+    solved.translatesAutoresizingMaskIntoConstraints = false
+    container.addSubview(solved)
+    NSLayoutConstraint.activate([
+        solved.leadingAnchor.constraint(equalTo: masked.trailingAnchor),
+        solved.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+        solved.topAnchor.constraint(equalTo: container.topAnchor),
+        solved.heightAnchor.constraint(equalToConstant: 20),
+    ])
+    container.layoutSubtreeIfNeeded()
+    expect(winClose(solved.frame.origin.x, 100) && winClose(solved.frame.size.width, 100),
+        "Solved view should fill from the masked view's edge: got \(solved.frame).")
+
+    // Widen the container: the mask grows the fixed view, the solver re-fits
+    // the constrained one against it.
+    container.frame = NSMakeRect(0, 0, 300, 100)
+    container.layoutSubtreeIfNeeded()
+    expect(winClose(masked.frame.size.width, 200),
+        "Autoresizing width should track the container (+100): got \(masked.frame.size.width).")
+    expect(winClose(solved.frame.origin.x, 200) && winClose(solved.frame.size.width, 100),
+        "Solved view should re-fit after the masked view grew: got \(solved.frame).")
+}
+
+@MainActor
 func testStackViewCustomSpacingAndHiddenViews() {
     func iv(_ w: CGFloat, _ h: CGFloat) -> IntrinsicSizeView { IntrinsicSizeView(NSSize(width: w, height: h)) }
     let a = iv(40, 20), b = iv(40, 20), c = iv(40, 20)
@@ -5299,7 +5561,10 @@ func testToolbarMetallicLookDrawsGradientChrome() {
     toolbarView.toolbar = toolbar
     let handle = toolbarView.realizeNativePeer(in: backend, parent: nil)
 
-    // Unified (default): flat chrome, no gradient, window-colored strip.
+    // Unified: flat chrome, no gradient, window-colored strip. (Set explicitly
+    // rather than relying on the default, which now resolves `.automatic`
+    // against the app-wide presentation.)
+    toolbar.winAppleLook = .unified
     let unified = backend.performDraw(for: handle, in: toolbarView.bounds)
     expect(unified.gradients.isEmpty, "The unified look should not draw gradient chrome.")
     expect(toolbarView.backgroundColor == .windowBackgroundColor,
@@ -5342,6 +5607,31 @@ func testToolbarMetallicLookDrawsGradientChrome() {
         let unifiedTileDraw = backend.performDraw(for: unifiedTileHandle, in: unifiedTile.bounds)
         expect(unifiedTileDraw.gradients.isEmpty, "A unified item tile should not paint gradient slices.")
     }
+}
+
+@MainActor
+func testToolbarAutomaticLookFollowsPresentation() {
+    // `.automatic` (the default) resolves the Apple look against the app-wide
+    // WinPresentation switch (Phase 8): classic → metallic, modern → unified.
+    let previous = WinPresentation.selected
+    defer { WinPresentation.selected = previous }
+
+    let toolbar = NSToolbar(identifier: "autoLook")
+    expect(toolbar.winAppleLook == .automatic, "The default Apple look should be .automatic.")
+
+    WinPresentation.selected = .classic
+    expect(toolbar.winResolvedAppleLook == .metallic,
+        "Under the classic presentation, .automatic should resolve to the metallic look.")
+
+    WinPresentation.selected = .modern
+    expect(toolbar.winResolvedAppleLook == .unified,
+        "Under the modern presentation, .automatic should resolve to the unified look.")
+
+    // An explicit look overrides the presentation coordination.
+    toolbar.winAppleLook = .metallic
+    WinPresentation.selected = .modern
+    expect(toolbar.winResolvedAppleLook == .metallic,
+        "An explicit .metallic look should win over the presentation.")
 }
 
 @MainActor
@@ -5477,11 +5767,15 @@ func testDarkAppearanceDrivesDynamicColorsAndDrawnTable() {
            "The dark text color should be light.")
     expect(NSColor.selectedTextColor == .white,
            "Dark selections should use light text.")
+    expect(NSColor.unemphasizedSelectedContentBackgroundColor.whiteComponent < 0.5,
+           "The unemphasized (non-key) selection fill should darken under dark mode, not stay a light island.")
 
     // ...and flip back with an explicit light override.
     NSApplication.shared.appearance = NSAppearance(named: .aqua)
     expect(NSColor.windowBackgroundColor == .white,
            "The light window background should be white.")
+    expect(NSColor.unemphasizedSelectedContentBackgroundColor.whiteComponent > 0.7,
+           "The unemphasized selection fill should be a light gray under light mode.")
     NSApplication.shared.appearance = nil
 
     // The drawn table renders its dark skin: a dark body fill and light
@@ -5515,6 +5809,48 @@ final class AppearanceProbeView: NSView {
     }
 }
 
+final class DataImageProbeView: NSView {
+    var image: NSImage?
+    override func draw(_ dirtyRect: NSRect) {
+        image?.draw(in: NSMakeRect(0, 0, 20, 20))
+    }
+}
+
+@MainActor
+func testDataBackedNSImageDecodesAndDrawsPixels() {
+    // A data-backed NSImage decodes through WinCoreGraphics (13.6) and draws
+    // its pixels, closing the 3.13 in-memory boundary. Build a 2×2 BMP.
+    let pixels: [UInt8] = [255, 0, 0, 255,   0, 255, 0, 255,
+                           0, 0, 255, 255,   255, 255, 0, 255]
+    guard let source = CGImage(width: 2, height: 2, rgbaPixels: pixels) else {
+        expect(false, "CGImage should build from RGBA."); return
+    }
+    let bmp = Data(source.encodeBMP())
+    guard let image = NSImage(data: bmp) else {
+        expect(false, "NSImage(data:) should accept BMP data."); return
+    }
+
+    // Decoding populates the CGImage and the (previously zero) logical size.
+    expect(image.winCGImage?.width == 2, "Data-backed NSImage should decode a 2-wide CGImage.")
+    expect(image.size == NSSize(width: 2, height: 2),
+        "NSImage.size should come from the decoded bitmap: got \(image.size).")
+
+    // Drawing records an in-memory bitmap blit (not a file path).
+    let backend = InMemoryNativeControlBackend()
+    let view = DataImageProbeView(frame: NSMakeRect(0, 0, 20, 20))
+    view.image = image
+    let handle = view.realizeNativePeer(in: backend, parent: nil)
+    let recording = backend.performDraw(for: handle, in: view.bounds)
+    expect(recording.bitmapImages.count == 1, "The data-backed image should draw once as a bitmap.")
+    if let drawn = recording.bitmapImages.first {
+        expect(drawn.width == 2 && drawn.height == 2 && drawn.byteCount == 16,
+            "The recorded bitmap should be 2×2 RGBA: got \(drawn.width)×\(drawn.height), \(drawn.byteCount) bytes.")
+        expect(winClose(drawn.rect.size.width, 20) && drawn.tint == nil,
+            "The bitmap should draw untinted into the 20-pt destination rect.")
+    }
+    expect(recording.images.isEmpty, "A data-backed image should not take the file-path draw.")
+}
+
 @MainActor
 func testCurrentDrawingAppearanceFollowsTheDrawingView() {
     // Outside a draw pass, currentDrawing falls back to the application's
@@ -5541,6 +5877,7 @@ func testToolbarStripGoesDarkUnderDarkAppearance() {
     defer { NSApplication.shared.appearance = NSAppearance(named: .aqua) }
 
     let toolbar = NSToolbar(identifier: "dark-strip")
+    toolbar.winAppleLook = .unified // this test is about the unified strip's dark chrome
     let item = NSToolbarItem(itemIdentifier: "doc")
     item.label = "Doc"
     toolbar.addItem(item)
@@ -9903,6 +10240,14 @@ testAspectRatioCrossAxisConstraints()
 testLayoutMarginsGuideInsetsChild()
 testControlIntrinsicContentSizes()
 testLayoutControlIntrinsicSizes()
+testWinCoreGraphicsTransformsAndBMPCodec()
+testWinCoreGraphicsPNGDecode()
+testBaselineAnchorsAlignAcrossViews()
+testCrossHierarchyConstraintUsesNestedFixedInput()
+testStackViewGravityAreasAndEqualCentering()
+testStackViewBaselineAlignment()
+testGridViewStretchesAndBaselineAlignsRows()
+testAutoresizingMaskMixesWithConstraintsThroughResize()
 testAutoLayoutResizeReflowsConstraints()
 testAutoLayoutSiblingChainInequalityAndFixedAnchor()
 testWindowTitleVisibilityBlanksCaption()
@@ -10047,6 +10392,7 @@ testToolbarCustomViewItemsShrinkBeforeOverflow()
 testToolbarItemGroupSelectsAndFires()
 testWindowToolbarActions()
 testToolbarMetallicLookDrawsGradientChrome()
+testToolbarAutomaticLookFollowsPresentation()
 testToolbarCustomizationDragOutTintsPreviewForRemoval()
 testToolbarPopupAndFieldItemsAlignVertically()
 testWinPresentationSelectionAndModernSeparators()
@@ -10055,6 +10401,7 @@ testAppearanceResolvesSystemThemeAndOverrides()
 testDarkAppearanceDrivesDynamicColorsAndDrawnTable()
 testToolbarStripGoesDarkUnderDarkAppearance()
 testCurrentDrawingAppearanceFollowsTheDrawingView()
+testDataBackedNSImageDecodesAndDrawsPixels()
 testSystemAccentColorDrivesAccentAndSelection()
 testWrappedTextMeasurementBreaksIntoLines()
 testFireDueTimersPumpsScheduledTimers()
@@ -11826,5 +12173,403 @@ func testNeedsLayoutArmsCoalescedPumpFlush() {
 }
 
 testNeedsLayoutArmsCoalescedPumpFlush()
+
+// MARK: - Phase 10.2 Accessibility
+
+@MainActor
+func testControlsExposeAppKitAccessibilityRolesAndValues() {
+    // A checkbox reports the checkbox role, its title as label, and its state
+    // as the accessibility value — the AppKit contract assistive tech reads.
+    let checkbox = NSButton(frame: NSMakeRect(0, 0, 120, 24))
+    checkbox.title = "Remember me"
+    checkbox.setButtonType(.switchButton)
+    checkbox.state = .on
+    expect(checkbox.accessibilityRole() == .checkBox, "A switch button should report the checkbox role.")
+    expect(checkbox.accessibilityLabel() == "Remember me", "A button's title should be its accessibility label.")
+    expect((checkbox.accessibilityValue() as? Int) == 1, "A checked box should report value 1.")
+    expect(checkbox.isAccessibilityElement(), "A control should be an accessibility element.")
+    expect(checkbox.accessibilityRoleDescription() == "checkbox", "The role description should match AppKit's.")
+
+    // A radio button reports the radio role.
+    let radio = NSButton(frame: .zero)
+    radio.setButtonType(.radioButton)
+    expect(radio.accessibilityRole() == .radioButton, "A radio button should report the radio role.")
+
+    // An editable field is a text field carrying its text as value; a static
+    // label field is static text.
+    let field = NSTextField(frame: NSMakeRect(0, 0, 160, 22))
+    field.isEditable = true
+    field.stringValue = "hello"
+    field.placeholderString = "Name"
+    expect(field.accessibilityRole() == .textField, "An editable field should report the text-field role.")
+    expect((field.accessibilityValue() as? String) == "hello", "A text field's value should be its text.")
+    expect(field.accessibilityLabel() == "Name", "A field's placeholder should be its default label.")
+
+    let label = NSTextField(frame: .zero)
+    label.isEditable = false
+    label.isSelectable = false
+    label.stringValue = "Caption"
+    expect(label.accessibilityRole() == .staticText, "A non-editable field should report static text.")
+
+    // A slider carries its numeric value.
+    let slider = NSSlider(frame: NSMakeRect(0, 0, 120, 20))
+    slider.doubleValue = 0.5
+    expect(slider.accessibilityRole() == .slider, "A slider should report the slider role.")
+    expect((slider.accessibilityValue() as? Double) == 0.5, "A slider's value should be its double value.")
+
+    // An explicit override wins over the intrinsic role/label (AppKit semantics).
+    let custom = NSButton(frame: .zero)
+    custom.title = "Go"
+    custom.setAccessibilityLabel("Submit the form")
+    custom.setAccessibilityRole(.link)
+    expect(custom.accessibilityLabel() == "Submit the form", "An explicit accessibility label should win.")
+    expect(custom.accessibilityRole() == .link, "An explicit accessibility role should win.")
+
+    // A disabled control reports itself disabled to assistive technology.
+    let disabled = NSButton(frame: .zero)
+    disabled.isEnabled = false
+    expect(!disabled.isAccessibilityEnabled(), "A disabled control should report itself disabled.")
+
+    // A plain container view is not an element and reports the group role.
+    let container = NSView(frame: NSMakeRect(0, 0, 100, 100))
+    expect(!container.isAccessibilityElement(), "A plain view should not be an accessibility element.")
+    expect(container.accessibilityRole() == .group, "A plain view should report the group role.")
+}
+
+@MainActor
+func testAccessibilityTreeWalksContainerHierarchy() {
+    // A container's snapshot should reach its control descendants with their
+    // roles/labels intact.
+    let root = NSView(frame: NSMakeRect(0, 0, 200, 120))
+    let ok = NSButton(frame: NSMakeRect(10, 10, 80, 24))
+    ok.title = "OK"
+    let cancel = NSButton(frame: NSMakeRect(100, 10, 80, 24))
+    cancel.title = "Cancel"
+    let hidden = NSButton(frame: NSMakeRect(0, 50, 80, 24))
+    hidden.title = "Secret"
+    hidden.isHidden = true
+    root.addSubview(ok)
+    root.addSubview(cancel)
+    root.addSubview(hidden)
+
+    let snapshot = root.winAccessibilitySnapshot()
+    expect(snapshot.role == NSAccessibilityRole.group.rawValue, "The root should snapshot as a group.")
+    expect(snapshot.children.count == 2, "A hidden subview should not appear in the accessibility tree.")
+    expect(snapshot.firstDescendant(labeled: "OK") != nil, "The OK button should be reachable in the tree.")
+    expect(snapshot.firstDescendant(labeled: "Cancel")?.role == NSAccessibilityRole.button.rawValue,
+           "Cancel should be reachable and report the button role.")
+    expect(snapshot.firstDescendant(labeled: "Secret") == nil, "The hidden button should be absent.")
+    // Two buttons, both elements; the group container is not an element.
+    expect(snapshot.elementCount == 2, "The tree should count exactly the two visible controls.")
+}
+
+@MainActor
+func testDrawnTablePublishesRowAndCellAccessibilityTree() {
+    // The framework-drawn table draws its own cells, so it must publish a
+    // synthetic AXTable → AXRow → AXCell tree for screen readers (10.2, moved
+    // from 5.1). We assert that tree directly.
+    let tableView = NSTableView(frame: NSMakeRect(0, 0, 300, 160))
+    let dataSource = RecordingTableDataSource()
+    let name = NSTableColumn(identifier: "name")
+    let note = NSTableColumn(identifier: "note")
+    name.title = "Name"
+    note.title = "Note"
+    tableView.addTableColumn(name)
+    tableView.addTableColumn(note)
+    tableView.dataSource = dataSource
+    tableView.reloadData()
+
+    let snapshot = tableView.winAccessibilitySnapshot()
+    expect(snapshot.role == NSAccessibilityRole.table.rawValue,
+           "A multi-column drawn table should report the table role.")
+    let rows = snapshot.descendants(role: .row)
+    expect(rows.count == 3, "The table should publish one AXRow per data row.")
+    expect(rows[0].subrole == NSAccessibilitySubrole.tableRow.rawValue, "Rows should carry the table-row subrole.")
+    let cells = snapshot.descendants(role: .cell)
+    expect(cells.count == 6, "The table should publish one AXCell per row per column.")
+    // The first row's first cell carries the model text and its column's title.
+    let firstCell = rows[0].children.first
+    expect((firstCell?.value) == "Ada", "The first cell should carry its model text as the accessibility value.")
+    expect(firstCell?.label == "Name", "A cell should default its label to its column title.")
+    // The second row's second cell reflects the data source.
+    expect(rows[1].children.last?.value == "Navy", "Row/column addressing in the tree should match the data source.")
+
+    // An outline reports the outline role with outline-row subroles.
+    let outlineView = NSOutlineView(frame: NSMakeRect(0, 0, 300, 160))
+    outlineView.addTableColumn(NSTableColumn(identifier: "name"))
+    outlineView.addTableColumn(NSTableColumn(identifier: "kind"))
+    let outlineSource = RecordingOutlineDataSource()
+    outlineView.outlineDataSource = outlineSource
+    outlineView.reloadData()
+    let outlineSnapshot = outlineView.winAccessibilitySnapshot()
+    expect(outlineSnapshot.role == NSAccessibilityRole.outline.rawValue,
+           "A drawn outline should report the outline role.")
+    if let firstOutlineRow = outlineSnapshot.descendants(role: .row).first {
+        expect(firstOutlineRow.subrole == NSAccessibilitySubrole.outlineRow.rawValue,
+               "Outline rows should carry the outline-row subrole.")
+    } else {
+        expect(false, "The outline should publish at least one row element.")
+    }
+}
+
+@MainActor
+func testAccessibilityLabelPropagatesToNativePeer() {
+    // An explicit accessibility label pushes to the backend so the OS
+    // accessibility layer reads the app's label rather than window text.
+    let backend = InMemoryNativeControlBackend()
+    let button = NSButton(frame: NSMakeRect(0, 0, 80, 24))
+    let handle = button.realizeNativePeer(in: backend, parent: nil)
+    button.setAccessibilityLabel("Close window")
+    expect(backend.records[handle]?.accessibilityName == "Close window",
+           "A post-realization accessibility label should push to the native peer.")
+
+    // A label set before realization is replayed onto the backend so the
+    // annotation matches regardless of ordering.
+    let pre = NSButton(frame: NSMakeRect(0, 0, 80, 24))
+    pre.setAccessibilityLabel("Help")
+    let preHandle = pre.realizeNativePeer(in: backend, parent: nil)
+    expect(backend.records[preHandle]?.accessibilityName == "Help",
+           "A pre-realization accessibility label should replay onto the native peer.")
+}
+
+// MARK: - Phase 10.6 Cursor/hover polish
+
+@MainActor
+func testTextFieldShowsIBeamAndHeaderShowsResizeCursor() {
+    // An editable field shows the I-beam over its content; a static label does not.
+    let editable = NSTextField(frame: NSMakeRect(0, 0, 120, 22))
+    editable.isEditable = true
+    let editRegions = editable.winResolvedCursorRegions()
+    expect(editRegions.contains { $0.cursorName == "iBeam" },
+           "An editable text field should show the I-beam cursor.")
+
+    let staticLabel = NSTextField(frame: NSMakeRect(0, 0, 120, 22))
+    staticLabel.isEditable = false
+    staticLabel.isSelectable = false
+    expect(staticLabel.winResolvedCursorRegions().isEmpty,
+           "A static label should not claim a cursor region.")
+
+    // The table header shows the left-right resize cursor over each column
+    // boundary when resizing is allowed.
+    let tableView = NSTableView(frame: NSMakeRect(0, 0, 300, 160))
+    let a = NSTableColumn(identifier: "a"); a.width = 100
+    let b = NSTableColumn(identifier: "b"); b.width = 120
+    tableView.addTableColumn(a)
+    tableView.addTableColumn(b)
+    let header = NSTableHeaderView(frame: NSMakeRect(0, 0, 300, 24))
+    header.tableView = tableView
+    let regions = header.winResolvedCursorRegions()
+    let resizeRegions = regions.filter { $0.cursorName == "resizeLeftRight" }
+    expect(resizeRegions.count == 2, "The header should show a resize cursor at each column boundary.")
+    // The first boundary straddles the first column's trailing edge (x == 100).
+    expect(resizeRegions.contains { $0.rect.minX < 100 && $0.rect.maxX > 100 },
+           "A resize hot-zone should straddle the first column boundary at x=100.")
+
+    // With resizing disabled, no resize cursor appears.
+    tableView.allowsColumnResizing = false
+    expect(header.winResolvedCursorRegions().isEmpty,
+           "A non-resizable table's header should not show resize cursors.")
+}
+
+// MARK: - Phase 10.1 Focus / key loop
+
+@MainActor
+func testDrawnTableTabAdvancesCellEditor() {
+    let backend = InMemoryNativeControlBackend()
+    let tableView = NSTableView(frame: NSMakeRect(0, 0, 300, 160))
+    let dataSource = RecordingTableDataSource()
+    let name = NSTableColumn(identifier: "name")
+    let note = NSTableColumn(identifier: "note")
+    name.title = "Name"; name.isEditable = true
+    note.title = "Note"; note.isEditable = true
+    tableView.addTableColumn(name)
+    tableView.addTableColumn(note)
+    tableView.dataSource = dataSource
+    tableView.winUsesViewBasedCells = true
+    _ = tableView.realizeNativePeer(in: backend, parent: nil)
+
+    // Begin editing the first cell.
+    tableView.editColumn(0, row: 0, with: nil, select: true)
+    expect(tableView.winIsEditingDrawnCell, "editColumn should begin a drawn-cell edit.")
+    expect(tableView.winEditingRow == 0 && tableView.winEditingColumn == 0,
+           "Editing should start at (0,0).")
+
+    // Tab advances across columns within the row.
+    expect(tableView.winAdvanceDrawnEdit(reversed: false), "Tab should advance the editor.")
+    expect(tableView.winEditingRow == 0 && tableView.winEditingColumn == 1,
+           "Tab should move to the next column in the same row.")
+
+    // Tab at the row's last column wraps to the first column of the next row.
+    expect(tableView.winAdvanceDrawnEdit(reversed: false), "Tab should advance to the next row.")
+    expect(tableView.winEditingRow == 1 && tableView.winEditingColumn == 0,
+           "Tab past the last column should wrap to the next row's first column.")
+
+    // Backtab reverses back to the previous row's last column.
+    expect(tableView.winAdvanceDrawnEdit(reversed: true), "Backtab should retreat the editor.")
+    expect(tableView.winEditingRow == 0 && tableView.winEditingColumn == 1,
+           "Backtab should move to the previous row's last column.")
+
+    // The advance commits the intermediate edits back to the data source
+    // (the value typed before Tab is not lost).
+    expect(tableView.winIsEditingDrawnCell, "Editing should still be active after advancing.")
+}
+
+// MARK: - Phase 10.8 Search-field chrome
+
+@MainActor
+func testSearchFieldDrawsChromeAndRecentMenu() {
+    let field = NSSearchField(frame: NSMakeRect(0, 0, 160, 22))
+
+    // With no text: the magnifier draws (a ring + handle = 2 strokes) and no
+    // clear button appears.
+    let empty = RecordingDrawingContext()
+    field.winDrawSearchChrome(in: empty)
+    expect(empty.strokes.count == 2, "An empty search field should draw only the magnifier (ring + handle).")
+    expect(field.winCancelButtonRect.width == 0, "An empty search field should have no clear button.")
+
+    // The magnifier sits at the leading edge; the text area starts after it.
+    expect(field.winSearchIconRect.minX < field.winSearchTextRect.minX,
+           "The magnifier should sit to the left of the text area.")
+
+    // With text: the clear (✕) button appears (2 more strokes) on the trailing edge.
+    field.stringValue = "swift"
+    let withText = RecordingDrawingContext()
+    field.winDrawSearchChrome(in: withText)
+    expect(withText.strokes.count == 4, "A search field with text should draw the magnifier and the clear ✕.")
+    expect(field.winCancelButtonRect.maxX <= field.bounds.width,
+           "The clear button should sit within the trailing edge.")
+
+    // Clicking the clear button empties the field.
+    let cancelPoint = NSPoint(x: field.winCancelButtonRect.midX, y: field.winCancelButtonRect.midY)
+    expect(field.winHandleSearchChromeClick(at: cancelPoint), "A click on the clear button should be consumed.")
+    expect(field.stringValue.isEmpty, "Clicking the clear button should empty the search field.")
+
+    // The recent-searches menu lists the tracked searches plus a Clear item.
+    field.recentSearches = ["alpha", "beta"]
+    let menu = field.winRecentSearchesMenu()
+    let titles = menu.items.map { $0.title }
+    expect(titles.contains("Recent Searches"), "The recent menu should have the AppKit header.")
+    expect(titles.contains("alpha") && titles.contains("beta"), "The recent menu should list recent searches.")
+    expect(titles.contains("Clear"), "The recent menu should offer a Clear item.")
+
+    let emptyMenu = NSSearchField(frame: .zero).winRecentSearchesMenu()
+    expect(emptyMenu.items.contains { $0.title == "No Recent Searches" },
+           "With no history the menu should show 'No Recent Searches'.")
+}
+
+// MARK: - Phase 10.9 Window-modal sheets
+
+@MainActor
+func testSheetsLinkParentPositionBelowToolbarAndQueue() {
+    let backend = InMemoryNativeControlBackend()
+    backend.nextModalResponseCode = NSApplication.ModalResponse.OK.rawValue
+    let previousBackend = NSApplication.shared.nativeBackend
+    NSApplication.shared.nativeBackend = backend
+    defer {
+        NSApplication.shared.nativeBackend = previousBackend
+        clearApplicationWindows()
+    }
+
+    func makeWindow() -> NSWindow {
+        NSWindow(contentRect: NSMakeRect(0, 0, 400, 300), styleMask: [.titled],
+                 backing: .buffered, defer: false, nativeBackend: backend)
+    }
+
+    let parent = makeWindow()
+    let sheet = makeWindow()
+    sheet.setFrame(NSMakeRect(0, 0, 200, 120), display: false)
+
+    parent.beginSheet(sheet)
+    expect(parent.attachedSheet === sheet, "beginSheet should attach the sheet to its parent.")
+    expect(sheet.sheetParent === parent, "The sheet should link back to its parent window.")
+    // Centered horizontally, dropped below the title area.
+    expect(sheet.frame.origin.x == parent.frame.origin.x + (400 - 200) / 2,
+           "The sheet should be centered horizontally over its parent.")
+    expect(sheet.frame.origin.y == parent.frame.origin.y + parent.winSheetTopInset,
+           "The sheet should hang from the parent's title inset.")
+
+    // A toolbar pushes the inset down by the toolbar height (moved from 6.2).
+    let toolbarParent = makeWindow()
+    let plainInset = parent.winSheetTopInset
+    toolbarParent.toolbar = NSToolbar(identifier: "sheet-tb")
+    expect(toolbarParent.winSheetTopInset > plainInset,
+           "A window with a visible toolbar should drop its sheet below the toolbar.")
+
+    // A second sheet while one is attached queues behind it.
+    let queued = makeWindow()
+    parent.beginSheet(queued)
+    expect(parent.attachedSheet === sheet, "A second beginSheet should not replace the live sheet.")
+    expect(queued.sheetParent == nil, "A queued sheet should not attach until its turn.")
+
+    // Ending the first sheet presents the queued one.
+    parent.endSheet(sheet, returnCode: .OK)
+    expect(parent.attachedSheet === queued, "Ending a sheet should present the next queued sheet.")
+    expect(queued.sheetParent === parent, "The queued sheet should link to its parent when presented.")
+}
+
+// MARK: - Phase 10.11 drag image + 10.7 display scale
+
+@MainActor
+func testDragImageAndDisplayScaleSurfaces() {
+    // A dragging item carries the image the source supplies via
+    // setDraggingFrame(_:contents:) — the drag-image surface (10.11).
+    let item = NSDraggingItem(pasteboardWriter: "payload")
+    expect(item.winDragImage == nil, "A dragging item starts with no drag image.")
+    let image = NSImage(size: NSMakeSize(32, 32))
+    let frame = NSMakeRect(0, 0, 32, 32)
+    item.setDraggingFrame(frame, contents: image)
+    expect(item.winDragImage === image, "setDraggingFrame(_:contents:) should store the drag image.")
+    expect(item.draggingFrame == frame, "setDraggingFrame should store the drag frame.")
+
+    // Non-image contents leave the drag imageless (falls back to the cursor).
+    let plain = NSDraggingItem(pasteboardWriter: "payload")
+    plain.setDraggingFrame(frame, contents: "not an image")
+    expect(plain.winDragImage == nil, "Non-image drag contents should leave no drag image.")
+
+    // The backend surfaces the real display scale (10.7 infrastructure).
+    let backend = InMemoryNativeControlBackend()
+    expect(backend.winDisplayScale() == 1.0, "The default display scale should be 1.0 (96 DPI).")
+    backend.scriptedDisplayScale = 1.5
+    expect(backend.winDisplayScale() == 1.5, "The backend should report the configured display scale.")
+}
+
+@MainActor
+func testUnchangedFrameDoesNotRepushToBackend() {
+    // Assigning the same frame must not reach the backend — layout re-assigns
+    // identical frames on every scroll/resize pass, and re-pushing each would
+    // repaint (flicker) every control. Only a real change should push.
+    let backend = InMemoryNativeControlBackend()
+    let button = NSButton(frame: NSMakeRect(0, 0, 80, 24))
+    let handle = button.realizeNativePeer(in: backend, parent: nil)
+    let baseline = backend.setFrameCallCounts[handle] ?? 0
+
+    // Re-assign the identical frame several times: no new backend pushes.
+    button.frame = NSMakeRect(0, 0, 80, 24)
+    button.frame = NSMakeRect(0, 0, 80, 24)
+    button.frame = NSMakeRect(0, 0, 80, 24)
+    expect((backend.setFrameCallCounts[handle] ?? 0) == baseline,
+           "Re-assigning an unchanged frame should not push to the backend.")
+
+    // A real change pushes exactly once.
+    button.frame = NSMakeRect(10, 10, 80, 24)
+    expect((backend.setFrameCallCounts[handle] ?? 0) == baseline + 1,
+           "A changed frame should push exactly one backend update.")
+
+    // Re-assigning that new frame again is again a no-op.
+    button.frame = NSMakeRect(10, 10, 80, 24)
+    expect((backend.setFrameCallCounts[handle] ?? 0) == baseline + 1,
+           "Re-assigning the just-set frame should not push again.")
+}
+
+testUnchangedFrameDoesNotRepushToBackend()
+testControlsExposeAppKitAccessibilityRolesAndValues()
+testAccessibilityTreeWalksContainerHierarchy()
+testDrawnTablePublishesRowAndCellAccessibilityTree()
+testAccessibilityLabelPropagatesToNativePeer()
+testTextFieldShowsIBeamAndHeaderShowsResizeCursor()
+testDrawnTableTabAdvancesCellEditor()
+testSearchFieldDrawsChromeAndRecentMenu()
+testSheetsLinkParentPositionBelowToolbarAndQueue()
+testDragImageAndDisplayScaleSurfaces()
 
 print("WinChocolate contract tests passed.")

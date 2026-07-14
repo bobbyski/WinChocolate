@@ -27,6 +27,13 @@ public protocol NSTextFieldDelegate: AnyObject {
 
     /// Tells the delegate that editing ended in the control (focus lost).
     func controlTextDidEndEditing(_ obj: NSNotification)
+
+    /// Asks the delegate to handle a field-editor command (AppKit's
+    /// `control(_:textView:doCommandBy:)`). Return `true` to consume the
+    /// command. The drawn table's cell editor uses this to intercept
+    /// `insertTab:`/`insertBacktab:` and move editing to the next cell instead
+    /// of letting focus leave the field.
+    func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool
 }
 
 extension NSTextFieldDelegate {
@@ -38,6 +45,9 @@ extension NSTextFieldDelegate {
 
     /// Default no-op so delegates only implement the callbacks they need.
     public func controlTextDidEndEditing(_ obj: NSNotification) {}
+
+    /// Default: the delegate handles no field-editor commands.
+    public func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool { false }
 }
 
 /// A single-line text entry or label control.
@@ -130,6 +140,30 @@ open class NSTextField: NSControl {
 
     /// Whether the text field accepts selection.
     open var isSelectable: Bool = false
+
+    /// Text fields the user can edit or select from show the I-beam cursor over
+    /// their content, like AppKit. A pure static label keeps the arrow.
+    open override func resetCursorRects() {
+        guard isEditable || isSelectable else { return }
+        addCursorRect(bounds, cursor: .iBeam)
+    }
+
+    // MARK: Accessibility
+
+    /// An editable field is a text field; a static (label) field is static text
+    /// — matching AppKit, where a non-editable, non-selectable field reports
+    /// `AXStaticText`.
+    open override var winIntrinsicAccessibilityRole: NSAccessibilityRole {
+        (isEditable || isSelectable) ? .textField : .staticText
+    }
+
+    /// The field's text is its accessibility value; the placeholder is its
+    /// label when no explicit label was set.
+    open override var winIntrinsicAccessibilityValue: Any? { stringValue }
+    open override var winIntrinsicAccessibilityLabel: String? {
+        let placeholder = placeholderString ?? ""
+        return placeholder.isEmpty ? nil : placeholder
+    }
 
     /// Whether the text field draws a border.
     open var isBordered: Bool = true
@@ -234,6 +268,14 @@ open class NSTextField: NSControl {
     public override init(frame frameRect: NSRect) {
         self.stringValue = ""
         super.init(frame: frameRect)
+    }
+
+    /// The field's baseline sits above its bottom edge by the bezel/border
+    /// padding plus an approximated font descent (~21% of the point size, the
+    /// typical ratio for UI faces; exact per-font metrics are a refinement).
+    open override var baselineOffsetFromBottom: CGFloat {
+        let pad: CGFloat = isBezeled ? 3 : (isBordered ? 2 : 1)
+        return pad + (font ?? NSFont.systemFont(ofSize: 12)).pointSize * 0.21
     }
 
     /// The field's natural size for Auto Layout (9.2): its text measured with
