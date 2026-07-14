@@ -1,6 +1,13 @@
 /// Data source for an AppKit-shaped outline view.
+///
+/// Refines `NSTableViewDataSource` so an outline source can be assigned to
+/// AppKit's real `outlineView.dataSource` property (Apple retypes the
+/// inherited property covariantly via the ObjC runtime; Swift-only code gets
+/// the same assignment shape through this refinement, with defaults below so
+/// outline sources never implement the flat-table API — the outline's
+/// internal adapter supplies it).
 @MainActor
-public protocol NSOutlineViewDataSource: NSObjectProtocol {
+public protocol NSOutlineViewDataSource: NSTableViewDataSource {
     /// Returns the number of children below an item. `nil` means the root.
     func outlineView(_ outlineView: NSOutlineView, numberOfChildrenOfItem item: Any?) -> Int
 
@@ -29,6 +36,12 @@ public protocol NSOutlineViewDataSource: NSObjectProtocol {
 }
 
 public extension NSOutlineViewDataSource {
+    /// Outline sources never implement the flat-table row count — the
+    /// outline's internal adapter supplies it from the flattened tree.
+    func numberOfRows(in tableView: NSTableView) -> Int {
+        0
+    }
+
     /// Default object value uses the item description.
     func outlineView(_ outlineView: NSOutlineView, objectValueFor tableColumn: NSTableColumn?, byItem item: Any?) -> Any? {
         item.map { String(describing: $0) }
@@ -47,8 +60,13 @@ public extension NSOutlineViewDataSource {
 
 /// Delegate that can vend per-column cell views for an outline's items,
 /// matching AppKit's `NSOutlineViewDelegate` view-based hook.
+///
+/// Refines `NSTableViewDelegate` so an outline delegate can be assigned to
+/// AppKit's real `outlineView.delegate` property (see the data-source note);
+/// the table-level callbacks all have defaults, so pure-AppKit outline
+/// delegates conform unchanged.
 @MainActor
-public protocol NSOutlineViewDelegate: NSObjectProtocol {
+public protocol NSOutlineViewDelegate: NSTableViewDelegate {
     /// Returns a view to host for a column and item, or `nil` for drawn text.
     func outlineView(_ outlineView: NSOutlineView, viewFor tableColumn: NSTableColumn?, item: Any) -> NSView?
 
@@ -155,19 +173,44 @@ open class NSOutlineView: NSTableView {
     private var visibleRows: [OutlineRow] = []
     private var expandedItemKeys: Set<String> = []
 
-    /// Object that provides outline children and values.
-    open weak var outlineDataSource: NSOutlineViewDataSource? {
+    /// Object that provides outline children and values. Not API (18.12):
+    /// applications assign AppKit's real `dataSource` property, which routes
+    /// here; `package` for framework internals and the suite.
+    package weak var outlineDataSource: NSOutlineViewDataSource? {
         didSet {
             reloadData()
         }
     }
 
-    /// Object that can vend per-column cell views for items (view-based outline).
-    open weak var outlineDelegate: NSOutlineViewDelegate? {
+    /// Object that can vend per-column cell views for items. Not API
+    /// (18.12): applications assign AppKit's real `delegate` property.
+    package weak var outlineDelegate: NSOutlineViewDelegate? {
         didSet {
             reloadData()
         }
     }
+
+    /// AppKit's real property shape: an outline's `dataSource` is its
+    /// outline data source (Apple retypes the inherited property; here the
+    /// outline protocol refines the table one so the same assignment
+    /// compiles). The flattening adapter is interposed internally through
+    /// `winEffectiveDataSource`, never through this property.
+    open override var dataSource: NSTableViewDataSource? {
+        get { outlineDataSource }
+        set { outlineDataSource = newValue as? NSOutlineViewDataSource }
+    }
+
+    /// AppKit's real property shape for the outline delegate (see
+    /// `dataSource`).
+    open override var delegate: NSTableViewDelegate? {
+        get { outlineDelegate }
+        set { outlineDelegate = newValue as? NSOutlineViewDelegate }
+    }
+
+    /// The table machinery reads the flattening adapter, whatever the app
+    /// assigned to `dataSource`/`delegate`.
+    override var winEffectiveDataSource: NSTableViewDataSource? { outlineAdapter }
+    override var winEffectiveDelegate: NSTableViewDelegate? { outlineAdapter }
 
     /// Bridges a drawn-cell view request (column, row) to the outline delegate's
     /// item-based hook. Returns `nil` — drawn text — when no delegate view.
@@ -220,11 +263,11 @@ open class NSOutlineView: NSTableView {
     /// Creates an outline view.
     public override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
+        // The adapter (also the table delegate) bridges the drawn table's
+        // flat row requests to the outline's item hooks; it is interposed
+        // through winEffectiveDataSource/Delegate, leaving the public
+        // `dataSource`/`delegate` with AppKit's outline semantics.
         outlineAdapter.owner = self
-        dataSource = outlineAdapter
-        // The adapter is also the table delegate: it bridges per-cell view
-        // requests to the outline delegate's item-based hook.
-        delegate = outlineAdapter
         // Outlines always use the framework-drawn table so they can draw
         // disclosure triangles and indentation themselves.
         winUsesViewBasedCells = true
@@ -243,7 +286,6 @@ open class NSOutlineView: NSTableView {
         })
 
         rebuildVisibleRows()
-        dataSource = outlineAdapter
         super.reloadData()
 
         guard !selectedKeys.isEmpty else {

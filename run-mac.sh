@@ -3,10 +3,10 @@
 # Build & run the shared WinChocolate demo against real Apple AppKit on macOS —
 # the third leg of the tri-target compatibility proof (Linux/GTK via
 # LinChocolate/run-linux.sh, Windows/Win32 via WinChocolate, and macOS/AppKit
-# here). The *same* Demo/DemoApplication/main.swift compiles unmodified against
-# genuine AppKit; the ergonomic conveniences both chocolate frameworks add
-# (frame initializers, `onAction`, …) are re-expressed over Apple's types by the
-# macOS shims — Demo/AppKitCompat.swift and Demo/DemoApplication/PlatformShims.swift.
+# here). The *same* Demo/DemoApplication sources compile unmodified against
+# genuine AppKit — NO shim (set in stone, Phase 18): the framework surface IS
+# Apple's, and the demo's ergonomic sugar lives in DemoConveniences.swift,
+# built only on real AppKit primitives so it compiles on all three targets.
 #
 # Usage:
 #   ./run-mac.sh                 # build the .app, launch it
@@ -20,7 +20,6 @@ set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DEMO_DIR="$HERE/Demo/DemoApplication"
-SHIM="$HERE/Demo/AppKitCompat.swift"
 BUILD="$HERE/.build-mac"
 APP="$BUILD/WinChocolateDemo.app"
 BIN="$APP/Contents/MacOS/WinChocolateDemo"
@@ -44,9 +43,9 @@ command -v swiftc >/dev/null 2>&1 || {
 }
 SDK="$(xcrun --show-sdk-path --sdk macosx)"
 
-# --- 2. Sources: all of DemoApplication (main.swift + PlatformShims.swift) plus
-#        the AppKit convenience shim. main.swift carries the top-level code. ----
-SOURCES=("$DEMO_DIR"/*.swift "$SHIM")
+# --- 2. Sources: all of DemoApplication (main.swift carries the top-level
+#        code; DemoConveniences.swift is the demo's own sugar — no shim). ------
+SOURCES=("$DEMO_DIR"/*.swift)
 
 # --- 3. App-bundle skeleton --------------------------------------------------
 # NSApplication apps want a bundle: it gives the process a real Bundle.main (the
@@ -86,9 +85,10 @@ if ! swiftc -sdk "$SDK" -target arm64-apple-macos13.0 \
     n=$(grep -c "error:" "$LOG" 2>/dev/null || echo 0)
     echo
     echo "✗ Build failed with $n error(s)." >&2
-    echo "  The macOS AppKit-compatibility shim is still incomplete (plan L15.1)." >&2
-    echo "  Extend Demo/AppKitCompat.swift + Demo/DemoApplication/PlatformShims.swift" >&2
-    echo "  to re-express the demo's conveniences over Apple's AppKit types." >&2
+    echo "  Each error is an AppKit-faithfulness divergence (Phase 18): fix it by" >&2
+    echo "  correcting WinChocolate/LinChocolate toward Apple's exact surface or" >&2
+    echo "  rewriting the demo line to plain AppKit — NEVER by adding a shim" >&2
+    echo "  (set in stone; see Docs/AppKitFaithfulnessIssues.md)." >&2
     echo "  Full log: $LOG" >&2
     echo >&2
     echo "  Top error categories:" >&2

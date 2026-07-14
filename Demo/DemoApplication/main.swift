@@ -2512,7 +2512,7 @@ outlineNameColumn.width = 160
 outlineStatusColumn.width = 88
 outlineView.addTableColumn(outlineNameColumn)
 outlineView.addTableColumn(outlineStatusColumn)
-outlineView.outlineDataSource = outlineDataSource
+outlineView.dataSource = outlineDataSource
 // Drag a row to reorder it among its siblings (5.2) — the plain-AppKit
 // recipe: a `.move` local source mask plus the outline data source's
 // pasteboard writer and acceptDrop.

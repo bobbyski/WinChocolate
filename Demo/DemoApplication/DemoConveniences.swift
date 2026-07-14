@@ -464,21 +464,20 @@ extension NSTableView {
 }
 
 extension NSOutlineView {
-    /// Demo sugar: outline selection closure over the REAL outline delegate.
-    /// (WinChocolate exposes it as `outlineDelegate`; on macOS this maps to
-    /// `delegate` — an 18.7 alignment note.)
+    /// Demo sugar: outline selection closure installed as the outline's REAL
+    /// `delegate` (AppKit's property — WinChocolate routes it identically).
     @MainActor var onOutlineSelectionChanged: ((NSOutlineView) -> Void)? {
         get { nil }
         set {
             guard let newValue else {
                 DemoOutlineSelectionDelegate.retained.removeValue(forKey: ObjectIdentifier(self))
-                outlineDelegate = nil
+                delegate = nil
                 return
             }
 
             let trampoline = DemoOutlineSelectionDelegate(handler: newValue)
             DemoOutlineSelectionDelegate.retained[ObjectIdentifier(self)] = trampoline
-            outlineDelegate = trampoline
+            delegate = trampoline
         }
     }
 }

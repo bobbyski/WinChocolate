@@ -151,7 +151,7 @@ open class NSTableView: NSControl {
         }
 
         return winLocalDragOperationMask.contains(.move)
-            && winMainActor { dataSource?.tableView(self, pasteboardWriterForRow: row) } != nil
+            && winMainActor { winEffectiveDataSource?.tableView(self, pasteboardWriterForRow: row) } != nil
     }
 
     /// Selection highlight style.
@@ -189,6 +189,16 @@ open class NSTableView: NSControl {
 
     /// Object notified about selection changes.
     open weak var delegate: NSTableViewDelegate?
+
+    /// The data source the table machinery actually reads: `dataSource` for a
+    /// plain table; `NSOutlineView` overrides this to interpose its
+    /// row-flattening adapter while `dataSource` keeps AppKit's semantics
+    /// (returning the outline data source the app assigned).
+    var winEffectiveDataSource: NSTableViewDataSource? { dataSource }
+
+    /// The delegate the table machinery actually consults (see
+    /// `winEffectiveDataSource`).
+    var winEffectiveDelegate: NSTableViewDelegate? { delegate }
 
     /// Whether multiple rows may be selected.
     open var allowsMultipleSelection: Bool = false {
@@ -313,7 +323,7 @@ open class NSTableView: NSControl {
     /// Current table sort descriptors.
     open var sortDescriptors: [NSSortDescriptor] = [] {
         didSet {
-            winMainActor { delegate?.tableView(self, sortDescriptorsDidChange: oldValue) }
+            winMainActor { winEffectiveDelegate?.tableView(self, sortDescriptorsDidChange: oldValue) }
         }
     }
 
@@ -706,12 +716,12 @@ open class NSTableView: NSControl {
             return nil
         }
 
-        return winMainActor { delegate?.tableView(self, viewFor: tableColumn(at: column), row: row) }
+        return winMainActor { winEffectiveDelegate?.tableView(self, viewFor: tableColumn(at: column), row: row) }
     }
 
     /// Returns the delegate-provided height for a row.
     open func heightOfRow(_ row: Int) -> CGFloat {
-        winMainActor { delegate?.tableView(self, heightOfRow: row) } ?? rowHeight
+        winMainActor { winEffectiveDelegate?.tableView(self, heightOfRow: row) } ?? rowHeight
     }
 
     /// Sets a model value through the data source.
@@ -720,7 +730,7 @@ open class NSTableView: NSControl {
             return
         }
 
-        winMainActor { dataSource?.tableView(self, setObjectValue: object, for: tableColumn, row: row) }
+        winMainActor { winEffectiveDataSource?.tableView(self, setObjectValue: object, for: tableColumn, row: row) }
         reloadData()
     }
 
@@ -808,7 +818,7 @@ open class NSTableView: NSControl {
         let columns = columnIndexes.isEmpty ? Set(tableColumns.indices) : columnIndexes
         for row in rowIndexes where rowValues.indices.contains(row) {
             for column in columns where tableColumns.indices.contains(column) {
-                let value = winMainActor { dataSource?.tableView(self, objectValueFor: tableColumns[column], row: row) }
+                let value = winMainActor { winEffectiveDataSource?.tableView(self, objectValueFor: tableColumns[column], row: row) }
                 let text = winDisplayString(from: value)
                 rowValues[row][column] = text
                 if rowRawValues.indices.contains(row), rowRawValues[row].indices.contains(column) {
@@ -823,7 +833,7 @@ open class NSTableView: NSControl {
 
     /// Reloads all rows from the data source.
     open func reloadData() {
-        let count = winMainActor { dataSource?.numberOfRows(in: self) } ?? 0
+        let count = winMainActor { winEffectiveDataSource?.numberOfRows(in: self) } ?? 0
         var nextRows: [[String]] = []
         var nextRaw: [[Any?]] = []
 
@@ -831,7 +841,7 @@ open class NSTableView: NSControl {
             var strings: [String] = []
             var raws: [Any?] = []
             for column in tableColumns {
-                let value = winMainActor { dataSource?.tableView(self, objectValueFor: column, row: row) }
+                let value = winMainActor { winEffectiveDataSource?.tableView(self, objectValueFor: column, row: row) }
                 raws.append(value)
                 strings.append(winDisplayString(from: value))
             }
@@ -906,7 +916,7 @@ open class NSTableView: NSControl {
     /// drop location and forwards to the data source's `acceptDrop` hook. The
     /// table must be registered for the dragged types to receive the drop.
     open override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
-        guard let dataSource else {
+        guard let dataSource = winEffectiveDataSource else {
             return false
         }
         let row = winIsDrawn ? winDropInsertionIndex(atY: sender.draggingLocation.y) : numberOfRows
@@ -1037,7 +1047,7 @@ open class NSTableView: NSControl {
             needsDisplay = true
         }
         winInternalSelectionChanged?(self)
-        winMainActor { delegate?.tableViewSelectionDidChange(NSNotification(name: Self.selectionDidChangeNotification, object: self)) }
+        winMainActor { winEffectiveDelegate?.tableViewSelectionDidChange(NSNotification(name: Self.selectionDidChangeNotification, object: self)) }
     }
 }
 
