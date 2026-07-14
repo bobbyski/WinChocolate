@@ -79,6 +79,11 @@ window.contentMinSize = NSMakeSize(900, 600)
 window.contentMaxSize = NSMakeSize(4000, 2400)
 
 final class DemoContentView: NSView {
+    /// The demo is authored in top-left coordinates (see `DemoFilledView`).
+    override var isFlipped: Bool {
+        true
+    }
+
     var onBlankAreaMouseDown: (@MainActor (NSEvent) -> Void)?
     var onBlankAreaMouseUp: (@MainActor (NSEvent) -> Void)?
     var onMouseMoved: (@MainActor (NSEvent) -> Void)?
@@ -149,6 +154,11 @@ final class DemoContentView: NSView {
 }
 
 final class DemoPageView: NSView {
+    /// The demo is authored in top-left coordinates (see `DemoFilledView`).
+    override var isFlipped: Bool {
+        true
+    }
+
     override var acceptsFirstResponder: Bool {
         false
     }
@@ -214,6 +224,11 @@ final class DemoFontChangeResponder: NSResponder, NSFontChanging {
 }
 
 final class DemoCanvasView: NSView {
+
+    /// The demo is authored in top-left coordinates (see `DemoFilledView`).
+    override var isFlipped: Bool {
+        true
+    }
     static let palette: [NSColor] = [
         NSColor(calibratedRed: 0.86, green: 0.29, blue: 0.25, alpha: 1),
         NSColor(calibratedRed: 0.30, green: 0.62, blue: 0.86, alpha: 1),
@@ -313,6 +328,11 @@ final class DemoCanvasView: NSView {
 }
 
 final class DemoShapesView: NSView {
+
+    /// The demo is authored in top-left coordinates (see `DemoFilledView`).
+    override var isFlipped: Bool {
+        true
+    }
     var contextMenu: NSMenu?
 
     override var acceptsFirstResponder: Bool {
@@ -402,6 +422,11 @@ final class DemoShapesView: NSView {
 }
 
 final class DemoGradientsView: NSView {
+
+    /// The demo is authored in top-left coordinates (see `DemoFilledView`).
+    override var isFlipped: Bool {
+        true
+    }
     override var acceptsFirstResponder: Bool {
         false
     }
@@ -494,6 +519,11 @@ final class DemoGradientsView: NSView {
 /// exercise the repaint pipeline with slow content, making flicker/coalescing
 /// issues obvious.
 final class DemoSlowGradientView: NSView {
+
+    /// The demo is authored in top-left coordinates (see `DemoFilledView`).
+    override var isFlipped: Bool {
+        true
+    }
     var label: String = ""
     /// Grid density — higher means slower paint.
     var columns = 18
@@ -549,6 +579,11 @@ final class DemoSlowGradientView: NSView {
 /// `CGContext` (paths, gradients, transforms via save/rotate/translate) and a
 /// `CGImage` round-tripped through the BMP codec, rendered as scaled pixels.
 final class DemoCoreGraphicsView: NSView {
+
+    /// The demo is authored in top-left coordinates (see `DemoFilledView`).
+    override var isFlipped: Bool {
+        true
+    }
     /// An 8×8 heart sprite decoded from BMP bytes the view itself encoded —
     /// the codec round-trips in the running demo, not just in tests.
     static let sprite: CGImage? = {
@@ -709,6 +744,11 @@ final class DemoCoreGraphicsView: NSView {
 /// A view that highlights while the cursor hovers it, driven by a tracking
 /// area (3.21). Reports enter/exit through `onEvent`.
 final class DemoHoverView: NSView {
+
+    /// The demo is authored in top-left coordinates (see `DemoFilledView`).
+    override var isFlipped: Bool {
+        true
+    }
     var onEvent: (@MainActor (String) -> Void)?
     private var hovering = false
 
@@ -767,6 +807,11 @@ final class DemoHoverView: NSView {
 
 /// A drag source (3.18): dragging out of it starts a text or file drag.
 final class DemoDragHandle: NSView, NSDraggingSource {
+
+    /// The demo is authored in top-left coordinates (see `DemoFilledView`).
+    override var isFlipped: Bool {
+        true
+    }
     var draggedText = "WinChocolate drag payload"
     var onEvent: (@MainActor (String) -> Void)?
 
@@ -819,6 +864,11 @@ final class DemoDragHandle: NSView, NSDraggingSource {
 /// A drop destination (3.18): accepts dropped text and files, highlighting
 /// while a drag hovers and reporting what landed.
 final class DemoDropWell: NSView {
+
+    /// The demo is authored in top-left coordinates (see `DemoFilledView`).
+    override var isFlipped: Bool {
+        true
+    }
     var onEvent: (@MainActor (String) -> Void)?
     private var accepting = false
     private var lastDrop = "Drop text or files here"
@@ -872,6 +922,11 @@ final class DemoDropWell: NSView {
 
 /// A custom-drawn sample used to demonstrate printing (3.22).
 final class DemoPrintSample: NSView {
+
+    /// The demo is authored in top-left coordinates (see `DemoFilledView`).
+    override var isFlipped: Bool {
+        true
+    }
     override var acceptsFirstResponder: Bool { false }
 
     override func draw(_ dirtyRect: NSRect) {
@@ -1092,7 +1147,7 @@ final class DemoNoteDocument: NSDocument, NSTextViewDelegate {
         editor.string = text
         editor.allowsUndo = true
         editor.delegate = self
-        let noteContent = NSView(frame: NSMakeRect(0, 0, 460, 320))
+        let noteContent = DemoPageView(frame: NSMakeRect(0, 0, 460, 320))
         noteContent.addSubview(editor)
         noteWindow.contentView = noteContent
         addWindowController(NSWindowController(window: noteWindow))
@@ -2654,7 +2709,7 @@ stressPage.addSubview(stressHeader)
 
 let stressScrollView = NSScrollView(frame: NSMakeRect(12, 34, 1096, 512))
 stressScrollView.hasVerticalScroller = true
-let stressDocView = NSView(frame: NSMakeRect(0, 0, 1060, 10))
+let stressDocView = DemoPageView(frame: NSMakeRect(0, 0, 1060, 10))
 
 var stressY: CGFloat = 12
 for i in 0..<28 {
@@ -3154,7 +3209,7 @@ panelButton.onAction = { _ in
         newPanel.title = "WinChocolate Panel"
         newPanel.isFloatingPanel = true
         newPanel.hidesOnDeactivate = true
-        let panelContent = NSView(frame: NSMakeRect(0, 0, 280, 140))
+        let panelContent = DemoPageView(frame: NSMakeRect(0, 0, 280, 140))
         let panelTitle = NSTextField(string: "NSPanel", frame: NSMakeRect(24, 24, 120, 24))
         let panelInfo = NSTextField(string: "Floating inspector slice", frame: NSMakeRect(24, 58, 200, 24))
         panelTitle.font = NSFont.boldSystemFont(ofSize: 14)

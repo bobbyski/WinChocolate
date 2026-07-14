@@ -33,6 +33,14 @@ import AppKit
 /// "give this container a background" (AppKit's `NSView` has no
 /// `backgroundColor`; a subclass draws its own fill in `draw(_:)`).
 final class DemoFilledView: NSView {
+    /// This demo lays every page out in top-left coordinates. AppKit's NSView
+    /// defaults to a bottom-left origin, so without this the whole page renders
+    /// inverted; WinChocolate/LinChocolate already report `true`, so overriding
+    /// here is a no-op there and the one authored layout works on all three.
+    override var isFlipped: Bool {
+        true
+    }
+
     var backgroundColor: NSColor? {
         didSet {
             needsDisplay = true
