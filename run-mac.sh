@@ -80,7 +80,10 @@ cp "$DEMO_DIR"/Resources/* "$RES/Resources/" 2>/dev/null || true
 echo "• Building the shared demo against AppKit…"
 echo "  SDK: $SDK"
 LOG="$BUILD/build.log"
-if ! swiftc -sdk "$SDK" -target arm64-apple-macos13.0 \
+# -swift-version 6 matches the Windows/Linux builds (Package.swift is
+# swift-tools-version 6.0): same language mode → same isolation model for
+# top-level code, so the demo means the same thing on all three targets.
+if ! swiftc -sdk "$SDK" -target arm64-apple-macos13.0 -swift-version 6 \
         -o "$BIN" "${SOURCES[@]}" 2> "$LOG"; then
     n=$(grep -c "error:" "$LOG" 2>/dev/null || echo 0)
     echo

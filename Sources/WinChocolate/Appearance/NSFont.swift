@@ -12,7 +12,7 @@ public struct NSFont: Equatable, Sendable {
     public let pointSize: CGFloat
 
     /// The requested font weight.
-    public let weight: Weight
+    package let weight: Weight
 
     /// Whether the font is italic (or oblique).
     public let italic: Bool

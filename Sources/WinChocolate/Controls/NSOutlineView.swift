@@ -319,10 +319,12 @@ open class NSOutlineView: NSTableView {
         reloadData()
     }
 
-    /// Expands a collapsed item, or collapses an expanded item.
-    open func toggleItem(_ item: Any?) {
+    /// Expands a collapsed item, or collapses an expanded item. Not API
+    /// (18.7): Apple has only expandItem(_:)/collapseItem(_:) — package for
+    /// the disclosure-click machinery and the suite.
+    package func toggleItem(_ item: Any?) {
         guard let item,
-              isItemExpandable(item) else {
+              isExpandable(item) else {
             return
         }
 
@@ -343,7 +345,7 @@ open class NSOutlineView: NSTableView {
     }
 
     /// Returns whether an item can expand.
-    open func isItemExpandable(_ item: Any?) -> Bool {
+    open func isExpandable(_ item: Any?) -> Bool {
         guard let item else {
             return false
         }
@@ -432,7 +434,7 @@ open class NSOutlineView: NSTableView {
             targetParent = nil
         } else {
             let above = visibleRows[min(toIndex, visibleRows.count) - 1]
-            if isItemExpandable(above.item), isItemExpanded(above.item) {
+            if isExpandable(above.item), isItemExpanded(above.item) {
                 targetParent = above.item
             } else {
                 targetParent = above.parent
@@ -595,7 +597,7 @@ open class NSOutlineView: NSTableView {
     /// Draws the disclosure triangle for expandable items on the first column.
     open override func winDrawnDrawDecoration(forRow row: Int, column: Int, cellRect: NSRect) {
         guard column == 0, visibleRows.indices.contains(row),
-              isItemExpandable(visibleRows[row].item) else {
+              isExpandable(visibleRows[row].item) else {
             return
         }
         let x = disclosureX(forRow: row, cellRect: cellRect)
@@ -620,7 +622,7 @@ open class NSOutlineView: NSTableView {
     /// A click on the disclosure triangle toggles the item instead of selecting.
     open override func winDrawnHandleDecorationClick(forRow row: Int, column: Int, at point: NSPoint) -> Bool {
         guard column == 0, visibleRows.indices.contains(row),
-              isItemExpandable(visibleRows[row].item) else {
+              isExpandable(visibleRows[row].item) else {
             return false
         }
         let cellRect = winCellRect(row: row, column: 0)

@@ -6,6 +6,9 @@ open class NSFormCell: NSTextFieldCell {
     /// Label shown before the editable entry.
     open var title: String
 
+    /// Lets the owning form relayout when the title column width changes.
+    var winInternalTitleWidthChanged: (() -> Void)?
+
     /// Lets the owning form mirror programmatic value changes into its
     /// composed field — on Apple the cell IS the entry, so assigning
     /// `stringValue` updates the display; the composed implementation keeps
@@ -22,8 +25,12 @@ open class NSFormCell: NSTextFieldCell {
         }
     }
 
-    /// Width reserved for the title column.
-    open var titleWidth: CGFloat = 96
+    /// Width reserved for the title column (Apple's `NSFormCell` accessor).
+    open var titleWidth: CGFloat = 96 {
+        didSet {
+            winInternalTitleWidthChanged?()
+        }
+    }
 
     /// Creates a form cell with a title.
     public init(title: String) {
@@ -71,8 +78,10 @@ open class NSForm: NSControl {
         }
     }
 
-    /// Width reserved for labels.
-    open var titleWidth: CGFloat = 96 {
+    /// Default width for new entries' title columns. Not API (18.7): Apple's
+    /// `NSForm` has no form-level title width — each `NSFormCell.titleWidth`
+    /// owns its own (which the layout reads) — `package` for the suite.
+    package var titleWidth: CGFloat = 96 {
         didSet {
             for index in rows.indices {
                 rows[index].cell.titleWidth = titleWidth
@@ -122,6 +131,9 @@ open class NSForm: NSControl {
             if let field, field.stringValue != value {
                 field.stringValue = value
             }
+        }
+        cell.winInternalTitleWidthChanged = { [weak self] in
+            self?.layoutRows()
         }
 
         let row = Row(cell: cell, label: label, field: field)
@@ -235,8 +247,9 @@ open class NSForm: NSControl {
     private func layoutRows() {
         for (index, row) in rows.enumerated() {
             let y = CGFloat(index) * rowHeight
-            row.label.frame = NSMakeRect(0, y + 3, titleWidth, 24)
-            row.field.frame = NSMakeRect(titleWidth + 8, y, max(0, frame.size.width - titleWidth - 8), 28)
+            let width = row.cell.titleWidth
+            row.label.frame = NSMakeRect(0, y + 3, width, 24)
+            row.field.frame = NSMakeRect(width + 8, y, max(0, frame.size.width - width - 8), 28)
         }
     }
 }

@@ -2395,8 +2395,8 @@ func testOutlineViewFlattensExpandableItems() {
     expect(outlineView.row(forItem: "Controls") == 1, "Outline did not find root item row.")
     expect(outlineView.value(atColumn: 0, row: 0) == "Application", "Outline first-column value should be plain text (disclosure is drawn, not text).")
     expect(outlineView.value(atColumn: 1, row: 0) == "Group", "Outline did not load secondary column value.")
-    expect(outlineView.isItemExpandable("Application"), "Outline did not report expandable group.")
-    expect(!outlineView.isItemExpandable("NSApplication"), "Outline reported leaf as expandable.")
+    expect(outlineView.isExpandable("Application"), "Outline did not report expandable group.")
+    expect(!outlineView.isExpandable("NSApplication"), "Outline reported leaf as expandable.")
 
     outlineView.expandItem("Application")
 

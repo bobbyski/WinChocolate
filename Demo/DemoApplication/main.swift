@@ -2383,9 +2383,11 @@ notesTextView.isRichText = true
 notesTextView.string = "Multiline NSTextView"
 tokenLabel.font = NSFont.boldSystemFont(ofSize: 12)
 formLabel.font = NSFont.boldSystemFont(ofSize: 12)
-form.titleWidth = 72
+// Title widths live on the cells, as on Apple.
 let formNameCell = form.addEntry("Name:")
 let formStatusCell = form.addEntry("Status:")
+formNameCell.titleWidth = 72
+formStatusCell.titleWidth = 72
 formNameCell.stringValue = "WinChocolate"
 formStatusCell.stringValue = "Native"
 matrixLabel.font = NSFont.boldSystemFont(ofSize: 12)
@@ -2903,7 +2905,7 @@ fontButton.onAction = { _ in
     // AppKit app does.
     let manager = NSFontManager.shared
     demoFontChangeResponder.handler = { font in
-        let weight = font.weight == .bold ? " bold" : ""
+        let weight = font.fontDescriptor.symbolicTraits.contains(.bold) ? " bold" : ""
         statusLabel.stringValue = "Font chosen: \(font.fontName) \(Int(font.pointSize))pt\(weight)"
     }
     manager.target = demoFontChangeResponder
@@ -3035,7 +3037,8 @@ tokenField.onTextChanged = { field in
     }
 
     updateFocusDisplay()
-    statusLabel.stringValue = "Tokens: \(tokenField.tokens.joined(separator: " | "))"
+    let tokens = (tokenField.objectValue as? [String]) ?? []
+    statusLabel.stringValue = "Tokens: \(tokens.joined(separator: " | "))"
 }
 
 // NSForm edits its cells in place; a continuous control sends its action on
@@ -3364,9 +3367,8 @@ scrollSelectedButton.onAction = { _ in
     tableView.scrollRowToVisible(targetRow)
     statusLabel.stringValue = tableRowSummary(tableView, prefix: "Scrolled to selected")
 }
-collectionView.onAction = { control in
-    guard let collectionView = control as? NSCollectionView,
-          let indexPath = collectionView.selectionIndexPaths.sorted(by: { left, right in
+collectionView.onSelectionChanged = { collectionView in
+    guard let indexPath = collectionView.selectionIndexPaths.sorted(by: { left, right in
               if left.section == right.section {
                   return left.item < right.item
               }
@@ -3443,8 +3445,13 @@ outlineView.onAction = { control in
     }
 
     let itemText = String(describing: item)
-    let shouldExpand = outline.isItemExpandable(item)
-    outline.toggleItem(item)
+    let shouldExpand = outline.isExpandable(item)
+    // Toggle with the real AppKit pair (there is no toggle method on Apple).
+    if outline.isItemExpanded(item) {
+        outline.collapseItem(item)
+    } else {
+        outline.expandItem(item)
+    }
     if shouldExpand {
         let row = outline.row(forItem: item)
         if row >= 0 {
@@ -4033,6 +4040,11 @@ toggleToolbarMenuItem.onAction = { _ in
     window.toggleToolbarShown(nil)
 }
 viewMenu.addItem(toggleToolbarMenuItem)
+// `winAppleLook` is the sanctioned presentation exception (Project Goal 1:
+// toolbars keep the Apple look on Windows) — a WinChocolate-only surface, so
+// the toggle exists only where WinChocolate is the framework. On real AppKit
+// the toolbar already IS Apple's; there is nothing to toggle.
+#if canImport(WinChocolate) || canImport(LinChocolate)
 let metallicMenuItem = NSMenuItem(title: "Use Metallic Toolbar", action: nil, keyEquivalent: "")
 metallicMenuItem.onAction = { item in
     let metallic = demoToolbar.winAppleLook == .metallic
@@ -4041,6 +4053,7 @@ metallicMenuItem.onAction = { item in
     statusLabel.stringValue = "Toolbar look: \(metallic ? "unified" : "metallic")"
 }
 viewMenu.addItem(metallicMenuItem)
+#endif
 viewMenuItem.submenu = viewMenu
 menuBar.addItem(viewMenuItem)
 app.mainMenu = menuBar

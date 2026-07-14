@@ -498,6 +498,47 @@ extension NSTableView {
     }
 }
 
+/// A real `NSCollectionViewDelegate` forwarding selection to a closure
+/// (`collectionView(_:didSelectItemsAt:)` — AppKit's mechanism; Apple's
+/// `NSCollectionView` has no target/action).
+final class DemoCollectionSelectionDelegate: NSObject, NSCollectionViewDelegate {
+    nonisolated(unsafe) static var retained: [ObjectIdentifier: DemoCollectionSelectionDelegate] = [:]
+
+    let handler: @MainActor (NSCollectionView) -> Void
+
+    init(handler: @escaping @MainActor (NSCollectionView) -> Void) {
+        self.handler = handler
+    }
+
+    func collectionView(_ collectionView: NSCollectionView, didSelectItemsAt indexPaths: Set<IndexPath>) {
+        nonisolated(unsafe) let sender = collectionView
+        nonisolated(unsafe) let handler = self.handler
+        MainActor.assumeIsolated {
+            handler(sender)
+        }
+    }
+}
+
+extension NSCollectionView {
+    /// Demo sugar: a selection closure installed as the collection's REAL
+    /// `delegate`. Collections using this must not need another delegate —
+    /// plain AppKit rules.
+    @MainActor var onSelectionChanged: (@MainActor (NSCollectionView) -> Void)? {
+        get { nil }
+        set {
+            guard let newValue else {
+                DemoCollectionSelectionDelegate.retained.removeValue(forKey: ObjectIdentifier(self))
+                delegate = nil
+                return
+            }
+
+            let trampoline = DemoCollectionSelectionDelegate(handler: newValue)
+            DemoCollectionSelectionDelegate.retained[ObjectIdentifier(self)] = trampoline
+            delegate = trampoline
+        }
+    }
+}
+
 extension NSOutlineView {
     /// Demo sugar: outline selection closure installed as the outline's REAL
     /// `delegate` (AppKit's property — WinChocolate routes it identically).

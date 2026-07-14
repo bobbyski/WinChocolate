@@ -33,7 +33,7 @@ open class NSTokenField: NSTextField {
     }
 
     /// Current token strings.
-    open private(set) var tokens: [String] = []
+    package private(set) var tokens: [String] = []
 
     /// Token visual style.
     open var tokenStyle: TokenStyle = .rounded
