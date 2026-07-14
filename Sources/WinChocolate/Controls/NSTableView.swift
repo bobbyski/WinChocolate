@@ -16,12 +16,14 @@ public protocol NSTableViewDataSource: NSObjectProtocol {
     /// `tableView(_:pasteboardWriterForRow:)`.
     func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> Any?
 
-    /// Accepts a drop of external (or cross-view) content at a target row,
-    /// returning whether it was consumed — matching AppKit's
-    /// `tableView(_:acceptDrop:row:dropOperation:)`. Read the payload from
-    /// `info.draggingPasteboard`. The table must be registered for the dragged
-    /// types (`registerForDraggedTypes`).
-    func tableView(_ tableView: NSTableView, acceptDrop info: NSDraggingInfo, row: Int) -> Bool
+    /// Accepts a drop at a target row, returning whether it was consumed —
+    /// AppKit's exact `tableView(_:acceptDrop:row:dropOperation:)`. Covers
+    /// external (or cross-view) content drops AND the table's own row-reorder
+    /// drops (a `.move`-masked local drag whose pasteboard carries the dragged
+    /// row indexes as a comma-separated string). Read the payload from
+    /// `info.draggingPasteboard`; external drops require the table to be
+    /// registered for the dragged types (`registerForDraggedTypes`).
+    func tableView(_ tableView: NSTableView, acceptDrop info: NSDraggingInfo, row: Int, dropOperation: NSTableView.DropOperation) -> Bool
 }
 
 /// Delegate for table-view notifications.
@@ -57,8 +59,8 @@ public extension NSTableViewDataSource {
         nil
     }
 
-    /// Default: the table refuses external drops.
-    func tableView(_ tableView: NSTableView, acceptDrop info: NSDraggingInfo, row: Int) -> Bool {
+    /// Default: the table refuses drops.
+    func tableView(_ tableView: NSTableView, acceptDrop info: NSDraggingInfo, row: Int, dropOperation: NSTableView.DropOperation) -> Bool {
         false
     }
 }
@@ -107,6 +109,49 @@ open class NSTableView: NSControl {
 
         /// Vertical grid lines.
         public static let solidVerticalGridLineMask = GridLineStyle(rawValue: 1 << 1)
+    }
+
+    /// Where a drop lands relative to a row, matching AppKit's
+    /// `NSTableView.DropOperation`: `.on` targets the row itself, `.above`
+    /// inserts between rows (the row-reorder form).
+    public enum DropOperation: Int, Sendable {
+        case on = 0
+        case above = 1
+    }
+
+    /// The operations this table permits as a drag source, split by
+    /// destination locality — AppKit's `setDraggingSourceOperationMask(_:forLocal:)`.
+    /// A **local mask containing `.move`** (plus a data source that vends
+    /// `pasteboardWriterForRow`) enables drag-to-reorder: the drop arrives at
+    /// the data source's `tableView(_:acceptDrop:row:dropOperation:)` with
+    /// `.above`, carrying the dragged row indexes on the pasteboard.
+    open func setDraggingSourceOperationMask(_ mask: NSDragOperation, forLocal isLocal: Bool) {
+        if isLocal {
+            winLocalDragOperationMask = mask
+        } else {
+            winExternalDragOperationMask = mask
+        }
+    }
+
+    /// The local-destination source mask (see
+    /// `setDraggingSourceOperationMask(_:forLocal:)`). WinChocolate defaults
+    /// to no `.move` so reorder is opt-in, as porting apps expect to call the
+    /// mask setter explicitly.
+    package var winLocalDragOperationMask: NSDragOperation = [.copy, .link, .generic]
+
+    /// The external-destination source mask.
+    package var winExternalDragOperationMask: NSDragOperation = [.copy, .link, .generic]
+
+    /// Whether a reorder drag may start from a row: the explicit handler
+    /// (framework-internal path), or AppKit's recipe — a `.move` local mask
+    /// plus a data-source pasteboard writer for the row.
+    package func winReorderDragEnabled(forRow row: Int) -> Bool {
+        if winRowReorderHandler != nil {
+            return true
+        }
+
+        return winLocalDragOperationMask.contains(.move)
+            && winMainActor { dataSource?.tableView(self, pasteboardWriterForRow: row) } != nil
     }
 
     /// Selection highlight style.
@@ -364,10 +409,11 @@ open class NSTableView: NSControl {
     /// Delegate-vended full-width row background views, by row.
     var winHostedRowViews: [Int: NSTableRowView] = [:]
 
-    /// When set, drawn-table rows can be reordered by dragging: the handler is
-    /// called with the source row and the destination insertion index (0...n)
-    /// on drop. A convenience ahead of the full `NSDraggingSession` protocol.
-    open var winRowReorderHandler: ((_ fromRows: IndexSet, _ toIndex: Int) -> Void)?
+    /// Framework-internal reorder hook (the outline's row bridge uses it).
+    /// Not API (18.8): applications enable reorder with AppKit's recipe —
+    /// `setDraggingSourceOperationMask(.move, forLocal: true)`, a data-source
+    /// `pasteboardWriterForRow`, and `tableView(_:acceptDrop:row:dropOperation:)`.
+    package var winRowReorderHandler: ((_ fromRows: IndexSet, _ toIndex: Int) -> Void)?
     /// The row the reorder drag started on, or `-1`.
     var winDraggingRow = -1
     /// The set of rows being dragged (the pressed row, or the whole selection
@@ -864,7 +910,7 @@ open class NSTableView: NSControl {
             return false
         }
         let row = winIsDrawn ? winDropInsertionIndex(atY: sender.draggingLocation.y) : numberOfRows
-        return winMainActor { dataSource.tableView(self, acceptDrop: sender, row: row) }
+        return winMainActor { dataSource.tableView(self, acceptDrop: sender, row: row, dropOperation: .above) }
     }
 
     /// Ensures native table state and selection dispatch are wired.
@@ -1002,6 +1048,11 @@ extension NSTableView: NSDraggingSource {
     /// The operations the table permits when dragging a row out. A reorder-
     /// enabled table moves; otherwise it copies the row's pasteboard content.
     public func draggingSession(_ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
-        winRowReorderHandler != nil ? .move : .copy
+        switch context {
+        case .withinApplication:
+            return winRowReorderHandler != nil ? .move : winLocalDragOperationMask
+        case .outsideApplication:
+            return winExternalDragOperationMask
+        }
     }
 }

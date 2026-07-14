@@ -132,8 +132,20 @@ open class NSForm: NSControl {
         rows.firstIndex { $0.cell === cell } ?? -1
     }
 
-    /// Returns the editable text field for a row.
-    open func textField(at index: Int) -> NSTextField? {
+    /// Returns the form cell for a row, matching Apple's `cell(atIndex:)`
+    /// accessor shape (AppKit's deprecated `NSForm` is cell-based).
+    open func cell(atIndex index: Int) -> NSFormCell? {
+        guard rows.indices.contains(index) else {
+            return nil
+        }
+
+        return rows[index].cell
+    }
+
+    /// Returns the editable text field for a row. Not API (18.7): AppKit's
+    /// `NSForm` is cell-drawn and vends no field views — `package` for the
+    /// composed implementation and the suite.
+    package func textField(at index: Int) -> NSTextField? {
         guard rows.indices.contains(index) else {
             return nil
         }
@@ -152,7 +164,7 @@ open class NSForm: NSControl {
     }
 
     /// Updates an entry's value.
-    open func setStringValue(_ value: String, at index: Int) {
+    package func setStringValue(_ value: String, at index: Int) {
         guard rows.indices.contains(index) else {
             return
         }

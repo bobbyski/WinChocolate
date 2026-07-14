@@ -858,7 +858,7 @@ extension NSTableView {
         // must not collapse the selection yet — that would prevent dragging all
         // of them. Defer the collapse to mouse-up (only if no drag happens) and
         // arm a multi-row drag now. (AppKit's mouse-down-and-drag behavior.)
-        if !extend, winRowReorderHandler != nil, selectedRowIndexes.contains(row), selectedRowIndexes.count > 1 {
+        if !extend, winReorderDragEnabled(forRow: row), selectedRowIndexes.contains(row), selectedRowIndexes.count > 1 {
             winDraggingRow = row
             winDraggingRows = IndexSet(selectedRowIndexes)
             winDropIndex = -1
@@ -875,10 +875,11 @@ extension NSTableView {
         winInvalidateTree()
         sendAction()
 
-        // Arm a single-row reorder drag from this row, or — when the table
-        // isn't reorderable but the data source vends a pasteboard writer for
-        // the row — an external (system/OLE) drag out of the table.
-        if winRowReorderHandler != nil {
+        // Arm a single-row reorder drag from this row (the explicit handler,
+        // or AppKit's recipe: `.move` local mask + a data-source pasteboard
+        // writer), or — when the table isn't reorderable but the data source
+        // vends a writer — an external (system/OLE) drag out of the table.
+        if winReorderDragEnabled(forRow: row) {
             winDraggingRow = row
             winDraggingRows = IndexSet(integer: row)
             winDropIndex = -1
@@ -964,15 +965,36 @@ extension NSTableView {
             }
             return
         }
-        guard let handler = winRowReorderHandler, winDraggingRow >= 0, !winDraggingRows.isEmpty else {
+        guard winDraggingRow >= 0, !winDraggingRows.isEmpty else {
             return
         }
         // A single-row drop just above or below its own row is a no-op.
         if winDraggingRows.count == 1, winDropIndex == winDraggingRow || winDropIndex == winDraggingRow + 1 {
             return
         }
-        handler(winDraggingRows, winDropIndex)
-        reloadData()
+        if let handler = winRowReorderHandler {
+            handler(winDraggingRows, winDropIndex)
+            reloadData()
+            return
+        }
+        // AppKit's reorder pathway: the drop arrives at the data source's
+        // `tableView(_:acceptDrop:row:dropOperation:)` with `.above`, the
+        // dragged row indexes riding the pasteboard as a comma-separated
+        // string (the local-drag payload convention).
+        guard let dataSource else {
+            return
+        }
+        let rowList = winDraggingRows.map(String.init).joined(separator: ",")
+        let info = WinDraggingInfo(
+            content: NativeDropContent(text: rowList, filePaths: []),
+            location: NSMakePoint(0, 0)
+        )
+        let accepted = winMainActor {
+            dataSource.tableView(self, acceptDrop: info, row: winDropIndex, dropOperation: .above)
+        }
+        if accepted {
+            reloadData()
+        }
     }
 
     /// Draws the reorder drop-line indicator, if a drag is active.

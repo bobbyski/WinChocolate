@@ -12,12 +12,36 @@ public protocol NSOutlineViewDataSource: NSObjectProtocol {
 
     /// Returns a display value for a column and item.
     func outlineView(_ outlineView: NSOutlineView, objectValueFor tableColumn: NSTableColumn?, byItem item: Any?) -> Any?
+
+    /// Returns the object supplying an item's pasteboard representation for a
+    /// drag, or `nil` if the item is not draggable — AppKit's
+    /// `outlineView(_:pasteboardWriterForItem:)`. A non-`nil` writer (plus a
+    /// `.move` local mask via `setDraggingSourceOperationMask(_:forLocal:)`)
+    /// enables drag-to-reorder.
+    func outlineView(_ outlineView: NSOutlineView, pasteboardWriterForItem item: Any) -> Any?
+
+    /// Accepts a drop targeting a parent item at a child index, returning
+    /// whether it was consumed — AppKit's exact
+    /// `outlineView(_:acceptDrop:item:childIndex:)`. Reorder drops report the
+    /// proposed parent (`nil` = root) and the model child index; read the
+    /// dragged item's representation from `info.draggingPasteboard`.
+    func outlineView(_ outlineView: NSOutlineView, acceptDrop info: NSDraggingInfo, item: Any?, childIndex index: Int) -> Bool
 }
 
 public extension NSOutlineViewDataSource {
     /// Default object value uses the item description.
     func outlineView(_ outlineView: NSOutlineView, objectValueFor tableColumn: NSTableColumn?, byItem item: Any?) -> Any? {
         item.map { String(describing: $0) }
+    }
+
+    /// Default: items are not draggable.
+    func outlineView(_ outlineView: NSOutlineView, pasteboardWriterForItem item: Any) -> Any? {
+        nil
+    }
+
+    /// Default: the outline refuses drops.
+    func outlineView(_ outlineView: NSOutlineView, acceptDrop info: NSDraggingInfo, item: Any?, childIndex index: Int) -> Bool {
+        false
     }
 }
 
@@ -98,6 +122,19 @@ open class NSOutlineView: NSTableView {
         /// delegate's item-based hook.
         nonisolated func tableView(_ tableView: NSTableView, heightOfRow row: Int) -> CGFloat {
             owner?.hostedRowHeight(row: row) ?? -1
+        }
+
+        /// Bridges a row-level reorder drop to the outline data source's
+        /// item-based `outlineView(_:acceptDrop:item:childIndex:)`.
+        nonisolated func tableView(_ tableView: NSTableView, acceptDrop info: NSDraggingInfo, row: Int, dropOperation: NSTableView.DropOperation) -> Bool {
+            guard let owner else {
+                return false
+            }
+            let rowList = info.draggingPasteboard.string(forType: .string) ?? ""
+            let fromRows = IndexSet(rowList.split(separator: ",").compactMap { Int($0) })
+            return winMainActor {
+                owner.winAcceptOutlineReorderDrop(fromRows: fromRows, toIndex: row, info: info)
+            }
         }
 
         /// Forwards table selection changes as outline selection changes.
@@ -317,7 +354,11 @@ open class NSOutlineView: NSTableView {
     /// below an expanded branch inserts as that branch's first child; otherwise
     /// the drop joins the parent of the row above it. A drop that would move an
     /// item into itself or its own subtree is rejected.
-    open var winOutlineReorderHandler: ((_ movedItem: Any, _ parent: Any?, _ childIndex: Int) -> Void)? {
+    /// Framework-internal reorder hook. Not API (18.8): applications use
+    /// AppKit's recipe — `setDraggingSourceOperationMask(.move, forLocal:
+    /// true)`, `outlineView(_:pasteboardWriterForItem:)`, and
+    /// `outlineView(_:acceptDrop:item:childIndex:)`.
+    package var winOutlineReorderHandler: ((_ movedItem: Any, _ parent: Any?, _ childIndex: Int) -> Void)? {
         didSet { installOutlineReorderBridge() }
     }
 
@@ -331,11 +372,13 @@ open class NSOutlineView: NSTableView {
         }
     }
 
-    private func handleOutlineReorder(fromRows: IndexSet, toIndex: Int) {
+    /// Maps a row-level reorder drop to the outline's item terms: the moved
+    /// item, its proposed parent (`nil` = root), and the model child index.
+    /// Returns `nil` for invalid drops (out of range, into own subtree).
+    private func winMapReorderDrop(fromRows: IndexSet, toIndex: Int) -> (moved: Any, parent: Any?, childIndex: Int)? {
         guard let fromRow = fromRows.first,
-              visibleRows.indices.contains(fromRow),
-              let handler = winOutlineReorderHandler else {
-            return
+              visibleRows.indices.contains(fromRow) else {
+            return nil
         }
         let moved = visibleRows[fromRow]
 
@@ -356,7 +399,7 @@ open class NSOutlineView: NSTableView {
 
         // Never move an item into itself or its own subtree.
         if let targetParent, isItem(targetParent, descendantOfOrEqualTo: moved.item) {
-            return
+            return nil
         }
 
         // The proposed child index is the count of the target parent's visible
@@ -368,8 +411,54 @@ open class NSOutlineView: NSTableView {
             visibleRows[idx].parent.map { key(for: $0) } == parentKey
         }
         let targetChildIndex = siblingRows.filter { $0 < toIndex }.count
-        handler(moved.item, targetParent, targetChildIndex)
+        return (moved.item, targetParent, targetChildIndex)
+    }
+
+    private func handleOutlineReorder(fromRows: IndexSet, toIndex: Int) {
+        guard let handler = winOutlineReorderHandler,
+              let target = winMapReorderDrop(fromRows: fromRows, toIndex: toIndex) else {
+            return
+        }
+        handler(target.moved, target.parent, target.childIndex)
         reloadData()
+    }
+
+    /// Accepts a row-level reorder drop through AppKit's outline data-source
+    /// pathway: maps the drop to item terms and forwards to
+    /// `outlineView(_:acceptDrop:item:childIndex:)`.
+    package func winAcceptOutlineReorderDrop(fromRows: IndexSet, toIndex: Int, info: NSDraggingInfo) -> Bool {
+        guard let outlineDataSource,
+              let target = winMapReorderDrop(fromRows: fromRows, toIndex: toIndex) else {
+            return false
+        }
+        // The pasteboard handed to the data source carries the app's OWN
+        // representation of the dragged item (its `pasteboardWriterForItem`
+        // output), exactly what an AppKit acceptDrop expects to read back.
+        let writer = winMainActor { outlineDataSource.outlineView(self, pasteboardWriterForItem: target.moved) }
+        let itemText = (writer as? String) ?? String(describing: target.moved)
+        let itemInfo = WinDraggingInfo(
+            content: NativeDropContent(text: itemText, filePaths: []),
+            location: info.draggingLocation
+        )
+        let accepted = winMainActor { outlineDataSource.outlineView(self, acceptDrop: itemInfo, item: target.parent, childIndex: target.childIndex) }
+        if accepted {
+            reloadData()
+        }
+        return accepted
+    }
+
+    /// Reorder drags also arm via AppKit's outline recipe: a `.move` local
+    /// mask plus a data-source `pasteboardWriterForItem` for the dragged row.
+    package override func winReorderDragEnabled(forRow row: Int) -> Bool {
+        if super.winReorderDragEnabled(forRow: row) {
+            return true
+        }
+        guard winLocalDragOperationMask.contains(.move),
+              visibleRows.indices.contains(row),
+              let outlineDataSource else {
+            return false
+        }
+        return winMainActor { outlineDataSource.outlineView(self, pasteboardWriterForItem: visibleRows[row].item) } != nil
     }
 
     /// Whether `candidate` is `ancestor` itself or sits within its subtree, by

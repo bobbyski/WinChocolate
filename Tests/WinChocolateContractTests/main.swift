@@ -12308,7 +12308,7 @@ final class DropTargetTableDataSource: NSObject, NSTableViewDataSource {
     var items = ["alpha", "bravo"]
     func numberOfRows(in tableView: NSTableView) -> Int { items.count }
     func tableView(_ tableView: NSTableView, objectValueFor tableColumn: NSTableColumn?, row: Int) -> Any? { items[row] }
-    func tableView(_ tableView: NSTableView, acceptDrop info: NSDraggingInfo, row: Int) -> Bool {
+    func tableView(_ tableView: NSTableView, acceptDrop info: NSDraggingInfo, row: Int, dropOperation: NSTableView.DropOperation) -> Bool {
         guard let text = info.draggingPasteboard.string(forType: .string) else { return false }
         items.insert(text, at: max(0, min(row, items.count)))
         return true
@@ -13361,5 +13361,95 @@ func testTargetActionDispatchesThroughRealSelectors() {
 }
 
 testTargetActionDispatchesThroughRealSelectors()
+
+// MARK: - Phase 18.7/18.8: AppKit's drag-reorder recipe
+
+/// A minimal dragging info for driving reorder drops in tests.
+final class TestDraggingInfo: NSObject, NSDraggingInfo {
+    var draggingPasteboard: NSPasteboard { NSPasteboard.general }
+    var draggingLocation: NSPoint { .zero }
+    var draggingSourceOperationMask: NSDragOperation { .move }
+}
+
+/// A table source following AppKit's reorder recipe (writer + acceptDrop).
+final class ReorderRecipeTableSource: NSObject, NSTableViewDataSource {
+    var items = ["alpha", "bravo", "charlie"]
+
+    func numberOfRows(in tableView: NSTableView) -> Int { items.count }
+
+    func tableView(_ tableView: NSTableView, objectValueFor tableColumn: NSTableColumn?, row: Int) -> Any? {
+        items[row]
+    }
+
+    func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> Any? {
+        "\(row)"
+    }
+}
+
+/// An outline source following AppKit's reorder recipe.
+final class ReorderRecipeOutlineSource: NSObject, NSOutlineViewDataSource {
+    var roots = ["Alpha", "Bravo", "Charlie"]
+
+    func outlineView(_ outlineView: NSOutlineView, numberOfChildrenOfItem item: Any?) -> Int {
+        item == nil ? roots.count : 0
+    }
+
+    func outlineView(_ outlineView: NSOutlineView, child index: Int, ofItem item: Any?) -> Any {
+        roots[index]
+    }
+
+    func outlineView(_ outlineView: NSOutlineView, isItemExpandable item: Any) -> Bool {
+        false
+    }
+
+    func outlineView(_ outlineView: NSOutlineView, pasteboardWriterForItem item: Any) -> Any? {
+        String(describing: item)
+    }
+
+    func outlineView(_ outlineView: NSOutlineView, acceptDrop info: NSDraggingInfo, item parent: Any?, childIndex index: Int) -> Bool {
+        guard parent == nil,
+              let moved = info.draggingPasteboard.string(forType: .string),
+              let current = roots.firstIndex(of: moved) else {
+            return false
+        }
+        roots.remove(at: current)
+        let dest = index > current ? index - 1 : index
+        roots.insert(moved, at: min(max(0, dest), roots.count))
+        return true
+    }
+}
+
+@MainActor
+func testAppKitReorderRecipeEnablesAndAcceptsDrops() {
+    // Table: reorder is opt-in — a `.move` local mask plus a data-source
+    // pasteboard writer arms the drag (AppKit's recipe, no win* handler).
+    let table = NSTableView(frame: NSMakeRect(0, 0, 200, 120))
+    let column = NSTableColumn(identifier: "name")
+    table.addTableColumn(column)
+    let source = ReorderRecipeTableSource()
+    table.dataSource = source
+    table.reloadData()
+    expect(!table.winReorderDragEnabled(forRow: 0), "Reorder must not arm without a .move local mask.")
+    table.setDraggingSourceOperationMask(.move, forLocal: true)
+    expect(table.winReorderDragEnabled(forRow: 0), "A .move local mask + writer should arm reorder.")
+
+    // Outline: the mapped reorder drop reaches the outline data source's
+    // acceptDrop with the writer's item representation on the pasteboard.
+    let outline = NSOutlineView(frame: NSMakeRect(0, 0, 240, 160))
+    let name = NSTableColumn(identifier: "name")
+    outline.addTableColumn(name)
+    let outlineSource = ReorderRecipeOutlineSource()
+    outline.outlineDataSource = outlineSource
+    outline.setDraggingSourceOperationMask(.move, forLocal: true)
+    outline.reloadData()
+    expect(outline.winReorderDragEnabled(forRow: 2), "Outline reorder should arm via mask + item writer.")
+
+    // Drop "Charlie" (row 2) at the top (index 0) of the root list.
+    let accepted = outline.winAcceptOutlineReorderDrop(fromRows: IndexSet(integer: 2), toIndex: 0, info: TestDraggingInfo())
+    expect(accepted, "The outline reorder drop should be accepted by the data source.")
+    expect(outlineSource.roots == ["Charlie", "Alpha", "Bravo"], "The data-source acceptDrop should have moved the item. Got \(outlineSource.roots).")
+}
+
+testAppKitReorderRecipeEnablesAndAcceptsDrops()
 
 print("WinChocolate contract tests passed.")

@@ -483,6 +483,13 @@ final class DemoSlowGradientView: NSView {
 }
 
 // MARK: - WinCoreGraphics (Phase 13) showcase view
+//
+// 18.10 exclusion: this view uses WinCoreGraphics' BMP-centric `CGImage`
+// surface (`CGImage(width:height:rgbaPixels:)`, `encodeBMP`, `pixel(atX:y:)`),
+// which Apple's CGImage does not have. Until Phase 13 presents an
+// Apple-shaped `CGImage`/`CGDataProvider`, this page is fenced out of the
+// macOS cross-check build — excluded, never shimmed.
+#if canImport(WinChocolate) || canImport(LinChocolate)
 
 /// An artboard drawn entirely through the CoreGraphics-shaped surface —
 /// `CGContext` (paths, gradients, transforms via save/rotate/translate) and a
@@ -640,6 +647,8 @@ final class DemoCoreGraphicsView: NSView {
         return NSImage(data: Data(sprite.encodeBMP()))
     }()
 }
+
+#endif
 
 // MARK: - "New in 3.x" showcase views
 
@@ -842,6 +851,43 @@ final class DemoViewTableDataSource: NSObject, NSTableViewDataSource {
             return
         }
         notes[row] = object.map { String(describing: $0) } ?? ""
+    }
+
+    // MARK: Row reorder — AppKit's drag-and-drop data-source recipe
+    // (a `.move` local mask + a pasteboard writer per row + acceptDrop).
+
+    /// Reported after a reorder so the page can update its status line.
+    var onReorder: ((_ movedCount: Int, _ destination: Int) -> Void)?
+
+    func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> Any? {
+        "\(row)"
+    }
+
+    func tableView(_ tableView: NSTableView, acceptDrop info: NSDraggingInfo, row toIndex: Int, dropOperation: NSTableView.DropOperation) -> Bool {
+        guard dropOperation == .above,
+              let rowList = info.draggingPasteboard.string(forType: .string) else {
+            return false
+        }
+        let sortedRows = rowList.split(separator: ",").compactMap { Int($0) }.sorted()
+        guard !sortedRows.isEmpty, sortedRows.allSatisfy({ tasks.indices.contains($0) }) else {
+            return false
+        }
+
+        // Move one or many rows (parallel model arrays) to the drop index.
+        let dest = toIndex - sortedRows.filter { $0 < toIndex }.count
+        let movedTasks = sortedRows.map { tasks[$0] }
+        let movedNotes = sortedRows.map { notes[$0] }
+        let movedDone = sortedRows.map { done[$0] }
+        for row in sortedRows.reversed() {
+            tasks.remove(at: row)
+            notes.remove(at: row)
+            done.remove(at: row)
+        }
+        tasks.insert(contentsOf: movedTasks, at: dest)
+        notes.insert(contentsOf: movedNotes, at: dest)
+        done.insert(contentsOf: movedDone, at: dest)
+        onReorder?(sortedRows.count, dest)
+        return true
     }
 }
 
@@ -1133,6 +1179,25 @@ final class DemoOutlineDataSource: NSObject, NSOutlineViewDataSource {
 
     func outlineView(_ outlineView: NSOutlineView, isItemExpandable item: Any) -> Bool {
         !(children[String(describing: item)] ?? []).isEmpty
+    }
+
+    // MARK: Sibling/reparenting reorder — AppKit's drag-and-drop recipe
+    // (a `.move` local mask + a pasteboard writer per item + acceptDrop).
+
+    /// Reported after a reorder so the page can update its status line.
+    var onReorder: ((_ movedItem: String, _ childIndex: Int) -> Void)?
+
+    func outlineView(_ outlineView: NSOutlineView, pasteboardWriterForItem item: Any) -> Any? {
+        String(describing: item)
+    }
+
+    func outlineView(_ outlineView: NSOutlineView, acceptDrop info: NSDraggingInfo, item parent: Any?, childIndex index: Int) -> Bool {
+        guard let moved = info.draggingPasteboard.string(forType: .string) else {
+            return false
+        }
+        moveItem(moved, under: parent, to: index)
+        onReorder?(moved, index)
+        return true
     }
 
     func outlineView(_ outlineView: NSOutlineView, objectValueFor tableColumn: NSTableColumn?, byItem item: Any?) -> Any? {
@@ -2448,10 +2513,11 @@ outlineStatusColumn.width = 88
 outlineView.addTableColumn(outlineNameColumn)
 outlineView.addTableColumn(outlineStatusColumn)
 outlineView.outlineDataSource = outlineDataSource
-// Drag a row to reorder it among its siblings (5.2).
-outlineView.winOutlineReorderHandler = { [weak outlineView] movedItem, parent, childIndex in
-    outlineDataSource.moveItem(String(describing: movedItem), under: parent, to: childIndex)
-    outlineView?.reloadData()
+// Drag a row to reorder it among its siblings (5.2) — the plain-AppKit
+// recipe: a `.move` local source mask plus the outline data source's
+// pasteboard writer and acceptDrop.
+outlineView.setDraggingSourceOperationMask(.move, forLocal: true)
+outlineDataSource.onReorder = { movedItem, childIndex in
     statusLabel.stringValue = "Moved \(movedItem) → index \(childIndex)"
 }
 outlineView.expandItem("Application")
@@ -2538,6 +2604,12 @@ stressPage.addSubview(stressScrollView)
 // embeds the instantiated view, and wires its controls via identifier lookup
 // (the 15.4 first-slice wiring model while automatic @IBOutlet binding awaits
 // a KVC layer).
+//
+// 18.11 exclusion: the manual wiring (`winInstantiate`, connection records)
+// stands in for the missing KVC/reflection layer (12.1) — no shim may cover
+// for it, so this page is fenced out of the macOS cross-check build until
+// automatic @IBOutlet binding lands. Excluded, never shimmed.
+#if canImport(WinChocolate) || canImport(LinChocolate)
 let nibIntroLabel = NSTextField(string: "NSNib (Phase 15): the panel below is instantiated from DemoNibPanel.xib at runtime — controls, frames (y-flipped from Cocoa coordinates), identifiers, and the button's action connection all come from the xib.",
                                 frame: NSMakeRect(12, 6, 1080, 36))
 nibIntroLabel.isEditable = false
@@ -2622,6 +2694,13 @@ do {
         nibStatusLabel.stringValue = "DemoNibPanel.xib not found at \(xibPath)."
     }
 }
+#else
+// 18.11 exclusion: automatic @IBOutlet binding is gated on the 12.1 KVC
+// layer, so the macOS cross-check shows a placeholder.
+let nibExcluded = NSTextField(labelWithString: "The Nib page is excluded from the macOS cross-check until automatic @IBOutlet binding lands (12.1 KVC layer).")
+nibExcluded.frame = NSMakeRect(12, 6, 1080, 18)
+nibPage.addSubview(nibExcluded)
+#endif
 
 contentView.nextKeyView = button
 editableTextField.nextKeyView = secureTextField
@@ -3638,24 +3717,11 @@ viewTable.dataSource = viewTableSource
 viewTable.delegate = viewTableDelegate
 // No opt-in flag: the table auto-detects view-based mode because the delegate
 // vends cell views (AppKit semantics).
-// Drag a row to reorder it (5.8): move the parallel model arrays together.
-viewTable.winRowReorderHandler = { [weak viewTable] fromRows, toIndex in
-    // Move one or many selected rows (parallel model arrays) to the drop index.
-    let sortedRows = fromRows.sorted()
-    let dest = toIndex - sortedRows.filter { $0 < toIndex }.count
-    let movedTasks = sortedRows.map { viewTableSource.tasks[$0] }
-    let movedNotes = sortedRows.map { viewTableSource.notes[$0] }
-    let movedDone = sortedRows.map { viewTableSource.done[$0] }
-    for row in sortedRows.reversed() {
-        viewTableSource.tasks.remove(at: row)
-        viewTableSource.notes.remove(at: row)
-        viewTableSource.done.remove(at: row)
-    }
-    viewTableSource.tasks.insert(contentsOf: movedTasks, at: dest)
-    viewTableSource.notes.insert(contentsOf: movedNotes, at: dest)
-    viewTableSource.done.insert(contentsOf: movedDone, at: dest)
-    viewTable?.reloadData()
-    statusLabel.stringValue = "Moved \(fromRows.count) row(s) → \(dest)"
+// Drag a row to reorder it (5.8) — the plain-AppKit recipe: a `.move` local
+// source mask plus the data source's pasteboard writer and acceptDrop.
+viewTable.setDraggingSourceOperationMask(.move, forLocal: true)
+viewTableSource.onReorder = { movedCount, dest in
+    statusLabel.stringValue = "Moved \(movedCount) row(s) → \(dest)"
 }
 // Multi-row reorder needs multiple selection.
 viewTable.allowsMultipleSelection = true
@@ -4344,6 +4410,7 @@ reflowAutoLayoutPage(width: 1120)
 // surface: CGMutablePath curves, CGGradient (linear in a clip + radial),
 // saveGState/translate/rotate transforms, and a CGImage round-tripped
 // through the WinCoreGraphics BMP codec, rendered from its pixels.
+#if canImport(WinChocolate) || canImport(LinChocolate)
 let cgIntro = NSTextField(labelWithString: "Drawn through the CG surface — CGPath, CGGradient, CGContext transforms, and a CGImage decoded by the WinCoreGraphics BMP codec.")
 cgIntro.frame = NSMakeRect(24, 24, 1072, 18)
 let cgArtboard = DemoCoreGraphicsView(frame: NSMakeRect(24, 52, 1072, 180))
@@ -4352,6 +4419,13 @@ cgFootnote.frame = NSMakeRect(24, 244, 1072, 18)
 for view in [cgIntro, cgArtboard, cgFootnote] as [NSView] {
     coreGraphicsPage.addSubview(view)
 }
+#else
+// 18.10 exclusion: the WinCoreGraphics CGImage surface has no Apple shape
+// yet (owned by Phase 13), so the macOS cross-check shows a placeholder.
+let cgExcluded = NSTextField(labelWithString: "The WinCoreGraphics page is excluded from the macOS cross-check until Phase 13 presents an Apple-shaped CGImage.")
+cgExcluded.frame = NSMakeRect(24, 24, 1072, 18)
+coreGraphicsPage.addSubview(cgExcluded)
+#endif
 
 // Follow a live system dark/light switch (8.5). The framework re-themes and
 // repaints its own windows/controls; the demo re-applies the few colors it
