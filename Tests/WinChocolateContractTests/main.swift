@@ -7037,7 +7037,7 @@ func testPathControlComponentURLsAndSelection() {
     let selected = pathControl.selectComponentCell(at: pathControl.pathComponentCells.count - 1)
     expect(selected, "selectComponentCell did not accept a valid index.")
     expect(actionFired, "Selecting a component did not fire the control action.")
-    expect(pathControl.clickedPathComponentCell === last, "Clicked component cell was not recorded.")
+    expect(pathControl.clickedPathComponentCell() === last, "Clicked component cell was not recorded.")
     expect(pathControl.clickedPathComponentURL == last.url, "Clicked component URL did not match the cell.")
 
     // Clicking the composed breadcrumb segment selects the same component.
@@ -7046,14 +7046,14 @@ func testPathControlComponentURLsAndSelection() {
     actionFired = false
     buttons.last?.sendAction()
     expect(actionFired, "Clicking a breadcrumb segment did not fire the action.")
-    expect(pathControl.clickedPathComponentCell === last, "Breadcrumb click did not select its component.")
+    expect(pathControl.clickedPathComponentCell() === last, "Breadcrumb click did not select its component.")
 
     // An out-of-range selection is rejected.
     expect(!pathControl.selectComponentCell(at: 99), "selectComponentCell should reject an out-of-range index.")
 
     // Changing the URL clears the recorded click.
     pathControl.setURL(URL(fileURLWithPath: "C:\\AIResearch"))
-    expect(pathControl.clickedPathComponentCell == nil, "Rebuilding components did not clear the clicked cell.")
+    expect(pathControl.clickedPathComponentCell() == nil, "Rebuilding components did not clear the clicked cell.")
 }
 
 // A minimal single-value coder pair to exercise Codable conformances without

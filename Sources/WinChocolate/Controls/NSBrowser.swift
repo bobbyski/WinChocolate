@@ -279,7 +279,9 @@ open class NSBrowser: NSControl {
     open var autohidesScroller: Bool = true
 
     /// Width assigned to each visible column.
-    open var defaultColumnWidth: CGFloat = 160 {
+    /// Uniform column width for new columns. Not API (18.7): Apple.s
+    /// `defaultColumnWidth` is a read-only method — package for the suite.
+    package var defaultColumnWidth: CGFloat = 160 {
         didSet {
             tile()
         }

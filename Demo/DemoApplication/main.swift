@@ -787,7 +787,11 @@ final class DemoDragHandle: NSView, NSDraggingSource {
     }
 
     override func mouseDown(with event: NSEvent) {
-        let item = NSDraggingItem(pasteboardWriter: draggedText)
+        // A raw String isn't NSPasteboardWriting on Apple; an NSPasteboardItem
+        // is (and WinChocolate accepts it too).
+        let pasteboardItem = NSPasteboardItem()
+        pasteboardItem.setString(draggedText, forType: .string)
+        let item = NSDraggingItem(pasteboardWriter: pasteboardItem)
         item.draggingFrame = bounds
         nonisolated(unsafe) let handler = onEvent
         let message = "Drag started: \"\(draggedText)\""
@@ -2901,7 +2905,8 @@ pathControl.onAction = { control in
         return
     }
 
-    statusLabel.stringValue = "Path clicked: \(path.clickedPathComponentCell?.title ?? "?")"
+    let clickedName = path.clickedPathComponentCell()?.url?.lastPathComponent ?? "?"
+    statusLabel.stringValue = "Path clicked: \(clickedName)"
 }
 
 let demoFontChangeResponder = DemoFontChangeResponder()
@@ -3059,8 +3064,8 @@ form.onAction = { control in
     }
 
     updateFocusDisplay()
-    let name = (form.cell(at: 0) as? NSFormCell)?.stringValue ?? ""
-    let status = (form.cell(at: 1) as? NSFormCell)?.stringValue ?? ""
+    let name = form.cell(at: 0)?.stringValue ?? ""
+    let status = form.cell(at: 1)?.stringValue ?? ""
     statusLabel.stringValue = "Form: \(name) — \(status)"
 }
 
@@ -3149,7 +3154,10 @@ popoverContent.addSubview(popoverInfo)
 popoverContent.addSubview(popoverCloseButton)
 popover.contentSize = NSMakeSize(260, 120)
 popover.behavior = .transient
-popover.contentViewController = NSViewController(view: popoverContent)
+// Apple has no NSViewController(view:); make one and assign its root view.
+let popoverViewController = NSViewController()
+popoverViewController.view = popoverContent
+popover.contentViewController = popoverViewController
 
 popoverButton.onAction = { _ in
     updateFocusDisplay()
@@ -3230,7 +3238,7 @@ askToSaveButton.onAction = { _ in
 
 openToolbarItem.onAction = { _ in
     updateFocusDisplay()
-    let panel = NSOpenPanel.openPanel()
+    let panel = NSOpenPanel()
     panel.title = "Open Demo File"
     panel.allowsMultipleSelection = true
     panel.beginSheetModal(for: window) { response in
@@ -3244,7 +3252,7 @@ openToolbarItem.onAction = { _ in
 }
 saveToolbarItem.onAction = { _ in
     updateFocusDisplay()
-    let panel = NSSavePanel.savePanel()
+    let panel = NSSavePanel()
     panel.title = "Save Demo File"
     panel.nameFieldStringValue = "Untitled.txt"
     panel.allowedFileTypes = ["txt"]
@@ -3840,7 +3848,6 @@ listsBrowserHint.isBordered = false
 listsBrowserHint.drawsBackground = false
 listsBrowserHint.font = NSFont.systemFont(ofSize: 11)
 browser.frame = NSMakeRect(24, 66, 520, 150)
-browser.defaultColumnWidth = 160
 browser.delegate = browserDataSource
 browser.loadColumnZero()
 // Titled columns: the first is labeled; deeper columns auto-title with the

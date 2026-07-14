@@ -33,11 +33,17 @@ open class NSPathControl: NSTextField {
     ///
     /// Populated by `selectComponentCell(at:)`; live breadcrumb hit-testing over
     /// the text peer is tracked with the path-control chrome work.
-    open private(set) var clickedPathComponentCell: NSPathComponentCell?
+    package private(set) var winClickedPathComponentCell: NSPathComponentCell?
+
+    /// The cell of the last-clicked path component. A **method** on Apple
+    /// (`- clickedPathComponentCell`), so WinChocolate matches that shape.
+    open func clickedPathComponentCell() -> NSPathComponentCell? {
+        winClickedPathComponentCell
+    }
 
     /// The URL of the last clicked component, if any.
     open var clickedPathComponentURL: URL? {
-        clickedPathComponentCell?.url
+        winClickedPathComponentCell?.url
     }
 
     private var componentButtons: [NSButton] = []
@@ -82,13 +88,13 @@ open class NSPathControl: NSTextField {
             return false
         }
 
-        clickedPathComponentCell = pathComponentCells[index]
+        winClickedPathComponentCell = pathComponentCells[index]
         sendAction()
         return true
     }
 
     private func rebuildPathComponentCells() {
-        clickedPathComponentCell = nil
+        winClickedPathComponentCell = nil
         guard let url else {
             pathComponentCells = []
             return

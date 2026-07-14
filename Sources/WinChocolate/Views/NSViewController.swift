@@ -20,8 +20,10 @@ open class NSViewController: NSResponder {
         self.init(view: NSView(frame: NSZeroRect))
     }
 
-    /// Creates a view controller with an explicit root view.
-    public init(view: NSView) {
+    /// Creates a view controller with an explicit root view. Not API (18.7):
+    /// Apple has no `init(view:)` — package for the framework and suite; the
+    /// Apple-native path is `NSViewController()` then assigning `view`.
+    package init(view: NSView) {
         self.view = view
         super.init()
         self.view.nextResponder = self
