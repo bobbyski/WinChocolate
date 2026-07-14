@@ -3064,8 +3064,8 @@ form.onAction = { control in
     }
 
     updateFocusDisplay()
-    let name = form.cell(at: 0)?.stringValue ?? ""
-    let status = form.cell(at: 1)?.stringValue ?? ""
+    let name = (form.cell(at: 0) as? NSFormCell)?.stringValue ?? ""
+    let status = (form.cell(at: 1) as? NSFormCell)?.stringValue ?? ""
     statusLabel.stringValue = "Form: \(name) — \(status)"
 }
 

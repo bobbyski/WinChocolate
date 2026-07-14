@@ -189,8 +189,9 @@ open class NSForm: NSControl {
         rows.first?.field.winPreviousKeyView = self
     }
 
-    /// Returns the cell at a row.
-    open func cell(at index: Int) -> NSFormCell? {
+    /// Returns the cell at a row. Typed `Any?` to match Apple's `id`-returning
+    /// `cellAtIndex:` exactly (callers cast to `NSFormCell`).
+    open func cell(at index: Int) -> Any? {
         guard rows.indices.contains(index) else {
             return nil
         }

@@ -6676,8 +6676,8 @@ func testFormComposesTextFieldsAndStoresCells() {
     form.setStringValue("Native", at: 1)
 
     expect(form.numberOfRows == 2, "Form row count was not stored.")
-    expect(form.cell(at: 0) === name, "Form did not return first cell.")
-    expect(form.cell(at: 1) === status, "Form did not return inserted cell.")
+    expect((form.cell(at: 0) as? NSFormCell) === name, "Form did not return first cell.")
+    expect((form.cell(at: 1) as? NSFormCell) === status, "Form did not return inserted cell.")
     expect(form.index(of: status) == 1, "Form did not find cell index.")
     expect(form.textField(at: 0)?.stringValue == "WinChocolate", "Form did not sync first text field value.")
     expect(form.textField(at: 1)?.stringValue == "Native", "Form did not sync second text field value.")
@@ -6701,7 +6701,7 @@ func testFormComposesTextFieldsAndStoresCells() {
 
     form.removeEntry(at: 0)
     expect(form.numberOfRows == 1, "Form did not remove entry.")
-    expect(form.cell(at: 0) === status, "Form did not preserve remaining cell after removal.")
+    expect((form.cell(at: 0) as? NSFormCell) === status, "Form did not preserve remaining cell after removal.")
 }
 
 @MainActor
