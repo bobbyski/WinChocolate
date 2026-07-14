@@ -33,15 +33,6 @@ public extension Int {
     static var alertThirdButtonReturn: Int { 1002 }
 }
 
-// Make the demo's collection data source (AppKit method shape) conform.
-public extension NSCollectionViewDataSource {
-    func collectionView(_ collectionView: NSCollectionView, representedObjectForItemAt index: Int) -> Any? { nil }
-    func collectionView(_ collectionView: NSCollectionView, itemForRepresentedObjectAt indexPath: IndexPath) -> NSCollectionViewItem {
-        NSCollectionViewItem()
-    }
-    func collectionView(_ collectionView: NSCollectionView, viewForSupplementaryElementOfKind kind: String, at indexPath: IndexPath) -> NSView? { nil }
-}
-
 public enum NSDatePickerStyle: Sendable { case textFieldAndStepper, clockAndCalendar, textField }
 
 public struct NSDatePickerElementFlags: OptionSet, Sendable {

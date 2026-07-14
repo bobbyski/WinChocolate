@@ -33,6 +33,11 @@ public final class NSSlider: NSView {
         self.init(value: value, minValue: minValue, maxValue: maxValue, frame: NSMakeRect(0, 0, 120, 24))
     }
 
+    /// AppKit's frame-only initializer: a `0…100` slider at 0.
+    public override convenience init(frame: NSRect) {
+        self.init(value: 0, minValue: 0, maxValue: 100, frame: frame)
+    }
+
     public init(value: Double, minValue: Double, maxValue: Double, frame: NSRect) {
         self.minValue = minValue
         self.maxValue = maxValue

@@ -10,6 +10,16 @@ public final class NSGraphicsContext {
 
     let native: NativeGraphicsContext
 
+    // CG-shim state (see CGCompat.swift): the pending path built by `addPath`
+    // et al., the user-space transform stack, and shadowed stroke/fill state.
+    var cgPendingSegments: [CGPathSegment] = []
+    var cgTransform = CGShimTransform()
+    var cgTransformStack: [CGShimTransform] = []
+    var cgLineWidth: CGFloat = 1
+    var cgLineCap: CGLineCap = .butt
+    var cgFillColor: NSColor = .black
+    var cgStrokeColor: NSColor = .black
+
     init(native: NativeGraphicsContext) {
         self.native = native
     }

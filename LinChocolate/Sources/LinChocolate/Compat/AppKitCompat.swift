@@ -152,21 +152,52 @@ public final class NSGridCell {
     public func mergeWithCells(inHorizontalRange range: NSRange) {}
 }
 
-/// A grid layout container (stub — real grid layout is a later parity item).
-/// Accepts AppKit's rows-of-views initializer; children are added flat for now.
+/// A grid layout container. Accepts AppKit's rows-of-views initializer and
+/// lays the cells out in rows/columns (column widths honor `NSGridColumn.width`
+/// where set, else split the frame evenly; row heights split evenly).
 public final class NSGridView: NSView {
     private var columns: [NSGridColumn] = []
     private var rows: [NSGridRow] = []
+    private var cellViews: [[NSView]] = []
 
     public convenience init(views rowViews: [[NSView]]) {
         self.init(frame: NSMakeRect(0, 0, 200, 100))
         let columnCount = rowViews.map(\.count).max() ?? 0
         columns = (0..<columnCount).map { _ in NSGridColumn() }
         rows = rowViews.map { _ in NSGridRow() }
+        cellViews = rowViews
         rowViews.flatMap { $0 }.forEach { addSubview($0) }
+        layout()
     }
-    public var rowSpacing: CGFloat = 6
-    public var columnSpacing: CGFloat = 6
+    public var rowSpacing: CGFloat = 6 { didSet { layout() } }
+    public var columnSpacing: CGFloat = 6 { didSet { layout() } }
+
+    /// Rows/columns share the frame; a column with an explicit `width` keeps it.
+    public override func layout() {
+        guard !cellViews.isEmpty, frame.width > 0, frame.height > 0 else { return }
+        let rowCount = cellViews.count
+        let columnCount = columns.count
+        guard columnCount > 0 else { return }
+        // Column widths: explicit widths hold; the rest share what remains.
+        let explicit = columns.map { $0.width > 0 ? $0.width : -1 }
+        let fixedTotal = explicit.filter { $0 > 0 }.reduce(0, +)
+        let flexCount = explicit.filter { $0 < 0 }.count
+        let gaps = columnSpacing * CGFloat(columnCount - 1)
+        let flexShare = flexCount > 0
+            ? max(0, (frame.width - gaps - fixedTotal) / CGFloat(flexCount)) : 0
+        let widths = explicit.map { $0 > 0 ? $0 : flexShare }
+        let rowGaps = rowSpacing * CGFloat(rowCount - 1)
+        let rowHeight = max(0, (frame.height - rowGaps) / CGFloat(rowCount))
+        var y: CGFloat = 0
+        for row in cellViews {
+            var x: CGFloat = 0
+            for (c, view) in row.enumerated() {
+                view.frame = NSMakeRect(x, y, widths[min(c, columnCount - 1)], rowHeight)
+                x += widths[min(c, columnCount - 1)] + columnSpacing
+            }
+            y += rowHeight + rowSpacing
+        }
+    }
     public var numberOfColumns: Int { columns.count }
     public var numberOfRows: Int { rows.count }
     public func column(at index: Int) -> NSGridColumn {
@@ -181,22 +212,48 @@ public final class NSGridView: NSView {
     public func mergeCells(inHorizontalRange h: NSRange, verticalRange v: NSRange) {}
 }
 
-/// A stack layout container (stub — accepts the layout hints; native layout
-/// via the existing container is a later item).
+/// A stack layout container. Distributes its arranged subviews along the
+/// orientation whenever the frame changes or views are added — an equal-share
+/// layout (AppKit's `.fillEqually` shape, which is what the demo exercises).
 public final class NSStackView: NSView {
-    public var distribution: NSStackViewDistribution = .fill
-    public var orientation: NSUserInterfaceLayoutOrientation = .horizontal
+    public var distribution: NSStackViewDistribution = .fill { didSet { layout() } }
+    public var orientation: NSUserInterfaceLayoutOrientation = .horizontal { didSet { layout() } }
     public var alignment: NSTextAlignment = .center
-    public var spacing: CGFloat = 8
+    public var spacing: CGFloat = 8 { didSet { layout() } }
     public private(set) var arrangedSubviews: [NSView] = []
-    public func addArrangedSubview(_ view: NSView) { arrangedSubviews.append(view); addSubview(view) }
-    public func removeArrangedSubview(_ view: NSView) { arrangedSubviews.removeAll { $0 === view } }
+    public func addArrangedSubview(_ view: NSView) {
+        arrangedSubviews.append(view)
+        addSubview(view)
+        layout()
+    }
+    public func removeArrangedSubview(_ view: NSView) {
+        arrangedSubviews.removeAll { $0 === view }
+        layout()
+    }
     public func setViews(_ views: [NSView], in gravity: NSStackViewGravity) {
         views.forEach { addArrangedSubview($0) }
     }
     public convenience init(views: [NSView]) {
         self.init(frame: NSMakeRect(0, 0, 200, 40))
         views.forEach { addArrangedSubview($0) }
+    }
+
+    /// Equal-share distribution along the orientation, gaps of `spacing`.
+    public override func layout() {
+        let count = arrangedSubviews.count
+        guard count > 0, frame.width > 0, frame.height > 0 else { return }
+        let gaps = spacing * CGFloat(count - 1)
+        if orientation == .horizontal {
+            let share = max(0, (frame.width - gaps) / CGFloat(count))
+            for (i, view) in arrangedSubviews.enumerated() {
+                view.frame = NSMakeRect(CGFloat(i) * (share + spacing), 0, share, frame.height)
+            }
+        } else {
+            let share = max(0, (frame.height - gaps) / CGFloat(count))
+            for (i, view) in arrangedSubviews.enumerated() {
+                view.frame = NSMakeRect(0, CGFloat(i) * (share + spacing), frame.width, share)
+            }
+        }
     }
 }
 

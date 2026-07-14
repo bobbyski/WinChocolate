@@ -39,6 +39,7 @@ public final class GTKNativeControlBackend: NativeControlBackend {
     private var flippedViews: Set<UInt> = []  // parents that position children top-left
     private var graphicalDatePickers: Set<UInt> = []  // date pickers shown as a GtkCalendar
     private var radiosByParent: [UInt: [UInt]] = [:]   // radio buttons grouped per superview
+    private var bgProviders: [UInt: OpaquePointer] = [:]  // per-widget background CSS provider
     private var segmentButtons: [UInt: [OpaquePointer]] = [:] // segmented -> its toggle buttons
     private var tokenEntries: [UInt: OpaquePointer] = [:]     // token field -> its entry
     private var tokenChips: [UInt: [OpaquePointer]] = [:]     // token field -> chip buttons
@@ -684,6 +685,26 @@ public final class GTKNativeControlBackend: NativeControlBackend {
         } else {
             gtk_widget_add_css_class(asWidget(w), "linchocolate-label")
         }
+    }
+    public func setBackgroundColor(_ color: NSColor?, for handle: NativeHandle) {
+        guard let w = widget(handle) else { return }
+        let context = gtk_widget_get_style_context(asWidget(w))
+        // Replace any previous background provider.
+        if let old = bgProviders[handle.rawValue] {
+            gtk_style_context_remove_provider(context, old)
+            bgProviders[handle.rawValue] = nil
+        }
+        guard let color else { return }
+        let css = String(
+            format: "* { background-color: rgba(%d,%d,%d,%.3f); }",
+            Int(color.redComponent * 255), Int(color.greenComponent * 255),
+            Int(color.blueComponent * 255), Double(color.alphaComponent)
+        )
+        let provider = gtk_css_provider_new()!
+        gtk_css_provider_load_from_data(provider, css, gssize(css.utf8.count))
+        // 800 > the app-wide providers, so the explicit color wins.
+        gtk_style_context_add_provider(context, OpaquePointer(provider), 800)
+        bgProviders[handle.rawValue] = OpaquePointer(provider)
     }
     public func createSecureTextField(text: String, frame: NSRect) -> NativeHandle {
         let e = gtk_password_entry_new()!

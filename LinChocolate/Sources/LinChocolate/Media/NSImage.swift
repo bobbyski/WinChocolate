@@ -35,6 +35,17 @@ public final class NSImage {
         self.init(named: NSImage.gtkIconName(forSymbol: name))
     }
 
+    /// Creates an image from in-memory data (AppKit's `NSImage(data:)`). The
+    /// backing store here is path-based (GdkTexture decodes from disk), so the
+    /// bytes are staged to a temporary file GdkPixbuf can read (BMP/PNG/…).
+    public convenience init?(data: Data) {
+        guard !data.isEmpty else { return nil }
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("linchocolate-image-\(UUID().uuidString).img")
+        guard (try? data.write(to: url)) != nil else { return nil }
+        self.init(contentsOfFile: url.path)
+    }
+
     /// Best-effort SF-Symbol → GTK icon-theme name mapping.
     static func gtkIconName(forSymbol symbol: String) -> String {
         switch symbol {

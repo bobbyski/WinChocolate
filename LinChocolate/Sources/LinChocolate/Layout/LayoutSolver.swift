@@ -63,6 +63,10 @@ enum LayoutSolver {
         guard !constraints.isEmpty else { return }
 
         // An attribute as a linear expression: (variable coefficients, constant).
+        // In an unflipped (AppKit bottom-left) container, `top` is y+h and
+        // `bottom` is y; in a flipped (top-left, Win32/WinChocolate-authored)
+        // container that reverses.
+        let flipped = container.isFlipped
         func expression(item: NSView, attribute: NSLayoutConstraint.Attribute) -> ([Variable: Double], Double) {
             let id = ObjectIdentifier(item)
             if let f = knownFrame(id) {
@@ -70,8 +74,8 @@ enum LayoutSolver {
                 switch attribute {
                 case .left, .leading: value = Double(f.minX)
                 case .right, .trailing: value = Double(f.maxX)
-                case .top: value = Double(f.maxY)
-                case .bottom: value = Double(f.minY)
+                case .top: value = flipped ? Double(f.minY) : Double(f.maxY)
+                case .bottom: value = flipped ? Double(f.maxY) : Double(f.minY)
                 case .width: value = Double(f.width)
                 case .height: value = Double(f.height)
                 case .centerX: value = Double(f.midX)
@@ -87,8 +91,8 @@ enum LayoutSolver {
             switch attribute {
             case .left, .leading:  return ([x: 1], 0)
             case .right, .trailing: return ([x: 1, w: 1], 0)
-            case .bottom:          return ([y: 1], 0)
-            case .top:             return ([y: 1, h: 1], 0)
+            case .bottom:          return flipped ? ([y: 1, h: 1], 0) : ([y: 1], 0)
+            case .top:             return flipped ? ([y: 1], 0) : ([y: 1, h: 1], 0)
             case .width:           return ([w: 1], 0)
             case .height:          return ([h: 1], 0)
             case .centerX:         return ([x: 1, w: 0.5], 0)
@@ -148,14 +152,22 @@ enum LayoutSolver {
             row += 1
         }
 
-        // Free variables keep the view's current frame value; pivots follow.
+        // Free variables keep the view's current frame value; an unconstrained
+        // zero dimension falls back to the view's intrinsic size (AppKit's
+        // content-size behavior for intrinsic-sized views like labels).
         func currentValue(_ v: Variable) -> Double {
             guard let view = variableViews.first(where: { ObjectIdentifier($0) == v.view }) else { return 0 }
             switch v.component {
             case 0: return Double(view.frame.minX)
             case 1: return Double(view.frame.minY)
-            case 2: return Double(view.frame.width)
-            default: return Double(view.frame.height)
+            case 2:
+                if view.frame.width > 0 { return Double(view.frame.width) }
+                let intrinsic = view.intrinsicContentSize.width
+                return intrinsic >= 0 ? Double(intrinsic) : 0
+            default:
+                if view.frame.height > 0 { return Double(view.frame.height) }
+                let intrinsic = view.intrinsicContentSize.height
+                return intrinsic >= 0 ? Double(intrinsic) : 0
             }
         }
         var values = [Variable: Double]()
@@ -170,13 +182,15 @@ enum LayoutSolver {
             values[variables[col]] = value
         }
 
-        // Apply resolved frames (setter routes through the backend).
+        // Apply resolved frames (setter routes through the backend). A dimension
+        // absent from the system entirely gets the same intrinsic fallback as a
+        // free variable.
         for view in variableViews {
             let id = ObjectIdentifier(view)
             let x = values[Variable(view: id, component: 0)] ?? Double(view.frame.minX)
             let y = values[Variable(view: id, component: 1)] ?? Double(view.frame.minY)
-            let w = values[Variable(view: id, component: 2)] ?? Double(view.frame.width)
-            let h = values[Variable(view: id, component: 3)] ?? Double(view.frame.height)
+            let w = values[Variable(view: id, component: 2)] ?? currentValue(Variable(view: id, component: 2))
+            let h = values[Variable(view: id, component: 3)] ?? currentValue(Variable(view: id, component: 3))
             view.frame = NSMakeRect(CGFloat(x), CGFloat(y), CGFloat(w), CGFloat(h))
         }
     }

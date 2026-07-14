@@ -80,6 +80,11 @@ public final class NSPopUpButton: NSView {
         self.pullsDown = pullsDown
     }
 
+    /// AppKit's frame-only initializer: an empty pop-up menu button.
+    public override convenience init(frame: NSRect) {
+        self.init(frame: frame, pullsDown: false)
+    }
+
     /// Creates a pop-up button showing `items` (first item selected).
     public init(items: [String], frame: NSRect) {
         self.itemTitles = items

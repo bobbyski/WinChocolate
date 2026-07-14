@@ -48,6 +48,13 @@ public final class NSTextField: NSView {
         set { if let newValue { stringValue = "\(newValue)" } }
     }
 
+    /// The text's natural size, so Auto Layout can size intrinsic labels.
+    /// An estimate (no text measurement on the seam yet): ~7.2px per character
+    /// at the default UI size plus label padding.
+    public override var intrinsicContentSize: NSSize {
+        NSMakeSize(CGFloat(stringValue.count) * 7.2 + 8, 20)
+    }
+
     /// The text's foreground color (nil = theme default).
     public var textColor: NSColor? {
         didSet {
@@ -62,6 +69,12 @@ public final class NSTextField: NSView {
             guard let attributedStringValue else { return }
             backend.setStyledText(attributedStringValue.nativeRuns(), for: handle)
         }
+    }
+
+    /// Creates a static, non-editable label with no initial frame (AppKit's
+    /// frameless form; assign `frame` afterwards).
+    public convenience init(labelWithString string: String) {
+        self.init(labelWithString: string, frame: .zero)
     }
 
     /// Creates a static, non-editable label.

@@ -371,6 +371,8 @@ public protocol NativeControlBackend: AnyObject {
     /// Toggles a text field between an editable, framed field and a borderless
     /// static label (AppKit's `isEditable`; the frame follows editability).
     func setTextEditable(_ editable: Bool, for handle: NativeHandle)
+    /// Paints the view's background (`NSView.backgroundColor`); nil clears it.
+    func setBackgroundColor(_ color: NSColor?, for handle: NativeHandle)
     /// Rebuilds a pop-up button's item list (AppKit's `addItems`/`removeAllItems`)
     /// and selects `selectedIndex`.
     func setPopUpItems(_ titles: [String], selectedIndex: Int, for handle: NativeHandle)

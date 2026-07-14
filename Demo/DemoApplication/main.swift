@@ -2,7 +2,8 @@
 // `import LinChocolate` (GTK), on Windows `import WinChocolate` (Win32), and on
 // macOS the real Apple `AppKit` (the ground truth both are faithful to). The
 // same demo is written once against Apple's API; platform-only bits are
-// `#if`-guarded.
+// `#if`-guarded. The macOS-side shims (WinChocolate conveniences like
+// `onAction` expressed over real AppKit) live in PlatformShims.swift.
 #if canImport(LinChocolate)
 import LinChocolate
 #elseif canImport(WinChocolate)
@@ -373,6 +374,215 @@ final class DemoGradientsView: NSView {
         oval.lineWidth = 2
         oval.stroke()
     }
+}
+
+// MARK: - Scroll-stress paint-heavy view
+
+/// A deliberately expensive-to-paint view: a full-width base gradient plus a
+/// dense grid of individual gradient tiles (dozens of `NSGradient.draw` calls
+/// per `draw(_:)`). Used on the scroll-stress page so scrolling and resizing
+/// exercise the repaint pipeline with slow content, making flicker/coalescing
+/// issues obvious.
+final class DemoSlowGradientView: NSView {
+    var label: String = ""
+    /// Grid density — higher means slower paint.
+    var columns = 18
+    var rows = 4
+
+    override var acceptsFirstResponder: Bool { false }
+
+    override func draw(_ dirtyRect: NSRect) {
+        let dark = NSAppearance.currentDrawing().winIsDark
+        (dark ? NSColor(calibratedRed: 0.14, green: 0.14, blue: 0.16, alpha: 1)
+              : NSColor(calibratedRed: 0.96, green: 0.96, blue: 0.98, alpha: 1)).setFill()
+        NSRectFill(NSMakeRect(0, 0, frame.size.width, frame.size.height))
+
+        // Full-width multi-stop base gradient.
+        NSGradient(colorsAndLocations:
+            (NSColor(calibratedRed: 0.30, green: 0.62, blue: 0.86, alpha: 1), 0),
+            (NSColor(calibratedRed: 0.55, green: 0.35, blue: 0.80, alpha: 1), 0.5),
+            (NSColor(calibratedRed: 0.90, green: 0.45, blue: 0.35, alpha: 1), 1)
+        )?.draw(in: NSMakeRect(0, 0, frame.size.width, frame.size.height), angle: 20)
+
+        // A dense grid of individual gradient tiles — the expensive part.
+        let tileW = frame.size.width / CGFloat(columns)
+        let tileH = frame.size.height / CGFloat(rows)
+        for r in 0..<rows {
+            for c in 0..<columns {
+                let t = CGFloat((r * columns + c) % 24) / 24.0
+                let rect = NSMakeRect(CGFloat(c) * tileW + 2, CGFloat(r) * tileH + 2,
+                                      max(1, tileW - 4), max(1, tileH - 4))
+                NSGradient(
+                    starting: NSColor(calibratedRed: t, green: 0.55, blue: 1 - t, alpha: 1),
+                    ending: NSColor(calibratedRed: 1 - t, green: 0.75, blue: t, alpha: 1)
+                )?.draw(in: rect, angle: CGFloat((c * 20) % 360))
+            }
+        }
+
+        label.draw(at: NSMakePoint(10, 6), withAttributes: [
+            .font: NSFont.boldSystemFont(ofSize: 12),
+            .foregroundColor: NSColor.white
+        ])
+    }
+}
+
+// MARK: - WinCoreGraphics (Phase 13) showcase view
+
+/// An artboard drawn entirely through the CoreGraphics-shaped surface —
+/// `CGContext` (paths, gradients, transforms via save/rotate/translate) and a
+/// `CGImage` round-tripped through the BMP codec, rendered as scaled pixels.
+final class DemoCoreGraphicsView: NSView {
+    /// An 8×8 heart sprite decoded from BMP bytes the view itself encoded —
+    /// the codec round-trips in the running demo, not just in tests.
+    static let sprite: CGImage? = {
+        let w = 8, h = 8
+        let heart: [String] = [
+            "........",
+            ".XX..XX.",
+            "XXXXXXXX",
+            "XXXXXXXX",
+            ".XXXXXX.",
+            "..XXXX..",
+            "...XX...",
+            "........",
+        ]
+        var rgba = [UInt8]()
+        rgba.reserveCapacity(w * h * 4)
+        for row in heart {
+            for character in row {
+                if character == "X" {
+                    rgba.append(contentsOf: [214, 60, 80, 255])
+                } else {
+                    rgba.append(contentsOf: [0, 0, 0, 0])
+                }
+            }
+        }
+        guard let source = CGImage(width: w, height: h, rgbaPixels: rgba) else { return nil }
+        return CGImage.decodeBMP(source.encodeBMP())
+    }()
+
+    override func draw(_ dirtyRect: NSRect) {
+        guard let context = NSGraphicsContext.current?.cgContext else { return }
+        let dark = NSAppearance.currentDrawing().winIsDark
+
+        // Artboard backdrop, matching the Drawing page's appearance behavior.
+        let inset = NSMakeRect(4, 4, frame.size.width - 8, frame.size.height - 8)
+        context.setFillColor(dark ? NSColor(calibratedRed: 0.17, green: 0.17, blue: 0.18, alpha: 1)
+                                  : NSColor(calibratedRed: 0.98, green: 0.98, blue: 0.96, alpha: 1))
+        let backdrop = CGMutablePath()
+        backdrop.addRoundedRect(in: inset, cornerWidth: 10, cornerHeight: 10)
+        context.addPath(backdrop)
+        context.fillPath()
+
+        let label = dark ? NSColor(white: 0.85, alpha: 1) : NSColor(white: 0.25, alpha: 1)
+        let attributes: [NSAttributedString.Key: Any] = [
+            .foregroundColor: label,
+            .font: NSFont.systemFont(ofSize: 11)
+        ]
+
+        // 1) CGMutablePath: a curved leaf, filled and stroked.
+        "CGPath curves".draw(at: NSMakePoint(inset.origin.x + 16, inset.origin.y + 10), withAttributes: attributes)
+        let leafOrigin = NSMakePoint(inset.origin.x + 30, inset.origin.y + 40)
+        let leaf = CGMutablePath()
+        leaf.move(to: CGPoint(x: leafOrigin.x, y: leafOrigin.y + 70))
+        leaf.addCurve(to: CGPoint(x: leafOrigin.x + 70, y: leafOrigin.y),
+                      control1: CGPoint(x: leafOrigin.x, y: leafOrigin.y + 10),
+                      control2: CGPoint(x: leafOrigin.x + 10, y: leafOrigin.y))
+        leaf.addCurve(to: CGPoint(x: leafOrigin.x, y: leafOrigin.y + 70),
+                      control1: CGPoint(x: leafOrigin.x + 60, y: leafOrigin.y + 70),
+                      control2: CGPoint(x: leafOrigin.x, y: leafOrigin.y + 70))
+        context.setFillColor(NSColor(calibratedRed: 0.30, green: 0.62, blue: 0.36, alpha: 1))
+        context.addPath(leaf)
+        context.fillPath()
+        context.setStrokeColor(dark ? NSColor(white: 0.8, alpha: 1) : NSColor(white: 0.3, alpha: 1))
+        context.setLineWidth(1.5)
+        context.addPath(leaf)
+        context.strokePath()
+
+        // 2) Gradients: a linear ramp in a rounded clip + a radial disc.
+        "Linear + radial gradients".draw(at: NSMakePoint(inset.origin.x + 160, inset.origin.y + 10), withAttributes: attributes)
+        if let ramp = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(),
+                                 colors: [NSColor(calibratedRed: 0.98, green: 0.60, blue: 0.20, alpha: 1),
+                                          NSColor(calibratedRed: 0.55, green: 0.20, blue: 0.65, alpha: 1)] as CFArray,
+                                 locations: [0, 1]) {
+            context.saveGState()
+            let rampRect = NSMakeRect(inset.origin.x + 170, inset.origin.y + 34, 120, 80)
+            let clipPath = CGMutablePath()
+            clipPath.addRoundedRect(in: rampRect, cornerWidth: 8, cornerHeight: 8)
+            context.addPath(clipPath)
+            context.clip()
+            context.drawLinearGradient(ramp,
+                                       start: CGPoint(x: rampRect.minX, y: rampRect.minY),
+                                       end: CGPoint(x: rampRect.maxX, y: rampRect.maxY),
+                                       options: [])
+            context.restoreGState()
+        }
+        if let glow = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(),
+                                 colors: [NSColor(calibratedRed: 0.35, green: 0.65, blue: 0.95, alpha: 1),
+                                          NSColor(calibratedRed: 0.08, green: 0.18, blue: 0.38, alpha: 1)] as CFArray,
+                                 locations: [0, 1]) {
+            context.drawRadialGradient(glow,
+                                       startCenter: CGPoint(x: inset.origin.x + 355, y: inset.origin.y + 74),
+                                       startRadius: 2,
+                                       endCenter: CGPoint(x: inset.origin.x + 355, y: inset.origin.y + 74),
+                                       endRadius: 40,
+                                       options: [])
+        }
+
+        // 3) Transforms: one square, stamped around a ring with
+        // save/translate/rotate — the classic transform rosette.
+        "Transform rosette".draw(at: NSMakePoint(inset.origin.x + 440, inset.origin.y + 10), withAttributes: attributes)
+        let rosetteCenter = CGPoint(x: inset.origin.x + 500, y: inset.origin.y + 78)
+        let petals = 10
+        for index in 0..<petals {
+            context.saveGState()
+            context.translateBy(x: rosetteCenter.x, y: rosetteCenter.y)
+            context.rotate(by: CGFloat(index) * (2 * .pi / CGFloat(petals)))
+            context.translateBy(x: 26, y: 0)
+            let shade = 0.35 + 0.6 * Double(index) / Double(petals)
+            context.setFillColor(NSColor(calibratedRed: shade, green: 0.30, blue: 1 - shade, alpha: 1))
+            context.fill(CGRect(x: -8, y: -8, width: 16, height: 16))
+            context.restoreGState()
+        }
+
+        // 4) CGImage: the BMP-round-tripped sprite, drawn as scaled pixels.
+        "CGImage via BMP codec".draw(at: NSMakePoint(inset.origin.x + 650, inset.origin.y + 10), withAttributes: attributes)
+        if let sprite = Self.sprite {
+            let cell: CGFloat = 11
+            let originX = inset.origin.x + 660
+            let originY = inset.origin.y + 34
+            for y in 0..<sprite.height {
+                for x in 0..<sprite.width {
+                    guard let pixel = sprite.pixel(atX: x, y: y), pixel.a > 0 else { continue }
+                    context.setFillColor(NSColor(
+                        calibratedRed: CGFloat(pixel.r) / 255,
+                        green: CGFloat(pixel.g) / 255,
+                        blue: CGFloat(pixel.b) / 255,
+                        alpha: CGFloat(pixel.a) / 255
+                    ))
+                    context.fill(CGRect(x: originX + CGFloat(x) * cell,
+                                        y: originY + CGFloat(y) * cell,
+                                        width: cell - 1, height: cell - 1))
+                }
+            }
+        }
+
+        // 5) NSImage(data:): the same sprite as PNG bytes, decoded by
+        // WinCoreGraphics and blitted through the data-backed draw path — the
+        // 3.13 in-memory boundary, now closed.
+        "NSImage(data:) → CGImage".draw(at: NSMakePoint(inset.origin.x + 840, inset.origin.y + 10), withAttributes: attributes)
+        if let dataImage = Self.dataBackedSprite {
+            dataImage.draw(in: NSMakeRect(inset.origin.x + 850, inset.origin.y + 40, 96, 96))
+        }
+    }
+
+    /// The sprite re-expressed as a BMP-data-backed `NSImage`, so the demo
+    /// exercises the full data → CGImage → native-blit path live. (The demo is
+    /// single-threaded on the UI thread, so the unchecked static is safe.)
+    nonisolated(unsafe) static let dataBackedSprite: NSImage? = {
+        guard let sprite else { return nil }
+        return NSImage(data: Data(sprite.encodeBMP()))
+    }()
 }
 
 // MARK: - "New in 3.x" showcase views
@@ -990,6 +1200,8 @@ let showcasePage = DemoPageView(frame: NSMakeRect(0, 144, 1120, 560))
 let listsPage = DemoPageView(frame: NSMakeRect(0, 144, 1120, 560))
 let bezelsPage = DemoPageView(frame: NSMakeRect(0, 144, 1120, 560))
 let layoutPage = DemoPageView(frame: NSMakeRect(0, 144, 1120, 560))
+let coreGraphicsPage = DemoPageView(frame: NSMakeRect(0, 144, 1120, 560))
+let stressPage = DemoPageView(frame: NSMakeRect(0, 144, 1120, 560))
 valuesPage.isHidden = true
 tablesPage.isHidden = true
 drawingPage.isHidden = true
@@ -997,6 +1209,8 @@ showcasePage.isHidden = true
 listsPage.isHidden = true
 bezelsPage.isHidden = true
 layoutPage.isHidden = true
+coreGraphicsPage.isHidden = true
+stressPage.isHidden = true
 let counterLabel = NSTextField(string: "Clicks: 0", frame: NSMakeRect(32, 36, 300, 24))
 let statusLabel = NSTextField(string: "Ready", frame: NSMakeRect(32, 74, 640, 24))
 let focusLabel = NSTextField(string: "Focus: none", frame: NSMakeRect(744, 74, 300, 24))
@@ -1886,7 +2100,7 @@ datePicker.maxDate = Date(timeIntervalSince1970: 1_893_456_000)
 datePicker.datePickerElements = [.yearMonthDay, .hourMinuteSecond]
 dateValueLabel.textColor = demoValueTextColor
 dateValueLabel.stringValue = datePicker.stringValue
-pageSelector.addItems(withTitles: ["Controls", "Values", "Tables/Media", "Drawing", "New in 3.x", "Lists (5.x)", "Bezels (8.3)", "Auto Layout (9.x)"])
+pageSelector.addItems(withTitles: ["Controls", "Values", "Tables/Media", "Drawing", "New in 3.x", "Lists (5.x)", "Bezels (8.3)", "Auto Layout (9.x)", "CoreGraphics (13)", "Scroll Stress"])
 imageLabel.font = NSFont.boldSystemFont(ofSize: 12)
 imageView.image = NSImage(contentsOfFile: demoArtworkPath) ?? NSImage(named: "WinChocolate artwork")
 imageView.imageFrameStyle = .grayBezel
@@ -2110,6 +2324,8 @@ func showDemoPage(_ index: Int) {
     listsPage.isHidden = index != 5
     bezelsPage.isHidden = index != 6
     layoutPage.isHidden = index != 7
+    coreGraphicsPage.isHidden = index != 8
+    stressPage.isHidden = index != 9
     updateFocusDisplay()
 }
 
@@ -2164,6 +2380,78 @@ outlineView.reloadData()
 outlineView.selectRowIndexes([0], byExtendingSelection: false)
 outlineScrollView.hasVerticalScroller = true
 outlineScrollView.documentView = outlineView
+
+// MARK: - Scroll-stress page (flicker/paint tuning)
+//
+// A tall scrolling document packed with many native controls and interspersed
+// with deliberately paint-heavy gradient bands, so scrolling and resizing this
+// page exercise the repaint/coalescing pipeline under load.
+let stressHeader = NSTextField(string: "Scroll stress — many controls + slow gradient bands. Scroll and resize to check for flicker.",
+                               frame: NSMakeRect(12, 6, 1060, 22))
+stressHeader.isEditable = false
+stressHeader.isBordered = false
+stressHeader.drawsBackground = false
+stressHeader.font = NSFont.boldSystemFont(ofSize: 13)
+stressPage.addSubview(stressHeader)
+
+let stressScrollView = NSScrollView(frame: NSMakeRect(12, 34, 1096, 512))
+stressScrollView.hasVerticalScroller = true
+let stressDocView = NSView(frame: NSMakeRect(0, 0, 1060, 10))
+
+var stressY: CGFloat = 12
+for i in 0..<28 {
+    let rowLabel = NSTextField(string: "Row \(i + 1)", frame: NSMakeRect(12, stressY + 2, 64, 20))
+    rowLabel.isEditable = false
+    rowLabel.isBordered = false
+    rowLabel.drawsBackground = false
+    stressDocView.addSubview(rowLabel)
+
+    let field = NSTextField(string: "Editable field \(i + 1)", frame: NSMakeRect(84, stressY, 180, 24))
+    field.isEditable = true
+    stressDocView.addSubview(field)
+
+    let rowButton = NSButton(title: "Button \(i + 1)", frame: NSMakeRect(276, stressY, 120, 26))
+    stressDocView.addSubview(rowButton)
+
+    let slider = NSSlider(frame: NSMakeRect(408, stressY, 150, 24))
+    slider.minValue = 0
+    slider.maxValue = 100
+    slider.doubleValue = Double((i * 7) % 100)
+    stressDocView.addSubview(slider)
+
+    let popup = NSPopUpButton(frame: NSMakeRect(570, stressY, 130, 26))
+    popup.addItems(withTitles: ["Alpha", "Beta", "Gamma", "Delta"])
+    popup.selectItem(at: i % 4)
+    stressDocView.addSubview(popup)
+
+    let check = NSButton(title: "Enabled", frame: NSMakeRect(712, stressY, 96, 24))
+    check.setButtonType(.switchButton)
+    check.state = (i % 2 == 0) ? .on : .off
+    stressDocView.addSubview(check)
+
+    let combo = NSComboBox(frame: NSMakeRect(818, stressY, 120, 26))
+    combo.addItems(withObjectValues: ["One", "Two", "Three"])
+    stressDocView.addSubview(combo)
+
+    let well = NSColorWell(frame: NSMakeRect(948, stressY, 44, 26))
+    well.color = DemoCanvasView.palette[i % DemoCanvasView.palette.count]
+    stressDocView.addSubview(well)
+
+    stressY += 36
+
+    // Every four rows, drop in an expensive gradient band.
+    if i % 4 == 3 {
+        let band = DemoSlowGradientView(frame: NSMakeRect(12, stressY, 1000, 120))
+        band.label = "Slow gradient band \(i / 4 + 1) — dozens of gradient fills per paint"
+        stressDocView.addSubview(band)
+        stressY += 132
+    }
+}
+
+stressDocView.frame = NSMakeRect(0, 0, 1060, stressY + 12)
+stressScrollView.documentView = stressDocView
+stressPage.addSubview(stressScrollView)
+
 contentView.nextKeyView = button
 editableTextField.nextKeyView = secureTextField
 secureTextField.nextKeyView = alertButton
@@ -2886,6 +3174,8 @@ contentView.addSubview(showcasePage)
 contentView.addSubview(listsPage)
 contentView.addSubview(bezelsPage)
 contentView.addSubview(layoutPage)
+contentView.addSubview(coreGraphicsPage)
+contentView.addSubview(stressPage)
 
 controlsPage.addSubview(editableLabel)
 controlsPage.addSubview(editableTextField)
@@ -3428,7 +3718,7 @@ editMenuController.textView = notesTextView
 // menu entry.
 let viewMenuItem = NSMenuItem(title: "View", action: nil, keyEquivalent: "")
 let viewMenu = NSMenu(title: "View")
-for (index, pageTitle) in ["Controls Page", "Values Page", "Tables/Media Page", "Drawing Page", "New in 3.x Page", "Lists Page", "Bezels Page", "Auto Layout Page"].enumerated() {
+for (index, pageTitle) in ["Controls Page", "Values Page", "Tables/Media Page", "Drawing Page", "New in 3.x Page", "Lists Page", "Bezels Page", "Auto Layout Page", "CoreGraphics Page", "Scroll Stress Page"].enumerated() {
     // Ctrl+1...Ctrl+8 switch pages (the .command mask maps onto Ctrl on Windows).
     let item = NSMenuItem(title: pageTitle, action: nil, keyEquivalent: "\(index + 1)")
     item.onAction = { _ in
@@ -3848,6 +4138,20 @@ func reflowAutoLayoutPage(width pageWidth: CGFloat) {
 }
 reflowAutoLayoutPage(width: 1120)
 
+// ── CoreGraphics (Phase 13) page ─────────────────────────────────────
+// Everything on the artboard is drawn through the CoreGraphics-shaped
+// surface: CGMutablePath curves, CGGradient (linear in a clip + radial),
+// saveGState/translate/rotate transforms, and a CGImage round-tripped
+// through the WinCoreGraphics BMP codec, rendered from its pixels.
+let cgIntro = NSTextField(labelWithString: "Drawn through the CG surface — CGPath, CGGradient, CGContext transforms, and a CGImage decoded by the WinCoreGraphics BMP codec.")
+cgIntro.frame = NSMakeRect(24, 24, 1072, 18)
+let cgArtboard = DemoCoreGraphicsView(frame: NSMakeRect(24, 52, 1072, 180))
+let cgFootnote = NSTextField(labelWithString: "The geometry types (CGRect, CGPoint, CGAffineTransform…) come from the standalone WinCoreGraphics module, re-exported by WinChocolate — Apple's layering, where NSRect is CGRect.")
+cgFootnote.frame = NSMakeRect(24, 244, 1072, 18)
+for view in [cgIntro, cgArtboard, cgFootnote] as [NSView] {
+    coreGraphicsPage.addSubview(view)
+}
+
 // Follow a live system dark/light switch (8.5). The framework re-themes and
 // repaints its own windows/controls; the demo re-applies the few colors it
 // caches at startup (the status/focus bands) and redraws. Skipped implicitly
@@ -3961,12 +4265,17 @@ let demoWindowDelegate = DemoWindowDelegate()
 window.delegate = demoWindowDelegate
 
 // --page N opens directly on a given page (handy for QA of a specific page).
+// Page 9 is the scroll-stress page. `--stress` is a shortcut for it.
 var initialPage = 0
 if let pageFlag = CommandLine.arguments.firstIndex(of: "--page"),
    CommandLine.arguments.indices.contains(pageFlag + 1),
    let page = Int(CommandLine.arguments[pageFlag + 1]) {
     initialPage = page
 }
+if CommandLine.arguments.contains("--stress") {
+    initialPage = 9
+}
+initialPage = max(0, min(initialPage, pageSelector.numberOfItems - 1))
 pageSelector.selectItem(at: initialPage)
 showDemoPage(initialPage)
 updateFocusDisplay()

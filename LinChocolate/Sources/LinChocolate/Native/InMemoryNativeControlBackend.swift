@@ -73,6 +73,7 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     public private(set) var sliderVerticals: [UInt: Bool] = [:]
     public private(set) var datePickerGraphical: [UInt: Bool] = [:]
     public private(set) var textEditable: [UInt: Bool] = [:]
+    public private(set) var backgroundColors: [UInt: NSColor?] = [:]
     public private(set) var itemsByHandle: [UInt: [String]] = [:]
     private var ranges: [UInt: (min: Double, max: Double)] = [:]
     private var radioGroups: [UInt: [UInt]] = [:]   // member -> all members in its group
@@ -573,6 +574,9 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     }
     public func setTextEditable(_ editable: Bool, for handle: NativeHandle) {
         textEditable[handle.rawValue] = editable
+    }
+    public func setBackgroundColor(_ color: NSColor?, for handle: NativeHandle) {
+        backgroundColors[handle.rawValue] = color
     }
     public func setButtonKind(_ kind: NativeButtonKind, title: String, for handle: NativeHandle) {
         switch kind {

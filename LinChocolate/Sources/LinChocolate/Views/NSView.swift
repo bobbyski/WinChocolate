@@ -13,8 +13,16 @@ open class NSView {
     /// The view's frame in its parent's coordinate space (AppKit bottom-left
     /// origin). Setting it repositions/resizes the native control.
     public var frame: NSRect {
-        didSet { backend.setFrame(frame, for: handle) }
+        didSet {
+            backend.setFrame(frame, for: handle)
+            layout()
+        }
     }
+
+    /// Lays out subviews after a frame change (AppKit's `layout()`). The base
+    /// implementation does nothing; containers that position their own children
+    /// (e.g. `NSStackView`) override it.
+    open func layout() {}
 
     /// The view's bounds — its own coordinate space, origin at (0, 0).
     open var bounds: NSRect { NSMakeRect(0, 0, frame.width, frame.height) }
@@ -24,8 +32,10 @@ open class NSView {
         didSet { backend.setHidden(isHidden, for: handle) }
     }
 
-    /// The view's background color (honored by controls that draw a background).
-    public var backgroundColor: NSColor?
+    /// The view's background color; nil clears it (painted natively via CSS).
+    public var backgroundColor: NSColor? {
+        didSet { backend.setBackgroundColor(backgroundColor, for: handle) }
+    }
 
     /// The tooltip shown on hover.
     public var toolTip: String?
