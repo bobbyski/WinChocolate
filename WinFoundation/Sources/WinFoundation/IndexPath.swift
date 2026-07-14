@@ -66,3 +66,34 @@ public struct IndexPath: Hashable, Sendable, ExpressibleByArrayLiteral, RandomAc
         return IndexPath(indexes: copy)
     }
 }
+
+extension IndexPath: Comparable {
+    /// Lexicographic ordering, matching Foundation: compare component by
+    /// component, and a shorter prefix sorts before its longer extension.
+    public static func < (lhs: IndexPath, rhs: IndexPath) -> Bool {
+        for (left, right) in zip(lhs.indexes, rhs.indexes) where left != right {
+            return left < right
+        }
+        return lhs.indexes.count < rhs.indexes.count
+    }
+}
+
+extension IndexPath: Codable {
+    /// Decodes an index path from an unkeyed sequence of integers.
+    public init(from decoder: Decoder) throws {
+        var container = try decoder.unkeyedContainer()
+        var decoded: [Int] = []
+        while !container.isAtEnd {
+            decoded.append(try container.decode(Int.self))
+        }
+        self.init(indexes: decoded)
+    }
+
+    /// Encodes an index path as an unkeyed sequence of integers.
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.unkeyedContainer()
+        for index in indexes {
+            try container.encode(index)
+        }
+    }
+}

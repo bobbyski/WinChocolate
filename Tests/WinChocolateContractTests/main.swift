@@ -6743,6 +6743,7 @@ private final class SingleStringEncoder: Encoder {
     var codingPath: [CodingKey] = []
     var userInfo: [CodingUserInfoKey: Any] = [:]
     var captured: String?
+    var capturedDouble: Double?
 
     func singleValueContainer() -> SingleValueEncodingContainer { Container(encoder: self) }
     func unkeyedContainer() -> UnkeyedEncodingContainer { fatalError("unsupported in test coder") }
@@ -6754,7 +6755,7 @@ private final class SingleStringEncoder: Encoder {
         func encodeNil() throws { fatalError("unsupported in test coder") }
         func encode(_ value: String) throws { encoder.captured = value }
         func encode(_ value: Bool) throws { fatalError("unsupported in test coder") }
-        func encode(_ value: Double) throws { fatalError("unsupported in test coder") }
+        func encode(_ value: Double) throws { encoder.capturedDouble = value }
         func encode(_ value: Float) throws { fatalError("unsupported in test coder") }
         func encode(_ value: Int) throws { fatalError("unsupported in test coder") }
         func encode(_ value: Int8) throws { fatalError("unsupported in test coder") }
@@ -6802,7 +6803,79 @@ private final class SingleStringDecoder: Decoder {
     }
 }
 
+/// A minimal single-value `Double` decoder for testing `Date` Codable round-trips.
+private final class SingleDoubleDecoder: Decoder {
+    var codingPath: [CodingKey] = []
+    var userInfo: [CodingUserInfoKey: Any] = [:]
+    let value: Double
+    init(_ value: Double) { self.value = value }
+
+    func singleValueContainer() throws -> SingleValueDecodingContainer { Container(value: value) }
+    func unkeyedContainer() throws -> UnkeyedDecodingContainer { fatalError("unsupported in test coder") }
+    func container<Key: CodingKey>(keyedBy type: Key.Type) throws -> KeyedDecodingContainer<Key> { fatalError("unsupported in test coder") }
+
+    struct Container: SingleValueDecodingContainer {
+        let value: Double
+        var codingPath: [CodingKey] { [] }
+        func decodeNil() -> Bool { false }
+        func decode(_ type: Double.Type) throws -> Double { value }
+        func decode(_ type: String.Type) throws -> String { fatalError("unsupported in test coder") }
+        func decode(_ type: Bool.Type) throws -> Bool { fatalError("unsupported in test coder") }
+        func decode(_ type: Float.Type) throws -> Float { fatalError("unsupported in test coder") }
+        func decode(_ type: Int.Type) throws -> Int { fatalError("unsupported in test coder") }
+        func decode(_ type: Int8.Type) throws -> Int8 { fatalError("unsupported in test coder") }
+        func decode(_ type: Int16.Type) throws -> Int16 { fatalError("unsupported in test coder") }
+        func decode(_ type: Int32.Type) throws -> Int32 { fatalError("unsupported in test coder") }
+        func decode(_ type: Int64.Type) throws -> Int64 { fatalError("unsupported in test coder") }
+        func decode(_ type: UInt.Type) throws -> UInt { fatalError("unsupported in test coder") }
+        func decode(_ type: UInt8.Type) throws -> UInt8 { fatalError("unsupported in test coder") }
+        func decode(_ type: UInt16.Type) throws -> UInt16 { fatalError("unsupported in test coder") }
+        func decode(_ type: UInt32.Type) throws -> UInt32 { fatalError("unsupported in test coder") }
+        func decode(_ type: UInt64.Type) throws -> UInt64 { fatalError("unsupported in test coder") }
+        func decode<T: Decodable>(_ type: T.Type) throws -> T { fatalError("unsupported in test coder") }
+    }
+}
+
 @MainActor
+func testWinFoundationCoreTypeGapsClosed() {
+    // Date: distant constants, arithmetic operators, and Codable (encodes as
+    // its seconds-since-reference-date, matching Foundation).
+    expect(Date.distantPast < Date.distantFuture, "Date.distantPast should precede distantFuture.")
+    expect(Date.distantPast < Date(), "Date.distantPast should precede now.")
+    let base = Date(timeIntervalSinceReferenceDate: 100)
+    expect((base + 10).timeIntervalSinceReferenceDate == 110, "Date + TimeInterval failed.")
+    expect((base - 10).timeIntervalSinceReferenceDate == 90, "Date - TimeInterval failed.")
+    expect((base - Date(timeIntervalSinceReferenceDate: 60)) == 40, "Date - Date should give the interval.")
+    var moving = base
+    moving += 5
+    moving -= 2
+    expect(moving.timeIntervalSinceReferenceDate == 103, "Date += / -= failed.")
+
+    let dateEncoder = SingleStringEncoder()
+    try! base.encode(to: dateEncoder)
+    expect(dateEncoder.capturedDouble == 100, "Date should encode as its seconds-since-reference-date.")
+    let dateDecoded = try! Date(from: SingleDoubleDecoder(100))
+    expect(dateDecoded == base, "Date did not round-trip through Codable.")
+
+    // Data: Base64 round-trip + a known RFC 4648 vector.
+    let bytes = Data([0x57, 0x69, 0x6E, 0x43, 0x68, 0x6F, 0x63, 0x6F, 0x6C, 0x61, 0x74, 0x65]) // "WinChocolate"
+    expect(bytes.base64EncodedString() == "V2luQ2hvY29sYXRl", "Data.base64EncodedString produced the wrong string.")
+    expect(Data(base64Encoded: "V2luQ2hvY29sYXRl")?.array == bytes.array, "Data(base64Encoded:) did not round-trip.")
+    // Padding cases (0/1/2 trailing bytes).
+    expect(Data([1]).base64EncodedString() == "AQ==", "Base64 single-byte padding wrong.")
+    expect(Data([1, 2]).base64EncodedString() == "AQI=", "Base64 two-byte padding wrong.")
+    expect(Data(base64Encoded: "AQI=")?.array == [1, 2], "Base64 decode of padded input wrong.")
+    expect(Data(base64Encoded: "not valid @@@") == nil, "Invalid Base64 should return nil.")
+
+    // IndexPath: lexicographic Comparable ordering.
+    expect(IndexPath(indexes: [0, 5]) < IndexPath(indexes: [1, 0]), "IndexPath ordering by first component failed.")
+    expect(IndexPath(indexes: [1, 2]) < IndexPath(indexes: [1, 3]), "IndexPath ordering by second component failed.")
+    expect(IndexPath(indexes: [1]) < IndexPath(indexes: [1, 0]), "A prefix IndexPath should sort before its extension.")
+    let sortedPaths = [IndexPath(indexes: [1, 0]), IndexPath(indexes: [0, 9]), IndexPath(indexes: [0, 1])].sorted()
+    expect(sortedPaths == [IndexPath(indexes: [0, 1]), IndexPath(indexes: [0, 9]), IndexPath(indexes: [1, 0])],
+           "IndexPath sorting produced the wrong order.")
+}
+
 func testWinFoundationUUIDCodableMatchesAppleForm() {
     let uuid = UUID(uuidString: "00112233-4455-6677-8899-AABBCCDDEEFF")!
 
@@ -10429,6 +10502,7 @@ testPathControlStoresURLAndPathComponentCells()
 testPathControlComponentURLsAndSelection()
 testWinFoundationCompatibilitySurface()
 testWinFoundationUUIDCodableMatchesAppleForm()
+testWinFoundationCoreTypeGapsClosed()
 testImageViewStoresImageAndUsesNativePeer()
 testTabViewStoresItemsSelectionAndUsesNativePeer()
 testTabViewNativeSelectionDispatchesAction()

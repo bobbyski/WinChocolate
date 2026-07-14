@@ -80,6 +80,55 @@ public struct Data: Equatable, Hashable, Sendable, RandomAccessCollection, Mutab
         bytes
     }
 
+    // Standard Base64 alphabet (RFC 4648), matching Foundation's default.
+    private static let base64Alphabet = Array("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/")
+
+    /// Base64-encodes the bytes, matching Foundation's default (padded, no line
+    /// breaks).
+    public func base64EncodedString() -> String {
+        let table = Data.base64Alphabet
+        var out = ""
+        out.reserveCapacity((bytes.count + 2) / 3 * 4)
+        var i = 0
+        while i < bytes.count {
+            let b0 = bytes[i]
+            let b1 = i + 1 < bytes.count ? bytes[i + 1] : 0
+            let b2 = i + 2 < bytes.count ? bytes[i + 2] : 0
+            out.append(table[Int(b0 >> 2)])
+            out.append(table[Int(((b0 & 0x03) << 4) | (b1 >> 4))])
+            out.append(i + 1 < bytes.count ? table[Int(((b1 & 0x0F) << 2) | (b2 >> 6))] : "=")
+            out.append(i + 2 < bytes.count ? table[Int(b2 & 0x3F)] : "=")
+            i += 3
+        }
+        return out
+    }
+
+    /// Decodes Base64 text into bytes, returning `nil` on invalid input.
+    /// Whitespace is ignored, matching Foundation's ignore-unknown behavior.
+    public init?(base64Encoded string: String) {
+        var lookup = [Int](repeating: -1, count: 128)
+        for (index, character) in Data.base64Alphabet.enumerated() {
+            lookup[Int(character.asciiValue!)] = index
+        }
+        var accumulator = 0
+        var bitCount = 0
+        var decoded: [UInt8] = []
+        for character in string {
+            if character == "=" { break }
+            if character == "\n" || character == "\r" || character == " " || character == "\t" { continue }
+            guard let ascii = character.asciiValue, ascii < 128, lookup[Int(ascii)] >= 0 else {
+                return nil
+            }
+            accumulator = (accumulator << 6) | lookup[Int(ascii)]
+            bitCount += 6
+            if bitCount >= 8 {
+                bitCount -= 8
+                decoded.append(UInt8((accumulator >> bitCount) & 0xFF))
+            }
+        }
+        self.init(decoded)
+    }
+
     /// Accesses one byte by index.
     public subscript(position: Int) -> UInt8 {
         get {

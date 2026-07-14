@@ -35,6 +35,12 @@ public struct Date: Equatable, Comparable, Hashable, Sendable {
         Date()
     }
 
+    /// A date in the distant past, matching Foundation's constant.
+    public static let distantPast = Date(timeIntervalSinceReferenceDate: -63_114_076_800.0)
+
+    /// A date in the distant future, matching Foundation's constant.
+    public static let distantFuture = Date(timeIntervalSinceReferenceDate: 63_113_904_000.0)
+
     /// Seconds since Foundation's reference date.
     public var timeIntervalSinceReferenceDate: Double {
         secondsSinceReferenceDate
@@ -86,6 +92,33 @@ public struct Date: Equatable, Comparable, Hashable, Sendable {
         #else
         return 0
         #endif
+    }
+}
+
+extension Date {
+    /// A date advanced by a time interval.
+    public static func + (lhs: Date, rhs: Double) -> Date { lhs.addingTimeInterval(rhs) }
+    /// A date moved back by a time interval.
+    public static func - (lhs: Date, rhs: Double) -> Date { lhs.addingTimeInterval(-rhs) }
+    /// The interval between two dates.
+    public static func - (lhs: Date, rhs: Date) -> Double { lhs.timeIntervalSince(rhs) }
+    public static func += (lhs: inout Date, rhs: Double) { lhs = lhs + rhs }
+    public static func -= (lhs: inout Date, rhs: Double) { lhs = lhs - rhs }
+}
+
+extension Date: Codable {
+    /// Decodes a date from its seconds-since-reference-date value, matching
+    /// Foundation's single-value representation.
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        self.init(timeIntervalSinceReferenceDate: try container.decode(Double.self))
+    }
+
+    /// Encodes a date as its seconds-since-reference-date value, matching
+    /// Foundation.
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(timeIntervalSinceReferenceDate)
     }
 }
 

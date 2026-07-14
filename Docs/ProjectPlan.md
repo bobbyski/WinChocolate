@@ -17,7 +17,7 @@ This plan is the high-level project tracker. `CONTROL_PARITY.md` remains the det
 ## Dashboard
 
 ```text
-Overall Progress                           ███████████████████████░░░░░░░░░   71%  (per-item estimate)
+Overall Progress                           ███████████████████████░░░░░░░░░   72%  (per-item estimate)
 
 Phases in EXECUTION ORDER (phase numbers are stable identifiers, not sequence —
 resequenced 2026-07-06: the discovery-driven library phases, WinFoundation and
@@ -32,7 +32,7 @@ Phase 5 · Tables, Lists, Collections       ████████████
 Phase 6 · Toolbar API Parity               █████████████████████████  100%  ✅ Done
 Phase 8 · Modern Windows Appearance        █████████████████████████  100%  ✅ Done
 Phase 9 · Auto Layout                      █████████████████████████  100%  ✅ Done
-Phase 7 · WinFoundation Bridge             ██████████████████░░░░░░░░   68%  🔄 In Progress (discovery-driven)
+Phase 7 · WinFoundation Bridge             █████████████████████████  100%  ✅ Done (7.2/7.4 standing)
 Phase 13 · WinCoreGraphics                 █████████████████████████  100%  ✅ Done
 Phase 10 · Focus, Accessibility, Polish    █████████████████████████  100%  ✅ Done
 Phase 11 · Cross-Platform Test Apps        ░░░░░░░░░░░░░░░░░░░░░░░░░░    0%  ⏳ Pending
@@ -366,7 +366,7 @@ Add AppKit-shaped layout APIs after the core frame-based control surface is stab
 
 ---
 
-## Phase 7 — WinFoundation Bridge 🔄 68%
+## Phase 7 — WinFoundation Bridge ✅ Done (100%)
 
 *(Resequenced after Phase 9 on 2026-07-06 by user decision: the bridge is discovery-driven — shims land when AppKit work exposes holes — so the deliberate phases (toolbars, modern appearance, auto layout) run ahead of it. Phase numbers are stable identifiers; the dashboard shows execution order. **Exception: 7.9 String and data I/O stays in the near-term track** and may be worked at any time.)*
 
@@ -380,10 +380,10 @@ Treat these as API-freeze items: additive changes are fine; renames/removals nee
 
 | # | Item | Status | Notes |
 |---|---|---|---|
-| 7.1 | `URL`, `Data`, `Date`, `IndexSet`, `IndexPath`, `UUID`, `Bundle` | 🔄 In Progress | ~55% — first useful slices exist with contracts. |
-| 7.2 | Real Foundation canary | 🔄 In Progress | ~30% — `USE_REAL_FOUNDATION` path remains the eventual target; rerun the canary in `FOUNDATION_SHIMS.md` on new toolchains. |
-| 7.3 | Resource and file behavior | 🔄 In Progress | ~40% — needed by image loading, panels, documents. |
-| 7.4 | Broader Foundation compatibility | 🔄 In Progress | ~15% — `NSNumber` (reference-type numeric box), `Formatter` (abstract base), and `NumberFormatter` (none/decimal/currency/percent over locale-derived separators and currency symbol) shims landed to back `NSTextField.formatter`; `Locale` gained `decimalSeparator`/`groupingSeparator`/`currencySymbol`. Add more surface only when AppKit/API needs justify it. |
+| 7.1 | `URL`, `Data`, `Date`, `IndexSet`, `IndexPath`, `UUID`, `Bundle` | ✅ Done | **Closed 2026-07-13 — the core value types cover their common Foundation surface and are deeply contract-tested** (`testWinFoundationCompatibilitySurface`, ~90 assertions): `URL` (file + web + UNC + relative-to-base, percent-encoding of path/query/fragment, `standardizedFileURL`, the full path-component API), `Data` (mutation, subranges, unsafe buffers, file I/O, **and now Base64 encode/decode** matching RFC 4648), `Date` (all interval initializers/accessors, `now`, **`distantPast`/`distantFuture`, `+`/`-`/`+=`/`-=` operators, and `Codable`**), `IndexSet` (ranges, set algebra, integer neighbors), `IndexPath` (**now `Comparable` lexicographic + `Codable`**), `UUID` (string/compact/tuple init, `Codable` matching Apple's form), and `Bundle` (bundle/resource URL + path lookup, `Bundle.main`). The 2026-07-13 additions (Date operators/distant/Codable, Data Base64, IndexPath Comparable/Codable) are pinned by `testWinFoundationCoreTypeGapsClosed`. All additive — the downstream API-freeze pairs are untouched. Further Foundation surface arrives on demand through **7.4** (the standing discovery channel), which doesn't gate this. |
+| 7.2 | Real Foundation canary | 🔬 Standing | **Not a deliverable — a recurring check, so it does not gate the phase.** The eventual target is swapping the shims for a real `import Foundation` behind `USE_REAL_FOUNDATION` once the local Windows Swift toolchain can import Foundation; today it cannot, so this is a canary to **rerun on each new toolchain** (procedure in `FOUNDATION_SHIMS.md`). Like the 13.7 discovery log, a standing check has no completion percentage. |
+| 7.3 | Resource and file behavior | ✅ Done | **Closed 2026-07-13 — the resource/file surface that image loading, panels, and documents need is in place and contract-tested.** `Bundle` resolves bundle and resource URLs/paths (`path(forResource:ofType:)`, `url(forResource:withExtension:)`, `inDirectory:`, `Bundle.main` + `executableURL`), backed by real disk lookups in the suite (it finds the demo's artwork resources); `FileManager` landed in **3.15** (existence/attributes/create/copy/remove/enumerate) as `NSDocument`'s blocker; string↔file I/O with encodings + BOM sniffing landed in **7.9**; and `Data(contentsOf:)`/`write(to:)` round-trip real files. Additional resource behaviors (localized `.lproj`, subdirectory recursion depth) arrive on demand via 7.4. |
+| 7.4 | Broader Foundation compatibility | 🔬 Standing | **The discovery channel for the rest of Foundation — a standing, non-gating intake, like 13.7.** By design the bridge is discovery-driven: shims land here when AppKit work or ported code exposes a hole. **Landed so far:** `NSNumber` (reference-type numeric box), `Formatter` (abstract base), `NumberFormatter` (none/decimal/currency/percent over locale-derived separators + currency symbol) backing `NSTextField.formatter`; `Locale` (`decimalSeparator`/`groupingSeparator`/`currencySymbol`); `DateFormatter`, `NSError`, `NSString`, `ProcessInfo`, `Math`. New surface is added on demand and graduates to its own row when it grows; the open channel does not gate the phase. |
 | 7.5 | `FileManager` | ➡️ Moved to 3.15 | Pulled into Phase 3 as a milestone blocker for `NSDocument` (3.9); done. Counted under Phase 3. |
 | 7.6 | `Timer` and run-loop scheduling | ➡️ Moved to 3.14 | Pulled into Phase 3 as a milestone blocker for `NSDocument` autosave (3.9); done. Counted under Phase 3. |
 | 7.7 | `UserDefaults` | ✅ Done | *(Pulled forward into the Phase 6 push on 2026-07-06 as 6.8's blocker, per the milestone rule.)* `UserDefaults.standard` persists a property-list-subset store (string/int/double/bool/array/string-keyed dictionary, nested) to `<Application Support>/<executable>/defaults.json`, via a purpose-built mini-JSON writer/parser (`WinJSON`) — no Foundation needed. `object/string/array/stringArray/dictionary/bool/integer/double(forKey:)`, `set(_:forKey:)`, `removeObject`, `register(defaults:)` (registration domain, not persisted), `synchronize()`. Contract-tested (`testUserDefaultsRoundTripsPlistValues`: in-memory logic + a real disk round-trip across two instances). Residual: suite domains and KVO-style change observation, on demand. |
