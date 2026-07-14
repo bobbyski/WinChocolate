@@ -1190,6 +1190,7 @@ let bezelsPage = DemoPageView(frame: NSMakeRect(0, 144, 1120, 560))
 let layoutPage = DemoPageView(frame: NSMakeRect(0, 144, 1120, 560))
 let coreGraphicsPage = DemoPageView(frame: NSMakeRect(0, 144, 1120, 560))
 let stressPage = DemoPageView(frame: NSMakeRect(0, 144, 1120, 560))
+let nibPage = DemoPageView(frame: NSMakeRect(0, 144, 1120, 560))
 valuesPage.isHidden = true
 tablesPage.isHidden = true
 drawingPage.isHidden = true
@@ -1199,6 +1200,7 @@ bezelsPage.isHidden = true
 layoutPage.isHidden = true
 coreGraphicsPage.isHidden = true
 stressPage.isHidden = true
+nibPage.isHidden = true
 let counterLabel = NSTextField(string: "Clicks: 0", frame: NSMakeRect(32, 36, 300, 24))
 let statusLabel = NSTextField(string: "Ready", frame: NSMakeRect(32, 74, 640, 24))
 let focusLabel = NSTextField(string: "Focus: none", frame: NSMakeRect(744, 74, 300, 24))
@@ -2088,7 +2090,7 @@ datePicker.maxDate = Date(timeIntervalSince1970: 1_893_456_000)
 datePicker.datePickerElements = [.yearMonthDay, .hourMinuteSecond]
 dateValueLabel.textColor = demoValueTextColor
 dateValueLabel.stringValue = datePicker.stringValue
-pageSelector.addItems(withTitles: ["Controls", "Values", "Tables/Media", "Drawing", "New in 3.x", "Lists (5.x)", "Bezels (8.3)", "Auto Layout (9.x)", "CoreGraphics (13)", "Scroll Stress"])
+pageSelector.addItems(withTitles: ["Controls", "Values", "Tables/Media", "Drawing", "New in 3.x", "Lists (5.x)", "Bezels (8.3)", "Auto Layout (9.x)", "CoreGraphics (13)", "Scroll Stress", "Nib (15)"])
 imageLabel.font = NSFont.boldSystemFont(ofSize: 12)
 imageView.image = NSImage(contentsOfFile: demoArtworkPath) ?? NSImage(named: "WinChocolate artwork")
 imageView.imageFrameStyle = .grayBezel
@@ -2314,6 +2316,7 @@ func showDemoPage(_ index: Int) {
     layoutPage.isHidden = index != 7
     coreGraphicsPage.isHidden = index != 8
     stressPage.isHidden = index != 9
+    nibPage.isHidden = index != 10
     updateFocusDisplay()
 }
 
@@ -2439,6 +2442,98 @@ for i in 0..<28 {
 stressDocView.frame = NSMakeRect(0, 0, 1060, stressY + 12)
 stressScrollView.documentView = stressDocView
 stressPage.addSubview(stressScrollView)
+
+// MARK: - Nib page (Phase 15)
+//
+// Loads DemoNibPanel.xib — a real Interface Builder document — through NSNib,
+// embeds the instantiated view, and wires its controls via identifier lookup
+// (the 15.4 first-slice wiring model while automatic @IBOutlet binding awaits
+// a KVC layer).
+let nibIntroLabel = NSTextField(string: "NSNib (Phase 15): the panel below is instantiated from DemoNibPanel.xib at runtime — controls, frames (y-flipped from Cocoa coordinates), identifiers, and the button's action connection all come from the xib.",
+                                frame: NSMakeRect(12, 6, 1080, 36))
+nibIntroLabel.isEditable = false
+nibIntroLabel.isBordered = false
+nibIntroLabel.drawsBackground = false
+nibPage.addSubview(nibIntroLabel)
+
+let nibStatusLabel = NSTextField(string: "", frame: NSMakeRect(24, 320, 1000, 22))
+nibStatusLabel.isEditable = false
+nibStatusLabel.isBordered = false
+nibStatusLabel.drawsBackground = false
+nibPage.addSubview(nibStatusLabel)
+
+/// Stands in for the xib's `DemoNibPanelController` File's Owner: the xib's
+/// `<outlet>` connections resolve against this object, and the demo reads the
+/// controls back through those records (the 15.4 wiring model).
+final class DemoNibOwner {}
+let nibOwner = DemoNibOwner()
+var nibIncrementCount = 0
+do {
+    let xibPath = demoResourcePath(named: "DemoNibPanel", ofType: "xib")
+    if let xibData = try? Data(contentsOf: URL(fileURLWithPath: xibPath)) {
+        let nib = NSNib(nibData: xibData)
+        if let instance = nib.winInstantiate(withOwner: nibOwner),
+           let panel = instance.topLevelObjects.compactMap({ $0 as? NSView }).first {
+            panel.frame = NSMakeRect(24, 52, panel.frame.size.width, panel.frame.size.height)
+            panel.backgroundColor = NSColor.controlBackgroundColor
+            nibPage.addSubview(panel)
+
+            // Manual outlet wiring through the xib identifiers.
+            let countLabel = instance.view(withIdentifier: "nibCountLabel") as? NSTextField
+            if let button = instance.view(withIdentifier: "nibButton") as? NSButton {
+                button.onAction = { _ in
+                    nibIncrementCount += 1
+                    countLabel?.stringValue = "\(nibIncrementCount)"
+                    statusLabel.stringValue = "Nib button clicked (count \(nibIncrementCount)) — action \(button.action?.name ?? "?") wired from the xib"
+                }
+            }
+            if let slider = instance.view(withIdentifier: "nibSlider") as? NSSlider {
+                slider.onAction = { control in
+                    statusLabel.stringValue = "Nib slider: \((control as? NSSlider)?.doubleValue ?? 0)"
+                }
+            }
+
+            // The Show Outlet Values button reads the live control values back
+            // through the xib's <outlet> connections on File's Owner — the
+            // outlet half of the wiring model (the Increment button proves the
+            // action half). No identifier lookup here: every control below is
+            // resolved from the outlet records the xib declared.
+            let ownerOutlets = instance.connections.filter { $0.kind == .outlet && $0.source === nibOwner }
+            func nibOutlet(_ property: String) -> AnyObject? {
+                ownerOutlets.first { $0.name == property }?.destination
+            }
+            if let showButton = instance.view(withIdentifier: "nibShowButton") as? NSButton {
+                showButton.onAction = { _ in
+                    let field = nibOutlet("nameField") as? NSTextField
+                    let check = nibOutlet("check") as? NSButton
+                    let slider = nibOutlet("slider") as? NSSlider
+                    let popup = nibOutlet("popup") as? NSPopUpButton
+                    let count = nibOutlet("countLabel") as? NSTextField
+                    let alert = NSAlert()
+                    alert.messageText = "Values read through xib outlets"
+                    alert.informativeText = """
+                    nameField: "\(field?.stringValue ?? "?")"
+                    check: \(check?.state == .on ? "on" : "off")
+                    slider: \(slider?.doubleValue ?? 0)
+                    popup: \(popup?.titleOfSelectedItem ?? "?")
+                    countLabel: \(count?.stringValue ?? "?")
+
+                    All five controls were resolved from the <outlet> connections the xib declares on File's Owner — edit the field, toggle the checkbox, drag the slider, then show again.
+                    """
+                    _ = alert.runModal()
+                    statusLabel.stringValue = "Outlet popup shown — \(ownerOutlets.count) outlets resolved from the xib"
+                }
+            }
+
+            let actionWirings = instance.connections.filter { $0.kind == .action }
+            nibStatusLabel.stringValue = "Instantiated \(instance.topLevelObjects.count) top-level object(s), \(instance.objectsByID.count) identified objects, \(actionWirings.count) action connection(s): \(actionWirings.map { $0.name }.joined(separator: ", ")); \(ownerOutlets.count) outlet(s) on File's Owner: \(ownerOutlets.map { $0.name }.joined(separator: ", "))"
+        } else {
+            nibStatusLabel.stringValue = "DemoNibPanel.xib failed to instantiate."
+        }
+    } else {
+        nibStatusLabel.stringValue = "DemoNibPanel.xib not found at \(xibPath)."
+    }
+}
 
 contentView.nextKeyView = button
 editableTextField.nextKeyView = secureTextField
@@ -3164,6 +3259,7 @@ contentView.addSubview(bezelsPage)
 contentView.addSubview(layoutPage)
 contentView.addSubview(coreGraphicsPage)
 contentView.addSubview(stressPage)
+contentView.addSubview(nibPage)
 
 controlsPage.addSubview(editableLabel)
 controlsPage.addSubview(editableTextField)
@@ -3695,7 +3791,7 @@ editMenuController.textView = notesTextView
 // menu entry.
 let viewMenuItem = NSMenuItem(title: "View", action: nil, keyEquivalent: "")
 let viewMenu = NSMenu(title: "View")
-for (index, pageTitle) in ["Controls Page", "Values Page", "Tables/Media Page", "Drawing Page", "New in 3.x Page", "Lists Page", "Bezels Page", "Auto Layout Page", "CoreGraphics Page", "Scroll Stress Page"].enumerated() {
+for (index, pageTitle) in ["Controls Page", "Values Page", "Tables/Media Page", "Drawing Page", "New in 3.x Page", "Lists Page", "Bezels Page", "Auto Layout Page", "CoreGraphics Page", "Scroll Stress Page", "Nib Page"].enumerated() {
     // Ctrl+1...Ctrl+8 switch pages (the .command mask maps onto Ctrl on Windows).
     let item = NSMenuItem(title: pageTitle, action: nil, keyEquivalent: "\(index + 1)")
     item.onAction = { _ in
