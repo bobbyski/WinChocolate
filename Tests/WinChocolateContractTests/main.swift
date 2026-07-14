@@ -12636,6 +12636,288 @@ func testUnchangedFrameDoesNotRepushToBackend() {
 }
 
 testUnchangedFrameDoesNotRepushToBackend()
+// MARK: - Phase 15 NIB / XIB loading
+
+@MainActor
+func testNibInstantiatesXibObjectGraph() {
+    let xib = """
+    <?xml version="1.0" encoding="UTF-8"?>
+    <document type="com.apple.InterfaceBuilder3.Cocoa.XIB" version="3.0" toolsVersion="22505">
+        <dependencies>
+            <plugIn identifier="com.apple.InterfaceBuilder.CocoaPlugin" version="22505"/>
+        </dependencies>
+        <objects>
+            <customObject id="-2" userLabel="File's Owner" customClass="PanelOwner"/>
+            <customObject id="-1" userLabel="First Responder" customClass="FirstResponder"/>
+            <customObject id="helper-1" userLabel="Helper" customClass="DemoHelper"/>
+            <customView id="root-1" identifier="rootView">
+                <rect key="frame" x="0.0" y="0.0" width="300" height="200"/>
+                <subviews>
+                    <button id="btn-1" identifier="okButton" tag="7">
+                        <rect key="frame" x="20" y="20" width="120" height="32"/>
+                        <autoresizingMask key="autoresizingMask" flexibleMinY="YES"/>
+                        <buttonCell key="cell" type="push" title="Press &amp; Hold" bezelStyle="rounded" id="btn-1c"/>
+                        <connections>
+                            <action selector="doThing:" target="-2" id="cx-1"/>
+                        </connections>
+                    </button>
+                    <button id="chk-1" identifier="check">
+                        <rect key="frame" x="20" y="70" width="120" height="24"/>
+                        <buttonCell key="cell" type="check" title="Enable" state="on" id="chk-1c"/>
+                    </button>
+                    <textField id="fld-1" identifier="nameField">
+                        <rect key="frame" x="20" y="110" width="160" height="24"/>
+                        <textFieldCell key="cell" editable="YES" selectable="YES" borderStyle="bezel" drawsBackground="YES" title="Seed" placeholderString="Name" id="fld-1c"/>
+                    </textField>
+                    <slider id="sld-1" identifier="volume">
+                        <rect key="frame" x="20" y="150" width="200" height="24"/>
+                        <sliderCell key="cell" continuous="YES" minValue="0.0" maxValue="100" doubleValue="42" id="sld-1c"/>
+                    </slider>
+                </subviews>
+                <connections>
+                    <outlet property="delegate" destination="helper-1" id="cx-2"/>
+                </connections>
+            </customView>
+        </objects>
+    </document>
+    """
+
+    final class PanelOwner {}
+    let owner = PanelOwner()
+    let nib = NSNib(nibData: Data(Array(xib.utf8)))
+    guard let instance = nib.winInstantiate(withOwner: owner) else {
+        expect(false, "The xib document should instantiate.")
+        return
+    }
+
+    // One top-level view; placeholders resolve (owner for -2, stand-in for
+    // custom objects) without becoming top-level views.
+    expect(instance.topLevelObjects.count == 1, "The xib should yield one top-level view.")
+    let root = instance.topLevelObjects.first as? NSView
+    expect(root != nil, "The top-level object should be an NSView.")
+    expect(root?.frame.size == NSMakeSize(300, 200), "The root view should take its xib frame.")
+    expect(instance.object(withID: "-2") === owner, "File's Owner should resolve to the instantiate owner.")
+    expect((instance.object(withID: "helper-1") as? WinNibCustomObject)?.customClassName == "DemoHelper",
+           "A custom object should become a class-name-carrying stand-in.")
+
+    // The button: type, title (with a decoded entity), tag, y-flip (cocoa
+    // y=20 h=32 in a 200-high parent → top-down y=148), autoresizing flip
+    // (Cocoa flexibleMinY = bottom margin → maxYMargin in top-down space).
+    guard let button = instance.view(withIdentifier: "okButton") as? NSButton else {
+        expect(false, "The xib button should be findable by identifier.")
+        return
+    }
+    expect(button.title == "Press & Hold", "The button title should decode the &amp; entity.")
+    expect(button.tag == 7, "The button should carry its xib tag.")
+    expect(button.frame == NSMakeRect(20, 148, 120, 32),
+           "The button frame should flip from Cocoa to top-down coordinates; got \(button.frame).")
+    expect(button.autoresizingMask.contains(.maxYMargin),
+           "Cocoa flexibleMinY should map to the top-down bottom margin.")
+
+    // The action connection: target/action applied, record exposed.
+    expect(button.target === owner, "The xib action should set the control's target to File's Owner.")
+    expect(button.action == Selector("doThing:"), "The xib action should set the control's selector.")
+    let actions = instance.connections.filter { $0.kind == .action }
+    expect(actions.count == 1 && actions.first?.name == "doThing:", "The action connection should be recorded.")
+    let outlets = instance.connections.filter { $0.kind == .outlet }
+    expect(outlets.first?.name == "delegate" && outlets.first?.destination === instance.object(withID: "helper-1"),
+           "The outlet connection should resolve its destination for manual wiring.")
+
+    // The rest of the control mix.
+    let check = instance.view(withIdentifier: "check") as? NSButton
+    expect(check?.state == .on, "The checkbox should decode state=on.")
+    expect(check?.buttonType == .switchButton, "type=check should decode as a switch button.")
+    let field = instance.view(withIdentifier: "nameField") as? NSTextField
+    expect(field?.isEditable == true && field?.stringValue == "Seed" && field?.placeholderString == "Name",
+           "The text field should decode editability, text, and placeholder.")
+    let slider = instance.view(withIdentifier: "volume") as? NSSlider
+    expect(slider?.doubleValue == 42 && slider?.maxValue == 100, "The slider should decode its values.")
+
+    // The Apple-shaped entry point yields the same top-level objects.
+    var topLevel: [Any]?
+    expect(nib.instantiate(withOwner: owner, topLevelObjects: &topLevel), "instantiate(withOwner:) should succeed.")
+    expect(topLevel?.count == 1, "instantiate(withOwner:) should hand back the top-level objects.")
+}
+
+@MainActor
+func testNibDecodesConstraintsThroughTheSolverTypes() {
+    let xib = """
+    <?xml version="1.0" encoding="UTF-8"?>
+    <document type="com.apple.InterfaceBuilder3.Cocoa.XIB" version="3.0">
+        <objects>
+            <customView id="root" identifier="constraintRoot">
+                <rect key="frame" x="0.0" y="0.0" width="400" height="300"/>
+                <subviews>
+                    <customView id="child" identifier="constraintChild" translatesAutoresizingMaskIntoConstraints="NO">
+                        <rect key="frame" x="10" y="10" width="100" height="50"/>
+                    </customView>
+                </subviews>
+                <constraints>
+                    <constraint firstItem="child" firstAttribute="leading" secondItem="root" secondAttribute="leading" constant="20" id="k1"/>
+                    <constraint firstItem="child" firstAttribute="width" constant="150" relation="greaterThanOrEqual" priority="750" id="k2"/>
+                    <constraint firstItem="child" firstAttribute="centerX" secondItem="root" secondAttribute="centerX" multiplier="1:2" id="k3"/>
+                </constraints>
+            </customView>
+        </objects>
+    </document>
+    """
+
+    guard let instance = NSNib(nibData: Data(Array(xib.utf8))).winInstantiate() else {
+        expect(false, "The constraint xib should instantiate.")
+        return
+    }
+    let root = instance.view(withIdentifier: "constraintRoot")
+    let child = instance.view(withIdentifier: "constraintChild")
+    expect(child?.translatesAutoresizingMaskIntoConstraints == false,
+           "The xib child should decode translatesAutoresizingMaskIntoConstraints=NO.")
+
+    guard let leading = instance.object(withID: "k1") as? NSLayoutConstraint,
+          let width = instance.object(withID: "k2") as? NSLayoutConstraint,
+          let center = instance.object(withID: "k3") as? NSLayoutConstraint else {
+        expect(false, "Each xib constraint should decode to an NSLayoutConstraint registered by id.")
+        return
+    }
+    expect(leading.firstItem === child && leading.secondItem === root, "k1 items should resolve by xib id.")
+    expect(leading.firstAttribute == .leading && leading.constant == 20, "k1 should decode attribute and constant.")
+    expect(leading.isActive, "Decoded constraints should be active, as after an AppKit nib load.")
+    expect(width.relation == .greaterThanOrEqual && width.constant == 150, "k2 should decode its inequality.")
+    expect(width.priority.rawValue == 750, "k2 should decode its priority.")
+    expect(width.secondItem == nil, "A bare width constraint has no second item.")
+    expect(center.multiplier == 0.5, "A ratio multiplier (1:2) should decode as 0.5.")
+}
+
+@MainActor
+func testNibLoadsWindowsControllersAndTheDemoPanelFromDisk() {
+    let backend = InMemoryNativeControlBackend()
+    let previousBackend = NSApplication.shared.nativeBackend
+    NSApplication.shared.nativeBackend = backend
+    defer {
+        NSApplication.shared.nativeBackend = previousBackend
+        clearApplicationWindows()
+    }
+
+    // A window document: style mask, content rect, content subtree.
+    let windowXib = """
+    <?xml version="1.0" encoding="UTF-8"?>
+    <document type="com.apple.InterfaceBuilder3.Cocoa.XIB" version="3.0">
+        <objects>
+            <window title="Nib Window" id="w1">
+                <windowStyleMask key="styleMask" titled="YES" closable="YES"/>
+                <rect key="contentRect" x="120" y="120" width="320" height="200"/>
+                <view key="contentView" id="cv1">
+                    <rect key="frame" x="0.0" y="0.0" width="320" height="200"/>
+                    <subviews>
+                        <button id="wb1" identifier="windowButton">
+                            <rect key="frame" x="20" y="20" width="100" height="30"/>
+                            <buttonCell key="cell" type="push" title="In Window" id="wb1c"/>
+                        </button>
+                    </subviews>
+                </view>
+            </window>
+        </objects>
+    </document>
+    """
+    guard let windowInstance = NSNib(nibData: Data(Array(windowXib.utf8))).winInstantiate() else {
+        expect(false, "The window xib should instantiate.")
+        return
+    }
+    let window = windowInstance.topLevelObjects.first as? NSWindow
+    expect(window?.title == "Nib Window", "The nib window should carry its title.")
+    expect(window?.styleMask.contains(.titled) == true, "The nib window should decode its style mask.")
+    expect(windowInstance.view(withIdentifier: "windowButton") is NSButton,
+           "The window's content subtree should instantiate and be searchable.")
+
+    // The real demo resource loads from disk through the named-nib path.
+    let resourceBundle = Bundle(path: "Demo\\DemoApplication\\Resources")
+    expect(resourceBundle != nil, "The demo resources directory should resolve as a bundle.")
+    guard let nib = NSNib(nibNamed: "DemoNibPanel", bundle: resourceBundle) else {
+        expect(false, "NSNib(nibNamed:) should find DemoNibPanel.xib in the demo resources.")
+        return
+    }
+    final class PanelOwner {}
+    let panelOwner = PanelOwner()
+    guard let panel = nib.winInstantiate(withOwner: panelOwner) else {
+        expect(false, "DemoNibPanel.xib should instantiate.")
+        return
+    }
+    expect((panel.topLevelObjects.first as? NSView)?.frame.size == NSMakeSize(480, 240),
+           "The demo panel should decode its xib size.")
+    expect(panel.view(withIdentifier: "nibButton") is NSButton, "The demo panel button should load.")
+    expect((panel.view(withIdentifier: "nibPopup") as? NSPopUpButton)?.titleOfSelectedItem == "Cocoa",
+           "The demo panel popup should decode its items and selection.")
+    expect((panel.view(withIdentifier: "nibSlider") as? NSSlider)?.doubleValue == 35,
+           "The demo panel slider should decode its value.")
+    let panelActions = panel.connections.filter { $0.kind == .action }
+    expect(panelActions.map { $0.name } == ["increment:", "showValues:"],
+           "The demo panel's action connections should parse in document order.")
+
+    // The File's Owner outlets resolve against the instantiate owner and
+    // point at the live controls — the outlet half of the wiring model the
+    // demo's Show Outlet Values popup reads through.
+    let panelOutlets = panel.connections.filter { $0.kind == .outlet && $0.source === panelOwner }
+    expect(panelOutlets.count == 5, "The demo panel should declare five File's Owner outlets; got \(panelOutlets.count).")
+    func outlet(_ name: String) -> AnyObject? { panelOutlets.first { $0.name == name }?.destination }
+    expect(outlet("nameField") === panel.view(withIdentifier: "nibField"),
+           "The nameField outlet should resolve to the xib text field.")
+    expect(outlet("check") is NSButton, "The check outlet should resolve to the checkbox.")
+    expect((outlet("slider") as? NSSlider)?.doubleValue == 35, "The slider outlet should reach the live slider.")
+    expect((outlet("popup") as? NSPopUpButton)?.titleOfSelectedItem == "Cocoa",
+           "The popup outlet should reach the live popup.")
+    expect((outlet("countLabel") as? NSTextField)?.stringValue == "0",
+           "The countLabel outlet should reach the count label.")
+
+    // Bundle.loadNibNamed, the classic AppKit entry point.
+    var loaded: [Any]?
+    expect(resourceBundle?.loadNibNamed("DemoNibPanel", owner: nil, topLevelObjects: &loaded) == true,
+           "Bundle.loadNibNamed should load the demo panel.")
+    expect(loaded?.count == 1, "Bundle.loadNibNamed should return the top-level objects.")
+
+    // NSViewController(nibName:) loads its view from the same document.
+    let controller = NSViewController(nibName: "DemoNibPanel", bundle: resourceBundle)
+    expect(controller.view.frame.size == NSMakeSize(480, 240),
+           "NSViewController(nibName:) should adopt the nib's top-level view.")
+    expect(controller.nibName == "DemoNibPanel", "The controller should record its nib name.")
+}
+
+@MainActor
+func testPlainAlertComposesADarkPanelInsteadOfTheLightMessageBox() {
+    let backend = InMemoryNativeControlBackend()
+    backend.nextModalResponseCode = NSApplication.ModalResponse.OK.rawValue
+    let previousBackend = NSApplication.shared.nativeBackend
+    let previousAppearance = NSApplication.shared.appearance
+    NSApplication.shared.nativeBackend = backend
+    defer {
+        NSApplication.shared.nativeBackend = previousBackend
+        NSApplication.shared.appearance = previousAppearance
+        clearApplicationWindows()
+    }
+
+    // A plain alert (no custom buttons/icon/suppression) in LIGHT mode uses the
+    // native OS message box — which records no composed modal-panel session.
+    NSApplication.shared.appearance = NSAppearance(named: .aqua)
+    let lightAlert = NSAlert()
+    lightAlert.messageText = "Values read through xib outlets"
+    let sessionsBeforeLight = backend.modalSessions.count
+    _ = lightAlert.runModal()
+    expect(backend.modalSessions.count == sessionsBeforeLight,
+           "A plain alert in light mode should use the native message box, not a composed panel.")
+
+    // The same plain alert in DARK mode composes its own dark-aware panel (the
+    // native message box can't honor dark mode) — which runs a modal session.
+    NSApplication.shared.appearance = NSAppearance(named: .darkAqua)
+    let darkAlert = NSAlert()
+    darkAlert.messageText = "Values read through xib outlets"
+    let sessionsBeforeDark = backend.modalSessions.count
+    _ = darkAlert.runModal()
+    expect(backend.modalSessions.count == sessionsBeforeDark + 1,
+           "A plain alert in dark mode should compose a dark panel rather than the light native message box.")
+}
+
+testNibInstantiatesXibObjectGraph()
+testNibDecodesConstraintsThroughTheSolverTypes()
+testNibLoadsWindowsControllersAndTheDemoPanelFromDisk()
+testPlainAlertComposesADarkPanelInsteadOfTheLightMessageBox()
+
 testControlsExposeAppKitAccessibilityRolesAndValues()
 testAccessibilityTreeWalksContainerHierarchy()
 testDrawnTablePublishesRowAndCellAccessibilityTree()
