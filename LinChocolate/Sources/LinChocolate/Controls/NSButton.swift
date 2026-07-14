@@ -15,6 +15,11 @@ public final class NSButton: NSView {
     /// Called when the button is clicked (push button) or toggled (checkbox).
     public var onAction: ((NSButton) -> Void)?
 
+    /// AppKit's target/action pair. Set by nib loading (the `<action>` wiring)
+    /// and readable as `button.action?.name`; native dispatch stays on `onAction`.
+    public var action: Selector?
+    public weak var target: AnyObject?
+
     // Look/behavior flags accepted for API parity (GTK buttons style natively).
     public var bezelStyle: NSButtonBezelStyle = .rounded
     public var isBordered: Bool = true
@@ -32,6 +37,11 @@ public final class NSButton: NSView {
             backingIsOn = newValue
             backend.setButtonState(newValue, for: handle)
         }
+    }
+
+    /// AppKit's frame-only initializer: an untitled push button.
+    public override convenience init(frame: NSRect) {
+        self.init(title: "", frame: frame)
     }
 
     /// Creates a titled push button.

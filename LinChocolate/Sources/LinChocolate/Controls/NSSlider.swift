@@ -27,6 +27,9 @@ public final class NSSlider: NSView {
         didSet { backend.setSliderVertical(isVertical, for: handle) }
     }
 
+    /// Whether the slider fires continuously as it moves (accepted for parity).
+    public var isContinuous: Bool = true
+
     /// Creates a slider over `[minValue, maxValue]` starting at `value`.
     /// AppKit's target/action form (no frame); gets a default size.
     public convenience init(value: Double, minValue: Double, maxValue: Double, target: AnyObject?, action: String?) {

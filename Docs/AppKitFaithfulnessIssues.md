@@ -229,6 +229,40 @@ must present an Apple-shaped `CGImage`.
 
 ---
 
+## M. Nib manual-wiring surface (`winInstantiate` / connection records)  — ~12 errors
+
+*Found 2026-07-14, after the develop merge added the Nib (15) page.*
+
+The Nib page loads `DemoNibPanel.xib` and then wires it up through a **`win`-prefixed manual
+surface** that Apple's `NSNib` does not have:
+
+| Demo uses | Real AppKit |
+|---|---|
+| `nib.winInstantiate(withOwner:)` → rich instance | `nib.instantiate(withOwner:topLevelObjects:)` returning `Bool`, filling an `[Any]` |
+| `instance.view(withIdentifier:)` | no such lookup — outlets are bound by name via KVC |
+| `instance.connections` / `.kind == .outlet` / `.action` | AppKit exposes no parsed `<connections>` records |
+| `instance.objectsByID`, `instance.topLevelObjects` on the instance | AppKit hands back only the top-level object array |
+| `button.action?.name` | real `Selector` is the Obj-C selector — **no `.name`** (use `NSStringFromSelector`) |
+
+**Root cause (an honest gap, not a rename):** AppKit's nib loader binds `@IBOutlet`/`@IBAction`
+**automatically by name**, using the Objective-C runtime's KVC/reflection. WinChocolate and
+LinChocolate have no such runtime, so instead of automatic binding they *expose the parsed graph*
+— `winInstantiate` → an instance object carrying `objectsByID` + `connections`, which the app
+walks by hand (`view(withIdentifier:)`, `connections.filter { $0.kind == .outlet }`). The whole
+`win*` nib API, and the demo's Nib page written against it, exist only to stand in for the missing
+KVC layer. Likewise the chocolates' `Selector` is a `struct { let name }`, whereas AppKit's is the
+opaque Obj-C selector.
+
+**Fix locus:** this is the same class of gap as Cocoa bindings — it needs a KVC/reflection layer
+(or Swift `Mirror`-based outlet binding) in the frameworks so that `instantiate(withOwner:
+topLevelObjects:)` binds `@IBOutlet`s directly and the demo's Nib page can be rewritten to plain
+outlet properties with no `winInstantiate`, no connection walking, and no `Selector.name`. Until
+that lands, the Nib page is inherently non-portable to real AppKit. (LinChocolate currently
+mirrors WinChocolate's `win*` surface so the shared demo builds+runs on GTK — see the nib port —
+but that is deliberately *matching a divergence*, not resolving it.)
+
+---
+
 ## Summary
 
 | # | Divergence | ~Errors | Fix locus |
@@ -245,6 +279,7 @@ must present an Apple-shaped `CGImage`.
 | K | `NSFrameRect`/`NSRectFill` scope | 22 | verify / demo |
 | H | `NSToolbar.addItem` | 16 | frameworks + demo |
 | L | `CGImage`/WinCoreGraphics surface | 16 | frameworks + demo |
+| M | Nib manual-wiring (`winInstantiate`) — missing KVC layer | ~12 | frameworks (KVC/reflection) + demo |
 
 Every row is a place WinChocolate/LinChocolate diverged from Apple. None are to be resolved with
 an AppKit shim — each is fixed by making the chocolate frameworks match AppKit exactly and, where
