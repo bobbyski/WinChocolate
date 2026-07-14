@@ -14,7 +14,7 @@ open class NSButtonCell: NSCell {
     }
 
     /// Creates a button cell with a title.
-    public init(title: String) {
+    package init(title: String) {
         self.title = title
         self.state = .off
         super.init(textCell: title)

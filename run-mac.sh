@@ -96,6 +96,9 @@ if ! swiftc -sdk "$SDK" -target arm64-apple-macos13.0 -swift-version 6 \
     echo >&2
     echo "  Top error categories:" >&2
     grep "error:" "$LOG" | sed -E 's/^.*error: //' | sort | uniq -c | sort -rn | head -12 >&2
+    echo >&2
+    echo "  Unique error sites (file:line: message):" >&2
+    grep "error:" "$LOG" | sed -E 's|^.*/Demo/DemoApplication/||' | sort -u | head -50 >&2
     exit 1
 fi
 echo "✓ Built $APP"

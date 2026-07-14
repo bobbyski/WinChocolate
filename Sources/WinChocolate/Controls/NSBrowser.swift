@@ -279,7 +279,7 @@ open class NSBrowser: NSControl {
     open var autohidesScroller: Bool = true
 
     /// Width assigned to each visible column.
-    open var columnWidth: CGFloat = 160 {
+    open var defaultColumnWidth: CGFloat = 160 {
         didSet {
             tile()
         }
@@ -352,7 +352,7 @@ open class NSBrowser: NSControl {
     /// Lays out visible columns (title bar above each column when titled).
     open func tile() {
         let visibleCount = max(1, columns.count)
-        let width = max(1, min(columnWidth, frame.size.width / CGFloat(visibleCount)))
+        let width = max(1, min(defaultColumnWidth, frame.size.width / CGFloat(visibleCount)))
         let titleHeight = isTitled ? columnTitleHeight : 0
         for (index, column) in columns.enumerated() {
             let x = CGFloat(index) * width
@@ -469,11 +469,11 @@ open class NSBrowser: NSControl {
     }
 
     private func addColumn(at index: Int) {
-        let frame = NSMakeRect(CGFloat(index) * columnWidth, 0, columnWidth, self.frame.size.height)
+        let frame = NSMakeRect(CGFloat(index) * defaultColumnWidth, 0, defaultColumnWidth, self.frame.size.height)
         let column = BrowserColumn(browser: self, column: index, frame: frame)
         let titleColumn = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("browser"))
         titleColumn.title = ""
-        titleColumn.width = columnWidth
+        titleColumn.width = defaultColumnWidth
         column.tableView.headerView = nil
         column.tableView.addTableColumn(titleColumn)
         column.tableView.dataSource = column.dataSource

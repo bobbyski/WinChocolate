@@ -61,17 +61,26 @@ public struct NSFont: Equatable, Sendable {
         }
     }
 
-    /// Creates a font descriptor.
-    public init(name fontName: String, size pointSize: CGFloat, weight: Weight = .regular, italic: Bool = false) {
+
+    /// Creates a font record. Not API (18.7): Apple has only the failable
+    /// `init?(name:size:)` — package for the framework and suite.
+    package init(name fontName: String, size pointSize: CGFloat, weight: Weight = .regular, italic: Bool = false) {
         self.fontName = fontName
         self.pointSize = max(pointSize, 1)
         self.weight = weight
         self.italic = italic
     }
 
+    /// Creates a font by name — Apple's failable `init?(name:size:)`. The
+    /// composed backend resolves faces lazily, so unknown names fall back at
+    /// render time rather than returning `nil` here.
+    public init?(name fontName: String, size pointSize: CGFloat) {
+        self.init(name: fontName, size: pointSize, weight: .regular)
+    }
+
     /// Creates the default system font.
     public static func systemFont(ofSize fontSize: CGFloat) -> NSFont {
-        NSFont(name: "Segoe UI", size: fontSize)
+        NSFont(name: "Segoe UI", size: fontSize, weight: .regular)
     }
 
     /// Creates the default bold system font.
@@ -145,7 +154,7 @@ public struct NSFont: Equatable, Sendable {
     }
 
     /// Creates a font from a descriptor, using a size override when nonzero.
-    public init(descriptor: NSFontDescriptor, size: CGFloat) {
+    public init?(descriptor: NSFontDescriptor, size: CGFloat) {
         let resolvedSize = size > 0 ? size : descriptor.pointSize
         self.init(
             name: descriptor.fontName,
@@ -189,7 +198,7 @@ public struct NSFontDescriptor: Equatable, Sendable {
     /// The descriptor's symbolic traits.
     public let symbolicTraits: SymbolicTraits
 
-    /// Creates a font descriptor.
+
     public init(name fontName: String, size pointSize: CGFloat, symbolicTraits: SymbolicTraits = []) {
         self.fontName = fontName
         self.pointSize = pointSize

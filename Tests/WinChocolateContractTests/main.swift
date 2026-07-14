@@ -2615,7 +2615,7 @@ func testBrowserLoadsColumnsAndTracksSelection() {
     var actionCount = 0
 
     browser.delegate = delegate
-    browser.columnWidth = 150
+    browser.defaultColumnWidth = 150
     browser.onAction = { control in
         expect(control === browser, "Browser action sender was not browser.")
         actionCount += 1
@@ -2724,7 +2724,7 @@ func testBrowserDrawsBranchIndicatorOnNonLeafRows() {
     let browser = NSBrowser(frame: NSMakeRect(0, 0, 320, 120))
     let delegate = LeafBranchBrowserDelegate()
     browser.delegate = delegate
-    browser.columnWidth = 150
+    browser.defaultColumnWidth = 150
     browser.loadColumnZero()
     _ = browser.realizeNativePeer(in: backend, parent: nil)
 
@@ -2773,7 +2773,7 @@ func testBrowserDrawsDelegateCellImage() {
     let browser = NSBrowser(frame: NSMakeRect(0, 0, 320, 120))
     let delegate = ImageBrowserDelegate()
     browser.delegate = delegate
-    browser.columnWidth = 150
+    browser.defaultColumnWidth = 150
     browser.loadColumnZero()
     _ = browser.realizeNativePeer(in: backend, parent: nil)
 
@@ -3006,7 +3006,7 @@ final class HeaderCollectionDataSource: NSObject, NSCollectionViewDataSource {
         return item
     }
     var footerViews: [Int: NSView] = [:]
-    func collectionView(_ collectionView: NSCollectionView, viewForSupplementaryElementOfKind kind: String, at indexPath: IndexPath) -> NSView? {
+    func collectionView(_ collectionView: NSCollectionView, viewForSupplementaryElementOfKind kind: String, at indexPath: IndexPath) -> NSView {
         if kind == NSCollectionView.elementKindSectionHeader {
             let header = NSTextField(string: "Section \(indexPath.section)", frame: .zero)
             headerViews[indexPath.section] = header
@@ -3017,7 +3017,7 @@ final class HeaderCollectionDataSource: NSObject, NSCollectionViewDataSource {
             footerViews[indexPath.section] = footer
             return footer
         }
-        return nil
+        return NSView()
     }
 }
 
@@ -3032,7 +3032,7 @@ final class CountingSupplementaryDataSource: NSObject, NSCollectionViewDataSourc
         item.view = NSView(frame: NSMakeRect(0, 0, 100, 20))
         return item
     }
-    func collectionView(_ collectionView: NSCollectionView, viewForSupplementaryElementOfKind kind: String, at indexPath: IndexPath) -> NSView? {
+    func collectionView(_ collectionView: NSCollectionView, viewForSupplementaryElementOfKind kind: String, at indexPath: IndexPath) -> NSView {
         vendCount += 1
         return NSTextField(string: "\(kind)-\(indexPath.section)", frame: .zero)
     }
@@ -7777,7 +7777,7 @@ func testAppearanceSwitchNotificationReresolvesCachedBackgrounds() {
 func testFontValuesClampSizeAndSyncToBackend() {
     let backend = InMemoryNativeControlBackend()
     let textField = NSTextField(string: "Font", frame: NSMakeRect(0, 0, 120, 24))
-    let tinyFont = NSFont(name: "Segoe UI", size: -4)
+    let tinyFont = NSFont(name: "Segoe UI", size: -4, weight: .regular)
     let boldFont = NSFont.boldSystemFont(ofSize: 16)
 
     textField.font = boldFont
@@ -9275,29 +9275,29 @@ func testDocumentControllerTracksDocumentsRecentsAndOpen() {
     expect(!shared.documents.contains { $0 === closing }, "close() did not remove the document from the shared controller.")
 }
 
-final class ColorChangeRecordingView: NSView {
+final class ColorChangeRecordingView: NSView, NSColorChanging {
     var receivedColors: [NSColor] = []
 
     override var acceptsFirstResponder: Bool {
         true
     }
 
-    override func changeColor(_ sender: Any?) {
-        if let panel = sender as? NSColorPanel {
+    func changeColor(_ sender: NSColorPanel?) {
+        if let panel = sender {
             receivedColors.append(panel.color)
         }
     }
 }
 
-final class FontChangeRecordingView: NSView {
+final class FontChangeRecordingView: NSView, NSFontChanging {
     var receivedFonts: [NSFont] = []
 
     override var acceptsFirstResponder: Bool {
         true
     }
 
-    override func changeFont(_ sender: Any?) {
-        receivedFonts.append(NSFontManager.shared.convert(NSFont.systemFont(ofSize: 13)))
+    func changeFont(_ sender: NSFontManager?) {
+        receivedFonts.append((sender ?? NSFontManager.shared).convert(NSFont.systemFont(ofSize: 13)))
     }
 }
 
@@ -9842,7 +9842,7 @@ func testWindowSizeLimitsAndPopoverDismiss() {
 @MainActor
 func testFontTraitsWeightsAndDescriptor() {
     // Italic and the extended weight scale round-trip through NSFont.
-    let base = NSFont(name: "Georgia", size: 14)
+    let base = NSFont(name: "Georgia", size: 14, weight: .regular)
     expect(!base.italic && base.weight == .regular, "Default font carried unexpected traits.")
     expect(base.withItalic(true).italic, "withItalic did not set the italic trait.")
     expect(base.withWeight(.semibold).weight == .semibold, "withWeight did not change the weight.")
@@ -9855,7 +9855,10 @@ func testFontTraitsWeightsAndDescriptor() {
     let descriptor = NSFont(name: "Consolas", size: 12, weight: .bold, italic: true).fontDescriptor
     expect(descriptor.symbolicTraits.contains(.bold), "Descriptor dropped the bold trait.")
     expect(descriptor.symbolicTraits.contains(.italic), "Descriptor dropped the italic trait.")
-    let rebuilt = NSFont(descriptor: descriptor, size: 0)
+    guard let rebuilt = NSFont(descriptor: descriptor, size: 0) else {
+        expect(false, "NSFont(descriptor:size:) returned nil.")
+        return
+    }
     expect(rebuilt.fontName == "Consolas" && rebuilt.pointSize == 12, "Descriptor lost family or size.")
     expect(rebuilt.isBold && rebuilt.italic, "Descriptor did not rebuild the traits.")
     let plainDescriptor = NSFontDescriptor(name: "Arial", size: 10)
@@ -10115,7 +10118,7 @@ func testRichTextViewAppliesRangeFormatting() {
     expect(formats.last?.location == 5 && formats.last?.length == 4, "Color range was not recorded.")
 
     // changeFont converts the selection when one exists.
-    manager.selectedFont = NSFont(name: "Consolas", size: 12)
+    manager.selectedFont = NSFont(name: "Consolas", size: 12, weight: .regular)
     textView.selectedRange = NSMakeRange(0, 9)
     textView.changeFont(nil)
     let selectionFormat = backend.records[handle]?.textRangeFormats.last
@@ -10350,7 +10353,7 @@ func testFontPanelLiveApplyThroughFontManager() {
     documentWindow.makeKeyAndOrderFront(nil)
     documentWindow.makeFirstResponder(recorder)
 
-    let seedFont = NSFont(name: "Georgia", size: 14)
+    let seedFont = NSFont(name: "Georgia", size: 14, weight: .regular)
     manager.selectedFont = seedFont
 
     let panel = NSFontPanel(nativeBackend: backend)
@@ -13345,10 +13348,16 @@ func testTargetActionDispatchesThroughRealSelectors() {
         "terminate: should resolve to the application at the end of the chain."
     )
 
-    // Standard chain actions reach NSResponder methods by selector name —
-    // the same path the font/color panels use for changeFont:/changeColor:.
+    // Standard chain actions reach responders by selector name. As on Apple
+    // (10.14+), changeFont:/changeColor: land only on NSFontChanging/
+    // NSColorChanging adopters — a plain view refuses them and the chain walk
+    // passes it by; copy: remains a plain responder action.
     expect(
-        probeView.tryToPerform(Selector("changeFont:"), with: nil),
+        !probeView.responds(to: Selector("changeFont:")),
+        "A plain responder should not claim changeFont: (NSFontChanging adopters only)."
+    )
+    expect(
+        probeView.tryToPerform(Selector("copy:"), with: nil),
         "Standard responder actions should be performable by selector."
     )
 

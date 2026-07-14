@@ -282,7 +282,9 @@ open class NSColorPanel: NSPanel {
         let responder = (winTarget as? NSResponder)
             ?? NSApplication.shared.panelActionWindow?.firstResponder
             ?? NSApplication.shared.panelActionWindow
-        responder?.changeColor(self)
+        // Walks the chain to the first NSColorChanging adopter (Apple: changeColor:
+        // is a chain action, not an NSResponder method since 10.14).
+        responder?.tryToPerform(Selector("changeColor:"), with: self)
     }
 
     /// Relabels and rescales the component sliders when the mode changes.

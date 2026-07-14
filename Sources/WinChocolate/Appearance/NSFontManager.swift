@@ -125,6 +125,8 @@ open class NSFontManager: NSObject {
         let responder = (target as? NSResponder)
             ?? NSApplication.shared.panelActionWindow?.firstResponder
             ?? NSApplication.shared.panelActionWindow
-        responder?.changeFont(self)
+        // Walks the chain to the first NSFontChanging adopter (Apple: changeFont:
+        // is a chain action, not an NSResponder method since 10.14).
+        responder?.tryToPerform(Selector("changeFont:"), with: self)
     }
 }

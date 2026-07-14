@@ -33,7 +33,7 @@ open class NSFormCell: NSTextFieldCell {
     }
 
     /// Creates a form cell with a title.
-    public init(title: String) {
+    package init(title: String) {
         self.title = title
         super.init(textCell: "")
         self.isEditable = true
@@ -203,9 +203,9 @@ open class NSForm: NSControl {
         rows.firstIndex { $0.cell === cell } ?? -1
     }
 
-    /// Returns the form cell for a row, matching Apple's `cell(atIndex:)`
-    /// accessor shape (AppKit's deprecated `NSForm` is cell-based).
-    open func cell(atIndex index: Int) -> NSFormCell? {
+    /// Duplicate row accessor. Not API (18.7): Apple imports `cellAtIndex:`
+    /// as `cell(at:)` — package for the suite.
+    package func cell(atIndex index: Int) -> NSFormCell? {
         guard rows.indices.contains(index) else {
             return nil
         }

@@ -11,7 +11,7 @@ public protocol NSCollectionViewDataSource: NSObjectProtocol {
     func collectionView(_ collectionView: NSCollectionView, itemForRepresentedObjectAt indexPath: IndexPath) -> NSCollectionViewItem
 
     /// Returns a supplementary view (e.g. a section header) for an index path.
-    func collectionView(_ collectionView: NSCollectionView, viewForSupplementaryElementOfKind kind: String, at indexPath: IndexPath) -> NSView?
+    func collectionView(_ collectionView: NSCollectionView, viewForSupplementaryElementOfKind kind: String, at indexPath: IndexPath) -> NSView
 }
 
 public extension NSCollectionViewDataSource {
@@ -20,9 +20,10 @@ public extension NSCollectionViewDataSource {
         1
     }
 
-    /// Default: no supplementary views.
-    func collectionView(_ collectionView: NSCollectionView, viewForSupplementaryElementOfKind kind: String, at indexPath: IndexPath) -> NSView? {
-        nil
+    /// Default: an empty view (the protocol returns non-optional `NSView`,
+    /// exactly as Apple's).
+    func collectionView(_ collectionView: NSCollectionView, viewForSupplementaryElementOfKind kind: String, at indexPath: IndexPath) -> NSView {
+        NSView()
     }
 }
 

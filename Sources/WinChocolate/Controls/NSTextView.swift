@@ -14,7 +14,7 @@ extension NSTextViewDelegate {
 ///
 /// This first slice provides the common AppKit `string` surface and maps to a
 /// native multiline Windows edit control.
-open class NSTextView: NSControl {
+open class NSTextView: NSControl, NSFontChanging {
     /// Posted to the delegate when editing changes the text.
     public static let textDidChangeNotification = "NSTextDidChangeNotification"
 
@@ -105,12 +105,12 @@ open class NSTextView: NSControl {
 
     // `font` is inherited from `NSControl` (AppKit's declaration point).
 
-    /// Applies a live font panel change.
+    /// Applies a live font panel change (`NSFontChanging`, as on Apple).
     ///
     /// Rich text views convert the selected range, matching AppKit; plain
     /// views (or an empty selection) convert the whole view's font.
-    open override func changeFont(_ sender: Any?) {
-        let converted = NSFontManager.shared.convert(font ?? NSFont.systemFont(ofSize: 13))
+    open func changeFont(_ sender: NSFontManager?) {
+        let converted = (sender ?? NSFontManager.shared).convert(font ?? NSFont.systemFont(ofSize: 13))
         let selection = selectedRange
         if isRichText && selection.length > 0 {
             setFont(converted, range: selection)

@@ -198,14 +198,15 @@ final class DemoAlertHelpDelegate: NSObject, NSAlertDelegate {
     }
 }
 
-/// Applies live font-panel picks through the real `changeFont(_:)` responder
-/// action (`NSFontManager.target` receives it, as in AppKit).
-final class DemoFontChangeResponder: NSResponder {
+/// Applies live font-panel picks through the real `changeFont(_:)` chain
+/// action — `NSFontChanging`, AppKit's shape since 10.14 (`NSFontManager`'s
+/// target receives it).
+final class DemoFontChangeResponder: NSResponder, NSFontChanging {
     var handler: (@MainActor (NSFont) -> Void)?
 
-    override func changeFont(_ sender: Any?) {
+    func changeFont(_ sender: NSFontManager?) {
         nonisolated(unsafe) let stored = handler
-        nonisolated(unsafe) let font = NSFontManager.shared.convert(NSFont.systemFont(ofSize: 13))
+        nonisolated(unsafe) let font = (sender ?? NSFontManager.shared).convert(NSFont.systemFont(ofSize: 13))
         MainActor.assumeIsolated {
             stored?(font)
         }
@@ -1110,7 +1111,7 @@ final class DemoSplitDelegate: NSObject, NSSplitViewDelegate {
 let demoSplitDelegate = DemoSplitDelegate()
 
 /// Enables Edit-menu items from the notes text view's undo stacks.
-final class EditMenuController: NSMenuItemValidation {
+final class EditMenuController: NSObject, NSMenuItemValidation {
     var textView: NSTextView?
 
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
@@ -1375,7 +1376,7 @@ final class DemoFlowCollectionDataSource: NSObject, NSCollectionViewDataSource {
         return item
     }
 
-    func collectionView(_ collectionView: NSCollectionView, viewForSupplementaryElementOfKind kind: String, at indexPath: IndexPath) -> NSView? {
+    func collectionView(_ collectionView: NSCollectionView, viewForSupplementaryElementOfKind kind: String, at indexPath: IndexPath) -> NSView {
         let section = sections[indexPath.section]
         // Resolve the appearance live (not the cached launch value) so bands
         // recreated during a redraw after a system switch pick up the new look.
@@ -1400,7 +1401,9 @@ final class DemoFlowCollectionDataSource: NSObject, NSCollectionViewDataSource {
                 : NSColor(red: 0.95, green: 0.93, blue: 0.88, alpha: 1)
             return footer
         }
-        return nil
+        // Unhandled kinds return an empty view (the protocol's return is
+        // non-optional, as on Apple).
+        return NSView()
     }
 }
 
@@ -1480,7 +1483,7 @@ let matrixLabel = NSTextField(string: "Matrix:", frame: NSMakeRect(744, 240, 80,
 let matrix = NSMatrix(
     frame: NSMakeRect(824, 240, 240, 72),
     mode: .trackModeMatrix,
-    prototype: NSButtonCell(title: "Choice"),
+    prototype: NSButtonCell(textCell: "Choice"),
     numberOfRows: 2,
     numberOfColumns: 2
 )
@@ -2027,7 +2030,11 @@ func demoTableCellString(_ table: NSTableView, column: Int, row: Int) -> String?
         return nil
     }
 
-    let value = table.dataSource?.tableView(table, objectValueFor: table.tableColumns[column], row: row)
+    // Ask through the concrete demo source: the protocol requirement is
+    // @objc-optional on Apple, so a generic protocol call spells differently
+    // per platform — the concrete method is identical on both.
+    let value = (table.dataSource as? DemoTableDataSource)?
+        .tableView(table, objectValueFor: table.tableColumns[column], row: row)
     return (value as? String) ?? value.map { String(describing: $0) }
 }
 
@@ -3022,7 +3029,9 @@ selectWordButton.onAction = { _ in
     // the native peer, and Edit > Copy stages RTF alongside the string.
     if let storage = notesTextView.textStorage {
         storage.beginEditing()
-        storage.addAttribute(.font, value: NSFont(name: "Georgia", size: 14, weight: .bold, italic: true), range: selection)
+        // Bold italic via the descriptor, as on Apple (no combined NSFont init).
+        let boldItalic = NSFontDescriptor(name: "Georgia", size: 14).withSymbolicTraits([.bold, .italic])
+        storage.addAttribute(.font, value: NSFont(descriptor: boldItalic, size: 14) ?? NSFont.systemFont(ofSize: 14), range: selection)
         storage.addAttribute(.foregroundColor, value: NSColor.blue, range: selection)
         storage.addAttribute(.underlineStyle, value: NSUnderlineStyle.single.rawValue, range: selection)
         storage.endEditing()
@@ -3050,8 +3059,8 @@ form.onAction = { control in
     }
 
     updateFocusDisplay()
-    let name = form.cell(atIndex: 0)?.stringValue ?? ""
-    let status = form.cell(atIndex: 1)?.stringValue ?? ""
+    let name = (form.cell(at: 0) as? NSFormCell)?.stringValue ?? ""
+    let status = (form.cell(at: 1) as? NSFormCell)?.stringValue ?? ""
     statusLabel.stringValue = "Form: \(name) — \(status)"
 }
 
@@ -3678,7 +3687,7 @@ let printSectionLabel = showcaseSectionLabel("Printing (3.22)", NSMakeRect(400, 
 let showcasePrintSample = DemoPrintSample(frame: NSMakeRect(400, 196, 320, 150))
 let printButton = NSButton(title: "Print Sample…", frame: NSMakeRect(400, 356, 140, 30))
 printButton.onAction = { _ in
-    let operation = NSPrintOperation.printOperation(with: showcasePrintSample)
+    let operation = NSPrintOperation(view: showcasePrintSample)
     operation.jobTitle = "WinChocolate Print Sample"
     statusLabel.stringValue = operation.run() ? "Printed sample" : "Print canceled"
 }
@@ -3831,7 +3840,7 @@ listsBrowserHint.isBordered = false
 listsBrowserHint.drawsBackground = false
 listsBrowserHint.font = NSFont.systemFont(ofSize: 11)
 browser.frame = NSMakeRect(24, 66, 520, 150)
-browser.columnWidth = 160
+browser.defaultColumnWidth = 160
 browser.delegate = browserDataSource
 browser.loadColumnZero()
 // Titled columns: the first is labeled; deeper columns auto-title with the
