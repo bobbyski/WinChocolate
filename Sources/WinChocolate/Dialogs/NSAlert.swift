@@ -200,9 +200,26 @@ open class NSAlert: NSObject {
         let margin: CGFloat = 24
         let textLeft: CGFloat = 80
         // Size the panel to the measured message so long prompts never clip.
-        let messageSize = messageText.size(withAttributes: [.font: NSFont.boldSystemFont(ofSize: 13)])
+        let messageFont = NSFont.boldSystemFont(ofSize: 13)
+        let messageSize = messageText.size(withAttributes: [.font: messageFont])
         let width: CGFloat = min(640, max(420, textLeft + messageSize.width + margin + 8))
+        let textWidth = width - textLeft - margin
         var y: CGFloat = 20
+
+        // Height of `text` word-wrapped at `textWidth`, counting explicit
+        // newlines *and* wrapping — so multi-line message/informative text
+        // (which the plain wrapped measure alone can under-count on embedded
+        // "\n") gets a label tall enough to show every line.
+        func wrappedHeight(_ text: String, font: NSFont) -> CGFloat {
+            let lineHeight = font.pointSize + 7
+            var total: CGFloat = 0
+            for segment in text.split(separator: "\n", omittingEmptySubsequences: false) {
+                let line = segment.isEmpty ? " " : String(segment)
+                let measured = line.size(withAttributes: [.font: font], maxWidth: textWidth).height
+                total += max(measured, lineHeight)
+            }
+            return total
+        }
 
         let content = NSView(frame: NSMakeRect(0, 0, width, 200))
         content.backgroundColor = .windowBackgroundColor
@@ -210,19 +227,27 @@ open class NSAlert: NSObject {
         let iconView = AlertIconView(style: alertStyle, icon: icon, frame: NSMakeRect(24, 20, 40, 40))
         content.addSubview(iconView)
 
-        let messageLabel = NSTextField(string: messageText, frame: NSMakeRect(textLeft, y, width - textLeft - margin, 24))
+        let messageHeight = max(24, wrappedHeight(messageText, font: messageFont))
+        let messageLabel = NSTextField(string: messageText, frame: NSMakeRect(textLeft, y, textWidth, messageHeight))
         messageLabel.isBordered = false
         messageLabel.drawsBackground = false
-        messageLabel.font = NSFont.boldSystemFont(ofSize: 13)
+        messageLabel.font = messageFont
+        messageLabel.usesSingleLineMode = false
+        messageLabel.maximumNumberOfLines = 0
         content.addSubview(messageLabel)
-        y += 34
+        y += messageHeight + 10
 
         if !informativeText.isEmpty {
-            let informativeLabel = NSTextField(string: informativeText, frame: NSMakeRect(textLeft, y, width - textLeft - margin, 40))
+            let informativeFont = NSFont.systemFont(ofSize: 12)
+            let informativeHeight = wrappedHeight(informativeText, font: informativeFont)
+            let informativeLabel = NSTextField(string: informativeText, frame: NSMakeRect(textLeft, y, textWidth, informativeHeight))
             informativeLabel.isBordered = false
             informativeLabel.drawsBackground = false
+            informativeLabel.font = informativeFont
+            informativeLabel.usesSingleLineMode = false
+            informativeLabel.maximumNumberOfLines = 0
             content.addSubview(informativeLabel)
-            y += 48
+            y += informativeHeight + 12
         }
 
         if showsSuppressionButton, let suppressionButton {
