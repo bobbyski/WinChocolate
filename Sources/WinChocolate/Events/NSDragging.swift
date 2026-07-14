@@ -147,6 +147,17 @@ open class NSDraggingItem: NSObject {
 public protocol NSDraggingSource: AnyObject {
     /// The operations the source permits for a dragging session.
     func draggingSession(_ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation
+
+    /// Tells the source the session ended, matching AppKit's
+    /// `draggingSession(_:endedAt:operation:)` — `operation` is `[]` when the
+    /// drag was canceled. The classic backend runs drags synchronously and
+    /// does not track the drop screen point, so `screenPoint` is `.zero`.
+    func draggingSession(_ session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation)
+}
+
+public extension NSDraggingSource {
+    /// Default: sources that don't observe the outcome need no ended hook.
+    func draggingSession(_ session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) {}
 }
 
 /// Where a dragging session's destination is.
@@ -163,7 +174,9 @@ public enum NSDraggingContext: Sendable {
 /// reports its outcome as soon as it is returned.
 open class NSDraggingSession: NSObject {
     /// Whether the content was dropped on a target (vs the drag canceling).
-    public internal(set) var winDropped = false
+    /// Not API (18.8): sources observe the outcome through AppKit's real
+    /// `draggingSession(_:endedAt:operation:)` hook.
+    package internal(set) var winDropped = false
 
     /// The rendered drag image shown under the cursor for this session, taken
     /// from the first item that supplied one (10.11). The Win32 backend feeds
@@ -303,12 +316,16 @@ extension NSView {
         }
 
         guard text != nil || !filePaths.isEmpty, let nativeHandle, let realizedBackend else {
+            source.draggingSession(session, endedAt: .zero, operation: [])
             return session
         }
         session.winDropped = realizedBackend.performDrag(
             content: NativeDropContent(text: text, filePaths: filePaths),
             from: nativeHandle
         )
+        // The classic backend runs the drag synchronously, so the session's
+        // outcome is known here — report it through AppKit's real ended hook.
+        source.draggingSession(session, endedAt: .zero, operation: session.winDropped ? .copy : [])
         return session
     }
 }

@@ -719,12 +719,17 @@ final class DemoDragHandle: NSView, NSDraggingSource {
         let item = NSDraggingItem(pasteboardWriter: draggedText)
         item.draggingFrame = bounds
         onEvent?("Drag started: \"\(draggedText)\"")
-        let session = beginDraggingSession(with: [item], event: event, source: self)
-        onEvent?(session.winDropped ? "Drag dropped on a target" : "Drag canceled")
+        _ = beginDraggingSession(with: [item], event: event, source: self)
     }
 
     func draggingSession(_ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
         .copy
+    }
+
+    // The drag outcome arrives through AppKit's real source callback; an
+    // empty operation means the drag canceled.
+    func draggingSession(_ session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) {
+        onEvent?(operation.isEmpty ? "Drag canceled" : "Drag dropped on a target")
     }
 }
 
@@ -1862,15 +1867,28 @@ func keyText(for event: NSEvent) -> String {
     return "\(code)\(name)\(printableCharacterText(for: event))\(modifierText(for: event))"
 }
 
+/// Reads a cell's display string the plain-AppKit way: ask the table's data
+/// source for the column/row object value (there is no cell-string accessor
+/// on Apple's `NSTableView`).
+@MainActor
+func demoTableCellString(_ table: NSTableView, column: Int, row: Int) -> String? {
+    guard row >= 0, table.tableColumns.indices.contains(column) else {
+        return nil
+    }
+
+    let value = table.dataSource?.tableView(table, objectValueFor: table.tableColumns[column], row: row)
+    return (value as? String) ?? value.map { String(describing: $0) }
+}
+
+@MainActor
 func tableRowSummary(_ table: NSTableView, prefix: String) -> String {
     let row = table.clickedRow
     if row >= 0,
-       let name = table.value(atColumn: 0, row: row),
-       let status = table.value(atColumn: 1, row: row) {
+       let name = demoTableCellString(table, column: 0, row: row),
+       let status = demoTableCellString(table, column: 1, row: row) {
         let column = table.clickedColumn
-        if column >= 0,
-           let tableColumn = table.tableColumn(at: column) {
-            return "\(prefix): row \(row + 1), \(tableColumn.title) - \(name) - \(status)"
+        if column >= 0, table.tableColumns.indices.contains(column) {
+            return "\(prefix): row \(row + 1), \(table.tableColumns[column].title) - \(name) - \(status)"
         }
 
         return "\(prefix): row \(row + 1) - \(name) - \(status)"
@@ -1879,33 +1897,36 @@ func tableRowSummary(_ table: NSTableView, prefix: String) -> String {
     return "\(prefix): no row"
 }
 
+@MainActor
 func tableColumnSummary(_ table: NSTableView) -> String? {
     let column = table.clickedColumn
     guard table.clickedRow < 0,
           column >= 0,
-          let tableColumn = table.tableColumn(at: column) else {
+          table.tableColumns.indices.contains(column) else {
         return nil
     }
 
-    return "Table column: \(tableColumn.title)"
+    return "Table column: \(table.tableColumns[column].title)"
 }
 
+@MainActor
 func selectedTableRowValues(_ table: NSTableView) -> [String]? {
     guard table.selectedRow >= 0 else {
         return nil
     }
 
     let values = (0..<table.numberOfColumns).map { column in
-        table.value(atColumn: column, row: table.selectedRow) ?? ""
+        demoTableCellString(table, column: column, row: table.selectedRow) ?? ""
     }
     return values.isEmpty ? nil : values
 }
 
 @discardableResult
+@MainActor
 func selectTableRow(matching values: [String], in table: NSTableView) -> Bool {
     for row in 0..<table.numberOfRows {
         let rowValues = (0..<table.numberOfColumns).map { column in
-            table.value(atColumn: column, row: row) ?? ""
+            demoTableCellString(table, column: column, row: row) ?? ""
         }
         if rowValues == values {
             table.selectRowIndexes([row], byExtendingSelection: false)
@@ -2399,9 +2420,6 @@ criticalRadio.setButtonType(.radio)
 infoRadio.state = .on
 alertStylePopup.addItems(withTitles: ["Info", "Warning", "Critical"])
 // Tag each style so the alert can read the choice by tag, not title.
-alertStylePopup.setTag(0, forItemAt: 0)
-alertStylePopup.setTag(1, forItemAt: 1)
-alertStylePopup.setTag(2, forItemAt: 2)
 alertStylePopup.selectItem(withTitle: "Info")
 let tableNameColumn = NSTableColumn(identifier: "name")
 let tableStatusColumn = NSTableColumn(identifier: "status")
@@ -3136,8 +3154,9 @@ alertButton.onAction = { _ in
     let alert = NSAlert()
     alert.messageText = "WinChocolate is running"
     alert.informativeText = "This composed NSAlert shows a help button; click ? for help."
-    // Read the style from the popup's tag rather than its title.
-    switch alertStylePopup.selectedTag() {
+    // Read the style from the popup's selection index (plain AppKit —
+    // WinChocolate's popup items are not menu-item backed, so no item tags).
+    switch alertStylePopup.indexOfSelectedItem {
     case 1:
         alert.alertStyle = .warning
     case 2:
@@ -3232,9 +3251,7 @@ scrollSelectedButton.onAction = { _ in
     updateFocusDisplay()
     let targetRow = max(0, tableView.numberOfRows - 1)
     tableView.selectRowIndexes([targetRow], byExtendingSelection: false)
-    if let nativeHandle = tableView.nativeHandle {
-        NSApp.nativeBackend.scrollTableRowToVisible(targetRow, for: nativeHandle)
-    }
+    tableView.scrollRowToVisible(targetRow)
     statusLabel.stringValue = tableRowSummary(tableView, prefix: "Scrolled to selected")
 }
 collectionView.onAction = { control in
@@ -3273,12 +3290,21 @@ tableView.onAction = { control in
         if let sortDescriptor = table.sortDescriptors.first {
             let selectedValues = selectedTableRowValues(table)
             tableDataSource.sort(using: sortDescriptor)
+            #if canImport(WinChocolate) || canImport(LinChocolate)
+            // Windows-only seam: defer the reload past the native header-click
+            // notification (reentrancy protection in the classic backend).
             NSApp.nativeBackend.dispatchAsync {
                 table.reloadData()
                 if let selectedValues {
                     suppressNextTableSelectionStatus = selectTableRow(matching: selectedValues, in: table)
                 }
             }
+            #else
+            table.reloadData()
+            if let selectedValues {
+                suppressNextTableSelectionStatus = selectTableRow(matching: selectedValues, in: table)
+            }
+            #endif
             statusLabel.stringValue = "\(columnSummary), sorted \(sortDescriptor.ascending ? "ascending" : "descending")"
         } else {
             statusLabel.stringValue = columnSummary
@@ -3798,7 +3824,15 @@ listsPage.addSubview(listsCollectionScrollView)
 // Document-architecture demo: a New Note window driven by NSDocument,
 // NSWindowController, and the shared NSDocumentController. The window title
 // gains the classic asterisk while the note has unsaved edits.
-NSDocumentController.shared.winDocumentClass = DemoNoteDocument.self
+// The plain-AppKit pattern: subclass NSDocumentController overriding
+// documentClass(forType:), and instantiate it early — the first controller
+// created becomes `shared`.
+final class DemoDocumentController: NSDocumentController {
+    override func documentClass(forType typeName: String) -> AnyClass? {
+        DemoNoteDocument.self
+    }
+}
+_ = DemoDocumentController()
 let newNoteItem = NSMenuItem(title: "New Note Document", action: nil, keyEquivalent: "n")
 newNoteItem.onAction = { _ in
     let document = NSDocumentController.shared.newDocument(nil)
@@ -4396,17 +4430,19 @@ func applyLiveAppearanceRefresh() {
     contentView.needsDisplay = true
 }
 
+// Live system theme switches: AppKit has no notification for effective-
+// appearance changes (apps use KVO, which is gated on the 12.1 reflection
+// layer), so this observer is a fenced platform seam — the chocolates post
+// their own notification after re-theming.
+#if canImport(WinChocolate) || canImport(LinChocolate)
 _ = NotificationCenter.default.addObserver(
     forName: NSApplication.winEffectiveAppearanceDidChangeNotification,
     object: nil,
     queue: nil
 ) { _ in
-    #if canImport(WinChocolate)
     applyLiveAppearanceRefresh()
-    #else
-    Task { @MainActor in applyLiveAppearanceRefresh() }
-    #endif
 }
+#endif
 
 window.contentView = contentView
 
@@ -4447,7 +4483,16 @@ pageSelector.selectItem(at: initialPage)
 showDemoPage(initialPage)
 updateFocusDisplay()
 
-if CommandLine.arguments.contains("--diagnose") {
+#if canImport(WinChocolate) || canImport(LinChocolate)
+// Windows/Linux-only build diagnostics: `--diagnose` probes the native peer
+// plumbing (backend surface, not AppKit) — a legitimate platform seam (16.2).
+let demoRunsDiagnostics = CommandLine.arguments.contains("--diagnose")
+#else
+let demoRunsDiagnostics = false
+#endif
+
+if demoRunsDiagnostics {
+    #if canImport(WinChocolate) || canImport(LinChocolate)
     // Validate native window creation without ordering the window front so
     // build scripts do not flash a full demo window on screen.
     _ = window.realizeNativePeer()
@@ -4460,6 +4505,7 @@ if CommandLine.arguments.contains("--diagnose") {
     print("Demo artwork path: \(demoArtworkPath)")
     print("Demo screen artwork path: \(demoScreenArtworkPath)")
     window.close()
+    #endif
 } else {
     statusLabel.stringValue = "Ready - window shown"
     window.makeKeyAndOrderFront(nil)
