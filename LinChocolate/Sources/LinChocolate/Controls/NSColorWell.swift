@@ -26,6 +26,10 @@ public final class NSColorWell: NSView {
     }
 
     /// Creates a color well showing `color`.
+    public required convenience init(frame: NSRect) {
+        self.init(color: .blue, frame: frame)
+    }
+
     public init(color: NSColor = .blue, frame: NSRect) {
         self.backingColor = color
         let backend = NSApplication.shared.nativeBackend

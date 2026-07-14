@@ -82,7 +82,7 @@ open class NSComboBox: NSTextField {
     }
 
     /// Creates a combo box with a frame.
-    public override init(frame frameRect: NSRect) {
+    public required init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         isEditable = true
         isSelectable = true

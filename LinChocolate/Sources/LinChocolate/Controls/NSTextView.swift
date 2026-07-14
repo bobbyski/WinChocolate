@@ -28,7 +28,7 @@ public final class NSTextView: NSView {
     }
 
     /// AppKit's frame-only initializer: an empty text view.
-    public override convenience init(frame: NSRect) {
+    public required convenience init(frame: NSRect) {
         self.init(string: "", frame: frame)
     }
 

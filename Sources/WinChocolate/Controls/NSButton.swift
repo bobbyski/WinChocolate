@@ -311,7 +311,7 @@ open class NSButton: NSControl {
     }
 
     /// Creates a button with a frame.
-    public override init(frame frameRect: NSRect) {
+    public required init(frame frameRect: NSRect) {
         self.title = ""
         super.init(frame: frameRect)
     }

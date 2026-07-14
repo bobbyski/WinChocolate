@@ -45,7 +45,7 @@ open class NSPopUpButton: NSControl {
     }
 
     /// Creates a pop-up button with a frame.
-    public override init(frame frameRect: NSRect) {
+    public required init(frame frameRect: NSRect) {
         self.titles = []
         self.indexOfSelectedItem = -1
         super.init(frame: frameRect)

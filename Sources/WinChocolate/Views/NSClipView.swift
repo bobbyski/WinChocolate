@@ -49,7 +49,7 @@ open class NSClipView: NSView {
     }
 
     /// Creates a clip view with a frame.
-    public override init(frame frameRect: NSRect) {
+    public required init(frame frameRect: NSRect) {
         self.boundsOrigin = NSZeroPoint
         super.init(frame: frameRect)
     }

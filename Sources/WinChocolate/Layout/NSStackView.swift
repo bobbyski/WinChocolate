@@ -60,7 +60,7 @@ open class NSStackView: NSView {
     open private(set) var arrangedSubviews: [NSView] = []
 
     /// Creates an empty stack view.
-    public override init(frame frameRect: NSRect) {
+    public required init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
     }
 

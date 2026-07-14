@@ -30,6 +30,10 @@ public final class NSSegmentedControl: NSView {
     public var trackingMode: Int = 0
 
     /// Creates a segmented control with one segment per label.
+    public required convenience init(frame: NSRect) {
+        self.init(labels: [], frame: frame)
+    }
+
     public init(labels: [String], frame: NSRect) {
         self.segmentLabels = labels
         let backend = NSApplication.shared.nativeBackend

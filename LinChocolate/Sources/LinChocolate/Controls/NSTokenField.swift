@@ -30,6 +30,10 @@ public final class NSTokenField: NSView {
     }
 
     /// Creates a token field with initial `tokens`.
+    public required convenience init(frame: NSRect) {
+        self.init(tokens: [], frame: frame)
+    }
+
     public init(tokens: [String] = [], frame: NSRect) {
         self.backingTokens = tokens
         let backend = NSApplication.shared.nativeBackend

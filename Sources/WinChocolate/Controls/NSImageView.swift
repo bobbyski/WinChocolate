@@ -319,7 +319,7 @@ open class NSImageView: NSControl {
     }
 
     /// Creates an image view with a frame.
-    public override init(frame frameRect: NSRect) {
+    public required init(frame frameRect: NSRect) {
         self.image = nil
         super.init(frame: frameRect)
     }

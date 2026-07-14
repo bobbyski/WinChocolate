@@ -18,6 +18,10 @@ public final class NSBox: NSView {
     }
 
     /// Creates a titled box.
+    public required convenience init(frame: NSRect) {
+        self.init(title: "", frame: frame)
+    }
+
     public init(title: String, frame: NSRect) {
         self.title = title
         let backend = NSApplication.shared.nativeBackend

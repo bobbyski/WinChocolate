@@ -93,7 +93,7 @@ open class NSScrollView: NSView {
     private static let wheelScrollLinesPerNotch: CGFloat = 3
 
     /// Creates a scroll view with a default clip view.
-    public override init(frame frameRect: NSRect) {
+    public required init(frame frameRect: NSRect) {
         self.contentView = NSClipView(frame: NSRect(origin: NSZeroPoint, size: frameRect.size))
         super.init(frame: frameRect)
         installClipViewScrollCallback()

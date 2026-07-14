@@ -78,7 +78,7 @@ public final class NSTextField: NSView {
     }
 
     /// AppKit's frame-only initializer: an empty editable field.
-    public override convenience init(frame: NSRect) {
+    public required convenience init(frame: NSRect) {
         self.init(string: "", frame: frame)
         self.isEditable = true
     }

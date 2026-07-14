@@ -33,7 +33,7 @@ public final class NSLevelIndicator: NSView {
     }
 
     /// AppKit's frame-only initializer: a `0…10` indicator at 0.
-    public override convenience init(frame: NSRect) {
+    public required convenience init(frame: NSRect) {
         self.init(value: 0, minValue: 0, maxValue: 10, frame: frame)
     }
 }

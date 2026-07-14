@@ -106,7 +106,7 @@ open class NSBox: NSView {
     }
 
     /// Creates a box with a frame.
-    public override init(frame frameRect: NSRect) {
+    public required init(frame frameRect: NSRect) {
         self.title = ""
         super.init(frame: frameRect)
     }

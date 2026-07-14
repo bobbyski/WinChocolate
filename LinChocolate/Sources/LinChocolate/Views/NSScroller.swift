@@ -22,7 +22,7 @@ public final class NSScroller: NSView {
         super.init(frame: .zero)
     }
 
-    public override init(frame: NSRect) {
+    public required init(frame: NSRect) {
         self.owner = nil
         self.isVertical = frame.height > frame.width
         super.init(frame: frame)

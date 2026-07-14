@@ -96,7 +96,7 @@ open class NSForm: NSControl {
     }
 
     /// Creates a form with a frame.
-    public override init(frame frameRect: NSRect) {
+    public required init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
     }
 

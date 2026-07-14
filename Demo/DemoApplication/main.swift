@@ -1336,6 +1336,17 @@ final class DemoBrowserDataSource: NSObject, NSBrowserDelegate {
 
         return children[String(describing: item)] == nil
     }
+
+    /// The item-based browser interface requires all four of
+    /// `numberOfChildrenOfItem`, `child:ofItem:`, `isLeafItem:` and
+    /// `objectValueForItem:`. AppKit probes for them with `respondsToSelector:`
+    /// and silently falls back to the old matrix-based interface — raising
+    /// "Illegal NSBrowser delegate" — if any one is absent. A Swift
+    /// protocol-extension default does not satisfy that probe, so this must be
+    /// implemented here rather than defaulted by the framework.
+    func browser(_ browser: NSBrowser, objectValueForItem item: Any?) -> Any? {
+        item.map { String(describing: $0) }
+    }
 }
 
 final class DemoCollectionDataSource: NSObject, NSCollectionViewDataSource {
@@ -1357,6 +1368,13 @@ final class DemoCollectionDataSource: NSObject, NSCollectionViewDataSource {
 /// A multi-section collection source (with section headers) so the flow
 /// layout's wrapping, re-tiling, and section headers are all demonstrable.
 final class DemoFlowCollectionDataSource: NSObject, NSCollectionViewDataSource {
+    /// Reuse identifiers for the section band views. AppKit requires every
+    /// supplementary view to be registered under an identifier and then vended
+    /// by `makeSupplementaryView` — returning a freshly built view raises
+    /// "was not retrieved by calling -makeSupplementaryViewOfKind:…".
+    static let headerID = NSUserInterfaceItemIdentifier("DemoSectionHeader")
+    static let footerID = NSUserInterfaceItemIdentifier("DemoSectionFooter")
+
     let sections: [(title: String, items: [String])] = [
         ("Views", ["NSView", "NSImageView", "NSTextField", "NSButton", "NSSlider", "NSStepper"]),
         ("Controls", ["NSComboBox", "NSPopUpButton", "NSDatePicker", "NSColorWell", "NSSegmentedControl", "NSLevelIndicator", "NSPathControl", "NSTokenField"]),
@@ -1380,26 +1398,34 @@ final class DemoFlowCollectionDataSource: NSObject, NSCollectionViewDataSource {
         return item
     }
 
-    func collectionView(_ collectionView: NSCollectionView, viewForSupplementaryElementOfKind kind: String, at indexPath: IndexPath) -> NSView {
+    func collectionView(_ collectionView: NSCollectionView, viewForSupplementaryElementOfKind kind: NSCollectionView.SupplementaryElementKind, at indexPath: IndexPath) -> NSView {
         let section = sections[indexPath.section]
         // Resolve the appearance live (not the cached launch value) so bands
         // recreated during a redraw after a system switch pick up the new look.
         let dark = NSApplication.shared.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
         if kind == NSCollectionView.elementKindSectionHeader {
-            let header = NSTextField(string: "  \(section.title)", frame: .zero)
+            let header = collectionView.makeSupplementaryView(
+                ofKind: kind, withIdentifier: Self.headerID, for: indexPath) as! NSTextField
+            header.stringValue = "  \(section.title)"
             header.isBordered = false
+            header.isEditable = false
             header.font = NSFont.boldSystemFont(ofSize: 12)
             // Appearance-aware band so the dynamic label color stays legible.
+            header.drawsBackground = true
             header.backgroundColor = dark
                 ? NSColor(red: 0.16, green: 0.22, blue: 0.34, alpha: 1)
                 : NSColor(red: 0.90, green: 0.93, blue: 0.98, alpha: 1)
             return header
         }
         if kind == NSCollectionView.elementKindSectionFooter {
-            let footer = NSTextField(string: "  — \(section.items.count) classes —", frame: .zero)
+            let footer = collectionView.makeSupplementaryView(
+                ofKind: kind, withIdentifier: Self.footerID, for: indexPath) as! NSTextField
+            footer.stringValue = "  — \(section.items.count) classes —"
             footer.isBordered = false
+            footer.isEditable = false
             footer.font = NSFont.boldSystemFont(ofSize: 10)
             footer.textColor = dark ? NSColor(white: 0.75, alpha: 1) : NSColor(white: 0.35, alpha: 1)
+            footer.drawsBackground = true
             footer.backgroundColor = dark
                 ? NSColor(red: 0.30, green: 0.27, blue: 0.20, alpha: 1)
                 : NSColor(red: 0.95, green: 0.93, blue: 0.88, alpha: 1)
@@ -3884,8 +3910,20 @@ listsFlowLayout.footerReferenceSize = NSMakeSize(0, 16)
 let listsCollectionScrollView = NSScrollView(frame: NSMakeRect(24, 352, 860, 168))
 listsCollectionScrollView.hasVerticalScroller = true
 let listsCollectionView = NSCollectionView(frame: NSMakeRect(0, 0, 860, 168))
-listsCollectionView.dataSource = listsFlowSource
 listsCollectionView.collectionViewLayout = listsFlowLayout
+// Register after the layout and before the data source. AppKit only accepts
+// supplementary views vended by makeSupplementaryView, which needs the class
+// registered for the kind+identifier — and assigning collectionViewLayout
+// discards existing registrations, so registering earlier silently loses them
+// and makeSupplementaryView then falls back to hunting for a nib named after
+// the identifier.
+listsCollectionView.register(NSTextField.self,
+                             forSupplementaryViewOfKind: NSCollectionView.elementKindSectionHeader,
+                             withIdentifier: DemoFlowCollectionDataSource.headerID)
+listsCollectionView.register(NSTextField.self,
+                             forSupplementaryViewOfKind: NSCollectionView.elementKindSectionFooter,
+                             withIdentifier: DemoFlowCollectionDataSource.footerID)
+listsCollectionView.dataSource = listsFlowSource
 listsCollectionScrollView.documentView = listsCollectionView
 listsCollectionView.reloadData()
 

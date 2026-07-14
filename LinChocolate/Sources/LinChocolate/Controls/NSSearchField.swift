@@ -32,7 +32,7 @@ public final class NSSearchField: NSView {
     public var placeholderString: String?
 
     /// AppKit's frame-only initializer: an empty search field.
-    public override convenience init(frame: NSRect) {
+    public required convenience init(frame: NSRect) {
         self.init(string: "", frame: frame)
     }
 

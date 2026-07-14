@@ -82,7 +82,7 @@ open class NSMatrix: NSControl {
     public private(set) var selectedColumn: Int = -1
 
     /// Creates an empty matrix.
-    public override init(frame frameRect: NSRect) {
+    public required init(frame frameRect: NSRect) {
         self.mode = .radioModeMatrix
         self.cellSize = NSMakeSize(96, 28)
         self.intercellSpacing = NSMakeSize(8, 6)

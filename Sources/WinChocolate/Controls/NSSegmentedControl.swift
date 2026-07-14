@@ -132,7 +132,7 @@ open class NSSegmentedControl: NSControl {
     // MARK: - Init
 
     /// Creates an empty segmented control.
-    public override init(frame frameRect: NSRect) {
+    public required init(frame frameRect: NSRect) {
         self.segments = []
         super.init(frame: frameRect)
     }

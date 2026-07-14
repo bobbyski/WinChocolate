@@ -22,7 +22,7 @@ open class NSSearchField: NSTextField {
     open var sendsWholeSearchString: Bool = true
 
     /// Creates a search field with a frame.
-    public override init(frame frameRect: NSRect) {
+    public required init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         isEditable = true
         isSelectable = true

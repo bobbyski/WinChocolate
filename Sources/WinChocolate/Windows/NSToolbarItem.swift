@@ -145,6 +145,13 @@ final class NSToolbarCompositeItemView: NSView {
         }
     }
 
+    /// Inherited from `NSView.init(frame:)` being `required`. A composite item
+    /// view cannot exist without the toolbar item it renders, and it is never
+    /// registered with a collection view, so the frame-only path is unsupported.
+    required init(frame frameRect: NSRect) {
+        fatalError("NSToolbarCompositeItemView requires init(item:title:imageName:…)")
+    }
+
     private var winAppearanceObserver: NSObjectProtocol?
 
     deinit {

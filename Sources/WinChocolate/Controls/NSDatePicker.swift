@@ -103,7 +103,7 @@ open class NSDatePicker: NSControl {
     }
 
     /// Creates a date picker with the current date.
-    public override init(frame frameRect: NSRect) {
+    public required init(frame frameRect: NSRect) {
         self.dateValue = Date()
         super.init(frame: frameRect)
     }

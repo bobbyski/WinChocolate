@@ -666,6 +666,13 @@ internal final class NSToolbarCustomizationTile: NSView {
         updateAppearance()
     }
 
+    /// Inherited from `NSView.init(frame:)` being `required`. A tile always has
+    /// a title, and it is never registered with a collection view, so the
+    /// frame-only path is unsupported.
+    internal required init(frame frameRect: NSRect) {
+        fatalError("NSToolbarCustomizationTile requires init(title:imageName:frame:)")
+    }
+
     internal override var acceptsFirstResponder: Bool {
         false
     }

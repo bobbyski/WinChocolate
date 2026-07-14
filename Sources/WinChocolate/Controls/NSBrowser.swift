@@ -341,7 +341,7 @@ open class NSBrowser: NSControl {
     }
 
     /// Creates a browser.
-    public override init(frame frameRect: NSRect) {
+    public required init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         reloadColumn(0)
     }

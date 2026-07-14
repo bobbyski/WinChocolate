@@ -261,7 +261,7 @@ open class NSOutlineView: NSTableView {
     open var showsDisclosureText: Bool = true
 
     /// Creates an outline view.
-    public override init(frame frameRect: NSRect) {
+    public required init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         // The adapter (also the table delegate) bridges the drawn table's
         // flat row requests to the outline's item hooks; it is interposed

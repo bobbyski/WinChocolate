@@ -275,7 +275,7 @@ open class NSTextField: NSControl {
     var winInternalTextChanged: ((NSTextField) -> Void)?
 
     /// Creates a text field with a frame.
-    public override init(frame frameRect: NSRect) {
+    public required init(frame frameRect: NSRect) {
         self.stringValue = ""
         super.init(frame: frameRect)
     }

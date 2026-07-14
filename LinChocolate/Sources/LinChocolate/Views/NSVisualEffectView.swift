@@ -38,6 +38,10 @@ public final class NSVisualEffectView: NSView {
         didSet { backend.setMaterial(material.rawValue, for: handle) }
     }
 
+    public required convenience init(frame: NSRect) {
+        self.init(frame: frame, material: .contentBackground)
+    }
+
     public init(frame: NSRect, material: Material = .contentBackground) {
         self.material = material
         super.init(frame: frame)

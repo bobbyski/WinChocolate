@@ -608,7 +608,7 @@ open class NSToolbarView: NSView {
     private var winAppearanceObserver: NSObjectProtocol?
 
     /// Creates a toolbar view.
-    public override init(frame frameRect: NSRect) {
+    public required init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         // Blend with the window chrome the way AppKit toolbars extend the
         // title bar; a bottom hairline separates the strip from content.
@@ -1274,7 +1274,7 @@ final class NSToolbarOverflowChevronView: NSView {
     /// Metallic chrome slice (see `NSToolbarCompositeItemView.metallicSlice`).
     var metallicSlice: (stripHeight: CGFloat, y: CGFloat)?
 
-    override init(frame frameRect: NSRect) {
+    required init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         toolTip = "More toolbar items"
         winBackgroundColor = nil
@@ -1309,7 +1309,7 @@ final class NSToolbarOverflowChevronView: NSView {
 /// Separator line used by composed toolbar rendering.
 open class NSToolbarSeparatorView: NSView {
     /// Creates a separator view.
-    public override init(frame frameRect: NSRect) {
+    public required init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         // The view itself is the thin vertical bar; layout centers it inside
         // a wider separator slot so whitespace frames it on either side.

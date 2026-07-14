@@ -263,6 +263,193 @@ but that is deliberately *matching a divergence*, not resolving it.)
 
 ---
 
+## N. `NSCollectionView` supplementary views must be registered + dequeued  — **runtime crash**
+
+*Found 2026-07-14 — the first divergence caught at **runtime**, not compile time.*
+
+The demo's flow-layout data source builds a supplementary view fresh and returns it:
+
+```swift
+func collectionView(_ cv: NSCollectionView, viewForSupplementaryElementOfKind kind: String,
+                    at indexPath: IndexPath) -> NSView {
+    let header = NSTextField(string: "  \(section.title)", frame: .zero)   // ← raw view
+    return header
+}
+```
+
+On real AppKit this **crashes the app on launch** (`EXC_BREAKPOINT` via
+`+[NSApplication _crashOnException:]`), with:
+
+```
+*** Assertion failure in -[_NSCollectionViewCore
+      _createPreparedSupplementaryViewForElementOfKind:atIndexPath:withLayoutAttributes:applyAttributes:]
+the view returned from -collectionView:viewForSupplementaryElementOfKind:
+  UICollectionElementKindSectionFooter atIndexPath:{length = 2, path = 0 - 0}
+  was not retrieved by calling -makeSupplementaryViewOfKind:withIdentifier:forIndexPath:
+  or is nil (<NSTextField: 0x…>)
+```
+
+Reached via `makeKeyAndOrderFront` → `_setUpFirstResponderBeforeBecomingVisible` →
+`layoutIfNeeded` → `-[NSCollectionView layout]` → supplementary creation.
+
+**Real AppKit's contract:** register a class/nib per kind, then dequeue in the data source —
+
+```swift
+cv.register(MyHeader.self, forSupplementaryViewOfKind: NSCollectionView.elementKindSectionHeader,
+            withIdentifier: NSUserInterfaceItemIdentifier("hdr"))
+…
+let v = cv.makeSupplementaryView(ofKind: kind, withIdentifier: .init("hdr"), for: indexPath)
+```
+
+**Divergence:** WinChocolate/LinChocolate accept *any* view the data source hands back (no
+registration, no reuse identity), so the demo was written to that laxer contract. WinChocolate's
+own source states it outright — `NSCollectionView.swift`:
+
+> *"The `register(_:forSupplementaryViewOfKind:withIdentifier:)` / `makeSupplementaryView(...)`
+> API is deferred to Rev 2.0"*
+
+Items already follow Apple (`register(_:forItemWithIdentifier:)` + `makeItem(withIdentifier:for:)`
+exist and pool for reuse); only the **supplementary** half was skipped. That deferral is the bug.
+
+**Measured against real AppKit** (isolated repro, layout forced):
+
+| Data source returns | Result |
+|---|---|
+| a freshly-built view (today's demo) | **crash** |
+| `register(class)` + `makeSupplementaryView` | **works** |
+| `makeSupplementaryView` with *no* prior `register` | **crash** |
+
+So Apple requires **both** halves — registration *and* dequeue.
+
+**Fix + its architectural consequence.** Implement `register(_ viewClass: AnyClass?,
+forSupplementaryViewOfKind:withIdentifier:)` and `makeSupplementaryView(ofKind:withIdentifier:for:)`
+in both frameworks (mirroring the existing `makeItem` reuse pool), and rewrite the demo's
+header/footer to register + dequeue. Note the knock-on: instantiating a registered `AnyClass`
+requires metatype construction, so **`NSView.init(frame:)` must become `required`** in both
+frameworks —
+
+```
+error: constructing an object of class type 'V' with a metatype value must use a 'required' initializer
+```
+
+### Status: **RESOLVED 2026-07-14**
+
+Implemented in both frameworks + the demo. The demo now launches and runs on real AppKit.
+
+**The `required` modifier is an implementation necessity, not an API divergence.** Apple's NSView
+is *not* `required` in Swift terms — AppKit instantiates registered classes through the Objective-C
+runtime (`[[cls alloc] initWithFrame:]`), which has no such rule. Pure Swift has no equivalent
+escape hatch, so the modifier is forced on us by the platform. Crucially it constrains *subclasses
+inside the frameworks*, not callers, and it **does not leak into the shared demo**: of the demo's 12
+`NSView` subclasses, 11 declare no initializer and one (`DemoFilledView`) declares only a
+*convenience* init — none of which blocks initializer inheritance. (Verified: this matters, because
+`required init(frame:)` and `required override init(frame:)` are mutually exclusive between AppKit
+and Lin/Win, so a demo subclass with a designated init *would* have needed an `#if` — i.e. a shim.)
+
+**Measured cascade** (compiler-enumerated, not estimated — both smaller and far more mechanical
+than the "~33 / ~35" first guessed):
+
+| | Classes needing `required init(frame:)` | Shape of the fix |
+|---|---|---|
+| LinChocolate | **27** | 18 were `override`→`required` (one word); 9 needed a new init |
+| WinChocolate | **37** | 33 were `override`→`required` (one word); 4 needed a new init |
+
+The 4 in WinChocolate (`AlertIconView`, `ColorSwatchView`, `NSToolbarCompositeItemView`,
+`NSToolbarCustomizationTile`) are internal helpers that cannot exist without collaborators and are
+never registered, so their `required init(frame:)` is `fatalError` — the same idiom as the
+ubiquitous `required init?(coder:) { fatalError(…) }`.
+
+### Two further divergences found while fixing this
+
+**N.1 — `elementKindSectionHeader`/`Footer` had the wrong values in WinChocolate.** Printed from
+real AppKit, the constants are `UICollectionElementKindSectionHeader` / `…Footer` (the `UI` prefix
+is not a typo — AppKit's collection view is built on the UICollectionView implementation, hence
+`UICollectionView.m` in its assertion). LinChocolate already matched; WinChocolate vended
+`NSCollectionElementKindSectionHeader`. Latent rather than live, since callers use the symbol —
+but observable, and wrong. Fixed. (`elementKindInterItemGapIndicator` *is* `NSCollection…`-prefixed.)
+
+**N.2 — assigning `collectionViewLayout` discards supplementary registrations.** Measured on real
+AppKit:
+
+| Order | Result |
+|---|---|
+| `register(…)` then set `collectionViewLayout` | **crash** — registration silently lost |
+| set `collectionViewLayout` then `register(…)` | **works** |
+
+When the registration is lost, `makeSupplementaryView` falls back to loading a **nib named after the
+identifier**, and the failure surfaces as the thoroughly misleading
+`-[NSNib _initWithNibNamed:bundle:options:] could not load the nib 'DemoSectionFooter'`. Callers
+must register *after* the layout is assigned; the demo now documents this at the call site.
+
+### Correction to a prior claim in this document
+
+An earlier revision predicted the **items** path would throw the identical assertion, since the demo
+hand-builds `NSCollectionViewItem()` in `itemForRepresentedObjectAt` rather than calling `makeItem`.
+**That is wrong.** The repro hand-built its items and survived, and the fixed demo runs on AppKit
+with the item path untouched. Apple enforces register+dequeue for **supplementary views only**;
+items may be constructed directly. Using `makeItem` remains better practice (it is what the reuse
+pool is for), but it is *not* required for correctness and is not a crash risk.
+
+---
+
+## O. `NSBrowser` delegate protocol shape  — **runtime**
+
+*Found 2026-07-14, logged at launch on real AppKit:*
+
+```
+*** Illegal NSBrowser delegate (<DemoBrowserDataSource: 0x…>).  Must implement
+    browser:willDisplayCell:atRow:column: and either browser:numberOfRowsInColumn:
+    or browser:createRowsForColumn:inMatrix:
+```
+
+### Status: **RESOLVED 2026-07-14** — and the original diagnosis above was wrong
+
+The first reading of this error (that AppKit "requires the classic matrix-based trio" and that the
+demo "implements methods AppKit has never heard of") is **incorrect**. AppKit fully supports the
+modern *item-based* `NSBrowserDelegate`, and every method `DemoBrowserDataSource` implements is a
+genuine AppKit method. The error message misleads: it names the matrix-based methods because that is
+the interface AppKit *fell back to*, not the one it wanted.
+
+**Actual cause.** The item-based interface requires **all four** of
+`browser(_:numberOfChildrenOfItem:)`, `browser(_:child:ofItem:)`, `browser(_:isLeafItem:)` and
+`browser(_:objectValueForItem:)`. AppKit probes for them with `respondsToSelector:`; if *any* is
+missing it concludes the delegate is not item-based and falls back to the matrix interface, which
+the delegate also doesn't implement — hence "Illegal NSBrowser delegate".
+
+The demo implemented only the first three. It compiled and worked on WinChocolate anyway, because
+**WinChocolate supplies `objectValueForItem` as a Swift protocol-extension default**:
+
+```swift
+public extension NSBrowserDelegate {
+    /// Default display value uses item description.
+    func browser(_ browser: NSBrowser, objectValueForItem item: Any?) -> Any? {
+        item.map { String(describing: $0) }
+    }
+}
+```
+
+**A Swift protocol-extension default is invisible to `respondsToSelector:`** — it is static dispatch,
+it adds no Objective-C method to the class. So the framework's convenience made the demo *look*
+complete while it was missing a method Apple requires, and the gap could only ever appear at runtime,
+on Apple.
+
+**Fix applied:** the demo implements `browser(_:objectValueForItem:)` itself. This is the no-shim
+rule doing exactly its job — the demo line was wrong, and the framework was hiding it.
+
+**Generalized lesson (worth auditing for):** any Swift protocol-extension default that stands in for
+a method AppKit probes via `respondsToSelector:` is a latent runtime divergence of this shape. It is
+strictly more dangerous than a compile error, because the frameworks report success. Candidates to
+audit: the remaining `NSBrowserDelegate` defaults (`isLeafItem`, `titleOfColumn`, `imageForItem`)
+and any other `public extension …Delegate` in either framework.
+
+**Still open (LinChocolate):** its `NSBrowserDelegate` declares only three methods (no
+`objectValueForItem`) and refines `AnyObject` rather than `NSObjectProtocol` (see Issue G). The demo
+now implements a fourth method LinChocolate's protocol doesn't declare — harmless (it is simply an
+extra method on the class), but LinChocolate's browser will not call it, so its display path stays
+on the older shape. Aligning it is tracked with Issue G.
+
+---
+
 ## Summary
 
 | # | Divergence | ~Errors | Fix locus |
@@ -280,6 +467,19 @@ but that is deliberately *matching a divergence*, not resolving it.)
 | H | `NSToolbar.addItem` | 16 | frameworks + demo |
 | L | `CGImage`/WinCoreGraphics surface | 16 | frameworks + demo |
 | M | Nib manual-wiring (`winInstantiate`) — missing KVC layer | ~12 | frameworks (KVC/reflection) + demo |
+| N | Collection supplementary views not registered/dequeued | **runtime crash** | ✅ **fixed** — frameworks + demo |
+| O | `NSBrowser` delegate: Swift default hid a required method | **runtime** | ✅ **fixed** — demo (LinChocolate parity open) |
+
+Note that **A–M are compile-time** divergences; **N and O only surface at runtime**, once the demo
+actually builds against AppKit. Expect more of this class as the compile errors are retired — a
+clean build is necessary but not sufficient for faithfulness.
+
+With N and O fixed, the shared demo **launches and runs against real AppKit** (`./run-mac.sh`).
+That validates the tri-target premise on the macOS leg for the first time. Both were found only by
+running, and both were invisible to every compiler — N because the frameworks accepted a view Apple
+rejects, O because a Swift protocol-extension default silently satisfied a requirement Apple probes
+for at runtime. The second pattern (**framework conveniences that mask missing methods**) is the
+more dangerous of the two and is worth a dedicated audit; see Issue O.
 
 Every row is a place WinChocolate/LinChocolate diverged from Apple. None are to be resolved with
 an AppKit shim — each is fixed by making the chocolate frameworks match AppKit exactly and, where

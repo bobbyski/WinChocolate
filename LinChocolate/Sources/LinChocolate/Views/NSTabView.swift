@@ -42,7 +42,7 @@ public final class NSTabView: NSView {
     public var onSelectionChange: ((NSTabView) -> Void)?
 
     /// Creates an empty tab view.
-    public override init(frame: NSRect) {
+    public required init(frame: NSRect) {
         let backend = NSApplication.shared.nativeBackend
         let handle = backend.createTabView(frame: frame)
         super.init(frame: frame, handle: handle, backend: backend)

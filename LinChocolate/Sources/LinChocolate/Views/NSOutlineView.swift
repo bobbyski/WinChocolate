@@ -29,7 +29,7 @@ public final class NSOutlineView: NSView {
     public var onSelectionChange: ((NSOutlineView) -> Void)?
 
     /// Creates an empty outline view.
-    public override init(frame: NSRect) {
+    public required init(frame: NSRect) {
         let backend = NSApplication.shared.nativeBackend
         let handle = backend.createOutlineView(frame: frame)
         super.init(frame: frame, handle: handle, backend: backend)

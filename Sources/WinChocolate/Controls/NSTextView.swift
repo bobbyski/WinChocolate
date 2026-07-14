@@ -233,7 +233,7 @@ open class NSTextView: NSControl, NSFontChanging {
     }
 
     /// Creates a text view with a frame.
-    public override init(frame frameRect: NSRect) {
+    public required init(frame frameRect: NSRect) {
         self.string = ""
         self.isEditable = true
         self.isSelectable = true

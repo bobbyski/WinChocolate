@@ -33,7 +33,7 @@ public final class NSComboBox: NSView {
     public var onAction: ((NSComboBox) -> Void)?
 
     /// AppKit's frame-only initializer: an empty combo box.
-    public override convenience init(frame: NSRect) {
+    public required convenience init(frame: NSRect) {
         self.init(items: [], frame: frame)
     }
 

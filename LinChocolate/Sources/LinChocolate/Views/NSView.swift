@@ -72,7 +72,13 @@ open class NSView {
     }
 
     /// Creates a plain container view (custom drawing enabled).
-    public init(frame: NSRect) {
+    ///
+    /// `required` so a view class registered with `NSCollectionView`'s
+    /// `register(_:forSupplementaryViewOfKind:withIdentifier:)` can be
+    /// instantiated from its metatype in `makeSupplementaryView` — AppKit's
+    /// contract. Every subclass declaring its own designated initializer must
+    /// therefore provide `required init(frame:)` too.
+    public required init(frame: NSRect) {
         self.frame = frame
         self.backend = NSApplication.shared.nativeBackend
         self.handle = backend.createView(frame: frame)

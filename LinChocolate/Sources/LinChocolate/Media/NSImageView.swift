@@ -25,7 +25,7 @@ public final class NSImageView: NSView {
     public var imageAlignment: ImageAlignment = .alignCenter
 
     /// Creates an empty image view.
-    public override init(frame: NSRect) {
+    public required init(frame: NSRect) {
         let backend = NSApplication.shared.nativeBackend
         let handle = backend.createImageView(frame: frame)
         super.init(frame: frame, handle: handle, backend: backend)

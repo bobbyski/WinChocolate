@@ -55,7 +55,7 @@ open class NSPathControl: NSTextField {
     }
 
     /// Creates a path control with a frame.
-    public override init(frame frameRect: NSRect) {
+    public required init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         isEditable = false
         isSelectable = true

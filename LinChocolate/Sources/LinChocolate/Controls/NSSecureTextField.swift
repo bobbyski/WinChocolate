@@ -20,6 +20,10 @@ public final class NSSecureTextField: NSView {
     public var onTextChange: ((NSSecureTextField) -> Void)?
 
     /// Creates a masked text field.
+    public required convenience init(frame: NSRect) {
+        self.init(string: "", frame: frame)
+    }
+
     public init(string: String, frame: NSRect) {
         self.backingValue = string
         let backend = NSApplication.shared.nativeBackend

@@ -43,7 +43,7 @@ public final class NSProgressIndicator: NSView {
     }
 
     /// AppKit's frame-only initializer: a `0…100` determinate bar at 0.
-    public override convenience init(frame: NSRect) {
+    public required convenience init(frame: NSRect) {
         self.init(value: 0, minValue: 0, maxValue: 100, frame: frame)
     }
 }

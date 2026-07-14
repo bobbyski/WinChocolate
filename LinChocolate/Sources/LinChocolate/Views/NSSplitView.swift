@@ -15,6 +15,10 @@ public final class NSSplitView: NSView {
     public private(set) var arrangedSubviews: [NSView] = []
 
     /// Creates an empty split view.
+    public required convenience init(frame: NSRect) {
+        self.init(vertical: true, frame: frame)
+    }
+
     public init(vertical: Bool = true, frame: NSRect) {
         self.isVertical = vertical
         let backend = NSApplication.shared.nativeBackend

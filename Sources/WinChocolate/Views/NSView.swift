@@ -606,7 +606,19 @@ open class NSView: NSResponder {
         self.init(frame: .zero)
     }
 
-    public init(frame frameRect: NSRect) {
+    /// `required` so a view class registered with `NSCollectionView`'s
+    /// `register(_:forSupplementaryViewOfKind:withIdentifier:)` can be built
+    /// from its metatype in `makeSupplementaryView`, matching the same reason
+    /// `NSCollectionViewItem.init()` is required.
+    ///
+    /// Apple's NSView does not need this: AppKit instantiates registered
+    /// classes through the Objective-C runtime (`[[cls alloc] initWithFrame:]`),
+    /// which has no Swift `required` rule. In pure Swift there is no such
+    /// escape hatch, so the modifier is an implementation necessity rather than
+    /// a divergence in the public API's shape — it constrains subclasses inside
+    /// the framework, not callers. See Issue N in
+    /// `Docs/AppKitFaithfulnessIssues.md`.
+    public required init(frame frameRect: NSRect) {
         self.frame = frameRect
         super.init()
     }

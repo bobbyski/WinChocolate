@@ -81,7 +81,7 @@ public final class NSPopUpButton: NSView {
     }
 
     /// AppKit's frame-only initializer: an empty pop-up menu button.
-    public override convenience init(frame: NSRect) {
+    public required convenience init(frame: NSRect) {
         self.init(frame: frame, pullsDown: false)
     }
 

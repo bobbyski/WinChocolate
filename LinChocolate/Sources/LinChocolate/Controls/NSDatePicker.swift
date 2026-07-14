@@ -38,6 +38,10 @@ public final class NSDatePicker: NSView {
     }
 
     /// Creates a date picker showing `date`.
+    public required convenience init(frame: NSRect) {
+        self.init(date: Date(), frame: frame)
+    }
+
     public init(date: Date = Date(), frame: NSRect) {
         self.backingDate = date
         let backend = NSApplication.shared.nativeBackend

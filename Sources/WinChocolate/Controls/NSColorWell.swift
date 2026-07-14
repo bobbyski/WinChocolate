@@ -64,7 +64,7 @@ open class NSColorWell: NSControl {
     }
 
     /// Creates a color well with a frame.
-    public override init(frame frameRect: NSRect) {
+    public required init(frame frameRect: NSRect) {
         self.color = .white
         self.isActive = false
         super.init(frame: frameRect)
@@ -177,6 +177,13 @@ final class ColorSwatchView: NSView {
         self.onPick = onPick
         super.init(frame: frame)
         winBackgroundColor = color
+    }
+
+    /// Inherited from `NSView.init(frame:)` being `required`. A swatch has no
+    /// meaning without a color and a pick handler, and it is never registered
+    /// with a collection view, so the frame-only path is unsupported.
+    required init(frame frameRect: NSRect) {
+        fatalError("ColorSwatchView requires init(color:frame:onPick:)")
     }
 
     override func draw(_ dirtyRect: NSRect) {

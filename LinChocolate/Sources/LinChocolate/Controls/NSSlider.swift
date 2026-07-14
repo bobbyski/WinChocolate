@@ -37,7 +37,7 @@ public final class NSSlider: NSView {
     }
 
     /// AppKit's frame-only initializer: a `0…100` slider at 0.
-    public override convenience init(frame: NSRect) {
+    public required convenience init(frame: NSRect) {
         self.init(value: 0, minValue: 0, maxValue: 100, frame: frame)
     }
 

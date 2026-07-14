@@ -40,7 +40,7 @@ public final class NSButton: NSView {
     }
 
     /// AppKit's frame-only initializer: an untitled push button.
-    public override convenience init(frame: NSRect) {
+    public required convenience init(frame: NSRect) {
         self.init(title: "", frame: frame)
     }
 

@@ -178,7 +178,7 @@ open class NSGridView: NSView {
     /// Cells indexed `[rowIndex][columnIndex]`.
     private var cells: [[NSGridCell]] = []
 
-    public override init(frame frameRect: NSRect) {
+    public required init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
     }
 

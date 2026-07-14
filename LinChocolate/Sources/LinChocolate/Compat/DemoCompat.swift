@@ -261,8 +261,8 @@ public extension NSView {
 public extension NSCollectionView {
     func item(at indexPath: IndexPath) -> NSCollectionViewItem? { nil }
     func item(at index: Int) -> NSCollectionViewItem? { nil }
-    static var elementKindSectionHeader: String { "UICollectionElementKindSectionHeader" }
-    static var elementKindSectionFooter: String { "UICollectionElementKindSectionFooter" }
+    // elementKindSectionHeader/Footer now live on NSCollectionView itself,
+    // alongside the register/makeSupplementaryView pipeline they belong to.
     func reloadSections(_ sections: IndexSet) { reloadData() }
     func register(_ itemClass: AnyClass?, forItemWithIdentifier identifier: String) {}
 }

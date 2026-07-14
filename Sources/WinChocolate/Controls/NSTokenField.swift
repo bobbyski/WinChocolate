@@ -57,7 +57,7 @@ open class NSTokenField: NSTextField {
     open var completionHandler: CompletionHandler?
 
     /// Creates a token field with a frame.
-    public override init(frame frameRect: NSRect) {
+    public required init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         isEditable = true
         isSelectable = true

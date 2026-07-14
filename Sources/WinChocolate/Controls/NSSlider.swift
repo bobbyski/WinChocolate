@@ -144,7 +144,7 @@ open class NSSlider: NSControl {
     }
 
     /// Creates a slider with a frame.
-    public override init(frame frameRect: NSRect) {
+    public required init(frame frameRect: NSRect) {
         self.minValue = 0
         self.maxValue = 1
         self.doubleValue = 0

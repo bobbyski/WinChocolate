@@ -34,6 +34,14 @@ public final class NSMatrix: NSView {
     /// Fired when the user selects a cell.
     public var onAction: ((NSMatrix) -> Void)?
 
+    /// Creates an empty matrix, as AppKit's `init(frame:)` does — no rows, no
+    /// columns, default tracking mode. Cells arrive via the designated
+    /// initializer below.
+    public required convenience init(frame: NSRect) {
+        self.init(frame: frame, mode: .trackModeMatrix, prototype: NSButtonCell(title: ""),
+                  numberOfRows: 0, numberOfColumns: 0)
+    }
+
     public init(frame: NSRect, mode: Mode, prototype: NSButtonCell,
                 numberOfRows: Int, numberOfColumns: Int) {
         self.mode = mode

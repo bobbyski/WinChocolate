@@ -17,7 +17,7 @@ public final class NSClipView: NSView {
         super.init(frame: .zero)
     }
 
-    public override init(frame: NSRect) {
+    public required init(frame: NSRect) {
         self.owner = nil
         super.init(frame: frame)
     }

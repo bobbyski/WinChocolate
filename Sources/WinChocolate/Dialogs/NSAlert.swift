@@ -333,6 +333,13 @@ private final class AlertIconView: NSView {
         super.init(frame: frameRect)
     }
 
+    /// Inherited from `NSView.init(frame:)` being `required`. This is a private
+    /// helper that cannot exist without a style, and it is never registered
+    /// with a collection view, so the frame-only path is unsupported.
+    required init(frame frameRect: NSRect) {
+        fatalError("AlertIconView requires init(style:icon:frame:)")
+    }
+
     override func draw(_ dirtyRect: NSRect) {
         let width = frame.size.width
         let height = frame.size.height

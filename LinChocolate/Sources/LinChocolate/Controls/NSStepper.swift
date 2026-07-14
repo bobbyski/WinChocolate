@@ -30,7 +30,7 @@ public final class NSStepper: NSView {
     }
 
     /// AppKit's frame-only initializer: a `0…100` stepper (step 1) at 0.
-    public override convenience init(frame: NSRect) {
+    public required convenience init(frame: NSRect) {
         self.init(value: 0, minValue: 0, maxValue: 100, increment: 1, frame: frame)
     }
 
