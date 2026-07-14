@@ -96,6 +96,12 @@ public final class GTKNativeControlBackend: NativeControlBackend {
             spinbutton button { padding: 0 4px; }
             checkbutton { padding: 0; }
             checkbutton check { min-height: 16px; min-width: 16px; }
+            /* Non-editable NSTextFields render as plain labels (no field chrome). */
+            entry.linchocolate-label {
+                background: none; background-color: transparent;
+                border: none; box-shadow: none; outline: none;
+                padding: 1px 2px;
+            }
             """
         let provider = gtk_css_provider_new()!
         gtk_css_provider_load_from_data(provider, css, gssize(css.utf8.count))
@@ -660,8 +666,24 @@ public final class GTKNativeControlBackend: NativeControlBackend {
     public func createTextField(text: String, frame: NSRect) -> NativeHandle {
         let e = gtk_entry_new()!
         gtk_editable_set_text(OpaquePointer(e), text)   // GtkEditable is opaque
+        // AppKit's `NSTextField(string:)` defaults to non-editable — rendered as a
+        // borderless STATIC label on Windows. Match that: start frameless and
+        // read-only; `isEditable = true` (setTextEditable) turns it into a field.
+        gtk_editable_set_editable(OpaquePointer(e), gboolean(0))
+        gtk_entry_set_has_frame(UnsafeMutablePointer<GtkEntry>(OpaquePointer(e)), gboolean(0))
+        gtk_widget_add_css_class(e, "linchocolate-label")
         gtk_widget_set_size_request(e, Int32(frame.width), Int32(frame.height))
         return allocate(e, .textField, frame: frame)
+    }
+    public func setTextEditable(_ editable: Bool, for handle: NativeHandle) {
+        guard let w = widget(handle), kinds[handle.rawValue] == .textField else { return }
+        gtk_editable_set_editable(w, gboolean(editable ? 1 : 0))
+        gtk_entry_set_has_frame(UnsafeMutablePointer<GtkEntry>(w), gboolean(editable ? 1 : 0))
+        if editable {
+            gtk_widget_remove_css_class(asWidget(w), "linchocolate-label")
+        } else {
+            gtk_widget_add_css_class(asWidget(w), "linchocolate-label")
+        }
     }
     public func createSecureTextField(text: String, frame: NSRect) -> NativeHandle {
         let e = gtk_password_entry_new()!

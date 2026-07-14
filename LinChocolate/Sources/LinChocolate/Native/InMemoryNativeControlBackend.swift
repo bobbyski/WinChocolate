@@ -72,6 +72,7 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     public private(set) var flippedViews: [UInt: Bool] = [:]
     public private(set) var sliderVerticals: [UInt: Bool] = [:]
     public private(set) var datePickerGraphical: [UInt: Bool] = [:]
+    public private(set) var textEditable: [UInt: Bool] = [:]
     public private(set) var itemsByHandle: [UInt: [String]] = [:]
     private var ranges: [UInt: (min: Double, max: Double)] = [:]
     private var radioGroups: [UInt: [UInt]] = [:]   // member -> all members in its group
@@ -569,6 +570,9 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     }
     public func setDatePickerGraphical(_ graphical: Bool, for handle: NativeHandle) {
         datePickerGraphical[handle.rawValue] = graphical
+    }
+    public func setTextEditable(_ editable: Bool, for handle: NativeHandle) {
+        textEditable[handle.rawValue] = editable
     }
     public func setButtonKind(_ kind: NativeButtonKind, title: String, for handle: NativeHandle) {
         switch kind {

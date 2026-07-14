@@ -54,6 +54,7 @@ public final class NSForm: NSView {
         let field = NSTextField(string: "",
                                 frame: NSMakeRect(titleWidth + 8, y,
                                                   max(40, frame.width - titleWidth - 8), 24))
+        field.isEditable = true   // form entries are editable input fields (framed)
         addSubview(label)
         addSubview(field)
         let cell = NSFormCell(titleLabel: label, textField: field)

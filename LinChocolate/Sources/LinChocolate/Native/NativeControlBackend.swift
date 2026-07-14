@@ -368,6 +368,9 @@ public protocol NativeControlBackend: AnyObject {
     /// Rebuilds a button as a push button, checkbox, or radio (AppKit's
     /// `setButtonType(_:)` applied to a control created as a plain button).
     func setButtonKind(_ kind: NativeButtonKind, title: String, for handle: NativeHandle)
+    /// Toggles a text field between an editable, framed field and a borderless
+    /// static label (AppKit's `isEditable`; the frame follows editability).
+    func setTextEditable(_ editable: Bool, for handle: NativeHandle)
     /// Rebuilds a pop-up button's item list (AppKit's `addItems`/`removeAllItems`)
     /// and selects `selectedIndex`.
     func setPopUpItems(_ titles: [String], selectedIndex: Int, for handle: NativeHandle)

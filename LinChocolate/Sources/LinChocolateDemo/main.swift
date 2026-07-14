@@ -432,6 +432,7 @@ appearancePage.addSubview(themeToggle)
 
 // Sample controls that visibly re-theme when the appearance flips.
 let sampleField = NSTextField(string: "Editable text re-themes", frame: NSMakeRect(24, r10.next(30), 300, 30))
+sampleField.isEditable = true
 let buttonRowY = r10.next(32)
 let sampleButton = NSButton(title: "A button", frame: NSMakeRect(24, buttonRowY, 140, 32))
 let sampleCheck = NSButton(checkboxWithTitle: "A checkbox", frame: NSMakeRect(180, buttonRowY + 4, 160, 24))
@@ -463,6 +464,7 @@ var r11 = Rows(top: pageHeight - 16)
 // Copy / paste through NSPasteboard.general.
 let copyLabel = NSTextField(labelWithString: "Clipboard:", frame: NSMakeRect(24, r11.next(24) + 2, 90, 22))
 let copyField = NSTextField(string: "Copy me", frame: NSMakeRect(120, copyLabel.frame.minY - 4, 200, 30))
+copyField.isEditable = true
 let copyButton = NSButton(title: "Copy", frame: NSMakeRect(330, copyLabel.frame.minY - 5, 80, 30))
 let pasteButton = NSButton(title: "Paste", frame: NSMakeRect(418, copyLabel.frame.minY - 5, 80, 30))
 let pasteResult = NSTextField(labelWithString: "Pasted: —", frame: NSMakeRect(120, r11.next(24), 380, 22))

@@ -29,7 +29,12 @@ public final class NSTextField: NSView {
     public var isBordered: Bool = true
     public var isBezeled: Bool = true
     public var drawsBackground: Bool = true
-    public var isEditable: Bool = true
+    /// Whether the field is editable. AppKit's default is `false` — a
+    /// non-editable field renders as a borderless static label; setting it `true`
+    /// turns it into a framed, editable field (matching Win32's STATIC vs EDIT).
+    public var isEditable: Bool = false {
+        didSet { backend.setTextEditable(isEditable, for: handle) }
+    }
     public var isSelectable: Bool = true
     public var placeholderString: String?
     public var alignment: NSTextAlignment = .natural
