@@ -17,7 +17,7 @@ This plan is the high-level project tracker. `CONTROL_PARITY.md` remains the det
 ## Dashboard
 
 ```text
-Overall Progress                           ███████████████████████░░░░░░░░░   72%  (per-item estimate)
+Overall Progress                           █████████████████████████░░░░░░░   77%  (per-item estimate)
 
 Phases in EXECUTION ORDER (phase numbers are stable identifiers, not sequence —
 resequenced 2026-07-06: the discovery-driven library phases, WinFoundation and
@@ -36,7 +36,7 @@ Phase 7 · WinFoundation Bridge             ████████████
 Phase 13 · WinCoreGraphics                 █████████████████████████  100%  ✅ Done
 Phase 10 · Focus, Accessibility, Polish    █████████████████████████  100%  ✅ Done
 Phase 11 · Cross-Platform Test Apps        ░░░░░░░░░░░░░░░░░░░░░░░░░░    0%  ⏳ Pending
-Phase 15 · NIB / XIB Support               ░░░░░░░░░░░░░░░░░░░░░░░░░░    0%  ⏳ Pending
+Phase 15 · NIB / XIB Support               █████████████████████████  100%  ✅ Done (15.6 storyboards deferred)
 Phase 16 · macOS Cross-Check Harness       ██░░░░░░░░░░░░░░░░░░░░░░░    8%  🔄 In Progress
 Phase 14 · External API Requests           (rolling intake)   🔄 Standing (tracked separately, not in Overall)
 ```
@@ -64,6 +64,10 @@ Each phase is a milestone, and work always drives toward completing the **curren
 | 1 | Demo and controls | Keep moving through the next control surface. | 🔄 In Progress | Latest surface: rich text attributes closed out 3.11 (rich-edit peer, per-range font/color, selection-scoped `changeFont`). The milestone now includes the newly enumerated AppKit surfaces 3.16-3.24. Latest surface: a common-control depth pass on 3.1/3.2 (slider ticks/vertical, text alignment, combo visible-items, button key equivalents, segmented keyboard, level-indicator thresholds, popover dismiss, window size limits — both to ~88%). **Phase 3 is complete (2026-07-04)** — every item ✅. Next milestone candidates: Phase 4 demo coverage for the new surfaces, Phase 5 tables/lists (5.8 row drag now unblocked by 3.18), Phase 6 toolbar, or Phase 7 WinFoundation depth (7.7 `UserDefaults` unblocks several noted boundaries). Symbol images and Cocoa bindings are Rev 2.0 issues (Phase 12). |
 | 2 | Contracts | Add focused tests whenever a framework behavior becomes real, especially for controls that demos depend on. | 🔄 In Progress | Recent examples: save/open panels, toolbar customization, resize propagation. |
 | 3 | Documentation | Keep `CONTROL_PARITY.md` and this plan synchronized when a surface moves from placeholder to working. | 🔄 In Progress | Update item estimates after meaningful feature batches and recompute phase percentages. |
+
+**Rev 2 / roadmap planning docs (2026-07-14):**
+- [`Win32ModernizationAudit.md`](Win32ModernizationAudit.md) — every legacy Win32 API we use where a modern alternative exists (GDI/GDI+→Direct2D/DirectWrite/WIC, WS_EX_COMPOSITED→DirectComposition, ComDlg32→IFileDialog, undocumented dark ordinals→durable dark), with effort + payoff. Seeds a likely **modernization phase (Phase 17)**.
+- [`AppleFrameworkGap.md`](AppleFrameworkGap.md) — Apple frameworks not yet implemented (SwiftUI, Metal, CoreText, CoreAudio/AVFoundation, CoreAnimation, CoreData, WebKit, URLSession…), with port-complexity estimates and Windows-substrate strategy (Metal→D3D12, CoreText→DirectWrite, CoreAnimation→DirectComposition, WebKit→WebView2 as *translation layers*). For marketing (honest "what's not available") + Rev 2 sequencing.
 
 ---
 
@@ -466,7 +470,7 @@ Work explicitly deferred past the 1.0 push (Phases 1-11). These are real, tracke
 
 ---
 
-## Phase 15 — NIB / XIB Support ⏳ 0%
+## Phase 15 — NIB / XIB Support ✅ Done (100%)
 
 *(Added 2026-07-11 at user direction. This **reverses the earlier "nib loading is out of scope" stance** noted in 12.1 — bindings stay deferred, but nib/xib loading is now in scope as its own phase.)* Load Interface Builder documents so nib-based AppKit apps run without hand-writing their UI. This is a **subsystem, not a name gap**, and it lands on top of the control set (Phases 3/5/6, done), Auto Layout (Phase 9 — xibs embed constraints), and menus/windows.
 
@@ -476,11 +480,11 @@ Work explicitly deferred past the 1.0 push (Phases 1-11). These are real, tracke
 
 | # | Item | Status | Notes |
 |---|---|---|---|
-| 15.1 | `NSNib` + `.xib` parser | ⏳ Pending | `NSNib(nibNamed:bundle:)` / `NSNib(data:bundle:)`, `instantiate(withOwner:topLevelObjects:)`, and `Bundle.loadNibNamed(_:owner:topLevelObjects:)`. Parse the `.xib` XML (objects, `customClass`, frames, subview trees, `runtimeAttributes`) into an object graph, instantiating the mapped WinChocolate classes. |
-| 15.2 | Object-graph instantiation | ⏳ Pending | Map IB classes → WinChocolate (`NSWindow`/`NSView`/`NSButton`/`NSTextField`/…), set stored properties present in the xib (title, frame, state, font, colors, autoresizing), build the subview hierarchy, and resolve **File's Owner** + placeholder objects. |
-| 15.3 | Constraint decoding | ⏳ Pending | Translate the xib's `<constraint>` elements into `NSLayoutConstraint`s via the Phase 9 solver (firstItem/attribute/relation/secondItem/multiplier/constant/priority). Depends on Phase 9 being far enough along (9.1 landed; 9.2+ helps). |
-| 15.4 | Outlet / action connection | ⏳ Pending | Connect `<outlet>`/`<action>` elements. **First slice:** expose identified objects for manual wiring (sidesteps the KVC gap in 12.1). **Later:** automatic `@IBOutlet`/`@IBAction` binding + `awakeFromNib()` dispatch, gated on a KVC/reflection layer. |
-| 15.5 | `NSViewController(nibName:bundle:)` + `NSWindowController` nib loading | ⏳ Pending | Controllers that load their view/window from a nib and set `view`/`window` from the top-level objects, with `viewDidLoad()`/`windowDidLoad()` dispatch. |
+| 15.1 | `NSNib` + `.xib` parser | ✅ Done | **Landed 2026-07-14.** `NSNib(nibNamed:bundle:)` (searches the bundle, `Bundle.main`, and the working directory for `<name>.xib`), `NSNib(nibData:)`, the AppKit-shaped `instantiate(withOwner:topLevelObjects:)`, and `Bundle.loadNibNamed(_:owner:topLevelObjects:)` — plus the richer `winInstantiate(withOwner:) -> WinNibInstance` carrying `objectsByID`, `view(withIdentifier:)`, and the parsed connection records. The XML layer is `WinXML`, a small dependency-free recursive-descent parser (prolog/comment/DOCTYPE skipping, quoted attributes, self-closing tags, entity + numeric-reference decoding) in the WinJSON/inflate tradition. **Boundary (by design decision #1 above):** compiled binary `.nib` keyed archives are not read — the tractable path is the stable `.xib` XML source; a keyed-unarchive reader would be its own project, added only if shipped-nib support is ever needed. |
+| 15.2 | Object-graph instantiation | ✅ Done | **Landed 2026-07-14.** Element → class mapping for the working control set (`customView`/`view`, `button` incl. check/radio types + state, `textField` incl. editability/placeholder/bezel/label detection, `slider`, `popUpButton` with menu items + selection, `comboBox`, `imageView`, `progressIndicator`, `box`, `scrollView` with document view, `window` with style mask + content subtree); frames **y-flipped from Cocoa bottom-up to WinChocolate top-down** per parent; common attributes (identifier, tag, hidden, enabled, toolTip, `translatesAutoresizingMaskIntoConstraints`, autoresizing masks **with the Cocoa min/max-Y pair flipped**); **File's Owner** (`-2`) resolves to the instantiate owner, First Responder/Application skip, and unknown `customClass` objects become `WinNibCustomObject` stand-ins carrying the class name (no reflection runtime can instantiate arbitrary user classes). Unmapped IB elements degrade to plain views of the right frame so documents keep loading; the class map grows on demand. Contract-tested (`testNibInstantiatesXibObjectGraph`, `testNibLoadsWindowsControllersAndTheDemoPanelFromDisk`) and demo-proven (the Nib page). |
+| 15.3 | Constraint decoding | ✅ Done | **Landed 2026-07-14.** `<constraint>` elements decode to real `NSLayoutConstraint`s: attribute-name mapping (leading/trailing/top/bottom/left/right/width/height/centerX/centerY/baseline/firstBaseline), relations (equal + both inequalities), constants, priorities, **ratio multipliers ("1:2") and plain multipliers**, missing-firstItem defaulting to the owning view, and registration by xib id. Decoded constraints are **activated on load** (as AppKit does), feeding the Phase 9 solver; Auto Layout attributes carry over without a coordinate flip (top/bottom are visual in both worlds). Contract-tested (`testNibDecodesConstraintsThroughTheSolverTypes`). |
+| 15.4 | Outlet / action connection | ✅ Done (first slice per design) | **Landed 2026-07-14 — the first slice this row scoped (design decision #2).** `<action>`/`<outlet>` elements parse into `WinNibConnection` records with sources and destinations resolved against the graph (File's Owner → the owner); **controls get `target`/`action` applied** from their action connections, and apps wire behavior through `view(withIdentifier:)` + the records — the demo's Nib page does exactly this. **Later slice, tracked not dropped:** automatic `@IBOutlet`/`@IBAction` binding + `awakeFromNib()` dispatch stays gated on a KVC/reflection layer — the same infrastructure gap that defers Cocoa bindings, owned by **12.1**. |
+| 15.5 | `NSViewController(nibName:bundle:)` + `NSWindowController` nib loading | ✅ Done | **Landed 2026-07-14.** `NSViewController(nibName:bundle:)` with `loadView()` (overridable, nib-backed default) and `viewDidLoad()`; `NSWindowController(windowNibName:bundle:)` adopting the nib's first top-level window with `windowDidLoad()`. Documented divergence: WinChocolate loads eagerly at init (AppKit defers to first `view`/`window` access) — the observable lifecycle (`loadView` → `viewDidLoad`) is preserved. Contract-tested against the real on-disk demo document. |
 | 15.6 | Storyboards | ⏸️ Deferred | `.storyboard` (segues, scene graph, instantiation identifiers) is a larger layer built on nib loading; out of scope until 15.1–15.5 prove out. |
 
 ---

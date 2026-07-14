@@ -36,6 +36,24 @@ open class NSWindowController: NSResponder {
         }
     }
 
+    /// Creates a controller that loads its window from a nib (Phase 15.5):
+    /// the nib's first top-level window becomes `window` and
+    /// `windowDidLoad()` runs. Loads eagerly (AppKit defers to first access);
+    /// File's Owner connections resolve against the controller.
+    public convenience init(windowNibName: NSNib.Name, bundle: Bundle? = nil) {
+        var loaded: NSWindow?
+        if let nib = NSNib(nibNamed: windowNibName, bundle: bundle),
+           let instance = nib.winInstantiate(withOwner: nil) {
+            loaded = instance.topLevelObjects.compactMap { $0 as? NSWindow }.first
+        }
+        self.init(window: loaded)
+        windowDidLoad()
+    }
+
+    /// Called after the controller's window loads from its nib, matching AppKit.
+    open func windowDidLoad() {
+    }
+
     /// Whether the controller currently has a window.
     open var isWindowLoaded: Bool {
         window != nil
