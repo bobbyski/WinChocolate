@@ -284,3 +284,22 @@ but that is deliberately *matching a divergence*, not resolving it.)
 Every row is a place WinChocolate/LinChocolate diverged from Apple. None are to be resolved with
 an AppKit shim — each is fixed by making the chocolate frameworks match AppKit exactly and, where
 the demo itself reached for a non-Apple spelling, rewriting that line against real AppKit.
+
+**Remediation is tracked as Phase 18** (`ProjectPlan.md`). The governing rule there is **SET IN STONE
+(Bobby, 2026-07-14): the Apple-native way must work, and must be *sufficient*.** WinChocolate genuinely
+implements the real AppKit mechanisms (target/action, real inits, delegate protocols) so unmodified
+pure-AppKit source builds **and runs**, and **no convenience is ever *required*.** Two moves close the
+rows: *CORRECT* the framework toward Apple (rename/retype to Apple's exact spelling: rows E, F, G, H, I, J),
+or *move added conveniences out of the framework* (rows A, B, C) — remove `onAction`/frame-inits/
+`NSView.backgroundColor` from WinChocolate and let the demo use the real AppKit idiom (target/action, real
+inits + `.frame`, an `NSView` subclass that draws its fill). `win*`/`native*` leaks (row D) are *hidden* and
+the demo rewritten to the Apple equivalent.
+
+**A convenience helper *is* allowed** — but only as **demo-local** code built entirely on real Apple/AppKit
+primitives (e.g. a closure `onAction` that sets the *actual* `target`/`action`), so it compiles and runs on
+real AppKit too and is never required. **Banned:** a non-Apple addition on WinChocolate's own surface that
+the demo depends on; a one-sided `#if os(macOS)` shim (why `PlatformShims.swift` was deleted); any *required*
+convenience. Test: if a helper needs anything WinChocolate-only, it's a shim and it's out. The only
+sanctioned non-coverage is *exclusion* (row L CoreGraphics, row M Nib): pages gated on Phase 13 / 12.1 are
+`#if`-fenced out and excluded from the "runs on AppKit" claim until their owning phase lands — excluded,
+never shimmed.

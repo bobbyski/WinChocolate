@@ -2,8 +2,20 @@
 // `import LinChocolate` (GTK), on Windows `import WinChocolate` (Win32), and on
 // macOS the real Apple `AppKit` (the ground truth both are faithful to). The
 // same demo is written once against Apple's API; platform-only bits are
-// `#if`-guarded. The macOS-side shims (WinChocolate conveniences like
-// `onAction` expressed over real AppKit) live in PlatformShims.swift.
+// `#if`-guarded.
+//
+// SET IN STONE (Bobby, 2026-07-14): the Apple-native way must work and be
+// sufficient — this demo must build and RUN on real Apple AppKit, and every
+// capability must be reachable through the real Apple API with no convenience
+// *required*. A convenience helper is allowed ONLY as demo-local sugar built
+// entirely on real AppKit primitives (e.g. a closure `onAction` that sets the
+// actual target/action the library dispatches through) — such a helper compiles
+// and runs on real AppKit too. BANNED: WinChocolate-only API the demo depends
+// on, and one-sided `#if os(macOS)` shims (why PlatformShims.swift was deleted).
+// Any place the demo leans on a WinChocolate invention (framework `onAction`,
+// frame-carrying inits, `NSView.backgroundColor`, `winIsDark`, …) is a bug —
+// fix by making the real Apple mechanism work and moving any sugar demo-side
+// over real primitives. See Phase 18.
 #if canImport(LinChocolate)
 import LinChocolate
 #elseif canImport(WinChocolate)
