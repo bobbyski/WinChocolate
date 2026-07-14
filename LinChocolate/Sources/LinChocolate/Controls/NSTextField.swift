@@ -77,6 +77,12 @@ public final class NSTextField: NSView {
         self.init(labelWithString: string, frame: .zero)
     }
 
+    /// AppKit's frame-only initializer: an empty editable field.
+    public override convenience init(frame: NSRect) {
+        self.init(string: "", frame: frame)
+        self.isEditable = true
+    }
+
     /// Creates a static, non-editable label.
     public init(labelWithString string: String, frame: NSRect) {
         self.backingValue = string

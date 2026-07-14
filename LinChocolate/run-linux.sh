@@ -85,4 +85,20 @@ echo "• XQuartz listening, access authorized, DISPLAY=${HOST_IP}:0"
 if [[ "${1:-}" == "--shell" ]]; then
     exec docker run "${run_args[@]}" bash
 fi
-exec docker run "${run_args[@]}" swift run "${1:-GTKHelloSpike}"
+
+TARGET="${1:-GTKHelloSpike}"
+shift || true          # remaining args (--page N, --dark, …) pass to the demo
+# RealDemo loads artwork + DemoNibPanel.xib via Bundle.main (the executable's
+# directory), so stage the shared demo Resources next to the built binary first.
+exec docker run "${run_args[@]}" bash -c '
+    set -e
+    swift build --product '"$TARGET"' 2>&1 | tail -1
+    if [ "'"$TARGET"'" = "RealDemo" ]; then
+        for d in .build/*/debug; do
+            [ -d "$d" ] || continue
+            mkdir -p "$d/Resources"
+            cp -f ../Demo/DemoApplication/Resources/* "$d/Resources/" 2>/dev/null || true
+        done
+    fi
+    swift run '"$TARGET"' '"$*"'
+'
