@@ -279,6 +279,7 @@ but that is deliberately *matching a divergence*, not resolving it.)
 | K | `NSFrameRect`/`NSRectFill` scope | 22 | verify / demo |
 | H | `NSToolbar.addItem` | 16 | frameworks + demo |
 | L | `CGImage`/WinCoreGraphics surface | 16 | frameworks + demo |
+| M | Nib manual-wiring (`winInstantiate`) — missing KVC layer | ~12 | frameworks (KVC/reflection) + demo |
 
 Every row is a place WinChocolate/LinChocolate diverged from Apple. None are to be resolved with
 an AppKit shim — each is fixed by making the chocolate frameworks match AppKit exactly and, where
