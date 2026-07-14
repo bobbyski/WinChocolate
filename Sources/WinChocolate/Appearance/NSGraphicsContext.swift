@@ -1,7 +1,7 @@
 /// The drawing destination active during a view's `draw(_:)` pass.
 ///
 /// AppKit installs a current graphics context before calling `NSView.draw(_:)`
-/// and drawing APIs (`NSBezierPath.fill()`, `NSColor.set()`, `NSRectFill`)
+/// and drawing APIs (`NSBezierPath.fill()`, `NSColor.set()`, `NSRect.fill()`)
 /// implicitly target it. WinChocolate preserves that shape: the framework
 /// installs a context wrapping the backend's native drawing surface, and the
 /// color state set through `NSColor` lives here.
@@ -107,22 +107,28 @@ open class NSGraphicsContext {
     }
 }
 
-/// Fills a rectangle with the current fill color.
-public func NSRectFill(_ rect: NSRect) {
-    NSBezierPath(rect: rect).fill()
-}
-
-/// Intersects the current clip region with a rectangle.
-public func NSRectClip(_ rect: NSRect) {
-    NSBezierPath(rect: rect).addClip()
-}
-
-/// Frames a rectangle with a 1-point border in the current fill color.
-public func NSFrameRect(_ rect: NSRect) {
-    guard let context = NSGraphicsContext.current else {
-        return
+// Rectangle drawing, matching AppKit's Swift overlay exactly: modern SDKs do
+// not expose the C functions (`NSRectFill`, `NSFrameRect`, `NSRectClip`) to
+// Swift — the spellings are `rect.fill()`, `rect.frame()`, and `rect.clip()`
+// (18.12 round 2).
+extension NSRect {
+    /// Fills the rectangle with the current fill color.
+    public func fill(using operation: NSCompositingOperation = .sourceOver) {
+        NSBezierPath(rect: self).fill()
     }
 
-    let path = NSBezierPath(rect: rect)
-    context.nativeContext.strokePath(path.nativeSegments, color: context.fillColor, lineWidth: 1)
+    /// Frames the rectangle with a border in the current fill color.
+    public func frame(withWidth width: CGFloat = 1.0, using operation: NSCompositingOperation = .sourceOver) {
+        guard let context = NSGraphicsContext.current else {
+            return
+        }
+
+        let path = NSBezierPath(rect: self)
+        context.nativeContext.strokePath(path.nativeSegments, color: context.fillColor, lineWidth: width)
+    }
+
+    /// Intersects the current clip region with the rectangle.
+    public func clip() {
+        NSBezierPath(rect: self).addClip()
+    }
 }

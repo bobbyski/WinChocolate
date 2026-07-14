@@ -1,6 +1,8 @@
 /// Stable identifier used by AppKit-style interface items, matching Apple's
-/// `RawRepresentable` + `ExpressibleByStringLiteral` struct exactly.
-public struct NSUserInterfaceItemIdentifier: RawRepresentable, Equatable, Hashable, Sendable, ExpressibleByStringLiteral {
+/// `RawRepresentable` struct exactly. Deliberately NOT
+/// `ExpressibleByStringLiteral` — Apple's isn't, so string literals must go
+/// through the explicit initializers, exactly as on macOS (18.12 round 2).
+public struct NSUserInterfaceItemIdentifier: RawRepresentable, Equatable, Hashable, Sendable {
     /// The raw identifier string.
     public var rawValue: String
 
@@ -12,10 +14,5 @@ public struct NSUserInterfaceItemIdentifier: RawRepresentable, Equatable, Hashab
     /// Creates an identifier from a raw string (Apple's unlabeled form).
     public init(_ rawValue: String) {
         self.rawValue = rawValue
-    }
-
-    /// Creates an identifier from a string literal.
-    public init(stringLiteral value: String) {
-        self.rawValue = value
     }
 }

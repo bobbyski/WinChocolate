@@ -453,7 +453,7 @@ extension NSTableView {
                 let clipRect = NSRect(x: winColumnX(column), y: textY,
                                       width: max(0, columnWidth - trailing), height: h)
                 NSGraphicsContext.saveGraphicsState()
-                NSRectClip(clipRect)
+                (clipRect).clip()
                 if let attributed = winAttributedValue(atColumn: column, row: row), attributed.length > 0 {
                     // A data-source `NSAttributedString`: draw with the value's
                     // own attributes (single dominant style at its start), unless

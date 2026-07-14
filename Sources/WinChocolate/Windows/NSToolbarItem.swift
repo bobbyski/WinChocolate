@@ -239,8 +239,10 @@ public protocol NSToolbarItemValidation: AnyObject {
 
 /// A toolbar item model matching AppKit naming.
 open class NSToolbarItem: NSObject {
-    /// Toolbar item identifier.
-    public struct Identifier: RawRepresentable, Hashable, Sendable, ExpressibleByStringLiteral {
+    /// Toolbar item identifier. Deliberately NOT `ExpressibleByStringLiteral`
+    /// — Apple's isn't, so string literals must go through the explicit
+    /// initializers, exactly as on macOS (18.12 round 2).
+    public struct Identifier: RawRepresentable, Hashable, Sendable {
         /// Raw identifier string.
         public let rawValue: String
 
@@ -253,11 +255,6 @@ open class NSToolbarItem: NSObject {
         /// unlabeled convenience spelling.
         public init(_ rawValue: String) {
             self.rawValue = rawValue
-        }
-
-        /// Creates an identifier from a string literal.
-        public init(stringLiteral value: String) {
-            self.rawValue = value
         }
 
         /// Space item identifier.

@@ -6,6 +6,22 @@ open class NSFormCell: NSTextFieldCell {
     /// Label shown before the editable entry.
     open var title: String
 
+    /// Lets the owning form mirror programmatic value changes into its
+    /// composed field — on Apple the cell IS the entry, so assigning
+    /// `stringValue` updates the display; the composed implementation keeps
+    /// that contract here.
+    var winInternalValueChanged: ((String) -> Void)?
+
+    open override var stringValue: String {
+        get {
+            super.stringValue
+        }
+        set {
+            super.stringValue = newValue
+            winInternalValueChanged?(newValue)
+        }
+    }
+
     /// Width reserved for the title column.
     open var titleWidth: CGFloat = 96
 
@@ -93,8 +109,19 @@ open class NSForm: NSControl {
         cell.titleWidth = titleWidth
         let label = NSTextField.label(withString: title)
         let field = NSTextField.textField(withString: cell.stringValue)
-        field.winInternalTextChanged = { [weak cell] field in
-            cell?.stringValue = field.stringValue
+        field.winInternalTextChanged = { [weak self, weak cell] field in
+            if let cell, cell.stringValue != field.stringValue {
+                cell.stringValue = field.stringValue
+            }
+            // Apple's continuous controls send their action while editing.
+            if let self, self.isContinuous {
+                self.sendAction()
+            }
+        }
+        cell.winInternalValueChanged = { [weak field] value in
+            if let field, field.stringValue != value {
+                field.stringValue = value
+            }
         }
 
         let row = Row(cell: cell, label: label, field: field)
@@ -103,6 +130,7 @@ open class NSForm: NSControl {
         addSubview(label)
         addSubview(field)
         layoutRows()
+        refreshKeyViewLoop()
         return cell
     }
 
@@ -116,6 +144,37 @@ open class NSForm: NSControl {
         row.label.removeFromSuperview()
         row.field.removeFromSuperview()
         layoutRows()
+        refreshKeyViewLoop()
+    }
+
+    /// On Apple, Tab moves through the form's entries. The composed
+    /// implementation gets the same behavior by interposing its fields into
+    /// the key loop: the public `nextKeyView` keeps Apple's semantics (returns
+    /// what was set), while the window's focus walk enters via the first
+    /// field and leaves from the last.
+    open override var nextKeyView: NSView? {
+        get {
+            super.nextKeyView
+        }
+        set {
+            super.nextKeyView = newValue
+            refreshKeyViewLoop()
+        }
+    }
+
+    override var winEffectiveNextKeyView: NSView? {
+        rows.first?.field ?? super.winEffectiveNextKeyView
+    }
+
+    override var winShouldDescendInKeyLoop: Bool {
+        false
+    }
+
+    private func refreshKeyViewLoop() {
+        for (index, row) in rows.enumerated() {
+            row.field.nextKeyView = index + 1 < rows.count ? rows[index + 1].field : super.nextKeyView
+        }
+        rows.first?.field.winPreviousKeyView = self
     }
 
     /// Returns the cell at a row.

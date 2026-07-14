@@ -111,11 +111,39 @@ open class NSView: NSResponder {
     /// The view's child views.
     public private(set) var subviews: [NSView] = []
 
-    /// The next view in the keyboard focus loop.
-    open weak var nextKeyView: NSView?
+    /// The next view in the keyboard focus loop. Setting it maintains the
+    /// reverse link, so `previousKeyView` is derived — matching AppKit, where
+    /// only `nextKeyView` is settable.
+    open weak var nextKeyView: NSView? {
+        didSet {
+            oldValue?.winPreviousKeyView = nil
+            nextKeyView?.winPreviousKeyView = self
+        }
+    }
 
-    /// The previous view in the keyboard focus loop.
-    open weak var previousKeyView: NSView?
+    /// Backing storage for the derived reverse key-loop link.
+    weak var winPreviousKeyView: NSView?
+
+    /// The link the window's focus walk follows. Composed containers
+    /// (`NSForm`, `NSMatrix`) override this to route Tab into their child
+    /// controls while `nextKeyView` keeps Apple's read-back semantics.
+    var winEffectiveNextKeyView: NSView? {
+        nextKeyView
+    }
+
+    /// Whether the focus walk may land on this view's focusable descendants
+    /// when the view itself refuses focus. Composed containers that manage
+    /// their own key loop (`NSForm`, `NSMatrix`) return `false` so the walk
+    /// passes through them instead of re-entering their children.
+    var winShouldDescendInKeyLoop: Bool {
+        true
+    }
+
+    /// The previous view in the keyboard focus loop — **get-only**, as in
+    /// AppKit (derived from the `nextKeyView` chain).
+    open var previousKeyView: NSView? {
+        winPreviousKeyView
+    }
 
     /// The nearest containing window, when this view is attached to one.
     open var window: NSWindow? {
@@ -941,7 +969,7 @@ open class NSView: NSResponder {
     /// Called during a native paint pass with `NSGraphicsContext.current`
     /// installed, after the view's `winBackgroundColor` has been painted.
     /// Subclasses override this and draw with `NSBezierPath`, `NSColor`, and
-    /// `NSRectFill`; the base implementation draws nothing.
+    /// `NSRect.fill()`; the base implementation draws nothing.
     open func draw(_ dirtyRect: NSRect) {
     }
 

@@ -471,7 +471,7 @@ open class NSBrowser: NSControl {
     private func addColumn(at index: Int) {
         let frame = NSMakeRect(CGFloat(index) * columnWidth, 0, columnWidth, self.frame.size.height)
         let column = BrowserColumn(browser: self, column: index, frame: frame)
-        let titleColumn = NSTableColumn(identifier: "browser")
+        let titleColumn = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("browser"))
         titleColumn.title = ""
         titleColumn.width = columnWidth
         column.tableView.headerView = nil

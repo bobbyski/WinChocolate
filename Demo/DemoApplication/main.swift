@@ -79,11 +79,11 @@ window.contentMinSize = NSMakeSize(900, 600)
 window.contentMaxSize = NSMakeSize(4000, 2400)
 
 final class DemoContentView: NSView {
-    var onBlankAreaMouseDown: ((NSEvent) -> Void)?
-    var onBlankAreaMouseUp: ((NSEvent) -> Void)?
-    var onMouseMoved: ((NSEvent) -> Void)?
-    var onKeyDown: ((NSEvent) -> Void)?
-    var onKeyUp: ((NSEvent) -> Void)?
+    var onBlankAreaMouseDown: (@MainActor (NSEvent) -> Void)?
+    var onBlankAreaMouseUp: (@MainActor (NSEvent) -> Void)?
+    var onMouseMoved: (@MainActor (NSEvent) -> Void)?
+    var onKeyDown: (@MainActor (NSEvent) -> Void)?
+    var onKeyUp: (@MainActor (NSEvent) -> Void)?
 
     // The demo's own fill: AppKit's NSView has no backgroundColor, so this
     // subclass draws its background itself (plain AppKit).
@@ -103,27 +103,47 @@ final class DemoContentView: NSView {
     }
 
     override func mouseDown(with event: NSEvent) {
-        onBlankAreaMouseDown?(event)
+        nonisolated(unsafe) let handler = onBlankAreaMouseDown
+        nonisolated(unsafe) let sent = event
+        MainActor.assumeIsolated {
+            handler?(sent)
+        }
         super.mouseDown(with: event)
     }
 
     override func mouseUp(with event: NSEvent) {
-        onBlankAreaMouseUp?(event)
+        nonisolated(unsafe) let handler = onBlankAreaMouseUp
+        nonisolated(unsafe) let sent = event
+        MainActor.assumeIsolated {
+            handler?(sent)
+        }
         super.mouseUp(with: event)
     }
 
     override func mouseMoved(with event: NSEvent) {
-        onMouseMoved?(event)
+        nonisolated(unsafe) let handler = onMouseMoved
+        nonisolated(unsafe) let sent = event
+        MainActor.assumeIsolated {
+            handler?(sent)
+        }
         super.mouseMoved(with: event)
     }
 
     override func keyDown(with event: NSEvent) {
-        onKeyDown?(event)
+        nonisolated(unsafe) let handler = onKeyDown
+        nonisolated(unsafe) let sent = event
+        MainActor.assumeIsolated {
+            handler?(sent)
+        }
         super.keyDown(with: event)
     }
 
     override func keyUp(with event: NSEvent) {
-        onKeyUp?(event)
+        nonisolated(unsafe) let handler = onKeyUp
+        nonisolated(unsafe) let sent = event
+        MainActor.assumeIsolated {
+            handler?(sent)
+        }
         super.keyUp(with: event)
     }
 }
@@ -136,31 +156,44 @@ final class DemoPageView: NSView {
 
 /// Adapts `NSTextFieldDelegate` begin/end editing to closures for the demo.
 final class DemoFieldDelegate: NSObject, NSTextFieldDelegate {
-    var onBegin: (() -> Void)?
-    var onEnd: (() -> Void)?
-    var onChange: ((NSTextField) -> Void)?
+    var onBegin: (@MainActor () -> Void)?
+    var onEnd: (@MainActor () -> Void)?
+    var onChange: (@MainActor (NSTextField) -> Void)?
 
     func controlTextDidBeginEditing(_ obj: NSNotification) {
-        onBegin?()
+        nonisolated(unsafe) let handler = onBegin
+        MainActor.assumeIsolated {
+            handler?()
+        }
     }
 
     func controlTextDidEndEditing(_ obj: NSNotification) {
-        onEnd?()
+        nonisolated(unsafe) let handler = onEnd
+        MainActor.assumeIsolated {
+            handler?()
+        }
     }
 
     func controlTextDidChange(_ obj: NSNotification) {
         if let field = obj.object as? NSTextField {
-            onChange?(field)
+            nonisolated(unsafe) let handler = onChange
+            nonisolated(unsafe) let sent = field
+            MainActor.assumeIsolated {
+                handler?(sent)
+            }
         }
     }
 }
 
 /// Receives the alert help-button click through the real `NSAlertDelegate`.
 final class DemoAlertHelpDelegate: NSObject, NSAlertDelegate {
-    var onHelp: (() -> Void)?
+    var onHelp: (@MainActor () -> Void)?
 
     func alertShowHelp(_ alert: NSAlert) -> Bool {
-        onHelp?()
+        nonisolated(unsafe) let handler = onHelp
+        MainActor.assumeIsolated {
+            handler?()
+        }
         return true
     }
 }
@@ -168,10 +201,14 @@ final class DemoAlertHelpDelegate: NSObject, NSAlertDelegate {
 /// Applies live font-panel picks through the real `changeFont(_:)` responder
 /// action (`NSFontManager.target` receives it, as in AppKit).
 final class DemoFontChangeResponder: NSResponder {
-    var handler: ((NSFont) -> Void)?
+    var handler: (@MainActor (NSFont) -> Void)?
 
     override func changeFont(_ sender: Any?) {
-        handler?(NSFontManager.shared.convert(NSFont.systemFont(ofSize: 13)))
+        nonisolated(unsafe) let stored = handler
+        nonisolated(unsafe) let font = NSFontManager.shared.convert(NSFont.systemFont(ofSize: 13))
+        MainActor.assumeIsolated {
+            stored?(font)
+        }
     }
 }
 
@@ -186,7 +223,7 @@ final class DemoCanvasView: NSView {
     var fillColorIndex = 0
     var strokeColorIndex = 1
     var radius: CGFloat = 36
-    var onEvent: ((String) -> Void)?
+    var onEvent: (@MainActor (String) -> Void)?
 
     override var acceptsFirstResponder: Bool {
         false
@@ -237,23 +274,39 @@ final class DemoCanvasView: NSView {
             fillColorIndex = 0
             strokeColorIndex = 1
             radius = 36
-            onEvent?("Canvas reset (double-click)")
+            nonisolated(unsafe) let handler = onEvent
+            let message = "Canvas reset (double-click)"
+            MainActor.assumeIsolated {
+                handler?(message)
+            }
         } else {
             fillColorIndex = (fillColorIndex + 1) % Self.palette.count
-            onEvent?("Canvas fill color (click)")
+            nonisolated(unsafe) let handler = onEvent
+            let message = "Canvas fill color (click)"
+            MainActor.assumeIsolated {
+                handler?(message)
+            }
         }
         needsDisplay = true
     }
 
     override func rightMouseDown(with event: NSEvent) {
         strokeColorIndex = (strokeColorIndex + 1) % Self.palette.count
-        onEvent?("Canvas stroke color (right-click)")
+        nonisolated(unsafe) let handler = onEvent
+        let message = "Canvas stroke color (right-click)"
+        MainActor.assumeIsolated {
+            handler?(message)
+        }
         needsDisplay = true
     }
 
     override func scrollWheel(with event: NSEvent) {
         radius = min(max(radius + event.scrollingDeltaY * 4, 16), 110)
-        onEvent?("Canvas radius (scroll)")
+        nonisolated(unsafe) let handler = onEvent
+        let message = "Canvas radius (scroll)"
+        MainActor.assumeIsolated {
+            handler?(message)
+        }
         needsDisplay = true
     }
 }
@@ -281,10 +334,10 @@ final class DemoShapesView: NSView {
         let dark = NSAppearance.currentDrawing().bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
         (dark ? NSColor(calibratedRed: 0.17, green: 0.17, blue: 0.18, alpha: 1)
               : NSColor.white).setFill()
-        NSRectFill(NSMakeRect(0, 0, frame.size.width, frame.size.height))
+        (NSMakeRect(0, 0, frame.size.width, frame.size.height)).fill()
         (dark ? NSColor(calibratedRed: 0.40, green: 0.40, blue: 0.42, alpha: 1)
               : NSColor(calibratedRed: 0.55, green: 0.55, blue: 0.55, alpha: 1)).setFill()
-        NSFrameRect(NSMakeRect(0, 0, frame.size.width, frame.size.height))
+        (NSMakeRect(0, 0, frame.size.width, frame.size.height)).frame()
 
         // Five-point star built from explicit line segments.
         let star = NSBezierPath()
@@ -358,10 +411,10 @@ final class DemoGradientsView: NSView {
         let dark = NSAppearance.currentDrawing().bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
         (dark ? NSColor(calibratedRed: 0.17, green: 0.17, blue: 0.18, alpha: 1)
               : NSColor.white).setFill()
-        NSRectFill(NSMakeRect(0, 0, frame.size.width, frame.size.height))
+        (NSMakeRect(0, 0, frame.size.width, frame.size.height)).fill()
         (dark ? NSColor(calibratedRed: 0.40, green: 0.40, blue: 0.42, alpha: 1)
               : NSColor(calibratedRed: 0.55, green: 0.55, blue: 0.55, alpha: 1)).setFill()
-        NSFrameRect(NSMakeRect(0, 0, frame.size.width, frame.size.height))
+        (NSMakeRect(0, 0, frame.size.width, frame.size.height)).frame()
 
         let labelAttributes: [NSAttributedString.Key: Any] = [
             .font: NSFont.systemFont(ofSize: 10),
@@ -378,7 +431,7 @@ final class DemoGradientsView: NSView {
             ending: NSColor.white
         )?.draw(in: horizontal, angle: 0)
         NSColor.gray.setFill()
-        NSFrameRect(horizontal)
+        (horizontal).frame()
 
         // Two-color vertical gradient, dark at the bottom per AppKit's angle 90.
         "angle 90".draw(at: NSMakePoint(184, 10), withAttributes: labelAttributes)
@@ -388,7 +441,7 @@ final class DemoGradientsView: NSView {
             ending: NSColor(calibratedRed: 0.66, green: 0.90, blue: 0.72, alpha: 1)
         )?.draw(in: vertical, angle: 90)
         NSColor.gray.setFill()
-        NSFrameRect(vertical)
+        (vertical).frame()
 
         // Multi-stop diagonal gradient with explicit locations.
         "multi-stop 45".draw(at: NSMakePoint(356, 10), withAttributes: labelAttributes)
@@ -399,7 +452,7 @@ final class DemoGradientsView: NSView {
             (NSColor(calibratedRed: 0.22, green: 0.60, blue: 0.35, alpha: 1), 1)
         )?.draw(in: diagonal, angle: 45)
         NSColor.gray.setFill()
-        NSFrameRect(diagonal)
+        (diagonal).frame()
 
         // Gradient filling a rounded-rect path (clips internally).
         "path fill".draw(at: NSMakePoint(528, 10), withAttributes: labelAttributes)
@@ -423,7 +476,7 @@ final class DemoGradientsView: NSView {
                 ? NSColor(calibratedRed: 0.94, green: 0.72, blue: 0.25, alpha: 1)
                 : NSColor(calibratedRed: 0.86, green: 0.29, blue: 0.25, alpha: 1)
             color.setFill()
-            NSRectFill(NSMakeRect(ovalRect.origin.x + CGFloat(band) * 19, ovalRect.origin.y, 19, sampleHeight))
+            NSMakeRect(ovalRect.origin.x + CGFloat(band) * 19, ovalRect.origin.y, 19, sampleHeight).fill()
         }
         NSGraphicsContext.restoreGraphicsState()
         NSColor(calibratedRed: 0.61, green: 0.43, blue: 0.16, alpha: 1).setStroke()
@@ -451,7 +504,7 @@ final class DemoSlowGradientView: NSView {
         let dark = NSAppearance.currentDrawing().bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
         (dark ? NSColor(calibratedRed: 0.14, green: 0.14, blue: 0.16, alpha: 1)
               : NSColor(calibratedRed: 0.96, green: 0.96, blue: 0.98, alpha: 1)).setFill()
-        NSRectFill(NSMakeRect(0, 0, frame.size.width, frame.size.height))
+        (NSMakeRect(0, 0, frame.size.width, frame.size.height)).fill()
 
         // Full-width multi-stop base gradient.
         NSGradient(colorsAndLocations:
@@ -655,7 +708,7 @@ final class DemoCoreGraphicsView: NSView {
 /// A view that highlights while the cursor hovers it, driven by a tracking
 /// area (3.21). Reports enter/exit through `onEvent`.
 final class DemoHoverView: NSView {
-    var onEvent: ((String) -> Void)?
+    var onEvent: (@MainActor (String) -> Void)?
     private var hovering = false
 
     override var acceptsFirstResponder: Bool { false }
@@ -693,20 +746,28 @@ final class DemoHoverView: NSView {
     override func mouseEntered(with event: NSEvent) {
         hovering = true
         needsDisplay = true
-        onEvent?("Hover entered (mouseEntered)")
+        nonisolated(unsafe) let handler = onEvent
+        let message = "Hover entered (mouseEntered)"
+        MainActor.assumeIsolated {
+            handler?(message)
+        }
     }
 
     override func mouseExited(with event: NSEvent) {
         hovering = false
         needsDisplay = true
-        onEvent?("Hover exited (mouseExited)")
+        nonisolated(unsafe) let handler = onEvent
+        let message = "Hover exited (mouseExited)"
+        MainActor.assumeIsolated {
+            handler?(message)
+        }
     }
 }
 
 /// A drag source (3.18): dragging out of it starts a text or file drag.
 final class DemoDragHandle: NSView, NSDraggingSource {
     var draggedText = "WinChocolate drag payload"
-    var onEvent: ((String) -> Void)?
+    var onEvent: (@MainActor (String) -> Void)?
 
     override var acceptsFirstResponder: Bool { false }
 
@@ -727,7 +788,11 @@ final class DemoDragHandle: NSView, NSDraggingSource {
     override func mouseDown(with event: NSEvent) {
         let item = NSDraggingItem(pasteboardWriter: draggedText)
         item.draggingFrame = bounds
-        onEvent?("Drag started: \"\(draggedText)\"")
+        nonisolated(unsafe) let handler = onEvent
+        let message = "Drag started: \"\(draggedText)\""
+        MainActor.assumeIsolated {
+            handler?(message)
+        }
         _ = beginDraggingSession(with: [item], event: event, source: self)
     }
 
@@ -738,14 +803,18 @@ final class DemoDragHandle: NSView, NSDraggingSource {
     // The drag outcome arrives through AppKit's real source callback; an
     // empty operation means the drag canceled.
     func draggingSession(_ session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) {
-        onEvent?(operation.isEmpty ? "Drag canceled" : "Drag dropped on a target")
+        nonisolated(unsafe) let handler = onEvent
+        let message = operation.isEmpty ? "Drag canceled" : "Drag dropped on a target"
+        MainActor.assumeIsolated {
+            handler?(message)
+        }
     }
 }
 
 /// A drop destination (3.18): accepts dropped text and files, highlighting
 /// while a drag hovers and reporting what landed.
 final class DemoDropWell: NSView {
-    var onEvent: ((String) -> Void)?
+    var onEvent: (@MainActor (String) -> Void)?
     private var accepting = false
     private var lastDrop = "Drop text or files here"
 
@@ -787,7 +856,11 @@ final class DemoDropWell: NSView {
             lastDrop = "Dropped (unknown content)"
         }
         needsDisplay = true
-        onEvent?(lastDrop)
+        nonisolated(unsafe) let handler = onEvent
+        let message = lastDrop
+        MainActor.assumeIsolated {
+            handler?(message)
+        }
         return true
     }
 }
@@ -798,9 +871,9 @@ final class DemoPrintSample: NSView {
 
     override func draw(_ dirtyRect: NSRect) {
         NSColor.white.setFill()
-        NSRectFill(bounds)
+        (bounds).fill()
         NSColor(calibratedRed: 0.55, green: 0.58, blue: 0.62, alpha: 1).setStroke()
-        NSFrameRect(bounds)
+        (bounds).frame()
 
         "WinChocolate Print Sample".draw(at: NSMakePoint(16, bounds.size.height - 34), withAttributes: [
             .font: NSFont.boldSystemFont(ofSize: 16),
@@ -843,11 +916,11 @@ final class DemoViewTableDataSource: NSObject, NSTableViewDataSource {
     }
 
     func tableView(_ tableView: NSTableView, objectValueFor tableColumn: NSTableColumn?, row: Int) -> Any? {
-        tableColumn?.identifier == "note" ? notes[row] : tasks[row]
+        tableColumn?.identifier.rawValue == "note" ? notes[row] : tasks[row]
     }
 
     func tableView(_ tableView: NSTableView, setObjectValue object: Any?, for tableColumn: NSTableColumn?, row: Int) {
-        guard tableColumn?.identifier == "note" else {
+        guard tableColumn?.identifier.rawValue == "note" else {
             return
         }
         notes[row] = object.map { String(describing: $0) } ?? ""
@@ -857,7 +930,7 @@ final class DemoViewTableDataSource: NSObject, NSTableViewDataSource {
     // (a `.move` local mask + a pasteboard writer per row + acceptDrop).
 
     /// Reported after a reorder so the page can update its status line.
-    var onReorder: ((_ movedCount: Int, _ destination: Int) -> Void)?
+    var onReorder: (@MainActor (_ movedCount: Int, _ destination: Int) -> Void)?
 
     func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> Any? {
         "\(row)"
@@ -886,7 +959,10 @@ final class DemoViewTableDataSource: NSObject, NSTableViewDataSource {
         tasks.insert(contentsOf: movedTasks, at: dest)
         notes.insert(contentsOf: movedNotes, at: dest)
         done.insert(contentsOf: movedDone, at: dest)
-        onReorder?(sortedRows.count, dest)
+        nonisolated(unsafe) let handler = onReorder
+        MainActor.assumeIsolated {
+            handler?(sortedRows.count, dest)
+        }
         return true
     }
 }
@@ -895,14 +971,14 @@ final class DemoViewTableDataSource: NSObject, NSTableViewDataSource {
 /// inside its cells — something a native list view can't do.
 final class DemoViewTableDelegate: NSObject, NSTableViewDelegate {
     let source: DemoViewTableDataSource
-    var onEvent: ((String) -> Void)?
+    var onEvent: (@MainActor (String) -> Void)?
 
     init(source: DemoViewTableDataSource) {
         self.source = source
     }
 
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
-        if tableColumn?.identifier == "task" {
+        if tableColumn?.identifier.rawValue == "task" {
             let field = NSTextField(string: source.tasks[row], frame: NSMakeRect(0, 0, 200, 22))
             field.isBordered = false
             field.drawsBackground = false
@@ -910,7 +986,7 @@ final class DemoViewTableDelegate: NSObject, NSTableViewDelegate {
         }
         // The "note" column vends no view → the drawn table paints it as text
         // and edits it in place (double-click) on this editable column.
-        if tableColumn?.identifier == "note" {
+        if tableColumn?.identifier.rawValue == "note" {
             return nil
         }
         let button = NSButton(title: source.done[row] ? "Done ✓" : "Mark done", frame: NSMakeRect(0, 0, 110, 22))
@@ -919,7 +995,11 @@ final class DemoViewTableDelegate: NSObject, NSTableViewDelegate {
                 return
             }
             self.source.done[row].toggle()
-            self.onEvent?("Row \(row) → \(self.source.done[row] ? "done" : "not done")")
+            nonisolated(unsafe) let handler = onEvent
+            let message = "Row \(row) → \(self.source.done[row] ? "done" : "not done")"
+            MainActor.assumeIsolated {
+                handler?(message)
+            }
             tableView?.reloadData()
         }
         return button
@@ -941,7 +1021,7 @@ final class DemoStatusRowDataSource: NSObject, NSTableViewDataSource {
     ]
     func numberOfRows(in tableView: NSTableView) -> Int { items.count }
     func tableView(_ tableView: NSTableView, objectValueFor tableColumn: NSTableColumn?, row: Int) -> Any? {
-        tableColumn?.identifier == "stage" ? items[row].stage : items[row].status
+        tableColumn?.identifier.rawValue == "stage" ? items[row].stage : items[row].status
     }
 }
 
@@ -951,7 +1031,7 @@ final class DemoStatusRowDelegate: NSObject, NSTableViewDelegate {
 
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
         // Hosted (transparent) labels sit above the colored row view.
-        let text = tableColumn?.identifier == "stage" ? source.items[row].stage : source.items[row].status
+        let text = tableColumn?.identifier.rawValue == "stage" ? source.items[row].stage : source.items[row].status
         let field = NSTextField(string: text, frame: NSMakeRect(0, 0, 120, 20))
         field.isBordered = false
         field.drawsBackground = false
@@ -1017,10 +1097,13 @@ final class DemoNoteDocument: NSDocument, NSTextViewDelegate {
 
 /// Reports split-view divider drags in the status label.
 final class DemoSplitDelegate: NSObject, NSSplitViewDelegate {
-    var onResize: (() -> Void)?
+    var onResize: (@MainActor () -> Void)?
 
     func splitViewDidResizeSubviews(_ notification: NSNotification) {
-        onResize?()
+        nonisolated(unsafe) let handler = onResize
+        MainActor.assumeIsolated {
+            handler?()
+        }
     }
 }
 
@@ -1185,7 +1268,7 @@ final class DemoOutlineDataSource: NSObject, NSOutlineViewDataSource {
     // (a `.move` local mask + a pasteboard writer per item + acceptDrop).
 
     /// Reported after a reorder so the page can update its status line.
-    var onReorder: ((_ movedItem: String, _ childIndex: Int) -> Void)?
+    var onReorder: (@MainActor (_ movedItem: String, _ childIndex: Int) -> Void)?
 
     func outlineView(_ outlineView: NSOutlineView, pasteboardWriterForItem item: Any) -> Any? {
         String(describing: item)
@@ -1196,7 +1279,10 @@ final class DemoOutlineDataSource: NSObject, NSOutlineViewDataSource {
             return false
         }
         moveItem(moved, under: parent, to: index)
-        onReorder?(moved, index)
+        nonisolated(unsafe) let handler = onReorder
+        MainActor.assumeIsolated {
+            handler?(moved, index)
+        }
         return true
     }
 
@@ -1495,15 +1581,15 @@ let visualEffectView = NSVisualEffectView(frame: NSMakeRect(880, 146, 200, 86))
 let visualEffectTitle = NSTextField(string: "material: sidebar", frame: NSMakeRect(12, 12, 160, 24))
 let visualEffectButton = NSButton(title: "Cycle", frame: NSMakeRect(12, 50, 80, 28))
 let demoToolbar = NSToolbar(identifier: "WinChocolateDemoToolbar")
-let openToolbarItem = NSToolbarItem(itemIdentifier: "open")
-let saveToolbarItem = NSToolbarItem(itemIdentifier: "save")
+let openToolbarItem = NSToolbarItem(itemIdentifier: NSToolbarItem.Identifier("open"))
+let saveToolbarItem = NSToolbarItem(itemIdentifier: NSToolbarItem.Identifier("save"))
 let toolbarSeparatorItem = NSToolbarItem(itemIdentifier: .separator)
 let toolbarFlexibleSpaceItem = NSToolbarItem(itemIdentifier: .flexibleSpace)
-let pageToolbarItem = NSToolbarItem(itemIdentifier: "pageSelector")
+let pageToolbarItem = NSToolbarItem(itemIdentifier: NSToolbarItem.Identifier("pageSelector"))
 let toolbarSearchField = NSSearchField(frame: NSMakeRect(0, 0, 160, 24))
-let searchToolbarItem = NSToolbarItem(itemIdentifier: "toolbarSearch")
-let toggleToolbarItem = NSToolbarItem(itemIdentifier: "toggleToolbar")
-let customizeToolbarItem = NSToolbarItem(itemIdentifier: "customizeToolbar")
+let searchToolbarItem = NSToolbarItem(itemIdentifier: NSToolbarItem.Identifier("toolbarSearch"))
+let toggleToolbarItem = NSToolbarItem(itemIdentifier: NSToolbarItem.Identifier("toggleToolbar"))
+let customizeToolbarItem = NSToolbarItem(itemIdentifier: NSToolbarItem.Identifier("customizeToolbar"))
 let contentFocusColor = NSColor(calibratedRed: 0.92, green: 0.97, blue: 1.0, alpha: 1.0)
 let normalContentColor = NSColor.windowBackgroundColor
 // The focus tint and resting field face follow the appearance so the focus
@@ -2006,7 +2092,6 @@ func selectTableRow(matching values: [String], in table: NSTableView) -> Bool {
 @MainActor
 func configureToolbarKeyLoop() {
     popoverButton.nextKeyView = editableTextField
-    editableTextField.previousKeyView = popoverButton
 }
 
 @MainActor
@@ -2066,23 +2151,13 @@ func focusName() -> String {
     if responder === tokenField {
         return "token field"
     }
-    if responder === form.textField(at: 0) {
-        return "form name"
+    // NSForm and NSMatrix are cell-based on Apple — focus inside them is
+    // identified by containment, not by child-view identity.
+    if let view = responder as? NSView, view.isDescendant(of: form) {
+        return "form"
     }
-    if responder === form.textField(at: 1) {
-        return "form status"
-    }
-    if responder === matrix.button(atRow: 0, column: 0) {
-        return "matrix 1,1"
-    }
-    if responder === matrix.button(atRow: 0, column: 1) {
-        return "matrix 1,2"
-    }
-    if responder === matrix.button(atRow: 1, column: 0) {
-        return "matrix 2,1"
-    }
-    if responder === matrix.button(atRow: 1, column: 1) {
-        return "matrix 2,2"
+    if let view = responder as? NSView, view.isDescendant(of: matrix) {
+        return "matrix"
     }
     if responder === slider {
         return "slider"
@@ -2313,8 +2388,6 @@ let formNameCell = form.addEntry("Name:")
 let formStatusCell = form.addEntry("Status:")
 formNameCell.stringValue = "WinChocolate"
 formStatusCell.stringValue = "Native"
-form.setStringValue(formNameCell.stringValue, at: 0)
-form.setStringValue(formStatusCell.stringValue, at: 1)
 matrixLabel.font = NSFont.boldSystemFont(ofSize: 12)
 matrix.cellSize = NSMakeSize(104, 28)
 matrix.intercellSpacing = NSMakeSize(8, 8)
@@ -2375,14 +2448,14 @@ searchToolbarItem.minSize = NSMakeSize(160, 24)
 searchToolbarItem.maxSize = NSMakeSize(160, 24)
 let demoToolbarDelegate = DemoToolbarDelegate(
     allowedIdentifiers: [
-        "open",
-        "save",
-        "pageSelector",
-        "toolbarSearch",
+        NSToolbarItem.Identifier("open"),
+        NSToolbarItem.Identifier("save"),
+        NSToolbarItem.Identifier("pageSelector"),
+        NSToolbarItem.Identifier("toolbarSearch"),
         .separator,
         .flexibleSpace,
-        "toggleToolbar",
-        "customizeToolbar",
+        NSToolbarItem.Identifier("toggleToolbar"),
+        NSToolbarItem.Identifier("customizeToolbar"),
         // Standard Apple items — synthesized by the framework (6.6): the
         // delegate returns nil for these and the built-in behaviors kick in.
         .showColors,
@@ -2390,14 +2463,14 @@ let demoToolbarDelegate = DemoToolbarDelegate(
         .print
     ],
     defaultIdentifiers: [
-        "open",
-        "save",
-        "pageSelector",
-        "toolbarSearch",
+        NSToolbarItem.Identifier("open"),
+        NSToolbarItem.Identifier("save"),
+        NSToolbarItem.Identifier("pageSelector"),
+        NSToolbarItem.Identifier("toolbarSearch"),
         .separator,
         .flexibleSpace,
-        "toggleToolbar",
-        "customizeToolbar"
+        NSToolbarItem.Identifier("toggleToolbar"),
+        NSToolbarItem.Identifier("customizeToolbar")
     ],
     itemProvider: { identifier in
         switch identifier.rawValue {
@@ -2486,8 +2559,8 @@ infoRadio.state = .on
 alertStylePopup.addItems(withTitles: ["Info", "Warning", "Critical"])
 // Tag each style so the alert can read the choice by tag, not title.
 alertStylePopup.selectItem(withTitle: "Info")
-let tableNameColumn = NSTableColumn(identifier: "name")
-let tableStatusColumn = NSTableColumn(identifier: "status")
+let tableNameColumn = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("name"))
+let tableStatusColumn = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("status"))
 tableNameColumn.title = "Name"
 tableStatusColumn.title = "Status"
 tableNameColumn.width = 250
@@ -2504,8 +2577,8 @@ tableView.selectColumnIndexes([0], byExtendingSelection: false)
 tableScrollView.hasVerticalScroller = true
 tableScrollView.documentView = tableView
 outlineLabel.font = NSFont.boldSystemFont(ofSize: 12)
-let outlineNameColumn = NSTableColumn(identifier: "outlineName")
-let outlineStatusColumn = NSTableColumn(identifier: "outlineStatus")
+let outlineNameColumn = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("outlineName"))
+let outlineStatusColumn = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("outlineStatus"))
 outlineNameColumn.title = "Item"
 outlineStatusColumn.title = "Kind"
 outlineNameColumn.width = 160
@@ -2718,13 +2791,11 @@ infoRadio.nextKeyView = warningRadio
 warningRadio.nextKeyView = criticalRadio
 criticalRadio.nextKeyView = notesTextView
 notesTextView.nextKeyView = tokenField
-tokenField.nextKeyView = form.textField(at: 0)
-form.textField(at: 0)?.nextKeyView = form.textField(at: 1)
-form.textField(at: 1)?.nextKeyView = matrix.button(atRow: 0, column: 0)
-matrix.button(atRow: 0, column: 0)?.nextKeyView = matrix.button(atRow: 0, column: 1)
-matrix.button(atRow: 0, column: 1)?.nextKeyView = matrix.button(atRow: 1, column: 0)
-matrix.button(atRow: 1, column: 0)?.nextKeyView = matrix.button(atRow: 1, column: 1)
-matrix.button(atRow: 1, column: 1)?.nextKeyView = slider
+// NSForm and NSMatrix are single stops in the key loop on Apple; Tab moves
+// through their entries internally.
+tokenField.nextKeyView = form
+form.nextKeyView = matrix
+matrix.nextKeyView = slider
 slider.nextKeyView = stepper
 stepper.nextKeyView = comboBox
 comboBox.nextKeyView = searchField
@@ -2745,48 +2816,6 @@ scrollSelectedButton.nextKeyView = tableView
 tableView.nextKeyView = outlineView
 outlineView.nextKeyView = contentView
 
-contentView.previousKeyView = outlineView
-outlineView.previousKeyView = tableView
-tableView.previousKeyView = scrollSelectedButton
-scrollSelectedButton.previousKeyView = collectionView
-collectionView.previousKeyView = pathControl
-pathControl.previousKeyView = clipCornerButton
-clipCornerButton.previousKeyView = clipCenterButton
-clipCenterButton.previousKeyView = clipHomeButton
-clipHomeButton.previousKeyView = toolbarSearchField
-toolbarSearchField.previousKeyView = pageSelector
-pageSelector.previousKeyView = datePicker
-datePicker.previousKeyView = scroller
-scroller.previousKeyView = segmentedControl
-segmentedControl.previousKeyView = colorWell
-colorWell.previousKeyView = levelIndicator
-levelIndicator.previousKeyView = searchField
-searchField.previousKeyView = comboBox
-comboBox.previousKeyView = stepper
-stepper.previousKeyView = slider
-slider.previousKeyView = matrix.button(atRow: 1, column: 1)
-matrix.button(atRow: 1, column: 1)?.previousKeyView = matrix.button(atRow: 1, column: 0)
-matrix.button(atRow: 1, column: 0)?.previousKeyView = matrix.button(atRow: 0, column: 1)
-matrix.button(atRow: 0, column: 1)?.previousKeyView = matrix.button(atRow: 0, column: 0)
-matrix.button(atRow: 0, column: 0)?.previousKeyView = form.textField(at: 1)
-form.textField(at: 1)?.previousKeyView = form.textField(at: 0)
-form.textField(at: 0)?.previousKeyView = tokenField
-tokenField.previousKeyView = notesTextView
-notesTextView.previousKeyView = criticalRadio
-criticalRadio.previousKeyView = warningRadio
-warningRadio.previousKeyView = infoRadio
-infoRadio.previousKeyView = alertStylePopup
-alertStylePopup.previousKeyView = titleCheckbox
-titleCheckbox.previousKeyView = alertButton
-alertButton.previousKeyView = secureTextField
-moveButton.previousKeyView = hideButton
-hideButton.previousKeyView = enableButton
-enableButton.previousKeyView = button
-button.previousKeyView = contentView
-secureTextField.previousKeyView = editableTextField
-editableTextField.previousKeyView = popoverButton
-popoverButton.previousKeyView = panelButton
-panelButton.previousKeyView = moveButton
 configureToolbarKeyLoop()
 
 editableTextField.isEditable = true
@@ -3009,16 +3038,18 @@ tokenField.onTextChanged = { field in
     statusLabel.stringValue = "Tokens: \(tokenField.tokens.joined(separator: " | "))"
 }
 
-form.textField(at: 0)?.onTextChanged = { field in
-    formNameCell.stringValue = field.stringValue
-    updateFocusDisplay()
-    statusLabel.stringValue = "Form name: \(field.stringValue)"
-}
+// NSForm edits its cells in place; a continuous control sends its action on
+// every change (plain NSControl behavior), and the cells carry the values.
+form.isContinuous = true
+form.onAction = { control in
+    guard let form = control as? NSForm else {
+        return
+    }
 
-form.textField(at: 1)?.onTextChanged = { field in
-    formStatusCell.stringValue = field.stringValue
     updateFocusDisplay()
-    statusLabel.stringValue = "Form status: \(field.stringValue)"
+    let name = form.cell(atIndex: 0)?.stringValue ?? ""
+    let status = form.cell(atIndex: 1)?.stringValue ?? ""
+    statusLabel.stringValue = "Form: \(name) — \(status)"
 }
 
 matrix.onAction = { control in
@@ -3698,14 +3729,14 @@ viewTableDelegate.onEvent = { statusLabel.stringValue = $0 }
 let viewTableScrollView = NSScrollView(frame: NSMakeRect(24, 434, 470, 104))
 viewTableScrollView.hasVerticalScroller = true
 let viewTable = NSTableView(frame: NSMakeRect(0, 0, 470, 104))
-let taskColumn = NSTableColumn(identifier: "task")
+let taskColumn = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("task"))
 taskColumn.title = "Task"
 taskColumn.width = 210
-let noteColumn = NSTableColumn(identifier: "note")
+let noteColumn = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("note"))
 noteColumn.title = "Note (dbl-click)"
 noteColumn.width = 130
 noteColumn.isEditable = true
-let actionColumn = NSTableColumn(identifier: "action")
+let actionColumn = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("action"))
 actionColumn.title = "Action"
 actionColumn.width = 128
 viewTable.addTableColumn(taskColumn)
@@ -3741,10 +3772,10 @@ let statusRowDelegate = DemoStatusRowDelegate(source: statusRowSource)
 let statusRowScrollView = NSScrollView(frame: NSMakeRect(520, 434, 300, 104))
 statusRowScrollView.hasVerticalScroller = true
 let statusRowTable = NSTableView(frame: NSMakeRect(0, 0, 300, 104))
-let stageColumn = NSTableColumn(identifier: "stage")
+let stageColumn = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("stage"))
 stageColumn.title = "Stage"
 stageColumn.width = 170
-let statusColumn = NSTableColumn(identifier: "status")
+let statusColumn = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("status"))
 statusColumn.title = "Status"
 statusColumn.width = 128
 statusRowTable.addTableColumn(stageColumn)

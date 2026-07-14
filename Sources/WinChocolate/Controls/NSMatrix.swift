@@ -161,13 +161,45 @@ open class NSMatrix: NSControl {
         entries[index].button.state = buttonCell.state
     }
 
-    /// Returns the visual button for tests and demo wiring.
-    open func button(atRow row: Int, column: Int) -> NSButton? {
+    /// Returns the composed visual button. Not API (18.7): AppKit's `NSMatrix`
+    /// is cell-drawn and vends no button views — `package` for the composed
+    /// implementation and the suite.
+    package func button(atRow row: Int, column: Int) -> NSButton? {
         guard let index = flatIndex(row: row, column: column) else {
             return nil
         }
 
         return entries[index].button
+    }
+
+    /// On Apple, Tab enters the matrix and moves through its cells. The
+    /// composed implementation interposes its buttons into the key loop the
+    /// same way `NSForm` does: `nextKeyView` keeps Apple's read-back
+    /// semantics while the focus walk enters via the first button and leaves
+    /// from the last.
+    open override var nextKeyView: NSView? {
+        get {
+            super.nextKeyView
+        }
+        set {
+            super.nextKeyView = newValue
+            refreshKeyViewLoop()
+        }
+    }
+
+    override var winEffectiveNextKeyView: NSView? {
+        entries.first?.button ?? super.winEffectiveNextKeyView
+    }
+
+    override var winShouldDescendInKeyLoop: Bool {
+        false
+    }
+
+    private func refreshKeyViewLoop() {
+        for (index, entry) in entries.enumerated() {
+            entry.button.nextKeyView = index + 1 < entries.count ? entries[index + 1].button : super.nextKeyView
+        }
+        entries.first?.button.winPreviousKeyView = self
     }
 
     private func buildCells(prototype: NSCell?) {
@@ -186,6 +218,7 @@ open class NSMatrix: NSControl {
         syncButtonTypes()
         wireActions()
         layoutCells()
+        refreshKeyViewLoop()
     }
 
     private func syncButtonTypes() {

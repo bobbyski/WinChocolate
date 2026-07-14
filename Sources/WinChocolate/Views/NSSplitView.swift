@@ -245,9 +245,9 @@ open class NSSplitView: NSView {
             : NSColor(calibratedRed: 0.63, green: 0.63, blue: 0.63, alpha: 1)
         dividerColor.setFill()
         if isVertical {
-            NSRectFill(NSMakeRect(rect.origin.x + rect.size.width / 2 - 0.5, rect.origin.y + 2, 1, max(0, rect.size.height - 4)))
+            NSMakeRect(rect.origin.x + rect.size.width / 2 - 0.5, rect.origin.y + 2, 1, max(0, rect.size.height - 4)).fill()
         } else {
-            NSRectFill(NSMakeRect(rect.origin.x + 2, rect.origin.y + rect.size.height / 2 - 0.5, max(0, rect.size.width - 4), 1))
+            NSMakeRect(rect.origin.x + 2, rect.origin.y + rect.size.height / 2 - 0.5, max(0, rect.size.width - 4), 1).fill()
         }
     }
 }

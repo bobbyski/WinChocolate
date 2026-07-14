@@ -1013,7 +1013,7 @@ open class NSWindow: NSResponder {
     }
 
     private func nextKeyView(after responder: NSResponder?) -> NSView? {
-        if let view = responder as? NSView, let nextKeyView = firstFocusableNextKeyView(startingAt: view.nextKeyView) {
+        if let view = responder as? NSView, let nextKeyView = firstFocusableNextKeyView(startingAt: view.winEffectiveNextKeyView) {
             return nextKeyView
         }
 
@@ -1044,11 +1044,11 @@ open class NSWindow: NSResponder {
                 return candidate
             }
 
-            if let focusableChild = firstFocusableView(startingAt: candidate) {
+            if candidate.winShouldDescendInKeyLoop, let focusableChild = firstFocusableView(startingAt: candidate) {
                 return focusableChild
             }
 
-            current = candidate.nextKeyView
+            current = candidate.winEffectiveNextKeyView
         }
 
         return nil
@@ -1070,7 +1070,7 @@ open class NSWindow: NSResponder {
                 return candidate
             }
 
-            if let focusableChild = lastFocusableView(in: candidate) {
+            if candidate.winShouldDescendInKeyLoop, let focusableChild = lastFocusableView(in: candidate) {
                 return focusableChild
             }
 

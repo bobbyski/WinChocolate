@@ -1234,8 +1234,8 @@ func clearApplicationWindows() {
 }
 
 final class RecordingToolbarDelegate: NSObject, NSToolbarDelegate {
-    var allowedIdentifiers: [NSToolbarItem.Identifier] = ["open", "save", "customize"]
-    var defaultIdentifiers: [NSToolbarItem.Identifier] = ["open", "save"]
+    var allowedIdentifiers: [NSToolbarItem.Identifier] = [NSToolbarItem.Identifier("open"), NSToolbarItem.Identifier("save"), NSToolbarItem.Identifier("customize")]
+    var defaultIdentifiers: [NSToolbarItem.Identifier] = [NSToolbarItem.Identifier("open"), NSToolbarItem.Identifier("save")]
     var requestedIdentifiers: [NSToolbarItem.Identifier] = []
     var insertionFlags: [Bool] = []
 
@@ -1988,7 +1988,7 @@ func testTableCellAndRowViewsStoreState() {
 
 @MainActor
 func testTableColumnStoresAppKitIdentifierShape() {
-    let column = NSTableColumn(identifier: "name")
+    let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("name"))
     let dataCell = NSTextFieldCell(textCell: "Data")
     let sortDescriptor = NSSortDescriptor(key: "name", ascending: true)
 
@@ -2017,8 +2017,8 @@ func testTableColumnStoresAppKitIdentifierShape() {
 func testTableViewReloadsRowsFromDataSource() {
     let tableView = NSTableView(frame: NSMakeRect(0, 0, 300, 160))
     let dataSource = RecordingTableDataSource()
-    let name = NSTableColumn(identifier: "name")
-    let note = NSTableColumn(identifier: "note")
+    let name = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("name"))
+    let note = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("note"))
 
     name.title = "Name"
     note.title = "Note"
@@ -2029,9 +2029,9 @@ func testTableViewReloadsRowsFromDataSource() {
 
     expect(tableView.numberOfColumns == 2, "Table view column count was wrong.")
     expect(tableView.numberOfRows == 3, "Table view row count was wrong.")
-    expect(tableView.tableColumn(withIdentifier: "note") === note, "Table column identifier lookup failed.")
+    expect(tableView.tableColumn(withIdentifier: NSUserInterfaceItemIdentifier("note")) === note, "Table column identifier lookup failed.")
     expect(tableView.tableColumn(at: 0) === name, "Table column index lookup failed.")
-    expect(tableView.column(withIdentifier: "note") == 1, "Table column index lookup by identifier failed.")
+    expect(tableView.column(withIdentifier: NSUserInterfaceItemIdentifier("note")) == 1, "Table column index lookup by identifier failed.")
     expect(tableView.value(atColumn: 0, row: 1) == "Grace", "Table view did not load first column value.")
     expect(tableView.value(atColumn: 1, row: 2) == "Orbit", "Table view did not load second column value.")
     expect(tableView.value(for: note, row: 0) == "Compiler", "Table view did not load value for table column.")
@@ -2040,9 +2040,9 @@ func testTableViewReloadsRowsFromDataSource() {
 @MainActor
 func testTableViewColumnMovementAndRemoval() {
     let tableView = NSTableView(frame: NSMakeRect(0, 0, 300, 160))
-    let first = NSTableColumn(identifier: "first")
-    let second = NSTableColumn(identifier: "second")
-    let third = NSTableColumn(identifier: "third")
+    let first = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("first"))
+    let second = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("second"))
+    let third = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("third"))
 
     tableView.addTableColumn(first)
     tableView.addTableColumn(second)
@@ -2055,14 +2055,14 @@ func testTableViewColumnMovementAndRemoval() {
     tableView.removeTableColumn(second)
 
     expect(tableView.numberOfColumns == 2, "removeTableColumn did not remove a column.")
-    expect(tableView.column(withIdentifier: "second") == -1, "Removed table column was still found.")
+    expect(tableView.column(withIdentifier: NSUserInterfaceItemIdentifier("second")) == -1, "Removed table column was still found.")
 }
 
 @MainActor
 func testTableViewSelectionOptionsAndHelpers() {
     let tableView = NSTableView(frame: NSMakeRect(0, 0, 300, 160))
     let dataSource = RecordingTableDataSource()
-    let name = NSTableColumn(identifier: "name")
+    let name = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("name"))
 
     tableView.addTableColumn(name)
     tableView.dataSource = dataSource
@@ -2102,7 +2102,7 @@ func testTableViewDoubleClickSendsDoubleAction() {
     let backend = InMemoryNativeControlBackend()
     let tableView = NSTableView(frame: NSMakeRect(0, 0, 300, 160))
     let dataSource = RecordingTableDataSource()
-    tableView.addTableColumn(NSTableColumn(identifier: "name"))
+    tableView.addTableColumn(NSTableColumn(identifier: NSUserInterfaceItemIdentifier("name")))
     tableView.dataSource = dataSource
     tableView.reloadData()
 
@@ -2121,7 +2121,7 @@ func testTableViewDoubleClickSendsDoubleAction() {
 func testTableViewStoresDisplayOptionsAndSetObjectValue() {
     let tableView = NSTableView(frame: NSMakeRect(0, 0, 300, 160))
     let dataSource = RecordingTableDataSource()
-    let note = NSTableColumn(identifier: "note")
+    let note = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("note"))
 
     tableView.addTableColumn(note)
     tableView.dataSource = dataSource
@@ -2151,7 +2151,7 @@ func testTableViewDelegateViewHeightAndSortHooks() {
     let tableView = NSTableView(frame: NSMakeRect(0, 0, 300, 160))
     let dataSource = RecordingTableDataSource()
     let delegate = RecordingTableDelegate()
-    let name = NSTableColumn(identifier: "name")
+    let name = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("name"))
     let firstSort = NSSortDescriptor(key: "name", ascending: true)
     let secondSort = NSSortDescriptor(key: "name", ascending: false)
 
@@ -2190,9 +2190,7 @@ func testTableViewTabKeyMovesThroughKeyViewLoop() {
     let nextButton = NSButton(title: "Next", frame: NSMakeRect(0, 110, 80, 24))
 
     tableView.nextKeyView = nextButton
-    tableView.previousKeyView = nextButton
     nextButton.nextKeyView = tableView
-    nextButton.previousKeyView = tableView
     contentView.addSubview(tableView)
     contentView.addSubview(nextButton)
     window.contentView = contentView
@@ -2227,9 +2225,7 @@ func testSearchFieldTabKeyMovesThroughKeyViewLoop() {
     let nextButton = NSButton(title: "Next", frame: NSMakeRect(0, 64, 80, 24))
 
     previousButton.nextKeyView = searchField
-    searchField.previousKeyView = previousButton
     searchField.nextKeyView = nextButton
-    nextButton.previousKeyView = searchField
     contentView.addSubview(previousButton)
     contentView.addSubview(searchField)
     contentView.addSubview(nextButton)
@@ -2264,7 +2260,7 @@ func testTableViewKeyboardNavigationUpdatesSelection() {
     let tableView = NSTableView(frame: NSMakeRect(0, 0, 300, 160))
     let dataSource = RecordingTableDataSource()
     let delegate = RecordingTableDelegate()
-    let name = NSTableColumn(identifier: "name")
+    let name = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("name"))
 
     tableView.addTableColumn(name)
     tableView.dataSource = dataSource
@@ -2297,7 +2293,7 @@ func testTableViewKeyboardNavigationUpdatesSelection() {
 func testTableViewKeyboardExtendedSelection() {
     let tableView = NSTableView(frame: NSMakeRect(0, 0, 300, 160))
     let dataSource = RecordingTableDataSource()
-    let name = NSTableColumn(identifier: "name")
+    let name = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("name"))
 
     tableView.addTableColumn(name)
     tableView.dataSource = dataSource
@@ -2313,8 +2309,8 @@ func testTableViewKeyboardExtendedSelection() {
 func testTableViewColumnSelectionAndDoubleActionSurface() {
     let tableView = NSTableView(frame: NSMakeRect(0, 0, 300, 160))
     let dataSource = RecordingTableDataSource()
-    let name = NSTableColumn(identifier: "name")
-    let note = NSTableColumn(identifier: "note")
+    let name = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("name"))
+    let note = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("note"))
     var doubleActionCount = 0
 
     tableView.addTableColumn(name)
@@ -2353,8 +2349,8 @@ func testTableViewColumnSelectionAndDoubleActionSurface() {
 func testTableViewSortDescriptorPrototypeToggle() {
     let tableView = NSTableView(frame: NSMakeRect(0, 0, 300, 160))
     let dataSource = RecordingTableDataSource()
-    let name = NSTableColumn(identifier: "name")
-    let note = NSTableColumn(identifier: "note")
+    let name = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("name"))
+    let note = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("note"))
     let nameSort = NSSortDescriptor(key: "name", ascending: true)
     let noteSort = NSSortDescriptor(key: "note", ascending: true)
 
@@ -2383,8 +2379,8 @@ func testOutlineViewFlattensExpandableItems() {
     let backend = InMemoryNativeControlBackend()
     let outlineView = NSOutlineView(frame: NSMakeRect(0, 0, 300, 160))
     let dataSource = RecordingOutlineDataSource()
-    let name = NSTableColumn(identifier: "name")
-    let kind = NSTableColumn(identifier: "kind")
+    let name = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("name"))
+    let kind = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("kind"))
 
     name.title = "Name"
     kind.title = "Kind"
@@ -2452,7 +2448,7 @@ func testOutlineViewFlattensExpandableItems() {
 func testOutlineViewSelectionTracksItemAcrossExpandCollapse() {
     let outline = NSOutlineView(frame: NSMakeRect(0, 0, 300, 200))
     let source = RecordingOutlineDataSource()
-    outline.addTableColumn(NSTableColumn(identifier: "name"))
+    outline.addTableColumn(NSTableColumn(identifier: NSUserInterfaceItemIdentifier("name")))
     outline.outlineDataSource = source
     outline.reloadData()
     outline.expandItem("Application")
@@ -2494,10 +2490,10 @@ final class HostingOutlineDelegate: NSObject, NSOutlineViewDelegate {
 func testOutlineViewHostsDelegateCellViews() {
     let backend = InMemoryNativeControlBackend()
     let outline = NSOutlineView(frame: NSMakeRect(0, 0, 240, 160))
-    let name = NSTableColumn(identifier: "name")
+    let name = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("name"))
     name.title = "Name"
     name.width = 160
-    let kind = NSTableColumn(identifier: "kind")
+    let kind = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("kind"))
     kind.title = "Kind"
     kind.width = 60
     outline.addTableColumn(name)
@@ -2547,7 +2543,7 @@ final class TreeOutlineDataSource: NSObject, NSOutlineViewDataSource {
 @MainActor
 func testOutlineViewCrossLevelDropTargetsParent() {
     let outline = NSOutlineView(frame: NSMakeRect(0, 0, 240, 160))
-    let name = NSTableColumn(identifier: "name")
+    let name = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("name"))
     name.title = "Name"
     name.width = 220
     outline.addTableColumn(name)
@@ -2576,7 +2572,7 @@ func testOutlineViewCrossLevelDropTargetsParent() {
 @MainActor
 func testOutlineViewSiblingReorderMovesItem() {
     let outline = NSOutlineView(frame: NSMakeRect(0, 0, 240, 160))
-    let name = NSTableColumn(identifier: "name")
+    let name = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("name"))
     name.title = "Name"
     name.width = 220
     outline.addTableColumn(name)
@@ -4012,8 +4008,8 @@ func testTableViewNativePeerReceivesColumnsRowsAndSelection() {
     let backend = InMemoryNativeControlBackend()
     let tableView = NSTableView(frame: NSMakeRect(0, 0, 300, 160))
     let dataSource = RecordingTableDataSource()
-    let name = NSTableColumn(identifier: "name")
-    let note = NSTableColumn(identifier: "note")
+    let name = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("name"))
+    let note = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("note"))
 
     name.title = "Name"
     note.title = "Note"
@@ -4044,7 +4040,7 @@ func testTableViewNativeSelectionNotifiesDelegateAndAction() {
     // path this test exercises — auto-detection only picks the drawn peer when
     // a delegate vends views.
     let delegate = CellBasedSelectionDelegate()
-    let name = NSTableColumn(identifier: "name")
+    let name = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("name"))
     var actionCount = 0
 
     tableView.addTableColumn(name)
@@ -4073,7 +4069,7 @@ func testTableViewNativeSelectionNotifiesDelegateAndAction() {
 func testTableViewActionCanReadSelectedRowValue() {
     let tableView = NSTableView(frame: NSMakeRect(0, 0, 300, 160))
     let dataSource = RecordingTableDataSource()
-    let name = NSTableColumn(identifier: "name")
+    let name = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("name"))
     var actionRow = -1
     var actionValue: String?
 
@@ -4099,8 +4095,8 @@ func testTableViewActionCanReadSelectedRowValue() {
 func testTableViewClickedRowAndColumnFollowSelection() {
     let tableView = NSTableView(frame: NSMakeRect(0, 0, 300, 160))
     let dataSource = RecordingTableDataSource()
-    let name = NSTableColumn(identifier: "name")
-    let note = NSTableColumn(identifier: "note")
+    let name = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("name"))
+    let note = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("note"))
 
     tableView.addTableColumn(name)
     tableView.addTableColumn(note)
@@ -4281,7 +4277,6 @@ func testWindowSelectNextAndPreviousKeyView() {
     let second = NSButton(title: "Second", frame: NSMakeRect(0, 24, 40, 20))
 
     first.nextKeyView = second
-    second.previousKeyView = first
     contentView.addSubview(first)
     contentView.addSubview(second)
     window.contentView = contentView
@@ -4850,9 +4845,9 @@ func testToolbarStoresItemsAndAttachesToWindow() {
         nativeBackend: InMemoryNativeControlBackend()
     )
     let toolbar = NSToolbar(identifier: "main")
-    let openItem = NSToolbarItem(itemIdentifier: "open")
+    let openItem = NSToolbarItem(itemIdentifier: NSToolbarItem.Identifier("open"))
     let flexibleItem = NSToolbarItem(itemIdentifier: .flexibleSpace)
-    let saveItem = NSToolbarItem(itemIdentifier: "save")
+    let saveItem = NSToolbarItem(itemIdentifier: NSToolbarItem.Identifier("save"))
 
     openItem.label = "Open"
     openItem.paletteLabel = "Open File"
@@ -4868,8 +4863,8 @@ func testToolbarStoresItemsAndAttachesToWindow() {
 
     expect(window.toolbar === toolbar, "Window did not store toolbar.")
     expect(toolbar.window === window, "Toolbar did not attach back to window.")
-    expect(toolbar.items.map(\.itemIdentifier) == ["open", .flexibleSpace, "save"], "Toolbar item ordering was not preserved.")
-    expect(toolbar.item(withIdentifier: "open") === openItem, "Toolbar did not find item by identifier.")
+    expect(toolbar.items.map(\.itemIdentifier) == [NSToolbarItem.Identifier("open"), .flexibleSpace, NSToolbarItem.Identifier("save")], "Toolbar item ordering was not preserved.")
+    expect(toolbar.item(withIdentifier: NSToolbarItem.Identifier("open")) === openItem, "Toolbar did not find item by identifier.")
     expect(openItem.toolbar === toolbar, "Toolbar item did not retain toolbar back-reference.")
     expect(openItem.label == "Open", "Toolbar item label was not stored.")
     expect(openItem.paletteLabel == "Open File", "Toolbar item palette label was not stored.")
@@ -4882,7 +4877,7 @@ func testToolbarStoresItemsAndAttachesToWindow() {
 
     expect(removed === flexibleItem, "Toolbar did not remove the expected item.")
     expect(flexibleItem.toolbar == nil, "Removed toolbar item still referenced its toolbar.")
-    expect(toolbar.items.map(\.itemIdentifier) == ["open", "save"], "Toolbar removal did not update ordering.")
+    expect(toolbar.items.map(\.itemIdentifier) == [NSToolbarItem.Identifier("open"), NSToolbarItem.Identifier("save")], "Toolbar removal did not update ordering.")
 
     let replacement = NSToolbar(identifier: "secondary")
     window.toolbar = replacement
@@ -4894,7 +4889,7 @@ func testToolbarStoresItemsAndAttachesToWindow() {
 @MainActor
 func testToolbarVisibilityAndItemActions() {
     let toolbar = NSToolbar(identifier: "actions")
-    let item = NSToolbarItem(itemIdentifier: "click")
+    let item = NSToolbarItem(itemIdentifier: NSToolbarItem.Identifier("click"))
     let button = NSButton(title: "Click", frame: NSMakeRect(0, 0, 80, 28))
     var visibilityStates: [Bool] = []
     var toolbarActionCount = 0
@@ -4940,25 +4935,25 @@ func testToolbarVisibilityAndItemActions() {
 func testToolbarCustomizationDelegateAndDefaultItems() {
     let toolbar = NSToolbar(identifier: "customizable")
     let delegate = RecordingToolbarDelegate()
-    let openItem = NSToolbarItem(itemIdentifier: "open")
+    let openItem = NSToolbarItem(itemIdentifier: NSToolbarItem.Identifier("open"))
 
     openItem.label = "Open"
     toolbar.delegate = delegate
     toolbar.addItem(openItem)
 
-    toolbar.setVisibleItemIdentifiers(["open", "customize"])
+    toolbar.setVisibleItemIdentifiers([NSToolbarItem.Identifier("open"), NSToolbarItem.Identifier("customize")])
 
-    expect(toolbar.items.map(\.itemIdentifier) == ["open", "customize"], "Toolbar did not apply visible customization identifiers.")
-    expect(toolbar.item(withIdentifier: "customize")?.label == "Customize", "Toolbar did not retain delegate-created customization item.")
-    expect(delegate.requestedIdentifiers == ["customize"], "Toolbar did not ask delegate for missing customization item.")
+    expect(toolbar.items.map(\.itemIdentifier) == [NSToolbarItem.Identifier("open"), NSToolbarItem.Identifier("customize")], "Toolbar did not apply visible customization identifiers.")
+    expect(toolbar.item(withIdentifier: NSToolbarItem.Identifier("customize"))?.label == "Customize", "Toolbar did not retain delegate-created customization item.")
+    expect(delegate.requestedIdentifiers == [NSToolbarItem.Identifier("customize")], "Toolbar did not ask delegate for missing customization item.")
     expect(delegate.insertionFlags == [true], "Toolbar did not pass insertion flag when creating visible item.")
     expect(openItem.toolbar === toolbar, "Existing toolbar item lost its toolbar back-reference.")
 
     toolbar.resetVisibleItemsToDefault()
 
-    expect(toolbar.items.map(\.itemIdentifier) == ["open", "save"], "Toolbar did not restore delegate default item identifiers.")
-    expect(toolbar.item(withIdentifier: "save")?.label == "Save", "Toolbar did not create default item through delegate.")
-    expect(toolbar.item(withIdentifier: "customize")?.label == "Customize", "Toolbar item store did not preserve hidden customization item.")
+    expect(toolbar.items.map(\.itemIdentifier) == [NSToolbarItem.Identifier("open"), NSToolbarItem.Identifier("save")], "Toolbar did not restore delegate default item identifiers.")
+    expect(toolbar.item(withIdentifier: NSToolbarItem.Identifier("save"))?.label == "Save", "Toolbar did not create default item through delegate.")
+    expect(toolbar.item(withIdentifier: NSToolbarItem.Identifier("customize"))?.label == "Customize", "Toolbar item store did not preserve hidden customization item.")
 }
 
 @MainActor
@@ -4978,7 +4973,7 @@ final class SharedSeparatorToolbarDelegate: NSObject, NSToolbarDelegate {
     let sharedSeparator = NSToolbarItem(itemIdentifier: .separator)
 
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [.separator, "a"]
+        [.separator, NSToolbarItem.Identifier("a")]
     }
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
         [.separator, .separator]
@@ -5022,8 +5017,8 @@ func testToolbarCustomizationPaletteShowsToolbarDropTargetAtTop() {
 
     let toolbar = NSToolbar(identifier: "customizable")
     let delegate = RecordingToolbarDelegate()
-    let openItem = NSToolbarItem(itemIdentifier: "open")
-    let saveItem = NSToolbarItem(itemIdentifier: "save")
+    let openItem = NSToolbarItem(itemIdentifier: NSToolbarItem.Identifier("open"))
+    let saveItem = NSToolbarItem(itemIdentifier: NSToolbarItem.Identifier("save"))
 
     openItem.label = "Open"
     saveItem.label = "Save"
@@ -5066,9 +5061,9 @@ func testToolbarCustomizationMovesExistingItemToEnd() {
     clearApplicationWindows()
 
     let toolbar = NSToolbar(identifier: "customizable")
-    let openItem = NSToolbarItem(itemIdentifier: "open")
-    let saveItem = NSToolbarItem(itemIdentifier: "save")
-    let printItem = NSToolbarItem(itemIdentifier: "print")
+    let openItem = NSToolbarItem(itemIdentifier: NSToolbarItem.Identifier("open"))
+    let saveItem = NSToolbarItem(itemIdentifier: NSToolbarItem.Identifier("save"))
+    let printItem = NSToolbarItem(itemIdentifier: NSToolbarItem.Identifier("print"))
 
     openItem.label = "Open"
     saveItem.label = "Save"
@@ -5105,7 +5100,7 @@ func testToolbarCustomizationMovesExistingItemToEnd() {
     openTile.mouseDragged(with: NSEvent(type: .leftMouseDragged, locationInWindow: end))
     openTile.mouseUp(with: NSEvent(type: .leftMouseUp, locationInWindow: end))
 
-    expect(toolbar.items.map(\.itemIdentifier) == ["save", "print", "open"], "Dragging an existing toolbar item to the far end did not move it to the end.")
+    expect(toolbar.items.map(\.itemIdentifier) == [NSToolbarItem.Identifier("save"), NSToolbarItem.Identifier("print"), NSToolbarItem.Identifier("open")], "Dragging an existing toolbar item to the far end did not move it to the end.")
 
     clearApplicationWindows()
 }
@@ -5114,10 +5109,10 @@ func testToolbarCustomizationMovesExistingItemToEnd() {
 func testToolbarViewComposesItemsAndDispatchesActions() {
     let backend = InMemoryNativeControlBackend()
     let toolbar = NSToolbar(identifier: "native")
-    let openItem = NSToolbarItem(itemIdentifier: "open")
+    let openItem = NSToolbarItem(itemIdentifier: NSToolbarItem.Identifier("open"))
     let separator = NSToolbarItem(itemIdentifier: .separator)
     let flexibleSpace = NSToolbarItem(itemIdentifier: .flexibleSpace)
-    let saveItem = NSToolbarItem(itemIdentifier: "save")
+    let saveItem = NSToolbarItem(itemIdentifier: NSToolbarItem.Identifier("save"))
     let toolbarView = NSToolbarView(frame: NSMakeRect(0, 0, 280, 36))
     var firedIdentifiers: [String] = []
 
@@ -5210,7 +5205,7 @@ func testToolbarViewHostsCustomItemView() {
     let backend = InMemoryNativeControlBackend()
     let toolbar = NSToolbar(identifier: "customView")
     let selector = NSPopUpButton(frame: NSMakeRect(0, 0, 140, 28), pullsDown: false)
-    let item = NSToolbarItem(itemIdentifier: "selector")
+    let item = NSToolbarItem(itemIdentifier: NSToolbarItem.Identifier("selector"))
     let toolbarView = NSToolbarView(frame: NSMakeRect(0, 0, 300, 40))
 
     selector.addItems(withTitles: ["One", "Two"])
@@ -5239,7 +5234,7 @@ func testToolbarViewHostsCustomItemView() {
 @MainActor
 func testToolbarItemCreatesCompositeImageLabelView() {
     let backend = InMemoryNativeControlBackend()
-    let item = NSToolbarItem(itemIdentifier: "open")
+    let item = NSToolbarItem(itemIdentifier: NSToolbarItem.Identifier("open"))
     item.label = "Open"
     item.image = NSImage(named: "folder")
 
@@ -5308,7 +5303,7 @@ final class ToolbarValidationTarget: NSToolbarItemValidation {
 @MainActor
 func testToolbarItemValidationAndMenuForm() {
     let toolbar = NSToolbar(identifier: "validation")
-    let item = NSToolbarItem(itemIdentifier: "save")
+    let item = NSToolbarItem(itemIdentifier: NSToolbarItem.Identifier("save"))
     item.tag = 7
     let menuForm = NSMenuItem(title: "Save Document", action: nil, keyEquivalent: "")
     item.menuFormRepresentation = menuForm
@@ -5339,7 +5334,7 @@ final class SelectionToolbarDelegate: NSObject, NSToolbarDelegate {
     var added: [NSToolbarItem] = []
     var removed: [NSToolbarItem] = []
     func toolbarSelectableItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        ["inbox", "sent"]
+        [NSToolbarItem.Identifier("inbox"), NSToolbarItem.Identifier("sent")]
     }
     func toolbarWillAddItem(_ notification: NSNotification) {
         if let item = notification.userInfo?["item"] as? NSToolbarItem {
@@ -5373,8 +5368,8 @@ func testToolbarSelectionAndDelegateCallbacks() {
     }
     defer { NotificationCenter.default.removeObserver(observer) }
 
-    let inbox = NSToolbarItem(itemIdentifier: "inbox")
-    let drafts = NSToolbarItem(itemIdentifier: "drafts")
+    let inbox = NSToolbarItem(itemIdentifier: NSToolbarItem.Identifier("inbox"))
+    let drafts = NSToolbarItem(itemIdentifier: NSToolbarItem.Identifier("drafts"))
     toolbar.addItem(inbox)
     toolbar.addItem(drafts)
 
@@ -5385,9 +5380,9 @@ func testToolbarSelectionAndDelegateCallbacks() {
            "willAddItemNotification did not post through NotificationCenter. Got \(centerPostCount).")
 
     // A selectable identifier sticks; a non-selectable one clears the selection.
-    toolbar.selectedItemIdentifier = "inbox"
-    expect(toolbar.selectedItemIdentifier == "inbox", "A selectable identifier did not stick.")
-    toolbar.selectedItemIdentifier = "drafts"
+    toolbar.selectedItemIdentifier = NSToolbarItem.Identifier("inbox")
+    expect(toolbar.selectedItemIdentifier == NSToolbarItem.Identifier("inbox"), "A selectable identifier did not stick.")
+    toolbar.selectedItemIdentifier = NSToolbarItem.Identifier("drafts")
     expect(toolbar.selectedItemIdentifier == nil, "A non-selectable identifier was not cleared.")
 
     // Did-remove fires with the removed item.
@@ -5396,7 +5391,7 @@ func testToolbarSelectionAndDelegateCallbacks() {
            "toolbarDidRemoveItem did not deliver the removed item.")
 
     // With nothing overflowed, visibleItems mirrors items.
-    expect(toolbar.visibleItems?.map(\.itemIdentifier) == ["inbox"], "visibleItems did not mirror items.")
+    expect(toolbar.visibleItems?.map(\.itemIdentifier) == [NSToolbarItem.Identifier("inbox")], "visibleItems did not mirror items.")
     expect(!toolbar.customizationPaletteIsRunning, "The customization palette should not report running by default.")
 }
 
@@ -5415,10 +5410,10 @@ func testToolbarStandardItemIdentifiers() {
 /// Vends fresh a/b items so a restoring toolbar can resolve identifiers.
 final class AutosaveToolbarDelegate: NSObject, NSToolbarDelegate {
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        ["a", "b"]
+        [NSToolbarItem.Identifier("a"), NSToolbarItem.Identifier("b")]
     }
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        ["a", "b"]
+        [NSToolbarItem.Identifier("a"), NSToolbarItem.Identifier("b")]
     }
     func toolbar(
         _ toolbar: NSToolbar,
@@ -5441,7 +5436,7 @@ func testToolbarAutosaveRoundTripsConfiguration() {
     toolbar.delegate = delegate
     toolbar.autosavesConfiguration = true
     toolbar.displayMode = .iconOnly
-    toolbar.setVisibleItemIdentifiers(["b"])
+    toolbar.setVisibleItemIdentifiers([NSToolbarItem.Identifier("b")])
     let saved = UserDefaults.standard.dictionary(forKey: autosaveKey)
     expect((saved?["TB Item Identifiers"] as? [Any])?.compactMap { $0 as? String } == ["b"],
            "Autosave did not persist the visible identifiers. Got \(String(describing: saved)).")
@@ -5457,10 +5452,10 @@ func testToolbarAutosaveRoundTripsConfiguration() {
     )
     let restored = NSToolbar(identifier: "WinChocolateAutosaveTest")
     restored.delegate = delegate
-    restored.setVisibleItemIdentifiers(["a", "b"])
+    restored.setVisibleItemIdentifiers([NSToolbarItem.Identifier("a"), NSToolbarItem.Identifier("b")])
     restored.autosavesConfiguration = true
     window.toolbar = restored
-    expect(restored.items.map(\.itemIdentifier) == ["b"],
+    expect(restored.items.map(\.itemIdentifier) == [NSToolbarItem.Identifier("b")],
            "Attaching did not restore the autosaved item set. Got \(restored.items.map(\.itemIdentifier)).")
     expect(restored.displayMode == .iconOnly, "Attaching did not restore the autosaved display mode.")
 
@@ -5471,7 +5466,7 @@ func testToolbarAutosaveRoundTripsConfiguration() {
 func testToolbarBorderedItemRendersAsButton() {
     let backend = InMemoryNativeControlBackend()
     let toolbar = NSToolbar(identifier: "bordered")
-    let item = NSToolbarItem(itemIdentifier: "run")
+    let item = NSToolbarItem(itemIdentifier: NSToolbarItem.Identifier("run"))
     item.label = "Run"
     item.title = "Run Task"
     item.isBordered = true
@@ -5499,7 +5494,7 @@ func testToolbarCustomizationPaletteDimsInToolbarItems() {
     clearApplicationWindows()
 
     let toolbar = NSToolbar(identifier: "dimming")
-    let openItem = NSToolbarItem(itemIdentifier: "open")
+    let openItem = NSToolbarItem(itemIdentifier: NSToolbarItem.Identifier("open"))
     openItem.label = "Open"
     toolbar.allowsUserCustomization = true
     toolbar.addItem(openItem)
@@ -5538,7 +5533,7 @@ func testToolbarCustomizationPaletteDimsInToolbarItems() {
     paletteTiles[0].mouseDown(with: NSEvent(type: .leftMouseDown, locationInWindow: dimStart))
     paletteTiles[0].mouseDragged(with: NSEvent(type: .leftMouseDragged, locationInWindow: stripPoint))
     paletteTiles[0].mouseUp(with: NSEvent(type: .leftMouseUp, locationInWindow: stripPoint))
-    expect(toolbar.items.map(\.itemIdentifier) == ["open"], "A dimmed palette tile still mutated the toolbar.")
+    expect(toolbar.items.map(\.itemIdentifier) == [NSToolbarItem.Identifier("open")], "A dimmed palette tile still mutated the toolbar.")
 
     // Drag "Open" out of the mirrored strip (removal) → the palette tile
     // re-enables live.
@@ -5563,10 +5558,10 @@ func testToolbarCustomizationPaletteDimsInToolbarItems() {
 /// Allows open + flexible space in the palette for the dimming test.
 final class DimmingToolbarDelegate: NSObject, NSToolbarDelegate {
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        ["open", .flexibleSpace]
+        [NSToolbarItem.Identifier("open"), .flexibleSpace]
     }
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        ["open"]
+        [NSToolbarItem.Identifier("open")]
     }
 }
 
@@ -5612,7 +5607,7 @@ func testToolbarCustomizationDragShowsInsertionIndicator() {
     expect(indicator()?.isHidden == false, "The insertion indicator did not appear during a strip drag.")
     firstTile.mouseUp(with: NSEvent(type: .leftMouseUp, locationInWindow: overStrip))
     expect(indicator()?.isHidden == true, "The insertion indicator did not hide after the drop.")
-    expect(toolbar.items.map(\.itemIdentifier) == ["two", "three", "one"],
+    expect(toolbar.items.map(\.itemIdentifier) == [NSToolbarItem.Identifier("two"), NSToolbarItem.Identifier("three"), NSToolbarItem.Identifier("one")],
            "The drop did not land where the indicator showed. Got \(toolbar.items.map(\.itemIdentifier)).")
 
     clearApplicationWindows()
@@ -5645,7 +5640,7 @@ func testToolbarRightClickPopsContextMenu() {
 
     let backend = InMemoryNativeControlBackend()
     let toolbar = NSToolbar(identifier: "context")
-    let item = NSToolbarItem(itemIdentifier: "doc")
+    let item = NSToolbarItem(itemIdentifier: NSToolbarItem.Identifier("doc"))
     item.label = "Doc"
     toolbar.addItem(item)
     toolbar.allowsUserCustomization = true
@@ -5698,7 +5693,7 @@ func testToolbarRightClickPopsContextMenu() {
 func testToolbarItemRightClickAddsRemoveItem() {
     let backend = InMemoryNativeControlBackend()
     let toolbar = NSToolbar(identifier: "removable")
-    let doc = NSToolbarItem(itemIdentifier: "doc")
+    let doc = NSToolbarItem(itemIdentifier: NSToolbarItem.Identifier("doc"))
     doc.label = "Doc"
     toolbar.addItem(doc)
     toolbar.allowsUserCustomization = true
@@ -5734,7 +5729,7 @@ func testToolbarCenteredItemsLayOutCentered() {
         item.label = name
         toolbar.addItem(item)
     }
-    toolbar.centeredItemIdentifiers = ["mid"]
+    toolbar.centeredItemIdentifiers = [NSToolbarItem.Identifier("mid")]
 
     let toolbarView = NSToolbarView(frame: NSMakeRect(0, 0, 600, 40))
     toolbarView.toolbar = toolbar
@@ -5759,7 +5754,7 @@ func testToolbarCenteredItemsLayOutCentered() {
 func testToolbarCustomViewItemsShrinkBeforeOverflow() {
     let backend = InMemoryNativeControlBackend()
     let toolbar = NSToolbar(identifier: "elastic")
-    let search = NSToolbarItem(itemIdentifier: "search")
+    let search = NSToolbarItem(itemIdentifier: NSToolbarItem.Identifier("search"))
     search.label = "Search"
     search.view = NSTextField(string: "", frame: NSMakeRect(0, 0, 200, 24))
     search.minSize = NSMakeSize(40, 24)
@@ -5792,7 +5787,7 @@ func testToolbarItemGroupSelectsAndFires() {
     let backend = InMemoryNativeControlBackend()
     let toolbar = NSToolbar(identifier: "grouped")
     let group = NSToolbarItemGroup(
-        itemIdentifier: "align",
+        itemIdentifier: NSToolbarItem.Identifier("align"),
         titles: ["Left", "Center", "Right"],
         selectionMode: .selectOne
     )
@@ -5876,7 +5871,7 @@ func testWindowToolbarActions() {
 func testToolbarMetallicLookDrawsGradientChrome() {
     let backend = InMemoryNativeControlBackend()
     let toolbar = NSToolbar(identifier: "looks")
-    let item = NSToolbarItem(itemIdentifier: "doc")
+    let item = NSToolbarItem(itemIdentifier: NSToolbarItem.Identifier("doc"))
     item.label = "Doc"
     toolbar.addItem(item)
 
@@ -6011,14 +6006,14 @@ func testToolbarPopupAndFieldItemsAlignVertically() {
     // A popup declared 28pt tall next to a 24pt field: the native closed
     // combo only renders ~24pt anchored to its frame top, so the layout must
     // center it by its visible height or it reads high next to the field.
-    let popupItem = NSToolbarItem(itemIdentifier: "pages")
+    let popupItem = NSToolbarItem(itemIdentifier: NSToolbarItem.Identifier("pages"))
     let popup = NSPopUpButton(frame: NSMakeRect(0, 0, 168, 28), pullsDown: false)
     popupItem.view = popup
     popupItem.minSize = NSMakeSize(168, 28)
     popupItem.maxSize = NSMakeSize(168, 28)
     toolbar.addItem(popupItem)
 
-    let fieldItem = NSToolbarItem(itemIdentifier: "search")
+    let fieldItem = NSToolbarItem(itemIdentifier: NSToolbarItem.Identifier("search"))
     let field = NSTextField(string: "", frame: NSMakeRect(0, 0, 160, 24))
     fieldItem.view = field
     fieldItem.minSize = NSMakeSize(160, 24)
@@ -6048,7 +6043,7 @@ func testWinPresentationSelectionAndModernSeparators() {
     }
     func makeToolbarView() -> NSToolbarView {
         let toolbar = NSToolbar(identifier: "presentation")
-        let item = NSToolbarItem(itemIdentifier: "doc")
+        let item = NSToolbarItem(itemIdentifier: NSToolbarItem.Identifier("doc"))
         item.label = "Doc"
         toolbar.addItem(item)
         toolbar.addItem(NSToolbarItem(itemIdentifier: .separator))
@@ -6105,7 +6100,7 @@ func testDarkAppearanceDrivesDynamicColorsAndDrawnTable() {
     // header-title/cell text.
     let backend = InMemoryNativeControlBackend()
     let tableView = NSTableView(frame: NSMakeRect(0, 0, 200, 100))
-    let column = NSTableColumn(identifier: "a")
+    let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("a"))
     column.title = "Alpha"
     column.width = 80
     tableView.addTableColumn(column)
@@ -6201,7 +6196,7 @@ func testToolbarStripGoesDarkUnderDarkAppearance() {
 
     let toolbar = NSToolbar(identifier: "dark-strip")
     toolbar.winAppleLook = .unified // this test is about the unified strip's dark chrome
-    let item = NSToolbarItem(itemIdentifier: "doc")
+    let item = NSToolbarItem(itemIdentifier: NSToolbarItem.Identifier("doc"))
     item.label = "Doc"
     toolbar.addItem(item)
     let toolbarView = NSToolbarView(frame: NSMakeRect(0, 0, 300, 40))
@@ -6407,7 +6402,7 @@ func testDrawnTableModernPresentationRestylesHeaderChrome() {
     func headerChrome() -> (fill: NSColor?, titleWeight: Int?) {
         let backend = InMemoryNativeControlBackend()
         let tableView = NSTableView(frame: NSMakeRect(0, 0, 200, 100))
-        let column = NSTableColumn(identifier: "a")
+        let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("a"))
         column.title = "Alpha"
         column.width = 80
         tableView.addTableColumn(column)
@@ -6450,7 +6445,7 @@ func testToolbarOverflowCollapsesLowPriorityItems() {
             item.label = name
             toolbar.addItem(item)
         }
-        toolbar.item(withIdentifier: "beta")?.visibilityPriority = .low
+        toolbar.item(withIdentifier: NSToolbarItem.Identifier("beta"))?.visibilityPriority = .low
         return toolbar
     }
 
@@ -6483,7 +6478,7 @@ func testWindowToolbarCreatesDockedComposedHostAndReservesContent() {
     )
     let contentView = NSView(frame: NSMakeRect(0, 0, 320, 220))
     let toolbar = NSToolbar(identifier: "windowToolbar")
-    let item = NSToolbarItem(itemIdentifier: "open")
+    let item = NSToolbarItem(itemIdentifier: NSToolbarItem.Identifier("open"))
 
     item.label = "Open"
     toolbar.addItem(item)
@@ -6526,7 +6521,7 @@ func testWindowToolbarHeightFollowsDisplayMode() {
     )
     let contentView = NSView(frame: NSMakeRect(0, 0, 320, 220))
     let toolbar = NSToolbar(identifier: "windowToolbarHeight")
-    let item = NSToolbarItem(itemIdentifier: "open")
+    let item = NSToolbarItem(itemIdentifier: NSToolbarItem.Identifier("open"))
 
     item.label = "Open"
     item.image = NSImage(systemSymbolName: "folder", accessibilityDescription: "Open")
@@ -8049,7 +8044,7 @@ final class DrawingTestView: NSView {
         oval.lineWidth = 3
         oval.stroke()
 
-        NSRectFill(NSMakeRect(5, 5, 2, 2))
+        (NSMakeRect(5, 5, 2, 2)).fill()
     }
 }
 
@@ -8132,10 +8127,10 @@ final class GradientAndClipTestView: NSView {
         NSGraphicsContext.saveGraphicsState()
         NSBezierPath(ovalIn: NSMakeRect(10, 10, 40, 40)).addClip()
         NSColor.green.setFill()
-        NSRectFill(NSMakeRect(0, 0, 60, 60))
+        (NSMakeRect(0, 0, 60, 60)).fill()
         NSGraphicsContext.restoreGraphicsState()
 
-        NSRectClip(NSMakeRect(2, 2, 8, 8))
+        (NSMakeRect(2, 2, 8, 8)).clip()
     }
 }
 
@@ -10960,8 +10955,8 @@ func testSourceCompatSurfaceGeometryColorFontImageView() {
     view.setFrameSize(NSSize(width: 20, height: 30))
     expect(view.frame == NSRect(x: 5, y: 6, width: 20, height: 30), "setFrameOrigin/setFrameSize did not update the frame.")
     expect(view.isFlipped, "WinChocolate views should report a flipped (top-left) coordinate system.")
-    view.identifier = "canvas"
-    expect(view.identifier == "canvas", "NSView.identifier did not round-trip.")
+    view.identifier = NSUserInterfaceItemIdentifier("canvas")
+    expect(view.identifier?.rawValue == "canvas", "NSView.identifier did not round-trip.")
     view.alphaValue = 0.4
     expect(view.alphaValue == 0.4, "NSView.alphaValue did not round-trip.")
     expect(view.mouse(NSPoint(x: 5, y: 5), in: view.bounds), "mouse(_:in:) missed a point in bounds.")
@@ -11537,11 +11532,11 @@ func testTableViewMultipleSelectionEditingAndSorting() {
     let backend = InMemoryNativeControlBackend()
     let tableView = NSTableView(frame: NSMakeRect(0, 0, 300, 160))
     let dataSource = RecordingTableDataSource()
-    let name = NSTableColumn(identifier: "name")
+    let name = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("name"))
     name.title = "Name"
     name.isEditable = true
     name.sortDescriptorPrototype = NSSortDescriptor(key: "name", ascending: true)
-    let note = NSTableColumn(identifier: "note")
+    let note = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("note"))
     note.title = "Note"
     tableView.addTableColumn(name)
     tableView.addTableColumn(note)
@@ -11612,10 +11607,10 @@ func testViewBasedTableHostsCellViews() {
     let backend = InMemoryNativeControlBackend()
     let tableView = NSTableView(frame: NSMakeRect(0, 0, 300, 200))
     let dataSource = RecordingTableDataSource()
-    let name = NSTableColumn(identifier: "name")
+    let name = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("name"))
     name.title = "Name"
     name.width = 120
-    let note = NSTableColumn(identifier: "note")
+    let note = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("note"))
     note.title = "Note"
     note.width = 120
     tableView.addTableColumn(name)
@@ -11662,10 +11657,10 @@ func testDrawnTableClipsCellTextToColumns() {
     let backend = InMemoryNativeControlBackend()
     let tableView = NSTableView(frame: NSMakeRect(0, 0, 200, 200))
     let dataSource = ManyRowTableDataSource(count: 2)
-    let colA = NSTableColumn(identifier: "a")
+    let colA = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("a"))
     colA.title = "A"
     colA.width = 80
-    let colB = NSTableColumn(identifier: "b")
+    let colB = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("b"))
     colB.title = "B"
     colB.width = 80
     tableView.addTableColumn(colA)
@@ -11703,7 +11698,7 @@ func testDrawnTableTruncatesLongCellTextWithEllipsis() {
 
     let backend = InMemoryNativeControlBackend()
     let tableView = NSTableView(frame: NSMakeRect(0, 0, 80, 100))
-    let column = NSTableColumn(identifier: "name")
+    let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("name"))
     column.title = ""  // untitled → no header, so the first drawn text is the cell
     column.width = 40  // narrow: the 40-char value cannot fit
     tableView.addTableColumn(column)
@@ -11743,7 +11738,7 @@ func testDrawnTableRecyclesCellViewsViaMakeView() {
     let backend = InMemoryNativeControlBackend()
     let tableView = NSTableView(frame: NSMakeRect(0, 0, 200, 200))
     let dataSource = ManyRowTableDataSource(count: 3)
-    let column = NSTableColumn(identifier: "name")
+    let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("name"))
     column.width = 180
     tableView.addTableColumn(column)
     tableView.dataSource = dataSource
@@ -11780,7 +11775,7 @@ final class AttributedCellTableDataSource: NSObject, NSTableViewDataSource {
 func testDrawnTableRendersAttributedCellValue() {
     let backend = InMemoryNativeControlBackend()
     let tableView = NSTableView(frame: NSMakeRect(0, 0, 120, 100))
-    let column = NSTableColumn(identifier: "c")
+    let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("c"))
     column.title = ""  // no header, so the first drawn text is the cell
     column.width = 100
     tableView.addTableColumn(column)
@@ -11803,10 +11798,10 @@ func testDrawnTableRendersAttributedCellValue() {
 func testTableColumnAutoresizing() {
     let backend = InMemoryNativeControlBackend()
     let tableView = NSTableView(frame: NSMakeRect(0, 0, 300, 100))
-    let colA = NSTableColumn(identifier: "a")
+    let colA = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("a"))
     colA.title = "A"
     colA.width = 80
-    let colB = NSTableColumn(identifier: "b")
+    let colB = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("b"))
     colB.title = "B"
     colB.width = 80
     tableView.addTableColumn(colA)
@@ -11846,7 +11841,7 @@ func testDrawnTableScrollsAsScrollViewDocument() {
     scrollView.hasVerticalScroller = true
     let tableView = NSTableView(frame: NSMakeRect(0, 0, 300, 120))
     let dataSource = ManyRowTableDataSource(count: 20)
-    let column = NSTableColumn(identifier: "name")
+    let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("name"))
     column.title = "Name"
     column.width = 280
     tableView.addTableColumn(column)
@@ -11888,7 +11883,7 @@ func testDrawnTablePinnedHeaderStaysAndSorts() {
     scrollView.hasVerticalScroller = true
     let tableView = NSTableView(frame: NSMakeRect(0, 0, 300, 120))
     let dataSource = ManyRowTableDataSource(count: 20)
-    let column = NSTableColumn(identifier: "name")
+    let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("name"))
     column.title = "Name"
     column.width = 280
     column.sortDescriptorPrototype = NSSortDescriptor(key: "name", ascending: true)
@@ -11930,10 +11925,10 @@ func testDrawnTableHeaderColumnResize() {
     scrollView.hasVerticalScroller = true
     let tableView = NSTableView(frame: NSMakeRect(0, 0, 320, 120))
     let dataSource = ManyRowTableDataSource(count: 6)
-    let colA = NSTableColumn(identifier: "a")
+    let colA = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("a"))
     colA.title = "A"
     colA.width = 100
-    let colB = NSTableColumn(identifier: "b")
+    let colB = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("b"))
     colB.title = "B"
     colB.width = 100
     tableView.addTableColumn(colA)
@@ -12023,7 +12018,7 @@ func testDrawnTableHonorsVariableRowHeights() {
     let backend = InMemoryNativeControlBackend()
     let tableView = NSTableView(frame: NSMakeRect(0, 0, 300, 400))
     let dataSource = ManyRowTableDataSource(count: 4)
-    let column = NSTableColumn(identifier: "name")
+    let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("name"))
     column.title = "Name"
     column.width = 280
     tableView.addTableColumn(column)
@@ -12066,7 +12061,7 @@ final class EditableDrawnDataSource: NSObject, NSTableViewDataSource {
     var committed: [(row: Int, value: String)] = []
     func numberOfRows(in tableView: NSTableView) -> Int { names.count }
     func tableView(_ tableView: NSTableView, objectValueFor tableColumn: NSTableColumn?, row: Int) -> Any? {
-        tableColumn?.identifier == "name" ? names[row] : nil
+        tableColumn?.identifier.rawValue == "name" ? names[row] : nil
     }
     func tableView(_ tableView: NSTableView, setObjectValue object: Any?, for tableColumn: NSTableColumn?, row: Int) {
         let text = object.map { String(describing: $0) } ?? ""
@@ -12079,7 +12074,7 @@ final class EditableDrawnDataSource: NSObject, NSTableViewDataSource {
 /// in the table is the in-place edit overlay.
 final class EditableDrawnDelegate: NSObject, NSTableViewDelegate {
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
-        tableColumn?.identifier == "flag"
+        tableColumn?.identifier.rawValue == "flag"
             ? NSButton(title: "•", frame: NSMakeRect(0, 0, 40, 20))
             : nil
     }
@@ -12090,10 +12085,10 @@ func testDrawnTableInPlaceEditCommitsToDataSource() {
     let backend = InMemoryNativeControlBackend()
     let tableView = NSTableView(frame: NSMakeRect(0, 0, 300, 200))
     let dataSource = EditableDrawnDataSource()
-    let flag = NSTableColumn(identifier: "flag")
+    let flag = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("flag"))
     flag.title = "Flag"
     flag.width = 60
-    let nameColumn = NSTableColumn(identifier: "name")
+    let nameColumn = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("name"))
     nameColumn.title = "Name"
     nameColumn.width = 200
     nameColumn.isEditable = true
@@ -12150,10 +12145,10 @@ func testDrawnTableReturnKeyBeginsEditingSelectedRow() {
     let backend = InMemoryNativeControlBackend()
     let tableView = NSTableView(frame: NSMakeRect(0, 0, 300, 200))
     let dataSource = EditableDrawnDataSource()
-    let flag = NSTableColumn(identifier: "flag")
+    let flag = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("flag"))
     flag.title = "Flag"
     flag.width = 60
-    let nameColumn = NSTableColumn(identifier: "name")
+    let nameColumn = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("name"))
     nameColumn.title = "Name"
     nameColumn.width = 200
     nameColumn.isEditable = true
@@ -12179,7 +12174,7 @@ func testDrawnTableReturnKeyBeginsEditingSelectedRow() {
     let backend2 = InMemoryNativeControlBackend()
     let plainTable = NSTableView(frame: NSMakeRect(0, 0, 300, 200))
     let dataSource2 = EditableDrawnDataSource()
-    let nameOnly = NSTableColumn(identifier: "name")
+    let nameOnly = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("name"))
     nameOnly.title = "Name"
     nameOnly.width = 200
     nameOnly.isEditable = true
@@ -12214,7 +12209,7 @@ func testDrawnTableHostsRowViewsWithSelectionFill() {
     let backend = InMemoryNativeControlBackend()
     let tableView = NSTableView(frame: NSMakeRect(0, 0, 300, 200))
     let dataSource = ManyRowTableDataSource(count: 3)
-    let column = NSTableColumn(identifier: "name")
+    let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("name"))
     column.title = "Name"
     column.width = 280
     tableView.addTableColumn(column)
@@ -12268,7 +12263,7 @@ func testTableViewAutoDetectsViewBasedModeFromDelegate() {
     // WITHOUT any explicit `winUsesViewBasedCells` opt-in (AppKit semantics).
     let viewTable = NSTableView(frame: NSMakeRect(0, 0, 200, 120))
     let viewSource = ManyRowTableDataSource(count: 3)
-    let viewCol = NSTableColumn(identifier: "name")
+    let viewCol = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("name"))
     viewCol.width = 180
     viewTable.addTableColumn(viewCol)
     viewTable.dataSource = viewSource
@@ -12284,7 +12279,7 @@ func testTableViewAutoDetectsViewBasedModeFromDelegate() {
     // A cell-based delegate (vends no view) keeps the native list path.
     let cellTable = NSTableView(frame: NSMakeRect(0, 0, 200, 120))
     let cellSource = RecordingTableDataSource()
-    let cellCol = NSTableColumn(identifier: "name")
+    let cellCol = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("name"))
     cellCol.width = 180
     cellTable.addTableColumn(cellCol)
     cellTable.dataSource = cellSource
@@ -12320,7 +12315,7 @@ func testDrawnTableAcceptsExternalRowDrop() {
     let backend = InMemoryNativeControlBackend()
     let tableView = NSTableView(frame: NSMakeRect(0, 0, 200, 200))
     let dataSource = DropTargetTableDataSource()
-    let column = NSTableColumn(identifier: "name")
+    let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("name"))
     column.width = 180
     tableView.addTableColumn(column)
     tableView.dataSource = dataSource
@@ -12340,7 +12335,7 @@ func testDrawnTableAcceptsExternalRowDrop() {
     let backend2 = InMemoryNativeControlBackend()
     let plain = NSTableView(frame: NSMakeRect(0, 0, 200, 200))
     let ds2 = DropTargetTableDataSource()
-    let col2 = NSTableColumn(identifier: "n")
+    let col2 = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("n"))
     col2.width = 180
     plain.addTableColumn(col2)
     plain.dataSource = ds2
@@ -12365,7 +12360,7 @@ func testDrawnTableRowDragsOutViaPasteboardWriter() {
     let backend = InMemoryNativeControlBackend()
     let tableView = NSTableView(frame: NSMakeRect(0, 0, 200, 300))
     let dataSource = PasteboardRowDataSource()
-    let column = NSTableColumn(identifier: "name")
+    let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("name"))
     column.width = 180
     tableView.addTableColumn(column)
     tableView.dataSource = dataSource
@@ -12388,7 +12383,7 @@ func testDrawnTableRowDragsOutViaPasteboardWriter() {
     let backend2 = InMemoryNativeControlBackend()
     let plain = NSTableView(frame: NSMakeRect(0, 0, 200, 300))
     let plainSource = ReorderableTableDataSource()
-    let col2 = NSTableColumn(identifier: "n")
+    let col2 = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("n"))
     col2.width = 180
     plain.addTableColumn(col2)
     plain.dataSource = plainSource
@@ -12404,7 +12399,7 @@ func testDrawnTableRowReorderDragMovesRow() {
     let backend = InMemoryNativeControlBackend()
     let tableView = NSTableView(frame: NSMakeRect(0, 0, 200, 300))
     let dataSource = ReorderableTableDataSource()
-    let column = NSTableColumn(identifier: "name")
+    let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("name"))
     column.width = 180
     tableView.addTableColumn(column)
     tableView.dataSource = dataSource
@@ -12441,7 +12436,7 @@ func testDrawnTableMultiRowReorderMovesSelection() {
     let backend = InMemoryNativeControlBackend()
     let tableView = NSTableView(frame: NSMakeRect(0, 0, 200, 300))
     let dataSource = ReorderableTableDataSource()  // alpha, bravo, charlie, delta
-    let column = NSTableColumn(identifier: "name")
+    let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("name"))
     column.width = 180
     tableView.addTableColumn(column)
     tableView.dataSource = dataSource
@@ -12475,11 +12470,11 @@ func testTableHeaderViewTracksClickedColumnAndGeometry() {
     let backend = InMemoryNativeControlBackend()
     let tableView = NSTableView(frame: NSMakeRect(0, 0, 300, 160))
     let dataSource = ManyRowTableDataSource(count: 3)
-    let colA = NSTableColumn(identifier: "a")
+    let colA = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("a"))
     colA.title = "A"
     colA.width = 100
     colA.sortDescriptorPrototype = NSSortDescriptor(key: "a", ascending: true)
-    let colB = NSTableColumn(identifier: "b")
+    let colB = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("b"))
     colB.title = "B"
     colB.width = 120
     colB.sortDescriptorPrototype = NSSortDescriptor(key: "b", ascending: true)
@@ -12663,8 +12658,8 @@ func testDrawnTablePublishesRowAndCellAccessibilityTree() {
     // from 5.1). We assert that tree directly.
     let tableView = NSTableView(frame: NSMakeRect(0, 0, 300, 160))
     let dataSource = RecordingTableDataSource()
-    let name = NSTableColumn(identifier: "name")
-    let note = NSTableColumn(identifier: "note")
+    let name = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("name"))
+    let note = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("note"))
     name.title = "Name"
     note.title = "Note"
     tableView.addTableColumn(name)
@@ -12689,8 +12684,8 @@ func testDrawnTablePublishesRowAndCellAccessibilityTree() {
 
     // An outline reports the outline role with outline-row subroles.
     let outlineView = NSOutlineView(frame: NSMakeRect(0, 0, 300, 160))
-    outlineView.addTableColumn(NSTableColumn(identifier: "name"))
-    outlineView.addTableColumn(NSTableColumn(identifier: "kind"))
+    outlineView.addTableColumn(NSTableColumn(identifier: NSUserInterfaceItemIdentifier("name")))
+    outlineView.addTableColumn(NSTableColumn(identifier: NSUserInterfaceItemIdentifier("kind")))
     let outlineSource = RecordingOutlineDataSource()
     outlineView.outlineDataSource = outlineSource
     outlineView.reloadData()
@@ -12745,8 +12740,8 @@ func testTextFieldShowsIBeamAndHeaderShowsResizeCursor() {
     // The table header shows the left-right resize cursor over each column
     // boundary when resizing is allowed.
     let tableView = NSTableView(frame: NSMakeRect(0, 0, 300, 160))
-    let a = NSTableColumn(identifier: "a"); a.width = 100
-    let b = NSTableColumn(identifier: "b"); b.width = 120
+    let a = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("a")); a.width = 100
+    let b = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("b")); b.width = 120
     tableView.addTableColumn(a)
     tableView.addTableColumn(b)
     let header = NSTableHeaderView(frame: NSMakeRect(0, 0, 300, 24))
@@ -12771,8 +12766,8 @@ func testDrawnTableTabAdvancesCellEditor() {
     let backend = InMemoryNativeControlBackend()
     let tableView = NSTableView(frame: NSMakeRect(0, 0, 300, 160))
     let dataSource = RecordingTableDataSource()
-    let name = NSTableColumn(identifier: "name")
-    let note = NSTableColumn(identifier: "note")
+    let name = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("name"))
+    let note = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("note"))
     name.title = "Name"; name.isEditable = true
     note.title = "Note"; note.isEditable = true
     tableView.addTableColumn(name)
@@ -13424,7 +13419,7 @@ func testAppKitReorderRecipeEnablesAndAcceptsDrops() {
     // Table: reorder is opt-in — a `.move` local mask plus a data-source
     // pasteboard writer arms the drag (AppKit's recipe, no win* handler).
     let table = NSTableView(frame: NSMakeRect(0, 0, 200, 120))
-    let column = NSTableColumn(identifier: "name")
+    let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("name"))
     table.addTableColumn(column)
     let source = ReorderRecipeTableSource()
     table.dataSource = source
@@ -13436,7 +13431,7 @@ func testAppKitReorderRecipeEnablesAndAcceptsDrops() {
     // Outline: the mapped reorder drop reaches the outline data source's
     // acceptDrop with the writer's item representation on the pasteboard.
     let outline = NSOutlineView(frame: NSMakeRect(0, 0, 240, 160))
-    let name = NSTableColumn(identifier: "name")
+    let name = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("name"))
     outline.addTableColumn(name)
     let outlineSource = ReorderRecipeOutlineSource()
     outline.outlineDataSource = outlineSource

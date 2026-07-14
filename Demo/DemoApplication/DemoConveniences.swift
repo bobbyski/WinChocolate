@@ -149,7 +149,7 @@ final class DemoActionTarget: NSObject {
     nonisolated(unsafe) static var retained: [ObjectIdentifier: DemoActionTarget] = [:]
 
     /// Selector name → closure.
-    var handlers: [String: (Any?) -> Void] = [:]
+    var handlers: [String: @MainActor (Any?) -> Void] = [:]
 
     /// The sender's trampoline, created on first use.
     static func trampoline(for sender: NSObject) -> DemoActionTarget {
@@ -163,13 +163,23 @@ final class DemoActionTarget: NSObject {
     }
 
     #if canImport(AppKit) && !canImport(WinChocolate) && !canImport(LinChocolate)
-    // Real AppKit: Objective-C action methods the runtime dispatches.
+    // Real AppKit: Objective-C action methods the runtime dispatches. Actions
+    // always arrive on the main thread, so hopping onto the main actor here
+    // is a statement of fact, not a workaround.
     @objc func demoFire(_ sender: Any?) {
-        handlers["demoFire:"]?(sender)
+        nonisolated(unsafe) let sent = sender
+        nonisolated(unsafe) let handler = handlers["demoFire:"]
+        MainActor.assumeIsolated {
+            handler?(sent)
+        }
     }
 
     @objc func demoFireDouble(_ sender: Any?) {
-        handlers["demoFireDouble:"]?(sender)
+        nonisolated(unsafe) let sent = sender
+        nonisolated(unsafe) let handler = handlers["demoFireDouble:"]
+        MainActor.assumeIsolated {
+            handler?(sent)
+        }
     }
 
     static let fireSelector = #selector(DemoActionTarget.demoFire(_:))
@@ -193,7 +203,11 @@ final class DemoActionTarget: NSObject {
             return super.perform(aSelector, with: object)
         }
 
-        handler(object)
+        // Actions are dispatched from the UI thread — same fact as on macOS.
+        nonisolated(unsafe) let sender = object
+        MainActor.assumeIsolated {
+            handler(sender)
+        }
         return nil
     }
 
@@ -208,7 +222,7 @@ extension NSControl {
     /// Demo sugar: a closure action wired through the control's REAL
     /// `target`/`action`. Setting it targets a trampoline; the framework
     /// dispatches the selector exactly as for any target.
-    var onAction: ((NSControl) -> Void)? {
+    @MainActor var onAction: (@MainActor (NSControl) -> Void)? {
         get { nil }
         set {
             guard let newValue else {
@@ -233,7 +247,7 @@ extension NSControl {
 extension NSMenuItem {
     /// Demo sugar: a closure action wired through the item's REAL
     /// `target`/`action`.
-    var onAction: ((NSMenuItem) -> Void)? {
+    @MainActor var onAction: (@MainActor (NSMenuItem) -> Void)? {
         get { nil }
         set {
             guard let newValue else {
@@ -258,7 +272,7 @@ extension NSMenuItem {
 extension NSToolbarItem {
     /// Demo sugar: a closure action wired through the item's REAL
     /// `target`/`action`.
-    var onAction: ((NSToolbarItem) -> Void)? {
+    @MainActor var onAction: (@MainActor (NSToolbarItem) -> Void)? {
         get { nil }
         set {
             guard let newValue else {
@@ -287,15 +301,20 @@ extension NSToolbarItem {
 final class DemoTextChangeDelegate: NSObject, NSTextFieldDelegate {
     nonisolated(unsafe) static var retained: [ObjectIdentifier: DemoTextChangeDelegate] = [:]
 
-    let handler: (NSTextField) -> Void
+    let handler: @MainActor (NSTextField) -> Void
 
-    init(handler: @escaping (NSTextField) -> Void) {
+    init(handler: @escaping @MainActor (NSTextField) -> Void) {
         self.handler = handler
     }
 
     func controlTextDidChange(_ obj: NSNotification) {
+        // Delegate callbacks arrive on the UI thread on both platforms.
         if let field = obj.object as? NSTextField {
-            handler(field)
+            nonisolated(unsafe) let sender = field
+            nonisolated(unsafe) let handler = self.handler
+            MainActor.assumeIsolated {
+                handler(sender)
+            }
         }
     }
 }
@@ -304,7 +323,7 @@ extension NSTextField {
     /// Demo sugar: an edit-change closure installed as the field's REAL
     /// `delegate` (`controlTextDidChange(_:)`). Fields using this must not
     /// need another delegate — plain AppKit rules.
-    @MainActor var onTextChanged: ((NSTextField) -> Void)? {
+    @MainActor var onTextChanged: (@MainActor (NSTextField) -> Void)? {
         get { nil }
         set {
             guard let newValue else {
@@ -322,7 +341,7 @@ extension NSTextField {
 
 extension NSComboBox {
     /// Demo sugar: combo text changes ride the same real text-field delegate.
-    @MainActor var onComboBoxTextChanged: ((NSComboBox) -> Void)? {
+    @MainActor var onComboBoxTextChanged: (@MainActor (NSComboBox) -> Void)? {
         get { nil }
         set {
             guard let newValue else {
@@ -343,22 +362,30 @@ extension NSComboBox {
 final class DemoTextViewChangeDelegate: NSObject, NSTextViewDelegate {
     nonisolated(unsafe) static var retained: [ObjectIdentifier: DemoTextViewChangeDelegate] = [:]
 
-    let handler: (NSTextView) -> Void
+    let handler: @MainActor (NSTextView) -> Void
 
-    init(handler: @escaping (NSTextView) -> Void) {
+    init(handler: @escaping @MainActor (NSTextView) -> Void) {
         self.handler = handler
     }
 
     #if canImport(AppKit) && !canImport(WinChocolate) && !canImport(LinChocolate)
     func textDidChange(_ notification: Notification) {
         if let view = notification.object as? NSTextView {
-            handler(view)
+            nonisolated(unsafe) let sender = view
+            nonisolated(unsafe) let handler = self.handler
+            MainActor.assumeIsolated {
+                handler(sender)
+            }
         }
     }
     #else
     func textDidChange(_ notification: NSNotification) {
         if let view = notification.object as? NSTextView {
-            handler(view)
+            nonisolated(unsafe) let sender = view
+            nonisolated(unsafe) let handler = self.handler
+            MainActor.assumeIsolated {
+                handler(sender)
+            }
         }
     }
     #endif
@@ -367,7 +394,7 @@ final class DemoTextViewChangeDelegate: NSObject, NSTextViewDelegate {
 extension NSTextView {
     /// Demo sugar: an edit-change closure installed as the view's REAL
     /// `delegate` (`textDidChange(_:)`).
-    @MainActor var onTextChanged: ((NSTextView) -> Void)? {
+    @MainActor var onTextChanged: (@MainActor (NSTextView) -> Void)? {
         get { nil }
         set {
             guard let newValue else {
@@ -390,15 +417,19 @@ extension NSTextView {
 final class DemoTableSelectionDelegate: NSObject, NSTableViewDelegate {
     nonisolated(unsafe) static var retained: [ObjectIdentifier: DemoTableSelectionDelegate] = [:]
 
-    let handler: (NSTableView) -> Void
+    let handler: @MainActor (NSTableView) -> Void
 
-    init(handler: @escaping (NSTableView) -> Void) {
+    init(handler: @escaping @MainActor (NSTableView) -> Void) {
         self.handler = handler
     }
 
     func tableViewSelectionDidChange(_ notification: NSNotification) {
         if let table = notification.object as? NSTableView {
-            handler(table)
+            nonisolated(unsafe) let sender = table
+            nonisolated(unsafe) let handler = self.handler
+            MainActor.assumeIsolated {
+                handler(sender)
+            }
         }
     }
 }
@@ -407,15 +438,19 @@ final class DemoTableSelectionDelegate: NSObject, NSTableViewDelegate {
 final class DemoOutlineSelectionDelegate: NSObject, NSOutlineViewDelegate {
     nonisolated(unsafe) static var retained: [ObjectIdentifier: DemoOutlineSelectionDelegate] = [:]
 
-    let handler: (NSOutlineView) -> Void
+    let handler: @MainActor (NSOutlineView) -> Void
 
-    init(handler: @escaping (NSOutlineView) -> Void) {
+    init(handler: @escaping @MainActor (NSOutlineView) -> Void) {
         self.handler = handler
     }
 
     func outlineViewSelectionDidChange(_ notification: NSNotification) {
         if let outline = notification.object as? NSOutlineView {
-            handler(outline)
+            nonisolated(unsafe) let sender = outline
+            nonisolated(unsafe) let handler = self.handler
+            MainActor.assumeIsolated {
+                handler(sender)
+            }
         }
     }
 }
@@ -424,7 +459,7 @@ extension NSTableView {
     /// Demo sugar: a selection closure installed as the table's REAL
     /// `delegate` (`tableViewSelectionDidChange(_:)`). Tables using this must
     /// not need another delegate — plain AppKit rules.
-    @MainActor var onSelectionChanged: ((NSTableView) -> Void)? {
+    @MainActor var onSelectionChanged: (@MainActor (NSTableView) -> Void)? {
         get { nil }
         set {
             guard let newValue else {
@@ -443,7 +478,7 @@ extension NSTableView {
     /// `doubleAction` selector + `target`, exactly as AppKit dispatches it.
     /// Shares the sender's single trampoline with `onAction`, distinguished
     /// by selector — the same constraint any AppKit target has.
-    var onDoubleAction: ((NSTableView) -> Void)? {
+    @MainActor var onDoubleAction: (@MainActor (NSTableView) -> Void)? {
         get { nil }
         set {
             guard let newValue else {
@@ -466,7 +501,7 @@ extension NSTableView {
 extension NSOutlineView {
     /// Demo sugar: outline selection closure installed as the outline's REAL
     /// `delegate` (AppKit's property — WinChocolate routes it identically).
-    @MainActor var onOutlineSelectionChanged: ((NSOutlineView) -> Void)? {
+    @MainActor var onOutlineSelectionChanged: (@MainActor (NSOutlineView) -> Void)? {
         get { nil }
         set {
             guard let newValue else {
