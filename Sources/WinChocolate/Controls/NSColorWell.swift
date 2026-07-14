@@ -132,7 +132,7 @@ open class NSColorWell: NSControl {
         let height = gridHeight + 30 + gap
 
         let content = NSView(frame: NSMakeRect(0, 0, width, height))
-        content.backgroundColor = .windowBackgroundColor
+        content.winBackgroundColor = .windowBackgroundColor
         swatchViews = []
         for (index, swatchColor) in NSColorWell.swatchColors.enumerated() {
             let column = index % columns, row = index / columns
@@ -150,7 +150,7 @@ open class NSColorWell: NSControl {
         }
 
         let moreButton = NSButton(title: "Show Colors…", frame: NSMakeRect(gap, gridHeight, width - 2 * gap, 28))
-        moreButton.onAction = { [weak self, weak popover] _ in
+        moreButton.winInternalAction = { [weak self, weak popover] _ in
             popover?.performClose(nil)
             guard let self else {
                 return
@@ -176,7 +176,7 @@ final class ColorSwatchView: NSView {
         self.swatchColor = color
         self.onPick = onPick
         super.init(frame: frame)
-        backgroundColor = color
+        winBackgroundColor = color
     }
 
     override func draw(_ dirtyRect: NSRect) {

@@ -93,7 +93,7 @@ open class NSForm: NSControl {
         cell.titleWidth = titleWidth
         let label = NSTextField.label(withString: title)
         let field = NSTextField.textField(withString: cell.stringValue)
-        field.onTextChanged = { [weak cell] field in
+        field.winInternalTextChanged = { [weak cell] field in
             cell?.stringValue = field.stringValue
         }
 

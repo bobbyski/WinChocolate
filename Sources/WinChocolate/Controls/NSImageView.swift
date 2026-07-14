@@ -1,3 +1,50 @@
+/// How an image is scaled inside an image view — AppKit's top-level
+/// `NSImageScaling` (18.3: the type is not nested on `NSImageView`).
+public enum NSImageScaling: Sendable {
+    /// Scale down proportionally when the image is larger than the view.
+    case scaleProportionallyDown
+
+    /// Scale independently along each axis.
+    case scaleAxesIndependently
+
+    /// Do not scale the image.
+    case scaleNone
+
+    /// Scale up or down proportionally to fit.
+    case scaleProportionallyUpOrDown
+}
+
+/// How an image is aligned inside an image view — AppKit's top-level
+/// `NSImageAlignment`.
+public enum NSImageAlignment: Sendable {
+    /// Center the image.
+    case alignCenter
+
+    /// Align to the top edge.
+    case alignTop
+
+    /// Align to the top-left corner.
+    case alignTopLeft
+
+    /// Align to the top-right corner.
+    case alignTopRight
+
+    /// Align to the left edge.
+    case alignLeft
+
+    /// Align to the bottom edge.
+    case alignBottom
+
+    /// Align to the bottom-left corner.
+    case alignBottomLeft
+
+    /// Align to the bottom-right corner.
+    case alignBottomRight
+
+    /// Align to the right edge.
+    case alignRight
+}
+
 /// A simple image value.
 ///
 /// This is an initial placeholder for AppKit's `NSImage`. It records a name so
@@ -198,51 +245,6 @@ open class NSImageView: NSControl {
         return description.isEmpty ? nil : description
     }
 
-    /// How the image is scaled inside the image view.
-    public enum ImageScaling: Sendable {
-        /// Scale down proportionally when the image is larger than the view.
-        case scaleProportionallyDown
-
-        /// Scale independently along each axis.
-        case scaleAxesIndependently
-
-        /// Do not scale the image.
-        case scaleNone
-
-        /// Scale up or down proportionally to fit.
-        case scaleProportionallyUpOrDown
-    }
-
-    /// How the image is aligned inside the image view.
-    public enum ImageAlignment: Sendable {
-        /// Center the image.
-        case alignCenter
-
-        /// Align to the top edge.
-        case alignTop
-
-        /// Align to the top-left corner.
-        case alignTopLeft
-
-        /// Align to the top-right corner.
-        case alignTopRight
-
-        /// Align to the left edge.
-        case alignLeft
-
-        /// Align to the bottom edge.
-        case alignBottom
-
-        /// Align to the bottom-left corner.
-        case alignBottomLeft
-
-        /// Align to the bottom-right corner.
-        case alignBottomRight
-
-        /// Align to the right edge.
-        case alignRight
-    }
-
     /// The frame style drawn around the image view.
     public enum ImageFrameStyle: Sendable {
         /// Draw no special frame.
@@ -278,14 +280,14 @@ open class NSImageView: NSControl {
     }
 
     /// The scaling mode used for the displayed image.
-    open var imageScaling: ImageScaling = .scaleProportionallyDown {
+    open var imageScaling: NSImageScaling = .scaleProportionallyDown {
         didSet {
             updateNativeDescription()
         }
     }
 
     /// The alignment mode used for the displayed image.
-    open var imageAlignment: ImageAlignment = .alignCenter {
+    open var imageAlignment: NSImageAlignment = .alignCenter {
         didSet {
             updateNativeDescription()
         }

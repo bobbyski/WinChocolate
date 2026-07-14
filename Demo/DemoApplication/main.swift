@@ -85,6 +85,23 @@ final class DemoContentView: NSView {
     var onKeyDown: ((NSEvent) -> Void)?
     var onKeyUp: ((NSEvent) -> Void)?
 
+    // The demo's own fill: AppKit's NSView has no backgroundColor, so this
+    // subclass draws its background itself (plain AppKit).
+    var backgroundColor: NSColor? {
+        didSet {
+            needsDisplay = true
+        }
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        guard let backgroundColor else {
+            return
+        }
+
+        backgroundColor.setFill()
+        NSBezierPath(rect: bounds).fill()
+    }
+
     override func mouseDown(with event: NSEvent) {
         onBlankAreaMouseDown?(event)
         super.mouseDown(with: event)
@@ -118,9 +135,10 @@ final class DemoPageView: NSView {
 }
 
 /// Adapts `NSTextFieldDelegate` begin/end editing to closures for the demo.
-final class DemoFieldDelegate: NSTextFieldDelegate {
+final class DemoFieldDelegate: NSObject, NSTextFieldDelegate {
     var onBegin: (() -> Void)?
     var onEnd: (() -> Void)?
+    var onChange: ((NSTextField) -> Void)?
 
     func controlTextDidBeginEditing(_ obj: NSNotification) {
         onBegin?()
@@ -128,6 +146,32 @@ final class DemoFieldDelegate: NSTextFieldDelegate {
 
     func controlTextDidEndEditing(_ obj: NSNotification) {
         onEnd?()
+    }
+
+    func controlTextDidChange(_ obj: NSNotification) {
+        if let field = obj.object as? NSTextField {
+            onChange?(field)
+        }
+    }
+}
+
+/// Receives the alert help-button click through the real `NSAlertDelegate`.
+final class DemoAlertHelpDelegate: NSObject, NSAlertDelegate {
+    var onHelp: (() -> Void)?
+
+    func alertShowHelp(_ alert: NSAlert) -> Bool {
+        onHelp?()
+        return true
+    }
+}
+
+/// Applies live font-panel picks through the real `changeFont(_:)` responder
+/// action (`NSFontManager.target` receives it, as in AppKit).
+final class DemoFontChangeResponder: NSResponder {
+    var handler: ((NSFont) -> Void)?
+
+    override func changeFont(_ sender: Any?) {
+        handler?(NSFontManager.shared.convert(NSFont.systemFont(ofSize: 13)))
     }
 }
 
@@ -157,7 +201,7 @@ final class DemoCanvasView: NSView {
         let inset = NSMakeRect(4, 4, frame.size.width - 8, frame.size.height - 8)
         // The artboard follows the appearance (light paper / dark board) so
         // the canvas doesn't read as a white slab in dark mode.
-        let dark = NSAppearance.currentDrawing().winIsDark
+        let dark = NSAppearance.currentDrawing().bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
         (dark ? NSColor(calibratedRed: 0.17, green: 0.17, blue: 0.18, alpha: 1)
               : NSColor(calibratedRed: 0.98, green: 0.98, blue: 0.96, alpha: 1)).setFill()
         let backdrop = NSBezierPath(roundedRect: inset, xRadius: 10, yRadius: 10)
@@ -234,7 +278,7 @@ final class DemoShapesView: NSView {
         // The artboard follows the appearance (light paper / dark board) so it
         // doesn't read as a white slab in dark mode; the shapes are saturated
         // colors that stay legible on either.
-        let dark = NSAppearance.currentDrawing().winIsDark
+        let dark = NSAppearance.currentDrawing().bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
         (dark ? NSColor(calibratedRed: 0.17, green: 0.17, blue: 0.18, alpha: 1)
               : NSColor.white).setFill()
         NSRectFill(NSMakeRect(0, 0, frame.size.width, frame.size.height))
@@ -311,7 +355,7 @@ final class DemoGradientsView: NSView {
     override func draw(_ dirtyRect: NSRect) {
         // Appearance-aware board (light paper / dark board) so it doesn't read as
         // a white slab in dark mode; the gradient swatches stay legible on either.
-        let dark = NSAppearance.currentDrawing().winIsDark
+        let dark = NSAppearance.currentDrawing().bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
         (dark ? NSColor(calibratedRed: 0.17, green: 0.17, blue: 0.18, alpha: 1)
               : NSColor.white).setFill()
         NSRectFill(NSMakeRect(0, 0, frame.size.width, frame.size.height))
@@ -404,7 +448,7 @@ final class DemoSlowGradientView: NSView {
     override var acceptsFirstResponder: Bool { false }
 
     override func draw(_ dirtyRect: NSRect) {
-        let dark = NSAppearance.currentDrawing().winIsDark
+        let dark = NSAppearance.currentDrawing().bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
         (dark ? NSColor(calibratedRed: 0.14, green: 0.14, blue: 0.16, alpha: 1)
               : NSColor(calibratedRed: 0.96, green: 0.96, blue: 0.98, alpha: 1)).setFill()
         NSRectFill(NSMakeRect(0, 0, frame.size.width, frame.size.height))
@@ -475,7 +519,7 @@ final class DemoCoreGraphicsView: NSView {
 
     override func draw(_ dirtyRect: NSRect) {
         guard let context = NSGraphicsContext.current?.cgContext else { return }
-        let dark = NSAppearance.currentDrawing().winIsDark
+        let dark = NSAppearance.currentDrawing().bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
 
         // Artboard backdrop, matching the Drawing page's appearance behavior.
         let inset = NSMakeRect(4, 4, frame.size.width - 8, frame.size.height - 8)
@@ -617,7 +661,7 @@ final class DemoHoverView: NSView {
     override func draw(_ dirtyRect: NSRect) {
         // The resting fill/text follow the appearance so the box isn't a light
         // slab in dark mode; the hover state stays accent-blue on both.
-        let dark = NSAppearance.currentDrawing().winIsDark
+        let dark = NSAppearance.currentDrawing().bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
         let fill = hovering
             ? NSColor(calibratedRed: 0.30, green: 0.62, blue: 0.86, alpha: 1)
             : (dark ? NSColor(calibratedRed: 0.24, green: 0.24, blue: 0.26, alpha: 1)
@@ -768,7 +812,7 @@ final class DemoPrintSample: NSView {
 }
 
 /// Data source for the showcase's framework-drawn (view-based) table (5.5).
-final class DemoViewTableDataSource: NSTableViewDataSource {
+final class DemoViewTableDataSource: NSObject, NSTableViewDataSource {
     var tasks = [
         "Review the pull request", "Ship the nightly build", "Write the release notes",
         "Triage the bug backlog", "Update the changelog", "Refresh the screenshots",
@@ -798,7 +842,7 @@ final class DemoViewTableDataSource: NSTableViewDataSource {
 
 /// Delegate that vends a real control per cell so the drawn table hosts them
 /// inside its cells — something a native list view can't do.
-final class DemoViewTableDelegate: NSTableViewDelegate {
+final class DemoViewTableDelegate: NSObject, NSTableViewDelegate {
     let source: DemoViewTableDataSource
     var onEvent: ((String) -> Void)?
 
@@ -839,7 +883,7 @@ final class DemoViewTableDelegate: NSTableViewDelegate {
 
 /// A small pipeline-status list showcasing `NSTableRowView` hosting: each row
 /// gets a full-width colored row view behind hosted label cells.
-final class DemoStatusRowDataSource: NSTableViewDataSource {
+final class DemoStatusRowDataSource: NSObject, NSTableViewDataSource {
     let items: [(stage: String, status: String)] = [
         ("Build", "passing"), ("Unit tests", "passing"), ("Lint", "warning"),
         ("Deploy", "failed"), ("Docs", "passing"), ("Package", "passing"),
@@ -850,7 +894,7 @@ final class DemoStatusRowDataSource: NSTableViewDataSource {
     }
 }
 
-final class DemoStatusRowDelegate: NSTableViewDelegate {
+final class DemoStatusRowDelegate: NSObject, NSTableViewDelegate {
     let source: DemoStatusRowDataSource
     init(source: DemoStatusRowDataSource) { self.source = source }
 
@@ -876,8 +920,13 @@ final class DemoStatusRowDelegate: NSTableViewDelegate {
 }
 
 /// A plain-text document demonstrating the NSDocument window-controller flow.
-final class DemoNoteDocument: NSDocument {
-    var text = ""
+/// The document is its editor's real `NSTextViewDelegate` — the plain AppKit
+/// idiom for tracking dirty state.
+final class DemoNoteDocument: NSDocument, NSTextViewDelegate {
+    // The delegate conformance infers @MainActor on the class; NSDocument's
+    // read/write overrides stay nonisolated, so the backing text opts out
+    // (the demo is single-threaded).
+    nonisolated(unsafe) var text = ""
 
     override func data(ofType typeName: String) throws -> Data {
         Data(Array(text.utf8))
@@ -885,6 +934,15 @@ final class DemoNoteDocument: NSDocument {
 
     override func read(from data: Data, ofType typeName: String) throws {
         text = String(decoding: data, as: UTF8.self)
+    }
+
+    func textDidChange(_ notification: NSNotification) {
+        guard let editor = notification.object as? NSTextView else {
+            return
+        }
+
+        text = editor.string
+        updateChangeCount(.changeDone)
     }
 
     override func makeWindowControllers() {
@@ -897,10 +955,7 @@ final class DemoNoteDocument: NSDocument {
         let editor = NSTextView(frame: NSMakeRect(12, 12, 436, 296))
         editor.string = text
         editor.allowsUndo = true
-        editor.onTextChanged = { [weak self] textView in
-            self?.text = textView.string
-            self?.updateChangeCount(.changeDone)
-        }
+        editor.delegate = self
         let noteContent = NSView(frame: NSMakeRect(0, 0, 460, 320))
         noteContent.addSubview(editor)
         noteWindow.contentView = noteContent
@@ -910,7 +965,7 @@ final class DemoNoteDocument: NSDocument {
 
 
 /// Reports split-view divider drags in the status label.
-final class DemoSplitDelegate: NSSplitViewDelegate {
+final class DemoSplitDelegate: NSObject, NSSplitViewDelegate {
     var onResize: (() -> Void)?
 
     func splitViewDidResizeSubviews(_ notification: NSNotification) {
@@ -942,7 +997,7 @@ final class EditMenuController: NSMenuItemValidation {
 
 let editMenuController = EditMenuController()
 
-final class DemoTableDataSource: NSTableViewDataSource {
+final class DemoTableDataSource: NSObject, NSTableViewDataSource {
     var rows: [[String]] = [
         ["NSApplication", "Running"],
         ["NSWindow", "Key/Main"],
@@ -1020,7 +1075,7 @@ final class DemoTableDataSource: NSTableViewDataSource {
     }
 }
 
-final class DemoOutlineDataSource: NSOutlineViewDataSource {
+final class DemoOutlineDataSource: NSObject, NSOutlineViewDataSource {
     var roots = ["Application", "Controls", "Tables"]
     var children: [String: [String]] = [
         "Application": ["NSApplication", "NSWindow", "NSMenu"],
@@ -1089,7 +1144,7 @@ final class DemoOutlineDataSource: NSOutlineViewDataSource {
     }
 }
 
-final class DemoBrowserDataSource: NSBrowserDelegate {
+final class DemoBrowserDataSource: NSObject, NSBrowserDelegate {
     let roots = ["Application", "Controls", "Tables"]
     let children: [String: [String]] = [
         "Application": ["NSApplication", "NSWindow", "NSMenu", "NSAlert"],
@@ -1122,7 +1177,7 @@ final class DemoBrowserDataSource: NSBrowserDelegate {
     }
 }
 
-final class DemoCollectionDataSource: NSCollectionViewDataSource {
+final class DemoCollectionDataSource: NSObject, NSCollectionViewDataSource {
     let values = ["NSButton", "NSTextField", "NSTableView", "NSImageView", "NSBrowser", "NSOutlineView"]
 
     func collectionView(_ collectionView: NSCollectionView, numberOfItemsInSection section: Int) -> Int {
@@ -1140,7 +1195,7 @@ final class DemoCollectionDataSource: NSCollectionViewDataSource {
 
 /// A multi-section collection source (with section headers) so the flow
 /// layout's wrapping, re-tiling, and section headers are all demonstrable.
-final class DemoFlowCollectionDataSource: NSCollectionViewDataSource {
+final class DemoFlowCollectionDataSource: NSObject, NSCollectionViewDataSource {
     let sections: [(title: String, items: [String])] = [
         ("Views", ["NSView", "NSImageView", "NSTextField", "NSButton", "NSSlider", "NSStepper"]),
         ("Controls", ["NSComboBox", "NSPopUpButton", "NSDatePicker", "NSColorWell", "NSSegmentedControl", "NSLevelIndicator", "NSPathControl", "NSTokenField"]),
@@ -1168,7 +1223,7 @@ final class DemoFlowCollectionDataSource: NSCollectionViewDataSource {
         let section = sections[indexPath.section]
         // Resolve the appearance live (not the cached launch value) so bands
         // recreated during a redraw after a system switch pick up the new look.
-        let dark = NSApplication.shared.effectiveAppearance.winIsDark
+        let dark = NSApplication.shared.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
         if kind == NSCollectionView.elementKindSectionHeader {
             let header = NSTextField(string: "  \(section.title)", frame: .zero)
             header.isBordered = false
@@ -1195,7 +1250,7 @@ final class DemoFlowCollectionDataSource: NSCollectionViewDataSource {
 
 /// Sizes each collection item to fit its label, demonstrating per-item flow
 /// sizing (`NSCollectionViewDelegateFlowLayout`).
-final class DemoFlowSizeDelegate: NSCollectionViewDelegateFlowLayout {
+final class DemoFlowSizeDelegate: NSObject, NSCollectionViewDelegateFlowLayout {
     let source: DemoFlowCollectionDataSource
     init(_ source: DemoFlowCollectionDataSource) { self.source = source }
     func collectionView(_ collectionView: NSCollectionView, layout collectionViewLayout: NSCollectionViewLayout, sizeForItemAt indexPath: IndexPath) -> NSSize {
@@ -1240,7 +1295,7 @@ let askToSaveButton = NSButton(title: "Ask to Save", frame: NSMakeRect(884, 24, 
 let editableLabel = NSTextField(string: "Type here:", frame: NSMakeRect(32, 88, 104, 24))
 let editableTextField = NSTextField(string: "", frame: NSMakeRect(152, 86, 360, 28))
 let secureLabel = NSTextField(string: "Password:", frame: NSMakeRect(32, 122, 104, 24))
-let secureTextField = NSSecureTextField(string: "", frame: NSMakeRect(152, 120, 240, 28))
+let secureTextField = NSSecureTextField(frame: NSMakeRect(152, 120, 240, 28))
 let alertButton = NSButton(title: "Alert", frame: NSMakeRect(32, 152, 100, 34))
 let titleCheckbox = NSButton(title: "Show count in title", frame: NSMakeRect(152, 152, 228, 34))
 let alertStyleBox = NSBox(title: "Alert Style", frame: NSMakeRect(448, 120, 248, 116))
@@ -1331,11 +1386,11 @@ let imageLabel = NSTextField(string: "Image view:", frame: NSMakeRect(32, 28, 10
 let imageView = NSImageView(frame: NSMakeRect(152, 28, 300, 190))
 let clipLabel = NSTextField(string: "Clip view:", frame: NSMakeRect(496, 28, 104, 24))
 let clipView = NSClipView(frame: NSMakeRect(616, 28, 220, 110))
-let clipDocumentView = NSView(frame: NSMakeRect(0, 0, 420, 220))
-let clipTopLeftPane = NSView(frame: NSMakeRect(0, 0, 210, 110))
-let clipTopRightPane = NSView(frame: NSMakeRect(210, 0, 210, 110))
-let clipBottomLeftPane = NSView(frame: NSMakeRect(0, 110, 210, 110))
-let clipBottomRightPane = NSView(frame: NSMakeRect(210, 110, 210, 110))
+let clipDocumentView = DemoFilledView(frame: NSMakeRect(0, 0, 420, 220))
+let clipTopLeftPane = DemoFilledView(frame: NSMakeRect(0, 0, 210, 110))
+let clipTopRightPane = DemoFilledView(frame: NSMakeRect(210, 0, 210, 110))
+let clipBottomLeftPane = DemoFilledView(frame: NSMakeRect(0, 110, 210, 110))
+let clipBottomRightPane = DemoFilledView(frame: NSMakeRect(210, 110, 210, 110))
 let clipTopLeftLabel = NSTextField(string: "0,0", frame: NSMakeRect(12, 12, 72, 24))
 let clipTopRightLabel = NSTextField(string: "right", frame: NSMakeRect(222, 12, 72, 24))
 let clipBottomLeftLabel = NSTextField(string: "down", frame: NSMakeRect(12, 122, 72, 24))
@@ -1348,8 +1403,8 @@ let pathLabel = NSTextField(string: "Path:", frame: NSMakeRect(496, 286, 104, 24
 let pathControl = NSPathControl(url: URL(fileURLWithPath: "C:\\AIResearch\\WinChocolate\\Code\\WinChocolate"), frame: NSMakeRect(616, 284, 360, 28))
 let splitLabel = NSTextField(string: "Split view:", frame: NSMakeRect(496, 160, 104, 24))
 let splitView = NSSplitView(frame: NSMakeRect(616, 160, 240, 96))
-let splitLeftPane = NSView(frame: NSZeroRect)
-let splitRightPane = NSView(frame: NSZeroRect)
+let splitLeftPane = DemoFilledView(frame: NSZeroRect)
+let splitRightPane = DemoFilledView(frame: NSZeroRect)
 let tableLabel = NSTextField(string: "Table view:", frame: NSMakeRect(32, 336, 120, 24))
 let scrollSelectedButton = NSButton(title: "Scroll Selected", frame: NSMakeRect(32, 368, 120, 30))
 let tableScrollView = NSScrollView(frame: NSMakeRect(152, 336, 520, 176))
@@ -1384,7 +1439,7 @@ let normalContentColor = NSColor.windowBackgroundColor
 // The focus tint and resting field face follow the appearance so the focus
 // demo reads correctly in dark mode too (resolved once at launch, matching
 // the process-wide appearance binding).
-let isDarkDemo = NSApplication.shared.effectiveAppearance.winIsDark
+let isDarkDemo = NSApplication.shared.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
 let controlFocusColor = isDarkDemo
     ? NSColor(calibratedRed: 0.35, green: 0.32, blue: 0.12, alpha: 1.0)
     : NSColor(calibratedRed: 1.0, green: 0.96, blue: 0.72, alpha: 1.0)
@@ -1674,7 +1729,7 @@ let toolbarSaveImagePath = demoToolbarBitmapPath(named: "ToolbarSave", width: 58
 let toolbarToggleImagePath = demoToolbarBitmapPath(named: "ToolbarToggle", width: 96, kind: "toggle")
 let toolbarCustomizeImagePath = demoToolbarBitmapPath(named: "ToolbarCustomize", width: 86, kind: "customize")
 var imageModeIndex = 0
-let imageModes: [(NSImageView.ImageScaling, NSImageView.ImageAlignment, String, String)] = [
+let imageModes: [(NSImageScaling, NSImageAlignment, String, String)] = [
     (.scaleProportionallyDown, .alignCenter, demoArtworkPath, "bird center/down"),
     (.scaleProportionallyUpOrDown, .alignTopLeft, demoScreenArtworkPath, "screen top-left/fit"),
     (.scaleAxesIndependently, .alignBottomRight, demoArtworkPath, "bird bottom-right/axes"),
@@ -1682,7 +1737,7 @@ let imageModes: [(NSImageView.ImageScaling, NSImageView.ImageAlignment, String, 
     (.scaleProportionallyDown, .alignCenter, demoPngPath, "png center/down")
 ]
 
-final class DemoToolbarDelegate: NSToolbarDelegate {
+final class DemoToolbarDelegate: NSObject, NSToolbarDelegate {
     let allowedIdentifiers: [NSToolbarItem.Identifier]
     let defaultIdentifiers: [NSToolbarItem.Identifier]
     let itemProvider: (NSToolbarItem.Identifier) -> NSToolbarItem?
@@ -2021,7 +2076,7 @@ func updateFocusDisplay() {
     contentView.backgroundColor = NSColor.windowBackgroundColor
     // Resolve the focus tint from the live appearance so a system switch while a
     // field is focused rebuilds its brush at the new shade.
-    let controlFocusColor = NSApplication.shared.effectiveAppearance.winIsDark
+    let controlFocusColor = NSApplication.shared.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
         ? NSColor(calibratedRed: 0.35, green: 0.32, blue: 0.12, alpha: 1.0)
         : NSColor(calibratedRed: 1.0, green: 0.96, blue: 0.72, alpha: 1.0)
     editableTextField.backgroundColor = name == "text field"
@@ -2288,14 +2343,6 @@ demoToolbar.allowsUserCustomization = true
 // restored when the toolbar attaches to the window.
 demoToolbar.autosavesConfiguration = true
 demoToolbar.delegate = demoToolbarDelegate
-demoToolbar.addItem(openToolbarItem)
-demoToolbar.addItem(saveToolbarItem)
-demoToolbar.addItem(pageToolbarItem)
-demoToolbar.addItem(searchToolbarItem)
-demoToolbar.addItem(toolbarSeparatorItem)
-demoToolbar.addItem(toolbarFlexibleSpaceItem)
-demoToolbar.addItem(toggleToolbarItem)
-demoToolbar.addItem(customizeToolbarItem)
 window.toolbar = demoToolbar
 contentView.onBlankAreaMouseDown = { event in
     updateFocusDisplay()
@@ -2344,11 +2391,11 @@ func showDemoPage(_ index: Int) {
     updateFocusDisplay()
 }
 
-titleCheckbox.setButtonType(.switchButton)
+titleCheckbox.setButtonType(.switch)
 titleCheckbox.state = .on
-infoRadio.setButtonType(.radioButton)
-warningRadio.setButtonType(.radioButton)
-criticalRadio.setButtonType(.radioButton)
+infoRadio.setButtonType(.radio)
+warningRadio.setButtonType(.radio)
+criticalRadio.setButtonType(.radio)
 infoRadio.state = .on
 alertStylePopup.addItems(withTitles: ["Info", "Warning", "Critical"])
 // Tag each style so the alert can read the choice by tag, not title.
@@ -2440,7 +2487,7 @@ for i in 0..<28 {
     stressDocView.addSubview(popup)
 
     let check = NSButton(title: "Enabled", frame: NSMakeRect(712, stressY, 96, 24))
-    check.setButtonType(.switchButton)
+    check.setButtonType(.switch)
     check.state = (i % 2 == 0) ? .on : .off
     stressDocView.addSubview(check)
 
@@ -2499,7 +2546,6 @@ do {
         if let instance = nib.winInstantiate(withOwner: nibOwner),
            let panel = instance.topLevelObjects.compactMap({ $0 as? NSView }).first {
             panel.frame = NSMakeRect(24, 52, panel.frame.size.width, panel.frame.size.height)
-            panel.backgroundColor = NSColor.controlBackgroundColor
             nibPage.addSubview(panel)
 
             // Manual outlet wiring through the xib identifiers.
@@ -2647,16 +2693,17 @@ panelButton.previousKeyView = moveButton
 configureToolbarKeyLoop()
 
 editableTextField.isEditable = true
-editableTextField.onTextChanged = { field in
+// One real NSTextFieldDelegate handles begin/end/change for this field
+// (a field has a single delegate — plain AppKit rules).
+let editableFieldDelegate = DemoFieldDelegate()
+editableFieldDelegate.onBegin = { statusLabel.stringValue = "Began editing field" }
+editableFieldDelegate.onEnd = { statusLabel.stringValue = "Ended editing field" }
+editableFieldDelegate.onChange = { field in
     updateFocusDisplay()
     statusLabel.stringValue = field.stringValue.isEmpty
         ? "Edit field cleared"
         : "Typed: \(field.stringValue)"
 }
-// NSTextFieldDelegate begin/end editing on focus, shown in the status line.
-let editableFieldDelegate = DemoFieldDelegate()
-editableFieldDelegate.onBegin = { statusLabel.stringValue = "Began editing field" }
-editableFieldDelegate.onEnd = { statusLabel.stringValue = "Ended editing field" }
 editableTextField.delegate = editableFieldDelegate
 
 secureTextField.onTextChanged = { field in
@@ -2699,13 +2746,17 @@ levelIndicator.onAction = { control in
 
 colorWell.onAction = { _ in
     updateFocusDisplay()
-    // Clicking presents the shared color panel; report and reflect picks on
-    // this well's swatch.
+    // Clicking presents the shared color panel; its REAL target/action pair
+    // (`setTarget`/`setAction`, as in AppKit) reports picks back here.
     let panel = NSColorPanel.shared
-    panel.winColorDidChange = { color in
+    let panelTarget = DemoActionTarget.trampoline(for: panel)
+    panelTarget.handlers["demoFire:"] = { sender in
+        let color = (sender as? NSColorPanel)?.color ?? panel.color
         colorWell.color = color
         statusLabel.stringValue = "Color well changed: RGB \(Int(color.redComponent * 255)), \(Int(color.greenComponent * 255)), \(Int(color.blueComponent * 255))"
     }
+    panel.setTarget(panelTarget)
+    panel.setAction(DemoActionTarget.fireSelector)
     colorWell.activate(true)
     panel.makeKeyAndOrderFront(colorWell)
 }
@@ -2718,13 +2769,18 @@ pathControl.onAction = { control in
     statusLabel.stringValue = "Path clicked: \(path.clickedPathComponentCell?.title ?? "?")"
 }
 
+let demoFontChangeResponder = DemoFontChangeResponder()
 fontButton.onAction = { _ in
     updateFocusDisplay()
+    // Live picks arrive through the REAL `changeFont(_:)` responder action:
+    // the manager's target receives it and converts the selection, as any
+    // AppKit app does.
     let manager = NSFontManager.shared
-    manager.winFontDidChange = { font in
+    demoFontChangeResponder.handler = { font in
         let weight = font.weight == .bold ? " bold" : ""
         statusLabel.stringValue = "Font chosen: \(font.fontName) \(Int(font.pointSize))pt\(weight)"
     }
+    manager.target = demoFontChangeResponder
     manager.orderFrontFontPanel(fontButton)
 }
 
@@ -2942,7 +2998,7 @@ panelButton.onAction = { _ in
     statusLabel.stringValue = "Panel ordered front"
 }
 
-let popoverContent = NSView(frame: NSMakeRect(0, 0, 260, 120))
+let popoverContent = DemoFilledView(frame: NSMakeRect(0, 0, 260, 120))
 let popoverTitle = NSTextField(string: "NSPopover", frame: NSMakeRect(20, 16, 120, 24))
 let popoverInfo = NSTextField(string: "Borderless transient host", frame: NSMakeRect(20, 46, 200, 24))
 let popoverCloseButton = NSButton(title: "Close", frame: NSMakeRect(20, 82, 80, 28))
@@ -3074,6 +3130,7 @@ customizeToolbarItem.onAction = { _ in
     statusLabel.stringValue = "Toolbar customization opened"
 }
 
+let demoAlertHelpDelegate = DemoAlertHelpDelegate()
 alertButton.onAction = { _ in
     updateFocusDisplay()
     let alert = NSAlert()
@@ -3089,9 +3146,11 @@ alertButton.onAction = { _ in
         alert.alertStyle = .informational
     }
     alert.showsHelp = true
-    alert.winHelpButtonAction = {
+    // Help clicks arrive through the REAL NSAlertDelegate.alertShowHelp(_:).
+    demoAlertHelpDelegate.onHelp = {
         statusLabel.stringValue = "Alert help requested"
     }
+    alert.delegate = demoAlertHelpDelegate
     alert.addButton(withTitle: "OK")
     _ = alert.runModal()
     updateFocusDisplay()
@@ -3261,11 +3320,7 @@ outlineView.onAction = { control in
         ? "Outline \(outline.isItemExpanded(item) ? "expanded" : "collapsed"): \(itemText)"
         : "Outline action: \(itemText), level \(outline.level(forItem: item))"
 }
-outlineView.onSelectionChanged = { table in
-    guard let outline = table as? NSOutlineView else {
-        return
-    }
-
+outlineView.onOutlineSelectionChanged = { outline in
     updateFocusDisplay()
     let item = outline.item(atRow: outline.selectedRow).map { String(describing: $0) } ?? "none"
     statusLabel.stringValue = "Outline selected: \(item)"
@@ -3442,14 +3497,18 @@ templateImageView.contentTintColor = .systemBlue
 let templateTintWell = NSColorWell(frame: NSMakeRect(84, 134, 44, 36))
 templateTintWell.color = .systemBlue
 templateTintWell.onAction = { _ in
-    // Clicking presents the shared color panel. As its selection changes,
-    // update this well's own swatch and re-tint the glyph.
+    // Clicking presents the shared color panel; its REAL target/action pair
+    // (`setTarget`/`setAction`, as in AppKit) re-tints the glyph on picks.
     let panel = NSColorPanel.shared
-    panel.winColorDidChange = { color in
+    let panelTarget = DemoActionTarget.trampoline(for: panel)
+    panelTarget.handlers["demoFire:"] = { sender in
+        let color = (sender as? NSColorPanel)?.color ?? panel.color
         templateTintWell.color = color
         templateImageView.contentTintColor = color
         statusLabel.stringValue = "Template tint changed"
     }
+    panel.setTarget(panelTarget)
+    panel.setAction(DemoActionTarget.fireSelector)
     templateTintWell.activate(true)
     panel.makeKeyAndOrderFront(templateTintWell)
 }
@@ -4011,12 +4070,12 @@ let layoutHeader = showcaseSectionLabel(
     "NSLayoutConstraint + anchors + intrinsic sizes (9.1/9.2)", NSMakeRect(24, 36, 660, 20))
 
 func layoutDemoContainer(at x: CGFloat) -> NSView {
-    let container = NSView(frame: NSMakeRect(x, 84, 250, 150))
+    let container = DemoFilledView(frame: NSMakeRect(x, 84, 250, 150))
     container.backgroundColor = NSColor(calibratedWhite: 0.30, alpha: 1)
     return container
 }
 func layoutBox(_ color: NSColor) -> NSView {
-    let box = NSView(frame: .zero)
+    let box = DemoFilledView(frame: .zero)
     box.translatesAutoresizingMaskIntoConstraints = false
     box.backgroundColor = color
     return box
@@ -4107,7 +4166,7 @@ demo4.layoutSubtreeIfNeeded()
 let resizeDemoCaption = bezelCaption(
     "Resize the window → the green middle box reflows live (left/right pinned to the edges, middle fills the gap).",
     NSMakeRect(24, 250, 1000, 18))
-let resizeContainer = NSView(frame: NSMakeRect(24, 274, 1072, 90))
+let resizeContainer = DemoFilledView(frame: NSMakeRect(24, 274, 1072, 90))
 resizeContainer.backgroundColor = NSColor(calibratedWhite: 0.30, alpha: 1)
 let resizeLeft = layoutBox(layoutBlue)
 let resizeMiddle = layoutBox(layoutGreen)
@@ -4271,7 +4330,7 @@ for view in [cgIntro, cgArtboard, cgFootnote] as [NSView] {
 // this synchronously.
 @MainActor
 func applyLiveAppearanceRefresh() {
-    let dark = NSApplication.shared.effectiveAppearance.winIsDark
+    let dark = NSApplication.shared.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
     // The content view was given a background resolved at launch; re-resolve it
     // (windowBackgroundColor is dynamic) so the page surface follows the switch.
     contentView.backgroundColor = NSColor.windowBackgroundColor
@@ -4355,7 +4414,7 @@ window.contentView = contentView
 // page + the resize-demo container to the window's content width and re-run the
 // solver, so dragging the window reflows the constraint-driven boxes in real
 // time. Other pages stay frame-based, so nothing else needs a resize pass.
-final class DemoWindowDelegate: NSWindowDelegate {
+final class DemoWindowDelegate: NSObject, NSWindowDelegate {
     func windowDidResize(_ notification: NSNotification) {
         MainActor.assumeIsolated {
             guard !layoutPage.isHidden else {

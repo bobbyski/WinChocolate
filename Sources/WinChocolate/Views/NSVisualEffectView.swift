@@ -131,7 +131,7 @@ open class NSVisualEffectView: NSView {
     }
 
     private func updateFallbackBackground() {
-        backgroundColor = fallbackColor
+        winBackgroundColor = fallbackColor
     }
 
     private var fallbackColor: NSColor {

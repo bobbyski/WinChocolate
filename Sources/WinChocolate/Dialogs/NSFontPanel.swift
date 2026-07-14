@@ -33,9 +33,6 @@ open class NSFontPanel: NSPanel {
     /// Whether the panel represents a multiple-font selection.
     open private(set) var winIsMultiple = false
 
-    /// Called after every font change, alongside the responder-chain action.
-    open var winFontDidChange: ((NSFont) -> Void)?
-
     private let familyNames: [String]
     private var familyTable: NSTableView?
     private var typefacePopUp: NSPopUpButton?
@@ -92,7 +89,7 @@ open class NSFontPanel: NSPanel {
         column.width = 156
         table.addTableColumn(column)
         table.dataSource = self
-        table.onSelectionChanged = { [weak self] _ in
+        table.winInternalSelectionChanged = { [weak self] _ in
             self?.selectionControlsDidChange()
         }
         content.addSubview(table)
@@ -104,7 +101,7 @@ open class NSFontPanel: NSPanel {
 
         let typeface = NSPopUpButton(frame: NSMakeRect(208, 32, 96, 24), pullsDown: false)
         typeface.addItems(withTitles: ["Regular", "Bold", "Italic", "Bold Italic"])
-        typeface.onAction = { [weak self] _ in
+        typeface.winInternalAction = { [weak self] _ in
             self?.selectionControlsDidChange()
         }
         content.addSubview(typeface)
@@ -117,7 +114,7 @@ open class NSFontPanel: NSPanel {
         let sizes = NSComboBox(frame: NSMakeRect(208, 92, 96, 24))
         sizes.addItems(withObjectValues: Self.presetSizes.map(String.init))
         sizes.stringValue = "13"
-        sizes.onComboBoxTextChanged = { [weak self] _ in
+        sizes.winInternalComboTextChanged = { [weak self] _ in
             self?.selectionControlsDidChange()
         }
         content.addSubview(sizes)
@@ -144,7 +141,6 @@ open class NSFontPanel: NSPanel {
         let font = fontFromControls()
         winSelectedFont = font
         previewField?.font = font
-        winFontDidChange?(font)
         NSFontManager.shared.panelFontDidChange(font)
     }
 

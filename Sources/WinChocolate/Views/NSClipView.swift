@@ -6,6 +6,14 @@
 open class NSClipView: NSView {
     internal var onScroll: ((NSPoint) -> Void)?
 
+    /// The clip view's background fill, matching AppKit's
+    /// `NSClipView.backgroundColor` (one of the concrete types where Apple
+    /// exposes a background color — plain `NSView` has none).
+    open var backgroundColor: NSColor? {
+        get { winBackgroundColor }
+        set { winBackgroundColor = newValue }
+    }
+
     /// The view shown inside the clip view.
     open var documentView: NSView? {
         didSet {

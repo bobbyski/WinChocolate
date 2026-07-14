@@ -1,5 +1,5 @@
 /// The methods a split view delegate uses to respond to pane resizing.
-public protocol NSSplitViewDelegate: AnyObject {
+public protocol NSSplitViewDelegate: NSObjectProtocol {
     /// Tells the delegate that pane frames changed.
     func splitViewDidResizeSubviews(_ notification: NSNotification)
 }

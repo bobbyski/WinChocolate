@@ -13,7 +13,7 @@ open class NSSecureTextField: NSTextField {
     }
 
     /// Creates a secure text field with text and a frame.
-    public override init(string stringValue: String, frame frameRect: NSRect) {
+    override init(string stringValue: String, frame frameRect: NSRect) {
         super.init(string: stringValue, frame: frameRect)
         isEditable = true
         isSelectable = true

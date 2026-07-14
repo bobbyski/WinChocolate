@@ -2,9 +2,9 @@
 ///
 /// A view forwards its `mouseDown`/`mouseDragged`/`mouseUp` events to every
 /// attached recognizer (see `NSView.addGestureRecognizer`); each subclass
-/// turns the raw sequence into its gesture and reports through the
-/// Swift-native `onAction` closure (the stored `target`/`action` pair is
-/// AppKit shape only — there is no ObjC dispatch here).
+/// turns the raw sequence into its gesture and dispatches the real
+/// `target`/`action` selector on each state change, as AppKit does (see
+/// `NSObject`'s selector-dispatch note).
 ///
 /// The classic slice covers what ported UI reaches for: click, press-and-
 /// hold, and pan. Magnification exists for API shape but never fires — the
@@ -26,14 +26,11 @@ open class NSGestureRecognizer {
     /// The view the recognizer is attached to.
     open internal(set) weak var view: NSView?
 
-    /// Stored for AppKit shape; dispatch runs through `onAction`.
+    /// The object that receives the recognizer's action.
     open weak var target: AnyObject?
 
-    /// Stored for AppKit shape; dispatch runs through `onAction`.
+    /// The selector sent to `target` on every reported state change.
     open var action: Selector?
-
-    /// Swift-native callback fired on every reported state change.
-    open var onAction: ((NSGestureRecognizer) -> Void)?
 
     /// Whether the recognizer participates in events.
     open var isEnabled: Bool = true
@@ -41,11 +38,21 @@ open class NSGestureRecognizer {
     // The last event location in window coordinates.
     var winLastLocationInWindow: NSPoint = .zero
 
-    /// Creates a recognizer. The target/action pair is stored for AppKit
-    /// shape; wire `onAction` for dispatch.
+    /// Creates a recognizer with AppKit's real target/action dispatch: the
+    /// action selector is sent to the target on each state change.
     public init(target: AnyObject?, action: Selector?) {
         self.target = target
         self.action = action
+    }
+
+    /// Dispatches the recognizer's action selector to its target (or down
+    /// the responder chain when the target is nil), as AppKit does.
+    func winSendAction() {
+        guard let action else {
+            return
+        }
+
+        _ = NSApplication.shared.sendAction(action, to: target, from: self)
     }
 
     /// The last event location in a view's coordinate space (the window's
@@ -66,11 +73,11 @@ open class NSGestureRecognizer {
     /// Handles a release in the attached view. Subclasses override.
     open func mouseUp(with event: NSEvent) {}
 
-    // Records the event location and fires the callback.
+    // Records the event location and dispatches the action.
     func winReport(_ state: State, event: NSEvent) {
         self.state = state
         winLastLocationInWindow = event.locationInWindow
-        onAction?(self)
+        winSendAction()
     }
 }
 
@@ -121,7 +128,7 @@ open class NSPressGestureRecognizer: NSGestureRecognizer {
                 return
             }
             self.state = .began
-            self.onAction?(self)
+            self.winSendAction()
         }
     }
 

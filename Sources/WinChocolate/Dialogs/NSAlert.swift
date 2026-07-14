@@ -1,5 +1,5 @@
 /// The methods an alert delegate can implement.
-public protocol NSAlertDelegate: AnyObject {
+public protocol NSAlertDelegate: NSObjectProtocol {
     /// Called when the user clicks the alert's help button; return `true` if
     /// the help request was handled.
     func alertShowHelp(_ alert: NSAlert) -> Bool
@@ -58,11 +58,9 @@ open class NSAlert: NSObject {
     /// The help anchor consulted when the help button is clicked.
     open var helpAnchor: String?
 
-    /// The alert delegate, consulted for help-button clicks.
+    /// The alert delegate, consulted for help-button clicks
+    /// (`alertShowHelp(_:)`), matching AppKit.
     open weak var delegate: NSAlertDelegate?
-
-    /// A fallback help handler used when no delegate handles the help button.
-    open var winHelpButtonAction: (() -> Void)?
 
     /// A custom icon shown instead of the style badge.
     open var icon: NSImage?
@@ -83,7 +81,7 @@ open class NSAlert: NSObject {
     open var suppressionButton: NSButton? {
         if storedSuppressionButton == nil {
             let button = NSButton(title: "Do not show this message again", frame: NSMakeRect(0, 0, 280, 20))
-            button.setButtonType(.switchButton)
+            button.setButtonType(.switch)
             storedSuppressionButton = button
         }
         return storedSuppressionButton
@@ -222,7 +220,7 @@ open class NSAlert: NSObject {
         }
 
         let content = NSView(frame: NSMakeRect(0, 0, width, 200))
-        content.backgroundColor = .windowBackgroundColor
+        content.winBackgroundColor = .windowBackgroundColor
 
         let iconView = AlertIconView(style: alertStyle, icon: icon, frame: NSMakeRect(24, 20, 40, 40))
         content.addSubview(iconView)
@@ -277,7 +275,7 @@ open class NSAlert: NSObject {
             let buttonWidth = max(76, CGFloat(button.title.count * 7 + 28))
             button.frame = NSMakeRect(buttonRight - buttonWidth, y + 8, buttonWidth, 28)
             let code = NSApplication.ModalResponse(rawValue: button.tag)
-            button.onAction = { _ in
+            button.winInternalAction = { _ in
                 application.stopModal(withCode: code)
             }
             content.addSubview(button)
@@ -288,13 +286,11 @@ open class NSAlert: NSObject {
         // alert, matching AppKit's round "?" help affordance.
         if showsHelp {
             let helpButton = NSButton(title: "?", frame: NSMakeRect(margin, y + 8, 28, 28))
-            helpButton.onAction = { [weak self] _ in
+            helpButton.winInternalAction = { [weak self] _ in
                 guard let self else {
                     return
                 }
-                if self.delegate?.alertShowHelp(self) != true {
-                    self.winHelpButtonAction?()
-                }
+                _ = self.delegate?.alertShowHelp(self)
             }
             content.addSubview(helpButton)
         }

@@ -1,8 +1,9 @@
 /// Base class for controls that send actions.
 ///
-/// WinChocolate preserves AppKit's `target` and `action` shape while also
-/// exposing a Swift closure for Windows-native dispatch that does not depend on
-/// Objective-C selector invocation.
+/// `target`/`action` dispatch is real, as in AppKit: `sendAction()` routes the
+/// selector through `NSApplication.sendAction(_:to:from:)`, reaching the
+/// target's `perform(_:with:)` or walking the responder chain for a nil
+/// target (see `NSObject`'s selector-dispatch note).
 open class NSControl: NSView {
     /// A control state value.
     public enum StateValue: Int, Sendable {
@@ -26,8 +27,11 @@ open class NSControl: NSView {
     /// Selector name intended to be sent to the target.
     open var action: Selector?
 
-    /// Swift-native action invoked by `sendAction()`.
-    open var onAction: ((NSControl) -> Void)?
+    /// Framework-internal action hook used by composed chrome (alert panels,
+    /// color/font panels, toolbar internals) whose handlers are closures over
+    /// private state. Not API: application code uses real target/action —
+    /// the public closure convenience was removed in 18.2.
+    var winInternalAction: ((NSControl) -> Void)?
 
     /// Generic object value used by controls that expose value-like state.
     open var objectValue: Any?
@@ -84,13 +88,26 @@ open class NSControl: NSView {
     open override var winIsIntrinsicAccessibilityElement: Bool { true }
     open override var winIntrinsicAccessibilityEnabled: Bool { isEnabled }
 
-    /// Sends this control's action.
+    /// Sends an action to a target through the application, matching AppKit's
+    /// `NSControl.sendAction(_:to:)`. A `nil` action returns `false`; a `nil`
+    /// target walks the responder chain (see `NSApplication.sendAction`).
+    @discardableResult
+    open func sendAction(_ theAction: Selector?, to theTarget: Any?) -> Bool {
+        guard let theAction else {
+            return false
+        }
+
+        return NSApplication.shared.sendAction(theAction, to: theTarget, from: self)
+    }
+
+    /// Sends this control's action (the backend event bridge's entry point).
     open func sendAction() {
         guard isEnabled else {
             return
         }
 
-        onAction?(self)
+        _ = sendAction(action, to: target)
+        winInternalAction?(self)
     }
 
     /// Controls participate in the standard key-view loop for Tab traversal.

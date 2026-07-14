@@ -4,16 +4,18 @@
 /// backend. The public surface follows AppKit's common title, target, and action
 /// workflow.
 open class NSButton: NSControl {
-    /// Button rendering and behavior type.
+    /// Button rendering and behavior type, matching AppKit's case names
+    /// (`.switch` and `.radio` — the pre-10.14 `switchButton`/`radioButton`
+    /// spellings do not exist in Apple's Swift surface).
     public enum ButtonType: Sendable {
         /// Momentary push button.
         case momentaryPushIn
 
         /// Toggle checkbox button.
-        case switchButton
+        case `switch`
 
         /// Mutually exclusive radio button.
-        case radioButton
+        case radio
     }
 
     /// Image position relative to the title.
@@ -54,26 +56,55 @@ open class NSButton: NSControl {
     /// A sound played when the button is clicked.
     open var sound: NSSound?
 
-    /// Visual bezel appearance of the button.
+    /// Visual bezel appearance of the button, using AppKit's modern case
+    /// names (macOS 14). Apple's older spellings (`.rounded`,
+    /// `.regularSquare`, `.recessed`, `.inline`, `.roundedDisclosure`,
+    /// `.texturedRounded`) remain available as the same deprecated aliases
+    /// Apple vends, so both generations of AppKit source compile.
     public enum BezelStyle: Sendable {
-        /// The standard rounded push button (default).
-        case rounded
-        /// A flat square-edged bezel (regular/shadowless/textured square).
-        case regularSquare
+        /// Follows the button's context (treated as the standard push look).
+        case automatic
+        /// The standard push button (default; formerly `.rounded`).
+        case push
+        /// A push button of flexible height (formerly `.regularSquare`).
+        case flexiblePush
         case shadowlessSquare
         case texturedSquare
         case smallSquare
-        /// Other AppKit bezels fall back to the standard rounded look.
         case circular
+        /// The round help ("?") button.
+        case helpButton
+        /// A toolbar-item button (formerly `.texturedRounded`).
+        case toolbar
         case disclosure
-        case roundedDisclosure
-        case recessed
-        case inline
+        /// A push-style disclosure (formerly `.roundedDisclosure`).
+        case pushDisclosure
+        /// An accessory-bar toggle (formerly `.recessed`).
+        case accessoryBarAction
+        /// An accessory-bar (scope) button (formerly `.roundRect`).
+        case accessoryBar
+        /// An inline badge (formerly `.inline`).
+        case badge
+
+        /// Apple's deprecated spelling for `.push`.
+        public static var rounded: BezelStyle { .push }
+        /// Apple's deprecated spelling for `.flexiblePush`.
+        public static var regularSquare: BezelStyle { .flexiblePush }
+        /// Apple's deprecated spelling for `.pushDisclosure`.
+        public static var roundedDisclosure: BezelStyle { .pushDisclosure }
+        /// Apple's deprecated spelling for `.accessoryBarAction`.
+        public static var recessed: BezelStyle { .accessoryBarAction }
+        /// Apple's deprecated spelling for `.accessoryBar`.
+        public static var roundRect: BezelStyle { .accessoryBar }
+        /// Apple's deprecated spelling for `.badge`.
+        public static var inline: BezelStyle { .badge }
+        /// Apple's deprecated spelling for `.toolbar`.
+        public static var texturedRounded: BezelStyle { .toolbar }
     }
 
     /// The button's bezel style. Square styles render flat; others use the
     /// standard themed push button (full themed bezels are appearance-phase work).
-    open var bezelStyle: BezelStyle = .rounded {
+    open var bezelStyle: BezelStyle = .push {
         didSet {
             guard let nativeHandle else {
                 return
@@ -86,7 +117,7 @@ open class NSButton: NSControl {
     /// Whether the bezel style renders as a flat square button.
     private var isFlatBezel: Bool {
         switch bezelStyle {
-        case .regularSquare, .shadowlessSquare, .texturedSquare, .smallSquare:
+        case .flexiblePush, .shadowlessSquare, .texturedSquare, .smallSquare:
             return true
         default:
             return false
@@ -100,7 +131,7 @@ open class NSButton: NSControl {
     /// pattern used by the level indicator and token chips).
     var usesFrameworkDrawnBezel: Bool {
         switch bezelStyle {
-        case .disclosure, .roundedDisclosure, .circular, .recessed, .inline:
+        case .disclosure, .pushDisclosure, .circular, .helpButton, .accessoryBarAction, .badge:
             return true
         default:
             return false
@@ -112,7 +143,7 @@ open class NSButton: NSControl {
     /// (circular and inline).
     private var bezelTogglesState: Bool {
         switch bezelStyle {
-        case .disclosure, .roundedDisclosure, .recessed:
+        case .disclosure, .pushDisclosure, .accessoryBarAction:
             return true
         default:
             return false
@@ -254,8 +285,8 @@ open class NSButton: NSControl {
     /// push button `.button` — exactly as AppKit maps `buttonType`.
     open override var winIntrinsicAccessibilityRole: NSAccessibilityRole {
         switch buttonType {
-        case .switchButton: return .checkBox
-        case .radioButton: return .radioButton
+        case .switch: return .checkBox
+        case .radio: return .radioButton
         case .momentaryPushIn: return .button
         }
     }
@@ -272,7 +303,7 @@ open class NSButton: NSControl {
     /// 2 mixed); a push button has no persistent value.
     open override var winIntrinsicAccessibilityValue: Any? {
         switch buttonType {
-        case .switchButton, .radioButton:
+        case .switch, .radio:
             return state == .mixed ? 2 : state.rawValue
         case .momentaryPushIn:
             return nil
@@ -286,13 +317,13 @@ open class NSButton: NSControl {
     }
 
     /// Creates a titled button with a frame.
-    public init(title: String, frame frameRect: NSRect) {
+    init(title: String, frame frameRect: NSRect) {
         self.title = title
         super.init(frame: frameRect)
     }
 
     /// Creates a standard push button, matching AppKit's convenience shape.
-    /// The target/action pair is stored; dispatch runs through `onAction`.
+    /// The action selector dispatches to the target on click, as in AppKit.
     public convenience init(title: String, target: AnyObject?, action: Selector?) {
         self.init(title: title, frame: .zero)
         self.target = target
@@ -302,7 +333,7 @@ open class NSButton: NSControl {
     /// Creates a checkbox, matching AppKit's convenience shape.
     public convenience init(checkboxWithTitle title: String, target: AnyObject?, action: Selector?) {
         self.init(title: title, frame: .zero)
-        setButtonType(.switchButton)
+        setButtonType(.switch)
         self.target = target
         self.action = action
     }
@@ -310,7 +341,7 @@ open class NSButton: NSControl {
     /// Creates a radio button, matching AppKit's convenience shape.
     public convenience init(radioButtonWithTitle title: String, target: AnyObject?, action: Selector?) {
         self.init(title: title, frame: .zero)
-        setButtonType(.radioButton)
+        setButtonType(.radio)
         self.target = target
         self.action = action
     }
@@ -324,9 +355,9 @@ open class NSButton: NSControl {
         switch buttonType {
         case .momentaryPushIn:
             return backend.createButton(title: title, frame: frame, parent: parent, isBordered: isBordered)
-        case .switchButton:
+        case .switch:
             return backend.createCheckbox(title: title, frame: frame, parent: parent)
-        case .radioButton:
+        case .radio:
             return backend.createRadioButton(title: title, frame: frame, parent: parent)
         }
     }
@@ -356,7 +387,7 @@ open class NSButton: NSControl {
                 return
             }
 
-            if self.buttonType == .switchButton, let backend, let nativeHandle = self.nativeHandle {
+            if self.buttonType == .switch, let backend, let nativeHandle = self.nativeHandle {
                 self.updateStateFromNative(backend.buttonState(for: nativeHandle))
             }
 
@@ -398,9 +429,9 @@ open class NSButton: NSControl {
             if bezelTogglesState {
                 state = (state == .on) ? .off : .on
             }
-        } else if buttonType == .switchButton {
+        } else if buttonType == .switch {
             setNextState()
-        } else if buttonType == .radioButton {
+        } else if buttonType == .radio {
             state = .on
             clearSiblingRadioButtons()
         }
@@ -559,7 +590,7 @@ open class NSButton: NSControl {
         self.state = state
         isUpdatingStateFromNative = false
 
-        if buttonType == .radioButton, state == .on {
+        if buttonType == .radio, state == .on {
             clearSiblingRadioButtons()
         }
     }
@@ -569,7 +600,7 @@ open class NSButton: NSControl {
             return
         }
 
-        for case let button as NSButton in superview.subviews where button !== self && button.buttonType == .radioButton {
+        for case let button as NSButton in superview.subviews where button !== self && button.buttonType == .radio {
             button.state = .off
         }
     }

@@ -1,6 +1,6 @@
 /// Delegate/data source for an AppKit-shaped browser.
 @MainActor
-public protocol NSBrowserDelegate: AnyObject {
+public protocol NSBrowserDelegate: NSObjectProtocol {
     /// Returns the number of children below an item. `nil` is the root column.
     func browser(_ browser: NSBrowser, numberOfChildrenOfItem item: Any?) -> Int
 
@@ -53,7 +53,7 @@ open class NSBrowser: NSControl {
     // Members are nonisolated: the @MainActor data-source protocol infers
     // @MainActor on the class, but everything here reads nonisolated
     // browser state, and all calls happen on the Win32 UI thread.
-    private final class BrowserColumnDataSource: NSTableViewDataSource {
+    private final class BrowserColumnDataSource: NSObject, NSTableViewDataSource {
         nonisolated(unsafe) weak var browser: NSBrowser?
         nonisolated let column: Int
 
@@ -197,7 +197,7 @@ open class NSBrowser: NSControl {
             titleLabel.font = NSFont.boldSystemFont(ofSize: 11)
             // The title strip follows the appearance so its text stays
             // legible (light band on light, header tone on dark).
-            titleLabel.backgroundColor = NSApplication.shared.effectiveAppearance.winIsDark
+            titleLabel.winBackgroundColor = NSApplication.shared.effectiveAppearance.winIsDark
                 ? NSColor(white: 0.24, alpha: 1)
                 : NSColor(white: 0.92, alpha: 1)
         }
@@ -478,7 +478,7 @@ open class NSBrowser: NSControl {
         column.tableView.addTableColumn(titleColumn)
         column.tableView.dataSource = column.dataSource
         column.tableView.allowsEmptySelection = allowsEmptySelection
-        column.tableView.onSelectionChanged = { [weak self, weak column] table in
+        column.tableView.winInternalSelectionChanged = { [weak self, weak column] table in
             guard let self,
                   let column,
                   !self.isUpdatingTableSelection,

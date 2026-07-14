@@ -156,7 +156,7 @@ open class NSSearchField: NSTextField {
         for term in recentSearches {
             let item = NSMenuItem(title: term, action: "winSelectRecentSearch:", keyEquivalent: "")
             item.target = self
-            item.onAction = { [weak self] _ in
+            item.winInternalAction = { [weak self] _ in
                 self?.stringValue = term
                 self?.performSearch(self)
             }
@@ -165,7 +165,7 @@ open class NSSearchField: NSTextField {
         menu.addItem(NSMenuItem.separator())
         let clear = NSMenuItem(title: "Clear", action: "winClearRecentSearches:", keyEquivalent: "")
         clear.target = self
-        clear.onAction = { [weak self] _ in self?.recentSearches.removeAll() }
+        clear.winInternalAction = { [weak self] _ in self?.recentSearches.removeAll() }
         menu.addItem(clear)
         return menu
     }

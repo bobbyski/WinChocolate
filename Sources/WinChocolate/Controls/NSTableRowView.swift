@@ -35,9 +35,12 @@ open class NSTableRowView: NSView {
     /// The row's base (non-selected) background fill.
     private var baseBackgroundColor: NSColor?
 
-    /// The row's background fill. Reads back the base color the caller set;
-    /// the live native fill is selection-aware (see `effectiveFill`).
-    open override var backgroundColor: NSColor? {
+    /// The row's background fill, matching AppKit's
+    /// `NSTableRowView.backgroundColor` (this is one of the concrete types
+    /// where Apple exposes a background color — plain `NSView` has none).
+    /// Reads back the base color the caller set; the live native fill is
+    /// selection-aware (see `effectiveFill`).
+    open var backgroundColor: NSColor? {
         get {
             baseBackgroundColor
         }

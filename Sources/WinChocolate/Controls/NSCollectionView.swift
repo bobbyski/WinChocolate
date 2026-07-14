@@ -1,6 +1,6 @@
 /// Data source for an AppKit-shaped collection view.
 @MainActor
-public protocol NSCollectionViewDataSource: AnyObject {
+public protocol NSCollectionViewDataSource: NSObjectProtocol {
     /// Returns the number of sections.
     func numberOfSections(in collectionView: NSCollectionView) -> Int
 
@@ -28,7 +28,7 @@ public extension NSCollectionViewDataSource {
 
 /// Delegate for collection-view selection notifications.
 @MainActor
-public protocol NSCollectionViewDelegate: AnyObject {
+public protocol NSCollectionViewDelegate: NSObjectProtocol {
     /// Called after items are selected.
     func collectionView(_ collectionView: NSCollectionView, didSelectItemsAt indexPaths: Set<IndexPath>)
 
@@ -75,7 +75,7 @@ open class NSCollectionViewItem: NSObject {
     /// Whether the item is currently selected.
     open var isSelected: Bool = false {
         didSet {
-            view.backgroundColor = isSelected
+            view.winBackgroundColor = isSelected
                 ? NSColor(calibratedRed: 0.82, green: 0.9, blue: 1.0, alpha: 1.0)
                 : nil
         }
@@ -434,8 +434,8 @@ open class NSCollectionView: NSControl {
 
     private func wireSelectionAction(for item: NSCollectionViewItem, at indexPath: IndexPath) {
         if let control = item.view as? NSControl {
-            let previousAction = control.onAction
-            control.onAction = { [weak self, weak control] _ in
+            let previousAction = control.winInternalAction
+            control.winInternalAction = { [weak self, weak control] _ in
                 previousAction?(control ?? NSControl(frame: NSZeroRect))
                 self?.selectItems(at: [indexPath])
             }

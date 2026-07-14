@@ -103,11 +103,8 @@ open class NSColorPanel: NSPanel {
     /// The stored action target consulted before the responder chain.
     open private(set) weak var winTarget: AnyObject?
 
-    /// The stored action selector name, kept for AppKit API compatibility.
-    open private(set) var winAction: String?
-
-    /// Called after every color change, alongside the responder-chain action.
-    open var winColorDidChange: ((NSColor) -> Void)?
+    /// The stored action selector sent to the target on color changes.
+    open private(set) var winAction: Selector?
 
     private var previewView: NSView?
     private var modeControl: NSSegmentedControl?
@@ -145,9 +142,10 @@ open class NSColorPanel: NSPanel {
         winTarget = target
     }
 
-    /// Stores the action selector name sent on color changes.
-    open func setAction(_ action: String?) {
-        winAction = action
+    /// Stores the action selector sent on color changes, matching AppKit's
+    /// `setAction(_:)`.
+    open func setAction(_ selector: Selector?) {
+        winAction = selector
     }
 
     private func configurePanel() {
@@ -162,14 +160,14 @@ open class NSColorPanel: NSPanel {
         let content = NSView(frame: NSRect(origin: NSPoint(x: 0, y: 0), size: NSSize(width: Self.contentWidth, height: Self.baseContentHeight)))
 
         let preview = NSView(frame: NSMakeRect(16, 16, 216, 40))
-        preview.backgroundColor = color
+        preview.winBackgroundColor = color
         content.addSubview(preview)
         previewView = preview
 
         // Mode switch: RGB or HSB component sliders.
         let modeSwitch = NSSegmentedControl(labels: ["RGB", "HSB"], frame: NSMakeRect(16, 64, 120, 24))
         modeSwitch.selectedSegment = 0
-        modeSwitch.onAction = { [weak self] control in
+        modeSwitch.winInternalAction = { [weak self] control in
             guard let segmented = control as? NSSegmentedControl else {
                 return
             }
@@ -188,7 +186,7 @@ open class NSColorPanel: NSPanel {
             let column = CGFloat(index % 8)
             let row = CGFloat(index / 8)
             let swatch = WinColorSwatchView(frame: NSMakeRect(16 + column * 27, 96 + row * 23, 24, 20))
-            swatch.backgroundColor = preset
+            swatch.winBackgroundColor = preset
             swatch.onPick = { [weak self] in
                 self?.color = preset
             }
@@ -206,7 +204,7 @@ open class NSColorPanel: NSPanel {
             let slider = NSSlider(frame: NSMakeRect(40, rowTop - 2, 152, 24))
             slider.minValue = 0
             slider.maxValue = 255
-            slider.onAction = { [weak self] _ in
+            slider.winInternalAction = { [weak self] _ in
                 self?.updateColorFromSliders()
             }
             content.addSubview(slider)
@@ -237,7 +235,7 @@ open class NSColorPanel: NSPanel {
         let alpha = NSSlider(frame: NSMakeRect(40, Self.alphaRowTop - 2, 152, 24))
         alpha.minValue = 0
         alpha.maxValue = 100
-        alpha.onAction = { [weak self] _ in
+        alpha.winInternalAction = { [weak self] _ in
             self?.updateColorFromSliders()
         }
         content.addSubview(alpha)
@@ -270,11 +268,16 @@ open class NSColorPanel: NSPanel {
 
     private func colorDidChange() {
         syncControls()
-        // Update the active well's swatch and notify the change hook. The
-        // demo/app sets `winColorDidChange` when it presents the panel, so the
-        // active control reacts to live picks.
+        // Update the active well's swatch, then dispatch as AppKit does: a
+        // target/action pair set through `setTarget`/`setAction` receives the
+        // action selector; otherwise `changeColor(_:)` walks the responder
+        // chain of the panel-action window.
         winActiveColorWell?.color = color
-        winColorDidChange?(color)
+
+        if let winAction, winTarget != nil {
+            _ = NSApplication.shared.sendAction(winAction, to: winTarget, from: self)
+            return
+        }
 
         let responder = (winTarget as? NSResponder)
             ?? NSApplication.shared.panelActionWindow?.firstResponder
@@ -306,7 +309,7 @@ open class NSColorPanel: NSPanel {
     }
 
     private func syncControls() {
-        previewView?.backgroundColor = color
+        previewView?.winBackgroundColor = color
 
         let values: [Double]
         switch mode {

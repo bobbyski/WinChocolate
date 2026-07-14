@@ -138,14 +138,14 @@ open class NSSegmentedControl: NSControl {
     }
 
     /// Creates a segmented control with labels.
-    public init(labels: [String], frame frameRect: NSRect) {
+    init(labels: [String], frame frameRect: NSRect) {
         self.segments = labels.map { SegmentState(label: $0, width: 0, isEnabled: true, isSelected: false, image: nil, tag: 0, menu: nil) }
         super.init(frame: frameRect)
     }
 
     /// Creates a segmented control from labels, matching AppKit's
-    /// convenience shape. Target/action are stored; dispatch runs through
-    /// `onAction`.
+    /// convenience shape. The action selector dispatches to the target on
+    /// segment clicks, as in AppKit.
     public convenience init(labels: [String], trackingMode: TrackingMode, target: AnyObject?, action: Selector?) {
         self.init(labels: labels, frame: .zero)
         self.trackingMode = trackingMode

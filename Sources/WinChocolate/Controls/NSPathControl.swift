@@ -61,7 +61,7 @@ open class NSPathControl: NSTextField {
     }
 
     /// Creates a path control with a URL.
-    public init(url: URL?, frame frameRect: NSRect) {
+    init(url: URL?, frame frameRect: NSRect) {
         self.url = url
         super.init(string: url?.path ?? "", frame: frameRect)
         isEditable = false
@@ -127,7 +127,7 @@ open class NSPathControl: NSTextField {
             let button = NSButton(title: label, frame: NSMakeRect(x, 0, width, height))
             // Breadcrumb segments read as flat text, not chunky push buttons.
             button.isBordered = false
-            button.onAction = { [weak self] _ in
+            button.winInternalAction = { [weak self] _ in
                 self?.selectComponentCell(at: index)
             }
             addSubview(button)

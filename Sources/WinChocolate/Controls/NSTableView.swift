@@ -1,6 +1,6 @@
 /// Data source for an AppKit-shaped table view.
 @MainActor
-public protocol NSTableViewDataSource: AnyObject {
+public protocol NSTableViewDataSource: NSObjectProtocol {
     /// Returns the number of rows in the table.
     func numberOfRows(in tableView: NSTableView) -> Int
 
@@ -26,7 +26,7 @@ public protocol NSTableViewDataSource: AnyObject {
 
 /// Delegate for table-view notifications.
 @MainActor
-public protocol NSTableViewDelegate: AnyObject {
+public protocol NSTableViewDelegate: NSObjectProtocol {
     /// Called after the selected row changes.
     func tableViewSelectionDidChange(_ notification: NSNotification)
 
@@ -280,8 +280,10 @@ open class NSTableView: NSControl {
         return header
     }()
 
-    /// Swift-native selection callback.
-    open var onSelectionChanged: ((NSTableView) -> Void)?
+    /// Framework-internal selection hook (browser columns, the font panel's
+    /// family list). Not API: applications use
+    /// `tableViewSelectionDidChange(_:)` on the delegate, as in AppKit.
+    var winInternalSelectionChanged: ((NSTableView) -> Void)?
 
     /// Current selected row, or `-1` when nothing is selected.
     public private(set) var selectedRow: Int = -1
@@ -548,7 +550,7 @@ open class NSTableView: NSControl {
     }
 
     /// Returns a column at an index.
-    open func tableColumn(at columnIndex: Int) -> NSTableColumn? {
+    package func tableColumn(at columnIndex: Int) -> NSTableColumn? {
         guard tableColumns.indices.contains(columnIndex) else {
             return nil
         }
@@ -677,7 +679,7 @@ open class NSTableView: NSControl {
     }
 
     /// Returns the display value for a loaded row and column.
-    open func value(atColumn columnIndex: Int, row rowIndex: Int) -> String? {
+    package func value(atColumn columnIndex: Int, row rowIndex: Int) -> String? {
         guard rowValues.indices.contains(rowIndex),
               rowValues[rowIndex].indices.contains(columnIndex) else {
             return nil
@@ -988,7 +990,7 @@ open class NSTableView: NSControl {
         if winIsDrawn {
             needsDisplay = true
         }
-        onSelectionChanged?(self)
+        winInternalSelectionChanged?(self)
         winMainActor { delegate?.tableViewSelectionDidChange(NSNotification(name: Self.selectionDidChangeNotification, object: self)) }
     }
 }

@@ -73,7 +73,7 @@ final class NSToolbarCompositeItemView: NSView {
     }
 
     override func draw(_ dirtyRect: NSRect) {
-        guard let metallicSlice, backgroundColor == nil else {
+        guard let metallicSlice, winBackgroundColor == nil else {
             return
         }
         // Paint the full strip gradient shifted up by this tile's offset; the
@@ -133,7 +133,7 @@ final class NSToolbarCompositeItemView: NSView {
         self.isEnabled = item.isEnabled
         super.init(frame: frameRect)
         toolTip = item.toolTip
-        backgroundColor = nil
+        winBackgroundColor = nil
         // The label color contrasts with the strip (light text on a dark strip,
         // dark text on light); re-resolve it on a live system theme switch.
         winAppearanceObserver = NotificationCenter.default.addObserver(
@@ -386,8 +386,10 @@ open class NSToolbarItem: NSObject {
     /// Visibility priority used when a toolbar overflows.
     open var visibilityPriority: VisibilityPriority = .standard
 
-    /// Swift-native action invoked by `performAction()`.
-    open var onAction: ((NSToolbarItem) -> Void)?
+    /// Framework-internal action hook for toolbar chrome the framework builds
+    /// itself (standard items, overflow/context menus). Not API: application
+    /// toolbar items use real target/action.
+    var winInternalAction: ((NSToolbarItem) -> Void)?
 
     /// The containing toolbar.
     public internal(set) weak var toolbar: NSToolbar?
@@ -442,7 +444,13 @@ open class NSToolbarItem: NSObject {
             return
         }
 
-        onAction?(self)
+        // Real AppKit dispatch: the item's action selector goes to its
+        // target (or the responder chain when the target is nil).
+        if let action {
+            _ = NSApplication.shared.sendAction(action, to: target, from: self)
+        }
+
+        winInternalAction?(self)
     }
 
     /// Creates a transparent composite view for this item in a toolbar.
@@ -608,7 +616,10 @@ open class NSToolbarItemGroup: NSToolbarItem {
             break
         }
         toolbar?.validateVisibleItems()
-        onAction?(self)
+        if let action {
+            _ = NSApplication.shared.sendAction(action, to: target, from: self)
+        }
+        winInternalAction?(self)
     }
 }
 

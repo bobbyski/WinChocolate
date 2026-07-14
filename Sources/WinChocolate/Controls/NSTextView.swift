@@ -1,6 +1,6 @@
 /// The methods a text view delegate uses to respond to editing.
 @MainActor
-public protocol NSTextViewDelegate: AnyObject {
+public protocol NSTextViewDelegate: NSObjectProtocol {
     /// Tells the delegate that editing changed the text view's text.
     func textDidChange(_ notification: NSNotification)
 }
@@ -209,9 +209,6 @@ open class NSTextView: NSControl {
         }
     }
 
-    /// Swift-native callback invoked when editing changes the text.
-    open var onTextChanged: ((NSTextView) -> Void)?
-
     /// The selected character range, in UTF-16 units.
     ///
     /// Realized text views read and write the live native selection; unrealized
@@ -397,7 +394,6 @@ open class NSTextView: NSControl {
         if allowsUndo && previousText != text {
             registerTypingUndo(previousText: previousText, text: text)
         }
-        onTextChanged?(self)
         winMainActor { delegate?.textDidChange(NSNotification(name: Self.textDidChangeNotification, object: self)) }
     }
 
@@ -465,7 +461,6 @@ open class NSTextView: NSControl {
         string = text
         objectValue = text
         selectedRange = NSMakeRange(text.utf16.count, 0)
-        onTextChanged?(self)
         winMainActor { delegate?.textDidChange(NSNotification(name: Self.textDidChangeNotification, object: self)) }
     }
 }

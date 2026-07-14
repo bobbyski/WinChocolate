@@ -62,8 +62,9 @@ public final class NSAppearance: Sendable {
         return appearances.contains(.aqua) ? .aqua : nil
     }
 
-    /// Whether this appearance is a dark theme.
-    public var winIsDark: Bool {
+    /// Whether this appearance is a dark theme. Not API (18.8): application
+    /// code uses AppKit's `bestMatch(from: [.aqua, .darkAqua]) == .darkAqua`.
+    package var winIsDark: Bool {
         name == .darkAqua
     }
 

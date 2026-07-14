@@ -155,7 +155,7 @@ open class NSPopUpButton: NSControl {
     }
 
     /// Sets the tag for an item at an index.
-    open func setTag(_ tag: Int, forItemAt index: Int) {
+    package func setTag(_ tag: Int, forItemAt index: Int) {
         guard tags.indices.contains(index) else {
             return
         }

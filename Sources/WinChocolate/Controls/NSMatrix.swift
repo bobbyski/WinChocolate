@@ -192,9 +192,9 @@ open class NSMatrix: NSControl {
         for entry in entries {
             switch mode {
             case .radioModeMatrix:
-                entry.button.setButtonType(.radioButton)
+                entry.button.setButtonType(.radio)
             case .highlightModeMatrix, .listModeMatrix:
-                entry.button.setButtonType(.switchButton)
+                entry.button.setButtonType(.switch)
             case .trackModeMatrix:
                 entry.button.setButtonType(.momentaryPushIn)
             }
@@ -203,7 +203,7 @@ open class NSMatrix: NSControl {
 
     private func wireActions() {
         for index in entries.indices {
-            entries[index].button.onAction = { [weak self] _ in
+            entries[index].button.winInternalAction = { [weak self] _ in
                 guard let self else {
                     return
                 }

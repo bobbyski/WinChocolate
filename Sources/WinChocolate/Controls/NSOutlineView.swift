@@ -1,6 +1,6 @@
 /// Data source for an AppKit-shaped outline view.
 @MainActor
-public protocol NSOutlineViewDataSource: AnyObject {
+public protocol NSOutlineViewDataSource: NSObjectProtocol {
     /// Returns the number of children below an item. `nil` means the root.
     func outlineView(_ outlineView: NSOutlineView, numberOfChildrenOfItem item: Any?) -> Int
 
@@ -24,7 +24,7 @@ public extension NSOutlineViewDataSource {
 /// Delegate that can vend per-column cell views for an outline's items,
 /// matching AppKit's `NSOutlineViewDelegate` view-based hook.
 @MainActor
-public protocol NSOutlineViewDelegate: AnyObject {
+public protocol NSOutlineViewDelegate: NSObjectProtocol {
     /// Returns a view to host for a column and item, or `nil` for drawn text.
     func outlineView(_ outlineView: NSOutlineView, viewFor tableColumn: NSTableColumn?, item: Any) -> NSView?
 
@@ -75,10 +75,10 @@ open class NSOutlineView: NSTableView {
     // (inferring @MainActor on this class), but everything it touches on
     // the owner is nonisolated control state, and every call happens on the
     // Win32 UI thread.
-    private final class OutlineTableAdapter: NSTableViewDataSource, NSTableViewDelegate {
+    private final class OutlineTableAdapter: NSObject, NSTableViewDataSource, NSTableViewDelegate {
         nonisolated(unsafe) weak var owner: NSOutlineView?
 
-        nonisolated init() {}
+        nonisolated override init() {}
 
         nonisolated func numberOfRows(in tableView: NSTableView) -> Int {
             owner?.visibleRows.count ?? 0

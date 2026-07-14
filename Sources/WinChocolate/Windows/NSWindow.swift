@@ -1,5 +1,5 @@
 /// The methods a window delegate uses to participate in window lifecycle.
-public protocol NSWindowDelegate: AnyObject {
+public protocol NSWindowDelegate: NSObjectProtocol {
     /// Returns whether the window may close; false vetoes a title-bar close.
     func windowShouldClose(_ sender: NSWindow) -> Bool
 

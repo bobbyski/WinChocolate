@@ -6,6 +6,330 @@ func expect(_ condition: @autoclosure () -> Bool, _ message: String) {
     }
 }
 
+// MARK: - Test-local frame-carrying init sugar
+//
+// The framework's frame-carrying inits are gone from the public surface
+// (18.2 — AppKit has no combined content+frame inits). These compose the two
+// REAL steps for the suite's many call sites.
+
+extension NSButton {
+    convenience init(title: String, frame: NSRect) {
+        self.init(frame: frame)
+        self.title = title
+    }
+
+    convenience init(checkboxWithTitle title: String, frame: NSRect) {
+        self.init(checkboxWithTitle: title, target: nil, action: nil)
+        self.frame = frame
+    }
+
+    convenience init(radioButtonWithTitle title: String, frame: NSRect) {
+        self.init(radioButtonWithTitle: title, target: nil, action: nil)
+        self.frame = frame
+    }
+}
+
+extension NSTextField {
+    convenience init(string: String, frame: NSRect) {
+        self.init(frame: frame)
+        self.stringValue = string
+    }
+
+    convenience init(labelWithString string: String, frame: NSRect) {
+        self.init(labelWithString: string)
+        self.frame = frame
+    }
+}
+
+extension NSSegmentedControl {
+    convenience init(labels: [String], frame: NSRect) {
+        self.init(labels: labels, trackingMode: .selectOne, target: nil, action: nil)
+        self.frame = frame
+    }
+}
+
+extension NSDatePicker {
+    convenience init(date: Date, frame: NSRect) {
+        self.init(frame: frame)
+        self.dateValue = date
+    }
+}
+
+extension NSTokenField {
+    convenience init(tokens: [String], frame: NSRect) {
+        self.init(frame: frame)
+        self.objectValue = tokens
+    }
+}
+
+extension NSPathControl {
+    convenience init(url: URL?, frame: NSRect) {
+        self.init(frame: frame)
+        // Assign through a method: property observers are suppressed for
+        // direct assignments inside an initializer, and `url`'s observer
+        // builds the breadcrumb.
+        applyTestURL(url)
+    }
+
+    private func applyTestURL(_ url: URL?) {
+        self.url = url
+    }
+}
+
+extension NSBox {
+    convenience init(title: String, frame: NSRect) {
+        self.init(frame: frame)
+        self.title = title
+    }
+}
+
+// MARK: - Test-local closure sugar over REAL target/action + delegates
+//
+// The framework has no closure actions (Phase 18.2) — controls dispatch their
+// real `target`/`action` selector. These helpers keep the suite's closure
+// ergonomics while exercising the REAL dispatch path on every use: the
+// trampoline receives the selector through `NSObject.perform(_:with:)`.
+
+final class TestActionTarget: NSObject {
+    nonisolated(unsafe) static var retained: [ObjectIdentifier: TestActionTarget] = [:]
+
+    var handlers: [String: (Any?) -> Void] = [:]
+
+    static func trampoline(for sender: NSObject) -> TestActionTarget {
+        if let existing = retained[ObjectIdentifier(sender)] {
+            return existing
+        }
+
+        let created = TestActionTarget()
+        retained[ObjectIdentifier(sender)] = created
+        return created
+    }
+
+    override func responds(to aSelector: Selector?) -> Bool {
+        guard let aSelector else {
+            return false
+        }
+
+        return handlers[aSelector.name] != nil || super.responds(to: aSelector)
+    }
+
+    @discardableResult
+    override func perform(_ aSelector: Selector, with object: Any?) -> Any? {
+        guard let handler = handlers[aSelector.name] else {
+            return super.perform(aSelector, with: object)
+        }
+
+        handler(object)
+        return nil
+    }
+
+    static let fireSelector = Selector("testFire:")
+    static let doubleFireSelector = Selector("testFireDouble:")
+}
+
+extension NSControl {
+    var onAction: ((NSControl) -> Void)? {
+        get { nil }
+        set {
+            guard let newValue else {
+                TestActionTarget.retained.removeValue(forKey: ObjectIdentifier(self))
+                target = nil
+                action = nil
+                return
+            }
+
+            let trampoline = TestActionTarget.trampoline(for: self)
+            trampoline.handlers["testFire:"] = { [weak self] sender in
+                if let control = (sender as? NSControl) ?? self {
+                    newValue(control)
+                }
+            }
+            target = trampoline
+            action = TestActionTarget.fireSelector
+        }
+    }
+}
+
+extension NSMenuItem {
+    var onAction: ((NSMenuItem) -> Void)? {
+        get { nil }
+        set {
+            guard let newValue else {
+                TestActionTarget.retained.removeValue(forKey: ObjectIdentifier(self))
+                target = nil
+                action = nil
+                return
+            }
+
+            let trampoline = TestActionTarget.trampoline(for: self)
+            trampoline.handlers["testFire:"] = { [weak self] sender in
+                if let item = (sender as? NSMenuItem) ?? self {
+                    newValue(item)
+                }
+            }
+            target = trampoline
+            action = TestActionTarget.fireSelector
+        }
+    }
+}
+
+extension NSToolbarItem {
+    var onAction: ((NSToolbarItem) -> Void)? {
+        get { nil }
+        set {
+            guard let newValue else {
+                TestActionTarget.retained.removeValue(forKey: ObjectIdentifier(self))
+                target = nil
+                action = nil
+                return
+            }
+
+            let trampoline = TestActionTarget.trampoline(for: self)
+            trampoline.handlers["testFire:"] = { [weak self] sender in
+                if let item = (sender as? NSToolbarItem) ?? self {
+                    newValue(item)
+                }
+            }
+            target = trampoline
+            action = TestActionTarget.fireSelector
+        }
+    }
+}
+
+extension NSTableView {
+    var onDoubleAction: ((NSTableView) -> Void)? {
+        get { nil }
+        set {
+            guard let newValue else {
+                doubleAction = nil
+                return
+            }
+
+            let trampoline = TestActionTarget.trampoline(for: self)
+            trampoline.handlers["testFireDouble:"] = { [weak self] sender in
+                if let table = (sender as? NSTableView) ?? self {
+                    newValue(table)
+                }
+            }
+            target = trampoline
+            doubleAction = TestActionTarget.doubleFireSelector
+        }
+    }
+}
+
+/// A real `NSTextFieldDelegate`/table/outline delegate trampoline set for
+/// tests that watch text or selection changes through the delegate surface.
+final class TestChangeDelegate: NSObject, NSTextFieldDelegate, NSTableViewDelegate, NSOutlineViewDelegate, NSTextViewDelegate, NSTabViewDelegate {
+    nonisolated(unsafe) static var retained: [ObjectIdentifier: TestChangeDelegate] = [:]
+
+    nonisolated(unsafe) var onFieldChange: ((NSTextField) -> Void)?
+    nonisolated(unsafe) var onTableSelection: ((NSTableView) -> Void)?
+    nonisolated(unsafe) var onOutlineSelection: ((NSOutlineView) -> Void)?
+    nonisolated(unsafe) var onTextViewChange: ((NSTextView) -> Void)?
+    nonisolated(unsafe) var onTabSelection: ((NSTabView) -> Void)?
+
+    static func trampoline(for owner: NSObject) -> TestChangeDelegate {
+        if let existing = retained[ObjectIdentifier(owner)] {
+            return existing
+        }
+
+        let created = TestChangeDelegate()
+        retained[ObjectIdentifier(owner)] = created
+        return created
+    }
+
+    nonisolated func controlTextDidChange(_ obj: NSNotification) {
+        if let field = obj.object as? NSTextField {
+            onFieldChange?(field)
+        }
+    }
+
+    nonisolated func tableViewSelectionDidChange(_ notification: NSNotification) {
+        if let table = notification.object as? NSTableView {
+            onTableSelection?(table)
+        }
+    }
+
+    nonisolated func outlineViewSelectionDidChange(_ notification: NSNotification) {
+        if let outline = notification.object as? NSOutlineView {
+            onOutlineSelection?(outline)
+        }
+    }
+
+    nonisolated func textDidChange(_ notification: NSNotification) {
+        if let view = notification.object as? NSTextView {
+            onTextViewChange?(view)
+        }
+    }
+
+    nonisolated func tabView(_ tabView: NSTabView, didSelect tabViewItem: NSTabViewItem?) {
+        _ = tabViewItem
+        onTabSelection?(tabView)
+    }
+}
+
+extension NSTabView {
+    @MainActor var onSelectionChanged: ((NSTabView) -> Void)? {
+        get { nil }
+        set {
+            let trampoline = TestChangeDelegate.trampoline(for: self)
+            trampoline.onTabSelection = newValue
+            delegate = trampoline
+        }
+    }
+}
+
+extension NSTextField {
+    @MainActor var onTextChanged: ((NSTextField) -> Void)? {
+        get { nil }
+        set {
+            let trampoline = TestChangeDelegate.trampoline(for: self)
+            trampoline.onFieldChange = newValue
+            delegate = trampoline
+        }
+    }
+}
+
+extension NSComboBox {
+    @MainActor var onComboBoxTextChanged: ((NSComboBox) -> Void)? {
+        get { nil }
+        set {
+            guard let newValue else {
+                onTextChanged = nil
+                return
+            }
+
+            onTextChanged = { field in
+                if let combo = field as? NSComboBox {
+                    newValue(combo)
+                }
+            }
+        }
+    }
+}
+
+extension NSTextView {
+    @MainActor var onTextChanged: ((NSTextView) -> Void)? {
+        get { nil }
+        set {
+            let trampoline = TestChangeDelegate.trampoline(for: self)
+            trampoline.onTextViewChange = newValue
+            delegate = trampoline
+        }
+    }
+}
+
+extension NSTableView {
+    @MainActor var onSelectionChanged: ((NSTableView) -> Void)? {
+        get { nil }
+        set {
+            let trampoline = TestChangeDelegate.trampoline(for: self)
+            trampoline.onTableSelection = newValue
+            delegate = trampoline
+        }
+    }
+}
+
 // Pin the suite to the light appearance: dynamic system colors resolve
 // through the effective appearance, and without a pin they would follow the
 // *test machine's* Windows theme, making color assertions machine-dependent.
@@ -909,7 +1233,7 @@ func clearApplicationWindows() {
     }
 }
 
-final class RecordingToolbarDelegate: NSToolbarDelegate {
+final class RecordingToolbarDelegate: NSObject, NSToolbarDelegate {
     var allowedIdentifiers: [NSToolbarItem.Identifier] = ["open", "save", "customize"]
     var defaultIdentifiers: [NSToolbarItem.Identifier] = ["open", "save"]
     var requestedIdentifiers: [NSToolbarItem.Identifier] = []
@@ -972,7 +1296,7 @@ func testWindowRealizationCreatesNativeHierarchy() {
     clearApplicationWindows()
 }
 
-final class FullScreenSpyDelegate: NSWindowDelegate {
+final class FullScreenSpyDelegate: NSObject, NSWindowDelegate {
     var willEnter = 0, didEnter = 0, willExit = 0, didExit = 0
     func windowWillEnterFullScreen(_ notification: NSNotification) { willEnter += 1 }
     func windowDidEnterFullScreen(_ notification: NSNotification) { didEnter += 1 }
@@ -1389,7 +1713,7 @@ final class RecordingView: NSView {
     }
 }
 
-final class RecordingTableDataSource: NSTableViewDataSource {
+final class RecordingTableDataSource: NSObject, NSTableViewDataSource {
     var rows: [[String]] = [
         ["Ada", "Compiler"],
         ["Grace", "Navy"],
@@ -1431,7 +1755,7 @@ final class RecordingTableDataSource: NSTableViewDataSource {
     }
 }
 
-final class RecordingOutlineDataSource: NSOutlineViewDataSource {
+final class RecordingOutlineDataSource: NSObject, NSOutlineViewDataSource {
     let roots = ["Application", "Controls"]
     let children: [String: [String]] = [
         "Application": ["NSApplication", "NSWindow"],
@@ -1473,7 +1797,7 @@ final class RecordingOutlineDataSource: NSOutlineViewDataSource {
 }
 
 /// A mutable flat outline (top-level leaves) for the sibling-reorder test.
-final class MutableOutlineDataSource: NSOutlineViewDataSource {
+final class MutableOutlineDataSource: NSObject, NSOutlineViewDataSource {
     var roots: [String]
     init(_ roots: [String]) { self.roots = roots }
 
@@ -1490,7 +1814,7 @@ final class MutableOutlineDataSource: NSOutlineViewDataSource {
     }
 }
 
-final class RecordingBrowserDelegate: NSBrowserDelegate {
+final class RecordingBrowserDelegate: NSObject, NSBrowserDelegate {
     let roots = ["Application", "Controls"]
     let children: [String: [String]] = [
         "Application": ["NSApplication", "NSWindow"],
@@ -1522,7 +1846,7 @@ final class RecordingBrowserDelegate: NSBrowserDelegate {
     }
 }
 
-final class RecordingCollectionDataSource: NSCollectionViewDataSource {
+final class RecordingCollectionDataSource: NSObject, NSCollectionViewDataSource {
     let values = [
         ["NSButton", "NSTextField", "NSTableView"],
         ["NSBrowser", "NSOutlineView"]
@@ -1545,7 +1869,7 @@ final class RecordingCollectionDataSource: NSCollectionViewDataSource {
     }
 }
 
-final class RecordingCollectionDelegate: NSCollectionViewDelegate {
+final class RecordingCollectionDelegate: NSObject, NSCollectionViewDelegate {
     var selected: Set<IndexPath> = []
     var deselected: Set<IndexPath> = []
 
@@ -1558,7 +1882,7 @@ final class RecordingCollectionDelegate: NSCollectionViewDelegate {
     }
 }
 
-final class RecordingTableDelegate: NSTableViewDelegate {
+final class RecordingTableDelegate: NSObject, NSTableViewDelegate {
     var selectionChangeCount = 0
     var lastObject: AnyObject?
     var requestedViewRows: [Int] = []
@@ -1588,7 +1912,7 @@ final class RecordingTableDelegate: NSTableViewDelegate {
 /// A cell-based table delegate: it counts selection changes but vends no cell
 /// view, so the table stays on the native list path (auto-detection only picks
 /// the drawn peer when a delegate vends views).
-final class CellBasedSelectionDelegate: NSTableViewDelegate {
+final class CellBasedSelectionDelegate: NSObject, NSTableViewDelegate {
     var selectionChangeCount = 0
     var lastObject: AnyObject?
     func tableViewSelectionDidChange(_ notification: NSNotification) {
@@ -2005,6 +2329,9 @@ func testTableViewColumnSelectionAndDoubleActionSurface() {
     tableView.selectColumnIndexes([0], byExtendingSelection: false)
     tableView.selectColumnIndexes([1], byExtendingSelection: true)
     tableView.doubleAction = "doubleClick:"
+    expect(tableView.doubleAction == "doubleClick:", "Table doubleAction selector was not stored.")
+    // Real dispatch: the closure helper wires target/doubleAction to a
+    // trampoline, replacing the stored selector (one doubleAction, as AppKit).
     tableView.onDoubleAction = { table in
         expect(table === tableView, "Table double-action sender was not table view.")
         doubleActionCount += 1
@@ -2015,7 +2342,6 @@ func testTableViewColumnSelectionAndDoubleActionSurface() {
     expect(tableView.isColumnSelected(1), "Table did not keep extended column selection.")
     expect(!tableView.isColumnSelected(0), "Table did not deselect column.")
     expect(tableView.numberOfSelectedColumns == 1, "Table selected column count was wrong.")
-    expect(tableView.doubleAction == "doubleClick:", "Table doubleAction selector was not stored.")
     expect(doubleActionCount == 1, "Table double action callback was not sent.")
 
     tableView.allowsColumnSelection = false
@@ -2157,7 +2483,7 @@ func testOutlineViewSelectionTracksItemAcrossExpandCollapse() {
 }
 
 /// An outline delegate that hosts a text field per cell for the first column.
-final class HostingOutlineDelegate: NSOutlineViewDelegate {
+final class HostingOutlineDelegate: NSObject, NSOutlineViewDelegate {
     func outlineView(_ outlineView: NSOutlineView, viewFor tableColumn: NSTableColumn?, item: Any) -> NSView? {
         guard tableColumn?.identifier.rawValue == "name" else { return nil }
         return NSTextField(string: "cell-\(item)", frame: NSMakeRect(0, 0, 80, 18))
@@ -2195,7 +2521,7 @@ func testOutlineViewHostsDelegateCellViews() {
 
 /// A small tree: "Folder" (branch → [A]) and "Loose" (leaf), for the
 /// cross-level reparenting-drop test.
-final class TreeOutlineDataSource: NSOutlineViewDataSource {
+final class TreeOutlineDataSource: NSObject, NSOutlineViewDataSource {
     func outlineView(_ outlineView: NSOutlineView, numberOfChildrenOfItem item: Any?) -> Int {
         switch item.map({ String(describing: $0) }) {
         case .none: return 2        // Folder, Loose
@@ -2372,7 +2698,7 @@ func testBrowserColumnTitles() {
 
 /// A browser tree whose root column mixes one branch and one leaf, for the
 /// branch-indicator test.
-final class LeafBranchBrowserDelegate: NSBrowserDelegate {
+final class LeafBranchBrowserDelegate: NSObject, NSBrowserDelegate {
     // "Folder" is a branch (has a child); "File" is a leaf (no children).
     func browser(_ browser: NSBrowser, numberOfChildrenOfItem item: Any?) -> Int {
         switch item.map({ String(describing: $0) }) {
@@ -2433,7 +2759,7 @@ func testBrowserDrawsBranchIndicatorOnNonLeafRows() {
 }
 
 /// A browser whose single leaf item carries a delegate-provided cell image.
-final class ImageBrowserDelegate: NSBrowserDelegate {
+final class ImageBrowserDelegate: NSObject, NSBrowserDelegate {
     static let iconPath = "C:/icons/file.png"
     func browser(_ browser: NSBrowser, numberOfChildrenOfItem item: Any?) -> Int {
         item == nil ? 1 : 0
@@ -2524,7 +2850,7 @@ func testCollectionViewReloadsItemsAndTracksSelection() {
 }
 
 /// A collection data source that dequeues recycled items via `makeItem`.
-final class ReusingCollectionDataSource: NSCollectionViewDataSource {
+final class ReusingCollectionDataSource: NSObject, NSCollectionViewDataSource {
     static let cellID = NSUserInterfaceItemIdentifier("cell")
     let count: Int
     init(count: Int) { self.count = count }
@@ -2624,7 +2950,7 @@ func testCollectionViewFlowLayoutArrangesSectionsAndSizesContent() {
     expect(layout.collectionViewContentSize.height == 120, "Flow content height wrong. Got \(layout.collectionViewContentSize.height).")
 }
 
-final class VariableSizeCollectionDataSource: NSCollectionViewDataSource {
+final class VariableSizeCollectionDataSource: NSObject, NSCollectionViewDataSource {
     let sizes = [NSMakeSize(80, 20), NSMakeSize(80, 20), NSMakeSize(80, 30), NSMakeSize(60, 20)]
     func collectionView(_ collectionView: NSCollectionView, numberOfItemsInSection section: Int) -> Int { sizes.count }
     func collectionView(_ collectionView: NSCollectionView, itemForRepresentedObjectAt indexPath: IndexPath) -> NSCollectionViewItem {
@@ -2634,7 +2960,7 @@ final class VariableSizeCollectionDataSource: NSCollectionViewDataSource {
     }
 }
 
-final class VariableSizeFlowDelegate: NSCollectionViewDelegateFlowLayout {
+final class VariableSizeFlowDelegate: NSObject, NSCollectionViewDelegateFlowLayout {
     let sizes: [NSSize]
     init(_ sizes: [NSSize]) { self.sizes = sizes }
     func collectionView(_ collectionView: NSCollectionView, layout collectionViewLayout: NSCollectionViewLayout, sizeForItemAt indexPath: IndexPath) -> NSSize {
@@ -2674,7 +3000,7 @@ func testCollectionFlowLayoutHonorsPerItemSizeFromDelegate() {
            "Item 2's view was not positioned at its variable size/frame.")
 }
 
-final class HeaderCollectionDataSource: NSCollectionViewDataSource {
+final class HeaderCollectionDataSource: NSObject, NSCollectionViewDataSource {
     var headerViews: [Int: NSView] = [:]
     func numberOfSections(in collectionView: NSCollectionView) -> Int { 2 }
     func collectionView(_ collectionView: NSCollectionView, numberOfItemsInSection section: Int) -> Int { 2 }
@@ -2701,7 +3027,7 @@ final class HeaderCollectionDataSource: NSCollectionViewDataSource {
 
 /// A collection data source that counts how often it is asked to vend a
 /// supplementary view — for the recycling test.
-final class CountingSupplementaryDataSource: NSCollectionViewDataSource {
+final class CountingSupplementaryDataSource: NSObject, NSCollectionViewDataSource {
     private(set) var vendCount = 0
     func numberOfSections(in collectionView: NSCollectionView) -> Int { 2 }
     func collectionView(_ collectionView: NSCollectionView, numberOfItemsInSection section: Int) -> Int { 2 }
@@ -2745,7 +3071,7 @@ func testCollectionRecyclesSupplementaryViewsAcrossRelayout() {
     expect(dataSource.vendCount > afterReload, "reloadData did not rebuild supplementary views.")
 }
 
-final class HorizontalSizeCollectionDataSource: NSCollectionViewDataSource {
+final class HorizontalSizeCollectionDataSource: NSObject, NSCollectionViewDataSource {
     func collectionView(_ collectionView: NSCollectionView, numberOfItemsInSection section: Int) -> Int { 3 }
     func collectionView(_ collectionView: NSCollectionView, itemForRepresentedObjectAt indexPath: IndexPath) -> NSCollectionViewItem {
         let item = NSCollectionViewItem()
@@ -3720,18 +4046,16 @@ func testTableViewNativeSelectionNotifiesDelegateAndAction() {
     let delegate = CellBasedSelectionDelegate()
     let name = NSTableColumn(identifier: "name")
     var actionCount = 0
-    var callbackCount = 0
 
     tableView.addTableColumn(name)
     tableView.dataSource = dataSource
+    // One real delegate observes the selection (a table has a single
+    // delegate — the closure convenience is gone from the framework, and
+    // selection changes arrive through tableViewSelectionDidChange).
     tableView.delegate = delegate
     tableView.onAction = { control in
         expect(control === tableView, "Table action sender was not table view.")
         actionCount += 1
-    }
-    tableView.onSelectionChanged = { table in
-        expect(table === tableView, "Table selection callback sender was not table view.")
-        callbackCount += 1
     }
     tableView.reloadData()
 
@@ -3741,7 +4065,6 @@ func testTableViewNativeSelectionNotifiesDelegateAndAction() {
 
     expect(tableView.selectedRow == 2, "Table view did not read native selection.")
     expect(actionCount == 1, "Table view did not send action after selection.")
-    expect(callbackCount == 1, "Table view did not invoke selection callback.")
     expect(delegate.selectionChangeCount == 1, "Table view delegate was not notified.")
     expect(delegate.lastObject === tableView, "Table view delegate notification object was wrong.")
 }
@@ -4189,7 +4512,7 @@ func testControlCompatibilityMetadataStoresValues() {
 @MainActor
 func testSwitchButtonTogglesStateOnPerformClick() {
     let checkbox = NSButton(title: "Check", frame: NSMakeRect(0, 0, 120, 24))
-    checkbox.setButtonType(.switchButton)
+    checkbox.setButtonType(.switch)
 
     checkbox.performClick(nil)
     expect(checkbox.state == .on, "Switch button did not toggle on.")
@@ -4202,7 +4525,7 @@ func testSwitchButtonTogglesStateOnPerformClick() {
 func testButtonMixedStateAndCompatibilityProperties() {
     let checkbox = NSButton(title: "Check", frame: NSMakeRect(0, 0, 120, 24))
 
-    checkbox.setButtonType(.switchButton)
+    checkbox.setButtonType(.switch)
     checkbox.allowsMixedState = true
     checkbox.keyEquivalent = "\r"
     checkbox.isBordered = false
@@ -4222,8 +4545,8 @@ func testRadioButtonClearsSiblingRadioButtons() {
     let parent = NSView(frame: NSMakeRect(0, 0, 300, 100))
     let first = NSButton(title: "First", frame: NSMakeRect(0, 0, 80, 24))
     let second = NSButton(title: "Second", frame: NSMakeRect(90, 0, 80, 24))
-    first.setButtonType(.radioButton)
-    second.setButtonType(.radioButton)
+    first.setButtonType(.radio)
+    second.setButtonType(.radio)
     parent.addSubview(first)
     parent.addSubview(second)
 
@@ -4649,7 +4972,7 @@ func testToolbarCustomizationAllowsDuplicateStructuralItems() {
     expect(toolbar.items[2] !== toolbar.items[3], "Duplicate flexible spaces should be distinct toolbar item instances.")
 }
 
-final class SharedSeparatorToolbarDelegate: NSToolbarDelegate {
+final class SharedSeparatorToolbarDelegate: NSObject, NSToolbarDelegate {
     // Mirrors the demo (and common AppKit apps): one cached NSToolbarItem reused
     // for every .separator request, instead of a fresh instance each time.
     let sharedSeparator = NSToolbarItem(itemIdentifier: .separator)
@@ -4824,7 +5147,7 @@ func testToolbarViewComposesItemsAndDispatchesActions() {
     // subviews are: open item, separator bar, save item, chrome hairline.
     expect(toolbarView.subviews.count == 4, "Composed toolbar did not create one view per visible item (gaps host none) plus the chrome hairline. Got \(toolbarView.subviews.count).")
     expect(toolbarView.subviews[0].subviews.isEmpty, "Composed toolbar open item should be one self-contained view.")
-    expect(toolbarView.subviews[0].backgroundColor == nil, "Composed toolbar item should let the toolbar background show through.")
+    expect(toolbarView.subviews[0].winBackgroundColor == nil, "Composed toolbar item should let the toolbar background show through.")
     if let openHandle = toolbarView.subviews[0].nativeHandle {
         expect(backend.records[openHandle]?.drawsBackground == false, "Composed toolbar item should request a clear native background.")
     }
@@ -4833,7 +5156,7 @@ func testToolbarViewComposesItemsAndDispatchesActions() {
         expect(backend.records[separatorHandle]?.drawsBackground == false, "Composed toolbar separator should request a clear native background.")
     }
     expect(toolbarView.subviews[2].subviews.isEmpty, "Composed toolbar save item should be one self-contained view.")
-    expect(toolbarView.subviews[2].backgroundColor == nil, "Composed toolbar item should not draw its own background.")
+    expect(toolbarView.subviews[2].winBackgroundColor == nil, "Composed toolbar item should not draw its own background.")
     if let saveHandle = toolbarView.subviews[2].nativeHandle {
         expect(backend.records[saveHandle]?.drawsBackground == false, "Composed toolbar item should keep its native background clear.")
     }
@@ -4905,7 +5228,7 @@ func testToolbarViewHostsCustomItemView() {
     // Popups center by their ~24pt visible closed-combo height (the declared
     // 28pt only sizes the dropdown), so they align with neighboring fields.
     expect(selector.frame == NSMakeRect(8, 8, 140, 24), "Toolbar custom item view was not positioned in the toolbar strip. Got \(selector.frame).")
-    expect(selector.backgroundColor == nil, "Toolbar custom item view should let the toolbar background show through.")
+    expect(selector.winBackgroundColor == nil, "Toolbar custom item view should let the toolbar background show through.")
     if let selectorHandle = selector.nativeHandle {
         expect(backend.records[selectorHandle]?.drawsBackground == false, "Toolbar custom control should request a clear native background.")
     }
@@ -4923,7 +5246,7 @@ func testToolbarItemCreatesCompositeImageLabelView() {
     let view = item.winCompositeView(showItem: true, showLabel: true, toolbarHeight: 40)
     let handle = view.realizeNativePeer(in: backend, parent: nil)
 
-    expect(view.backgroundColor == nil, "Toolbar composite view should have a transparent background.")
+    expect(view.winBackgroundColor == nil, "Toolbar composite view should have a transparent background.")
     expect(view.subviews.isEmpty, "Toolbar composite view should render as one self-contained native view.")
     expect(view.frame.size.height <= 40, "Toolbar composite view did not fit within the toolbar height.")
     expect(
@@ -4937,7 +5260,7 @@ func testToolbarItemCreatesCompositeImageLabelView() {
     let separatorHandle = separatorView.realizeNativePeer(in: backend, parent: nil)
 
     expect(separatorView is NSToolbarSeparatorView, "Toolbar separator composite should be a simple separator view.")
-    expect(separatorView.backgroundColor != nil, "Toolbar separator view should draw its own bar color.")
+    expect(separatorView.winBackgroundColor != nil, "Toolbar separator view should draw its own bar color.")
     expect(backend.records[separatorHandle]?.text.contains("separator") == true, "Toolbar separator view did not carry a separator image key.")
     expect(backend.records[separatorHandle]?.drawsBackground == false, "Toolbar separator view should request a clear native background.")
 }
@@ -5012,7 +5335,7 @@ func testToolbarItemValidationAndMenuForm() {
 }
 
 /// Records selection/lifecycle delegate callbacks for the toolbar parity test.
-final class SelectionToolbarDelegate: NSToolbarDelegate {
+final class SelectionToolbarDelegate: NSObject, NSToolbarDelegate {
     var added: [NSToolbarItem] = []
     var removed: [NSToolbarItem] = []
     func toolbarSelectableItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
@@ -5090,7 +5413,7 @@ func testToolbarStandardItemIdentifiers() {
 }
 
 /// Vends fresh a/b items so a restoring toolbar can resolve identifiers.
-final class AutosaveToolbarDelegate: NSToolbarDelegate {
+final class AutosaveToolbarDelegate: NSObject, NSToolbarDelegate {
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
         ["a", "b"]
     }
@@ -5204,9 +5527,9 @@ func testToolbarCustomizationPaletteDimsInToolbarItems() {
 
     // "Open" is in the toolbar and can't be duplicated → dimmed in the palette;
     // "Flexible Space" is structural (duplicable) → stays enabled.
-    expect(paletteTiles[0].backgroundColor == dimFill,
+    expect(paletteTiles[0].winBackgroundColor == dimFill,
            "The palette tile for an in-toolbar item was not dimmed.")
-    expect(paletteTiles[1].backgroundColor != dimFill,
+    expect(paletteTiles[1].winBackgroundColor != dimFill,
            "A duplicable structural palette tile was dimmed.")
 
     // A dimmed tile refuses drags: dragging "Open" into the strip changes nothing.
@@ -5231,14 +5554,14 @@ func testToolbarCustomizationPaletteDimsInToolbarItems() {
     openTile.mouseUp(with: NSEvent(type: .leftMouseUp, locationInWindow: outside))
 
     expect(toolbar.items.isEmpty, "Dragging the item out of the strip did not remove it.")
-    expect(paletteTiles[0].backgroundColor != dimFill,
+    expect(paletteTiles[0].winBackgroundColor != dimFill,
            "The palette tile did not re-enable after its item left the toolbar.")
 
     clearApplicationWindows()
 }
 
 /// Allows open + flexible space in the palette for the dimming test.
-final class DimmingToolbarDelegate: NSToolbarDelegate {
+final class DimmingToolbarDelegate: NSObject, NSToolbarDelegate {
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
         ["open", .flexibleSpace]
     }
@@ -5268,7 +5591,7 @@ func testToolbarCustomizationDragShowsInsertionIndicator() {
 
     let accent = NSColor(calibratedRed: 0.16, green: 0.45, blue: 0.85, alpha: 1.0)
     func indicator() -> NSView? {
-        contentView.subviews.first { $0.backgroundColor == accent }
+        contentView.subviews.first { $0.winBackgroundColor == accent }
     }
     expect(indicator()?.isHidden == true, "The insertion indicator should start hidden.")
 
@@ -5567,7 +5890,7 @@ func testToolbarMetallicLookDrawsGradientChrome() {
     toolbar.winAppleLook = .unified
     let unified = backend.performDraw(for: handle, in: toolbarView.bounds)
     expect(unified.gradients.isEmpty, "The unified look should not draw gradient chrome.")
-    expect(toolbarView.backgroundColor == .windowBackgroundColor,
+    expect(toolbarView.winBackgroundColor == .windowBackgroundColor,
            "The unified strip should keep the window background color.")
 
     // Metallic: the classic brushed gradient fills the strip.
@@ -5578,7 +5901,7 @@ func testToolbarMetallicLookDrawsGradientChrome() {
     // Regression guard (transparent child windows flashed white over the
     // chrome): in metallic the strip's own background — what transparent
     // children erase with — must be the gradient midtone, never white…
-    expect(toolbarView.backgroundColor != .windowBackgroundColor && toolbarView.backgroundColor != nil,
+    expect(toolbarView.winBackgroundColor != .windowBackgroundColor && toolbarView.winBackgroundColor != nil,
            "The metallic strip background (the children's erase color) stayed white.")
 
     // …and the item tile itself paints its slice of the chrome gradient.
@@ -5656,7 +5979,7 @@ func testToolbarCustomizationDragOutTintsPreviewForRemoval() {
     let previewBlue = NSColor(calibratedRed: 0.84, green: 0.89, blue: 0.96, alpha: 1.0)
     let removalRed = NSColor(calibratedRed: 0.96, green: 0.85, blue: 0.84, alpha: 1.0)
     func preview() -> NSView? {
-        contentView.subviews.first { !$0.isHidden && ($0.backgroundColor == previewBlue || $0.backgroundColor == removalRed) }
+        contentView.subviews.first { !$0.isHidden && ($0.winBackgroundColor == previewBlue || $0.winBackgroundColor == removalRed) }
     }
 
     let strip = contentView.subviews.first { $0.tag == 1_103 }
@@ -5671,9 +5994,9 @@ func testToolbarCustomizationDragOutTintsPreviewForRemoval() {
     // Over the strip: the standard blue preview. Outside: the removal tint.
     tile.mouseDown(with: NSEvent(type: .leftMouseDown, locationInWindow: start))
     tile.mouseDragged(with: NSEvent(type: .leftMouseDragged, locationInWindow: overStrip))
-    expect(preview()?.backgroundColor == previewBlue, "The in-strip drag preview should use the standard tint.")
+    expect(preview()?.winBackgroundColor == previewBlue, "The in-strip drag preview should use the standard tint.")
     tile.mouseDragged(with: NSEvent(type: .leftMouseDragged, locationInWindow: outside))
-    expect(preview()?.backgroundColor == removalRed, "Dragging out of the strip did not tint the preview for removal.")
+    expect(preview()?.winBackgroundColor == removalRed, "Dragging out of the strip did not tint the preview for removal.")
     tile.mouseUp(with: NSEvent(type: .leftMouseUp, locationInWindow: outside))
     expect(toolbar.items.count == 1, "The drag-out did not remove the item.")
 
@@ -5884,7 +6207,7 @@ func testToolbarStripGoesDarkUnderDarkAppearance() {
     let toolbarView = NSToolbarView(frame: NSMakeRect(0, 0, 300, 40))
     toolbarView.toolbar = toolbar
 
-    guard let strip = toolbarView.backgroundColor else {
+    guard let strip = toolbarView.winBackgroundColor else {
         fatalError("The toolbar strip should have a background color.")
     }
     expect(strip.whiteComponent < 0.3,
@@ -6042,7 +6365,7 @@ func testAppearanceResolvesSystemThemeAndOverrides() {
 
     // Standard names resolve to shared appearance objects; unknown names fail.
     expect(NSAppearance(named: .aqua)?.name == .aqua, "The aqua appearance should resolve.")
-    expect(NSAppearance(named: .darkAqua)?.winIsDark == true, "darkAqua should report as dark.")
+    expect(NSAppearance(named: .darkAqua)?.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua, "darkAqua should report as dark.")
     expect(NSAppearance(named: NSAppearance.Name("NSAppearanceNameNeon")) == nil,
            "An unknown appearance name should not resolve.")
 
@@ -6451,7 +6774,7 @@ func testMatrixComposesButtonsAndTracksSelection() {
 func testSwitchButtonUsesCheckboxNativePeer() {
     let backend = InMemoryNativeControlBackend()
     let checkbox = NSButton(title: "Check", frame: NSMakeRect(0, 0, 120, 24))
-    checkbox.setButtonType(.switchButton)
+    checkbox.setButtonType(.switch)
     checkbox.state = .on
 
     let handle = checkbox.realizeNativePeer(in: backend, parent: nil)
@@ -6464,7 +6787,7 @@ func testSwitchButtonUsesCheckboxNativePeer() {
 func testRadioButtonUsesRadioNativePeer() {
     let backend = InMemoryNativeControlBackend()
     let radioButton = NSButton(title: "Radio", frame: NSMakeRect(0, 0, 120, 24))
-    radioButton.setButtonType(.radioButton)
+    radioButton.setButtonType(.radio)
     radioButton.state = .on
 
     let handle = radioButton.realizeNativePeer(in: backend, parent: nil)
@@ -6556,7 +6879,7 @@ func testComboBoxStoresItemsTextAndUsesNativePeer() {
     expect(comboBox.stringValue == "Cocoa", "Combo box selection did not update stringValue.")
 }
 
-final class ComboSource: NSComboBoxDataSource {
+final class ComboSource: NSObject, NSComboBoxDataSource {
     var values: [String]
     init(_ values: [String]) { self.values = values }
     func numberOfItems(in comboBox: NSComboBox) -> Int { values.count }
@@ -6594,12 +6917,14 @@ func testComboBoxDataSourceSuppliesItems() {
 func testComboBoxNativeTextChangeAndActionUpdateState() {
     let backend = InMemoryNativeControlBackend()
     let comboBox = NSComboBox(frame: NSMakeRect(0, 0, 180, 28))
-    var textChangeCount = 0
+    // The real delegate surface (controlTextDidChange) observes every
+    // native-edit update — the typed change and the commit's text refresh —
+    // so record the sequence rather than assuming a single fire.
+    var observedTexts: [String] = []
     var actionCount = 0
 
     comboBox.onComboBoxTextChanged = { combo in
-        textChangeCount += 1
-        expect(combo.stringValue == "Typed", "Combo box text change did not update stringValue.")
+        observedTexts.append(combo.stringValue)
     }
     comboBox.onAction = { control in
         actionCount += 1
@@ -6609,10 +6934,11 @@ func testComboBoxNativeTextChangeAndActionUpdateState() {
     let handle = comboBox.realizeNativePeer(in: backend, parent: nil)
     backend.textChangeActions[handle]?("Typed")
     expect(backend.records[handle]?.text == "", "Combo box native text change should not echo text back to the native peer.")
+    expect(observedTexts == ["Typed"], "Combo box text-change delegate did not observe the typed text.")
     backend.setText("Selected", for: handle)
     backend.actions[handle]?()
 
-    expect(textChangeCount == 1, "Combo box text-change callback did not fire.")
+    expect(observedTexts.contains("Typed"), "Combo box text-change callback did not fire for typing.")
     expect(actionCount == 1, "Combo box action callback did not fire.")
 }
 
@@ -7378,7 +7704,7 @@ func testViewAndTextFieldColorsSyncToBackend() {
     let backend = InMemoryNativeControlBackend()
     let view = NSView(frame: NSMakeRect(0, 0, 100, 100))
     let textField = NSTextField(string: "Color", frame: NSMakeRect(0, 0, 80, 24))
-    view.backgroundColor = .white
+    view.winBackgroundColor = .white
     textField.textColor = .blue
     textField.backgroundColor = NSColor(calibratedRed: 0.9, green: 0.95, blue: 1, alpha: 1)
     view.addSubview(textField)
@@ -7409,10 +7735,10 @@ func testVisualEffectViewStoresMaterialAndUsesFallbackBackground() {
     expect(effectView.state == .active, "Visual effect state was not stored.")
     expect(!effectView.acceptsFirstResponder, "Visual effect view should skip key-view traversal.")
     expect(backend.records[handle]?.kind == "view", "Visual effect view did not use a view peer.")
-    expect(backend.records[handle]?.backgroundColor == effectView.backgroundColor, "Visual effect fallback background was not synced.")
+    expect(backend.records[handle]?.backgroundColor == effectView.winBackgroundColor, "Visual effect fallback background was not synced.")
 
     effectView.material = .hudWindow
-    expect(backend.records[handle]?.backgroundColor == effectView.backgroundColor, "Visual effect material change did not update fallback background.")
+    expect(backend.records[handle]?.backgroundColor == effectView.winBackgroundColor, "Visual effect material change did not update fallback background.")
 }
 
 @MainActor
@@ -7428,8 +7754,8 @@ func testAppearanceSwitchNotificationReresolvesCachedBackgrounds() {
     effectView.material = .sidebar
     let toolbarView = NSToolbarView(frame: NSMakeRect(0, 0, 300, 40))
 
-    guard let darkEffect = effectView.backgroundColor,
-          let darkStrip = toolbarView.backgroundColor else {
+    guard let darkEffect = effectView.winBackgroundColor,
+          let darkStrip = toolbarView.winBackgroundColor else {
         fatalError("Both views should have a background color under the dark appearance.")
     }
     expect(darkEffect.whiteComponent < 0.4,
@@ -7442,8 +7768,8 @@ func testAppearanceSwitchNotificationReresolvesCachedBackgrounds() {
     NotificationCenter.default.post(
         name: NSApplication.winEffectiveAppearanceDidChangeNotification, object: nil)
 
-    guard let lightEffect = effectView.backgroundColor,
-          let lightStrip = toolbarView.backgroundColor else {
+    guard let lightEffect = effectView.winBackgroundColor,
+          let lightStrip = toolbarView.winBackgroundColor else {
         fatalError("Both views should still have a background color after the switch.")
     }
     expect(lightEffect.whiteComponent > 0.7,
@@ -7957,7 +8283,7 @@ func testTextViewUndoRestoresPreviousText() {
     expect(plain.undoManager?.canUndo == false, "allowsUndo == false should not register undo actions.")
 }
 
-final class SplitResizeRecorder: NSSplitViewDelegate {
+final class SplitResizeRecorder: NSObject, NSSplitViewDelegate {
     var resizeCount = 0
 
     func splitViewDidResizeSubviews(_ notification: NSNotification) {
@@ -8734,7 +9060,7 @@ func testProgressIndicatorIndeterminateSyncsToBackend() {
     expect(backend.progressIndeterminateStates[handle]?.isIndeterminate == true, "Spinning style should render indeterminately on the classic backend.")
 }
 
-final class RecordingTextViewDelegate: NSTextViewDelegate {
+final class RecordingTextViewDelegate: NSObject, NSTextViewDelegate {
     var changeCount = 0
     var lastNotificationName = ""
     var lastObject: AnyObject?
@@ -8980,7 +9306,7 @@ final class FontChangeRecordingView: NSView {
     }
 }
 
-final class RecordingTextFieldDelegate: NSTextFieldDelegate {
+final class RecordingTextFieldDelegate: NSObject, NSTextFieldDelegate {
     var began = 0
     var changed = 0
     var ended = 0
@@ -9276,7 +9602,7 @@ func testButtonImageAndAlternateTitle() {
 
     // A toggle button swaps to its alternate title in the on state.
     let toggle = NSButton(title: "Play", frame: NSMakeRect(0, 0, 100, 28))
-    toggle.setButtonType(.switchButton)
+    toggle.setButtonType(.switch)
     toggle.alternateTitle = "Pause"
     let toggleHandle = toggle.realizeNativePeer(in: backend, parent: nil)
     expect(backend.records[toggleHandle]?.text == "Play", "Off-state button did not show the base title.")
@@ -9362,7 +9688,7 @@ func testAlertHelpAndIconConfiguration() {
     expect(alert.helpAnchor == "trash-help", "helpAnchor was not stored.")
 
     // A delegate that handles help suppresses the fallback closure.
-    final class HelpDelegate: NSAlertDelegate {
+    final class HelpDelegate: NSObject, NSAlertDelegate {
         var asked = 0
         func alertShowHelp(_ alert: NSAlert) -> Bool {
             asked += 1
@@ -9375,7 +9701,7 @@ func testAlertHelpAndIconConfiguration() {
     expect(delegate.asked == 1, "Help delegate was not consulted.")
 
     // The default delegate implementation reports help unhandled.
-    final class PlainDelegate: NSAlertDelegate {}
+    final class PlainDelegate: NSObject, NSAlertDelegate {}
     expect(PlainDelegate().alertShowHelp(alert) == false, "Default alertShowHelp should be false.")
 
     // A custom icon is retained for the composed panel.
@@ -9957,8 +10283,6 @@ func testColorPanelFloatsAndAppliesColorsLive() {
 
     let panel = NSColorPanel(nativeBackend: backend)
     panel.color = .red
-    var changedColors: [NSColor] = []
-    panel.winColorDidChange = { changedColors.append($0) }
 
     panel.makeKeyAndOrderFront(nil)
     guard let handle = panel.nativeHandle else {
@@ -9983,7 +10307,6 @@ func testColorPanelFloatsAndAppliesColorsLive() {
 
     let magenta = NSColor(calibratedRed: 1, green: 0, blue: 1, alpha: 1)
     expect(panel.color == magenta, "Slider change did not recompose the panel color.")
-    expect(changedColors == [magenta], "Slider change did not fire the change closure.")
     expect(recorder.receivedColors == [magenta], "changeColor did not reach the document window's first responder.")
 
     // A title-bar close hides the shared-style panel instead of destroying it.
@@ -10016,7 +10339,6 @@ func testFontPanelLiveApplyThroughFontManager() {
     let manager = NSFontManager.shared
     defer {
         NSApplication.shared.nativeBackend = previousBackend
-        manager.winFontDidChange = nil
         manager.target = nil
     }
 
@@ -10035,8 +10357,6 @@ func testFontPanelLiveApplyThroughFontManager() {
 
     let seedFont = NSFont(name: "Georgia", size: 14)
     manager.selectedFont = seedFont
-    var changedFonts: [NSFont] = []
-    manager.winFontDidChange = { changedFonts.append($0) }
 
     let panel = NSFontPanel(nativeBackend: backend)
     panel.setPanelFont(seedFont, isMultiple: false)
@@ -10069,7 +10389,6 @@ func testFontPanelLiveApplyThroughFontManager() {
 
     expect(manager.selectedFont?.fontName == "Consolas", "Family selection did not update the manager's selected font.")
     expect(panel.winSelectedFont?.fontName == "Consolas", "Family selection did not update the panel selection.")
-    expect(changedFonts.count == 1, "Family selection did not fire the manager change closure.")
     expect(recorder.receivedFonts.count == 1, "changeFont did not reach the document window's first responder.")
     expect(recorder.receivedFonts.first?.fontName == "Consolas", "convert(_:) did not return the live panel selection.")
 
@@ -10995,7 +11314,7 @@ func testTrackingAreasDeliverEnterAndExit() {
 
 testTrackingAreasDeliverEnterAndExit()
 
-final class WindowStateRecordingDelegate: NSWindowDelegate {
+final class WindowStateRecordingDelegate: NSObject, NSWindowDelegate {
     var resized = 0
     var moved = 0
     var miniaturized = 0
@@ -11282,7 +11601,7 @@ func testTableViewMultipleSelectionEditingAndSorting() {
 
 testTableViewMultipleSelectionEditingAndSorting()
 
-final class ViewBasedTableDelegate: NSTableViewDelegate {
+final class ViewBasedTableDelegate: NSObject, NSTableViewDelegate {
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
         NSTextField(string: "\(tableColumn?.identifier.rawValue ?? "?")-\(row)", frame: NSMakeRect(0, 0, 100, 20))
     }
@@ -11331,7 +11650,7 @@ func testViewBasedTableHostsCellViews() {
 
 testViewBasedTableHostsCellViews()
 
-final class ManyRowTableDataSource: NSTableViewDataSource {
+final class ManyRowTableDataSource: NSObject, NSTableViewDataSource {
     let count: Int
     init(count: Int) { self.count = count }
     func numberOfRows(in tableView: NSTableView) -> Int { count }
@@ -11367,7 +11686,7 @@ func testDrawnTableClipsCellTextToColumns() {
 }
 
 /// A drawn table with a single very long cell value (for the ellipsis test).
-final class LongTextTableDataSource: NSTableViewDataSource {
+final class LongTextTableDataSource: NSObject, NSTableViewDataSource {
     func numberOfRows(in tableView: NSTableView) -> Int { 1 }
     func tableView(_ tableView: NSTableView, objectValueFor tableColumn: NSTableColumn?, row: Int) -> Any? {
         "ThisIsAVeryLongCellValueThatMustTruncate"
@@ -11404,7 +11723,7 @@ func testDrawnTableTruncatesLongCellTextWithEllipsis() {
 
 /// A delegate that dequeues its cell view via `makeView(withIdentifier:owner:)`,
 /// creating a fresh one (stamped with the reuse identifier) only on a miss.
-final class RecyclingCellDelegate: NSTableViewDelegate {
+final class RecyclingCellDelegate: NSObject, NSTableViewDelegate {
     static let cellID = NSUserInterfaceItemIdentifier("recycle-cell")
     private(set) var madeFresh = 0
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
@@ -11450,7 +11769,7 @@ func testDrawnTableRecyclesCellViewsViaMakeView() {
 }
 
 /// A drawn table whose single cell value is an attributed (colored) string.
-final class AttributedCellTableDataSource: NSTableViewDataSource {
+final class AttributedCellTableDataSource: NSObject, NSTableViewDataSource {
     func numberOfRows(in tableView: NSTableView) -> Int { 1 }
     func tableView(_ tableView: NSTableView, objectValueFor tableColumn: NSTableColumn?, row: Int) -> Any? {
         NSAttributedString(string: "Alert", attributes: [.foregroundColor: NSColor.red])
@@ -11690,7 +12009,7 @@ func testDrawnTableHeaderColumnReorder() {
 testDrawnTableHeaderColumnReorder()
 
 /// Vends a cell view for every cell and a custom height for the first row.
-final class VariableHeightTableDelegate: NSTableViewDelegate {
+final class VariableHeightTableDelegate: NSObject, NSTableViewDelegate {
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
         NSTextField(string: "r\(row)", frame: NSMakeRect(0, 0, 100, 20))
     }
@@ -11742,7 +12061,7 @@ testDrawnTableHonorsVariableRowHeights()
 
 /// Records values written back through the data source, and vends a drawn-text
 /// "name" column (no view) so the drawn table paints and edits it in place.
-final class EditableDrawnDataSource: NSTableViewDataSource {
+final class EditableDrawnDataSource: NSObject, NSTableViewDataSource {
     var names = ["alpha", "bravo", "charlie"]
     var committed: [(row: Int, value: String)] = []
     func numberOfRows(in tableView: NSTableView) -> Int { names.count }
@@ -11758,7 +12077,7 @@ final class EditableDrawnDataSource: NSTableViewDataSource {
 
 /// Hosts a non-text view (button) in the "flag" column so the only text field
 /// in the table is the in-place edit overlay.
-final class EditableDrawnDelegate: NSTableViewDelegate {
+final class EditableDrawnDelegate: NSObject, NSTableViewDelegate {
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
         tableColumn?.identifier == "flag"
             ? NSButton(title: "•", frame: NSMakeRect(0, 0, 40, 20))
@@ -11878,7 +12197,7 @@ func testDrawnTableReturnKeyBeginsEditingSelectedRow() {
 testDrawnTableReturnKeyBeginsEditingSelectedRow()
 
 /// Vends a cell view (so drawn mode engages) plus a colored row view per row.
-final class RowViewTableDelegate: NSTableViewDelegate {
+final class RowViewTableDelegate: NSObject, NSTableViewDelegate {
     let base = NSColor(white: 0.9, alpha: 1)
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
         NSTextField(string: "r\(row)", frame: NSMakeRect(0, 0, 100, 20))
@@ -11978,14 +12297,14 @@ func testTableViewAutoDetectsViewBasedModeFromDelegate() {
 
 testTableViewAutoDetectsViewBasedModeFromDelegate()
 
-final class ReorderableTableDataSource: NSTableViewDataSource {
+final class ReorderableTableDataSource: NSObject, NSTableViewDataSource {
     var items = ["alpha", "bravo", "charlie", "delta"]
     func numberOfRows(in tableView: NSTableView) -> Int { items.count }
     func tableView(_ tableView: NSTableView, objectValueFor tableColumn: NSTableColumn?, row: Int) -> Any? { items[row] }
 }
 
 /// A table that accepts an external text drop as a new row at the drop index.
-final class DropTargetTableDataSource: NSTableViewDataSource {
+final class DropTargetTableDataSource: NSObject, NSTableViewDataSource {
     var items = ["alpha", "bravo"]
     func numberOfRows(in tableView: NSTableView) -> Int { items.count }
     func tableView(_ tableView: NSTableView, objectValueFor tableColumn: NSTableColumn?, row: Int) -> Any? { items[row] }
@@ -12034,7 +12353,7 @@ func testDrawnTableAcceptsExternalRowDrop() {
 }
 
 /// A read-only table whose rows drag out as their text (a pasteboard writer).
-final class PasteboardRowDataSource: NSTableViewDataSource {
+final class PasteboardRowDataSource: NSObject, NSTableViewDataSource {
     let items = ["alpha", "bravo", "charlie", "delta"]
     func numberOfRows(in tableView: NSTableView) -> Int { items.count }
     func tableView(_ tableView: NSTableView, objectValueFor tableColumn: NSTableColumn?, row: Int) -> Any? { items[row] }
@@ -12256,7 +12575,7 @@ func testControlsExposeAppKitAccessibilityRolesAndValues() {
     // as the accessibility value — the AppKit contract assistive tech reads.
     let checkbox = NSButton(frame: NSMakeRect(0, 0, 120, 24))
     checkbox.title = "Remember me"
-    checkbox.setButtonType(.switchButton)
+    checkbox.setButtonType(.switch)
     checkbox.state = .on
     expect(checkbox.accessibilityRole() == .checkBox, "A switch button should report the checkbox role.")
     expect(checkbox.accessibilityLabel() == "Remember me", "A button's title should be its accessibility label.")
@@ -12266,7 +12585,7 @@ func testControlsExposeAppKitAccessibilityRolesAndValues() {
 
     // A radio button reports the radio role.
     let radio = NSButton(frame: .zero)
-    radio.setButtonType(.radioButton)
+    radio.setButtonType(.radio)
     expect(radio.accessibilityRole() == .radioButton, "A radio button should report the radio role.")
 
     // An editable field is a text field carrying its text as value; a static
@@ -12726,7 +13045,7 @@ func testNibInstantiatesXibObjectGraph() {
     // The rest of the control mix.
     let check = instance.view(withIdentifier: "check") as? NSButton
     expect(check?.state == .on, "The checkbox should decode state=on.")
-    expect(check?.buttonType == .switchButton, "type=check should decode as a switch button.")
+    expect(check?.buttonType == .switch, "type=check should decode as a switch button.")
     let field = instance.view(withIdentifier: "nameField") as? NSTextField
     expect(field?.isEditable == true && field?.stringValue == "Seed" && field?.placeholderString == "Name",
            "The text field should decode editability, text, and placeholder.")
@@ -12927,5 +13246,120 @@ testDrawnTableTabAdvancesCellEditor()
 testSearchFieldDrawsChromeAndRecentMenu()
 testSheetsLinkParentPositionBelowToolbarAndQueue()
 testDragImageAndDisplayScaleSurfaces()
+
+// MARK: - Phase 18.1: real target/action selector dispatch
+
+/// An action target using the Apple-shaped dispatch surface: it advertises a
+/// selector through `responds(to:)` and receives it through `perform(_:with:)`
+/// — a plain Swift override, the supported way application code receives
+/// selector actions on Windows (macOS builds use `@objc` methods instead).
+final class DispatchProbeTarget: NSObject {
+    var received: [String] = []
+    weak var lastSender: NSObject?
+
+    override func responds(to aSelector: Selector?) -> Bool {
+        aSelector?.name == "probe:" || super.responds(to: aSelector)
+    }
+
+    @discardableResult
+    override func perform(_ aSelector: Selector, with object: Any?) -> Any? {
+        guard aSelector.name == "probe:" else {
+            return super.perform(aSelector, with: object)
+        }
+
+        received.append(aSelector.name)
+        lastSender = object as? NSObject
+        return nil
+    }
+}
+
+/// A responder handling a custom selector, for nil-target chain walks.
+final class DispatchProbeResponderView: NSView {
+    var chainHits = 0
+
+    override func responds(to aSelector: Selector?) -> Bool {
+        aSelector?.name == "chainProbe:" || super.responds(to: aSelector)
+    }
+
+    @discardableResult
+    override func perform(_ aSelector: Selector, with object: Any?) -> Any? {
+        guard aSelector.name == "chainProbe:" else {
+            return super.perform(aSelector, with: object)
+        }
+
+        chainHits += 1
+        return nil
+    }
+}
+
+func testTargetActionDispatchesThroughRealSelectors() {
+    // Explicit target: NSControl.sendAction() must reach the target's
+    // selector — target/action are live dispatch, not stored decoration.
+    let target = DispatchProbeTarget()
+    let button = NSButton(title: "Go", target: target, action: Selector("probe:"))
+    button.sendAction()
+    expect(target.received == ["probe:"], "The button's action selector should dispatch to its target.")
+    expect(target.lastSender === button, "The action should carry the control as sender.")
+
+    // Disabled controls must not fire.
+    button.isEnabled = false
+    button.sendAction()
+    expect(target.received.count == 1, "A disabled control must not send its action.")
+    button.isEnabled = true
+
+    // NSControl.sendAction(_:to:) — Apple's explicit-pair method.
+    let direct = NSButton(title: "Direct", target: nil, action: nil)
+    expect(direct.sendAction(Selector("probe:"), to: target), "sendAction(_:to:) should dispatch and report true.")
+    expect(target.received.count == 2, "sendAction(_:to:) should reach the target.")
+    expect(!direct.sendAction(nil, to: target), "A nil action must return false.")
+
+    // Menu items dispatch the same way (the old terminate:-only special case
+    // is gone — any selector reaches any target).
+    let item = NSMenuItem(title: "Probe", action: Selector("probe:"), keyEquivalent: "")
+    item.target = target
+    expect(item.performAction(), "A menu item with target/action should dispatch.")
+    expect(target.received.count == 3, "The menu item's selector should reach the target.")
+
+    // Nil-target dispatch walks the key window's responder chain.
+    let backend = InMemoryNativeControlBackend()
+    let window = NSWindow(
+        contentRect: NSMakeRect(0, 0, 200, 120),
+        styleMask: [.titled],
+        backing: .buffered,
+        defer: false,
+        nativeBackend: backend
+    )
+    let probeView = DispatchProbeResponderView(frame: NSMakeRect(0, 0, 50, 20))
+    window.contentView?.addSubview(probeView)
+    window.makeKey()
+    _ = window.makeFirstResponder(probeView)
+    expect(
+        NSApplication.shared.sendAction(Selector("chainProbe:"), to: nil, from: nil),
+        "A nil-target action should resolve through the key window's first responder."
+    )
+    expect(probeView.chainHits == 1, "The first responder should have performed the chain action.")
+    expect(
+        (NSApplication.shared.target(forAction: Selector("chainProbe:")) as? NSObject) === probeView,
+        "target(forAction:) should resolve the same responder without sending."
+    )
+
+    // The chain ends at NSApplication: terminate: resolves there when nothing
+    // upstream claims it (resolution only — sending would quit the suite).
+    expect(
+        (NSApplication.shared.target(forAction: Selector("terminate:")) as? NSObject) === NSApplication.shared,
+        "terminate: should resolve to the application at the end of the chain."
+    )
+
+    // Standard chain actions reach NSResponder methods by selector name —
+    // the same path the font/color panels use for changeFont:/changeColor:.
+    expect(
+        probeView.tryToPerform(Selector("changeFont:"), with: nil),
+        "Standard responder actions should be performable by selector."
+    )
+
+    window.close()
+}
+
+testTargetActionDispatchesThroughRealSelectors()
 
 print("WinChocolate contract tests passed.")

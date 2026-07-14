@@ -157,14 +157,19 @@ open class NSView: NSResponder {
         }
     }
 
-    /// The view background color, when explicitly set.
-    open var backgroundColor: NSColor? {
+    /// The view's background fill, when explicitly set.
+    ///
+    /// Not public API: AppKit's `NSView` has no `winBackgroundColor` (18.2) —
+    /// only concrete types like `NSTextField`, `NSTableRowView`, and
+    /// `NSPathControl` expose one, and those forward here. `package` so the
+    /// contract tests can probe framework chrome fills.
+    package var winBackgroundColor: NSColor? {
         didSet {
             guard let nativeHandle else {
                 return
             }
 
-            realizedBackend?.setBackgroundColor(backgroundColor, for: nativeHandle)
+            realizedBackend?.setBackgroundColor(winBackgroundColor, for: nativeHandle)
         }
     }
 
@@ -752,7 +757,7 @@ open class NSView: NSResponder {
         nativeHandle = handle
         realizedBackend = backend
         backend.setHidden(isHidden, for: handle)
-        backend.setBackgroundColor(backgroundColor, for: handle)
+        backend.setBackgroundColor(winBackgroundColor, for: handle)
         backend.setToolTip(toolTip, for: handle)
         // Replay an explicit accessibility label set before realization so the
         // backend's accessibility annotation matches, regardless of order.
@@ -934,7 +939,7 @@ open class NSView: NSResponder {
     /// Draws the view's custom content.
     ///
     /// Called during a native paint pass with `NSGraphicsContext.current`
-    /// installed, after the view's `backgroundColor` has been painted.
+    /// installed, after the view's `winBackgroundColor` has been painted.
     /// Subclasses override this and draw with `NSBezierPath`, `NSColor`, and
     /// `NSRectFill`; the base implementation draws nothing.
     open func draw(_ dirtyRect: NSRect) {

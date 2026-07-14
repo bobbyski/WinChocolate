@@ -2,7 +2,7 @@
 ///
 /// The method names mirror AppKit delegate hooks so existing application
 /// delegates can move toward WinChocolate incrementally.
-public protocol NSApplicationDelegate: AnyObject {
+public protocol NSApplicationDelegate: NSObjectProtocol {
     /// Called immediately before `NSApplication.run()` enters the native loop.
     func applicationWillFinishLaunching(_ notification: NSNotification)
 

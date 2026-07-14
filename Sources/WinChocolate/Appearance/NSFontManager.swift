@@ -23,11 +23,6 @@ open class NSFontManager: NSObject {
     /// chain, when set.
     open weak var target: AnyObject?
 
-    /// Called after the user picks a font in the panel.
-    ///
-    /// Fired alongside the `changeFont(_:)` responder-chain action.
-    open var winFontDidChange: ((NSFont) -> Void)?
-
     /// Creates a font manager.
     public override init() {
         super.init()
@@ -122,11 +117,10 @@ open class NSFontManager: NSObject {
 
     /// Applies a live font panel selection.
     ///
-    /// Updates the tracked selection, fires the change closure, and sends
-    /// `changeFont(_:)` to the target or down the active responder chain.
+    /// Updates the tracked selection and sends `changeFont(_:)` to the
+    /// target or down the active responder chain, as AppKit does.
     func panelFontDidChange(_ font: NSFont) {
         selectedFont = font
-        winFontDidChange?(font)
 
         let responder = (target as? NSResponder)
             ?? NSApplication.shared.panelActionWindow?.firstResponder

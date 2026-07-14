@@ -1,5 +1,5 @@
 /// The methods a popover delegate can implement to observe its lifecycle.
-public protocol NSPopoverDelegate: AnyObject {
+public protocol NSPopoverDelegate: NSObjectProtocol {
     /// Tells the delegate the popover is about to show.
     func popoverWillShow(_ notification: NSNotification)
 
@@ -87,8 +87,8 @@ open class NSPopover: NSObject {
         let content = contentViewController?.view
         // A solid background keeps the borderless popover from showing stale
         // pixels through its content, a minimal stand-in for popover chrome.
-        if let content, content.backgroundColor == nil {
-            content.backgroundColor = .windowBackgroundColor
+        if let content, content.winBackgroundColor == nil {
+            content.winBackgroundColor = .windowBackgroundColor
         }
         panel.contentView = content
         let handle = panel.realizeNativePeer()

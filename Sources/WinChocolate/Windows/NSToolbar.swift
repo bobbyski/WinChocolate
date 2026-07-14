@@ -1,5 +1,5 @@
 /// Provides AppKit-compatible toolbar item customization hooks.
-public protocol NSToolbarDelegate: AnyObject {
+public protocol NSToolbarDelegate: NSObjectProtocol {
     /// Returns the identifiers allowed in the toolbar customization palette.
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier]
 
@@ -219,13 +219,15 @@ open class NSToolbar: NSObject {
         self.init(identifier: "NSToolbar")
     }
 
-    /// Adds an item at the end of the toolbar.
-    open func addItem(_ item: NSToolbarItem) {
+    /// Adds an item at the end of the toolbar. Not API: AppKit populates
+    /// toolbars only through the delegate + `insertItem(withItemIdentifier:at:)`
+    /// (18.6); this remains for framework internals (palette, tests).
+    package func addItem(_ item: NSToolbarItem) {
         insertItem(item, at: items.count)
     }
 
     /// Inserts an item at the requested index.
-    open func insertItem(_ item: NSToolbarItem, at index: Int) {
+    package func insertItem(_ item: NSToolbarItem, at index: Int) {
         item.toolbar = nil
         notifyWillAdd(item)
         let insertionIndex = min(max(index, 0), items.count)
@@ -391,19 +393,19 @@ open class NSToolbar: NSObject {
         case .showColors:
             item = NSToolbarItem(itemIdentifier: identifier)
             item.label = "Colors"
-            item.onAction = { toolbarItem in
+            item.winInternalAction = { toolbarItem in
                 NSColorPanel.shared.makeKeyAndOrderFront(toolbarItem)
             }
         case .showFonts:
             item = NSToolbarItem(itemIdentifier: identifier)
             item.label = "Fonts"
-            item.onAction = { toolbarItem in
+            item.winInternalAction = { toolbarItem in
                 NSFontPanel.shared.makeKeyAndOrderFront(toolbarItem)
             }
         case .customizeToolbar:
             item = NSToolbarItem(itemIdentifier: identifier)
             item.label = "Customize"
-            item.onAction = { [weak self] toolbarItem in
+            item.winInternalAction = { [weak self] toolbarItem in
                 self?.runCustomizationPalette(toolbarItem)
             }
         case .toggleSidebar:
@@ -426,7 +428,7 @@ open class NSToolbar: NSObject {
         case .print:
             item = NSToolbarItem(itemIdentifier: identifier)
             item.label = "Print"
-            item.onAction = { [weak self] _ in
+            item.winInternalAction = { [weak self] _ in
                 // AppKit sends printDocument: up the responder chain; the
                 // closest classic-backend behavior prints the toolbar window's
                 // content view. Apps override by assigning their own action.
@@ -464,6 +466,12 @@ open class NSToolbar: NSObject {
     internal func attach(to window: NSWindow?) {
         self.window = window
         if window != nil {
+            // AppKit's population flow: a toolbar with no items yet fills
+            // itself from the delegate's default identifiers when it attaches
+            // (each resolved through `toolbar(_:itemForItemIdentifier:...)`).
+            if items.isEmpty, delegate != nil {
+                resetVisibleItemsToDefault()
+            }
             restoreAutosavedConfigurationIfNeeded()
         }
     }
@@ -604,7 +612,7 @@ open class NSToolbarView: NSView {
         super.init(frame: frameRect)
         // Blend with the window chrome the way AppKit toolbars extend the
         // title bar; a bottom hairline separates the strip from content.
-        backgroundColor = .windowBackgroundColor
+        winBackgroundColor = .windowBackgroundColor
         // The strip fill is resolved for the current appearance and cached as a
         // brush; re-resolve it on a live system theme switch so the toolbar
         // follows the window chrome instead of staying its old shade.
@@ -612,7 +620,7 @@ open class NSToolbarView: NSView {
             forName: NSApplication.winEffectiveAppearanceDidChangeNotification,
             object: nil, queue: nil
         ) { [weak self] _ in
-            self?.backgroundColor = .windowBackgroundColor
+            self?.winBackgroundColor = .windowBackgroundColor
             self?.needsDisplay = true
         }
     }
@@ -690,7 +698,7 @@ open class NSToolbarView: NSView {
 
         if let clickedItem, toolbar.allowsUserCustomization {
             let remove = NSMenuItem(title: "Remove Item", action: nil, keyEquivalent: "")
-            remove.onAction = { [weak toolbar, weak clickedItem] _ in
+            remove.winInternalAction = { [weak toolbar, weak clickedItem] _ in
                 guard let toolbar, let clickedItem,
                       let index = toolbar.items.firstIndex(where: { $0 === clickedItem }) else {
                     return
@@ -705,7 +713,7 @@ open class NSToolbarView: NSView {
         func addModeItem(_ title: String, _ mode: NSToolbar.DisplayMode) {
             let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
             item.state = currentMode == mode ? .on : .off
-            item.onAction = { [weak toolbar] _ in
+            item.winInternalAction = { [weak toolbar] _ in
                 toolbar?.displayMode = mode
             }
             menu.addItem(item)
@@ -717,7 +725,7 @@ open class NSToolbarView: NSView {
         if toolbar.allowsUserCustomization {
             menu.addItem(NSMenuItem.separator())
             let customize = NSMenuItem(title: "Customize Toolbar…", action: nil, keyEquivalent: "")
-            customize.onAction = { [weak toolbar] _ in
+            customize.winInternalAction = { [weak toolbar] _ in
                 toolbar?.runCustomizationPalette(nil)
             }
             menu.addItem(customize)
@@ -733,7 +741,7 @@ open class NSToolbarView: NSView {
 
         // The strip's own background is what transparent child windows erase
         // with: in metallic it must be the chrome midtone, never white.
-        backgroundColor = toolbar.winResolvedAppleLook == .metallic
+        winBackgroundColor = toolbar.winResolvedAppleLook == .metallic
             ? Self.winMetallicMidtone
             : .windowBackgroundColor
         notifyPreferredHeightIfNeeded()
@@ -837,7 +845,7 @@ open class NSToolbarView: NSView {
                         )
                         // Selected subitems show the selection band.
                         if group.isSelected(at: index) {
-                            tile.backgroundColor = NSColor(calibratedRed: 0.80, green: 0.84, blue: 0.90, alpha: 1.0)
+                            tile.winBackgroundColor = NSColor(calibratedRed: 0.80, green: 0.84, blue: 0.90, alpha: 1.0)
                         }
                         if toolbar.winResolvedAppleLook == .metallic, let composite = tile as? NSToolbarCompositeItemView {
                             composite.metallicSlice = (stripHeight: frame.size.height, y: entry.frame.origin.y)
@@ -853,7 +861,7 @@ open class NSToolbarView: NSView {
                     let button = NSButton(title: title, frame: entry.frame)
                     button.isEnabled = item.isEnabled
                     button.toolTip = item.toolTip
-                    button.onAction = { [weak item] _ in
+                    button.winInternalAction = { [weak item] _ in
                         item?.performAction()
                     }
                     addSubview(button)
@@ -869,7 +877,7 @@ open class NSToolbarView: NSView {
                 // A selected item (selectedItemIdentifier) shows a subtle
                 // pressed/selected band, matching the Mac toolbar look.
                 if toolbar.selectedItemIdentifier == item.itemIdentifier {
-                    compositeView.backgroundColor = NSColor(calibratedRed: 0.80, green: 0.84, blue: 0.90, alpha: 1.0)
+                    compositeView.winBackgroundColor = NSColor(calibratedRed: 0.80, green: 0.84, blue: 0.90, alpha: 1.0)
                 }
                 // Metallic: the tile paints its slice of the chrome gradient
                 // so the child window never breaks the strip's chrome.
@@ -928,7 +936,7 @@ open class NSToolbarView: NSView {
                     let title = item.menuFormRepresentation?.title ?? item.label
                     let menuItem = NSMenuItem(title: title, action: nil, keyEquivalent: "")
                     menuItem.isEnabled = item.isEnabled
-                    menuItem.onAction = { [weak item] _ in
+                    menuItem.winInternalAction = { [weak item] _ in
                         item?.performAction()
                     }
                     menu.addItem(menuItem)
@@ -941,7 +949,7 @@ open class NSToolbarView: NSView {
         // Chrome hairline separating the toolbar strip from window content.
         // Added after the item views so item indices stay stable for callers.
         let bottomEdge = NSView(frame: NSMakeRect(0, max(frame.size.height - 1, 0), frame.size.width, 1))
-        bottomEdge.backgroundColor = NSColor(calibratedRed: 0.85, green: 0.85, blue: 0.85, alpha: 1.0)
+        bottomEdge.winBackgroundColor = NSColor(calibratedRed: 0.85, green: 0.85, blue: 0.85, alpha: 1.0)
         bottomEdge.autoresizingMask = [.width]
         addSubview(bottomEdge)
         renderedItemViews.append(bottomEdge)
@@ -953,7 +961,7 @@ open class NSToolbarView: NSView {
         // (e.g. the selected-item highlight band) draw their own backgrounds.
         let keepsOwnBackground = view is NSToolbarSeparatorView
             || ((view as? NSTextField)?.isEditable ?? false)
-            || view.backgroundColor != nil
+            || view.winBackgroundColor != nil
         if !keepsOwnBackground {
             applyRealizedTransparentBackground(to: view)
         }
@@ -961,7 +969,7 @@ open class NSToolbarView: NSView {
     }
 
     private func applyToolbarControlAppearance(to view: NSView) {
-        view.backgroundColor = nil
+        view.winBackgroundColor = nil
 
         // Label-style text fields blend into the toolbar strip; editable
         // fields (search fields, text entries) keep their border and
@@ -1269,7 +1277,7 @@ final class NSToolbarOverflowChevronView: NSView {
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         toolTip = "More toolbar items"
-        backgroundColor = nil
+        winBackgroundColor = nil
     }
 
     override var acceptsFirstResponder: Bool {
@@ -1305,7 +1313,7 @@ open class NSToolbarSeparatorView: NSView {
         super.init(frame: frameRect)
         // The view itself is the thin vertical bar; layout centers it inside
         // a wider separator slot so whitespace frames it on either side.
-        backgroundColor = NSColor(calibratedRed: 0.66, green: 0.66, blue: 0.66, alpha: 1.0)
+        winBackgroundColor = NSColor(calibratedRed: 0.66, green: 0.66, blue: 0.66, alpha: 1.0)
     }
 
     /// Separators are display-only.

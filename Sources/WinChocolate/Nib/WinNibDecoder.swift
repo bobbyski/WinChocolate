@@ -174,8 +174,8 @@ final class WinNibDecoder {
             let button = NSButton(frame: frame)
             if let cell {
                 switch cell.attribute("type") {
-                case "check": button.setButtonType(.switchButton)
-                case "radio": button.setButtonType(.radioButton)
+                case "check": button.setButtonType(.switch)
+                case "radio": button.setButtonType(.radio)
                 default: button.setButtonType(.momentaryPushIn)
                 }
                 button.title = cell.attribute("title") ?? ""

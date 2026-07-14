@@ -7,6 +7,62 @@ open class NSResponder: NSObject {
     /// The next object in the responder chain.
     open weak var nextResponder: NSResponder?
 
+    /// Attempts to perform an action, walking the responder chain on failure —
+    /// AppKit's `tryToPerform(_:with:)`.
+    @discardableResult
+    open func tryToPerform(_ action: Selector, with object: Any?) -> Bool {
+        if responds(to: action) {
+            perform(action, with: object)
+            return true
+        }
+
+        return nextResponder?.tryToPerform(action, with: object) ?? false
+    }
+
+    /// The responder-chain action selectors every `NSResponder` carries
+    /// (their base implementations forward along the chain, so performing one
+    /// on any responder walks the chain exactly as AppKit's nil-target
+    /// dispatch does).
+    private static let winStandardActionSelectors: Set<String> = [
+        "changeFont:", "changeColor:", "copy:", "cut:", "paste:",
+    ]
+
+    /// Responders handle the standard chain actions by selector name — this is
+    /// what lets real AppKit `Selector`-based dispatch (menu items, controls,
+    /// panels) reach `changeFont(_:)`, `copy(_:)`, … without an Objective-C
+    /// runtime. Subclasses with their own action methods override and fall
+    /// through to `super`.
+    open override func responds(to aSelector: Selector?) -> Bool {
+        guard let aSelector else {
+            return false
+        }
+
+        if Self.winStandardActionSelectors.contains(aSelector.name) {
+            return true
+        }
+
+        return super.responds(to: aSelector)
+    }
+
+    @discardableResult
+    open override func perform(_ aSelector: Selector, with object: Any?) -> Any? {
+        switch aSelector.name {
+        case "changeFont:":
+            changeFont(object)
+        case "changeColor:":
+            changeColor(object)
+        case "copy:":
+            copy(object)
+        case "cut:":
+            cut(object)
+        case "paste:":
+            paste(object)
+        default:
+            return super.perform(aSelector, with: object)
+        }
+        return nil
+    }
+
     /// Whether this responder can become first responder.
     open var acceptsFirstResponder: Bool {
         false

@@ -18,7 +18,7 @@ public enum NSTextAlignment: Sendable {
 }
 
 /// The methods a text field delegate uses to observe editing.
-public protocol NSTextFieldDelegate: AnyObject {
+public protocol NSTextFieldDelegate: NSObjectProtocol {
     /// Tells the delegate that editing began in the control (focus gained).
     func controlTextDidBeginEditing(_ obj: NSNotification)
 
@@ -165,6 +165,14 @@ open class NSTextField: NSControl {
         return placeholder.isEmpty ? nil : placeholder
     }
 
+    /// The field's background fill, matching AppKit's
+    /// `NSTextField.backgroundColor` (one of the concrete types where Apple
+    /// exposes a background color — plain `NSView` has none).
+    open var backgroundColor: NSColor? {
+        get { winBackgroundColor }
+        set { winBackgroundColor = newValue }
+    }
+
     /// Whether the text field draws a border.
     open var isBordered: Bool = true
 
@@ -261,8 +269,10 @@ open class NSTextField: NSControl {
     }
     private var storedAttributedStringValue: NSAttributedString?
 
-    /// Swift-native action invoked when user editing changes the string value.
-    open var onTextChanged: ((NSTextField) -> Void)?
+    /// Framework-internal edit hook (form cells track their field's text).
+    /// Not API: applications use `controlTextDidChange(_:)` on the delegate,
+    /// as in AppKit.
+    var winInternalTextChanged: ((NSTextField) -> Void)?
 
     /// Creates a text field with a frame.
     public override init(frame frameRect: NSRect) {
@@ -291,7 +301,7 @@ open class NSTextField: NSControl {
     }
 
     /// Creates a text field with text and a frame.
-    public init(string stringValue: String, frame frameRect: NSRect) {
+    init(string stringValue: String, frame frameRect: NSRect) {
         self.stringValue = stringValue
         super.init(frame: frameRect)
     }
@@ -358,7 +368,7 @@ open class NSTextField: NSControl {
         // Labels (non-editable, no explicit background color) show the window
         // color instead of an opaque control-face rectangle. Editable fields
         // and any field given a background color stay opaque.
-        let showsBackground = (isEditable || backgroundColor != nil) && drawsBackground
+        let showsBackground = (isEditable || winBackgroundColor != nil) && drawsBackground
         backend.setDrawsBackground(showsBackground, for: handle)
         if isBezeled {
             backend.setTextFieldBezeled(true, for: handle)
@@ -405,7 +415,7 @@ open class NSTextField: NSControl {
         stringValue = text
         isUpdatingFromNative = false
         nativeStringValueDidChange()
-        onTextChanged?(self)
+        winInternalTextChanged?(self)
         delegate?.controlTextDidChange(editingNotification(named: Self.textDidChangeNotification))
     }
 

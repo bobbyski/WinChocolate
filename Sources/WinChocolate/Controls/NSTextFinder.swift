@@ -171,7 +171,7 @@ extension NSTextView {
         let application = NSApplication.shared
         let width: CGFloat = 480
         let content = NSView(frame: NSMakeRect(0, 0, width, 152))
-        content.backgroundColor = .windowBackgroundColor
+        content.winBackgroundColor = .windowBackgroundColor
 
         func label(_ text: String, y: CGFloat) -> NSTextField {
             let field = NSTextField(string: text, frame: NSMakeRect(20, y, 82, 24))
@@ -198,7 +198,7 @@ extension NSTextView {
 
         func addButton(_ title: String, x: CGFloat, width buttonWidth: CGFloat, action: @escaping () -> Void) {
             let button = NSButton(title: title, frame: NSMakeRect(x, 104, buttonWidth, 28))
-            button.onAction = { _ in
+            button.winInternalAction = { _ in
                 syncSharedStrings()
                 action()
             }

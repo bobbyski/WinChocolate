@@ -109,7 +109,7 @@ open class NSDatePicker: NSControl {
     }
 
     /// Creates a date picker with an explicit date.
-    public init(date: Date, frame: NSRect) {
+    init(date: Date, frame: NSRect) {
         self.dateValue = date
         super.init(frame: frame)
     }
