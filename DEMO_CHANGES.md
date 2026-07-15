@@ -33,6 +33,88 @@ verified** — running the demo, not just building it.
 
 ---
 
+## 2026-07-15 — Linux toolbar: Apple-style customization palette, standard items, separator (framework work; demo untouched)
+
+The customization UI was a native GTK checkbox list leaking raw identifiers
+("NSToolbarShowColorsItem"). Per the standing direction — **the toolbar is the one place
+that should look more Apple and less native** — it is now an Apple-style palette in the
+WinChocolate design: a grid of tiles (icon over label), a pressed tile = present in the
+toolbar, live add/remove on click, Done. Styled with the same theme-relative CSS as the
+toolbar strip, so it reads correctly in both appearances. The backend seam
+(`runToolbarCustomization`) is unchanged, so the hermetic contract tests pass untouched.
+
+**Standard items are synthesized (Apple's 6.6 behavior).** When the delegate returns nil
+for `.showColors`/`.showFonts`/`.print`, the framework now builds them — friendly labels,
+symbolic theme icons, and behaviors (Colors → color panel, Fonts → font panel). Bare
+standard items the app supplies (the demo's `.separator`) get Apple's palette names via a
+fallback — raw identifiers never reach the user. **The separator item now renders as a
+real divider** in the bar (`.space` as a fixed gap).
+
+**The disappearing page-selector bug.** Toggling any item rebuilt the toolbar — and the
+embedded view items (page selector, search field) vanished. Cause: `gtk_widget_unparent`
+during the rebuild drops the old bar's reference, which was the **only** reference, so
+GTK destroyed the widgets before the new bar could re-embed them. The rebuild now holds a
+reference across the move. (Same GTK lifetime trap class as `setButtonKind`'s
+ref-sink/unref dance — worth remembering: *an unparented GTK4 widget with no held
+reference is gone.*)
+
+**Verified:** palette screenshots light + dark (tiles, icons, checked-state); an
+end-to-end toggle session — Colors in → Fonts in → Colors out → Done — leaves the bar
+with exactly the right items, icons intact, page selector and search field surviving
+repeated rebuilds; contract tests all pass.
+
+**Files touched** (all LinChocolate)
+
+- `Views/NSToolbar.swift` — standard-item synthesis, palette names, tile art plumbing
+- `Native/NativeControlBackend.swift` — palette items carry image path/template/icon name
+- `Native/GTK/GTKNativeControlBackend.swift` — tile-grid palette, separator/space
+  rendering, view-widget refs held across reinstall, tile CSS
+
+---
+
+## 2026-07-15 — Linux toolbar: real icons, template tinting — and the dark-mode mystery solved (framework work; demo untouched)
+
+### Toolbar icons render on Linux
+
+`NativeToolbarItemSpec` only carried a GTK **icon-theme name**; the demo's Tabler icons
+are **file-backed** (`NSImage(contentsOfFile:)`), so Linux fell back to text-only
+buttons. The spec now carries `imagePath` + `imageIsTemplate`; the GTK backend loads the
+PNG via GdkPixbuf, renders it icon-above-label (the same layout as the icon-name branch —
+macOS's `.iconAndLabel`), and **recolors template pixels to the theme foreground** (white
+in dark, near-black in light) keeping alpha — AppKit's template semantics, one shipped
+image for both appearances. `NSImage.isTemplate` became a real stored property (it was a
+`get { false } set {} ` stub, silently discarding what the demo set).
+
+**Item order is a non-bug:** Linux renders exactly the demo's `defaultIdentifiers`
+(open, save, page, search, separator, flexible, toggle, customize). macOS showing
+Customize third is its own autosaved user customization, not the demo's order.
+
+**Verified:** light + dark screenshots (icons tinted correctly in both); an `xdotool`
+click on **Open** launched the open panel — toolbar target/action dispatch is live.
+The customization palette's logic is covered by the hermetic contract tests.
+
+### The dark-mode "invisible labels" root cause (from last night's follow-up list)
+
+The dark screenshots finally made it obvious: **GTK was in dark mode (white label text)
+while the demo's pages painted a light background underneath** — because LinChocolate's
+`NSColor.windowBackgroundColor`/`controlBackgroundColor`/`textColor`/`labelColor`/…
+were **hardcoded light**. On Apple, system colors are *dynamic* — they resolve against
+the current appearance at read time. They now do exactly that in LinChocolate, and dark
+mode is fully legible: captions, radio/checkbox labels, both Form sections, the works.
+
+**Files touched** (all LinChocolate)
+
+- `Native/NativeControlBackend.swift`, `Native/GTK/GTKNativeControlBackend.swift` —
+  spec + pixbuf render + template recolor (+ tracked appearance)
+- `Views/NSToolbar.swift` — passes image path/template
+- `Media/NSImage.swift` — real `isTemplate`
+- `Compat/DemoCompat.swift` — dynamic system colors
+
+**Follow-up:** a live in-app appearance switch re-resolves demo-painted colors but the
+toolbar icons keep their launch-time tint until the toolbar reinstalls.
+
+---
+
 ## 2026-07-15 — LinChocolate catches up to the demo: Linux builds, runs, and clicks again (framework work; demo untouched)
 
 **Overnight framework sweep.** The rule for this entry was the inverse of every entry

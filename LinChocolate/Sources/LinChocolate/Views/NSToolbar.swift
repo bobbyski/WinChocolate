@@ -144,14 +144,20 @@ public final class NSToolbar {
         guard allowsUserCustomization, let delegate, let window else { return }
         let present = Set(items.map { $0.itemIdentifier })
         let paletteItems = delegate.toolbarAllowedItemIdentifiers(self).map { id -> NativeToolbarPaletteItem in
-            let label: String
+            var label: String
+            var resolvedItem: NSToolbarItem?
             if id == NSToolbarItem.flexibleSpaceIdentifier {
                 label = "Flexible Space"
             } else {
-                let resolved = makeItem(id).map { $0.paletteLabel.isEmpty ? $0.label : $0.paletteLabel } ?? id
-                label = resolved.isEmpty ? id : resolved
+                resolvedItem = makeItem(id)
+                let resolved = resolvedItem.map { $0.paletteLabel.isEmpty ? $0.label : $0.paletteLabel } ?? id
+                label = resolved.isEmpty ? NSToolbar.standardPaletteName(for: id) : resolved
             }
-            return NativeToolbarPaletteItem(identifier: id, label: label, isInToolbar: present.contains(id))
+            var palette = NativeToolbarPaletteItem(identifier: id, label: label, isInToolbar: present.contains(id))
+            palette.imagePath = resolvedItem?.image?.path
+            palette.imageIsTemplate = resolvedItem?.image?.isTemplate ?? false
+            palette.iconName = resolvedItem?.image?.iconName
+            return palette
         }
         customizationPaletteIsRunning = true
         window.backend.runToolbarCustomization(
@@ -166,6 +172,8 @@ public final class NSToolbar {
     func specs() -> [NativeToolbarItemSpec] {
         items.map { item in
             NativeToolbarItemSpec(
+                imagePath: item.image?.path,
+                imageIsTemplate: item.image?.isTemplate ?? false,
                 identifier: item.itemIdentifier,
                 label: item.label,
                 iconName: item.image?.iconName,
@@ -186,7 +194,65 @@ public final class NSToolbar {
 
     private func makeItem(_ identifier: NSToolbarItem.Identifier) -> NSToolbarItem? {
         if identifier == NSToolbarItem.flexibleSpaceIdentifier { return NSToolbarItem.flexibleSpace() }
-        return delegate?.toolbar(self, itemForItemIdentifier: identifier, willBeInsertedIntoToolbar: true)
+        if let provided = delegate?.toolbar(self, itemForItemIdentifier: identifier, willBeInsertedIntoToolbar: true) {
+            return provided
+        }
+        return NSToolbar.standardItem(for: identifier)
+    }
+
+    /// The palette name for a standard identifier a bare item was supplied
+    /// for (Apple names these itself; raw identifiers never leak to the user).
+    static func standardPaletteName(for identifier: NSToolbarItem.Identifier) -> String {
+        switch identifier {
+        case "NSToolbarSeparatorItem": return "Separator"
+        case "NSToolbarSpaceItem": return "Space"
+        case "NSToolbarFlexibleSpaceItem": return "Flexible Space"
+        case "NSToolbarShowColorsItem": return "Colors"
+        case "NSToolbarShowFontsItem": return "Fonts"
+        case "NSToolbarPrintItem": return "Print"
+        default: return identifier
+        }
+    }
+
+    /// Synthesizes Apple's standard toolbar items when the delegate returns
+    /// nil for their identifiers (AppKit's 6.6 behavior): friendly labels,
+    /// theme icons, and the built-in behaviors.
+    static func standardItem(for identifier: NSToolbarItem.Identifier) -> NSToolbarItem? {
+        func item(_ label: String, icon: String, action: (() -> Void)? = nil) -> NSToolbarItem {
+            let standard = NSToolbarItem(itemIdentifier: identifier)
+            standard.label = label
+            standard.paletteLabel = label
+            standard.image = NSImage(named: icon)
+            if let action {
+                standard.onAction = { _ in action() }
+            }
+            return standard
+        }
+
+        switch identifier {
+        case "NSToolbarSeparatorItem":
+            let separator = NSToolbarItem(itemIdentifier: identifier)
+            separator.label = ""
+            separator.paletteLabel = "Separator"
+            return separator
+        case "NSToolbarSpaceItem":
+            let space = NSToolbarItem(itemIdentifier: identifier)
+            space.label = ""
+            space.paletteLabel = "Space"
+            return space
+        case "NSToolbarShowColorsItem":
+            return item("Colors", icon: "color-select-symbolic") {
+                NSColorPanel.shared.makeKeyAndOrderFront(nil)
+            }
+        case "NSToolbarShowFontsItem":
+            return item("Fonts", icon: "font-x-generic-symbolic") {
+                NSFontManager.shared.orderFrontFontPanel(nil)
+            }
+        case "NSToolbarPrintItem":
+            return item("Print", icon: "document-print-symbolic")
+        default:
+            return nil
+        }
     }
 
     private func loadDefaultItems() {

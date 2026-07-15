@@ -14,6 +14,11 @@ public final class NSImage {
     /// The icon-theme name (nil for a file-backed image).
     let iconName: String?
 
+    /// Whether the image is a template: pure-alpha artwork the framework tints
+    /// with the current foreground color (real AppKit semantics — the demo's
+    /// toolbar icons are black-on-transparent Tabler PNGs marked template).
+    public var isTemplate: Bool = false
+
     /// Creates an image from a file on disk; nil if the file doesn't exist.
     public init?(contentsOfFile path: String) {
         guard FileManager.default.fileExists(atPath: path) else { return nil }

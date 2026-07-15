@@ -21,6 +21,9 @@ public struct NativeFontSpec: Equatable {
 public enum NativeButtonKind: Sendable { case push, checkbox, radio }
 
 public struct NativeToolbarItemSpec {
+    /// File-backed icon (PNG/BMP path) and whether to tint it as a template.
+    public var imagePath: String?
+    public var imageIsTemplate: Bool = false
     public let identifier: String
     public let label: String
     /// GTK icon-theme name for the item's image, or nil for a text-only item.
@@ -31,7 +34,9 @@ public struct NativeToolbarItemSpec {
     /// hosts this widget instead of a plain button.
     public let viewHandle: NativeHandle?
     public let action: (() -> Void)?
-    public init(identifier: String, label: String, iconName: String? = nil, isFlexibleSpace: Bool = false, viewHandle: NativeHandle? = nil, action: (() -> Void)? = nil) {
+    public init(imagePath: String? = nil, imageIsTemplate: Bool = false, identifier: String, label: String, iconName: String? = nil, isFlexibleSpace: Bool = false, viewHandle: NativeHandle? = nil, action: (() -> Void)? = nil) {
+        self.imagePath = imagePath
+        self.imageIsTemplate = imageIsTemplate
         self.identifier = identifier
         self.label = label
         self.iconName = iconName
@@ -96,6 +101,11 @@ public struct NativeToolbarPaletteItem {
     public let identifier: String
     public let label: String
     public let isInToolbar: Bool
+    /// Tile artwork: a file-backed image (recolored when template) or a theme
+    /// icon name, mirroring `NativeToolbarItemSpec`.
+    public var imagePath: String?
+    public var imageIsTemplate: Bool = false
+    public var iconName: String?
     public init(identifier: String, label: String, isInToolbar: Bool) {
         self.identifier = identifier
         self.label = label

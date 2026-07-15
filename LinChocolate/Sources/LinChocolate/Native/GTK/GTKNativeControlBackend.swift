@@ -132,6 +132,16 @@ public final class GTKNativeControlBackend: NativeControlBackend {
             }
             .linchocolate-toolbar button:hover { background: alpha(@theme_fg_color, 0.10); }
             .linchocolate-toolbar button:active { background: alpha(@theme_fg_color, 0.18); }
+            .linchocolate-palette-tile {
+                background: alpha(@theme_fg_color, 0.04);
+                border: 1px solid alpha(@theme_fg_color, 0.12);
+                border-radius: 8px; box-shadow: none; padding: 4px;
+            }
+            .linchocolate-palette-tile:hover { background: alpha(@theme_fg_color, 0.09); }
+            .linchocolate-palette-tile:checked {
+                background: alpha(@theme_selected_bg_color, 0.22);
+                border-color: alpha(@theme_selected_bg_color, 0.65);
+            }
             """
         let provider = gtk_css_provider_new()!
         gtk_css_provider_load_from_data(provider, css, gssize(css.utf8.count))
@@ -173,6 +183,8 @@ public final class GTKNativeControlBackend: NativeControlBackend {
     private func asFixed(_ p: OpaquePointer) -> UnsafeMutablePointer<GtkFixed> { .init(p) }
     private func asButton(_ p: OpaquePointer) -> UnsafeMutablePointer<GtkButton> { .init(p) }
     private func asCheckButton(_ p: OpaquePointer) -> UnsafeMutablePointer<GtkCheckButton> { .init(p) }
+    private func asToggleButton(_ p: OpaquePointer) -> UnsafeMutablePointer<GtkToggleButton> { .init(p) }
+    private func asGrid(_ p: OpaquePointer) -> UnsafeMutablePointer<GtkGrid> { .init(p) }
     private func asRange(_ p: OpaquePointer) -> UnsafeMutablePointer<GtkRange> { .init(p) }
     private func asTextView(_ p: OpaquePointer) -> UnsafeMutablePointer<GtkTextView> { .init(p) }
     private func asTextBuffer(_ p: OpaquePointer) -> UnsafeMutablePointer<GtkTextBuffer> { .init(p) }
@@ -199,10 +211,14 @@ public final class GTKNativeControlBackend: NativeControlBackend {
     }
 
     // MARK: Appearance
+    /// The last appearance set; template toolbar icons tint against it.
+    private var prefersDarkAppearance = false
+
     /// Toggles GTK's display-wide dark-theme preference. GtkSettings has no
     /// typed setter for this property, and `g_object_set` is C-variadic
     /// (uncallable from Swift), so set it through a GValue.
     public func setAppearanceDark(_ dark: Bool) {
+        prefersDarkAppearance = dark
         guard let settings = gtk_settings_get_default() else { return }
         var value = GValue()
         _ = g_value_init(&value, GType(5 << 2))   // G_TYPE_BOOLEAN = 5 << G_TYPE_FUNDAMENTAL_SHIFT
@@ -436,12 +452,25 @@ public final class GTKNativeControlBackend: NativeControlBackend {
         guard let box = windowBoxes[window.rawValue] else { return }
         // Detach any embedded custom views (page selector, search field, …) from
         // the old bar first so removing it doesn't destroy widgets we still own.
+        // Unparenting drops the bar's reference — which is the ONLY one, so the
+        // widget would be destroyed before the rebuilt bar could re-embed it
+        // (the disappearing page-selector bug). Hold a reference across the move.
+        var detachedViews: [OpaquePointer] = []
         for view in windowToolbarViews[window.rawValue] ?? [] {
             if gtk_widget_get_parent(asWidget(view)) != nil {
+                g_object_ref(UnsafeMutableRawPointer(view))
+                detachedViews.append(view)
                 gtk_widget_unparent(asWidget(view))
             }
         }
         windowToolbarViews[window.rawValue] = []
+        defer {
+            // The rebuilt bar has re-parented (and re-referenced) every view it
+            // embeds by the time installToolbar returns; release our hold.
+            for view in detachedViews {
+                g_object_unref(UnsafeMutableRawPointer(view))
+            }
+        }
         if let old = windowToolbars[window.rawValue] {
             gtk_box_remove(asBox(box), asWidget(old))
         }
@@ -452,6 +481,20 @@ public final class GTKNativeControlBackend: NativeControlBackend {
                 let spacer = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0)!
                 gtk_widget_set_hexpand(spacer, gboolean(1))
                 gtk_box_append(asBox(OpaquePointer(bar)), spacer)
+                continue
+            }
+            // Apple's standard separator/space items are visual elements, not buttons.
+            if item.identifier == "NSToolbarSeparatorItem" {
+                let divider = gtk_separator_new(GTK_ORIENTATION_VERTICAL)!
+                gtk_widget_set_margin_top(divider, 6)
+                gtk_widget_set_margin_bottom(divider, 6)
+                gtk_box_append(asBox(OpaquePointer(bar)), divider)
+                continue
+            }
+            if item.identifier == "NSToolbarSpaceItem" {
+                let gap = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0)!
+                gtk_widget_set_size_request(gap, 16, 1)
+                gtk_box_append(asBox(OpaquePointer(bar)), gap)
                 continue
             }
             // A view-based item (AppKit's NSToolbarItem.view): embed the control
@@ -466,7 +509,17 @@ public final class GTKNativeControlBackend: NativeControlBackend {
                 continue
             }
             let button: UnsafeMutablePointer<GtkWidget>
-            if let iconName = item.iconName {
+            if let imagePath = item.imagePath,
+               let icon = makeToolbarImage(path: imagePath, template: item.imageIsTemplate) {
+                // Icon above label — the same layout as the icon-name branch.
+                button = gtk_button_new()!
+                let content = gtk_box_new(GTK_ORIENTATION_VERTICAL, 2)!
+                gtk_box_append(asBox(OpaquePointer(content)), icon)
+                if !item.label.isEmpty {
+                    gtk_box_append(asBox(OpaquePointer(content)), gtk_label_new(item.label))
+                }
+                gtk_button_set_child(asButton(OpaquePointer(button)), content)
+            } else if let iconName = item.iconName {
                 // Icon above label (the classic macOS toolbar item layout).
                 button = gtk_button_new()!
                 let content = gtk_box_new(GTK_ORIENTATION_VERTICAL, 2)!
@@ -495,6 +548,34 @@ public final class GTKNativeControlBackend: NativeControlBackend {
         gtk_box_insert_child_after(asBox(box), bar, anchor.map(asWidget))
         windowToolbars[window.rawValue] = OpaquePointer(bar)
     }
+    /// Loads a file-backed toolbar icon. Template images are pure-alpha
+    /// artwork (the demo's Tabler PNGs are black-on-transparent): recolor every
+    /// pixel to the theme foreground, keeping alpha — AppKit's template
+    /// semantics, so one shipped image serves both appearances.
+    private func makeToolbarImage(path: String, template: Bool) -> UnsafeMutablePointer<GtkWidget>? {
+        guard let pixbuf = gdk_pixbuf_new_from_file(path, nil) else { return nil }
+        if template, gdk_pixbuf_get_has_alpha(pixbuf) != 0, gdk_pixbuf_get_n_channels(pixbuf) == 4 {
+            let fg: (UInt8, UInt8, UInt8) = prefersDarkAppearance ? (238, 238, 236) : (46, 52, 54)
+            let width = Int(gdk_pixbuf_get_width(pixbuf))
+            let height = Int(gdk_pixbuf_get_height(pixbuf))
+            let stride = Int(gdk_pixbuf_get_rowstride(pixbuf))
+            if let pixels = gdk_pixbuf_get_pixels(pixbuf) {
+                for y in 0..<height {
+                    for x in 0..<width {
+                        let p = pixels + y * stride + x * 4
+                        p[0] = fg.0
+                        p[1] = fg.1
+                        p[2] = fg.2
+                    }
+                }
+            }
+        }
+        guard let texture = gdk_texture_new_for_pixbuf(pixbuf) else { return nil }
+        let image = gtk_image_new_from_paintable(texture)!
+        gtk_image_set_pixel_size(OpaquePointer(image), 22)
+        return image
+    }
+
     public func runToolbarCustomization(_ items: [NativeToolbarPaletteItem],
                                         onToggle: @escaping (String, Bool) -> Void,
                                         onClose: @escaping () -> Void,
@@ -507,24 +588,50 @@ public final class GTKNativeControlBackend: NativeControlBackend {
         }
         if !nonComposited { gtk_window_set_modal(asWindow(OpaquePointer(panel)), gboolean(1)) }
 
-        let vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 8)!
-        gtk_widget_set_margin_top(vbox, 20); gtk_widget_set_margin_bottom(vbox, 16)
-        gtk_widget_set_margin_start(vbox, 24); gtk_widget_set_margin_end(vbox, 24)
-        let heading = gtk_label_new("Toolbar items:")!
-        gtk_widget_add_css_class(heading, "title-4")
+        let vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 10)!
+        gtk_widget_set_margin_top(vbox, 18); gtk_widget_set_margin_bottom(vbox, 14)
+        gtk_widget_set_margin_start(vbox, 20); gtk_widget_set_margin_end(vbox, 20)
+        gtk_widget_add_css_class(vbox, "linchocolate-palette")
+        let heading = gtk_label_new("Drag or click your favorite items into the toolbar…")!
+        gtk_widget_set_halign(heading, GTK_ALIGN_START)
         gtk_box_append(asBox(OpaquePointer(vbox)), heading)
 
-        for item in items {
-            let check = gtk_check_button_new_with_label(item.label)!
-            gtk_check_button_set_active(asCheckButton(OpaquePointer(check)), gboolean(item.isInToolbar ? 1 : 0))
+        // The palette grid: Apple-style tiles (icon over label), toggled by
+        // clicking — a pressed tile is in the toolbar.
+        let columns = 4
+        let grid = gtk_grid_new()!
+        gtk_grid_set_row_spacing(asGrid(OpaquePointer(grid)), 8)
+        gtk_grid_set_column_spacing(asGrid(OpaquePointer(grid)), 8)
+        for (index, item) in items.enumerated() {
+            let tile = gtk_toggle_button_new()!
+            gtk_widget_add_css_class(tile, "linchocolate-palette-tile")
+            gtk_widget_set_size_request(tile, 120, 56)
+            gtk_toggle_button_set_active(asToggleButton(OpaquePointer(tile)), gboolean(item.isInToolbar ? 1 : 0))
+
+            let content = gtk_box_new(GTK_ORIENTATION_VERTICAL, 3)!
+            gtk_widget_set_halign(content, GTK_ALIGN_CENTER)
+            gtk_widget_set_valign(content, GTK_ALIGN_CENTER)
+            if let path = item.imagePath, let icon = makeToolbarImage(path: path, template: item.imageIsTemplate) {
+                gtk_box_append(asBox(OpaquePointer(content)), icon)
+            } else if let iconName = item.iconName {
+                let icon = gtk_image_new_from_icon_name(iconName)!
+                gtk_image_set_pixel_size(OpaquePointer(icon), 22)
+                gtk_box_append(asBox(OpaquePointer(content)), icon)
+            }
+            let label = gtk_label_new(item.label)!
+            gtk_box_append(asBox(OpaquePointer(content)), label)
+            gtk_button_set_child(asButton(OpaquePointer(tile)), content)
+
             let toggleBox = ToolbarToggleBox(id: item.identifier, action: onToggle)
             g_signal_connect_data(
-                UnsafeMutableRawPointer(check), "toggled",
-                unsafeBitCast(gtkToolbarToggleTrampoline, to: GCallback.self),
+                UnsafeMutableRawPointer(tile), "toggled",
+                unsafeBitCast(gtkPaletteTileTrampoline, to: GCallback.self),
                 Unmanaged.passRetained(toggleBox).toOpaque(), boxRelease, GConnectFlags(rawValue: 0)
             )
-            gtk_box_append(asBox(OpaquePointer(vbox)), check)
+            gtk_grid_attach(asGrid(OpaquePointer(grid)), tile,
+                            gint(index % columns), gint(index / columns), 1, 1)
         }
+        gtk_box_append(asBox(OpaquePointer(vbox)), grid)
 
         let done = gtk_button_new_with_label("Done")!
         let doneBox = ActionBox {
@@ -1997,6 +2104,14 @@ private final class ToolbarToggleBox {
 }
 
 /// Handler for a customization-palette checkbox `toggled` — reports (id, on).
+/// Palette tiles are GtkToggleButtons: pressed = present in the toolbar.
+private let gtkPaletteTileTrampoline: @convention(c) (UnsafeMutableRawPointer?, gpointer?) -> Void = { button, userData in
+    guard let button, let userData else { return }
+    let active = gtk_toggle_button_get_active(UnsafeMutablePointer<GtkToggleButton>(OpaquePointer(button))) != 0
+    let box = Unmanaged<ToolbarToggleBox>.fromOpaque(userData).takeUnretainedValue()
+    box.action(box.id, active)
+}
+
 private let gtkToolbarToggleTrampoline: @convention(c) (UnsafeMutableRawPointer?, gpointer?) -> Void = { button, userData in
     guard let button, let userData else { return }
     let active = gtk_check_button_get_active(UnsafeMutablePointer<GtkCheckButton>(OpaquePointer(button))) != 0

@@ -38,12 +38,33 @@ public extension NSColor {
 }
 
 public extension NSColor {
-    static var windowBackgroundColor: NSColor { NSColor(red: 0.93, green: 0.93, blue: 0.93) }
-    static var controlBackgroundColor: NSColor { NSColor(red: 0.98, green: 0.98, blue: 0.98) }
-    static var controlColor: NSColor { NSColor(red: 0.90, green: 0.90, blue: 0.90) }
-    static var textColor: NSColor { .black }
-    static var labelColor: NSColor { .black }
-    static var secondaryLabelColor: NSColor { NSColor(red: 0.4, green: 0.4, blue: 0.4) }
+    // The system colors are DYNAMIC on Apple — they resolve against the current
+    // appearance every time they're read. Hardcoding them light was the cause of
+    // the invisible-dark-mode bug: GTK's dark theme paints white label text, and
+    // the demo painted its pages with a permanently light windowBackgroundColor
+    // underneath it.
+    private static var isDarkAppearance: Bool {
+        NSApplication.shared.effectiveAppearance.isDark
+    }
+
+    static var windowBackgroundColor: NSColor {
+        isDarkAppearance ? NSColor(red: 0.16, green: 0.16, blue: 0.17) : NSColor(red: 0.93, green: 0.93, blue: 0.93)
+    }
+    static var controlBackgroundColor: NSColor {
+        isDarkAppearance ? NSColor(red: 0.12, green: 0.12, blue: 0.13) : NSColor(red: 0.98, green: 0.98, blue: 0.98)
+    }
+    static var controlColor: NSColor {
+        isDarkAppearance ? NSColor(red: 0.25, green: 0.25, blue: 0.26) : NSColor(red: 0.90, green: 0.90, blue: 0.90)
+    }
+    static var textColor: NSColor {
+        isDarkAppearance ? NSColor(red: 0.92, green: 0.92, blue: 0.92) : .black
+    }
+    static var labelColor: NSColor {
+        isDarkAppearance ? NSColor(red: 0.92, green: 0.92, blue: 0.92) : .black
+    }
+    static var secondaryLabelColor: NSColor {
+        isDarkAppearance ? NSColor(red: 0.63, green: 0.63, blue: 0.65) : NSColor(red: 0.4, green: 0.4, blue: 0.4)
+    }
     static var systemBlue: NSColor { NSColor(red: 0.0, green: 0.48, blue: 1.0) }
     static var systemGray: NSColor { NSColor(red: 0.56, green: 0.56, blue: 0.58) }
     static var systemRed: NSColor { NSColor(red: 1.0, green: 0.23, blue: 0.19) }
@@ -102,7 +123,6 @@ public extension NSImageView {
 }
 
 public extension NSImage {
-    var isTemplate: Bool { get { false } set {} }
     func draw(in rect: NSRect) {}
     func draw(at point: NSPoint, from: NSRect, operation: Int, fraction: CGFloat) {}
 }
