@@ -4126,6 +4126,15 @@ listsBrowserHint.drawsBackground = false
 listsBrowserHint.font = NSFont.systemFont(ofSize: 11)
 browser.frame = NSMakeRect(24, 66, 520, 150)
 browser.delegate = browserDataSource
+// A browser sizes its own columns by default — columnResizingType is .autoColumnResizing —
+// so the divider shows a resize cursor and then refuses to move: the browser owns the
+// widths, not the user. .userColumnResizing hands them over. (Measured: this alone does
+// not widen anything, so the two symptoms below are independent bugs.)
+browser.columnResizingType = .userColumnResizing
+// The default minColumnWidth is 100, which is what truncated "Application" to "Applicat…":
+// a 520-wide browser lays out 5 columns of ~103pt. 170 fits the class names, and the user
+// can now drag from there.
+browser.minColumnWidth = 170
 browser.loadColumnZero()
 // Titled columns: the first is labeled; deeper columns auto-title with the
 // selected parent item.

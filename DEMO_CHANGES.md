@@ -33,6 +33,66 @@ verified** — running the demo, not just building it.
 
 ---
 
+## 2026-07-14 — Lists (5.x): browser columns too narrow and not resizable
+
+Two symptoms, **two independent causes**, both AppKit defaults the demo never overrode.
+The demo set only `frame`, `delegate` and `loadColumnZero()` — no column sizing at all.
+
+**Measured on a 520-wide browser with the demo's exact data:**
+
+| Config | Visible columns | `width(ofColumn: 0)` | |
+|---|---|---|---|
+| **A — the demo's defaults** | 5 | **103** | truncated *and* not resizable |
+| B — `.userColumnResizing` only | 5 | 102 | resizable, still truncated |
+| **C — `.userColumnResizing` + `minColumnWidth = 170`** | 4 | **170** | ✓ what the demo now does |
+| D — auto + `minColumnWidth = 170` | 3 | 172 | wide, still **not** resizable |
+
+**1. The divider showed a resize cursor and would not move.** `columnResizingType`
+defaults to **`.autoColumnResizing`** — the browser owns its column widths, so a user drag
+has nothing to change. `.userColumnResizing` hands them over. Row B proves this is
+independent of the width problem: enabling resizing alone widened nothing.
+
+**2. "Application" rendered as "Applicat…".** `minColumnWidth` defaults to **100**, so a
+520-wide browser lays out 5 columns of ~103pt. Set to 170, which fits the class names and
+gives the user a sensible starting point to drag from. Row D proves this is independent of
+the resizing problem: widening alone left the divider dead.
+
+Worth noting the reporting order — the narrow columns are what made the resize worth
+trying, and the two looked like one bug. They were not related at all.
+
+### 🛠 MUST FIX — WinChocolate and LinChocolate
+
+**`NSBrowser` has no column-sizing API at all.** Neither framework has any of it:
+
+| API | Apple | WinChocolate | LinChocolate |
+|---|---|---|---|
+| `NSBrowser.ColumnResizingType` (+ `.noColumnResizing` / `.autoColumnResizing` / `.userColumnResizing`) | ✓ | **absent** | **absent** |
+| `columnResizingType` | ✓ (defaults `.auto`) | **absent** | **absent** |
+| `minColumnWidth` | ✓ (defaults 100) | **absent** | **absent** |
+| `setWidth(_:ofColumn:)` / `width(ofColumn:)` | ✓ | **absent** | **absent** |
+| `prefersAllColumnUserResizing` | ✓ | **absent** | **absent** |
+| `maxVisibleColumns` | ✓ | **absent** | ✓ |
+
+Without `columnResizingType` a browser cannot offer user-resizable columns at all, and
+without `minColumnWidth`/`setWidth` a caller cannot fix the width of a column it knows is
+too narrow. Match Apple's defaults too (`.autoColumnResizing`, `minColumnWidth == 100`) —
+matching the API but not the defaults just moves the divergence, as the `NSForm.cellSize`
+item already shows.
+
+**Files touched**
+
+- `Demo/DemoApplication/main.swift` — `browser.columnResizingType`, `browser.minColumnWidth`
+
+**Verified**
+
+- macOS: built and ran. "Application" / "Controls" / "Tables" render in full where they
+  were truncated, in fewer, wider columns.
+- Linux: `RealDemo` **361 → 373**; every new error is the MUST FIX above
+  (`columnResizingType`, `minColumnWidth`, `.userColumnResizing`). No other category.
+- Windows: not built here; the same two members are missing there.
+
+---
+
 ## 2026-07-14 — New in 3.x: colour well never tinted, table drag/edit dead, hint ran into the next column
 
 ### 1. The colour well never tinted the glyph
