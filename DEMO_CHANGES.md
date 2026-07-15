@@ -33,6 +33,226 @@ verified** — running the demo, not just building it.
 
 ---
 
+## 2026-07-14 — New in 3.x: colour well never tinted, table drag/edit dead, hint ran into the next column
+
+### 1. The colour well never tinted the glyph
+
+**`NSColorWell` sends its action when its *colour changes*** — and clicking one presents
+the shared colour panel by itself. The demo was written for the opposite semantics:
+
+| | `NSColorWell` sends its action… |
+|---|---|
+| **Apple** | when the **colour changes** |
+| **WinChocolate** | when **clicked** — `mouseDown` calls `sendAction()`; the `color` setter only repaints and never sends |
+
+So the handler treated its own action as "the well was clicked", and did this:
+
+```swift
+panel.setTarget(panelTarget)          // wire a trampoline to do the tinting…
+panel.setAction(DemoActionTarget.fireSelector)
+templateTintWell.activate(true)       // …then hand the panel to the well, discarding it
+panel.makeKeyAndOrderFront(templateTintWell)
+```
+
+Activating a well makes the well the panel's client, so `activate(true)` **overwrites the
+target/action set two lines earlier** — the trampoline that was going to tint the glyph
+never ran. On Apple the handler therefore fired on *change*, re-opened the panel, and
+tinted nothing. Now both wells (this one and the Values page's) simply read `well.color`
+in their own action, which is the entire AppKit recipe.
+
+**🛠 MUST FIX — WinChocolate: `NSColorWell` must send its action when the colour changes,
+not when clicked.** Firing on click is not AppKit's contract, and the `color` setter
+sending nothing means a pick is unobservable through the control's own action — which is
+precisely why the demo grew the panel-hijacking workaround. (`NSColorPanel.swift:275`
+assigns `winActiveColorWell?.color = color` without sending.)
+
+### 2. The Note column was empty and could not be edited
+
+The delegate returned `nil` for it, with the comment *"the drawn table paints it as text
+and edits it in place"*. That is a WinChocolate hybrid — a per-column fallback to drawn
+cells. **AppKit has no such thing:** a table is view-based or cell-based, and this one is
+view-based because the delegate vends views at all, so a `nil` view means an **empty
+cell** with nothing to double-click. The column now vends an editable `NSTextField` like
+any other view-based column, and commits edits back to the model through its action.
+
+### 3. Row drag did nothing
+
+**Four separate faults**, each individually sufficient to kill the drag. The demo had the
+`.move` source mask, a `pasteboardWriterForRow`, and an `acceptDrop` — and none of it ran.
+
+**3a. The pasteboard writer was invisible to AppKit — the real blocker.**
+`NSTableViewDataSource` is an **`@objc` protocol with optional methods**, so AppKit
+discovers them with `respondsToSelector:`. A method whose signature does not match the
+requirement is not a witness, never gets `@objc`-exposed, and is simply never called:
+
+| Signature | `responds(to: "tableView:pasteboardWriterForRow:")` |
+|---|---|
+| the demo's `-> Any?` | **false** — AppKit never calls it |
+| Apple's `-> NSPasteboardWriting?` | true |
+
+The demo had `-> Any?` because that is what the **chocolate frameworks' own protocol
+declares** — it was written against their signature, not Apple's. The drag therefore
+carried no data and every row snapped back, with **no error, no warning, nothing in the
+console**. The method looked perfectly correct. Fixed to Apple's signature, returning
+`NSString` (Swift's `String` does not itself conform to `NSPasteboardWriting`).
+
+**3b. `registerForDraggedTypes(_:)` was never called on the table.** A table only
+*receives* drags for types it has registered, so AppKit never routed the drop. Registered
+`[.string]`.
+
+**3c. `validateDrop` was not implemented.** Without a validate returning a real operation,
+`acceptDrop` is never reached. Returns `.move` for `.above` (the reorder gap).
+
+**3d. Multi-row drag would have moved only one row.** `acceptDrop` read
+`draggingPasteboard.string(forType: .string)` and split it on commas — a single-string
+format. A writer-per-row produces **one pasteboard item per row**, and `string(forType:)`
+returns only the *first* item, so a multi-row drag silently moved a single row. Now reads
+`pasteboardItems`.
+
+**3e. The validate rejected the drop across almost the whole table.** With 3a–3d fixed the
+row finally *lifted* — and then snapped straight back. The first `validateDrop` returned
+`.move` only for `.above` and `[]` otherwise:
+
+```swift
+dropOperation == .above ? .move : []      // ← rejects .on
+```
+
+But **AppKit proposes `.on` whenever the pointer is over a row's *body***, and `.above`
+only in the hairline gap between rows. Rejecting `.on` therefore refused the drop over
+nearly the entire table. The standard reorder recipe is to *retarget* it rather than
+refuse it:
+
+```swift
+if dropOperation == .on {
+    tableView.setDropRow(row, dropOperation: .above)   // nearest gap
+}
+return .move
+```
+
+The whole table is a drop target again, while inserts still only ever land between rows.
+
+**3f. Nothing ever reloaded the table — the drop was *succeeding* the whole time.**
+`acceptDrop` mutated `tasks`/`notes`/`done`, called `onReorder` (which only set a status
+string) and returned `true`. **No `reloadData()` anywhere**, so the table kept rendering
+the old order — which looks *exactly* like a drag snapping back. The demo was relying on
+the framework reloading itself after a drop; AppKit does not, because the data source owns
+the model and only it knows when the model changed.
+
+This one deserves emphasis: after 3a–3e the drop had been **working** — returning `true`,
+with the model correctly reordered — and it still looked like a total failure. The symptom
+is identical whether the drop is refused or silently invisible, which is why "still the
+same" arrived twice. Now:
+
+```swift
+tableView.reloadData()
+tableView.selectRowIndexes(IndexSet(dest..<(dest + sortedRows.count)), byExtendingSelection: false)
+```
+
+**Verified end-to-end** by driving the real drop path with a mock `NSDraggingInfo` (a real
+drag cannot be posted here — CGEvent needs accessibility permission):
+
+| Drag | Result | Parallel `notes` array |
+|---|---|---|
+| row 0 → end | `[Ship, Write, Review]` ✓ | `[nightly, draft, high]` ✓ |
+| **rows 0+1 → end** | `[Write, Review, Ship]` ✓ | `[draft, high, nightly]` ✓ |
+| row 2 → top | `[Write, Review, Ship]` ✓ | `[draft, high, nightly]` ✓ |
+| `validateDrop` | `.above` → `.move` ✓ | `.on` → rejected ✓ |
+
+All three drag selectors now report `responds(to:) == true`.
+
+### 🛠 MUST FIX — WinChocolate and LinChocolate
+
+**`NSPasteboardWriting` must exist, and `tableView(_:pasteboardWriterForRow:)` must be
+declared with it.**
+
+| | Type | Data-source signature |
+|---|---|---|
+| **Apple** | `NSPasteboardWriting` protocol | `-> NSPasteboardWriting?` |
+| **WinChocolate** | **absent** | `-> Any?` |
+| **LinChocolate** | **absent** | `-> Any?` |
+
+`-> Any?` is not a cosmetic difference. It is the signature the demo copied, and on Apple
+it silently unhooks the method — which is exactly the class of bug this project exists to
+find. Add the protocol (`NSString`/`NSURL`/`NSPasteboardItem` conforming, as Apple has it)
+and declare the data-source method Apple's way.
+
+**The full list of drag API the frameworks are missing**, all of it needed for the plain
+AppKit reorder recipe, and all of it now used by the demo:
+
+| API | Apple | WinChocolate | LinChocolate |
+|---|---|---|---|
+| `NSPasteboardWriting` | ✓ protocol | **absent** | **absent** |
+| `tableView(_:pasteboardWriterForRow:)` | `-> NSPasteboardWriting?` | `-> Any?` | `-> Any?` |
+| `NSPasteboardItem` | ✓ | ✓ | **absent** |
+| `NSPasteboard.pasteboardItems` | ✓ | ✓ | **absent** |
+| `NSTableView.setDropRow(_:dropOperation:)` | ✓ | **absent** | **absent** |
+
+`setDropRow` is not optional polish: without it a data source cannot retarget AppKit's
+proposed `.on` to the reorder gap, which is the only way to make a whole table a valid
+reorder target (see 3e). A framework that omits it cannot express Apple's own reorder
+recipe.
+
+**This is the third instance of one root cause, and it deserves a standing audit.**
+AppKit discovers optional protocol members via `respondsToSelector:`, so anything that is
+not a true `@objc` witness is **invisible at runtime while compiling perfectly**:
+
+1. **Issue O** — a Swift protocol-extension *default* satisfied the Swift compiler but
+   added no Objective-C method → `NSBrowser` rejected its delegate.
+2. **This** — a *signature mismatch* (`Any?` vs `NSPasteboardWriting?`) → the drag carried
+   no data.
+3. Any other place either framework's plain-Swift protocol shape differs from Apple's
+   `@objc` one.
+
+All three compile clean, run clean, report success, and do nothing. **The frameworks
+cannot catch any of them**, because their protocols are plain Swift where Apple's are
+`@objc` — the divergence only exists on the Apple side of the build. Every
+`@objc`-protocol conformance the demo declares should be audited against Apple's exact
+signatures, and the cheap detector is a one-line `responds(to:)` check per optional method.
+
+### 4. The hint ran through the next column
+
+Pure arithmetic: `viewTableHint` was **620 wide starting at x=24** — reaching x=644 —
+while the right-hand column starts at **x=520**. It overlapped by 124pt. It is now 480
+wide (stopping at 504) and two lines tall.
+
+A taller frame alone would not have fixed it: **an `NSTextField` is single-line by
+default**, so the text runs past the edge rather than wrapping. Both hints now set
+`usesSingleLineMode = false` and `maximumNumberOfLines = 2` (`lineBreakMode` does not
+exist in either chocolate framework, so it is not used), and both tables moved down 16pt
+to clear them.
+
+**Files touched**
+
+- `Demo/DemoApplication/main.swift` — both colour-well handlers; note column vends a view;
+  `registerForDraggedTypes` + `validateDrop`; hint frames/wrapping; both tables lowered
+
+**Verified**
+
+- macOS: built and ran. The Note column now shows its values (`high` / `nightly` /
+  `draft`) where it was blank; the hint wraps to two lines and clears the right column;
+  the row-drag path is verified end-to-end (table above).
+- Linux: `RealDemo` **355 → 361**, net +6, from two opposing moves: deleting the
+  colour-panel trampoline *fixed* 8, and the AppKit-correct drag API cost 14
+  (`NSPasteboardWriting`, `NSPasteboardItem`, `pasteboardItems`, `setDropRow` — the MUST
+  FIX table above). No other new error category.
+- Windows: not built here. WinChocolate already has `pasteboardItems`/`NSPasteboardItem`;
+  it needs `NSPasteboardWriting` and `setDropRow`.
+
+**What this cost, and the lesson.** Row drag took **six** fixes (3a–3f), each individually
+sufficient to make it fail, and **four of the six produce the identical symptom** — "the
+row snaps back". That is why it was reported broken three times in a row: peeling off one
+fault revealed the next behind the same appearance.
+
+3a–3d were verified directly (`responds(to:)` checks; a mock `NSDraggingInfo` driving the
+real drop path, including the multi-row reorder maths). 3e and 3f were reasoned from
+AppKit's documented behavior — a real drag cannot be posted here without accessibility
+permission. 3f in particular is worth internalising: **the drop was already succeeding**
+(returning `true`, model correctly reordered) and still looked like total failure, because
+a view that is never told to redraw is indistinguishable from one that refused the work.
+"Snaps back" was never evidence of rejection.
+
+---
+
 ## 2026-07-14 — Caption sweep across every page; table sorted *and* selected; image not clickable
 
 ### 1. Every caption, every page

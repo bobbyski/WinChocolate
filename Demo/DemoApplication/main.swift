@@ -1010,16 +1010,47 @@ final class DemoViewTableDataSource: NSObject, NSTableViewDataSource {
     /// Reported after a reorder so the page can update its status line.
     var onReorder: (@MainActor (_ movedCount: Int, _ destination: Int) -> Void)?
 
-    func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> Any? {
-        "\(row)"
+    /// Apple declares this returning `NSPasteboardWriting?`, and the type matters: this is
+    /// an `@objc` protocol with *optional* methods, so a signature that does not match the
+    /// requirement is never exposed to Objective-C and AppKit simply never calls it —
+    /// `responds(to: "tableView:pasteboardWriterForRow:")` is **false**. Declared
+    /// `-> Any?` (as the chocolate frameworks' own protocol has it) the drag silently
+    /// carried no data and every row snapped back, with no error anywhere.
+    /// `NSString` is the writer here because Swift's `String` does not itself conform.
+    func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> NSPasteboardWriting? {
+        "\(row)" as NSString
+    }
+
+    /// Required by AppKit for a drop to be accepted at all: without a validate that
+    /// returns a real operation, `acceptDrop` is never reached and the row snaps back.
+    ///
+    /// Reordering only ever means "between rows" (`.above`). AppKit proposes `.on`
+    /// whenever the pointer is over a row's *body* — which is nearly the whole table — so
+    /// rejecting `.on` outright left only the hairline gap between rows as a valid target
+    /// and the row snapped back almost everywhere. Retarget `.on` to the nearest gap with
+    /// `setDropRow(_:dropOperation:)` instead: that is the standard reorder recipe, and it
+    /// makes the whole table a drop target while still only ever inserting between rows.
+    func tableView(_ tableView: NSTableView, validateDrop info: NSDraggingInfo, proposedRow row: Int,
+                   proposedDropOperation dropOperation: NSTableView.DropOperation) -> NSDragOperation {
+        if dropOperation == .on {
+            tableView.setDropRow(row, dropOperation: .above)
+        }
+
+        return .move
     }
 
     func tableView(_ tableView: NSTableView, acceptDrop info: NSDraggingInfo, row toIndex: Int, dropOperation: NSTableView.DropOperation) -> Bool {
-        guard dropOperation == .above,
-              let rowList = info.draggingPasteboard.string(forType: .string) else {
+        guard dropOperation == .above else {
             return false
         }
-        let sortedRows = rowList.split(separator: ",").compactMap { Int($0) }.sorted()
+
+        // One pasteboard *item* per dragged row — that is what a writer-per-row produces.
+        // This used to read `draggingPasteboard.string(forType:)` and split it on commas,
+        // which is a single-string format: on AppKit that call returns only the *first*
+        // item, so a multi-row drag silently moved just one row.
+        let sortedRows = (info.draggingPasteboard.pasteboardItems ?? [])
+            .compactMap { Int($0.string(forType: .string) ?? "") }
+            .sorted()
         guard !sortedRows.isEmpty, sortedRows.allSatisfy({ tasks.indices.contains($0) }) else {
             return false
         }
@@ -1037,6 +1068,15 @@ final class DemoViewTableDataSource: NSObject, NSTableViewDataSource {
         tasks.insert(contentsOf: movedTasks, at: dest)
         notes.insert(contentsOf: movedNotes, at: dest)
         done.insert(contentsOf: movedDone, at: dest)
+
+        // The model moved; the view has no idea. A table does NOT reload itself after a
+        // drop — the data source owns the model, so it has to say when it changed. Without
+        // this the drop succeeds (this returns true, the model is correct) and the rows
+        // keep rendering in the old order, which looks *exactly* like the drag snapping
+        // back. Re-select the moved rows so the result is visible, as a reorder should.
+        tableView.reloadData()
+        tableView.selectRowIndexes(IndexSet(dest..<(dest + sortedRows.count)), byExtendingSelection: false)
+
         nonisolated(unsafe) let handler = onReorder
         MainActor.assumeIsolated {
             handler?(sortedRows.count, dest)
@@ -1062,10 +1102,30 @@ final class DemoViewTableDelegate: NSObject, NSTableViewDelegate {
             field.drawsBackground = false
             return field
         }
-        // The "note" column vends no view → the drawn table paints it as text
-        // and edits it in place (double-click) on this editable column.
+        // The "note" column is editable: double-click a note to edit it.
+        //
+        // This used to `return nil` and rely on the table painting the column itself as
+        // drawn text. AppKit has no such per-column fallback — a table is view-based or
+        // cell-based, and this one is view-based because the delegate vends views at all,
+        // so a nil view means an *empty cell*, with nothing to double-click. The column
+        // has to vend an editable field like any other view-based column.
         if tableColumn?.identifier.rawValue == "note" {
-            return nil
+            let field = NSTextField(string: source.notes[row], frame: NSMakeRect(0, 0, 160, 22))
+            field.isBordered = false
+            field.drawsBackground = false
+            field.isEditable = true
+            field.onAction = { [weak self] control in
+                guard let self, let edited = control as? NSTextField else {
+                    return
+                }
+                self.source.notes[row] = edited.stringValue
+                nonisolated(unsafe) let handler = onEvent
+                let message = "Note \(row) → \(edited.stringValue)"
+                MainActor.assumeIsolated {
+                    handler?(message)
+                }
+            }
+            return field
         }
         let button = NSButton(title: source.done[row] ? "Done ✓" : "Mark done", frame: NSMakeRect(0, 0, 110, 22))
         button.onAction = { [weak self, weak tableView] _ in
@@ -3063,21 +3123,16 @@ levelIndicator.onAction = { control in
     statusLabel.stringValue = "Level value: \(level.intValue)"
 }
 
-colorWell.onAction = { _ in
-    updateFocusDisplay()
-    // Clicking presents the shared color panel; its REAL target/action pair
-    // (`setTarget`/`setAction`, as in AppKit) reports picks back here.
-    let panel = NSColorPanel.shared
-    let panelTarget = DemoActionTarget.trampoline(for: panel)
-    panelTarget.handlers["demoFire:"] = { sender in
-        let color = (sender as? NSColorPanel)?.color ?? panel.color
-        colorWell.color = color
-        statusLabel.stringValue = "Color well changed: RGB \(Int(color.redComponent * 255)), \(Int(color.greenComponent * 255)), \(Int(color.blueComponent * 255))"
+// Same recipe as the template tint well: the well's own action reports the pick, and
+// clicking it presents the shared color panel without any help from the demo.
+colorWell.onAction = { control in
+    guard let well = control as? NSColorWell else {
+        return
     }
-    panel.setTarget(panelTarget)
-    panel.setAction(DemoActionTarget.fireSelector)
-    colorWell.activate(true)
-    panel.makeKeyAndOrderFront(colorWell)
+
+    updateFocusDisplay()
+    let color = well.color
+    statusLabel.stringValue = "Color well changed: RGB \(Int(color.redComponent * 255)), \(Int(color.greenComponent * 255)), \(Int(color.blueComponent * 255))"
 }
 
 pathControl.onAction = { control in
@@ -3867,21 +3922,20 @@ templateImageView.image = templateImage
 templateImageView.contentTintColor = .systemBlue
 let templateTintWell = NSColorWell(frame: NSMakeRect(84, 134, 44, 36))
 templateTintWell.color = .systemBlue
-templateTintWell.onAction = { _ in
-    // Clicking presents the shared color panel; its REAL target/action pair
-    // (`setTarget`/`setAction`, as in AppKit) re-tints the glyph on picks.
-    let panel = NSColorPanel.shared
-    let panelTarget = DemoActionTarget.trampoline(for: panel)
-    panelTarget.handlers["demoFire:"] = { sender in
-        let color = (sender as? NSColorPanel)?.color ?? panel.color
-        templateTintWell.color = color
-        templateImageView.contentTintColor = color
-        statusLabel.stringValue = "Template tint changed"
+// An NSColorWell sends its action when its *color changes*, and clicking it presents the
+// shared color panel on its own — so reading `well.color` here is the whole recipe.
+//
+// This used to open NSColorPanel.shared by hand and point its target/action at a
+// trampoline, then call `activate(true)`. That cannot work: activating a well makes the
+// well the panel's client, discarding the target/action set moments earlier — so the
+// trampoline that was going to tint the glyph never ran.
+templateTintWell.onAction = { control in
+    guard let well = control as? NSColorWell else {
+        return
     }
-    panel.setTarget(panelTarget)
-    panel.setAction(DemoActionTarget.fireSelector)
-    templateTintWell.activate(true)
-    panel.makeKeyAndOrderFront(templateTintWell)
+
+    templateImageView.contentTintColor = well.color
+    statusLabel.stringValue = "Template tint changed"
 }
 let templateHintLabel = NSTextField(string: "The glyph takes the well's color.", frame: NSMakeRect(140, 140, 240, 20))
 templateHintLabel.isBordered = false
@@ -3954,14 +4008,20 @@ zoomButton.onAction = { _ in
 // 5.5 — framework-drawn, view-based table hosting real controls in its cells.
 // Placed in the clear full-width band below the print section (y > 386).
 let viewTableSectionLabel = showcaseSectionLabel("Framework-drawn table — view-based cells (5.5)", NSMakeRect(24, 392, 480, 20))
-let viewTableHint = NSTextField(string: "Hosts real controls; double-click a Note to edit, drag a row to reorder, drag a header to move a column.", frame: NSMakeRect(24, 412, 620, 18))
+// 480 wide, not 620: the right-hand column starts at x=520, and a 620-wide field
+// starting at x=24 ran to x=644 — straight through it. Two lines instead of one.
+let viewTableHint = NSTextField(string: "Hosts real controls; double-click a Note to edit, drag a row to reorder, drag a header to move a column.", frame: NSMakeRect(24, 412, 480, 34))
 viewTableHint.isBordered = false
 viewTableHint.drawsBackground = false
 viewTableHint.font = NSFont.systemFont(ofSize: 11)
+// A taller frame alone does not wrap: an NSTextField is single-line by default, so the
+// text just runs past the edge (which is how it reached the next column).
+viewTableHint.usesSingleLineMode = false
+viewTableHint.maximumNumberOfLines = 2
 let viewTableSource = DemoViewTableDataSource()
 let viewTableDelegate = DemoViewTableDelegate(source: viewTableSource)
 viewTableDelegate.onEvent = { statusLabel.stringValue = $0 }
-let viewTableScrollView = NSScrollView(frame: NSMakeRect(24, 434, 470, 104))
+let viewTableScrollView = NSScrollView(frame: NSMakeRect(24, 450, 470, 104))
 viewTableScrollView.hasVerticalScroller = true
 let viewTable = NSTableView(frame: NSMakeRect(0, 0, 470, 104))
 let taskColumn = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("task"))
@@ -3986,6 +4046,10 @@ viewTable.delegate = viewTableDelegate
 // Drag a row to reorder it (5.8) — the plain-AppKit recipe: a `.move` local
 // source mask plus the data source's pasteboard writer and acceptDrop.
 viewTable.setDraggingSourceOperationMask(.move, forLocal: true)
+// A table only *receives* drags for types it has registered — without this AppKit never
+// routes the drop to validateDrop/acceptDrop and the dragged row just snaps back. The
+// pasteboard writer above vends the row index as a String, so register that type.
+viewTable.registerForDraggedTypes([.string])
 viewTableSource.onReorder = { movedCount, dest in
     statusLabel.stringValue = "Moved \(movedCount) row(s) → \(dest)"
 }
@@ -3998,13 +4062,15 @@ viewTableScrollView.documentView = viewTable
 // 5.5 — NSTableRowView hosting: full-width colored row views behind hosted
 // label cells (a CI-status list). Placed to the right of the view table.
 let rowViewSectionLabel = showcaseSectionLabel("Row views — full-width row backgrounds (5.5)", NSMakeRect(520, 392, 380, 20))
-let rowViewHint = NSTextField(string: "Each row hosts an NSTableRowView; click a row to see the selection fill.", frame: NSMakeRect(520, 412, 400, 18))
+let rowViewHint = NSTextField(string: "Each row hosts an NSTableRowView; click a row to see the selection fill.", frame: NSMakeRect(520, 412, 400, 34))
 rowViewHint.isBordered = false
 rowViewHint.drawsBackground = false
 rowViewHint.font = NSFont.systemFont(ofSize: 11)
+rowViewHint.usesSingleLineMode = false
+rowViewHint.maximumNumberOfLines = 2
 let statusRowSource = DemoStatusRowDataSource()
 let statusRowDelegate = DemoStatusRowDelegate(source: statusRowSource)
-let statusRowScrollView = NSScrollView(frame: NSMakeRect(520, 434, 300, 104))
+let statusRowScrollView = NSScrollView(frame: NSMakeRect(520, 450, 300, 104))
 statusRowScrollView.hasVerticalScroller = true
 let statusRowTable = NSTableView(frame: NSMakeRect(0, 0, 300, 104))
 let stageColumn = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("stage"))
