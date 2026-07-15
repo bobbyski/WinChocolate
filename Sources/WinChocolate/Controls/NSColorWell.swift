@@ -100,9 +100,19 @@ open class NSColorWell: NSControl {
         return handle
     }
 
-    open override func mouseDown(with event: NSEvent) {
-        objectValue = color
+    /// Applies a color chosen in the shared color panel: updates the swatch and
+    /// **sends the action** — AppKit's contract is that a well fires when its
+    /// color CHANGES (a panel pick), not when it is clicked. Programmatic
+    /// `color` assignment does not send.
+    package func winApplyPanelColor(_ newColor: NSColor) {
+        color = newColor
+        objectValue = newColor
         sendAction()
+    }
+
+    open override func mouseDown(with event: NSEvent) {
+        // Clicking a well presents the panel/palette; it does NOT send the
+        // action (that happens when the color changes — see winApplyPanelColor).
         if colorWellStyle == .expanded {
             // The expanded style drops down a swatch palette instead of jumping
             // straight to the color panel.

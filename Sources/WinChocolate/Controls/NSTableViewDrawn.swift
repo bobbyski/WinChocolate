@@ -78,7 +78,7 @@ struct WinDrawnTableStyle {
 /// (focus loss / Enter), then tears the overlay down.
 public final class WinDrawnCellEditor: NSObject, NSTextFieldDelegate {
     weak var table: NSTableView?
-    public func controlTextDidEndEditing(_ obj: NSNotification) {
+    public func controlTextDidEndEditing(_ obj: Notification) {
         table?.winCommitDrawnEdit()
     }
 

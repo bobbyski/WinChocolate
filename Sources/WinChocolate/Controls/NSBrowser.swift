@@ -96,6 +96,16 @@ open class NSBrowser: NSControl {
             winUsesViewBasedCells = true
         }
 
+        /// Required because `NSView.init(frame:)` is `required` (so registered
+        /// view classes can be instantiated by metatype). The browser always
+        /// uses the designated init above; this exists only to satisfy the
+        /// requirement.
+        required init(frame frameRect: NSRect) {
+            self.columnIndex = 0
+            super.init(frame: frameRect)
+            winUsesViewBasedCells = true
+        }
+
         /// Reserve leading space for the cell icon so the drawn title clears it.
         override func winDrawnLeadingInset(forRow row: Int, column: Int) -> CGFloat {
             browser?.showsCellIcons == true ? iconInset : 0
@@ -287,6 +297,48 @@ open class NSBrowser: NSControl {
         }
     }
 
+    /// How a browser sizes its columns — AppKit's `NSBrowser.ColumnResizingType`.
+    public enum ColumnResizingType: Int, Sendable {
+        /// Columns are a fixed width; no resizing.
+        case noColumnResizing = 0
+        /// The browser sizes its own columns (Apple's default).
+        case autoColumnResizing = 1
+        /// The user resizes columns by dragging the dividers.
+        case userColumnResizing = 2
+    }
+
+    /// The column-resizing policy. Apple's default is `.autoColumnResizing` —
+    /// the browser owns the widths, so a user drag has nothing to change until
+    /// this is set to `.userColumnResizing`.
+    open var columnResizingType: ColumnResizingType = .autoColumnResizing {
+        didSet {
+            tile()
+        }
+    }
+
+    /// The minimum width a column may take. Apple's default is 100, which is
+    /// what lays a 520-wide browser out as ~5 narrow columns until raised.
+    open var minColumnWidth: CGFloat = 100 {
+        didSet {
+            tile()
+        }
+    }
+
+    /// Per-column widths set through `setWidth(_:ofColumn:)`, honored when
+    /// `columnResizingType == .userColumnResizing`.
+    private var userColumnWidths: [Int: CGFloat] = [:]
+
+    /// Sets an explicit width for a column (AppKit's `setWidth(_:ofColumn:)`).
+    open func setWidth(_ columnWidth: CGFloat, ofColumn columnIndex: Int) {
+        userColumnWidths[columnIndex] = max(minColumnWidth, columnWidth)
+        tile()
+    }
+
+    /// Returns the current width of a column (AppKit's `width(ofColumn:)`).
+    open func width(ofColumn column: Int) -> CGFloat {
+        userColumnWidths[column] ?? winColumnLayoutWidth(forColumn: column)
+    }
+
     /// Whether leaf rows may be selected.
     open var allowsBranchSelection: Bool = true
 
@@ -351,13 +403,27 @@ open class NSBrowser: NSControl {
         backend.createView(frame: frame, parent: parent)
     }
 
+    /// The laid-out width of a column, honoring `minColumnWidth` and any
+    /// explicit `setWidth(_:ofColumn:)` under `.userColumnResizing`.
+    private func winColumnLayoutWidth(forColumn index: Int) -> CGFloat {
+        if columnResizingType == .userColumnResizing, let explicit = userColumnWidths[index] {
+            return max(1, explicit)
+        }
+        let visibleCount = max(1, columns.count)
+        // Each column is at least `minColumnWidth`; the browser otherwise packs
+        // them up to `defaultColumnWidth` across the available width. Matching
+        // Apple's default `minColumnWidth == 100` is what makes a too-narrow
+        // browser lay out as several truncated columns until it is raised.
+        let packed = min(defaultColumnWidth, frame.size.width / CGFloat(visibleCount))
+        return max(1, max(minColumnWidth, packed))
+    }
+
     /// Lays out visible columns (title bar above each column when titled).
     open func tile() {
-        let visibleCount = max(1, columns.count)
-        let width = max(1, min(defaultColumnWidth, frame.size.width / CGFloat(visibleCount)))
         let titleHeight = isTitled ? columnTitleHeight : 0
+        var x: CGFloat = 0
         for (index, column) in columns.enumerated() {
-            let x = CGFloat(index) * width
+            let width = winColumnLayoutWidth(forColumn: index)
             column.titleLabel.isHidden = !isTitled
             if isTitled {
                 column.titleLabel.stringValue = title(ofColumn: index)
@@ -367,6 +433,7 @@ open class NSBrowser: NSControl {
             column.scrollView.frame = scrollFrame
             column.tableView.frame = NSRect(origin: NSZeroPoint, size: scrollFrame.size)
             column.scrollView.tile()
+            x += width
         }
     }
 

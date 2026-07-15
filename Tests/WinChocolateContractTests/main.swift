@@ -238,25 +238,25 @@ final class TestChangeDelegate: NSObject, NSTextFieldDelegate, NSTableViewDelega
         return created
     }
 
-    nonisolated func controlTextDidChange(_ obj: NSNotification) {
+    nonisolated func controlTextDidChange(_ obj: Notification) {
         if let field = obj.object as? NSTextField {
             onFieldChange?(field)
         }
     }
 
-    nonisolated func tableViewSelectionDidChange(_ notification: NSNotification) {
+    nonisolated func tableViewSelectionDidChange(_ notification: Notification) {
         if let table = notification.object as? NSTableView {
             onTableSelection?(table)
         }
     }
 
-    nonisolated func outlineViewSelectionDidChange(_ notification: NSNotification) {
+    nonisolated func outlineViewSelectionDidChange(_ notification: Notification) {
         if let outline = notification.object as? NSOutlineView {
             onOutlineSelection?(outline)
         }
     }
 
-    nonisolated func textDidChange(_ notification: NSNotification) {
+    nonisolated func textDidChange(_ notification: Notification) {
         if let view = notification.object as? NSTextView {
             onTextViewChange?(view)
         }
@@ -387,6 +387,10 @@ final class IntrinsicSizeView: NSView {
     init(_ size: NSSize) {
         intrinsic = size
         super.init(frame: .zero)
+    }
+    required init(frame frameRect: NSRect) {
+        intrinsic = .zero
+        super.init(frame: frameRect)
     }
     override var intrinsicContentSize: NSSize { intrinsic }
 }
@@ -1298,10 +1302,10 @@ func testWindowRealizationCreatesNativeHierarchy() {
 
 final class FullScreenSpyDelegate: NSObject, NSWindowDelegate {
     var willEnter = 0, didEnter = 0, willExit = 0, didExit = 0
-    func windowWillEnterFullScreen(_ notification: NSNotification) { willEnter += 1 }
-    func windowDidEnterFullScreen(_ notification: NSNotification) { didEnter += 1 }
-    func windowWillExitFullScreen(_ notification: NSNotification) { willExit += 1 }
-    func windowDidExitFullScreen(_ notification: NSNotification) { didExit += 1 }
+    func windowWillEnterFullScreen(_ notification: Notification) { willEnter += 1 }
+    func windowDidEnterFullScreen(_ notification: Notification) { didEnter += 1 }
+    func windowWillExitFullScreen(_ notification: Notification) { willExit += 1 }
+    func windowDidExitFullScreen(_ notification: Notification) { didExit += 1 }
 }
 
 @MainActor
@@ -1884,13 +1888,13 @@ final class RecordingCollectionDelegate: NSObject, NSCollectionViewDelegate {
 
 final class RecordingTableDelegate: NSObject, NSTableViewDelegate {
     var selectionChangeCount = 0
-    var lastObject: AnyObject?
+    var lastObject: Any?
     var requestedViewRows: [Int] = []
     var oldSortDescriptorCount = -1
     var rowHeights: [Int: CGFloat] = [:]
     var cellView = NSTableCellView(frame: NSMakeRect(0, 0, 100, 24))
 
-    func tableViewSelectionDidChange(_ notification: NSNotification) {
+    func tableViewSelectionDidChange(_ notification: Notification) {
         selectionChangeCount += 1
         lastObject = notification.object
     }
@@ -1914,8 +1918,8 @@ final class RecordingTableDelegate: NSObject, NSTableViewDelegate {
 /// the drawn peer when a delegate vends views).
 final class CellBasedSelectionDelegate: NSObject, NSTableViewDelegate {
     var selectionChangeCount = 0
-    var lastObject: AnyObject?
-    func tableViewSelectionDidChange(_ notification: NSNotification) {
+    var lastObject: Any?
+    func tableViewSelectionDidChange(_ notification: Notification) {
         selectionChangeCount += 1
         lastObject = notification.object
     }
@@ -4062,7 +4066,7 @@ func testTableViewNativeSelectionNotifiesDelegateAndAction() {
     expect(tableView.selectedRow == 2, "Table view did not read native selection.")
     expect(actionCount == 1, "Table view did not send action after selection.")
     expect(delegate.selectionChangeCount == 1, "Table view delegate was not notified.")
-    expect(delegate.lastObject === tableView, "Table view delegate notification object was wrong.")
+    expect((delegate.lastObject as AnyObject) === tableView, "Table view delegate notification object was wrong.")
 }
 
 @MainActor
@@ -5336,12 +5340,12 @@ final class SelectionToolbarDelegate: NSObject, NSToolbarDelegate {
     func toolbarSelectableItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
         [NSToolbarItem.Identifier("inbox"), NSToolbarItem.Identifier("sent")]
     }
-    func toolbarWillAddItem(_ notification: NSNotification) {
+    func toolbarWillAddItem(_ notification: Notification) {
         if let item = notification.userInfo?["item"] as? NSToolbarItem {
             added.append(item)
         }
     }
-    func toolbarDidRemoveItem(_ notification: NSNotification) {
+    func toolbarDidRemoveItem(_ notification: Notification) {
         if let item = notification.userInfo?["item"] as? NSToolbarItem {
             removed.append(item)
         }
@@ -8281,7 +8285,7 @@ func testTextViewUndoRestoresPreviousText() {
 final class SplitResizeRecorder: NSObject, NSSplitViewDelegate {
     var resizeCount = 0
 
-    func splitViewDidResizeSubviews(_ notification: NSNotification) {
+    func splitViewDidResizeSubviews(_ notification: Notification) {
         resizeCount += 1
     }
 }
@@ -9058,11 +9062,11 @@ func testProgressIndicatorIndeterminateSyncsToBackend() {
 final class RecordingTextViewDelegate: NSObject, NSTextViewDelegate {
     var changeCount = 0
     var lastNotificationName = ""
-    var lastObject: AnyObject?
+    var lastObject: Any?
 
-    func textDidChange(_ notification: NSNotification) {
+    func textDidChange(_ notification: Notification) {
         changeCount += 1
-        lastNotificationName = notification.name
+        lastNotificationName = notification.name.rawValue
         lastObject = notification.object
     }
 }
@@ -9110,7 +9114,7 @@ func testTextViewSelectionInsertionAndDelegate() {
     expect(textView.string == "Typed text", "Native text change did not update the string.")
     expect(delegate.changeCount == 1, "Native text change did not notify the delegate.")
     expect(delegate.lastNotificationName == NSTextView.textDidChangeNotification, "textDidChange did not carry the AppKit notification name.")
-    expect(delegate.lastObject === textView, "textDidChange did not carry the text view as the notification object.")
+    expect((delegate.lastObject as AnyObject) === textView, "textDidChange did not carry the text view as the notification object.")
 
     // A selection made before realization applies when the peer appears.
     let deferred = NSTextView(frame: NSMakeRect(0, 0, 100, 40))
@@ -9307,16 +9311,16 @@ final class RecordingTextFieldDelegate: NSObject, NSTextFieldDelegate {
     var ended = 0
     var lastChangedText: String?
 
-    func controlTextDidBeginEditing(_ obj: NSNotification) {
+    func controlTextDidBeginEditing(_ obj: Notification) {
         began += 1
     }
 
-    func controlTextDidChange(_ obj: NSNotification) {
+    func controlTextDidChange(_ obj: Notification) {
         changed += 1
         lastChangedText = (obj.object as? NSTextField)?.stringValue
     }
 
-    func controlTextDidEndEditing(_ obj: NSNotification) {
+    func controlTextDidEndEditing(_ obj: Notification) {
         ended += 1
     }
 }
@@ -11318,10 +11322,10 @@ final class WindowStateRecordingDelegate: NSObject, NSWindowDelegate {
     var miniaturized = 0
     var deminiaturized = 0
 
-    func windowDidResize(_ notification: NSNotification) { resized += 1 }
-    func windowDidMove(_ notification: NSNotification) { moved += 1 }
-    func windowDidMiniaturize(_ notification: NSNotification) { miniaturized += 1 }
-    func windowDidDeminiaturize(_ notification: NSNotification) { deminiaturized += 1 }
+    func windowDidResize(_ notification: Notification) { resized += 1 }
+    func windowDidMove(_ notification: Notification) { moved += 1 }
+    func windowDidMiniaturize(_ notification: Notification) { miniaturized += 1 }
+    func windowDidDeminiaturize(_ notification: Notification) { deminiaturized += 1 }
 }
 
 @MainActor
@@ -12355,7 +12359,7 @@ final class PasteboardRowDataSource: NSObject, NSTableViewDataSource {
     let items = ["alpha", "bravo", "charlie", "delta"]
     func numberOfRows(in tableView: NSTableView) -> Int { items.count }
     func tableView(_ tableView: NSTableView, objectValueFor tableColumn: NSTableColumn?, row: Int) -> Any? { items[row] }
-    func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> Any? { items[row] }
+    func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> NSPasteboardWriting? { items[row] }
 }
 
 @MainActor
@@ -13385,7 +13389,7 @@ final class ReorderRecipeTableSource: NSObject, NSTableViewDataSource {
         items[row]
     }
 
-    func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> Any? {
+    func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> NSPasteboardWriting? {
         "\(row)"
     }
 }
@@ -13406,7 +13410,7 @@ final class ReorderRecipeOutlineSource: NSObject, NSOutlineViewDataSource {
         false
     }
 
-    func outlineView(_ outlineView: NSOutlineView, pasteboardWriterForItem item: Any) -> Any? {
+    func outlineView(_ outlineView: NSOutlineView, pasteboardWriterForItem item: Any) -> NSPasteboardWriting? {
         String(describing: item)
     }
 

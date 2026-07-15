@@ -272,7 +272,7 @@ open class NSColorPanel: NSPanel {
         // target/action pair set through `setTarget`/`setAction` receives the
         // action selector; otherwise `changeColor(_:)` walks the responder
         // chain of the panel-action window.
-        winActiveColorWell?.color = color
+        winActiveColorWell?.winApplyPanelColor(color)
 
         if let winAction, winTarget != nil {
             _ = NSApplication.shared.sendAction(winAction, to: winTarget, from: self)

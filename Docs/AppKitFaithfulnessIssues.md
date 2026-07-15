@@ -503,3 +503,60 @@ convenience. Test: if a helper needs anything WinChocolate-only, it's a shim and
 sanctioned non-coverage is *exclusion* (row L CoreGraphics, row M Nib): pages gated on Phase 13 / 12.1 are
 `#if`-fenced out and excluded from the "runs on AppKit" claim until their owning phase lands — excluded,
 never shimmed.
+
+---
+
+## Windows re-sync against the frozen AppKit-correct demo — 2026-07-15
+
+The demo is now **frozen** and AppKit-correct (see `DEMO_CHANGES.md`); the direction reversed —
+fix **WinChocolate** to match it, never the demo. Bringing the Windows build back to green
+against the frozen demo took the following framework additions (all matching Apple; the demo
+was not touched, except `@IBAction`/`@IBOutlet` remain `#if`-fenced by the demo itself):
+
+**Build was broken by 35 demo-side errors → now 0. Suite green, demo runs.**
+
+- **`required init(frame:)` cascade.** `NSView.init(frame:)` is `required` (so registered view
+  classes instantiate by metatype in `makeSupplementaryView`/`makeItem`). Added the required init
+  to `NSBrowser.BrowserColumnTableView` and the test's `IntrinsicSizeView`. (Demo subclasses that
+  add no designated init inherit it and were unaffected.)
+- **`NSPasteboardWriting`** protocol added (String/URL/`NSPasteboardItem` conform); the table/outline
+  `pasteboardWriterForRow`/`pasteboardWriterForItem` requirements retyped `Any?` → `NSPasteboardWriting?`.
+- **`NSBrowser` column sizing:** `ColumnResizingType` (+ `.no/.auto/.userColumnResizing`),
+  `columnResizingType` (default `.auto`), `minColumnWidth` (default 100), `setWidth(_:ofColumn:)`,
+  `width(ofColumn:)`; `tile()` honors them.
+- **`NSTableView.setDropRow(_:dropOperation:)`** added (records the retarget; the drawn reorder path
+  already lands on the inter-row gap).
+- **`NSBitmapImageRep`** added (wraps `CGImage`'s BMP codec: `init(cgImage:)`, `init?(data:)`,
+  `representation(using:.bmp)`, `colorAt(x:y:)`, `pixelsWide/High`, `FileType`, `PropertyKey`).
+- **Apple-shaped `CGImage` construction:** `CFData`, `CGDataProvider`, `CGBitmapInfo`,
+  `CGImageAlphaInfo`, `CGColorRenderingIntent`, and the designated
+  `CGImage(width:height:bitsPerComponent:…:provider:…)` init — all placed in **WinCoreGraphics**
+  (they are CoreGraphics types on Apple), alongside `CGImage`. `CGColorSpace` /
+  `CGColorSpaceCreateDeviceRGB()` moved down from WinChocolate to WinCoreGraphics with them, and
+  WinCoreGraphics gained a WinFoundation dependency for `Data`/`CFData` (CoreFoundation sits below
+  CoreGraphics on Apple). WinChocolate re-exports WinCoreGraphics, so the demo and `CGGradient`
+  still see these types unchanged.
+
+**Behavioral MUST-FIXes also landed (from `DEMO_CHANGES.md`):**
+
+- **The "ten dead delegates."** WinChocolate had a distinct `NSNotification` class while the demo
+  (and Apple) use Foundation's `Notification`. Every delegate/notification signature and the ~20
+  construction sites migrated `NSNotification` → `Notification` (framework + tests). The demo's
+  window-resize reflow, table/outline selection, text-editing callbacks, split-resize, etc. are now
+  live on Windows instead of silently no-op'd.
+- **`NSColorWell` fires on color-change, not click.** `mouseDown` only presents the panel now; the
+  panel's pick calls `winApplyPanelColor` on the active well, which sets the color and sends the
+  action (programmatic `color =` does not send).
+- **`NSTableView.scrollRowToVisible(_:)`** implemented (was a no-op stub) — nudges the enclosing
+  clip view only as far as needed, using the drawn table's row geometry.
+
+**Remaining MUST-FIX worklist (behavioral parity; do not block build/run — the demo `#if`s or
+works around them):**
+
+- `NSForm` as a real `NSMatrix` subclass: `cellSize` (with `NSMatrix`'s zero-height default),
+  `intercellSpacing`, `autosizesCells`; `NSForm.setBezeled/setBordered/setEntryWidth/…`; retire the
+  invented `rowHeight`. (Demo `#if`s these out today.)
+- **Deprecation `@available(..., deprecated:, message:)` annotations** matching Apple, starting with
+  `NSForm`/`NSFormCell` (deprecated macOS 10.10) — audit the whole surface.
+- Audit the rest of `DEMO_CHANGES.md`'s MUST-FIX blocks (NSImageView `open` on Linux, image-drawing
+  stubs, etc.) against WinChocolate specifically.

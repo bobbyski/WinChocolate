@@ -323,8 +323,8 @@ public final class NSApplication: NSObject {
         return mainWindow
     }
 
-    private func notification(named name: String) -> NSNotification {
-        NSNotification(name: name, object: self)
+    private func notification(named name: String) -> Notification {
+        Notification(name: Notification.Name(name), object: self)
     }
 }
 
