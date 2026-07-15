@@ -21,8 +21,6 @@ public extension String {
 public extension NSAppearance {
     /// Dark detection (WinChocolate's `winIsDark`), mapped to `isDark`.
     var winIsDark: Bool { isDark }
-    /// The appearance currently used for drawing.
-    static func currentDrawing() -> NSAppearance { NSApplication.shared.effectiveAppearance }
 }
 
 // MARK: - Color conveniences

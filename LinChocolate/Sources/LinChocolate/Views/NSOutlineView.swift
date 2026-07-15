@@ -12,7 +12,18 @@ public protocol NSOutlineViewDataSource: AnyObject {
 /// AppKit-shaped tree table (GtkColumnView over a GtkTreeListModel). Column 0
 /// carries the native expand arrows. The backend addresses items by index
 /// path ("0.2"); this class resolves paths back to data-source items.
-public final class NSOutlineView: NSView {
+open class NSOutlineView: NSControl {
+
+    /// The outline delegate; selection changes post
+    /// `outlineViewSelectionDidChange(_:)`, as on Apple.
+    public weak var delegate: NSOutlineViewDelegate?
+
+    /// The drag operations offered as a drag source (stored, as on the table).
+    public func setDraggingSourceOperationMask(_ mask: NSDragOperation, forLocal isLocal: Bool) {
+        draggingSourceMask = mask
+    }
+
+    var draggingSourceMask: NSDragOperation = []
 
     /// The columns, in display order.
     public private(set) var tableColumns: [NSTableColumn] = []
@@ -54,6 +65,8 @@ public final class NSOutlineView: NSView {
             guard let self else { return }
             self.selectedRow = row             // sync silently
             self.onSelectionChange?(self)
+            self.delegate?.outlineViewSelectionDidChange(Notification(name: Notification.Name("NSOutlineViewSelectionDidChangeNotification"), object: self))
+            self.sendAction()
         }
     }
 
@@ -80,4 +93,14 @@ public final class NSOutlineView: NSView {
         }
         return item
     }
+}
+
+
+/// AppKit's outline delegate (the slice the demo drives).
+public protocol NSOutlineViewDelegate: AnyObject {
+    func outlineViewSelectionDidChange(_ notification: Notification)
+}
+
+public extension NSOutlineViewDelegate {
+    func outlineViewSelectionDidChange(_ notification: Notification) {}
 }

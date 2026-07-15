@@ -2,7 +2,11 @@ import Foundation
 
 /// AppKit-shaped multi-line, editable text view (GtkTextView). Reports edits
 /// through `onTextChange`; `string` is the full contents.
-public final class NSTextView: NSView {
+open class NSTextView: NSView {
+
+    /// The text delegate; `textDidChange(_:)` fires on every native edit,
+    /// as on Apple.
+    public weak var delegate: NSTextViewDelegate?
 
     private var backingString: String
 
@@ -42,6 +46,7 @@ public final class NSTextView: NSView {
             guard let self else { return }
             self.backingString = text          // sync silently
             self.onTextChange?(self)
+            self.delegate?.textDidChange(Notification(name: Notification.Name("NSTextDidChangeNotification"), object: self))
         }
     }
 }

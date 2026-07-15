@@ -2,7 +2,7 @@ import Foundation
 
 /// AppKit-shaped image view (GtkPicture). Set `image` to display a file-backed
 /// `NSImage`; the native picture scales it to fit, preserving aspect ratio.
-public final class NSImageView: NSView {
+open class NSImageView: NSControl {
 
     /// The displayed image (nil clears the view).
     public var image: NSImage? {
@@ -21,8 +21,8 @@ public final class NSImageView: NSView {
 
     /// Tint + scaling + alignment (accepted for API parity).
     public var contentTintColor: NSColor?
-    public var imageScaling: ImageScaling = .scaleProportionallyDown
-    public var imageAlignment: ImageAlignment = .alignCenter
+    public var imageScaling: NSImageScaling = .scaleProportionallyDown
+    public var imageAlignment: NSImageAlignment = .alignCenter
 
     /// Creates an empty image view.
     public required init(frame: NSRect) {

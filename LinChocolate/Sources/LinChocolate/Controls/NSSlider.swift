@@ -2,7 +2,7 @@ import Foundation
 
 /// AppKit-shaped horizontal slider (GtkScale). Reports live value changes
 /// through `onValueChange`; `doubleValue` reflects the current position.
-public final class NSSlider: NSView {
+open class NSSlider: NSControl {
 
     public var minValue: Double
     public var maxValue: Double
@@ -27,9 +27,6 @@ public final class NSSlider: NSView {
         didSet { backend.setSliderVertical(isVertical, for: handle) }
     }
 
-    /// Whether the slider fires continuously as it moves (accepted for parity).
-    public var isContinuous: Bool = true
-
     /// Creates a slider over `[minValue, maxValue]` starting at `value`.
     /// AppKit's target/action form (no frame); gets a default size.
     public convenience init(value: Double, minValue: Double, maxValue: Double, target: AnyObject?, action: String?) {
@@ -52,6 +49,7 @@ public final class NSSlider: NSView {
             guard let self else { return }
             self.backingValue = value          // sync silently
             self.onValueChange?(self)
+            self.sendAction()
         }
     }
 }

@@ -3,7 +3,7 @@ import Foundation
 /// AppKit-shaped date picker (GtkCalendar — the graphical calendar style).
 /// Reports selection changes through `onDateChange`; `dateValue` is the
 /// selected date.
-public final class NSDatePicker: NSView {
+open class NSDatePicker: NSControl {
 
     private var backingDate: Date
 
@@ -55,6 +55,7 @@ public final class NSDatePicker: NSView {
             guard let self else { return }
             self.backingDate = date            // sync silently
             self.onDateChange?(self)
+            self.sendAction()
         }
     }
 }

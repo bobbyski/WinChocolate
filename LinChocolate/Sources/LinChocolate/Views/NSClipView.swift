@@ -10,6 +10,11 @@ import Foundation
 /// - **Standalone** (`init(frame:)`): a plain clipping container the demo builds
 ///   directly; it hosts a `documentView` as its child.
 public final class NSClipView: NSView {
+
+    /// The clip view's background fill (real AppKit API on this class).
+    public var backgroundColor: NSColor? {
+        didSet { backend.setBackgroundColor(backgroundColor, for: handle) }
+    }
     private unowned var owner: NSScrollView?
 
     init(scrollView: NSScrollView) {

@@ -2,7 +2,7 @@ import Foundation
 
 /// AppKit-shaped determinate progress indicator (GtkProgressBar). Set
 /// `doubleValue` within `[minValue, maxValue]` to fill the bar.
-public final class NSProgressIndicator: NSView {
+open class NSProgressIndicator: NSView {
 
     public var minValue: Double
     public var maxValue: Double

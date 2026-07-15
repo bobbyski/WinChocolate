@@ -7,7 +7,7 @@ import Foundation
 /// GTK backs labels and editable fields with different widgets, so the
 /// editable/non-editable choice is fixed at creation in this slice (AppKit's
 /// mutable `isEditable` is a later refinement).
-public final class NSTextField: NSView {
+open class NSTextField: NSControl {
 
     private var backingValue: String
 
@@ -29,6 +29,12 @@ public final class NSTextField: NSView {
     public var isBordered: Bool = true
     public var isBezeled: Bool = true
     public var drawsBackground: Bool = true
+
+    /// The field's background fill (real AppKit API on NSTextField; NSView has
+    /// none). Painted when `drawsBackground` is on.
+    public var backgroundColor: NSColor? {
+        didSet { backend.setBackgroundColor(drawsBackground ? backgroundColor : nil, for: handle) }
+    }
     /// Whether the field is editable. AppKit's default is `false` — a
     /// non-editable field renders as a borderless static label; setting it `true`
     /// turns it into a framed, editable field (matching Win32's STATIC vs EDIT).
@@ -101,6 +107,7 @@ public final class NSTextField: NSView {
             guard let self else { return }
             self.backingValue = text          // sync silently — no write-back loop
             self.onTextChange?(self)
+            self.sendAction()
         }
     }
 }

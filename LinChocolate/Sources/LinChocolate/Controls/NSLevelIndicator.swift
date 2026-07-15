@@ -2,7 +2,7 @@ import Foundation
 
 /// AppKit-shaped level indicator (GtkLevelBar). A read-only gauge; set
 /// `doubleValue` within `[minValue, maxValue]` to fill it.
-public final class NSLevelIndicator: NSView {
+open class NSLevelIndicator: NSControl {
 
     public var minValue: Double
     public var maxValue: Double

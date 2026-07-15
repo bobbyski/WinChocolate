@@ -3,7 +3,13 @@ import Foundation
 /// AppKit-shaped token field. A composed control (GTK has no peer): tokens
 /// render as removable chips ahead of a text entry; typing text and pressing
 /// Enter adds a token, clicking a chip removes it.
-public final class NSTokenField: NSView {
+open class NSTokenField: NSControl {
+
+    /// Background fill (inherited from NSTextField on Apple; these classes are
+    /// NSControl siblings here until the field hierarchy lands — Issue tracked).
+    public var backgroundColor: NSColor? {
+        didSet { backend.setBackgroundColor(backgroundColor, for: handle) }
+    }
 
     private var backingTokens: [String]
 
@@ -43,6 +49,7 @@ public final class NSTokenField: NSView {
             guard let self else { return }
             self.backingTokens = tokens        // sync silently
             self.onTokensChange?(self)
+            self.sendAction()
         }
     }
 }

@@ -3,7 +3,7 @@ import Foundation
 /// AppKit-shaped segmented control, composed from linked native toggle buttons
 /// (GTK's segmented-switcher idiom). Select-one tracking; the selected segment
 /// index flows both ways.
-public final class NSSegmentedControl: NSView {
+open class NSSegmentedControl: NSControl {
 
     /// The segment labels, in order.
     public let segmentLabels: [String]
@@ -27,7 +27,21 @@ public final class NSSegmentedControl: NSView {
 
     /// Segment style (accepted for API parity; GTK styles natively).
     public var segmentStyle: NSSegmentedControlStyle = .automatic
-    public var trackingMode: Int = 0
+    /// Segment tracking (Apple's `NSSegmentedControl.SwitchTracking`).
+    public enum SwitchTracking: Sendable {
+        case selectOne, selectAny, momentary, momentaryAccelerator
+    }
+
+    public var trackingMode: SwitchTracking = .selectOne
+
+    /// Apple's content convenience: labels + tracking + target/action.
+    public convenience init(labels: [String], trackingMode: SwitchTracking,
+                            target: AnyObject?, action: Selector?) {
+        self.init(labels: labels, frame: .zero)
+        self.trackingMode = trackingMode
+        self.target = target
+        self.action = action
+    }
 
     /// Creates a segmented control with one segment per label.
     public required convenience init(frame: NSRect) {
@@ -43,6 +57,7 @@ public final class NSSegmentedControl: NSView {
             guard let self else { return }
             self.backingSelection = index      // sync silently
             self.onAction?(self)
+            self.sendAction()
         }
     }
 

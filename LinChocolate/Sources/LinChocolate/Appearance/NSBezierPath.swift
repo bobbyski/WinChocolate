@@ -145,3 +145,21 @@ public final class NSBezierPath {
         }
     }
 }
+
+
+// AppKit's drawing methods on NSRect (`rect.fill()` / `rect.frame()`), which
+// the shared demo's draw(_:) code uses directly.
+public extension NSRect {
+    /// Fills the rect with the current fill color.
+    func fill() {
+        NSBezierPath(rect: self).fill()
+    }
+
+    /// Strokes a 1pt frame just inside the rect with the current fill color
+    /// (AppKit's `NSFrameRect` semantics).
+    func frame() {
+        let path = NSBezierPath(rect: insetBy(dx: 0.5, dy: 0.5))
+        path.lineWidth = 1
+        path.stroke()
+    }
+}

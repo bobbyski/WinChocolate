@@ -38,7 +38,7 @@ public extension NSCollectionViewDataSource {
 
 /// AppKit-shaped grid collection (GtkGridView in a scroller, 3–4 columns).
 /// Single-item selection in this slice.
-public final class NSCollectionView: NSView {
+open class NSCollectionView: NSView {
 
     /// The kind of a supplementary view (header/footer). AppKit declares this
     /// as a `String` typealias, not a distinct type.
@@ -135,7 +135,10 @@ public final class NSCollectionView: NSView {
 
     /// Layout + delegate (accepted for API parity; the grid layout is native).
     public var collectionViewLayout: NSCollectionViewLayout?
-    public weak var delegate: (AnyObject)?
+
+    /// The collection delegate; selections arrive via
+    /// `collectionView(_:didSelectItemsAt:)`, as on Apple.
+    public weak var delegate: NSCollectionViewDelegate?
     public func selectItems(at indexPaths: Set<IndexPath>, scrollPosition: Int) {}
 
     /// Creates an empty collection view.
@@ -152,6 +155,9 @@ public final class NSCollectionView: NSView {
             guard let self else { return }
             self.backingSelection = index      // sync silently
             self.onSelectionChange?(self)
+            if index >= 0 {
+                self.delegate?.collectionView(self, didSelectItemsAt: [IndexPath(item: index, section: 0)])
+            }
         }
     }
 
@@ -160,4 +166,14 @@ public final class NSCollectionView: NSView {
         let count = dataSource?.collectionView(self, numberOfItemsInSection: 0) ?? 0
         backend.setCollectionItemCount(count, for: handle)
     }
+}
+
+
+/// AppKit's collection delegate (the selection slice the demo drives).
+public protocol NSCollectionViewDelegate: AnyObject {
+    func collectionView(_ collectionView: NSCollectionView, didSelectItemsAt indexPaths: Set<IndexPath>)
+}
+
+public extension NSCollectionViewDelegate {
+    func collectionView(_ collectionView: NSCollectionView, didSelectItemsAt indexPaths: Set<IndexPath>) {}
 }

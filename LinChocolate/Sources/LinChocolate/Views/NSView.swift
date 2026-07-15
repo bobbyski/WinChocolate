@@ -8,7 +8,7 @@ import Foundation
 /// Control subclasses (`NSButton`, `NSTextField`) create their own native
 /// control through the backend and hand its handle to the designated
 /// initializer (controls render natively and do not custom-draw).
-open class NSView {
+open class NSView: NSResponder {
 
     /// The view's frame in its parent's coordinate space (AppKit bottom-left
     /// origin). Setting it repositions/resizes the native control.
@@ -32,11 +32,6 @@ open class NSView {
         didSet { backend.setHidden(isHidden, for: handle) }
     }
 
-    /// The view's background color; nil clears it (painted natively via CSS).
-    public var backgroundColor: NSColor? {
-        didSet { backend.setBackgroundColor(backgroundColor, for: handle) }
-    }
-
     /// The tooltip shown on hover.
     public var toolTip: String?
 
@@ -58,10 +53,19 @@ open class NSView {
     /// Views added via `addSubview(_:)`, in back-to-front order.
     public private(set) var subviews: [NSView] = []
 
-    /// Whether the control accepts input.
-    public var isEnabled: Bool = true {
-        didSet { backend.setEnabled(isEnabled, for: handle) }
+    /// Whether the view is `view` or sits anywhere below it (AppKit's
+    /// `isDescendant(of:)` — a view is a descendant of itself).
+    public func isDescendant(of view: NSView) -> Bool {
+        var current: NSView? = self
+        while let candidate = current {
+            if candidate === view {
+                return true
+            }
+            current = candidate.superview
+        }
+        return false
     }
+
 
     /// The font for the control's text (nil = platform default).
     public var font: NSFont? {
@@ -78,10 +82,16 @@ open class NSView {
     /// instantiated from its metatype in `makeSupplementaryView` — AppKit's
     /// contract. Every subclass declaring its own designated initializer must
     /// therefore provide `required init(frame:)` too.
+    /// AppKit's parameterless initializer: a zero-frame view, sized later.
+    public override convenience init() {
+        self.init(frame: .zero)
+    }
+
     public required init(frame: NSRect) {
         self.frame = frame
         self.backend = NSApplication.shared.nativeBackend
         self.handle = backend.createView(frame: frame)
+        super.init()
         backend.setDrawHandler(for: handle) { [weak self] native, width, height in
             guard let self else { return }
             NSGraphicsContext.setCurrent(NSGraphicsContext(native: native))
@@ -106,6 +116,7 @@ open class NSView {
         self.frame = frame
         self.handle = handle
         self.backend = backend
+        super.init()
     }
 
     /// Adds `view` as a subview, placing it at its frame within this view.
@@ -228,7 +239,7 @@ open class NSView {
     // later. Native GTK controls handle their own input; actual delivery to
     // these is a later parity item — they exist so the same source builds.
 
-    open var acceptsFirstResponder: Bool { false }
+    open override var acceptsFirstResponder: Bool { false }
     @discardableResult open func becomeFirstResponder() -> Bool { true }
     @discardableResult open func resignFirstResponder() -> Bool { true }
 

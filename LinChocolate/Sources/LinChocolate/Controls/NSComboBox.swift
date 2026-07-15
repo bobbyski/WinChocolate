@@ -3,7 +3,7 @@ import Foundation
 /// AppKit-shaped editable combo box (GtkComboBoxText with an entry). The user
 /// can type a value or pick from `itemTitles`; either way `stringValue` updates
 /// and `onTextChange` fires.
-public final class NSComboBox: NSView {
+open class NSComboBox: NSControl {
 
     /// The dropdown item titles, in order.
     public var itemTitles: [String]
@@ -48,7 +48,9 @@ public final class NSComboBox: NSView {
             guard let self else { return }
             self.backingValue = text          // sync silently
             self.onTextChange?(self)
+            self.sendAction()
             self.onAction?(self)
+            self.sendAction()
         }
     }
 }

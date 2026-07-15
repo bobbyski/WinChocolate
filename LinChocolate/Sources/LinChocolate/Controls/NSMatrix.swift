@@ -5,12 +5,15 @@ import Foundation
 public final class NSButtonCell {
     public var title: String
     public init(title: String) { self.title = title }
+
+    /// Apple's cell initializer spelling.
+    public convenience init(textCell: String) { self.init(title: textCell) }
 }
 
 /// AppKit-shaped `NSMatrix`: a grid of button cells. No GTK peer — a composed
 /// control built from `NSButton`s laid out in a rows×columns grid. Selecting a
 /// cell updates `selectedRow`/`selectedColumn` and fires `onAction`.
-public final class NSMatrix: NSView {
+open class NSMatrix: NSControl {
 
     /// The matrix tracking mode (accepted for API parity; all modes render as a
     /// clickable button grid in this slice).
@@ -57,6 +60,7 @@ public final class NSMatrix: NSView {
                     guard let self else { return }
                     self.selectCell(atRow: r, column: c)
                     self.onAction?(self)
+                    self.sendAction()
                 }
                 addSubview(button)
                 rowButtons.append(button)

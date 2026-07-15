@@ -1207,3 +1207,19 @@ if failures == 0 {
     print("\n\(failures) contract test(s) FAILED.")
     exit(1)
 }
+
+// MARK: — Button title set post-creation (the shared demo's convenience path:
+// `NSButton(frame:)` then `.title =`), which must reach the backend.
+do {
+    let backend = InMemoryNativeControlBackend()
+    NSApplication.shared.nativeBackend = backend
+    let button = NSButton(frame: NSMakeRect(0, 0, 100, 30))
+    button.title = "Click"
+    check(backend.texts[button.handle.rawValue] == "Click",
+          "post-creation title reaches the backend (demo convenience path)")
+
+    let radio = NSButton(radioWithTitle: "Info", frame: .zero)
+    radio.frame = NSMakeRect(0, 0, 88, 24)
+    check(backend.texts[radio.handle.rawValue] == "Info",
+          "radio created with title keeps it after a frame change")
+}

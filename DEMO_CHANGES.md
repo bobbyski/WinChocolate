@@ -33,6 +33,100 @@ verified** — running the demo, not just building it.
 
 ---
 
+## 2026-07-15 — LinChocolate catches up to the demo: Linux builds, runs, and clicks again (framework work; demo untouched)
+
+**Overnight framework sweep.** The rule for this entry was the inverse of every entry
+above: **the demo is the spec and could not be changed** — LinChocolate had to rise to
+meet it. Starting point: `RealDemo` at **441 errors** (387 + DemoConveniences.swift,
+which had *never been compiled on Linux* — the RealDemo target only symlinked
+main.swift). Ending point: **0 errors, all 11 pages launch under Xvfb, contract tests
+pass, and a click test proves the action pipeline end-to-end.** Not one demo line changed
+(the `@IBOutlet` permission was never needed — the macOS nib branch is already `#if`'d
+out on Linux).
+
+### The architecture that was missing (the bulk of the night)
+
+LinChocolate had no `NSObject`→`NSResponder`→`NSView`→`NSControl` chain — every control
+was `final class X: NSView`, there was no `target`/`action`, and the demo's conveniences
+(closure sugar over *real* target/action, exactly as on Windows) had nothing to attach to:
+
+- **`LinChocolate.NSObject`** — the selector-dispatch root (`responds(to:)` /
+  `perform(_:with:)` over LinChocolate's `Selector`), shadowing Foundation's exactly as
+  WinFoundation does on Windows. The demo's `DemoActionTarget` overrides now land.
+- **`NSResponder`**, with `NSView` under it.
+- **`NSControl: NSView`** with `target`/`action`/`isEnabled`/`isContinuous`/`sendAction()`
+  — and **every control's native callback now calls `sendAction()`**, so the demo's
+  trampolines fire. (This also closed the colour-well MUST FIX on Linux: its action now
+  fires on colour change.) 20 control classes reparented and opened; `NSOutlineView`
+  under `NSControl`; `NSImageView` **open** (the `final` MUST FIX) so
+  `DemoClickableImageView` compiles.
+- `NSMenuItem`/`NSToolbarItem` under `NSObject` with real `Selector` actions dispatched.
+- **`NotificationCenter` shadow** — real Foundation's observer blocks are `@Sendable`
+  (the long-documented divergence); the shadow takes `@MainActor` blocks, so the demo's
+  appearance observer compiles unchanged.
+
+### MUST FIXes from the entries above, now closed for LinChocolate
+
+`NSPasteboardWriting` + `NSString` conformance, `NSPasteboardItem`,
+`NSPasteboard.pasteboardItems`/`writeObjects`, `tableView(_:pasteboardWriterForRow:)
+-> NSPasteboardWriting?` (+ `validateDrop`/`acceptDrop`), `NSTableView.DropOperation`,
+`setDropRow(_:dropOperation:)`, `setDraggingSourceOperationMask` (table + outline),
+`NSBrowser.columnResizingType`/`minColumnWidth` (Apple's defaults), `NSImageView` open,
+`NSAppearance.bestMatch(from:)`/`currentDrawing()`, `NSBitmapImageRep`
+(`colorAt`/`pixelsWide/High`/`representation(using: .bmp)`/`init(data:)`) +
+`CGDataProvider` + Apple's `CGImage` designated init (all backed by the existing BMP
+codec), `NSUserInterfaceItemIdentifier` on `NSTableColumn`, `NSTextField.backgroundColor`
+(and clip/row-view/path-control), delegate protocols with Apple signatures
+(`Notification`, `tableView(_:rowViewForRow:)`, `@MainActor` table delegate),
+`NSFontDescriptor`/`symbolicTraits`/`NSFontChanging`, `NSForm.cell(at:)` +
+`NSFormCell.titleWidth`, `NSButtonCell(textCell:)`, `NSViewController()`,
+`NSRect.fill()/frame()`, `NSView.isDescendant(of:)`, `NSView()`, Apple's
+`NSButton`/`NSSegmentedControl` content conveniences, `CFData` (typealias — corelibs
+doesn't surface it, and the demo's `Data as CFData` must compile).
+
+### The bug worth remembering: observers don't fire in initializers
+
+After the build reached zero, every **plain push button rendered blank** — model-level
+contract tests passed, the GTK title path worked in isolation, and a backend trace
+finally showed `createButton("")` ×109 with **zero** `setText` calls for buttons. Cause:
+the demo's `convenience init(title:frame:)` (an *extension on the class itself*) does
+`self.init(frame:)` then `self.title = title` — and **Swift suppresses property
+observers for assignments inside any initializer of the type, including app-side
+extension convenience inits.** `NSButton.title`/`NSBox.title` were the only two
+stored-with-didSet properties among everything the demo's conveniences assign (all the
+rest were already computed-over-backing, which is why only buttons broke). Both are now
+computed over backing storage — a setter always runs. **Framework rule adopted: any
+property whose setter must reach the native side must be computed, never
+stored-with-didSet.**
+
+### Verified
+
+- Build: **441 → 0** across ~10 census-driven iterations; framework target and contract
+  tests green throughout; `RealDemo` links (8 MB) and the hermetic contract suite passes
+  (+2 new cases pinning the post-init title path).
+- Runtime, under Xvfb (`GSK_RENDERER=cairo`): **all 11 pages launch and render**; the
+  CoreGraphics page draws every canvas **including the BMP-round-tripped heart through
+  the new `NSBitmapImageRep`**; the Nib page instantiates the xib (11 objects, 2 actions,
+  5 outlets); an `xdotool` click on **Click** incremented the counter to 2 with "button
+  fired" in the status — the full GTK → backend → `sendAction` → handler chain, live.
+- Page screenshots: `LinChocolate/.artifacts-pages/page0..10.png`.
+
+### Follow-ups (Linux runtime, not build)
+
+- **Dark-mode label contrast**: radio/checkbox labels and captions are nearly invisible
+  in `--dark` (fine in `--light`); framework CSS is theme-safe, so the culprit is still
+  open — first suspect is the demo-painted dark backgrounds against GTK's dark label
+  colors.
+- `NSImage.draw(in:)` is still a no-op stub (`DemoCompat`), so `NSImage(data:)` sprites
+  and page artwork don't render.
+- `scrollRowToVisible` remains a stub (both frameworks — MUST FIX above still open).
+- Field hierarchy: `NSSecureTextField`/`NSSearchField`/`NSTokenField`/`NSComboBox`
+  should sit under `NSTextField` as on Apple; tonight they carry their own
+  `backgroundColor`/`onTextChanged` shims inside the framework.
+- WinChocolate's side of every MUST FIX is untouched (not buildable here).
+
+---
+
 ## 2026-07-14 — Toolbar icons: real artwork (Tabler Icons) instead of hand-drawn pixels
 
 The toolbar art was **generated at runtime** by `demoToolbarBitmapPath(named:width:kind:)`

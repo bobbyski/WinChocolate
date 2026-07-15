@@ -73,7 +73,22 @@ public func NSRectFill(_ rect: NSRect) {
 // the types. The framework does not yet dispatch to these delegates (a later
 // parity item); the demo's own methods still compile as ordinary members.
 public protocol NSWindowDelegate: AnyObject {}
-public protocol NSTableViewDelegate: AnyObject {}
+@MainActor
+public protocol NSTableViewDelegate: AnyObject {
+    /// Selection changed (framework posts after a native selection change).
+    func tableViewSelectionDidChange(_ notification: Notification)
+    /// View-based cells (accepted; the GTK table renders text natively today).
+    func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView?
+    func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView?
+    func tableView(_ tableView: NSTableView, heightOfRow row: Int) -> CGFloat
+}
+
+public extension NSTableViewDelegate {
+    @MainActor func tableViewSelectionDidChange(_ notification: Notification) {}
+    @MainActor func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? { nil }
+    @MainActor func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? { nil }
+    @MainActor func tableView(_ tableView: NSTableView, heightOfRow row: Int) -> CGFloat { 24 }
+}
 public protocol NSTextFieldDelegate: AnyObject {}
 public protocol NSSplitViewDelegate: AnyObject {}
 public protocol NSMenuItemValidation: AnyObject {}
@@ -268,7 +283,18 @@ public final class NSPathComponentCell {
 public final class NSPathControl: NSView {
     public var url: URL?
     public var pathStyle: Int = 0
-    public var clickedPathComponentCell: NSPathComponentCell? { nil }
+    /// The component the user clicked (Apple's method spelling). The GTK
+    /// breadcrumb reports the last-clicked crumb through the backend.
+    public func clickedPathComponentCell() -> NSPathComponentCell? {
+        lastClickedComponentCell
+    }
+
+    var lastClickedComponentCell: NSPathComponentCell?
+
+    /// The control's background fill (real AppKit API on NSPathControl).
+    public var backgroundColor: NSColor? {
+        didSet { backend.setBackgroundColor(backgroundColor, for: handle) }
+    }
     public var pathComponentCells: [NSPathComponentCell] = []
     public var onAction: ((NSPathControl) -> Void)?
     public convenience init(url: URL?, frame: NSRect) {
@@ -306,7 +332,7 @@ public enum NSImageFrameStyle: Sendable { case none, photo, grayBezel, groove, b
 
 /// A collection view item view controller (stub).
 open class NSCollectionViewItem: NSViewController {
-    public convenience init() { self.init(view: NSView(frame: .zero)) }
+    public override convenience init() { self.init(view: NSView(frame: .zero)) }
     open var isSelected: Bool = false
     open var representedObject: Any?
     open var textField: NSTextField?
@@ -325,11 +351,16 @@ open class NSCollectionViewFlowLayout: NSCollectionViewLayout {
     public var footerReferenceSize: NSSize = .zero
     public var sectionInset = NSEdgeInsets()
 }
-public protocol NSCollectionViewDelegateFlowLayout: AnyObject {}
+public protocol NSCollectionViewDelegateFlowLayout: NSCollectionViewDelegate {}
 
 /// A table row background view (stub).
 open class NSTableRowView: NSView {
     open var isSelected: Bool = false
+
+    /// The row's background fill (real AppKit API on this class).
+    open var backgroundColor: NSColor? {
+        didSet { backend.setBackgroundColor(backgroundColor, for: handle) }
+    }
 }
 
 /// The shared color panel (stub — `NSColorWell` covers picking today).
@@ -380,12 +411,19 @@ open class NSDocumentController {
     public var documents: [NSDocument] = []
     open func newDocument(_ sender: Any?) {}
     open func openDocument(_ sender: Any?) {}
+
+    /// The `NSDocument` subclass for `typeName` (subclasses override).
+    open func documentClass(forType typeName: String) -> AnyClass? { nil }
 }
 
 /// Printing stub (real support is Phase L13).
 public final class NSPrintOperation {
     nonisolated(unsafe) public static var current: NSPrintOperation?
     public init() {}
+
+    /// Apple's initializer spelling; printing itself is Phase L13.
+    public init(view: NSView) {}
+
     public static func printOperation(with view: NSView) -> NSPrintOperation { NSPrintOperation() }
     public var jobTitle: String = ""
     public var showsPrintPanel: Bool = true
@@ -430,3 +468,98 @@ public final class NSTextFinder {
     public func performAction(_ op: NSTextFinder.Action) {}
 }
 
+
+
+// MARK: - Delegate protocols the shared demo conforms to
+
+/// AppKit's text-view delegate (the slice the demo drives).
+public protocol NSTextViewDelegate: AnyObject {
+    func textDidChange(_ notification: Notification)
+}
+
+public extension NSTextViewDelegate {
+    func textDidChange(_ notification: Notification) {}
+}
+
+/// AppKit's alert delegate: the help-button hook.
+public protocol NSAlertDelegate: AnyObject {
+    func alertShowHelp(_ alert: NSAlert) -> Bool
+}
+
+public extension NSAlertDelegate {
+    func alertShowHelp(_ alert: NSAlert) -> Bool { false }
+}
+
+/// AppKit's font-changing responder protocol (10.14+ shape): the font
+/// manager's target receives `changeFont(_:)` when the panel's selection
+/// changes.
+public protocol NSFontChanging: AnyObject {
+    func changeFont(_ sender: NSFontManager?)
+}
+
+public extension NSFontChanging {
+    func changeFont(_ sender: NSFontManager?) {}
+}
+
+// MARK: - Font descriptors (Apple's NSFontDescriptor, reduced)
+
+public final class NSFontDescriptor {
+
+    /// Apple's trait mask (the two the demo styles with).
+    public struct SymbolicTraits: OptionSet, Sendable {
+        public let rawValue: UInt32
+        public init(rawValue: UInt32) { self.rawValue = rawValue }
+        public static let bold = SymbolicTraits(rawValue: 1 << 1)
+        public static let italic = SymbolicTraits(rawValue: 1 << 0)
+    }
+
+    public let fontName: String
+    public let pointSize: CGFloat
+    public let symbolicTraits: SymbolicTraits
+
+    public init(name: String, size: CGFloat) {
+        self.fontName = name
+        self.pointSize = size
+        self.symbolicTraits = []
+    }
+
+    init(name: String, size: CGFloat, traits: SymbolicTraits) {
+        self.fontName = name
+        self.pointSize = size
+        self.symbolicTraits = traits
+    }
+
+    /// A copy of the descriptor with `traits` applied.
+    public func withSymbolicTraits(_ traits: SymbolicTraits) -> NSFontDescriptor {
+        NSFontDescriptor(name: fontName, size: pointSize, traits: symbolicTraits.union(traits))
+    }
+}
+
+public extension NSFont {
+    /// The font's descriptor (name, size, and bold/italic traits).
+    var fontDescriptor: NSFontDescriptor {
+        var traits: NSFontDescriptor.SymbolicTraits = []
+        if spec.bold { traits.insert(.bold) }
+        if spec.italic { traits.insert(.italic) }
+        return NSFontDescriptor(name: fontName, size: pointSize, traits: traits)
+    }
+
+    /// Builds a font from a descriptor (size 0 keeps the descriptor's size).
+    convenience init?(descriptor: NSFontDescriptor, size: CGFloat) {
+        self.init(name: descriptor.fontName,
+                  size: size > 0 ? size : descriptor.pointSize,
+                  weight: descriptor.symbolicTraits.contains(.bold) ? .bold : .regular,
+                  italic: descriptor.symbolicTraits.contains(.italic))
+    }
+}
+
+// MARK: - Image scaling/alignment (Apple's top-level enum names)
+
+public enum NSImageScaling: Sendable {
+    case scaleProportionallyDown, scaleAxesIndependently, scaleNone, scaleProportionallyUpOrDown
+}
+
+public enum NSImageAlignment: Sendable {
+    case alignCenter, alignTop, alignTopLeft, alignTopRight, alignLeft
+    case alignBottom, alignBottomLeft, alignBottomRight, alignRight
+}

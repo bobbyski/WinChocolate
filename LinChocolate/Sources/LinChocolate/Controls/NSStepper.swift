@@ -2,7 +2,7 @@ import Foundation
 
 /// AppKit-shaped stepper (GtkSpinButton). Reports value changes through
 /// `onValueChange`; `doubleValue` reflects the current value.
-public final class NSStepper: NSView {
+open class NSStepper: NSControl {
 
     public var minValue: Double
     public var maxValue: Double
@@ -47,6 +47,7 @@ public final class NSStepper: NSView {
             guard let self else { return }
             self.backingValue = value          // sync silently
             self.onValueChange?(self)
+            self.sendAction()
         }
     }
 }

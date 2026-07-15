@@ -1,5 +1,10 @@
 import Foundation
 
+/// Core Foundation's data type, as Apple code spells it in `Data(...) as
+/// CFData`. corelibs-foundation does not surface CFData; Data IS the byte
+/// buffer here, so the coercion is identity.
+public typealias CFData = Data
+
 /// Core Graphics-compatible drawing surface over LinChocolate's context — the
 /// LinChocolate port of WinChocolate's `CGCompat.swift`, kept API-identical so
 /// the shared demo compiles against either library.

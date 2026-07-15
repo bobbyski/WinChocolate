@@ -2,7 +2,7 @@ import Foundation
 
 /// AppKit-shaped pop-up (dropdown) button (GtkDropDown). Holds a fixed list of
 /// item titles and reports selection changes through `onSelectionChange`.
-public final class NSPopUpButton: NSView {
+open class NSPopUpButton: NSControl {
 
     /// The menu item titles, in order.
     public private(set) var itemTitles: [String]
@@ -96,6 +96,7 @@ public final class NSPopUpButton: NSView {
             guard let self else { return }
             self.backingIndex = index          // sync silently
             self.onSelectionChange?(self)
+            self.sendAction()
         }
     }
 }

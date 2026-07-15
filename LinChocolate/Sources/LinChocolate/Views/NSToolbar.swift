@@ -1,7 +1,12 @@
 import Foundation
 
 /// AppKit-shaped toolbar item: an identifier, a label, and an action.
-public final class NSToolbarItem {
+public final class NSToolbarItem: NSObject {
+
+    /// AppKit's target/action pair; clicking the item performs `action` on
+    /// `target` (alongside the closure hook).
+    public weak var target: AnyObject?
+    public var action: Selector?
 
     /// A toolbar item identifier (AppKit's `NSToolbarItem.Identifier`).
     public typealias Identifier = String
@@ -169,6 +174,9 @@ public final class NSToolbar {
                 action: item.itemIdentifier == NSToolbarItem.flexibleSpaceIdentifier ? nil : { [weak item] in
                     guard let item else { return }
                     item.onAction?(item)
+                    if let action = item.action, let target = item.target as? NSObject {
+                        _ = target.perform(action, with: item)
+                    }
                 }
             )
         }

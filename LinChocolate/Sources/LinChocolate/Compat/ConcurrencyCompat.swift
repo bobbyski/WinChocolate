@@ -32,19 +32,4 @@ public extension Timer {
     }
 }
 
-public extension NotificationCenter {
-    @MainActor
-    @discardableResult
-    func addObserver(
-        forName name: Notification.Name?,
-        object obj: Any?,
-        queue: OperationQueue?,
-        using block: @escaping @MainActor (Notification) -> Void
-    ) -> NSObjectProtocol {
-        let bridged: @Sendable (Notification) -> Void = { note in
-            let box = UncheckedSendableBox(value: note)
-            MainActor.assumeIsolated { block(box.value) }
-        }
-        return addObserver(forName: name, object: obj, queue: queue, using: bridged)
-    }
-}
+

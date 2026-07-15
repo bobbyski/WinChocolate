@@ -5,20 +5,23 @@ import Foundation
 /// The public surface follows AppKit's title/action pattern. A native click is
 /// routed through the backend's `registerAction(for:)` into `onAction`, so the
 /// same app code works whether the backend is GTK or the in-memory test double.
-public final class NSButton: NSView {
+open class NSButton: NSControl {
 
-    /// The button's title.
+    private var backingTitle: String
+
+    /// The button's title. Computed over backing storage (not stored+didSet)
+    /// so setting it from app-side convenience initializers still reaches the
+    /// native control — observers are suppressed inside initializers.
     public var title: String {
-        didSet { backend.setText(title, for: handle) }
+        get { backingTitle }
+        set {
+            backingTitle = newValue
+            backend.setText(newValue, for: handle)
+        }
     }
 
     /// Called when the button is clicked (push button) or toggled (checkbox).
     public var onAction: ((NSButton) -> Void)?
-
-    /// AppKit's target/action pair. Set by nib loading (the `<action>` wiring)
-    /// and readable as `button.action?.name`; native dispatch stays on `onAction`.
-    public var action: Selector?
-    public weak var target: AnyObject?
 
     // Look/behavior flags accepted for API parity (GTK buttons style natively).
     public var bezelStyle: NSButtonBezelStyle = .rounded
@@ -44,21 +47,41 @@ public final class NSButton: NSView {
         self.init(title: "", frame: frame)
     }
 
+    /// Apple's content conveniences: title + target/action, sized later.
+    public convenience init(title: String, target: AnyObject?, action: Selector?) {
+        self.init(title: title, frame: .zero)
+        self.target = target
+        self.action = action
+    }
+
+    public convenience init(checkboxWithTitle title: String, target: AnyObject?, action: Selector?) {
+        self.init(checkboxWithTitle: title, frame: .zero)
+        self.target = target
+        self.action = action
+    }
+
+    public convenience init(radioButtonWithTitle title: String, target: AnyObject?, action: Selector?) {
+        self.init(radioWithTitle: title, frame: .zero)
+        self.target = target
+        self.action = action
+    }
+
     /// Creates a titled push button.
     public init(title: String, frame: NSRect) {
-        self.title = title
+        self.backingTitle = title
         let backend = NSApplication.shared.nativeBackend
         let handle = backend.createButton(title: title, frame: frame)
         super.init(frame: frame, handle: handle, backend: backend)
         backend.registerAction(for: handle) { [weak self] in
             guard let self else { return }
             self.onAction?(self)
+            self.sendAction()
         }
     }
 
     /// Creates a checkbox (labelled on/off toggle) that fires `onAction` when toggled.
     public init(checkboxWithTitle title: String, frame: NSRect) {
-        self.title = title
+        self.backingTitle = title
         let backend = NSApplication.shared.nativeBackend
         let handle = backend.createCheckbox(title: title, frame: frame)
         super.init(frame: frame, handle: handle, backend: backend)
@@ -66,13 +89,14 @@ public final class NSButton: NSView {
             guard let self else { return }
             self.backingIsOn = on            // sync silently
             self.onAction?(self)
+            self.sendAction()
         }
     }
 
     /// Creates a radio button. Group several with `NSButton.group(_:)` so only
     /// one can be selected at a time.
     public init(radioWithTitle title: String, frame: NSRect) {
-        self.title = title
+        self.backingTitle = title
         let backend = NSApplication.shared.nativeBackend
         let handle = backend.createRadioButton(title: title, frame: frame)
         super.init(frame: frame, handle: handle, backend: backend)
@@ -80,6 +104,7 @@ public final class NSButton: NSView {
             guard let self else { return }
             self.backingIsOn = on
             if on { self.onAction?(self) }   // radios fire their action on selection
+            self.sendAction()
         }
     }
 
@@ -105,6 +130,7 @@ public final class NSButton: NSView {
             guard let self else { return }
             self.backingIsOn = on
             if !radio || on { self.onAction?(self) }
+            self.sendAction()
         }
     }
 

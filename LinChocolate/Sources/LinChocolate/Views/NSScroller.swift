@@ -9,7 +9,7 @@ import Foundation
 /// - **Standalone** (`init(frame:)`): a slider-like scrollbar the demo builds
 ///   directly; `doubleValue` holds its `0...1` position and `onAction` fires
 ///   when it changes.
-public final class NSScroller: NSView {
+open class NSScroller: NSControl {
     private unowned var owner: NSScrollView?
     private let isVertical: Bool
 

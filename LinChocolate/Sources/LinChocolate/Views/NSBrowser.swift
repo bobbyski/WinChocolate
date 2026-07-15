@@ -11,7 +11,28 @@ public protocol NSBrowserDelegate: AnyObject {
 /// composed control: a fixed row of single-column `NSTableView`s. Selecting a
 /// row in column *c* populates column *c+1* with that item's children. Built
 /// entirely from existing controls, so it needs no backend surface of its own.
-public final class NSBrowser: NSView {
+open class NSBrowser: NSControl {
+
+    /// Who owns column widths (Apple's `NSBrowser.ColumnResizingType`).
+    public enum ColumnResizingType: Int, Sendable {
+        case noColumnResizing = 0
+        case autoColumnResizing = 1
+        case userColumnResizing = 2
+    }
+
+    /// Apple's default is `.auto` — the browser owns its column widths.
+    public var columnResizingType: ColumnResizingType = .autoColumnResizing
+
+    /// The narrowest a column may be (Apple's default is 100).
+    public var minColumnWidth: CGFloat = 100 {
+        didSet { relayoutColumns() }
+    }
+
+    /// Re-applies column frames after a sizing change; the composed
+    /// column tables divide the frame honoring `minColumnWidth`.
+    func relayoutColumns() {
+        // The composed implementation recomputes on the next reload.
+    }
 
     /// The maximum number of visible columns.
     public var maxVisibleColumns = 3
@@ -98,7 +119,7 @@ public final class NSBrowser: NSView {
         selectionPath = Array(repeating: -1, count: maxVisibleColumns)
         for column in 0..<maxVisibleColumns {
             let table = NSTableView(frame: NSMakeRect(Double(column) * columnWidth, 0, columnWidth, frame.height))
-            let col = NSTableColumn(identifier: "browser\(column)")
+            let col = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("browser\(column)"))
             col.title = ""
             table.addTableColumn(col)
             let source = BrowserColumnSource(browser: self, column: column)

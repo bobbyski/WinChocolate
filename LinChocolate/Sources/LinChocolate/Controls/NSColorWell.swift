@@ -3,7 +3,7 @@ import Foundation
 /// AppKit-shaped color well (GtkColorButton) — a swatch that opens the native
 /// color chooser. Reports changes through `onColorChange`; `color` is the
 /// current selection.
-public final class NSColorWell: NSView {
+open class NSColorWell: NSControl {
 
     private var backingColor: NSColor
 
@@ -39,6 +39,7 @@ public final class NSColorWell: NSView {
             guard let self else { return }
             self.backingColor = color          // sync silently
             self.onColorChange?(self)
+            self.sendAction()
         }
     }
 }

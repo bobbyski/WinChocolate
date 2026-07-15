@@ -2,7 +2,13 @@ import Foundation
 
 /// AppKit-shaped search field (GtkSearchEntry). An editable text field with
 /// search affordances; reports edits through `onTextChange`.
-public final class NSSearchField: NSView {
+open class NSSearchField: NSControl {
+
+    /// Background fill (inherited from NSTextField on Apple; these classes are
+    /// NSControl siblings here until the field hierarchy lands — Issue tracked).
+    public var backgroundColor: NSColor? {
+        didSet { backend.setBackgroundColor(backgroundColor, for: handle) }
+    }
 
     private var backingValue: String
 
@@ -46,7 +52,9 @@ public final class NSSearchField: NSView {
             guard let self else { return }
             self.backingValue = text          // sync silently
             self.onTextChange?(self)
+            self.sendAction()
             self.onAction?(self)
+            self.sendAction()
         }
     }
 }

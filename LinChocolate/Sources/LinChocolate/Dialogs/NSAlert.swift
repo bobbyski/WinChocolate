@@ -31,6 +31,9 @@ public final class NSAlert {
     /// Whether a Help button is shown (accepted for parity).
     public var showsHelp: Bool = false
 
+    /// Receives `alertShowHelp(_:)` when the help button is clicked.
+    public weak var delegate: NSAlertDelegate?
+
     public init() {}
 
     /// Convenience initializer building an alert from an `Error`.

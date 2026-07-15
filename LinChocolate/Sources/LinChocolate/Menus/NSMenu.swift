@@ -12,7 +12,7 @@ public struct NSEventModifierFlags: OptionSet, Sendable {
 }
 
 /// AppKit-shaped menu item: a titled entry with an action, or a separator.
-public final class NSMenuItem {
+public final class NSMenuItem: NSObject {
 
     /// The item's displayed title.
     public var title: String
@@ -41,7 +41,9 @@ public final class NSMenuItem {
 
     // AppKit-standard members (accepted for parity; selector dispatch maps a
     // couple of well-known actions, others are no-ops until responder routing).
-    public var action: String?
+    /// AppKit's target/action pair; the item performs `action` on `target`
+    /// when activated (alongside the closure hook).
+    public var action: Selector?
     public weak var target: AnyObject?
     public var isEnabled: Bool = true
     public var tag: Int = 0
@@ -56,9 +58,9 @@ public final class NSMenuItem {
         self.onAction = onAction
     }
 
-    /// AppKit's `init(title:action:keyEquivalent:)` (selector-string action).
-    public convenience init(title: String, action: String?, keyEquivalent: String) {
-        let closure: ((NSMenuItem) -> Void)? = (action == "terminate:")
+    /// AppKit's `init(title:action:keyEquivalent:)`.
+    public convenience init(title: String, action: Selector?, keyEquivalent: String) {
+        let closure: ((NSMenuItem) -> Void)? = (action?.name == "terminate:")
             ? { _ in NSApplication.shared.terminate(nil) } : nil
         self.init(title: title, onAction: closure)
         self.action = action

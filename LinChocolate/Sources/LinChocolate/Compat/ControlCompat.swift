@@ -51,3 +51,13 @@ public extension NSTextField {
         set { onTextChange = newValue }
     }
 }
+
+
+public extension NSComboBox {
+    /// WinChocolate spells the change hook `onTextChanged`; alias to ours.
+    /// (On Apple this arrives via NSTextField inheritance — hierarchy tracked.)
+    var onTextChanged: ((NSComboBox) -> Void)? {
+        get { onTextChange }
+        set { onTextChange = newValue }
+    }
+}
