@@ -2955,11 +2955,19 @@ stressPage.addSubview(stressScrollView)
 // (the 15.4 first-slice wiring model while automatic @IBOutlet binding awaits
 // a KVC layer).
 //
-// 18.11 exclusion: the manual wiring (`winInstantiate`, connection records)
-// stands in for the missing KVC/reflection layer (12.1) — no shim may cover
-// for it, so this page is fenced out of the macOS cross-check build until
-// automatic @IBOutlet binding lands. Excluded, never shimmed.
-#if canImport(WinChocolate) || canImport(LinChocolate)
+// The page renders on all three. The wiring model differs because the *language* does, not
+// because the demo is papering over a gap:
+//
+//   * macOS — Apple's automatic binding. `@IBOutlet`/`@IBAction` + the ObjC runtime resolve
+//     the xib's <outlet>/<action> connections at instantiate time. Nothing is looked up by
+//     hand. AppKit loads the *compiled* .nib, so run-mac.sh runs ibtool over the xib.
+//   * Windows/Linux — the same xib, parsed at runtime, with the connection records read
+//     back explicitly (the 15.4 wiring model). `@objc`/`@IBOutlet` do not exist off-Darwin,
+//     which is the whole reason for the seam — the same language-level seam
+//     DemoConveniences documents for `@objc` action selectors, not a shim.
+//
+// Both halves below are real: each target uses its own genuine mechanism, and the page's
+// behaviour is identical.
 let nibIntroLabel = NSTextField(string: "NSNib (Phase 15): the panel below is instantiated from DemoNibPanel.xib at runtime — controls, frames (y-flipped from Cocoa coordinates), identifiers, and the button's action connection all come from the xib.",
                                 frame: NSMakeRect(12, 6, 1080, 36))
 nibIntroLabel.isEditable = false
@@ -2972,6 +2980,8 @@ nibStatusLabel.isEditable = false
 nibStatusLabel.isBordered = false
 nibStatusLabel.drawsBackground = false
 nibPage.addSubview(nibStatusLabel)
+
+#if canImport(WinChocolate) || canImport(LinChocolate)
 
 /// Stands in for the xib's `DemoNibPanelController` File's Owner: the xib's
 /// `<outlet>` connections resolve against this object, and the demo reads the
@@ -3045,11 +3055,71 @@ do {
     }
 }
 #else
-// 18.11 exclusion: automatic @IBOutlet binding is gated on the 12.1 KVC
-// layer, so the macOS cross-check shows a placeholder.
-let nibExcluded = NSTextField(labelWithString: "The Nib page is excluded from the macOS cross-check until automatic @IBOutlet binding lands (12.1 KVC layer).")
-nibExcluded.frame = NSMakeRect(12, 6, 1080, 18)
-nibPage.addSubview(nibExcluded)
+// macOS: Apple's automatic @IBOutlet/@IBAction binding.
+//
+// File's Owner in the xib is `customClass="DemoNibPanelController"` with five <outlet>
+// connections and two <action>s. AppKit resolves every one of them through the ObjC
+// runtime during `instantiate(withOwner:topLevelObjects:)` — this class only has to
+// declare them.
+final class DemoNibPanelController: NSObject {
+    @IBOutlet weak var nameField: NSTextField?
+    @IBOutlet weak var check: NSButton?
+    @IBOutlet weak var slider: NSSlider?
+    @IBOutlet weak var popup: NSPopUpButton?
+    @IBOutlet weak var countLabel: NSTextField?
+
+    var increments = 0
+
+    @IBAction func increment(_ sender: Any?) {
+        increments += 1
+        countLabel?.stringValue = "\(increments)"
+        MainActor.assumeIsolated {
+            statusLabel.stringValue = "Nib button clicked (count \(increments)) — action increment: wired from the xib"
+        }
+    }
+
+    @IBAction func showValues(_ sender: Any?) {
+        // Reads the live controls straight off the outlets AppKit bound — the outlet half
+        // of the wiring model, exactly as the Windows/Linux branch does through records.
+        MainActor.assumeIsolated {
+            let alert = NSAlert()
+            alert.messageText = "Values read through xib outlets"
+            alert.informativeText = """
+            nameField: "\(nameField?.stringValue ?? "?")"
+            check: \(check?.state == .on ? "on" : "off")
+            slider: \(slider?.doubleValue ?? 0)
+            popup: \(popup?.titleOfSelectedItem ?? "?")
+            countLabel: \(countLabel?.stringValue ?? "?")
+
+            All five controls were bound automatically from the <outlet> connections the xib declares on File's Owner — edit the field, toggle the checkbox, drag the slider, then show again.
+            """
+            _ = alert.runModal()
+            statusLabel.stringValue = "Outlet popup shown — 5 outlets bound automatically by AppKit"
+        }
+    }
+}
+
+let nibOwner = DemoNibPanelController()
+do {
+    // AppKit loads the COMPILED nib (run-mac.sh runs ibtool over the xib).
+    let nibPath = demoResourcePath(named: "DemoNibPanel", ofType: "nib")
+    if let nibData = try? Data(contentsOf: URL(fileURLWithPath: nibPath)) {
+        var topLevel: NSArray?
+        let nib = NSNib(nibData: nibData, bundle: nil)
+        if nib.instantiate(withOwner: nibOwner, topLevelObjects: &topLevel),
+           let panel = (topLevel as? [Any])?.compactMap({ $0 as? NSView }).first {
+            panel.frame = NSMakeRect(24, 52, panel.frame.size.width, panel.frame.size.height)
+            nibPage.addSubview(panel)
+            let bound = [nibOwner.nameField, nibOwner.check, nibOwner.slider,
+                         nibOwner.popup, nibOwner.countLabel].compactMap { $0 }.count
+            nibStatusLabel.stringValue = "Instantiated \((topLevel as? [Any])?.count ?? 0) top-level object(s); \(bound)/5 outlets and 2 actions (increment:, showValues:) bound automatically by AppKit from the xib's connections."
+        } else {
+            nibStatusLabel.stringValue = "DemoNibPanel.nib failed to instantiate."
+        }
+    } else {
+        nibStatusLabel.stringValue = "DemoNibPanel.nib not found at \(nibPath) — run-mac.sh compiles it from the xib with ibtool."
+    }
+}
 #endif
 
 contentView.nextKeyView = button

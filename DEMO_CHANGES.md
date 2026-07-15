@@ -33,6 +33,69 @@ verified** — running the demo, not just building it.
 
 ---
 
+## 2026-07-14 — Nib page: now renders on macOS, using Apple's automatic `@IBOutlet` binding
+
+The page showed a placeholder: *"excluded from the macOS cross-check until automatic
+@IBOutlet binding lands (12.1 KVC layer)."* The reasoning was inverted — **automatic
+`@IBOutlet` binding is exactly what macOS already has.** It is the *chocolate frameworks*
+that lack it and need the manual `winInstantiate` + connection-record model as a stand-in.
+The page was excluded from the one target that could do it natively.
+
+**Both halves are now real, and the page renders on all three:**
+
+| | How the xib's connections resolve |
+|---|---|
+| **macOS** | Apple's automatic binding — `@IBOutlet`/`@IBAction` + the ObjC runtime, resolved during `instantiate(withOwner:topLevelObjects:)`. **No identifier lookup, no connection records.** |
+| **Windows / Linux** | the same xib parsed at runtime, connection records read back explicitly (the 15.4 wiring model) |
+
+The seam is **`@objc`, not a gap being papered over**: `@IBOutlet`/`@IBAction` do not exist
+off-Darwin, which is the identical language-level seam `DemoConveniences` already documents
+for `@objc` action selectors. Each target uses its own genuine mechanism and the page
+behaves identically.
+
+**One real build step, not a workaround.** A `.xib` is Interface Builder *source*; AppKit's
+`NSNib` loads the *compiled* `.nib` — which is what Xcode's build phase produces for every
+Mac app. `run-mac.sh` now runs `ibtool` over the xib into the app bundle. WinChocolate and
+LinChocolate have no ibtool and parse the xib XML directly, so each target consumes the one
+shipped `.xib` the way its own toolchain does.
+
+**Verified before writing any demo code** — a standalone harness proved Apple resolves the
+whole document:
+
+```
+instantiate -> true, topLevelObjects = 2      top-level NSView: 480×240
+Outlets wired AUTOMATICALLY:  nameField ✓  check ✓  slider ✓  popup ✓  countLabel ✓
+Action from the xib: increment: → target=DemoNibPanelController → countLabel = "1"
+```
+
+The demo's File's Owner is now `DemoNibPanelController` — the exact `customClass` the xib
+names — declaring the five `@IBOutlet`s and two `@IBAction`s the xib connects. It declares
+them; AppKit does the rest.
+
+**Files touched**
+
+- `Demo/DemoApplication/main.swift` — macOS branch added (`DemoNibPanelController` +
+  `NSNib.instantiate(withOwner:topLevelObjects:)`); the placeholder is gone; the intro and
+  status labels moved out of the fence and are shared
+- `run-mac.sh` — compiles `DemoNibPanel.xib` → `.nib` with `ibtool`
+
+**Verified**
+
+- macOS: built and ran. The panel renders from the xib — title, text field, Increment
+  button + count, checkbox, Show Outlet Values, slider, popup, box — and the page reports
+  *"Instantiated 2 top-level object(s); **5/5 outlets and 2 actions (increment:,
+  showValues:) bound automatically by AppKit** from the xib's connections."*
+- Linux: `RealDemo` **387 → 387** — no cost; the Windows/Linux branch is untouched.
+
+**Note on the two exclusions.** Both fences examined today dissolved on contact:
+CoreGraphics' was unnecessary (Apple *does* have a BMP codec — `NSBitmapImageRep`), and
+this one was backwards (Apple *has* the binding the fence was waiting for). Neither was
+load-bearing. That is worth remembering the next time an exclusion is written: the
+comment explaining why something can't work is itself a claim, and it should be measured
+like any other.
+
+---
+
 ## 2026-07-14 — CoreGraphics page: whole page was fenced out of macOS over one sprite
 
 **The page showed a placeholder on macOS**: *"The WinCoreGraphics page is excluded from the

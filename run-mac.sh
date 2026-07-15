@@ -76,6 +76,21 @@ PLIST
 # <bundle>/Contents/Resources/Resources — so nest the artwork one level in.
 cp "$DEMO_DIR"/Resources/* "$RES/Resources/" 2>/dev/null || true
 
+# --- 3a. Compile the xib -----------------------------------------------------
+# A .xib is Interface Builder *source*; AppKit's NSNib loads the *compiled* .nib, which is
+# what Xcode's build phase produces. WinChocolate/LinChocolate parse the xib XML directly
+# at runtime (they have no ibtool), so the demo ships the .xib and each target consumes it
+# the way its own toolchain does — this step is macOS's half of that, not a workaround.
+if [[ -f "$DEMO_DIR/Resources/DemoNibPanel.xib" ]]; then
+    if ibtool --errors --warnings --output-format human-readable-text \
+              --compile "$RES/Resources/DemoNibPanel.nib" \
+              "$DEMO_DIR/Resources/DemoNibPanel.xib" >/dev/null 2>&1; then
+        echo "• Compiled DemoNibPanel.xib → DemoNibPanel.nib (ibtool)"
+    else
+        echo "  warning: ibtool could not compile DemoNibPanel.xib — the Nib page will report it" >&2
+    fi
+fi
+
 # --- 4. Compile against the macOS SDK ---------------------------------------
 echo "• Building the shared demo against AppKit…"
 echo "  SDK: $SDK"
