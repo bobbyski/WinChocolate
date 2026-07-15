@@ -33,6 +33,55 @@ verified** — running the demo, not just building it.
 
 ---
 
+## 2026-07-14 — Toolbar icons: real artwork (Tabler Icons) instead of hand-drawn pixels
+
+The toolbar art was **generated at runtime** by `demoToolbarBitmapPath(named:width:kind:)`
+— 172 lines that plotted pixels one at a time to spell OPEN / SAVE / CUSTOMIZE / DISABLE
+into little boxes. That is why it looked the way it did.
+
+Replaced with four [Tabler Icons](https://tabler.io/icons) (MIT, © Paweł Kuna), chosen to
+match each item's actual verb:
+
+| Item | Tabler icon |
+|---|---|
+| Open | `outline/folder-open.svg` |
+| Save | `outline/device-floppy.svg` |
+| Disable Save | `outline/ban.svg` |
+| Customize | `outline/adjustments-horizontal.svg` |
+
+Credits and the re-render recipe: `Demo/DemoApplication/Resources/ICON_CREDITS.md`.
+
+**Rendered black-on-transparent and marked `isTemplate = true`,** so each framework tints
+them for the current appearance — the demo ships **one** copy, not a light and a dark one.
+(Tabler strokes in `currentColor`; with no CSS context that renders black — verified rather
+than assumed. macOS reads SVG natively via `_NSSVGImageRep`, which is what rasterised them.)
+
+**64px artwork in a 32pt item** is exactly 1:1 on Retina, so no `NSImage.size` assignment is
+needed — which matters, because **LinChocolate's `NSImage` has no `size` property at all**.
+The items' `minSize`/`maxSize` moved from the old text-box shapes (58×34, 96×34, 86×34) to
+a square **32×32**.
+
+**Also removed 172 lines of now-dead generator.**
+
+**Files touched**
+
+- `Demo/DemoApplication/Resources/` — 4 new PNGs + `ICON_CREDITS.md`
+- `Demo/DemoApplication/main.swift` — load the PNGs; `isTemplate = true`; square items;
+  generator deleted
+
+**Verified**
+
+- macOS: built and ran. The toolbar shows the four icons, **tinted white for dark mode by
+  the template path** — no light/dark variants shipped.
+- Linux: `RealDemo` **387 → 387** — no cost.
+
+**Follow-up (already on the MUST FIX list):** LinChocolate's `NSImage.draw(in:)` is a
+**no-op stub** in `DemoCompat.swift` and its `isTemplate` is a stub too
+(`get { false } set {} `), so these icons will not render there until real image drawing
+lands — regardless of format. WinChocolate has both for real.
+
+---
+
 ## 2026-07-14 — Nib page: now renders on macOS, using Apple's automatic `@IBOutlet` binding
 
 The page showed a placeholder: *"excluded from the macOS cross-check until automatic
