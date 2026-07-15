@@ -315,7 +315,7 @@ final class DemoTextChangeDelegate: NSObject, NSTextFieldDelegate {
         self.handler = handler
     }
 
-    func controlTextDidChange(_ obj: NSNotification) {
+    func controlTextDidChange(_ obj: Notification) {
         // Delegate callbacks arrive on the UI thread on both platforms.
         if let field = obj.object as? NSTextField {
             nonisolated(unsafe) let sender = field
@@ -431,7 +431,7 @@ final class DemoTableSelectionDelegate: NSObject, NSTableViewDelegate {
         self.handler = handler
     }
 
-    func tableViewSelectionDidChange(_ notification: NSNotification) {
+    func tableViewSelectionDidChange(_ notification: Notification) {
         if let table = notification.object as? NSTableView {
             nonisolated(unsafe) let sender = table
             nonisolated(unsafe) let handler = self.handler
@@ -452,7 +452,7 @@ final class DemoOutlineSelectionDelegate: NSObject, NSOutlineViewDelegate {
         self.handler = handler
     }
 
-    func outlineViewSelectionDidChange(_ notification: NSNotification) {
+    func outlineViewSelectionDidChange(_ notification: Notification) {
         if let outline = notification.object as? NSOutlineView {
             nonisolated(unsafe) let sender = outline
             nonisolated(unsafe) let handler = self.handler

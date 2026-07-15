@@ -74,22 +74,34 @@ because a clean build was actively misleading: the demo compiled, ran, and repor
 with a fifth of its delegate methods inert.
 
 **This is the same root cause as Issue O and the row-drag writer — the third and fourth
-sightings — and it is systemic. Nine more delegate methods are silently dead right now:**
+sightings — and it was systemic: the detector found that *ten* delegate methods were
+silently dead, a fifth of the demo's delegate surface. All ten are now fixed:**
 
-| Protocol | Method | What silently does not work |
-|---|---|---|
-| `NSTableViewDelegate` | `tableViewSelectionDidChange` | table selection status |
-| `NSTableViewDelegate` | `tableView(_:rowViewForRow:)` | row views — demo declares `rowViewFor:`, **a wrong label** |
-| `NSOutlineViewDelegate` | `outlineViewSelectionDidChange` | outline selection |
-| `NSOutlineViewDataSource` | `outlineView(_:pasteboardWriterForItem:)` | outline drag |
-| `NSSplitViewDelegate` | `splitViewDidResizeSubviews` | split-view resize reporting |
-| `NSControlTextEditingDelegate` | `controlTextDidBeginEditing` / `…DidChange` / `…DidEndEditing` | field editing callbacks |
-| `NSTextDelegate` | `textDidChange` | text-view edits |
+| Protocol | Method | Was | What had been silently dead |
+|---|---|---|---|
+| `NSWindowDelegate` | `windowDidResize` | `NSNotification` | **the Auto Layout page never reflowed** |
+| `NSTableViewDelegate` | `tableViewSelectionDidChange` | `NSNotification` | table selection status |
+| `NSTableViewDelegate` | `tableView(_:rowViewForRow:)` | **`rowViewFor:`** — a wrong *label* | row-view backgrounds |
+| `NSOutlineViewDelegate` | `outlineViewSelectionDidChange` | `NSNotification` | outline selection |
+| `NSOutlineViewDataSource` | `outlineView(_:pasteboardWriterForItem:)` | **`-> Any?`** | outline drag |
+| `NSSplitViewDelegate` | `splitViewDidResizeSubviews` | `NSNotification` | split-resize reporting |
+| `NSControlTextEditingDelegate` | `controlTextDidBeginEditing` | `NSNotification` | field editing callbacks |
+| `NSControlTextEditingDelegate` | `controlTextDidChange` | `NSNotification` | field editing callbacks |
+| `NSControlTextEditingDelegate` | `controlTextDidEndEditing` | `NSNotification` | field editing callbacks |
+| `NSTextDelegate` | `textDidChange` | `NSNotification` | text-view edits |
 
-Every one compiles, reads correctly, and never runs. **Not one is detectable by testing on
-Windows or Linux**, because there these are plain-Swift protocols where a near-miss is
-either a hard compile error or simply a different method — the divergence only exists on
-the Apple side of the build.
+Note the three distinct shapes of near-miss: a **wrong type** (`NSNotification` vs
+`Notification`), a **wrong label** (`rowViewFor:` vs `rowViewForRow:`), and a **wrong
+return type** (`Any?` vs `NSPasteboardWriting?`). Every one compiles, reads correctly, and
+never runs.
+
+**Not one is detectable by testing on Windows or Linux**, because there these are
+plain-Swift protocols where a near-miss is either a hard compile error or simply a
+different method — the divergence only exists on the Apple side of the build. Which is
+precisely what the tri-target demo is for.
+
+**Verified:** every selector now answers `responds(to:) == true`, and the build reports
+**0** `nearly matches`.
 
 ### 🛠 MUST FIX — WinChocolate and LinChocolate
 
@@ -108,15 +120,19 @@ names a member whose shape the demo copied from the wrong source.
 
 **Files touched**
 
-- `Demo/DemoApplication/main.swift` — `DemoWindowDelegate.windowDidResize` takes
-  `Notification`
-- `run-mac.sh` — surfaces `nearly matches` warnings as dead-delegate diagnostics
+- `Demo/DemoApplication/main.swift`, `Demo/DemoApplication/DemoConveniences.swift` — all
+  ten delegate signatures matched to Apple's
+- `run-mac.sh` — surfaces `nearly matches` warnings as dead-delegate diagnostics after
+  every successful build
 
 **Verified**
 
-- macOS: built and ran; `windowDidResize` no longer appears in the `nearly matches` list
-  (9 remain, listed above).
-- Linux: `RealDemo` **373 → 373** — no cost.
+- macOS: builds with **0** `nearly matches` warnings, down from 20 (10 unique). Each of
+  the ten selectors independently confirmed `responds(to:) == true`.
+- Linux: `RealDemo` **373 → 377**, +4, all `cannot find type 'NSPasteboardWriting' in
+  scope` — the outline writer, i.e. the MUST FIX already listed for the table writer. The
+  nine `Notification` fixes cost **nothing**, because `Notification` is Foundation and
+  exists on all three platforms: the `NSNotification` spelling was pure loss.
 
 ---
 

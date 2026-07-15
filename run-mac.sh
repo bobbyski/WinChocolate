@@ -113,7 +113,9 @@ echo "✓ Built $APP"
 #
 # Swift emits exactly one signal for it — "nearly matches optional requirement" — and it is
 # a warning, so it drowns in the ~180 routine warnings this build produces. Surface it.
-NEARLY=$(grep -c "nearly matches" "$LOG" 2>/dev/null || echo 0)
+# `grep -c` prints 0 AND exits 1 when there are no matches, so `|| echo 0` would append a
+# second 0 and break the arithmetic test below. Swallow the exit status, keep the count.
+NEARLY=$(grep -c "nearly matches" "$LOG" 2>/dev/null || true)
 if [[ "$NEARLY" -gt 0 ]]; then
     echo
     echo "⚠️  $NEARLY DEAD DELEGATE METHOD(S) — these compile but AppKit never calls them." >&2

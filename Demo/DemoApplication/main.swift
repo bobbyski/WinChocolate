@@ -170,21 +170,21 @@ final class DemoFieldDelegate: NSObject, NSTextFieldDelegate {
     var onEnd: (@MainActor () -> Void)?
     var onChange: (@MainActor (NSTextField) -> Void)?
 
-    func controlTextDidBeginEditing(_ obj: NSNotification) {
+    func controlTextDidBeginEditing(_ obj: Notification) {
         nonisolated(unsafe) let handler = onBegin
         MainActor.assumeIsolated {
             handler?()
         }
     }
 
-    func controlTextDidEndEditing(_ obj: NSNotification) {
+    func controlTextDidEndEditing(_ obj: Notification) {
         nonisolated(unsafe) let handler = onEnd
         MainActor.assumeIsolated {
             handler?()
         }
     }
 
-    func controlTextDidChange(_ obj: NSNotification) {
+    func controlTextDidChange(_ obj: Notification) {
         if let field = obj.object as? NSTextField {
             nonisolated(unsafe) let handler = onChange
             nonisolated(unsafe) let sent = field
@@ -1176,7 +1176,7 @@ final class DemoStatusRowDelegate: NSObject, NSTableViewDelegate {
         return field
     }
 
-    func tableView(_ tableView: NSTableView, rowViewFor row: Int) -> NSTableRowView? {
+    func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? {
         let rowView = NSTableRowView(frame: .zero)
         switch source.items[row].status {
         case "passing": rowView.backgroundColor = NSColor(red: 0.85, green: 0.95, blue: 0.85, alpha: 1)
@@ -1205,7 +1205,7 @@ final class DemoNoteDocument: NSDocument, NSTextViewDelegate {
         text = String(decoding: data, as: UTF8.self)
     }
 
-    func textDidChange(_ notification: NSNotification) {
+    func textDidChange(_ notification: Notification) {
         guard let editor = notification.object as? NSTextView else {
             return
         }
@@ -1237,7 +1237,7 @@ final class DemoNoteDocument: NSDocument, NSTextViewDelegate {
 final class DemoSplitDelegate: NSObject, NSSplitViewDelegate {
     var onResize: (@MainActor () -> Void)?
 
-    func splitViewDidResizeSubviews(_ notification: NSNotification) {
+    func splitViewDidResizeSubviews(_ notification: Notification) {
         nonisolated(unsafe) let handler = onResize
         MainActor.assumeIsolated {
             handler?()
@@ -1408,8 +1408,8 @@ final class DemoOutlineDataSource: NSObject, NSOutlineViewDataSource {
     /// Reported after a reorder so the page can update its status line.
     var onReorder: (@MainActor (_ movedItem: String, _ childIndex: Int) -> Void)?
 
-    func outlineView(_ outlineView: NSOutlineView, pasteboardWriterForItem item: Any) -> Any? {
-        String(describing: item)
+    func outlineView(_ outlineView: NSOutlineView, pasteboardWriterForItem item: Any) -> NSPasteboardWriting? {
+        String(describing: item) as NSString
     }
 
     func outlineView(_ outlineView: NSOutlineView, acceptDrop info: NSDraggingInfo, item parent: Any?, childIndex index: Int) -> Bool {
