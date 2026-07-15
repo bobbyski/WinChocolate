@@ -33,6 +33,93 @@ verified** — running the demo, not just building it.
 
 ---
 
+## 2026-07-14 — Auto Layout page never reflowed — and the compiler had been saying so all along
+
+**The page's reflow logic was correct and complete. It was never called once.**
+
+`DemoWindowDelegate` declared:
+
+```swift
+func windowDidResize(_ notification: NSNotification)   // Apple: Notification
+```
+
+`NSWindowDelegate` is an **`@objc` protocol with optional methods**, discovered at runtime
+via `respondsToSelector:`. A near-miss signature is not a witness, is never exposed to
+Objective-C, and is **never called**:
+
+| Signature | `responds(to: "windowDidResize:")` |
+|---|---|
+| the demo's `NSNotification` | **false** — AppKit never calls it |
+| Apple's `Notification` | true |
+
+So `reflowAutoLayoutPage(width:)` — which exists, is correct, and handles every container
+on the page — ran exactly once at startup and never again. Every box sat static. The demo
+used `NSNotification` because that is the **chocolate frameworks' spelling**
+(`Sources/WinChocolate/Windows/NSWindow.swift:10`); Foundation's `Notification` value type
+exists on all three platforms, so there is no reason for the divergence. Fixed to Apple's
+signature — **cost on Linux: zero** (373 → 373).
+
+### 🔎 The compiler was warning about this the whole time — and the build script hid it
+
+Swift emits exactly one signal for this bug class:
+
+```
+warning: instance method 'windowDidResize' nearly matches optional requirement
+         'windowDidResize' of protocol 'NSWindowDelegate'
+```
+
+It is a **warning**, and `run-mac.sh` greps only for `error:` — so it drowned in ~180
+routine warnings. `run-mac.sh` now surfaces `nearly matches` after every successful build,
+because a clean build was actively misleading: the demo compiled, ran, and reported success
+with a fifth of its delegate methods inert.
+
+**This is the same root cause as Issue O and the row-drag writer — the third and fourth
+sightings — and it is systemic. Nine more delegate methods are silently dead right now:**
+
+| Protocol | Method | What silently does not work |
+|---|---|---|
+| `NSTableViewDelegate` | `tableViewSelectionDidChange` | table selection status |
+| `NSTableViewDelegate` | `tableView(_:rowViewForRow:)` | row views — demo declares `rowViewFor:`, **a wrong label** |
+| `NSOutlineViewDelegate` | `outlineViewSelectionDidChange` | outline selection |
+| `NSOutlineViewDataSource` | `outlineView(_:pasteboardWriterForItem:)` | outline drag |
+| `NSSplitViewDelegate` | `splitViewDidResizeSubviews` | split-view resize reporting |
+| `NSControlTextEditingDelegate` | `controlTextDidBeginEditing` / `…DidChange` / `…DidEndEditing` | field editing callbacks |
+| `NSTextDelegate` | `textDidChange` | text-view edits |
+
+Every one compiles, reads correctly, and never runs. **Not one is detectable by testing on
+Windows or Linux**, because there these are plain-Swift protocols where a near-miss is
+either a hard compile error or simply a different method — the divergence only exists on
+the Apple side of the build.
+
+### 🛠 MUST FIX — WinChocolate and LinChocolate
+
+**Match Apple's exact declarations on every delegate/data-source protocol.** The two
+confirmed so far:
+
+| Protocol member | Apple | WinChocolate / LinChocolate |
+|---|---|---|
+| `NSWindowDelegate.windowDidResize` | `Notification` | **`NSNotification`** |
+| `NSTableViewDataSource.tableView(_:pasteboardWriterForRow:)` | `NSPasteboardWriting?` | **`Any?`** |
+
+`Notification` is Foundation, available on Windows and Linux — the `NSNotification`
+spelling buys nothing and costs correctness. **Audit every protocol in both frameworks
+against Apple's signatures**; the nine rows above are a ready-made worklist, since each one
+names a member whose shape the demo copied from the wrong source.
+
+**Files touched**
+
+- `Demo/DemoApplication/main.swift` — `DemoWindowDelegate.windowDidResize` takes
+  `Notification`
+- `run-mac.sh` — surfaces `nearly matches` warnings as dead-delegate diagnostics
+
+**Verified**
+
+- macOS: built and ran; `windowDidResize` no longer appears in the `nearly matches` list
+  (9 remain, listed above).
+- Linux: `RealDemo` **373 → 373** — no cost.
+
+---
+
 ## 2026-07-14 — Lists (5.x): browser columns too narrow and not resizable
 
 Two symptoms, **two independent causes**, both AppKit defaults the demo never overrode.

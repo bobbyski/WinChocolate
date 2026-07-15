@@ -103,6 +103,32 @@ if ! swiftc -sdk "$SDK" -target arm64-apple-macos13.0 -swift-version 6 \
 fi
 echo "✓ Built $APP"
 
+# --- 4a. "nearly matches" = a silently dead delegate method -------------------
+# AppKit protocols are @objc with *optional* members, which it discovers at runtime via
+# respondsToSelector:. A method whose signature is a near-miss of the requirement is not a
+# witness, is never exposed to Objective-C, and is NEVER CALLED — while compiling cleanly
+# and looking perfectly correct. It is the single most expensive bug class in this port:
+# it cost four "it's still broken" rounds on row drag alone, and it silently disabled the
+# Auto Layout page's entire resize story.
+#
+# Swift emits exactly one signal for it — "nearly matches optional requirement" — and it is
+# a warning, so it drowns in the ~180 routine warnings this build produces. Surface it.
+NEARLY=$(grep -c "nearly matches" "$LOG" 2>/dev/null || echo 0)
+if [[ "$NEARLY" -gt 0 ]]; then
+    echo
+    echo "⚠️  $NEARLY DEAD DELEGATE METHOD(S) — these compile but AppKit never calls them." >&2
+    echo "   A near-miss signature is not an @objc witness. Match Apple's declaration exactly" >&2
+    echo "   (e.g. 'Notification' not 'NSNotification'; 'NSPasteboardWriting?' not 'Any?')," >&2
+    echo "   or the method is silently inert at runtime:" >&2
+    echo >&2
+    grep "nearly matches" "$LOG" \
+        | sed -E "s/^.*warning: instance method '([^']*)' nearly matches optional requirement '([^']*)' of protocol '([^']*)'.*/     • \3.\2  ←  demo declares '\1'/" \
+        | sort -u >&2
+    echo >&2
+    echo "   Verify any one with: obj.responds(to: NSSelectorFromString(\"…\"))" >&2
+    echo >&2
+fi
+
 [[ "$BUILD_ONLY" == "1" ]] && exit 0
 
 # --- 5. Run ------------------------------------------------------------------

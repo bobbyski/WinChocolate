@@ -4929,7 +4929,17 @@ window.contentView = contentView
 // solver, so dragging the window reflows the constraint-driven boxes in real
 // time. Other pages stay frame-based, so nothing else needs a resize pass.
 final class DemoWindowDelegate: NSObject, NSWindowDelegate {
-    func windowDidResize(_ notification: NSNotification) {
+    /// Apple declares this as `windowDidResize(_ notification: Notification)` — the Swift
+    /// value type, not `NSNotification`. `NSWindowDelegate` is an `@objc` protocol with
+    /// *optional* methods, so a near-miss signature is not a witness, never gets
+    /// `@objc`-exposed, and is simply never called: `responds(to: "windowDidResize:")` is
+    /// **false**. Declared `NSNotification` (the chocolate frameworks' spelling) this
+    /// method compiled, read correctly, and never once ran — which is why the Auto Layout
+    /// page never reflowed and every box on it sat static.
+    ///
+    /// Swift *does* warn: "instance method 'windowDidResize' nearly matches optional
+    /// requirement". That warning is the only signal this class of bug gives.
+    func windowDidResize(_ notification: Notification) {
         MainActor.assumeIsolated {
             guard !layoutPage.isHidden else {
                 return
