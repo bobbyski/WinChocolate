@@ -81,6 +81,6 @@ open class NSWindow {
     /// Rebuilds the native toolbar from the current items.
     func reinstallToolbar() {
         guard let toolbar else { return }
-        backend.installToolbar(toolbar.specs(), on: handle)
+        backend.installToolbar(toolbar.specs(), displayMode: toolbar.nativeDisplayMode, on: handle)
     }
 }

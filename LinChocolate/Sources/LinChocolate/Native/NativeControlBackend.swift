@@ -97,6 +97,50 @@ public struct NativeTextRun: Equatable {
 }
 
 /// One row of the toolbar customization palette.
+/// Toolbar-wide rendering mode (AppKit's `NSToolbar.DisplayMode`).
+public enum NativeToolbarDisplayMode: Sendable {
+    case iconAndLabel, iconOnly, labelOnly
+}
+
+/// Everything the customization panel shows: the live strip (a duplicate of
+/// the current toolbar — the drag-and-drop surface), the palette of allowed
+/// items, the default set, and the current display mode.
+public struct NativeToolbarCustomizationSession {
+    public var strip: [NativeToolbarItemSpec]
+    public var palette: [NativeToolbarPaletteItem]
+    public var defaultSet: [NativeToolbarPaletteItem]
+    public var displayModeIndex: Int
+    public init(strip: [NativeToolbarItemSpec], palette: [NativeToolbarPaletteItem],
+                defaultSet: [NativeToolbarPaletteItem], displayModeIndex: Int) {
+        self.strip = strip
+        self.palette = palette
+        self.defaultSet = defaultSet
+        self.displayModeIndex = displayModeIndex
+    }
+}
+
+/// The customization panel's edit callbacks — Apple's drag model, not a
+/// toggle list: drag a palette item in (insert), drag a strip item out
+/// (remove), drag within the strip (move), drag the default set in (reset).
+public struct NativeToolbarCustomizationHandlers {
+    public let onInsert: (String, Int) -> Void
+    public let onMove: (Int, Int) -> Void
+    public let onRemove: (Int) -> Void
+    public let onResetToDefault: () -> Void
+    public let onDisplayMode: (Int) -> Void
+    public let onClose: () -> Void
+    public init(onInsert: @escaping (String, Int) -> Void, onMove: @escaping (Int, Int) -> Void,
+                onRemove: @escaping (Int) -> Void, onResetToDefault: @escaping () -> Void,
+                onDisplayMode: @escaping (Int) -> Void, onClose: @escaping () -> Void) {
+        self.onInsert = onInsert
+        self.onMove = onMove
+        self.onRemove = onRemove
+        self.onResetToDefault = onResetToDefault
+        self.onDisplayMode = onDisplayMode
+        self.onClose = onClose
+    }
+}
+
 public struct NativeToolbarPaletteItem {
     public let identifier: String
     public let label: String
@@ -174,13 +218,17 @@ public protocol NativeControlBackend: AnyObject {
     /// Records whether `handle` uses a top-left (flipped) coordinate system for
     /// positioning its children, so subview placement flips Y appropriately.
     func setViewFlipped(_ flipped: Bool, for handle: NativeHandle)
-    func installToolbar(_ items: [NativeToolbarItemSpec], on window: NativeHandle)
-    /// Shows the toolbar customization palette: one toggle per allowed item.
-    /// Toggling calls `onToggle(identifier, isOn)`; closing calls `onClose`.
-    func runToolbarCustomization(_ items: [NativeToolbarPaletteItem],
-                                 onToggle: @escaping (String, Bool) -> Void,
-                                 onClose: @escaping () -> Void,
+    func installToolbar(_ items: [NativeToolbarItemSpec], displayMode: NativeToolbarDisplayMode, on window: NativeHandle)
+    /// Shows the toolbar customization panel: a duplicate of the live bar as
+    /// the drag surface, the palette of allowed items, and the default set.
+    /// Edits arrive through `handlers`; the framework then pushes a refreshed
+    /// session via `updateToolbarCustomization` while the panel stays open.
+    func runToolbarCustomization(_ session: NativeToolbarCustomizationSession,
+                                 handlers: NativeToolbarCustomizationHandlers,
                                  for window: NativeHandle)
+
+    /// Rebuilds the open customization panel's strip/palette after an edit.
+    func updateToolbarCustomization(_ session: NativeToolbarCustomizationSession)
     /// Shows a modal alert and blocks until a button is pressed; returns the
     /// pressed button's index in `buttons` (AppKit order: first = default,
     /// shown rightmost).

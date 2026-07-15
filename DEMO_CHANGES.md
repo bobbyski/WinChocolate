@@ -33,6 +33,59 @@ verified** — running the demo, not just building it.
 
 ---
 
+## 2026-07-15 — Toolbar customization is now Apple's real sheet, with drag-and-drop (framework work; demo untouched)
+
+The tile-toggle panel from earlier today was, correctly, called out as "a prettier version
+of the same bad concept." Replaced with **Apple's actual customization model**, including
+the WinChocolate concession — since dragging into the real toolbar would cross native
+windows, **the bar is duplicated at the top of the dialog and that strip is the
+drag-and-drop surface**:
+
+- **Strip** (top): a live duplicate of the toolbar. Drop a palette item on it to insert at
+  the pointer position; drag a strip item off onto the panel body to remove it; drag
+  within the strip to reorder. Edits apply to the real toolbar immediately.
+- **Palette**: "Drag your favorite items into the toolbar…" — items already present are
+  **dimmed** (except the multi-instance space/flexible-space/separator), exactly as on
+  Apple. No click-to-toggle.
+- **Default set**: "… or drag the default set into the toolbar." — one draggable unit;
+  dropping it on the strip resets the toolbar to the delegate's defaults.
+- **Show popup**: Icon and Text / Icon Only / Text Only — drives
+  `NSToolbar.displayMode`, which the bar now honors in all three modes (previously
+  ignored).
+- **Done** (suggested-action blue).
+
+**Mechanics.** The backend seam changed from a toggle callback to Apple's edit model —
+`NativeToolbarCustomizationSession` (strip + palette + default set + display mode) with
+`onInsert(id, index)` / `onMove(from, to)` / `onRemove(index)` / `onResetToDefault` /
+`onDisplayMode` / `onClose`; the framework pushes a refreshed session to the open panel
+after every edit. GTK side: real GTK4 drag-and-drop (`GtkDragSource` string payloads,
+`GtkDropTarget` on the strip and the panel body, insertion index computed from the drop
+x over the strip tiles). The hermetic contract tests were migrated to the new seam and
+extended: insert-at-position, reorder, remove, reset, and displayMode all covered.
+
+**Verified with a real pointer drag** (xdotool, under Xvfb): dragging the **Colors** tile
+from the palette into the strip inserted it in the strip, updated the live toolbar behind
+the panel, and dimmed the palette tile; after **Done**, the real toolbar keeps Colors with
+its icon. All contract tests pass.
+
+One compiler note for the file's future: the palette's drag trampolines initially reused
+the names of the view-level DnD trampolines further down the file — Swift's redeclaration
+check **segfaulted** (signal 11) rather than erroring. If that crash appears again, look
+for duplicate top-level declarations first.
+
+**Files touched** (all LinChocolate)
+
+- `Native/NativeControlBackend.swift` — session/handlers types; `installToolbar` takes a
+  display mode
+- `Views/NSToolbar.swift` — session assembly, insert/move/remove/reset/displayMode
+  callbacks, live session push
+- `Native/GTK/GTKNativeControlBackend.swift` — the drag panel, GTK4 DnD plumbing,
+  display-mode-aware item rendering
+- `Native/InMemoryNativeControlBackend.swift`, `Tests/LinChocolateContractTests` — new
+  seam + migrated/extended tests
+
+---
+
 ## 2026-07-15 — Linux toolbar: Apple-style customization palette, standard items, separator (framework work; demo untouched)
 
 The customization UI was a native GTK checkbox list leaking raw identifiers

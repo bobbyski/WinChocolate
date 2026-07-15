@@ -1173,15 +1173,32 @@ do {
     check(toolbar.customizationPaletteIsRunning, "runCustomizationPalette opens it")
     let palette = backend.toolbarCustomizationItems
     check(palette.map { $0.identifier } == ["open", "save", "info"], "palette lists the allowed identifiers")
-    check(palette.first { $0.identifier == "info" }?.isInToolbar == false, "an absent item shows unchecked")
-    check(palette.first { $0.identifier == "open" }?.isInToolbar == true, "a present item shows checked")
+    check(palette.first { $0.identifier == "info" }?.isInToolbar == false, "an absent item shows available (undimmed)")
+    check(palette.first { $0.identifier == "open" }?.isInToolbar == true, "a present item shows dimmed")
 
-    // Toggling "info" on adds it to the toolbar live.
-    backend.simulateToolbarCustomizationToggle("info", on: true)
-    check(backend.toolbars[window.handle.rawValue]?.contains { $0.label == "Info" } == true, "toggling an item on adds it to the toolbar")
-    // Toggling "save" off removes it.
-    backend.simulateToolbarCustomizationToggle("save", on: false)
-    check(backend.toolbars[window.handle.rawValue]?.contains { $0.label == "Save" } == false, "toggling an item off removes it")
+    // The session mirrors Apple's sheet: the live strip plus the default set.
+    check(backend.toolbarCustomizationSession?.strip.map { $0.label } == ["Open", "Save"], "the session's strip duplicates the live toolbar")
+    check(backend.toolbarCustomizationSession?.defaultSet.map { $0.identifier } == ["open", "save"], "the session carries the default set")
+
+    // Dragging "info" into the strip at position 1 inserts it live.
+    backend.simulateToolbarCustomizationInsert("info", at: 1)
+    check(backend.toolbars[window.handle.rawValue]?.map { $0.label } == ["Open", "Info", "Save"], "dragging an item in inserts at the drop position")
+    // Dragging within the strip reorders.
+    backend.simulateToolbarCustomizationMove(from: 0, to: 3)
+    check(backend.toolbars[window.handle.rawValue]?.map { $0.label } == ["Info", "Save", "Open"], "dragging within the strip reorders")
+    // Dragging an item off the strip removes it.
+    backend.simulateToolbarCustomizationRemove(at: 1)
+    check(backend.toolbars[window.handle.rawValue]?.map { $0.label } == ["Info", "Open"], "dragging an item off the strip removes it")
+    // The refreshed session dims palette items now present.
+    check(backend.toolbarCustomizationSession?.palette.first { $0.identifier == "info" }?.isInToolbar == true, "the pushed session reflects edits")
+    // Dragging the default set in resets the strip.
+    backend.simulateToolbarCustomizationReset()
+    check(backend.toolbars[window.handle.rawValue]?.map { $0.label } == ["Open", "Save"], "dragging the default set in resets the toolbar")
+    // The Show popup drives displayMode.
+    backend.simulateToolbarCustomizationDisplayMode(1)
+    check(toolbar.displayMode == .iconOnly, "the Show popup drives displayMode")
+    check(backend.toolbarDisplayModes[window.handle.rawValue] == .iconOnly, "displayMode reaches the installed bar")
+    backend.simulateToolbarCustomizationDisplayMode(0)
 
     backend.simulateToolbarCustomizationClose()
     check(!toolbar.customizationPaletteIsRunning, "closing the palette clears the running flag")

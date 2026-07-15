@@ -87,7 +87,18 @@ public final class NSToolbar {
 
     /// Display mode + config autosave (accepted for API parity).
     public enum DisplayMode: Sendable { case `default`, iconAndLabel, iconOnly, labelOnly }
-    public var displayMode: DisplayMode = .default
+    public var displayMode: DisplayMode = .default {
+        didSet { window?.reinstallToolbar() }
+    }
+
+    /// The backend rendering mode for the current `displayMode`.
+    var nativeDisplayMode: NativeToolbarDisplayMode {
+        switch displayMode {
+        case .default, .iconAndLabel: return .iconAndLabel
+        case .iconOnly: return .iconOnly
+        case .labelOnly: return .labelOnly
+        }
+    }
     public var autosavesConfiguration: Bool = false
     /// WinChocolate's Apple-look toggle (metallic/unified) — accepted no-op.
     public var winAppleLook: WinAppleLook = .unified
@@ -142,30 +153,84 @@ public final class NSToolbar {
     /// `allowsUserCustomization`, a `delegate`, and an installed window.
     public func runCustomizationPalette(_ sender: Any?) {
         guard allowsUserCustomization, let delegate, let window else { return }
-        let present = Set(items.map { $0.itemIdentifier })
-        let paletteItems = delegate.toolbarAllowedItemIdentifiers(self).map { id -> NativeToolbarPaletteItem in
-            var label: String
-            var resolvedItem: NSToolbarItem?
-            if id == NSToolbarItem.flexibleSpaceIdentifier {
-                label = "Flexible Space"
-            } else {
-                resolvedItem = makeItem(id)
-                let resolved = resolvedItem.map { $0.paletteLabel.isEmpty ? $0.label : $0.paletteLabel } ?? id
-                label = resolved.isEmpty ? NSToolbar.standardPaletteName(for: id) : resolved
-            }
-            var palette = NativeToolbarPaletteItem(identifier: id, label: label, isInToolbar: present.contains(id))
-            palette.imagePath = resolvedItem?.image?.path
-            palette.imageIsTemplate = resolvedItem?.image?.isTemplate ?? false
-            palette.iconName = resolvedItem?.image?.iconName
-            return palette
-        }
         customizationPaletteIsRunning = true
-        window.backend.runToolbarCustomization(
-            paletteItems,
-            onToggle: { [weak self] id, isOn in self?.setItem(id, present: isOn) },
-            onClose: { [weak self] in self?.customizationPaletteIsRunning = false },
-            for: window.handle
+        let handlers = NativeToolbarCustomizationHandlers(
+            onInsert: { [weak self] identifier, index in
+                guard let self, let item = self.makeItem(identifier) else { return }
+                self.items.insert(item, at: min(max(index, 0), self.items.count))
+                self.window?.reinstallToolbar()
+                self.pushCustomizationSession()
+            },
+            onMove: { [weak self] from, to in
+                guard let self, self.items.indices.contains(from) else { return }
+                let item = self.items.remove(at: from)
+                let target = from < to ? to - 1 : to
+                self.items.insert(item, at: min(max(target, 0), self.items.count))
+                self.window?.reinstallToolbar()
+                self.pushCustomizationSession()
+            },
+            onRemove: { [weak self] index in
+                guard let self, self.items.indices.contains(index) else { return }
+                self.items.remove(at: index)
+                self.window?.reinstallToolbar()
+                self.pushCustomizationSession()
+            },
+            onResetToDefault: { [weak self] in
+                guard let self, let delegate = self.delegate else { return }
+                self.items = delegate.toolbarDefaultItemIdentifiers(self).compactMap { self.makeItem($0) }
+                self.window?.reinstallToolbar()
+                self.pushCustomizationSession()
+            },
+            onDisplayMode: { [weak self] index in
+                guard let self else { return }
+                self.displayMode = [.iconAndLabel, .iconOnly, .labelOnly][min(max(index, 0), 2)]
+                self.pushCustomizationSession()
+            },
+            onClose: { [weak self] in self?.customizationPaletteIsRunning = false }
         )
+        window.backend.runToolbarCustomization(customizationSession(), handlers: handlers, for: window.handle)
+    }
+
+    /// The panel's current model: live strip, allowed palette (present items
+    /// dimmed), the default set, and the display mode.
+    private func customizationSession() -> NativeToolbarCustomizationSession {
+        let present = Set(items.map { $0.itemIdentifier })
+        let allowed = delegate?.toolbarAllowedItemIdentifiers(self) ?? []
+        let palette = allowed.map { paletteEntry(for: $0, present: present) }
+        let defaults = (delegate?.toolbarDefaultItemIdentifiers(self) ?? []).map {
+            paletteEntry(for: $0, present: [])
+        }
+        let modeIndex: Int
+        switch displayMode {
+        case .default, .iconAndLabel: modeIndex = 0
+        case .iconOnly: modeIndex = 1
+        case .labelOnly: modeIndex = 2
+        }
+        return NativeToolbarCustomizationSession(strip: specs(), palette: palette,
+                                                 defaultSet: defaults, displayModeIndex: modeIndex)
+    }
+
+    private func paletteEntry(for id: NSToolbarItem.Identifier, present: Set<String>) -> NativeToolbarPaletteItem {
+        var label: String
+        var resolvedItem: NSToolbarItem?
+        if id == NSToolbarItem.flexibleSpaceIdentifier {
+            label = "Flexible Space"
+        } else {
+            resolvedItem = makeItem(id)
+            let resolved = resolvedItem.map { $0.paletteLabel.isEmpty ? $0.label : $0.paletteLabel } ?? id
+            label = resolved.isEmpty ? NSToolbar.standardPaletteName(for: id) : resolved
+        }
+        var palette = NativeToolbarPaletteItem(identifier: id, label: label, isInToolbar: present.contains(id))
+        palette.imagePath = resolvedItem?.image?.path
+        palette.imageIsTemplate = resolvedItem?.image?.isTemplate ?? false
+        palette.iconName = resolvedItem?.image?.iconName
+        return palette
+    }
+
+    /// Refreshes the open panel after any edit.
+    private func pushCustomizationSession() {
+        guard customizationPaletteIsRunning, let window else { return }
+        window.backend.updateToolbarCustomization(customizationSession())
     }
 
     /// Converts the items to backend specs.

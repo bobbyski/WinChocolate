@@ -448,7 +448,7 @@ public final class GTKNativeControlBackend: NativeControlBackend {
         gtk_window_destroy(asWindow(OpaquePointer(alert)))
         return state.response
     }
-    public func installToolbar(_ items: [NativeToolbarItemSpec], on window: NativeHandle) {
+    public func installToolbar(_ items: [NativeToolbarItemSpec], displayMode: NativeToolbarDisplayMode = .iconAndLabel, on window: NativeHandle) {
         guard let box = windowBoxes[window.rawValue] else { return }
         // Detach any embedded custom views (page selector, search field, …) from
         // the old bar first so removing it doesn't destroy widgets we still own.
@@ -509,26 +509,8 @@ public final class GTKNativeControlBackend: NativeControlBackend {
                 continue
             }
             let button: UnsafeMutablePointer<GtkWidget>
-            if let imagePath = item.imagePath,
-               let icon = makeToolbarImage(path: imagePath, template: item.imageIsTemplate) {
-                // Icon above label — the same layout as the icon-name branch.
+            if let content = makeToolbarItemContent(item, displayMode: displayMode) {
                 button = gtk_button_new()!
-                let content = gtk_box_new(GTK_ORIENTATION_VERTICAL, 2)!
-                gtk_box_append(asBox(OpaquePointer(content)), icon)
-                if !item.label.isEmpty {
-                    gtk_box_append(asBox(OpaquePointer(content)), gtk_label_new(item.label))
-                }
-                gtk_button_set_child(asButton(OpaquePointer(button)), content)
-            } else if let iconName = item.iconName {
-                // Icon above label (the classic macOS toolbar item layout).
-                button = gtk_button_new()!
-                let content = gtk_box_new(GTK_ORIENTATION_VERTICAL, 2)!
-                let icon = gtk_image_new_from_icon_name(iconName)!
-                gtk_image_set_pixel_size(OpaquePointer(icon), 22)
-                gtk_box_append(asBox(OpaquePointer(content)), icon)
-                if !item.label.isEmpty {
-                    gtk_box_append(asBox(OpaquePointer(content)), gtk_label_new(item.label))
-                }
                 gtk_button_set_child(asButton(OpaquePointer(button)), content)
             } else {
                 button = gtk_button_new_with_label(item.label)!
@@ -548,6 +530,32 @@ public final class GTKNativeControlBackend: NativeControlBackend {
         gtk_box_insert_child_after(asBox(box), bar, anchor.map(asWidget))
         windowToolbars[window.rawValue] = OpaquePointer(bar)
     }
+    /// Builds a toolbar item's visual content for a display mode: icon over
+    /// label (Apple's .iconAndLabel), icon only, or label only. Returns nil
+    /// when there is nothing but a plain label to show.
+    private func makeToolbarItemContent(_ item: NativeToolbarItemSpec,
+                                        displayMode: NativeToolbarDisplayMode) -> UnsafeMutablePointer<GtkWidget>? {
+        var icon: UnsafeMutablePointer<GtkWidget>?
+        if displayMode != .labelOnly {
+            if let path = item.imagePath {
+                icon = makeToolbarImage(path: path, template: item.imageIsTemplate)
+            } else if let iconName = item.iconName {
+                let themed = gtk_image_new_from_icon_name(iconName)!
+                gtk_image_set_pixel_size(OpaquePointer(themed), 22)
+                icon = themed
+            }
+        }
+        guard icon != nil || displayMode == .labelOnly else { return nil }
+        let content = gtk_box_new(GTK_ORIENTATION_VERTICAL, 2)!
+        gtk_widget_set_halign(content, GTK_ALIGN_CENTER)
+        if let icon { gtk_box_append(asBox(OpaquePointer(content)), icon) }
+        if displayMode != .iconOnly && !item.label.isEmpty {
+            gtk_box_append(asBox(OpaquePointer(content)), gtk_label_new(item.label))
+        }
+        if displayMode == .labelOnly && item.label.isEmpty { return nil }
+        return content
+    }
+
     /// Loads a file-backed toolbar icon. Template images are pure-alpha
     /// artwork (the demo's Tabler PNGs are black-on-transparent): recolor every
     /// pixel to the theme foreground, keeping alpha — AppKit's template
@@ -576,9 +584,18 @@ public final class GTKNativeControlBackend: NativeControlBackend {
         return image
     }
 
-    public func runToolbarCustomization(_ items: [NativeToolbarPaletteItem],
-                                        onToggle: @escaping (String, Bool) -> Void,
-                                        onClose: @escaping () -> Void,
+    /// The open customization panel's live widgets, for in-place refresh.
+    private struct CustomizationPanelState {
+        var panel: OpaquePointer
+        var stripHolder: OpaquePointer
+        var paletteHolder: OpaquePointer
+        var handlers: NativeToolbarCustomizationHandlers
+        var displayModeIndex: Int
+    }
+    private var customizationState: CustomizationPanelState?
+
+    public func runToolbarCustomization(_ session: NativeToolbarCustomizationSession,
+                                        handlers: NativeToolbarCustomizationHandlers,
                                         for window: NativeHandle) {
         let panel = gtk_window_new()!
         gtk_window_set_title(asWindow(OpaquePointer(panel)), "Customize Toolbar")
@@ -588,54 +605,67 @@ public final class GTKNativeControlBackend: NativeControlBackend {
         }
         if !nonComposited { gtk_window_set_modal(asWindow(OpaquePointer(panel)), gboolean(1)) }
 
-        let vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 10)!
-        gtk_widget_set_margin_top(vbox, 18); gtk_widget_set_margin_bottom(vbox, 14)
+        let vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 12)!
+        gtk_widget_set_margin_top(vbox, 16); gtk_widget_set_margin_bottom(vbox, 14)
         gtk_widget_set_margin_start(vbox, 20); gtk_widget_set_margin_end(vbox, 20)
         gtk_widget_add_css_class(vbox, "linchocolate-palette")
-        let heading = gtk_label_new("Drag or click your favorite items into the toolbar…")!
+
+        // The duplicated bar — the drag-and-drop surface (the WinChocolate
+        // concession: dragging into the real toolbar would cross windows).
+        let stripHolder = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0)!
+        gtk_box_append(asBox(OpaquePointer(vbox)), stripHolder)
+
+        let heading = gtk_label_new("Drag your favorite items into the toolbar…")!
         gtk_widget_set_halign(heading, GTK_ALIGN_START)
         gtk_box_append(asBox(OpaquePointer(vbox)), heading)
 
-        // The palette grid: Apple-style tiles (icon over label), toggled by
-        // clicking — a pressed tile is in the toolbar.
-        let columns = 4
-        let grid = gtk_grid_new()!
-        gtk_grid_set_row_spacing(asGrid(OpaquePointer(grid)), 8)
-        gtk_grid_set_column_spacing(asGrid(OpaquePointer(grid)), 8)
-        for (index, item) in items.enumerated() {
-            let tile = gtk_toggle_button_new()!
-            gtk_widget_add_css_class(tile, "linchocolate-palette-tile")
-            gtk_widget_set_size_request(tile, 120, 56)
-            gtk_toggle_button_set_active(asToggleButton(OpaquePointer(tile)), gboolean(item.isInToolbar ? 1 : 0))
+        // Palette grid (drag sources; present items dimmed).
+        let paletteHolder = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0)!
+        gtk_box_append(asBox(OpaquePointer(vbox)), paletteHolder)
 
-            let content = gtk_box_new(GTK_ORIENTATION_VERTICAL, 3)!
-            gtk_widget_set_halign(content, GTK_ALIGN_CENTER)
-            gtk_widget_set_valign(content, GTK_ALIGN_CENTER)
-            if let path = item.imagePath, let icon = makeToolbarImage(path: path, template: item.imageIsTemplate) {
-                gtk_box_append(asBox(OpaquePointer(content)), icon)
-            } else if let iconName = item.iconName {
-                let icon = gtk_image_new_from_icon_name(iconName)!
-                gtk_image_set_pixel_size(OpaquePointer(icon), 22)
-                gtk_box_append(asBox(OpaquePointer(content)), icon)
-            }
-            let label = gtk_label_new(item.label)!
-            gtk_box_append(asBox(OpaquePointer(content)), label)
-            gtk_button_set_child(asButton(OpaquePointer(tile)), content)
+        let heading2 = gtk_label_new("… or drag the default set into the toolbar.")!
+        gtk_widget_set_halign(heading2, GTK_ALIGN_START)
+        gtk_box_append(asBox(OpaquePointer(vbox)), heading2)
 
-            let toggleBox = ToolbarToggleBox(id: item.identifier, action: onToggle)
-            g_signal_connect_data(
-                UnsafeMutableRawPointer(tile), "toggled",
-                unsafeBitCast(gtkPaletteTileTrampoline, to: GCallback.self),
-                Unmanaged.passRetained(toggleBox).toOpaque(), boxRelease, GConnectFlags(rawValue: 0)
-            )
-            gtk_grid_attach(asGrid(OpaquePointer(grid)), tile,
-                            gint(index % columns), gint(index / columns), 1, 1)
+        // The default set: one draggable unit that resets the strip.
+        let defaultBar = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 4)!
+        gtk_widget_add_css_class(defaultBar, "linchocolate-toolbar")
+        for item in session.defaultSet {
+            let tile = makeStripTileWidget(spec(for: item), displayMode: .iconAndLabel)
+            gtk_widget_set_sensitive(tile, gboolean(0))
+            gtk_box_append(asBox(OpaquePointer(defaultBar)), tile)
         }
-        gtk_box_append(asBox(OpaquePointer(vbox)), grid)
+        addDragSource(to: defaultBar, payload: "default")
+        gtk_box_append(asBox(OpaquePointer(vbox)), defaultBar)
 
+        // Bottom row: Show [mode] … Done.
+        let bottom = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8)!
+        gtk_box_append(asBox(OpaquePointer(bottom)), gtk_label_new("Show"))
+        var modeStrings: [UnsafePointer<CChar>?] = []
+        for mode in ["Icon and Text", "Icon Only", "Text Only"] { modeStrings.append(UnsafePointer(strdup(mode))) }
+        modeStrings.append(nil)
+        let dropdown = modeStrings.withUnsafeMutableBufferPointer { buffer in
+            gtk_drop_down_new_from_strings(buffer.baseAddress)!
+        }
+        gtk_drop_down_set_selected(OpaquePointer(dropdown), guint(session.displayModeIndex))
+        let modeBox = DropDownBox(dropdown: OpaquePointer(dropdown)) { [weak self] index in
+            guard let self, self.customizationState != nil else { return }
+            handlers.onDisplayMode(index)
+        }
+        g_signal_connect_data(
+            UnsafeMutableRawPointer(dropdown), "notify::selected",
+            unsafeBitCast(gtkDropDownSelectedTrampoline, to: GCallback.self),
+            Unmanaged.passRetained(modeBox).toOpaque(), boxRelease, GConnectFlags(rawValue: 0)
+        )
+        gtk_box_append(asBox(OpaquePointer(bottom)), dropdown)
+        let spacer = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0)!
+        gtk_widget_set_hexpand(spacer, gboolean(1))
+        gtk_box_append(asBox(OpaquePointer(bottom)), spacer)
         let done = gtk_button_new_with_label("Done")!
-        let doneBox = ActionBox {
-            onClose()
+        gtk_widget_add_css_class(done, "suggested-action")
+        let doneBox = ActionBox { [weak self] in
+            self?.customizationState = nil
+            handlers.onClose()
             gtk_window_destroy(UnsafeMutablePointer<GtkWindow>(OpaquePointer(panel)))
         }
         g_signal_connect_data(
@@ -643,10 +673,25 @@ public final class GTKNativeControlBackend: NativeControlBackend {
             unsafeBitCast(gtkActionTrampoline, to: GCallback.self),
             Unmanaged.passRetained(doneBox).toOpaque(), boxRelease, GConnectFlags(rawValue: 0)
         )
-        gtk_box_append(asBox(OpaquePointer(vbox)), done)
+        gtk_box_append(asBox(OpaquePointer(bottom)), done)
+        gtk_box_append(asBox(OpaquePointer(vbox)), bottom)
 
-        // The window-close (X) also ends the palette session.
-        let closeBox = ActionBox { onClose() }
+        // Dropping a strip item on the panel body (not the strip) removes it —
+        // Apple's drag-off-the-toolbar gesture.
+        addDropTarget(to: vbox) { [weak self] payload, _, _ in
+            guard let self, self.customizationState != nil else { return false }
+            if payload.hasPrefix("strip:"), let index = Int(payload.dropFirst(6)) {
+                self.customizationState?.handlers.onRemove(index)
+                return true
+            }
+            return false
+        }
+
+        // The window-close (X) also ends the session.
+        let closeBox = ActionBox { [weak self] in
+            self?.customizationState = nil
+            handlers.onClose()
+        }
         g_signal_connect_data(
             UnsafeMutableRawPointer(panel), "close-request",
             unsafeBitCast(gtkCloseRequestTrampoline, to: GCallback.self),
@@ -654,8 +699,152 @@ public final class GTKNativeControlBackend: NativeControlBackend {
         )
 
         gtk_window_set_child(asWindow(OpaquePointer(panel)), vbox)
+        customizationState = CustomizationPanelState(panel: OpaquePointer(panel),
+                                                     stripHolder: OpaquePointer(stripHolder),
+                                                     paletteHolder: OpaquePointer(paletteHolder),
+                                                     handlers: handlers,
+                                                     displayModeIndex: session.displayModeIndex)
+        rebuildCustomizationContent(session)
         gtk_window_present(asWindow(OpaquePointer(panel)))
     }
+
+    public func updateToolbarCustomization(_ session: NativeToolbarCustomizationSession) {
+        guard customizationState != nil else { return }
+        customizationState?.displayModeIndex = session.displayModeIndex
+        rebuildCustomizationContent(session)
+    }
+
+    /// (Re)fills the strip duplicate and palette grid from the session.
+    private func rebuildCustomizationContent(_ session: NativeToolbarCustomizationSession) {
+        guard let state = customizationState else { return }
+
+        while let child = gtk_widget_get_first_child(asWidget(state.stripHolder)) {
+            gtk_box_remove(asBox(state.stripHolder), child)
+        }
+        let strip = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 4)!
+        gtk_widget_add_css_class(strip, "linchocolate-toolbar")
+        gtk_widget_set_size_request(strip, 660, 52)
+        let displayMode: NativeToolbarDisplayMode = [.iconAndLabel, .iconOnly, .labelOnly][min(max(state.displayModeIndex, 0), 2)]
+        for (index, item) in session.strip.enumerated() {
+            let tile = makeStripTileWidget(item, displayMode: displayMode)
+            addDragSource(to: tile, payload: "strip:\(index)")
+            gtk_box_append(asBox(OpaquePointer(strip)), tile)
+        }
+        addDropTarget(to: strip) { [weak self] payload, x, _ in
+            guard let self, let state = self.customizationState else { return false }
+            let index = self.stripInsertionIndex(in: OpaquePointer(strip), x: x)
+            if payload == "default" {
+                state.handlers.onResetToDefault()
+                return true
+            }
+            if payload.hasPrefix("new:") {
+                state.handlers.onInsert(String(payload.dropFirst(4)), index)
+                return true
+            }
+            if payload.hasPrefix("strip:"), let from = Int(payload.dropFirst(6)) {
+                state.handlers.onMove(from, index)
+                return true
+            }
+            return false
+        }
+        gtk_box_append(asBox(state.stripHolder), strip)
+
+        while let child = gtk_widget_get_first_child(asWidget(state.paletteHolder)) {
+            gtk_box_remove(asBox(state.paletteHolder), child)
+        }
+        let columns = 4
+        let grid = gtk_grid_new()!
+        gtk_grid_set_row_spacing(asGrid(OpaquePointer(grid)), 8)
+        gtk_grid_set_column_spacing(asGrid(OpaquePointer(grid)), 8)
+        let multiInstance: Set<String> = ["NSToolbarSeparatorItem", "NSToolbarSpaceItem", "NSToolbarFlexibleSpaceItem"]
+        for (index, item) in session.palette.enumerated() {
+            let tile = gtk_box_new(GTK_ORIENTATION_VERTICAL, 3)!
+            gtk_widget_add_css_class(tile, "linchocolate-palette-tile")
+            gtk_widget_set_size_request(tile, 120, 56)
+            let content = makeStripTileWidget(spec(for: item), displayMode: .iconAndLabel)
+            gtk_widget_set_valign(content, GTK_ALIGN_CENTER)
+            gtk_widget_set_vexpand(content, gboolean(1))
+            gtk_widget_set_halign(content, GTK_ALIGN_CENTER)
+            gtk_box_append(asBox(OpaquePointer(tile)), content)
+            if item.isInToolbar && !multiInstance.contains(item.identifier) {
+                gtk_widget_set_sensitive(tile, gboolean(0))   // dimmed, as on Apple
+            } else {
+                addDragSource(to: tile, payload: "new:\(item.identifier)")
+            }
+            gtk_grid_attach(asGrid(OpaquePointer(grid)), tile,
+                            gint(index % columns), gint(index / columns), 1, 1)
+        }
+        gtk_box_append(asBox(state.paletteHolder), grid)
+    }
+
+    /// A palette entry rendered as an item spec (for the shared tile builder).
+    private func spec(for item: NativeToolbarPaletteItem) -> NativeToolbarItemSpec {
+        NativeToolbarItemSpec(imagePath: item.imagePath, imageIsTemplate: item.imageIsTemplate,
+                              identifier: item.identifier, label: item.label,
+                              iconName: item.iconName)
+    }
+
+    /// A strip/palette tile: the item content in a flat button-look box.
+    private func makeStripTileWidget(_ item: NativeToolbarItemSpec,
+                                     displayMode: NativeToolbarDisplayMode) -> UnsafeMutablePointer<GtkWidget> {
+        if item.identifier == "NSToolbarSeparatorItem" {
+            let divider = gtk_separator_new(GTK_ORIENTATION_VERTICAL)!
+            gtk_widget_set_margin_top(divider, 6); gtk_widget_set_margin_bottom(divider, 6)
+            return divider
+        }
+        if item.identifier == "NSToolbarFlexibleSpaceItem" || item.identifier == "NSToolbarSpaceItem" {
+            let label = gtk_label_new(item.identifier == "NSToolbarSpaceItem" ? "Space" : "Flexible Space")!
+            gtk_widget_add_css_class(label, "dim-label")
+            return label
+        }
+        if let content = makeToolbarItemContent(item, displayMode: displayMode) {
+            return content
+        }
+        return gtk_label_new(item.label)!
+    }
+
+    /// The insertion index for a drop at `x` over the strip: before the first
+    /// tile whose midpoint is right of the pointer.
+    private func stripInsertionIndex(in strip: OpaquePointer, x: Double) -> Int {
+        var index = 0
+        var child = gtk_widget_get_first_child(asWidget(strip))
+        var edge = 0.0
+        while let current = child {
+            let width = Double(gtk_widget_get_width(current))
+            if x < edge + width / 2 { return index }
+            edge += width + 4
+            index += 1
+            child = gtk_widget_get_next_sibling(current)
+        }
+        return index
+    }
+
+    /// Attaches a string drag source carrying `payload`.
+    private func addDragSource(to widget: UnsafeMutablePointer<GtkWidget>, payload: String) {
+        let source = gtk_drag_source_new()
+        gtk_drag_source_set_actions(source, GDK_ACTION_COPY)
+        let box = DragPayloadBox(payload)
+        g_signal_connect_data(
+            UnsafeMutableRawPointer(source), "prepare",
+            unsafeBitCast(gtkPaletteDragPrepareTrampoline, to: GCallback.self),
+            Unmanaged.passRetained(box).toOpaque(), boxRelease, GConnectFlags(rawValue: 0)
+        )
+        gtk_widget_add_controller(widget, source)
+    }
+
+    /// Attaches a string drop target; `handle` reports whether the drop landed.
+    private func addDropTarget(to widget: UnsafeMutablePointer<GtkWidget>,
+                               handle: @escaping (String, Double, Double) -> Bool) {
+        let target = gtk_drop_target_new(GType(16 << 2), GDK_ACTION_COPY)
+        let box = DropHandlerBox(handle)
+        g_signal_connect_data(
+            UnsafeMutableRawPointer(target), "drop",
+            unsafeBitCast(gtkPaletteDropTrampoline, to: GCallback.self),
+            Unmanaged.passRetained(box).toOpaque(), boxRelease, GConnectFlags(rawValue: 0)
+        )
+        gtk_widget_add_controller(widget, target)
+    }
+
     public func runOpenPanel(directory: String?, for window: NativeHandle?) -> String? {
         runFileDialog(open: true, directory: directory, suggestedName: nil, for: window)
     }
@@ -2104,6 +2293,54 @@ private final class ToolbarToggleBox {
 }
 
 /// Handler for a customization-palette checkbox `toggled` — reports (id, on).
+/// Carries a drag source's string payload to the `prepare` handler.
+private final class DragPayloadBox {
+    let payload: String
+    init(_ payload: String) { self.payload = payload }
+}
+
+/// Carries a drop target's handler; returns whether the drop was accepted.
+private final class DropHandlerBox {
+    let handle: (String, Double, Double) -> Bool
+    init(_ handle: @escaping (String, Double, Double) -> Bool) { self.handle = handle }
+}
+
+/// Carries the display-mode dropdown and its change handler.
+private final class DropDownBox {
+    let dropdown: OpaquePointer
+    let onChange: (Int) -> Void
+    init(dropdown: OpaquePointer, onChange: @escaping (Int) -> Void) {
+        self.dropdown = dropdown
+        self.onChange = onChange
+    }
+}
+
+/// `GtkDragSource::prepare` — builds a string content provider from the box.
+private let gtkPaletteDragPrepareTrampoline: @convention(c) (UnsafeMutableRawPointer?, Double, Double, gpointer?) -> OpaquePointer? = { _, _, _, userData in
+    guard let userData else { return nil }
+    let box = Unmanaged<DragPayloadBox>.fromOpaque(userData).takeUnretainedValue()
+    var value = GValue()
+    _ = g_value_init(&value, GType(16 << 2))   // G_TYPE_STRING
+    g_value_set_string(&value, box.payload)
+    let provider = gdk_content_provider_new_for_value(&value)
+    g_value_unset(&value)
+    return OpaquePointer(provider)
+}
+
+/// `GtkDropTarget::drop` — reads the string payload and dispatches.
+private let gtkPaletteDropTrampoline: @convention(c) (UnsafeMutableRawPointer?, UnsafePointer<GValue>?, Double, Double, gpointer?) -> gboolean = { _, value, x, y, userData in
+    guard let value, let userData, let raw = g_value_get_string(value) else { return gboolean(0) }
+    let box = Unmanaged<DropHandlerBox>.fromOpaque(userData).takeUnretainedValue()
+    return gboolean(box.handle(String(cString: raw), x, y) ? 1 : 0)
+}
+
+/// `GtkDropDown::notify::selected` — reports the new index.
+private let gtkDropDownSelectedTrampoline: @convention(c) (UnsafeMutableRawPointer?, UnsafeMutableRawPointer?, gpointer?) -> Void = { _, _, userData in
+    guard let userData else { return }
+    let box = Unmanaged<DropDownBox>.fromOpaque(userData).takeUnretainedValue()
+    box.onChange(Int(gtk_drop_down_get_selected(box.dropdown)))
+}
+
 /// Palette tiles are GtkToggleButtons: pressed = present in the toolbar.
 private let gtkPaletteTileTrampoline: @convention(c) (UnsafeMutableRawPointer?, gpointer?) -> Void = { button, userData in
     guard let button, let userData else { return }

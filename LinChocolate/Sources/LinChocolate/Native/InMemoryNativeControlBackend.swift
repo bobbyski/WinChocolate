@@ -171,7 +171,9 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     public func installMenuBar(_ menus: [NativeMenuSpec], on window: NativeHandle) {
         menuBars[window.rawValue] = menus
     }
-    public func installToolbar(_ items: [NativeToolbarItemSpec], on window: NativeHandle) {
+    public private(set) var toolbarDisplayModes: [UInt: NativeToolbarDisplayMode] = [:]
+    public func installToolbar(_ items: [NativeToolbarItemSpec], displayMode: NativeToolbarDisplayMode = .iconAndLabel, on window: NativeHandle) {
+        toolbarDisplayModes[window.rawValue] = displayMode
         toolbars[window.rawValue] = items
     }
     /// Fires toolbar item `index`'s action, as if the user clicked it.
@@ -182,19 +184,40 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
 
     /// The palette items from the most recent customization request.
     public private(set) var toolbarCustomizationItems: [NativeToolbarPaletteItem] = []
-    private var toolbarCustomizationToggle: ((String, Bool) -> Void)?
     private var toolbarCustomizationClose: (() -> Void)?
-    public func runToolbarCustomization(_ items: [NativeToolbarPaletteItem],
-                                        onToggle: @escaping (String, Bool) -> Void,
-                                        onClose: @escaping () -> Void,
+    public func runToolbarCustomization(_ session: NativeToolbarCustomizationSession,
+                                        handlers: NativeToolbarCustomizationHandlers,
                                         for window: NativeHandle) {
-        toolbarCustomizationItems = items
-        toolbarCustomizationToggle = onToggle
-        toolbarCustomizationClose = onClose
+        toolbarCustomizationSession = session
+        toolbarCustomizationItems = session.palette
+        toolbarCustomizationHandlers = handlers
+        toolbarCustomizationClose = handlers.onClose
     }
-    /// Test hook: toggles an item in the open customization palette.
-    public func simulateToolbarCustomizationToggle(_ identifier: String, on: Bool) {
-        toolbarCustomizationToggle?(identifier, on)
+
+    public func updateToolbarCustomization(_ session: NativeToolbarCustomizationSession) {
+        toolbarCustomizationSession = session
+        toolbarCustomizationItems = session.palette
+    }
+
+    /// The last session pushed to the (recorded) customization panel.
+    public private(set) var toolbarCustomizationSession: NativeToolbarCustomizationSession?
+    private var toolbarCustomizationHandlers: NativeToolbarCustomizationHandlers?
+
+    /// Test hooks: drive the panel exactly as drags would.
+    public func simulateToolbarCustomizationInsert(_ identifier: String, at index: Int) {
+        toolbarCustomizationHandlers?.onInsert(identifier, index)
+    }
+    public func simulateToolbarCustomizationRemove(at index: Int) {
+        toolbarCustomizationHandlers?.onRemove(index)
+    }
+    public func simulateToolbarCustomizationMove(from: Int, to: Int) {
+        toolbarCustomizationHandlers?.onMove(from, to)
+    }
+    public func simulateToolbarCustomizationReset() {
+        toolbarCustomizationHandlers?.onResetToDefault()
+    }
+    public func simulateToolbarCustomizationDisplayMode(_ index: Int) {
+        toolbarCustomizationHandlers?.onDisplayMode(index)
     }
     /// Test hook: closes the open customization palette.
     public func simulateToolbarCustomizationClose() {
