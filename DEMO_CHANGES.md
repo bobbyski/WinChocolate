@@ -33,6 +33,159 @@ verified** — running the demo, not just building it.
 
 ---
 
+## 2026-07-14 — Caption sweep across every page; table sorted *and* selected; image not clickable
+
+### 1. Every caption, every page
+
+`NSTextField(string:)` is real AppKit for an **editable, bordered, background-drawing**
+field — that is its documented job, and AppKit's answer for a caption is
+`NSTextField(labelWithString:)`, which is exactly these four properties. The demo carries
+frames, so a single sweep after every page is assembled now demotes all 59 captions:
+
+```swift
+caption.isBordered = false
+caption.drawsBackground = false
+caption.isEditable = false
+caption.isSelectable = false
+```
+
+One place decides what is a caption; the demo's four real input fields
+(`editableTextField`, `priceField`, `contactNameField`, `contactStatusField`) are listed
+separately and never touched. `statusLabel`/`focusLabel` keep `drawsBackground` — they are
+deliberate colored panels whose `backgroundColor` `applyLiveAppearanceRefresh()` re-resolves
+on a theme switch — but lose their borders like everything else. The Nib page's labels are
+excluded: that page is fenced out of the macOS build (18.11) and already sets these itself.
+
+**This also fixes the keyboard bug:** `counterLabel` was an editable field, so it took first
+responder and swallowed typing — during testing its text became `"ough for the apple clock"`.
+It is a caption now and no longer eats input.
+
+### 2. Table selected a whole column when sorting
+
+The demo set **`tableView.allowsColumnSelection = true`**, whose AppKit default is `false`:
+
+| | Behaviour |
+|---|---|
+| `allowsColumnSelection = false` (Apple's default) | header click **sorts only**; `selectColumnIndexes` is a **no-op** |
+| `allowsColumnSelection = true` (what the demo asked for) | header click **selects the entire column** |
+
+So AppKit was doing exactly what it was told: every sort click highlighted the whole Name
+column, and `selectColumnIndexes([0])` pre-highlighted it at launch. Removed both; header
+clicks now sort without selecting, and the row selection is the only one that survives.
+Nothing read the column selection (the only `selectedColumn` in the demo is on the
+unrelated `NSMatrix`).
+
+### 3. Image did not cycle on click
+
+**`NSImageView` never sends its action when clicked.** `NSImageCell` has no action
+tracking, so `target`/`action` on a plain `NSImageView` is silently inert. Verified against
+real AppKit:
+
+```
+NSImageView: isEditable=false isEnabled=true cell=NSImageCell
+  after mouseDown,     action fired 0 times  -> CLICK DOES NOT SEND ACTION
+  after performClick,  action fired 0 times
+```
+
+Not even `performClick(_:)` fires it. `imageView.onAction` could therefore never run on
+Apple — the demo had been written against WinChocolate's non-Apple behavior of sending an
+action on click. Apple marks `NSImageView` **`open`** precisely so callers can add the
+behavior they need, so the demo now has a `DemoClickableImageView: NSImageView` that
+overrides `mouseDown(with:)`. (An overlay `NSButton` with `isTransparent` would be the
+other AppKit answer — neither framework has `isTransparent`, so that route was closed.)
+
+### 4. Clip view — no bug found
+
+Checked because it was suspected. The Home/Center/Corner buttons are wired, and
+`NSClipView.scroll(to:)` on a standalone clip view behaves correctly on AppKit — measured
+`documentVisibleRect.origin` following each button's target exactly:
+
+| `scroll(to:)` | resulting `documentVisibleRect.origin` |
+|---|---|
+| `0,0` | `0,0` ✓ |
+| `100,55` | `100,55` ✓ |
+| `220,110` | `220,110` ✓ |
+
+`reflectScrolledClipView` is not applicable — the clip view is standalone, not inside an
+`NSScrollView`. Nothing changed here.
+
+### 5. "Scroll Selected" selected a row instead of scrolling to the selection
+
+The button did neither of the things its name promises:
+
+```swift
+let targetRow = max(0, tableView.numberOfRows - 1)              // the LAST row…
+tableView.selectRowIndexes([targetRow], byExtendingSelection: false)  // …and SELECT it
+tableView.scrollRowToVisible(targetRow)
+```
+
+That is "select the last row and scroll there" — a different feature, and it destroys the
+selection the button is supposed to reveal. Now it scrolls the *existing* selection into
+view and leaves it alone (`selectedRow` is `-1` when empty, as on Apple, so the no-selection
+case is handled explicitly rather than silently selecting row 0).
+
+**Why it was probably written that way — and a MUST FIX it exposes.**
+`scrollRowToVisible(_:)` is an **empty no-op stub in both frameworks**:
+
+| | `scrollRowToVisible(_:)` |
+|---|---|
+| **Apple** | scrolls the row into view |
+| **WinChocolate** | `open func scrollRowToVisible(_ row: Int) {}` — **does nothing** |
+| **LinChocolate** | `func scrollRowToVisible(_ row: Int) {}` in `DemoCompat` — **does nothing** |
+
+With scrolling a no-op on Windows, selecting a row was the only way to make the button do
+something visible — so the demo was shaped around a framework stub. Both must implement it.
+A silent no-op is the worst failure mode available: it compiles, it runs, it reports
+success, and it is only detectable by watching the screen.
+
+### 🛠 MUST FIX — LinChocolate
+
+**`NSImageView` must be `open`, as Apple's is.**
+
+| | Declaration |
+|---|---|
+| **Apple** | `open class NSImageView : NSControl` |
+| **WinChocolate** | `open class NSImageView : NSControl` ✓ |
+| **LinChocolate** | `public **final** class NSImageView : NSView` ✗ |
+
+`final` forbids what Apple explicitly permits, and it is the *only* thing blocking the
+click fix on Linux — `error: inheritance from a final class 'NSImageView'`. Subclassing is
+the documented way to extend an image view; a framework claiming AppKit parity cannot
+forbid it. LinChocolate's `NSImageView` also derives from `NSView` rather than `NSControl`,
+so it has no `target`/`action` at all — both should be corrected together. **The whole
+surface should be audited for stray `final`**: every `final` that Apple leaves `open` is
+the same bug, and each one only surfaces when someone tries to subclass.
+
+**This is the one item where the demo currently does not build on Linux** (`RealDemo`
+351 → 355, all four errors this). The demo was left AppKit-correct rather than bent around
+the divergence: the alternative — an overlay `NSButton` with `isTransparent` — is also
+unavailable in both frameworks, and reverting to `imageView.onAction` would restore a call
+that provably never fires on Apple. Fixing `final` clears it with no demo change.
+
+### 🛠 MUST FIX — WinChocolate and LinChocolate
+
+**`NSTableView.scrollRowToVisible(_:)` must actually scroll.** Both ship it as an empty
+stub (see item 5 above), which silently shaped the demo around it. Implement it, and audit
+for sibling no-op stubs — `LinChocolate/Compat/DemoCompat.swift` is where its stub lives,
+which makes that file a good place to start looking for others.
+
+**Files touched**
+
+- `Demo/DemoApplication/main.swift` — caption sweep (59); `allowsColumnSelection` /
+  `selectColumnIndexes` removed; `DemoClickableImageView` added and wired
+
+**Verified**
+
+- macOS: built and ran. Every caption is borderless on Controls/Values/Tables; the table
+  selects one row and sorts without column highlighting; the image view has a real click
+  path.
+- Linux: `RealDemo` **351 → 355**. The four new errors are all
+  `inheritance from a final class 'NSImageView'` — the MUST FIX above, and the only new
+  category. Everything else in this change (captions, table flags) uses API present in
+  both frameworks.
+
+---
+
 ## 2026-07-14 — Values page: boxed captions, dead progress bar, clipped clock, dead scroller
 
 Four bugs, all demo-side, all caused by an **AppKit default the demo never overrode**.

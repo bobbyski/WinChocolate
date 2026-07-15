@@ -743,6 +743,24 @@ final class DemoCoreGraphicsView: NSView {
 
 /// A view that highlights while the cursor hovers it, driven by a tracking
 /// area (3.21). Reports enter/exit through `onEvent`.
+/// An image view that reports clicks.
+///
+/// `NSImageView` does **not** send its action when clicked — `NSImageCell` has no action
+/// tracking, so neither `mouseDown` nor even `performClick(_:)` fires it (verified against
+/// real AppKit). Setting `target`/`action` on a plain `NSImageView` is silently inert, so
+/// "click the image to cycle" cannot be built that way. Apple marks `NSImageView` `open`
+/// precisely so callers can add the behavior they need, which is what this does.
+final class DemoClickableImageView: NSImageView {
+    var onClick: (@MainActor () -> Void)?
+
+    override func mouseDown(with event: NSEvent) {
+        nonisolated(unsafe) let handler = onClick
+        MainActor.assumeIsolated {
+            handler?()
+        }
+    }
+}
+
 final class DemoHoverView: NSView {
 
     /// The demo is authored in top-left coordinates (see `DemoFilledView`).
@@ -1652,7 +1670,7 @@ let gradientsLabel = NSTextField(string: "Gradients and clipping:", frame: NSMak
 let gradientsView = DemoGradientsView(frame: NSMakeRect(32, 448, 878, 100))
 let pageSelector = NSPopUpButton(frame: NSMakeRect(0, 0, 168, 28), pullsDown: false)
 let imageLabel = NSTextField(string: "Image view:", frame: NSMakeRect(32, 28, 104, 24))
-let imageView = NSImageView(frame: NSMakeRect(152, 28, 300, 190))
+let imageView = DemoClickableImageView(frame: NSMakeRect(152, 28, 300, 190))
 let clipLabel = NSTextField(string: "Clip view:", frame: NSMakeRect(496, 28, 104, 24))
 let clipView = NSClipView(frame: NSMakeRect(616, 28, 220, 110))
 let clipDocumentView = DemoFilledView(frame: NSMakeRect(0, 0, 420, 220))
@@ -2741,10 +2759,14 @@ tableStatusColumn.sortDescriptorPrototype = NSSortDescriptor(key: "status", asce
 tableView.addTableColumn(tableNameColumn)
 tableView.addTableColumn(tableStatusColumn)
 tableView.dataSource = tableDataSource
-tableView.allowsColumnSelection = true
+// allowsColumnSelection stays at AppKit's default (false) so a header click *sorts*
+// rather than selecting the whole column. Setting it true — as this demo used to — is
+// Apple asking "do you want header clicks to select columns?", and answering yes: the
+// entire Name column then highlights on every sort click, and selectColumnIndexes below
+// pre-highlighted it at launch. (With the default, selectColumnIndexes is a no-op, so
+// the row selection is the only one that survives — which is the intent here.)
 tableView.reloadData()
 tableView.selectRowIndexes([0], byExtendingSelection: false)
-tableView.selectColumnIndexes([0], byExtendingSelection: false)
 tableScrollView.hasVerticalScroller = true
 tableScrollView.documentView = tableView
 outlineLabel.font = NSFont.boldSystemFont(ofSize: 12)
@@ -3144,7 +3166,7 @@ toolbarSearchField.onAction = { control in
         : "Toolbar search: \(searchField.stringValue)"
 }
 
-imageView.onAction = { _ in
+imageView.onClick = {
     updateFocusDisplay()
     imageModeIndex = (imageModeIndex + 1) % imageModes.count
     let mode = imageModes[imageModeIndex]
@@ -3554,9 +3576,17 @@ tableView.onSelectionChanged = { table in
 }
 scrollSelectedButton.onAction = { _ in
     updateFocusDisplay()
-    let targetRow = max(0, tableView.numberOfRows - 1)
-    tableView.selectRowIndexes([targetRow], byExtendingSelection: false)
-    tableView.scrollRowToVisible(targetRow)
+    // Scroll the *existing* selection into view — and do not disturb it. This used to
+    // compute `numberOfRows - 1` and select it, i.e. "select the last row and scroll
+    // there", which is a different feature and contradicted the button's name.
+    // selectedRow is -1 when nothing is selected, as on Apple.
+    let selected = tableView.selectedRow
+    guard selected >= 0 else {
+        statusLabel.stringValue = "Scroll to selected: nothing selected"
+        return
+    }
+
+    tableView.scrollRowToVisible(selected)
     statusLabel.stringValue = tableRowSummary(tableView, prefix: "Scrolled to selected")
 }
 collectionView.onSelectionChanged = { collectionView in
@@ -4770,6 +4800,52 @@ _ = NotificationCenter.default.addObserver(
     applyLiveAppearanceRefresh()
 }
 #endif
+
+// MARK: - Captions
+//
+// Every caption in the demo is an NSTextField, and `NSTextField(string:)` is real AppKit
+// for an *editable, bordered, background-drawing* field — that is its documented job.
+// Left alone they draw a box, take first responder and swallow typing (the Clicks label
+// was eating keystrokes). AppKit's own answer for a caption is `NSTextField(labelWithString:)`,
+// which is exactly these four properties; the demo carries frames, so it sets them here.
+//
+// This runs after every page is assembled, so it is the single place that decides what is
+// a caption. The demo's real input fields are listed separately below and never touched.
+//
+// statusLabel/focusLabel keep drawsBackground — they are deliberate colored panels
+// (applyLiveAppearanceRefresh re-resolves their backgroundColor on a theme switch) — but
+// they lose their borders like every other caption.
+let demoCaptions: [NSTextField] = [
+    counterLabel, statusLabel, focusLabel,
+    // Controls page
+    editableLabel, secureLabel, alertStyleLabel, notesLabel, tokenLabel, priceLabel,
+    formLabel, contactNameLabel, contactStatusLabel, matrixLabel,
+    deprecatedFormLabel, deprecatedFormNote,
+    // Values page
+    sliderLabel, sliderValueLabel, verticalSliderLabel, progressLabel, stepperLabel,
+    stepperValueLabel, comboLabel, searchLabel, levelLabel, colorWellLabel,
+    segmentedLabel, scrollerLabel, scrollerValueLabel, timerTickLabel, dateLabel,
+    dateValueLabel, calendarLabel, ratingLabel,
+    // Drawing page
+    canvasLabel, canvasHintLabel, drawingEventLabel, shapesLabel, shapesZoomLabel,
+    gradientsLabel, pathLabel,
+    // Tables/Media page
+    imageLabel, clipLabel, clipTopLeftLabel, clipTopRightLabel, clipBottomLeftLabel,
+    clipBottomRightLabel, clipOriginLabel, splitLabel, tableLabel, outlineLabel,
+    browserLabel, collectionLabel, visualEffectLabel, visualEffectTitle,
+    // Lists / Auto Layout pages
+    templateHintLabel, listsBrowserPathLabel, layoutLabel1, layoutLabel2,
+    // The Nib page's labels are absent here on purpose: that page is fenced out of the
+    // macOS build (see the 18.11 exclusion above) and already sets these itself.
+]
+for caption in demoCaptions {
+    caption.isBordered = false
+    caption.isEditable = false
+    caption.isSelectable = false
+    if caption !== statusLabel && caption !== focusLabel {
+        caption.drawsBackground = false
+    }
+}
 
 window.contentView = contentView
 
