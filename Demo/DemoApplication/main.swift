@@ -573,20 +573,29 @@ final class DemoSlowGradientView: NSView {
 // which Apple's CGImage does not have. Until Phase 13 presents an
 // Apple-shaped `CGImage`/`CGDataProvider`, this page is fenced out of the
 // macOS cross-check build — excluded, never shimmed.
-#if canImport(WinChocolate) || canImport(LinChocolate)
-
-/// An artboard drawn entirely through the CoreGraphics-shaped surface —
-/// `CGContext` (paths, gradients, transforms via save/rotate/translate) and a
-/// `CGImage` round-tripped through the BMP codec, rendered as scaled pixels.
+/// An artboard drawn entirely through the CoreGraphics-shaped surface — `CGContext`
+/// (paths, gradients, transforms via save/rotate/translate) and a `CGImage` round-tripped
+/// through a real BMP encode/decode, read back pixel by pixel.
+///
+/// Every canvas is plain CoreGraphics/AppKit, so the whole artboard is shared across all
+/// three targets with no conditional compilation (see DEMO_CHANGES.md).
 final class DemoCoreGraphicsView: NSView {
 
     /// The demo is authored in top-left coordinates (see `DemoFilledView`).
     override var isFlipped: Bool {
         true
     }
-    /// An 8×8 heart sprite decoded from BMP bytes the view itself encoded —
-    /// the codec round-trips in the running demo, not just in tests.
-    static let sprite: CGImage? = {
+    /// An 8×8 heart sprite, round-tripped through a real BMP encode/decode so the codec
+    /// is exercised by the running demo, not just by tests.
+    ///
+    /// Built entirely from Apple's surface: raw RGBA → `CGDataProvider` → `CGImage`'s
+    /// designated initializer → `NSBitmapImageRep`, which *is* Apple's BMP codec
+    /// (`representation(using: .bmp)` / `init(data:)`). Kept as the rep rather than the
+    /// `CGImage` because Apple's pixel accessor lives on the rep (`colorAt(x:y:)`);
+    /// `CGImage` has none.
+    /// (The demo is single-threaded on the UI thread, so the unchecked static is safe —
+    /// same reasoning as `dataBackedSprite`, which reads this in its own default value.)
+    nonisolated(unsafe) static let spriteRep: NSBitmapImageRep? = {
         let w = 8, h = 8
         let heart: [String] = [
             "........",
@@ -609,8 +618,21 @@ final class DemoCoreGraphicsView: NSView {
                 }
             }
         }
-        guard let source = CGImage(width: w, height: h, rgbaPixels: rgba) else { return nil }
-        return CGImage.decodeBMP(source.encodeBMP())
+        guard let provider = CGDataProvider(data: Data(rgba) as CFData),
+              let source = CGImage(width: w, height: h,
+                                   bitsPerComponent: 8, bitsPerPixel: 32,
+                                   bytesPerRow: w * 4,
+                                   space: CGColorSpaceCreateDeviceRGB(),
+                                   bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.last.rawValue),
+                                   provider: provider, decode: nil,
+                                   shouldInterpolate: false, intent: .defaultIntent),
+              // Encode to real BMP bytes and decode them back — the round-trip is the point.
+              let bmp = NSBitmapImageRep(cgImage: source).representation(using: .bmp, properties: [:]),
+              let decoded = NSBitmapImageRep(data: bmp) else {
+            return nil
+        }
+
+        return decoded
     }()
 
     override func draw(_ dirtyRect: NSRect) {
@@ -619,8 +641,8 @@ final class DemoCoreGraphicsView: NSView {
 
         // Artboard backdrop, matching the Drawing page's appearance behavior.
         let inset = NSMakeRect(4, 4, frame.size.width - 8, frame.size.height - 8)
-        context.setFillColor(dark ? NSColor(calibratedRed: 0.17, green: 0.17, blue: 0.18, alpha: 1)
-                                  : NSColor(calibratedRed: 0.98, green: 0.98, blue: 0.96, alpha: 1))
+        context.setFillColor((dark ? NSColor(calibratedRed: 0.17, green: 0.17, blue: 0.18, alpha: 1)
+                                   : NSColor(calibratedRed: 0.98, green: 0.98, blue: 0.96, alpha: 1)).cgColor)
         let backdrop = CGMutablePath()
         backdrop.addRoundedRect(in: inset, cornerWidth: 10, cornerHeight: 10)
         context.addPath(backdrop)
@@ -643,10 +665,10 @@ final class DemoCoreGraphicsView: NSView {
         leaf.addCurve(to: CGPoint(x: leafOrigin.x, y: leafOrigin.y + 70),
                       control1: CGPoint(x: leafOrigin.x + 60, y: leafOrigin.y + 70),
                       control2: CGPoint(x: leafOrigin.x, y: leafOrigin.y + 70))
-        context.setFillColor(NSColor(calibratedRed: 0.30, green: 0.62, blue: 0.36, alpha: 1))
+        context.setFillColor(NSColor(calibratedRed: 0.30, green: 0.62, blue: 0.36, alpha: 1).cgColor)
         context.addPath(leaf)
         context.fillPath()
-        context.setStrokeColor(dark ? NSColor(white: 0.8, alpha: 1) : NSColor(white: 0.3, alpha: 1))
+        context.setStrokeColor((dark ? NSColor(white: 0.8, alpha: 1) : NSColor(white: 0.3, alpha: 1)).cgColor)
         context.setLineWidth(1.5)
         context.addPath(leaf)
         context.strokePath()
@@ -654,8 +676,8 @@ final class DemoCoreGraphicsView: NSView {
         // 2) Gradients: a linear ramp in a rounded clip + a radial disc.
         "Linear + radial gradients".draw(at: NSMakePoint(inset.origin.x + 160, inset.origin.y + 10), withAttributes: attributes)
         if let ramp = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(),
-                                 colors: [NSColor(calibratedRed: 0.98, green: 0.60, blue: 0.20, alpha: 1),
-                                          NSColor(calibratedRed: 0.55, green: 0.20, blue: 0.65, alpha: 1)] as CFArray,
+                                 colors: [NSColor(calibratedRed: 0.98, green: 0.60, blue: 0.20, alpha: 1).cgColor,
+                                          NSColor(calibratedRed: 0.55, green: 0.20, blue: 0.65, alpha: 1).cgColor] as CFArray,
                                  locations: [0, 1]) {
             context.saveGState()
             let rampRect = NSMakeRect(inset.origin.x + 170, inset.origin.y + 34, 120, 80)
@@ -670,8 +692,8 @@ final class DemoCoreGraphicsView: NSView {
             context.restoreGState()
         }
         if let glow = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(),
-                                 colors: [NSColor(calibratedRed: 0.35, green: 0.65, blue: 0.95, alpha: 1),
-                                          NSColor(calibratedRed: 0.08, green: 0.18, blue: 0.38, alpha: 1)] as CFArray,
+                                 colors: [NSColor(calibratedRed: 0.35, green: 0.65, blue: 0.95, alpha: 1).cgColor,
+                                          NSColor(calibratedRed: 0.08, green: 0.18, blue: 0.38, alpha: 1).cgColor] as CFArray,
                                  locations: [0, 1]) {
             context.drawRadialGradient(glow,
                                        startCenter: CGPoint(x: inset.origin.x + 355, y: inset.origin.y + 74),
@@ -692,26 +714,27 @@ final class DemoCoreGraphicsView: NSView {
             context.rotate(by: CGFloat(index) * (2 * .pi / CGFloat(petals)))
             context.translateBy(x: 26, y: 0)
             let shade = 0.35 + 0.6 * Double(index) / Double(petals)
-            context.setFillColor(NSColor(calibratedRed: shade, green: 0.30, blue: 1 - shade, alpha: 1))
+            context.setFillColor(NSColor(calibratedRed: shade, green: 0.30, blue: 1 - shade, alpha: 1).cgColor)
             context.fill(CGRect(x: -8, y: -8, width: 16, height: 16))
             context.restoreGState()
         }
 
-        // 4) CGImage: the BMP-round-tripped sprite, drawn as scaled pixels.
+        // 4) The BMP-round-tripped sprite, read back pixel by pixel and drawn as cells —
+        //    proving the decode produced the bytes that went in. Apple's pixel accessor is
+        //    NSBitmapImageRep.colorAt(x:y:); CGImage has none.
         "CGImage via BMP codec".draw(at: NSMakePoint(inset.origin.x + 650, inset.origin.y + 10), withAttributes: attributes)
-        if let sprite = Self.sprite {
+        if let rep = Self.spriteRep {
             let cell: CGFloat = 11
             let originX = inset.origin.x + 660
             let originY = inset.origin.y + 34
-            for y in 0..<sprite.height {
-                for x in 0..<sprite.width {
-                    guard let pixel = sprite.pixel(atX: x, y: y), pixel.a > 0 else { continue }
-                    context.setFillColor(NSColor(
-                        calibratedRed: CGFloat(pixel.r) / 255,
-                        green: CGFloat(pixel.g) / 255,
-                        blue: CGFloat(pixel.b) / 255,
-                        alpha: CGFloat(pixel.a) / 255
-                    ))
+            for y in 0..<rep.pixelsHigh {
+                for x in 0..<rep.pixelsWide {
+                    guard let pixel = rep.colorAt(x: x, y: y)?.usingColorSpace(.deviceRGB),
+                          pixel.alphaComponent > 0 else {
+                        continue
+                    }
+
+                    context.setFillColor(pixel.cgColor)
                     context.fill(CGRect(x: originX + CGFloat(x) * cell,
                                         y: originY + CGFloat(y) * cell,
                                         width: cell - 1, height: cell - 1))
@@ -732,12 +755,13 @@ final class DemoCoreGraphicsView: NSView {
     /// exercises the full data → CGImage → native-blit path live. (The demo is
     /// single-threaded on the UI thread, so the unchecked static is safe.)
     nonisolated(unsafe) static let dataBackedSprite: NSImage? = {
-        guard let sprite else { return nil }
-        return NSImage(data: Data(sprite.encodeBMP()))
+        guard let bmp = spriteRep?.representation(using: .bmp, properties: [:]) else {
+            return nil
+        }
+
+        return NSImage(data: bmp)
     }()
 }
-
-#endif
 
 // MARK: - "New in 3.x" showcase views
 
@@ -4768,22 +4792,14 @@ reflowAutoLayoutPage(width: 1120)
 // surface: CGMutablePath curves, CGGradient (linear in a clip + radial),
 // saveGState/translate/rotate transforms, and a CGImage round-tripped
 // through the WinCoreGraphics BMP codec, rendered from its pixels.
-#if canImport(WinChocolate) || canImport(LinChocolate)
-let cgIntro = NSTextField(labelWithString: "Drawn through the CG surface — CGPath, CGGradient, CGContext transforms, and a CGImage decoded by the WinCoreGraphics BMP codec.")
+let cgIntro = NSTextField(labelWithString: "Drawn through the CG surface — CGPath, CGGradient, CGContext transforms, and a CGImage round-tripped through a real BMP encode/decode (NSBitmapImageRep).")
 cgIntro.frame = NSMakeRect(24, 24, 1072, 18)
 let cgArtboard = DemoCoreGraphicsView(frame: NSMakeRect(24, 52, 1072, 180))
-let cgFootnote = NSTextField(labelWithString: "The geometry types (CGRect, CGPoint, CGAffineTransform…) come from the standalone WinCoreGraphics module, re-exported by WinChocolate — Apple's layering, where NSRect is CGRect.")
+let cgFootnote = NSTextField(labelWithString: "Every canvas here is plain CoreGraphics/AppKit — no framework-specific surface. The geometry types (CGRect, CGPoint, CGAffineTransform…) come from the standalone WinCoreGraphics module, re-exported by WinChocolate — Apple's layering, where NSRect is CGRect.")
 cgFootnote.frame = NSMakeRect(24, 244, 1072, 18)
 for view in [cgIntro, cgArtboard, cgFootnote] as [NSView] {
     coreGraphicsPage.addSubview(view)
 }
-#else
-// 18.10 exclusion: the WinCoreGraphics CGImage surface has no Apple shape
-// yet (owned by Phase 13), so the macOS cross-check shows a placeholder.
-let cgExcluded = NSTextField(labelWithString: "The WinCoreGraphics page is excluded from the macOS cross-check until Phase 13 presents an Apple-shaped CGImage.")
-cgExcluded.frame = NSMakeRect(24, 24, 1072, 18)
-coreGraphicsPage.addSubview(cgExcluded)
-#endif
 
 // Follow a live system dark/light switch (8.5). The framework re-themes and
 // repaints its own windows/controls; the demo re-applies the few colors it

@@ -33,6 +33,107 @@ verified** — running the demo, not just building it.
 
 ---
 
+## 2026-07-14 — CoreGraphics page: whole page was fenced out of macOS over one sprite
+
+**The page showed a placeholder on macOS**: *"The WinCoreGraphics page is excluded from the
+macOS cross-check until Phase 13 presents an Apple-shaped CGImage."* The exclusion was real
+but **far too wide** — it hid the entire page over the one part that genuinely diverges.
+
+**Measured** by simply un-fencing it: **only the BMP-codec sprite failed.** Everything else
+on the artboard — `CGMutablePath`, `CGGradient`, `CGContext` save/translate/rotate
+transforms — is plain CoreGraphics that AppKit runs happily. The fence now covers only
+what actually diverges, and macOS renders three of the four canvases.
+
+**Two genuine demo bugs were hiding behind the fence**, neither of which was the CGImage
+surface:
+
+**1. `NSColor` passed where CoreGraphics wants `CGColor`.** Apple's `CGContext.setFillColor`
+/ `setStrokeColor` take `CGColor`. Both chocolate frameworks do
+`typealias CGColor = NSColor` (in their `CGCompat.swift`), so `setFillColor(someNSColor)`
+compiles there and is a type error on Apple. Both frameworks *also* vend `.cgColor` on
+`NSColor`, so `.cgColor` is the one spelling correct on all three — 5 call sites fixed.
+
+**2. `CGGradient` was silently returning nil.** This one is the interesting failure:
+
+```swift
+CGGradient(colorsSpace: …, colors: [NSColor(…), NSColor(…)] as CFArray, locations: [0, 1])
+```
+
+`NSColor` is **not** toll-free bridged to `CGColor`, so the initializer could not interpret
+the array and returned **nil** — and `if let ramp = …` then quietly drew nothing. The label
+"Linear + radial gradients" rendered above an empty space. It compiled, ran, logged
+nothing, and simply omitted two of the four canvases. Fixed by passing `.cgColor`.
+
+### Then the fence went away entirely — the BMP round-trip is plain Apple API
+
+The remaining exclusion turned out to be unnecessary too. **Apple can do the whole
+round-trip**; the demo was simply written against WinCoreGraphics' bespoke spelling of it:
+
+| What the demo needed | WinCoreGraphics' spelling | **Apple's** |
+|---|---|---|
+| build a `CGImage` from raw RGBA | `CGImage(width:height:rgbaPixels:)` | `CGDataProvider` + `CGImage`'s designated init |
+| encode to BMP | `CGImage.encodeBMP()` | `NSBitmapImageRep.representation(using: .bmp,…)` |
+| decode BMP | `CGImage.decodeBMP(_:)` | `NSBitmapImageRep(data:)` |
+| read a pixel | `CGImage.pixel(atX:y:)` | `NSBitmapImageRep.colorAt(x:y:)` |
+
+`NSBitmapImageRep` **is** Apple's BMP codec — the capability was never missing, only the
+API shape. Verified independently before rewriting: raw RGBA → `CGImage` → `.bmp` (394
+bytes, `BM` header) → decode → `colorAt(2,2)` returns exactly `r214 g60 b80`, and the
+transparent corner reads alpha 0. The round-trip is real, not simulated.
+
+**Result: the artboard has no conditional compilation at all** — all five canvases (CGPath
+leaf, linear ramp in a rounded clip, radial glow, transform rosette, BMP-round-tripped
+sprite read back pixel-by-pixel, and the `NSImage(data:)` sprite) render on macOS from the
+same source. The 18.10 exclusion is gone rather than narrowed, and the page's captions no
+longer claim a WinCoreGraphics-specific codec.
+
+### 🛠 MUST FIX — WinChocolate and LinChocolate
+
+**`CGImage` must be Apple's, and `NSBitmapImageRep` must exist.** Both frameworks ship a
+bespoke class with *none* of Apple's surface:
+
+| API | Apple | WinChocolate | LinChocolate |
+|---|---|---|---|
+| `CGImage.init(width:height:bitsPerComponent:bitsPerPixel:bytesPerRow:space:bitmapInfo:provider:decode:shouldInterpolate:intent:)` | ✓ | **absent** | **absent** |
+| `CGDataProvider` | ✓ | **absent** | **absent** |
+| `NSBitmapImageRep` (`representation(using:)`, `init(data:)`, `colorAt(x:y:)`, `pixelsWide/High`) | ✓ | **absent** | **absent** |
+| `CGImage(width:height:rgbaPixels:)` | — | ✓ *(invented)* | ✓ *(invented)* |
+| `CGImage.encodeBMP()` / `.decodeBMP(_:)` / `.pixel(atX:y:)` | — | ✓ *(invented)* | ✓ *(invented)* |
+
+This is Issue L / Phase 13, and the shape of the fix is now concrete: the BMP codec belongs
+on `NSBitmapImageRep` where Apple puts it, not bolted onto `CGImage`; pixel access belongs
+on the rep, not the image; and construction goes through `CGDataProvider`. The invented
+members should retire with it — every one of them is a place a caller writes something that
+cannot compile on Apple.
+
+**A mistake worth recording.** My first attempt opened the sprite fence *before* the static
+and closed it *after* `dataBackedSprite` at the bottom of the class — **swallowing
+`draw(_:)`**. On macOS the view then had no `draw` at all: it compiled cleanly, rendered
+nothing, and looked exactly like the bug I was fixing. That is the same "compiles, runs,
+does nothing" trap this document keeps cataloguing, and a conditional-compilation fence is
+an easy way to create one by hand. Fences want to be as small as the divergence — a wide
+one silently takes working code with it.
+
+**Files touched**
+
+- `Demo/DemoApplication/main.swift` — **every fence in `DemoCoreGraphicsView` removed
+  (now 0)**; sprite rebuilt on `CGDataProvider` + `CGImage`'s designated init +
+  `NSBitmapImageRep`; pixel loop reads `colorAt(x:y:)`; 5 `setFillColor`/`setStrokeColor`
+  and 2 `CGGradient` call sites pass `.cgColor`; the macOS placeholder and the
+  WinCoreGraphics-specific captions are gone
+
+**Verified**
+
+- macOS: built and ran. **All five canvases render** where the page had shown a single line
+  of placeholder text — including the BMP-round-tripped sprite read back pixel by pixel,
+  and the `NSImage(data:)` sprite.
+- Linux: `RealDemo` **377 → 387**, +10, every one `cannot find type 'NSBitmapImageRep' in
+  scope` — the MUST FIX above, and the only new category. The `.cgColor` and gradient fixes
+  cost nothing.
+- Windows: not built here; the same members are missing there.
+
+---
+
 ## 2026-07-14 — Auto Layout page never reflowed — and the compiler had been saying so all along
 
 **The page's reflow logic was correct and complete. It was never called once.**
