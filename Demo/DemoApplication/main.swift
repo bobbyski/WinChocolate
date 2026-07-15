@@ -1623,7 +1623,12 @@ let dateLabel = NSTextField(string: "Date:", frame: NSMakeRect(32, 382, 88, 24))
 let datePicker = NSDatePicker(date: Date(timeIntervalSince1970: 1_780_272_000), frame: NSMakeRect(128, 378, 184, 28))
 let dateValueLabel = NSTextField(string: "2026-06-01", frame: NSMakeRect(328, 382, 192, 24))
 let calendarLabel = NSTextField(string: "Calendar:", frame: NSMakeRect(724, 60, 120, 24))
-let calendarPicker = NSDatePicker(date: Date(timeIntervalSince1970: 1_780_272_000), frame: NSMakeRect(724, 88, 224, 168))
+// A .clockAndCalendar picker draws a calendar AND a clock side by side. AppKit's
+// intrinsicContentSize is 275.5 x 148, so the old 224-wide frame clipped the clock off
+// the right edge — widened to 276 to fit it. The 168 height is deliberate and stays:
+// WinChocolate's calendar needs the extra room, and AppKit is happy in a taller frame
+// (148 is its minimum, not its maximum).
+let calendarPicker = NSDatePicker(date: Date(timeIntervalSince1970: 1_780_272_000), frame: NSMakeRect(724, 88, 276, 168))
 calendarPicker.datePickerStyle = .clockAndCalendar
 let ratingLabel = NSTextField(string: "Rating:", frame: NSMakeRect(724, 268, 60, 24))
 let ratingIndicator = NSLevelIndicator(frame: NSMakeRect(786, 264, 140, 30))
@@ -2387,9 +2392,23 @@ focusLabel.backgroundColor = isDarkDemo
     ? NSColor(white: 0.16, alpha: 1)
     : NSColor(calibratedRed: 1.0, green: 0.98, blue: 0.86, alpha: 1.0)
 slider.frame = NSMakeRect(120, 28, 184, 28)
+// Captions, not input fields — same reason as the Controls page: NSTextField(string:)
+// builds an editable, bordered field, so every caption must switch that off.
+for caption in [sliderLabel, verticalSliderLabel, progressLabel, stepperLabel,
+                comboLabel, searchLabel, levelLabel, colorWellLabel, segmentedLabel,
+                scrollerLabel, dateLabel, calendarLabel, ratingLabel] {
+    caption.isBordered = false
+    caption.drawsBackground = false
+    caption.isEditable = false
+    caption.isSelectable = false
+}
 sliderLabel.font = NSFont.boldSystemFont(ofSize: 12)
 sliderValueLabel.textColor = demoValueTextColor
 progressLabel.font = NSFont.boldSystemFont(ofSize: 12)
+// An NSProgressIndicator is INDETERMINATE by default, and an indeterminate bar ignores
+// doubleValue entirely — it stores the value but animates a barber pole instead. This is
+// what stopped the bar tracking the slider; the determinate bar must ask for it.
+progressIndicator.isIndeterminate = false
 progressIndicator.minValue = 0
 progressIndicator.maxValue = 100
 progressIndicator.doubleValue = slider.doubleValue
@@ -2432,6 +2451,10 @@ segmentedLabel.font = NSFont.boldSystemFont(ofSize: 12)
 segmentedControl.segmentStyle = .separated
 segmentedControl.selectedSegment = 0
 scrollerLabel.font = NSFont.boldSystemFont(ofSize: 12)
+// An NSScroller starts DISABLED (unlike other controls), which leaves usableParts at
+// .noScrollerParts — no knob is drawn and nothing responds, however you set the value or
+// style. Enabling it flips usableParts to .allScrollerParts.
+scroller.isEnabled = true
 scroller.doubleValue = 0
 scroller.knobProportion = 0.25
 scrollerValueLabel.textColor = demoValueTextColor

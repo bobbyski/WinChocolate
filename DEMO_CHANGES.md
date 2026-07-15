@@ -33,6 +33,88 @@ verified** — running the demo, not just building it.
 
 ---
 
+## 2026-07-14 — Values page: boxed captions, dead progress bar, clipped clock, dead scroller
+
+Four bugs, all demo-side, all caused by an **AppKit default the demo never overrode**.
+Three of the four are the same lesson: AppKit's defaults are not the chocolate
+frameworks' defaults, and the demo had been written against the latter without noticing.
+
+### 1. Captions drawn as boxed input fields
+
+Identical to the Controls page: `NSTextField(string:)` builds an **editable, bordered**
+field. Applied the demo's caption idiom to all 13 — `Slider:`, `Vert:`, `Progress:`,
+`Stepper:`, `Combo:`, `Search:`, `Level:`, `Color:`, `Segments:`, `Scroller:`, `Date:`,
+`Calendar:`, `Rating:`.
+
+### 2. Progress bar ignored the slider
+
+**`NSProgressIndicator.isIndeterminate` defaults to `true` on AppKit**, and an
+indeterminate bar **ignores `doubleValue` entirely** — it stores the value and animates a
+barber pole instead. Measured:
+
+```
+NSProgressIndicator defaults: isIndeterminate=true style=0 min=0.0 max=100.0
+after setting doubleValue=82 while indeterminate: doubleValue=82.0  (stored, but not drawn)
+```
+
+The slider's action *was* firing all along (its value label tracked correctly) — the bar
+simply wasn't a determinate bar. Fixed with `progressIndicator.isIndeterminate = false`.
+Note the sibling `activityIndicator` sets `isIndeterminate = true` explicitly and is
+correct as-is; only the determinate bar was relying on a default that differs from Apple's.
+
+### 3. Clock clipped off the right edge
+
+A `.clockAndCalendar` picker draws a calendar **and** a clock side by side. Measured:
+
+| | Size |
+|---|---|
+| what the demo gave it | 224 × 168 |
+| `intrinsicContentSize` on AppKit | **275.5 × 148** |
+
+~52pt too narrow, so the clock was cut off. Widened to **276**.
+
+**The 168 height is deliberate and stays.** It exists to accommodate WinChocolate's
+calendar, and AppKit is happy in a taller frame — 148 is its *minimum*, not its maximum.
+Only the width was wrong.
+
+### 4. Scroller drew no knob and did not respond
+
+**`NSScroller` starts `isEnabled = false`** — unlike every other control — which pins
+`usableParts` at `.noScrollerParts`, so no knob is drawn and nothing responds, no matter
+how `doubleValue`, `knobProportion` or `scrollerStyle` are set. Measured:
+
+| State | `isEnabled` | `usableParts` |
+|---|---|---|
+| default (what the demo had) | **false** | `0` — no parts, dead track |
+| after `isEnabled = true` | true | **`2` = `.allScrollerParts`** ✓ |
+
+The demo already set `doubleValue` and `knobProportion`; the control was simply disabled.
+Ruled out the tempting explanation first — `NSScroller.preferredScrollerStyle` is
+`1` (**overlay**, which auto-hides) — by rendering all four style variants and confirming
+**none** drew a knob. The style was never the problem. Fixed with `scroller.isEnabled = true`.
+
+**Files touched**
+
+- `Demo/DemoApplication/main.swift` — 13 captions; `isIndeterminate`; calendar width;
+  `scroller.isEnabled`
+
+**Verified**
+
+- macOS: built and ran. Captions are captions; the bar tracks the slider; the clock is
+  fully visible with the 168 height retained; the scroller shows a knob at 0.25.
+- Linux: `RealDemo` error count **unchanged at 351** — every property used
+  (`isIndeterminate`, `isEnabled`, the caption properties) exists in both frameworks.
+
+**Follow-up — the `Clicks:` label steals keyboard input.** `counterLabel`
+(`main.swift:1527`) is `NSTextField(string: "Clicks: 0")`, i.e. an editable field. It
+takes first responder and swallows typing: during testing it captured stray keystrokes
+and its text became `"ough for the apple clock"`. Same caption bug, but on the shared
+header rather than the Values page, so it is untouched here. It affects **every page** and
+is actively eating keyboard input — the remaining captions across all pages want the same
+sweep.
+
+---
+
 ## 2026-07-14 — Cover `NSForm` *and* its replacement; both are supported API
 
 **Why there are now two form sections.** **Deprecated is not removed.** `NSForm` still
