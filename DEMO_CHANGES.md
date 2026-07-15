@@ -33,6 +33,302 @@ verified** — running the demo, not just building it.
 
 ---
 
+## 2026-07-14 — Cover `NSForm` *and* its replacement; both are supported API
+
+**Why there are now two form sections.** **Deprecated is not removed.** `NSForm` still
+ships, still compiles and still works on macOS today, so **WinChocolate and LinChocolate
+must support it at full parity for exactly as long as Apple does** — and must support the
+recommended replacement alongside it. The demo therefore exercises both, and will keep
+exercising both until Apple actually withdraws `NSForm`. The duplication is coverage of
+two supported APIs, not a display of our own gap: **both sections must render correctly
+on all three targets.**
+
+| Position | What | Label |
+|---|---|---|
+| original spot (`y=120`) | **the replacement** — plain `NSTextField` rows | `Form:` |
+| below the button matrix (`y=372`) | **the deprecated original** — `NSForm` | `Form:` + `NSForm — deprecated (macOS 10.10)` |
+
+Apple's own deprecation text names the replacement: *"Use NSTextField directly instead,
+and consider NSStackView for layout assistance."* The demo takes the `NSTextField`
+half — `NSStackView` would add nothing here (two static rows) and LinChocolate's
+`NSStackView` is a stub, so frame-positioned fields keep the page honest on all three.
+
+**Borders.** The replacement rows need nothing — an `NSTextField` already carries the
+same bezel as `Type here:`, `Password:` and `Price:`.
+
+The deprecated `NSForm` was the opposite: its entries drew a heavy **white square
+outline** in dark mode, unlike anything else on the page. The flags were not the cause —
+`NSFormCell`'s defaults are already identical to `NSTextField`'s (`isBezeled = true`,
+`isBordered = false`). The cause is the **cell class**: `NSFormCell` descends from
+`NSActionCell` and draws an old-style bezel, while `NSTextField` uses `NSTextFieldCell`'s
+modern one. `NSFormCell` has **no `bezelStyle`**, so the rounded bezel is unreachable.
+Measured what is reachable:
+
+| Config | Result |
+|---|---|
+| defaults (bezeled) | thick **white** square bezel — the reported problem |
+| `setBezeled(false)` | no border at all |
+| **`setBezeled(false)` + `setBordered(true)`** | thin subtle border — closest match ✓ |
+
+So the demo uses the third. It is as close to the page's other fields as `NSForm` can
+get, and the residual difference is itself a fair illustration of why Apple deprecated
+the class.
+
+**The `#if` is temporary scaffolding, and it must not survive.** Three calls are needed
+to make `NSForm` render on Apple, and none exist on Win/Lin, so today they can only be
+written conditionally:
+
+```swift
+#if !canImport(WinChocolate) && !canImport(LinChocolate)
+form.cellSize = NSMakeSize(256, 26)   // rows collapse without it
+form.setBezeled(false)                // else a heavy white outline
+form.setBordered(true)
+#endif
+```
+
+It is **not** a shim — it defines no missing API and fakes nothing; it sets real AppKit
+properties that real AppKit requires. But it **is** AppKit-only code in a demo whose
+whole purpose is that one source means one thing everywhere, so it is a defect to be
+retired, not a pattern to copy. It exists solely because of the **MUST FIX** items below,
+it is parked at the call site where it cannot be missed, and **every line of it is
+deleted the day both frameworks match Apple.** Its presence is the measure of the debt.
+
+### 🛠 MUST FIX — WinChocolate and LinChocolate
+
+**Not optional, and not "legacy support".** `NSForm` is deprecated but **fully supported
+API** — Apple ships it, our demo exercises it, and so both frameworks owe it exact parity
+until Apple removes it. Each item below is a real divergence from Apple's surface, and
+together they are the only reason the `#if` above exists.
+
+**1. `NSForm.cellSize`, with Apple's `NSMatrix` semantics.** Apple's `NSForm` is an
+`NSMatrix` subclass; both frameworks invented `rowHeight` instead and inherit from
+`NSControl`/`NSView`. The intersection is empty, so *no* line the demo can write sizes
+the rows on all three:
+
+| | Row-height API |
+|---|---|
+| **AppKit** | `cellSize` (from `NSMatrix`) |
+| **WinChocolate** | `rowHeight` — invented, not AppKit |
+| **LinChocolate** | `rowHeight` — invented, not AppKit |
+
+Preferably make `NSForm` a real `NSMatrix` subclass (bringing `cellSize`,
+`intercellSpacing`, `autosizesCells`) and retire `rowHeight`. At minimum, expose
+`cellSize` with Apple's semantics — **including the part that bites**: a matrix built
+with `init(frame:)` starts at `cellSize.height == 0`, so rows collapse until the caller
+sets it. Matching Apple means matching that default, not "helpfully" defaulting to 30.
+Once it lands, the demo writes `form.cellSize = NSMakeSize(256, 26)` unconditionally.
+
+**2. `NSFormCell` bezel/border control.** Apple's `NSFormCell` descends from
+`NSActionCell` and inherits `isBezeled` / `isBordered` from `NSCell`; `NSForm` exposes
+`setBezeled(_:)` / `setBordered(_:)`. Both chocolate `NSFormCell`s carry only
+`title` / `titleWidth` / `stringValue`, so the demo cannot restyle the entries there at
+all. Add Apple's accessors (`NSForm.setBezeled(_:)`, `setBordered(_:)`,
+`setEntryWidth(_:)`, `setInterlineSpacing(_:)`, `setTitleFont(_:)`, `setTextFont(_:)`,
+`setTitleAlignment(_:)`, `setTextAlignment(_:)` — all of which real `NSForm` responds to).
+
+**3. Deprecation annotations, matching Apple's state.** Apple marks `NSForm` deprecated
+since macOS 10.10, and the AppKit build emits:
+
+```
+warning: 'NSForm' was deprecated in macOS 10.10: Use NSTextField directly instead,
+         and consider NSStackView for layout assistance
+```
+
+WinChocolate and LinChocolate emit **nothing** — they present `NSForm` as current API.
+That is a faithfulness divergence in its own right: a framework's deprecation state is
+part of its public surface, and the compiler is how developers learn it. Both frameworks
+must carry `@available(..., deprecated:, message:)` wherever Apple does, with Apple's
+version and message, so the same source produces the same warnings on all three targets.
+`NSForm`/`NSFormCell` are the known case; the whole surface should be **audited against
+Apple's annotations**, since anything Apple deprecated and we present as current is the
+same bug. (Consequence to accept: once annotated, this demo will emit the deprecation
+warning on all three — which is correct, and is the point.)
+
+Note what an annotation is **not**: a licence to drop the API. Deprecated means *still
+supported*, so annotating `NSForm` and fixing items 1–2 are the same job — the framework
+must warn about it **and** implement it exactly, for as long as Apple does. The day Apple
+removes `NSForm`, both frameworks remove it and the demo drops the deprecated section;
+not before.
+
+**Files touched**
+
+- `Demo/DemoApplication/main.swift` — added `contactNameLabel` / `contactNameField` /
+  `contactStatusLabel` / `contactStatusField` at the original spot; moved `form` +
+  `deprecatedFormLabel` + `deprecatedFormNote` below the matrix; the `#if` now also
+  carries the bezel/border calls
+
+**Verified**
+
+- macOS: built and ran. The replacement renders as two clean rows whose bezels match the
+  page's other fields. The deprecated `NSForm` sits below the matrix under its label,
+  with both rows laid out and a subtle border in place of the white outline.
+- Linux: `RealDemo` error count **unchanged at 351** — the `#if` excludes it, and the
+  replacement rows use only `NSTextField`.
+- Windows: not built (no Win32 toolchain here). The `#if` excludes it; the replacement
+  rows use only `NSTextField`.
+
+---
+
+## 2026-07-14 — Pop-up sized for Win32, captions built as input fields, unreadable popover, collapsed `NSForm`
+
+Four separate bugs on the Controls page, all fixed demo-side.
+
+### 1. `NSPopUpButton` sized with a Win32 drop-down height
+
+**Symptom.** The Alert Style pop-up rendered far too tall and overflowed the bottom of
+its `NSBox` by 46pt.
+
+**Root cause.** The frame was `NSMakeRect(472, 186, 184, 96)`. **96** is a Win32
+convention: a `COMBOBOX`'s creation height must include its drop-down list. On AppKit
+(and GTK) the frame is just the button, which is ~26pt — WinChocolate's own
+`intrinsicContentSize` says `height: 26`.
+
+**Fix.** Height `96` → `26`. **Safe on Windows:** WinChocolate already absorbs the
+Win32 quirk itself — `Win32PopUpControls.createPopUpButton` does
+`height: max(frame.size.height, 160)` and tracks the drop-down height separately, so
+the demo never needed to encode it.
+
+### 2. Captions built as editable, bordered text fields
+
+**Symptom.** `Alert style:`, `Form:` and `Matrix:` drew as rounded input fields rather
+than captions. In the popover it was worse: the title showed a **focus ring and
+selected text**, because it *was* an editable field that had taken focus.
+
+**Root cause.** `NSTextField(string:)` is real AppKit, and it builds an **editable,
+bordered, background-drawing** field — that is its documented purpose. A caption must
+switch all of that off; the demo already knew this (`showcaseSectionLabel` does exactly
+that) but these five sites didn't.
+
+**Fix.** Applied the demo's existing caption idiom to `alertStyleLabel`, `formLabel`,
+`matrixLabel`, `popoverTitle` and `popoverInfo`:
+
+```swift
+caption.isBordered = false
+caption.drawsBackground = false
+caption.isEditable = false
+caption.isSelectable = false
+```
+
+### 3. Popover unreadable in dark mode
+
+**Symptom.** Dark field bezels and a nearly invisible `Close` button on a light cream
+surface — illegible.
+
+**Root cause.** The content view hardcoded a **light** background
+(`calibratedRed: 1.0, green: 0.94, blue: 0.84`) while its child controls and dynamic
+label colors still resolved against the **dark** system appearance. A fixed light
+surface under near-white dynamic text cannot work.
+
+**Fix.** Resolve the surface from the appearance, using the demo's own established
+idiom (the same one the collection-view section bands use), and let captions take
+dynamic `.labelColor`:
+
+```swift
+let popoverDark = NSApplication.shared.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+popoverContent.backgroundColor = popoverDark
+    ? NSColor(calibratedRed: 0.26, green: 0.22, blue: 0.16, alpha: 1.0)   // warm dark
+    : NSColor(calibratedRed: 1.00, green: 0.94, blue: 0.84, alpha: 1.0)   // cream
+```
+
+`NSView.appearance` would have been the tidier AppKit answer (pin the subtree to
+`.aqua` and keep the cream in both modes), but **LinChocolate has no `NSView.appearance`**
+— so it would not compile on all three. The appearance-resolving idiom above works
+everywhere.
+
+**Files touched**
+
+- `Demo/DemoApplication/main.swift` — pop-up frame, five caption sites, popover surface
+
+**Verified**
+
+- macOS: built and ran. The pop-up now sits inside the Alert Style box; the three
+  captions render as captions. The popover was verified in an isolated harness
+  reproducing the exact construction (a synthetic click could not be posted — CGEvent
+  and System Events both need accessibility permission this machine hasn't granted).
+  It reproduced the reported bug precisely in *dark — before*, and is legible in both
+  appearances after.
+- Linux: `RealDemo` went **339 → 351** errors, and a message-level diff confirms the
+  *only* new category is `NSAppearance.bestMatch` / `.aqua` / `.darkAqua` (11 → 13
+  instances) — from the single `bestMatch` call added for the popover surface. That is
+  a **pre-existing LinChocolate gap**, not a new kind of breakage: the demo already
+  used `bestMatch` at 10 other sites, and it is real AppKit that LinChocolate has yet
+  to implement. Every other property used (`isBordered`, `drawsBackground`,
+  `isEditable`, `isSelectable`, `textColor`, `labelColor`) was checked to exist in both
+  frameworks before building.
+- Windows: not built (no Win32 toolchain here). The pop-up height change is safe by
+  inspection of `Win32PopUpControls`, and all other API used exists in WinChocolate.
+
+**Follow-up:** LinChocolate needs `NSAppearance.bestMatch(from:)` plus `.aqua` /
+`.darkAqua`. It is the demo's standard way to resolve the appearance (11 sites) and is
+plain AppKit, so LinChocolate cannot render any appearance-aware demo content until it
+lands.
+
+### 4. `NSForm` rows collapsed on top of each other
+
+**Symptom.** `Name:` and `Status:` drew on the same line, overlapping, with a stray
+thin white bar to the right.
+
+**Root cause.** Apple's `NSForm` is an **`NSMatrix` subclass**, and a matrix built with
+`init(frame:)` starts with **`cellSize.height == 0`**. Every row is therefore zero-tall:
+the white bar was a collapsed entry field, and the 3pt offset between the two titles was
+simply the default `intercellSpacing`. The caller must set the cell size — the demo
+already knew this for its `NSMatrix` (`matrix.cellSize = …`) and just never did it for
+`NSForm`.
+
+Measured on real AppKit — **nothing else works**, only an explicit assignment:
+
+| Attempt | resulting `cellSize` | row frames |
+|---|---|---|
+| **baseline (what the demo did)** | `(256, **0.0**)` | `y=0 h=0`, `y=3 h=0` — collapsed |
+| `form.font` before *or* after `addEntry` | `(256, 0.0)` | collapsed |
+| `autosizesCells = true` | `(256, 0.0)` | collapsed |
+| `sizeToCells()` | `(256, 0.0)` | *worse* — shrinks the form to `h=3` |
+| **`form.cellSize = NSMakeSize(256, 26)`** | `(256, 26)` | `y=0 h=26`, `y=29 h=26` ✓ |
+
+> **Superseded by the entry above (same day).** The `#if` described below still exists,
+> but it now guards the *deprecated* `NSForm` section, which moved below the button
+> matrix — the original position shows Apple's recommended `NSTextField` replacement
+> instead. The gap it marks is recorded as a **MUST ADD** for both frameworks there. The
+> measurements below still stand.
+
+**Fix — and why it carries a `#if`.** This is the one place the demo cannot state
+itself identically on all three targets:
+
+| | Row-height API |
+|---|---|
+| **AppKit** | `cellSize` (inherited from `NSMatrix`) |
+| **WinChocolate** | `rowHeight` — **invented, not AppKit** |
+| **LinChocolate** | `rowHeight` — **invented, not AppKit** |
+
+The intersection is empty: `cellSize` does not compile on Win/Lin, and `rowHeight` does
+not exist on Apple. Both frameworks size their rows internally, which is exactly why the
+form looks right there and collapsed only on Apple. So the assignment is scoped to the
+target that requires it, with the debt stated at the call site rather than hidden in a
+helper:
+
+```swift
+#if !canImport(WinChocolate) && !canImport(LinChocolate)
+form.cellSize = NSMakeSize(256, 26)
+#endif
+```
+
+**This `#if` is a marker of a framework divergence, not a shim** — it defines no missing
+API and fakes nothing; it sets a real AppKit property that real AppKit requires. It
+should be deleted the moment WinChocolate and LinChocolate expose Apple's `cellSize`
+(ideally by making `NSForm` an `NSMatrix` subclass, as on Apple, and retiring the
+invented `rowHeight`). Tracked with Issue I.
+
+**Verified.** macOS: built and ran — `Name: [WinChocolate]` and `Status: [Native]` now
+render as two properly stacked rows, no overlap, no white bar. Linux: `RealDemo` error
+count **unchanged at 351**, confirming the `#if` correctly excludes it.
+
+**Aside:** the probe surfaced that **`NSForm` is deprecated as of macOS 10.10**
+("Use NSTextField directly instead, and consider NSStackView for layout assistance").
+It still works, and the demo exercises it deliberately, but that is worth knowing before
+investing further in `NSForm` parity.
+
+---
+
 ## 2026-07-14 — Flip every demo view to a top-left origin
 
 **Symptom.** Every page rendered upside down on real AppKit: content piled at the
@@ -66,6 +362,14 @@ override var isFlipped: Bool {
 | **AppKit** | `false` (bottom-left) | **fixes the inversion** |
 
 > ### ⚠️ Windows and Linux must match Apple's `isFlipped` behavior
+>
+> > **ACTION — WinChocolate must implement `isFlipped`.** It currently does not
+> > implement it *at all*: `open var isFlipped: Bool { true }` is a **dead property**
+> > that nothing in the framework reads (verified — the declaration and one comment are
+> > its only occurrences in `Sources/WinChocolate/`). It must become a real, honored
+> > property: default `false`, overridable per view, and actually driving subview
+> > positioning and drawing — not a constant that happens to describe Win32's origin.
+> > LinChocolate already honors the property; only its *default* is wrong.
 >
 > **This entry fixes the demo; it does not fix the frameworks.** The table above is a
 > statement of two divergences, not of correct behavior. Apple's contract is:

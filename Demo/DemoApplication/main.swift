@@ -1544,7 +1544,12 @@ let alertButton = NSButton(title: "Alert", frame: NSMakeRect(32, 152, 100, 34))
 let titleCheckbox = NSButton(title: "Show count in title", frame: NSMakeRect(152, 152, 228, 34))
 let alertStyleBox = NSBox(title: "Alert Style", frame: NSMakeRect(448, 120, 248, 116))
 let alertStyleLabel = NSTextField(string: "Alert style:", frame: NSMakeRect(472, 156, 112, 24))
-let alertStylePopup = NSPopUpButton(frame: NSMakeRect(472, 186, 184, 96), pullsDown: false)
+// A pop-up button is one control row tall (AppKit draws it at ~26pt; the menu is not
+// part of the frame). The old 96 came from Win32, where a COMBOBOX's creation height
+// has to include its drop-down list — WinChocolate already handles that quirk itself
+// (`max(frame.size.height, 160)` in Win32PopUpControls), so the frame here is just the
+// button, as on Apple. At 96 it overflowed the Alert Style box by 46pt.
+let alertStylePopup = NSPopUpButton(frame: NSMakeRect(472, 186, 184, 26), pullsDown: false)
 let infoRadio = NSButton(title: "Info", frame: NSMakeRect(32, 234, 88, 24))
 let warningRadio = NSButton(title: "Warning", frame: NSMakeRect(136, 234, 116, 24))
 let criticalRadio = NSButton(title: "Critical", frame: NSMakeRect(268, 234, 116, 24))
@@ -1562,8 +1567,15 @@ let priceFormatter = NumberFormatter()
 priceFormatter.numberStyle = .currency
 priceField.formatter = priceFormatter
 priceField.objectValue = NSNumber(value: 1234.5)
+// Apple deprecated NSForm in macOS 10.10: "Use NSTextField directly instead, and
+// consider NSStackView for layout assistance." The page shows both — the recommended
+// NSTextField rows here, and the deprecated NSForm below the matrix — so the two can be
+// compared side by side.
 let formLabel = NSTextField(string: "Form:", frame: NSMakeRect(744, 120, 80, 24))
-let form = NSForm(frame: NSMakeRect(824, 120, 256, 92))
+let contactNameLabel = NSTextField(string: "Name:", frame: NSMakeRect(824, 120, 60, 24))
+let contactNameField = NSTextField(string: "WinChocolate", frame: NSMakeRect(888, 120, 192, 24))
+let contactStatusLabel = NSTextField(string: "Status:", frame: NSMakeRect(824, 152, 60, 24))
+let contactStatusField = NSTextField(string: "Native", frame: NSMakeRect(888, 152, 192, 24))
 let matrixLabel = NSTextField(string: "Matrix:", frame: NSMakeRect(744, 240, 80, 24))
 let matrix = NSMatrix(
     frame: NSMakeRect(824, 240, 240, 72),
@@ -1572,6 +1584,14 @@ let matrix = NSMatrix(
     numberOfRows: 2,
     numberOfColumns: 2
 )
+// The deprecated original. Deprecated is not removed: Apple still ships NSForm, so both
+// chocolate frameworks owe it exact parity for as long as Apple does, and the demo
+// covers it alongside the NSTextField replacement above. Both sections are expected to
+// render correctly on all three targets. This one drops when Apple drops NSForm — not
+// before. See DEMO_CHANGES.md for the MUST FIX list its #if below depends on.
+let deprecatedFormLabel = NSTextField(string: "Form:", frame: NSMakeRect(744, 372, 80, 24))
+let deprecatedFormNote = NSTextField(string: "NSForm — deprecated (macOS 10.10)", frame: NSMakeRect(824, 344, 240, 18))
+let form = NSForm(frame: NSMakeRect(824, 372, 256, 92))
 let sliderLabel = NSTextField(string: "Slider:", frame: NSMakeRect(32, 28, 72, 24))
 let slider = NSSlider(value: 50, minValue: 0, maxValue: 100, target: nil, action: "sliderChanged:")
 let sliderValueLabel = NSTextField(string: "50", frame: NSMakeRect(312, 28, 48, 24))
@@ -2475,6 +2495,18 @@ notesTextView.isRichText = true
 notesTextView.string = "Multiline NSTextView"
 tokenLabel.font = NSFont.boldSystemFont(ofSize: 12)
 formLabel.font = NSFont.boldSystemFont(ofSize: 12)
+deprecatedFormLabel.font = NSFont.boldSystemFont(ofSize: 12)
+deprecatedFormNote.font = NSFont.systemFont(ofSize: 11)
+// Captions, not input fields: NSTextField(string:) builds an *editable, bordered*
+// field, so a caption must switch both off (the demo's showcaseSectionLabel idiom).
+for caption in [alertStyleLabel, formLabel, matrixLabel,
+                deprecatedFormLabel, deprecatedFormNote,
+                contactNameLabel, contactStatusLabel] {
+    caption.isBordered = false
+    caption.drawsBackground = false
+    caption.isEditable = false
+    caption.isSelectable = false
+}
 // Title widths live on the cells, as on Apple.
 let formNameCell = form.addEntry("Name:")
 let formStatusCell = form.addEntry("Status:")
@@ -2482,6 +2514,28 @@ formNameCell.titleWidth = 72
 formStatusCell.titleWidth = 72
 formNameCell.stringValue = "WinChocolate"
 formStatusCell.stringValue = "Native"
+// Both lines below are unreachable on WinChocolate/LinChocolate and exist only because
+// those frameworks diverge from Apple; delete the #if once they match (see the MUST ADD
+// list in DEMO_CHANGES.md).
+//
+//  • cellSize — Apple's NSForm is an NSMatrix subclass whose cellSize starts at
+//    height 0, so every row collapses onto the next until the caller sets it (measured:
+//    font, autosizesCells and sizeToCells all leave it at 0). The chocolate frameworks
+//    expose a non-Apple `rowHeight` instead and do not inherit NSMatrix.
+//  • setBezeled/setBordered — NSFormCell descends from NSActionCell and draws an
+//    old-style bezel that reads as a heavy white outline in dark mode, unlike every
+//    other field on the page. It has no bezelStyle, so the modern rounded bezel is
+//    unreachable; a plain border is the closest match to the rest of the page.
+#if !canImport(WinChocolate) && !canImport(LinChocolate)
+form.cellSize = NSMakeSize(256, 26)
+form.setBezeled(false)
+form.setBordered(true)
+#endif
+// The NSTextField rows Apple points to instead of NSForm. Nothing to configure beyond
+// the captions above: an NSTextField is already an editable, bezelled field, so these
+// match every other text field on the page by construction.
+contactNameField.isEditable = true
+contactStatusField.isEditable = true
 matrixLabel.font = NSFont.boldSystemFont(ofSize: 12)
 matrix.cellSize = NSMakeSize(104, 28)
 matrix.intercellSpacing = NSMakeSize(8, 8)
@@ -3229,7 +3283,24 @@ let popoverTitle = NSTextField(string: "NSPopover", frame: NSMakeRect(20, 16, 12
 let popoverInfo = NSTextField(string: "Borderless transient host", frame: NSMakeRect(20, 46, 200, 24))
 let popoverCloseButton = NSButton(title: "Close", frame: NSMakeRect(20, 82, 80, 28))
 popoverTitle.font = NSFont.boldSystemFont(ofSize: 14)
-popoverContent.backgroundColor = NSColor(calibratedRed: 1.0, green: 0.94, blue: 0.84, alpha: 1.0)
+// The two lines are captions, not input fields — without this they render as editable
+// bordered fields (and the title even shows a focus ring and selected text), which is
+// what made dark field bezels sit on the light surface below.
+for caption in [popoverTitle, popoverInfo] {
+    caption.isBordered = false
+    caption.drawsBackground = false
+    caption.isEditable = false
+    caption.isSelectable = false
+    // Dynamic — resolves against whichever appearance the popover ends up drawing in.
+    caption.textColor = .labelColor
+}
+// The surface has to follow the appearance. Hardcoding the cream below put a light
+// background under dark-mode controls and dynamic (near-white) label text, which is
+// why the popover was unreadable. Keep the warm character in both modes instead.
+let popoverDark = NSApplication.shared.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+popoverContent.backgroundColor = popoverDark
+    ? NSColor(calibratedRed: 0.26, green: 0.22, blue: 0.16, alpha: 1.0)
+    : NSColor(calibratedRed: 1.00, green: 0.94, blue: 0.84, alpha: 1.0)
 popoverContent.addSubview(popoverTitle)
 popoverContent.addSubview(popoverInfo)
 popoverContent.addSubview(popoverCloseButton)
@@ -3608,9 +3679,15 @@ controlsPage.addSubview(tokenField)
 controlsPage.addSubview(priceLabel)
 controlsPage.addSubview(priceField)
 controlsPage.addSubview(formLabel)
-controlsPage.addSubview(form)
+controlsPage.addSubview(contactNameLabel)
+controlsPage.addSubview(contactNameField)
+controlsPage.addSubview(contactStatusLabel)
+controlsPage.addSubview(contactStatusField)
 controlsPage.addSubview(matrixLabel)
 controlsPage.addSubview(matrix)
+controlsPage.addSubview(deprecatedFormNote)
+controlsPage.addSubview(deprecatedFormLabel)
+controlsPage.addSubview(form)
 
 valuesPage.addSubview(sliderLabel)
 valuesPage.addSubview(slider)
