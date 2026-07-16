@@ -205,6 +205,11 @@ public protocol NativeControlBackend: AnyObject {
 
     // MARK: Application lifecycle
     /// Runs the platform event loop until the application terminates.
+    /// Schedules `block` after `interval` seconds (repeating if asked) on the
+    /// platform's real main loop. Under GTK, Foundation's Timer can't be used:
+    /// RunLoop.main is unpumped, and swift-corelibs' RunLoop fires a repeating
+    /// timer only once. The Timer shadow routes here instead.
+    func scheduleTimer(interval: Double, repeats: Bool, _ block: @escaping () -> Void)
     func runApplication()
     /// Stops the event loop started by `runApplication()`.
     func terminateApplication()

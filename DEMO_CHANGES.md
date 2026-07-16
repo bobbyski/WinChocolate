@@ -166,6 +166,70 @@ Eastern **Standard** Time.
 
 ---
 
+## 2026-07-16 — The Values-page timer ticks (Foundation Timer + Task under GTK's loop) (framework work; demo untouched)
+
+*"the timer isn't updating on the values page."* Right — it sat at "Timer: 0s". This one
+was deep: **two independent Linux/Swift-concurrency failures stacked on top of each other**,
+each of which had to be found by tracing, not guessing.
+
+The demo does, once per second:
+```swift
+Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
+    Task { @MainActor in timerTicks += 1; timerTickLabel.stringValue = "Timer: \(timerTicks)s" }
+}
+```
+
+### Failure 1 — the Timer never fires
+
+Foundation's `Timer` schedules on `RunLoop.main`. Nothing pumps that run loop under GTK's
+`g_main_loop_run`. Worse, **swift-corelibs-foundation's `RunLoop` is broken for repeating
+timers on 6.0.3/aarch64** — proven with a 12-line standalone: a bare
+`RunLoop.main.run()` with a repeating `Timer` fires **exactly once**, then blocks forever;
+looping `run(mode:before:)` with a future window blocks on the first call; with a past
+window it never fires the timer. So RunLoop is unusable, and inverting the loops (run
+RunLoop as the driver, pump GTK from it) fails for the same reason.
+
+Fix: a **`Timer` type shadow** (like the existing `NotificationCenter` shadow — an extension
+overload loses to Foundation's primary declaration, the documented divergence). The demo
+uses only `scheduledTimer(withTimeInterval:repeats:block:)`, which routes to a backend seam
+that schedules on GTK's own loop via `g_timeout_add`. Now the block fires each second.
+
+### Failure 2 — the block fires, but `Task { @MainActor }` never runs
+
+With the timer firing, the label still didn't move: the block's `Task { @MainActor in … }`
+was enqueued and never executed. On Linux those main-actor jobs land on **libdispatch's
+main queue**, which nothing drains under `g_main_loop_run`.
+
+The documented override points — `swift_task_enqueueMainExecutor_hook` /
+`swift_task_enqueueGlobal_hook` — turned out **not to be consulted** for this path on
+6.0.3 (verified: a self-created `Task { @MainActor }` didn't hit either hook even after the
+real runtime globals were written via `dlsym`; `@_silgen_name` alone silently bound a
+*separate* symbol). What actually works is what CFRunLoop does on Apple's platforms: call
+libdispatch's `_dispatch_main_queue_callback_4CF` to drain the main queue. There's no run
+loop here, so a short GTK tick (~60 Hz) calls it. The symbol is SPI, resolved by `dlsym`;
+if a toolchain ever drops it the timer just stops (nothing else breaks), and the install
+log says so.
+
+### Result
+
+Driven under Xvfb: the label steps 0→1→2→… (2s at the 3s mark, 6s at 7s), and the page
+stays responsive (clicking a star still works) — the drain is cheap when the queue is empty
+and doesn't block GTK. Contract test pins the backend timer seam (schedule reaches the
+loop; each tick runs the block). Geometry audit still **0 violations on all 11 pages**; all
+contract tests pass.
+
+**Why two hooks and a shadow instead of "just pump the run loop":** every simpler option was
+tried and demonstrably fails on this toolchain — RunLoop pumping (fires once), loop
+inversion (blocks), the enqueue hooks (not consulted). The write-up records the dead ends so
+the next person doesn't re-walk them.
+
+**MUST FIX (none for WinChocolate):** WinChocolate's demo branch is the synchronous
+`#if canImport(WinChocolate)` path (no Task), so this is Linux-specific. The two mechanisms
+live in `Compat/GLibMainActorExecutor.swift` (dispatch-queue drain) and the `Timer` shadow +
+backend `scheduleTimer` seam.
+
+---
+
 ## 2026-07-16 — Values page: color well, and the clock/calendar gains time editing (framework work; demo untouched)
 
 Three things from a side-by-side macOS vs Linux screenshot.

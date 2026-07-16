@@ -146,6 +146,16 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     }
 
     // MARK: Application lifecycle
+    /// Scheduled timers, for tests: fire them with `simulateTimerTick`.
+    public private(set) var scheduledTimers: [(interval: Double, repeats: Bool, block: () -> Void)] = []
+    public func scheduleTimer(interval: Double, repeats: Bool, _ block: @escaping () -> Void) {
+        scheduledTimers.append((interval, repeats, block))
+    }
+    /// Test hook: fire every scheduled timer once.
+    public func simulateTimerTick() {
+        for timer in scheduledTimers { timer.block() }
+    }
+
     public func runApplication() { isRunning = true }
     public func terminateApplication() { isRunning = false }
 

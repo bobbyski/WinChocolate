@@ -1145,6 +1145,27 @@ final class DynamicFlipView: NSView {
     override var isFlipped: Bool { flipsNow }
 }
 
+// MARK: 28z — Timer routes to the platform loop, not Foundation's dead RunLoop
+do {
+    let backend = InMemoryNativeControlBackend()
+    NSApplication.shared.nativeBackend = backend
+
+    // The LinChocolate Timer shadow routes scheduling to the backend's own loop
+    // (Foundation's Timer lands on RunLoop.main, which is unpumped under
+    // g_main_loop_run AND fires a repeating timer only once on swift-corelibs
+    // 6.0.3). Here we exercise that backend seam directly.
+    var ticks = 0
+    backend.scheduleTimer(interval: 1.0, repeats: true) { ticks += 1 }
+    check(backend.scheduledTimers.count == 1, "a scheduled timer reaches the backend loop")
+    check(backend.scheduledTimers.first?.interval == 1.0, "with its interval")
+    check(backend.scheduledTimers.first?.repeats == true, "and repeat flag")
+
+    // Firing it drives the block (the demo's ticks the label).
+    backend.simulateTimerTick()
+    backend.simulateTimerTick()
+    check(ticks == 2, "each tick runs the block")
+}
+
 // MARK: 29a — NSScroller: a standalone scroller is a real scrollbar
 do {
     let backend = InMemoryNativeControlBackend()

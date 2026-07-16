@@ -1,35 +1,46 @@
 import Foundation
 
-/// Ferries a non-`Sendable` value from the main run loop's delivery closure into
-/// the `@MainActor` block. Sound here because both ends run on the main thread;
-/// the box just satisfies the strict-concurrency checker.
+/// Ferries a non-`Sendable` value from a native callback into the `@MainActor`
+/// block. Sound here because both ends run on the main thread; the box just
+/// satisfies the strict-concurrency checker.
 private struct UncheckedSendableBox<T>: @unchecked Sendable {
     let value: T
 }
 
-// The shared demo is single-threaded: every callback fires on the main run
-// loop. Real Foundation's Timer/NotificationCenter blocks are `@Sendable`
-// (WinFoundation's are not), so under Swift 6's main-actor top level the demo's
-// blocks that touch UI globals wouldn't type-check. These @MainActor-block
-// overloads bridge that gap — they hop through `MainActor.assumeIsolated`,
-// which is sound because the underlying timer/notification is delivered on the
-// main run loop. (Tracked with the other AppKit divergences for L15.3.)
+/// LinChocolate's `Timer` — shadows Foundation's for clients that import both,
+/// exactly as `NotificationCenter` does (and for the same reason: an extension
+/// overload loses to Foundation's primary declaration, the documented
+/// divergence). A full type shadow is the only way to intercept the demo's
+/// `Timer.scheduledTimer` call, whose closure is `@Sendable`-inferred and so
+/// always binds Foundation's overload.
+///
+/// **Why intercept at all:** Foundation's `Timer` schedules on `RunLoop.main`,
+/// which nothing pumps under GTK's `g_main_loop_run` — and swift-corelibs's
+/// `RunLoop` is broken for repeating timers anyway (verified on 6.0.3: a
+/// repeating timer fires exactly once, then `RunLoop.run` blocks forever). So
+/// the timer is driven off GTK's own loop through the backend (`g_timeout`).
+///
+/// The shared demo uses only `scheduledTimer(withTimeInterval:repeats:block:)`,
+/// discarding the result; that is the whole surface implemented here.
+@MainActor
+public final class Timer {
 
-public extension Timer {
-    @MainActor
+    fileprivate init() {}
+
+    /// Schedules a (repeating) timer on GTK's main loop. The block runs on the
+    /// main thread; the demo hops it to the main actor via `Task { @MainActor }`,
+    /// which the GLib main-actor executor hook then delivers.
     @discardableResult
-    static func scheduledTimer(
+    public static func scheduledTimer(
         withTimeInterval interval: TimeInterval,
         repeats: Bool,
         block: @escaping @MainActor (Timer) -> Void
     ) -> Timer {
-        // Typed @Sendable so this call selects Foundation's overload, not this one.
-        let bridged: @Sendable (Timer) -> Void = { timer in
-            let box = UncheckedSendableBox(value: timer)
+        let timer = Timer()
+        let box = UncheckedSendableBox(value: timer)
+        NSApplication.shared.nativeBackend.scheduleTimer(interval: interval, repeats: repeats) {
             MainActor.assumeIsolated { block(box.value) }
         }
-        return scheduledTimer(withTimeInterval: interval, repeats: repeats, block: bridged)
+        return timer
     }
 }
-
-

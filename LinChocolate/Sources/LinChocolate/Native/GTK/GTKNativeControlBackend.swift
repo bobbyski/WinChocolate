@@ -262,6 +262,9 @@ public final class GTKNativeControlBackend: NativeControlBackend {
 
     // MARK: Application lifecycle
     public func runApplication() {
+        // Route Task { @MainActor } onto GTK's loop, or those jobs never run
+        // (nothing else pumps Swift's main-actor executor under g_main_loop_run).
+        installGLibMainActorExecutor()
         let loop = g_main_loop_new(nil, gboolean(0))   // OpaquePointer!
         mainLoop = loop
         g_main_loop_run(loop)
@@ -269,6 +272,22 @@ public final class GTKNativeControlBackend: NativeControlBackend {
     public func terminateApplication() {
         guard let loop = mainLoop else { return }
         g_main_loop_quit(loop)
+    }
+
+    public func scheduleTimer(interval: Double, repeats: Bool, _ block: @escaping () -> Void) {
+        // Foundation's Timer lands on RunLoop.main, which is (a) never pumped
+        // under g_main_loop_run and (b) broken for repeating timers on
+        // swift-corelibs-foundation 6.0.3 anyway (RunLoop.run fires a repeating
+        // timer exactly once, then blocks). So drive it off GTK's own loop.
+        let box = TimerBox(block: block, repeats: repeats)
+        g_timeout_add(guint(max(1, interval * 1000)), { userData in
+            guard let userData else { return gboolean(0) }
+            let box = Unmanaged<TimerBox>.fromOpaque(userData).takeUnretainedValue()
+            box.block()
+            if box.repeats { return gboolean(1) }        // G_SOURCE_CONTINUE
+            Unmanaged<TimerBox>.fromOpaque(userData).release()
+            return gboolean(0)                           // G_SOURCE_REMOVE
+        }, Unmanaged.passRetained(box).toOpaque())
     }
 
     // MARK: Appearance
@@ -2891,6 +2910,16 @@ private final class ToolbarToggleBox {
 }
 
 /// Handler for a customization-palette checkbox `toggled` — reports (id, on).
+/// Carries a repeating timer's block to its g_timeout callback.
+private final class TimerBox {
+    let block: () -> Void
+    let repeats: Bool
+    init(block: @escaping () -> Void, repeats: Bool) {
+        self.block = block
+        self.repeats = repeats
+    }
+}
+
 /// Carries an editable level indicator's backend + handle to its click gesture.
 private final class LevelClickBox {
     weak var backend: GTKNativeControlBackend?
