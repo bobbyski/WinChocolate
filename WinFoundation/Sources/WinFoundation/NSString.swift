@@ -34,6 +34,30 @@ extension String {
         utf16.count
     }
 
+    /// Returns the string with every occurrence of `target` replaced, matching
+    /// Foundation's `replacingOccurrences(of:with:)`.
+    ///
+    /// Only the literal, whole-string form is provided; the `options:`/`range:`
+    /// overloads are future parity work. An empty `target` returns the string
+    /// unchanged rather than looping forever.
+    public func replacingOccurrences(of target: String, with replacement: String) -> String {
+        guard !target.isEmpty else {
+            return self
+        }
+        var result = ""
+        var index = startIndex
+        while index < endIndex {
+            if self[index...].hasPrefix(target), let next = self.index(index, offsetBy: target.count, limitedBy: endIndex) {
+                result += replacement
+                index = next
+                continue
+            }
+            result.append(self[index])
+            index = self.index(after: index)
+        }
+        return result
+    }
+
     /// Whether the string contains another, compared case-insensitively —
     /// matching Foundation's name (locale-specific folding is out of scope
     /// for this slice; `lowercased()` folding applies).

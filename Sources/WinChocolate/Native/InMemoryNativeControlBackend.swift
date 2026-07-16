@@ -378,6 +378,10 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
 
         /// Recorded date-picker display format.
         public var datePickerFormat: String?
+        /// Whether the peer was asked for a stepper (`.textFieldAndStepper`).
+        public var datePickerShowsStepper = false
+        /// The zone the peer renders its wall clock in.
+        public var datePickerTimeZone: TimeZone?
 
         /// Recorded button image file path.
         public var buttonImagePath: String?
@@ -1050,12 +1054,21 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     }
 
     /// Records a date picker creation request.
-    public func createDatePicker(date: Date, minDate: Date?, maxDate: Date?, showsCalendar: Bool, frame: NSRect, parent: NativeHandle?) -> NativeHandle {
-        let handle = makeHandle(kind: showsCalendar ? "calendarDatePicker" : "datePicker", text: "", frame: frame, parent: parent)
+    public func createDatePicker(date: Date, minDate: Date?, maxDate: Date?, style: NSDatePicker.Style, frame: NSRect, parent: NativeHandle?) -> NativeHandle {
+        let handle = makeHandle(kind: style == .clockAndCalendar ? "calendarDatePicker" : "datePicker", text: "", frame: frame, parent: parent)
         records[handle]?.datePickerDate = date
         records[handle]?.datePickerMinDate = minDate
         records[handle]?.datePickerMaxDate = maxDate
+        // The stepper is the observable half of `.textFieldAndStepper` — the
+        // style is named for it, and a field without one is the bug this
+        // records so a test can catch.
+        records[handle]?.datePickerShowsStepper = style == .textFieldAndStepper
         return handle
+    }
+
+    /// Records a date picker's zone.
+    public func setDatePickerTimeZone(_ timeZone: TimeZone, for handle: NativeHandle) {
+        records[handle]?.datePickerTimeZone = timeZone
     }
 
     /// Records a scroll view creation request.

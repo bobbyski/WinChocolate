@@ -32,6 +32,11 @@ public final class DateFormatter {
     /// a US machine).
     public var locale: Locale = .current
 
+    /// The zone the wall clock is rendered in. Defaults to the system's zone,
+    /// as Foundation's does — a `Date` is an instant, and this is what turns it
+    /// into a time of day.
+    public var timeZone: TimeZone = .current
+
     /// Creates a date formatter.
     public init() {}
 
@@ -43,13 +48,13 @@ public final class DateFormatter {
     public func string(from date: Date) -> String {
         let parts = components(from: date)
         if dateFormat.isEmpty, dateStyle != .none || timeStyle != .none,
-           let styled = localeStyledString(from: parts) {
+           let styled = localeStyledString(from: parts, at: date) {
             return styled
         }
         return format(from: parts)
     }
 
-    private func localeStyledString(from c: Components) -> String? {
+    private func localeStyledString(from c: Components, at date: Date) -> String? {
         let time = WinSystemTime(
             year: UInt16(max(0, c.year)),
             month: UInt16(c.month),
@@ -85,13 +90,51 @@ public final class DateFormatter {
 
         if timeStyle != .none {
             let flags: UInt32 = timeStyle == .short ? WinLocale.timeNoSeconds : 0
-            guard let timePart = WinLocale.formatTime(time, localeName: name, flags: flags) else {
+            guard var timePart = WinLocale.formatTime(time, localeName: name, flags: flags) else {
                 return nil
+            }
+            // The long and full time styles name the zone — the full style
+            // spells it out ("Eastern Daylight Time"), which is the tail of
+            // AppKit's full/full string.
+            switch timeStyle {
+            case .full:
+                if let zone = timeZone.longName(for: date) {
+                    timePart += " \(zone)"
+                }
+            case .long:
+                if let zone = timeZone.abbreviation(for: date) {
+                    timePart += " \(zone)"
+                }
+            case .none, .short, .medium:
+                break
             }
             parts.append(timePart)
         }
 
-        return parts.isEmpty ? nil : parts.joined(separator: " ")
+        guard !parts.isEmpty else {
+            return nil
+        }
+        return parts.joined(separator: dateTimeSeparator)
+    }
+
+    /// How the date and time halves are joined.
+    ///
+    /// ICU joins them per locale and per style: en_US uses "{1} 'at' {0}" for
+    /// the full and long date styles and "{1}, {0}" for medium and short —
+    /// which is where the "at" in AppKit's "Sunday, May 31, 2026 at 8:00:00 PM"
+    /// comes from. Windows has no combining-pattern API, so this reproduces
+    /// ICU's rule directly; it holds for en and the Western locales, and is an
+    /// approximation elsewhere.
+    private var dateTimeSeparator: String {
+        guard dateStyle != .none, timeStyle != .none else {
+            return " "
+        }
+        switch dateStyle {
+        case .full, .long:
+            return " at "
+        case .none, .short, .medium:
+            return ", "
+        }
     }
 
     /// Parses a date from a string, or returns `nil` when it does not match.
@@ -227,51 +270,30 @@ public final class DateFormatter {
         return text.count >= width ? text : String(repeating: "0", count: width - text.count) + text
     }
 
-    // MARK: - Calendar math (proleptic Gregorian, UTC)
+    // MARK: - Calendar math (proleptic Gregorian, in `timeZone`)
 
+    /// The wall clock `date` reads in the formatter's zone.
     private func components(from date: Date) -> Components {
-        let total = Int(date.timeIntervalSince1970.rounded(.down))
-        let days = Int((Double(total) / 86_400.0).rounded(.down))
-        var seconds = total - days * 86_400
-        if seconds < 0 {
-            seconds += 86_400
-        }
-
-        let z = days + 719_468
-        let era = (z >= 0 ? z : z - 146_096) / 146_097
-        let doe = z - era * 146_097
-        let yoe = (doe - doe / 1_460 + doe / 36_524 - doe / 146_096) / 365
-        var year = yoe + era * 400
-        let doy = doe - (365 * yoe + yoe / 4 - yoe / 100)
-        let mp = (5 * doy + 2) / 153
-        let day = doy - (153 * mp + 2) / 5 + 1
-        let month = mp + (mp < 10 ? 3 : -9)
-        year += month <= 2 ? 1 : 0
-
-        // 1970-01-01 was a Thursday (weekday 5 with Sunday = 1).
-        let weekday = ((days % 7) + 7 + 4) % 7 + 1
-
-        return Components(
-            year: year,
-            month: month,
-            day: day,
-            hour: seconds / 3_600,
-            minute: (seconds % 3_600) / 60,
-            second: seconds % 60,
-            weekday: weekday
-        )
+        let instant = Int(date.timeIntervalSince1970.rounded(.down))
+        let local = instant + timeZone.secondsFromGMT(for: date)
+        let parts = WinCivilTime.parts(fromEpoch: local)
+        return Components(year: parts.year, month: parts.month, day: parts.day,
+                          hour: parts.hour, minute: parts.minute, second: parts.second,
+                          weekday: parts.weekday)
     }
 
+    /// The instant a wall clock reading names in the formatter's zone.
+    ///
+    /// The offset depends on the instant, and the instant is what is being
+    /// computed — so the local reading is first taken as if it were GMT to pick
+    /// an offset, then that offset is re-checked against the instant it
+    /// implies. One refinement settles every case except the hour that DST
+    /// skips or repeats, which is genuinely ambiguous.
     private func timestamp(year: Int, month: Int, day: Int, hour: Int, minute: Int, second: Int) -> Double {
-        var adjustedYear = year
-        adjustedYear -= month <= 2 ? 1 : 0
-        let era = (adjustedYear >= 0 ? adjustedYear : adjustedYear - 399) / 400
-        let yoe = adjustedYear - era * 400
-        let adjustedMonth = month + (month > 2 ? -3 : 9)
-        let doy = (153 * adjustedMonth + 2) / 5 + day - 1
-        let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy
-        let days = era * 146_097 + doe - 719_468
-        return Double(days) * 86_400.0 + Double(hour * 3_600 + minute * 60 + second)
+        let local = WinCivilTime.epoch(year: year, month: month, day: day, hour: hour, minute: minute, second: second)
+        var offset = timeZone.secondsFromGMT(for: Date(timeIntervalSince1970: Double(local)))
+        offset = timeZone.secondsFromGMT(for: Date(timeIntervalSince1970: Double(local - offset)))
+        return Double(local - offset)
     }
 
     // MARK: - Parsing

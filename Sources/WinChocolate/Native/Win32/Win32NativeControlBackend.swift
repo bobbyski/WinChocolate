@@ -79,6 +79,9 @@ public final class Win32NativeControlBackend: NativeControlBackend {
     /// subclasses override `mouseDown`), not the control-action path.
     var imageViewHandles: Set<UInt> = []
     var monthCalDates: [UInt: Date] = [:]
+    /// The zone each date picker renders its wall clock in — the framework
+    /// resolves `NSDatePicker.timeZone` and pushes it here.
+    var datePickerTimeZones: [UInt: TimeZone] = [:]
     /// Compact date pickers (`SysDateTimePick32`) whose closed field is
     /// owner-drawn dark — the control has no dark theme part and no color API,
     /// so the resting field is painted by the framework under a dark

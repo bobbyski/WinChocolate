@@ -660,3 +660,123 @@ indicator draws one gap lower than the actual top insert.
    agree by construction.
 
 Verified: build 0 errors, contract suite green, live probe screenshots for 1–3.
+
+## Windows re-sync — Round 5 (2026-07-16): NSDatePicker, measured against AppKit
+
+LinChocolate rebuilt this control from **probed** AppKit rather than assumption, and recorded
+the ground truth plus a MUST-FIX list naming WinChocolate in `DEMO_CHANGES.md`. This is that
+list, done. The measured values there are treated as the specification throughout — the Mac
+is where they came from, and guessing was wrong on every one of them.
+
+### The architectural call: configure the native control, don't reimplement it
+
+LinChocolate renders the field itself — building the text, tracking the selected element,
+stepping and typing into it — because **GTK has no date field**. Windows has one.
+`SysDateTimePick32` already selects an element on click, moves between elements with the
+arrow keys, steps *the selected* element, and takes typed digits with auto-advance. That is
+simultaneously the behaviour AppKit specifies and the native Windows look, so the control is
+**configured**, not replaced. Porting LinChocolate's segment engine here would have meant
+hand-rolling a calendar engine too (WinFoundation has no `Calendar`/`DateComponents`) in
+order to end up *less* native. What the framework owns is the AppKit semantics the platform
+cannot know: the element flags, the format they imply, the clamp, the zone, and
+`stringValue`.
+
+1. **The field was showing the wrong time, and silently discarding it.** `systemTime(from:)`
+   hardcoded `wHour`/`wMinute`/`wSecond` to **zero** and formatted in UTC, and the read path
+   kept only year/month/day — so the demo's 2026-06-01T00:00Z rendered `6/1/2026 12:00:00
+   AM` where AppKit renders `5/31/2026, 8:00:00 PM`, and any time the user typed was thrown
+   away on read-back. Both paths now convert a `Date` (an instant) to and from a wall clock
+   in the picker's zone. The field now reads **`5/31/2026, 8:00:00 PM`** — AppKit's probed
+   string, character for character.
+2. **`.textFieldAndStepper` had no stepper.** The default style — a field *with* a stepper
+   and no calendar popup — was created without `DTS_UPDOWN`, so it showed a drop-down
+   calendar button instead: the same bug LinChocolate found, in the same style, for the same
+   reason. Added. The arrows step **the selected element**, which is the MUST-FIX item, and
+   the control does it natively. (`.textField` keeps the drop-down field, the platform's
+   closest bare field; that is also the path the Round 4 calendar-clip fix still serves.)
+3. **Element flags are Apple's.** Cumulative raw values — `hourMinute` 0x000c,
+   `hourMinuteSecond` 0x000e, `timeZone` 0x0010, `yearMonth` 0x00c0, `yearMonthDay` 0x00e0,
+   `era` 0x0100 — replacing invented `1 << n` bits, with `.yearMonth` and `.era` added.
+   Every test now asks the wider flag first. `Style` carries Apple's raw values too.
+4. **The format follows the locale, from the elements.** AppKit builds its field from a
+   locale *template* (`Mdyyyyjmmss` produces `M/d/yyyy, h:mm:ss a`), which is why it shows a
+   four-digit year no short-date style can produce. Windows' own `LOCALE_SSHORTDATE` is
+   already `M/d/yyyy` **and already in the syntax the control wants**, so the locale drives
+   the field order here exactly as it does on Apple, with no template engine:
+   short-date + `", "` + time (the comma is AppKit's), `LOCALE_SSHORTTIME` for
+   `.hourMinute`, the day dropped from the pattern for `.yearMonth`, `gg` for `.era`, and a
+   quoted literal for `.timeZone` (the control has no zone field; nothing steps a zone on
+   Apple either).
+5. **`stringValue` is full/full and element-independent.** It was short/medium and varied
+   with the elements. AppKit's is exactly `DateFormatter(dateStyle: .full, timeStyle: .full)`
+   — a date-only picker returns the same full string — which is why the demo's label was
+   just widened to 550pt.
+6. **`minDate`/`maxDate` reach the control** via `DTM_SETRANGE`; they were accepted and
+   dropped, leaving the framework to correct an out-of-range entry after the fact instead of
+   the field refusing it as AppKit's does.
+7. **`intrinsicContentSize`** uses AppKit's probed numbers where they exist (275.5x148
+   calendar, 180x22 field with date and time, 95x22 date-only) instead of the invented
+   139x148; unprobed element combinations are measured rather than guessed.
+
+### WinFoundation: the gap underneath all of it
+
+`DateFormatter` was **UTC-only** ("time zones beyond UTC are future work") and there was no
+`TimeZone` type — so no amount of control-side work could have rendered a local wall clock or
+matched AppKit's `stringValue`. Added:
+
+- **`TimeZone`** — current zone and fixed offsets, DST-aware. Offsets come from
+  `SystemTimeToTzSpecificLocalTime`, which applies the rule in force *on the date being
+  converted*, and names from `GetTimeZoneInformationForYear`. Whether a date is in DST is
+  decided by comparing its offset against the zone's own yearly extremes — DST always adds,
+  so the larger is daylight, which holds in the southern hemisphere too.
+  `TIME_ZONE_INFORMATION` is read through documented raw offsets rather than a hand-declared
+  Swift struct: it embeds two `WCHAR[32]` arrays, and a layout that drifts from C's reads as
+  data corruption (as `NMHDR`'s missing tail padding did in Round 2).
+- **`DateFormatter.timeZone`**, local-time components, and the full/long styles' zone name.
+  The date and time halves now join per ICU's en_US rule — `" at "` for full/long, `", "` for
+  medium/short — which is where AppKit's "May 31, 2026 **at** 8:00:00 PM" comes from.
+- **`String.replacingOccurrences(of:with:)`**, which was simply missing.
+- Named IANA zones (`America/New_York`) return `nil` rather than silently resolving to
+  something else: Windows has no such database.
+
+### Verified
+
+Contract suite green, including new tests pinning Apple's raw flag values and their
+cumulativity, full/full `stringValue` and its independence from the elements, the
+element-driven format (including year-month, hour-minute and era), the local wall-clock
+round trip with the time of day intact, and each style's stepper. Two **pre-existing tests
+were changed because they pinned the bug**: they asserted UTC rendering (`6/1/2026` for a
+midnight-UTC instant) from a formatter that now renders local time. They are now
+zone-explicit, so they assert the same thing on any machine — and one additionally pins that
+the same instant reads `5/31/2026` at UTC-4, which is the whole point.
+
+Driven live against the running demo (real window messages, screenshots read back):
+
+| | before | after |
+|---|---|---|
+| field | `6/1/2026 12:00:00 AM` | **`5/31/2026, 8:00:00 PM`** (AppKit's probed string) |
+| stepper | absent (drop-down button) | `msctls_updown32` child of the field |
+| click year + 2 steps | stepped the day | **2026 to 2028**, label recomputes to *Wednesday*, May 31, 2028 |
+| type `1` `2` on the month | not possible | **December 31, 2028**, weekday recomputes to *Sunday* |
+| `dateValueLabel` | `6/1/2026` | `Sunday, May 31, 2026 at 8:00:00 PM ...` |
+
+The year-step and month-type results **independently match LinChocolate's** verification of
+the identical interactions (2028/Wednesday; December, day 31) — two implementations, two
+platforms, same AppKit behaviour.
+
+### Known platform boundaries (recorded, not papered over)
+
+- **Zone names are Windows'.** For the major US and European zones the Windows display names
+  coincide with ICU's English long names ("Eastern Daylight Time"), which is what makes
+  `stringValue` match. The two databases are not identical, so an exotic zone can differ.
+  This machine is set to *SA Western Standard Time* (UTC-4, no DST), so the demo's label
+  reads `... 8:00:00 PM SA Western Standard Time` here and would read `... Eastern Daylight
+  Time` on a Mac in Eastern — a machine-configuration difference, not a divergence.
+- **The DST-name branch could not be exercised on this machine** (its zone has no DST); the
+  no-DST branch is verified live, and the logic is pinned by a test that adapts to whichever
+  zone it runs in.
+- **ICU emits U+202F** (narrow no-break space) before AM/PM; Windows' locale data uses a
+  normal space. Identical on screen, one code point apart in `stringValue`. Forcing ICU's
+  convention onto Windows' own locale data would be the wrong trade.
+- **`NSDatePicker.calendar`** is not implemented: WinFoundation has no `Calendar` type, and
+  inventing one to back a property nothing uses would be worse than the honest gap.

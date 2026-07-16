@@ -1735,11 +1735,19 @@ let iccDateClasses: DWORD = 0x00000100
 let dtmFirst: UINT = 0x1000
 let dtmGetSystemTime: UINT = dtmFirst + 1
 let dtmSetSystemTime: UINT = dtmFirst + 2
+let dtmSetRange: UINT = dtmFirst + 4
 let dtmSetFormatW: UINT = dtmFirst + 50
 let gdtValid: WPARAM = 0
+/// `GDTR_MIN`/`GDTR_MAX` — which halves of a `DTM_SETRANGE` pair are set.
+let gdtrMin: WPARAM = 0x0001
+let gdtrMax: WPARAM = 0x0002
+/// `DTS_UPDOWN` — the field carries a stepper instead of a drop-down calendar,
+/// which is AppKit's `.textFieldAndStepper`.
+let dtsUpDown: DWORD = 0x0001
 let mcmFirst: UINT = 0x1000
 let mcmGetCurSel: UINT = mcmFirst + 1
 let mcmSetCurSel: UINT = mcmFirst + 2
+let mcmSetRange: UINT = mcmFirst + 7
 let mcmGetMinReqRect: UINT = mcmFirst + 9
 /// `MCM_SETCOLOR` and its color-part indexes (dark calendar palette).
 let mcmSetColor: UINT = mcmFirst + 10
