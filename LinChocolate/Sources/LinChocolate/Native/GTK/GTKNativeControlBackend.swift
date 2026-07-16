@@ -25,6 +25,7 @@ public final class GTKNativeControlBackend: NativeControlBackend {
     private var kinds: [UInt: InMemoryNativeControlBackend.Kind] = [:]
     private var frames: [UInt: NSRect] = [:]
     private var parents: [UInt: UInt] = [:]   // child -> parent, for repositioning
+    private var childrenByParent: [UInt: [UInt]] = [:]   // parent -> children, in add order
     private var ranges: [UInt: (min: Double, max: Double)] = [:]   // slider/progress
     private var comboEntries: [UInt: OpaquePointer] = [:]   // combo -> its GtkEntry child
     private var splitPaneCounts: [UInt: Int] = [:]           // paned -> panes added
@@ -97,6 +98,11 @@ public final class GTKNativeControlBackend: NativeControlBackend {
             spinbutton button { padding: 0 4px; }
             checkbutton { padding: 0; }
             checkbutton check { min-height: 16px; min-width: 16px; }
+            /* NSStepper: arrows only, no entry (see createStepper). */
+            spinbutton.linchocolate-stepper,
+            spinbutton.linchocolate-stepper button {
+                min-width: 0; min-height: 0; padding: 0;
+            }
             /* Non-editable NSTextFields render as plain labels (no field chrome). */
             entry.linchocolate-label {
                 background: none; background-color: transparent;
@@ -328,7 +334,77 @@ public final class GTKNativeControlBackend: NativeControlBackend {
     public func showWindow(_ handle: NativeHandle) {
         guard let w = widget(handle) else { return }
         gtk_window_present(asWindow(w))
+        if ProcessInfo.processInfo.environment["LINCHOCOLATE_GEOMETRY_AUDIT"] != nil {
+            let box = ActionBox { [weak self] in self?.auditGeometry() }
+            g_timeout_add_seconds(2, { userData in
+                guard let userData else { return gboolean(0) }
+                Unmanaged<ActionBox>.fromOpaque(userData).takeUnretainedValue().action()
+                return gboolean(0)   // one shot
+            }, Unmanaged.passRetained(box).toOpaque())
+        }
     }
+
+    // MARK: Geometry audit
+
+    /// Compares every placed widget's AppKit frame against what GTK actually
+    /// allocated it. Enabled with `LINCHOCOLATE_GEOMETRY_AUDIT=1`.
+    ///
+    /// The frame is authoritative in AppKit: a view IS its frame. GTK's
+    /// `gtk_widget_set_size_request` only sets a *minimum* and documents that it
+    /// "will not cause a widget to be smaller than its natural size" — so any
+    /// widget whose intrinsic minimum exceeds its AppKit frame silently
+    /// overflows and collides with its neighbours. This audit surfaces exactly
+    /// which controls do that, and by how much.
+    func auditGeometry() {
+        print("── LinChocolate geometry audit ─────────────────────────────────────────────")
+        print(String(format: "%-14@ %-18@ %-13@ %-13@ %-14@ %@", "kind" as NSString, "frame x,y,w,h" as NSString,
+                     "min w,h" as NSString, "alloc w,h" as NSString, "self/parent" as NSString, "verdict" as NSString))
+        var violations = 0
+        for (raw, w) in widgets.sorted(by: { $0.key < $1.key }) {
+            guard let frame = frames[raw], let parentRaw = parents[raw] else { continue }
+            guard gtk_widget_get_mapped(asWidget(w)) != 0 else { continue }
+            let kind = kinds[raw].map { String(describing: $0) } ?? "view"
+            let flip = (flippedViews.contains(raw) ? "flip" : "unflip")
+                + "/" + (flippedViews.contains(parentRaw) ? "flip" : "unflip")
+
+            var minW: gint = 0, natW: gint = 0, minH: gint = 0, natH: gint = 0
+            gtk_widget_measure(asWidget(w), GTK_ORIENTATION_HORIZONTAL, -1, &minW, &natW, nil, nil)
+            gtk_widget_measure(asWidget(w), GTK_ORIENTATION_VERTICAL, -1, &minH, &natH, nil, nil)
+            // Measure the *allocated* (border) box, not gtk_widget_get_width():
+            // that returns the CSS content box — allocation minus margin, border
+            // and padding — so a correctly placed control still reads short by
+            // exactly its padding. compute_bounds gives the real rect.
+            var allocW = -1, allocH = -1
+            var actualX = Double.nan, actualY = Double.nan
+            if let container = containerFixed(of: parentRaw) {
+                var bounds = graphene_rect_t()
+                if gtk_widget_compute_bounds(asWidget(w), asWidget(container), &bounds) != 0 {
+                    actualX = Double(bounds.origin.x)
+                    actualY = Double(bounds.origin.y)
+                    allocW = Int(bounds.size.width.rounded())
+                    allocH = Int(bounds.size.height.rounded())
+                }
+            }
+            let wantX = Double(frame.origin.x)
+            let wantY = Double(placementY(for: frame, in: parentRaw))
+
+            var faults: [String] = []
+            if allocW >= 0 && Int(frame.width) != allocW { faults.append("W \(Int(frame.width))→\(allocW)") }
+            if allocH >= 0 && Int(frame.height) != allocH { faults.append("H \(Int(frame.height))→\(allocH)") }
+            if actualX.isFinite && abs(actualX - wantX) > 0.5 { faults.append("X \(Int(wantX))→\(Int(actualX))") }
+            if actualY.isFinite && abs(actualY - wantY) > 0.5 { faults.append("Y \(Int(wantY))→\(Int(actualY))") }
+            if faults.isEmpty { continue }
+            violations += 1
+            let frameDesc = "\(Int(frame.origin.x)),\(Int(frame.origin.y)),\(Int(frame.width)),\(Int(frame.height))"
+            print(String(format: "%-14@ %-18@ %-13@ %-13@ %-14@ %@",
+                         kind as NSString, frameDesc as NSString,
+                         "\(minW),\(minH)" as NSString, "\(allocW),\(allocH)" as NSString,
+                         flip as NSString, faults.joined(separator: "  ") as NSString))
+        }
+        print("── \(violations) control(s) not honouring their AppKit frame ─────────────────")
+        fflush(nil)   // stdout is fully buffered when piped
+    }
+
     public func setWindowTitle(_ title: String, for handle: NativeHandle) {
         guard let w = widget(handle) else { return }
         gtk_window_set_title(asWindow(w), title)
@@ -932,6 +1008,13 @@ public final class GTKNativeControlBackend: NativeControlBackend {
         let overlay = gtk_overlay_new()!
         let area = gtk_drawing_area_new()!
         let fixed = gtk_fixed_new()!
+        // Children are placed at exact AppKit frames, so the fixed's own layout
+        // manager (which allocates each child its *minimum* size) is replaced.
+        // GtkFixed's put/move API must not be used on it from here on.
+        gtk_widget_set_layout_manager(
+            fixed, unsafeBitCast(g_object_new_with_properties(linChocolateFixedLayoutType(), 0, nil, nil),
+                                 to: UnsafeMutablePointer<GtkLayoutManager>.self)
+        )
         gtk_overlay_set_child(OpaquePointer(overlay), area)
         gtk_overlay_add_overlay(OpaquePointer(overlay), fixed)
         // Explicit size + expand: without this the container can collapse to
@@ -948,7 +1031,7 @@ public final class GTKNativeControlBackend: NativeControlBackend {
 
     /// The child-hosting GtkFixed of a container view.
     private func containerFixed(of raw: UInt) -> OpaquePointer? {
-        viewFixeds[raw] ?? widgets[raw]   // pre-overlay fallback: the widget itself
+        viewFixeds[raw]
     }
     public func createButton(title: String, frame: NSRect) -> NativeHandle {
         let b = gtk_button_new_with_label(title)!
@@ -1071,12 +1154,7 @@ public final class GTKNativeControlBackend: NativeControlBackend {
         let widget = cStrings.withUnsafeBufferPointer { gtk_drop_down_new_from_strings($0.baseAddress) }!
         for s in cStrings where s != nil { free(UnsafeMutableRawPointer(mutating: s)) }
         if selectedIndex >= 0 { gtk_drop_down_set_selected(OpaquePointer(widget), guint(selectedIndex)) }
-        // A GtkDropDown fills its requested height, so honoring an oversized frame
-        // height (the demo gives the alert-style pop-up 96px of menu room) makes a
-        // giant button. Use the natural height and top-align, matching AppKit/
-        // WinChocolate, which render the pop-up at its normal control height.
-        gtk_widget_set_size_request(widget, Int32(frame.width), -1)
-        gtk_widget_set_valign(widget, GTK_ALIGN_START)
+        gtk_widget_set_size_request(widget, Int32(frame.width), Int32(frame.height))
         stripPopoverArrows(of: widget)
         return allocate(widget, .popUp, frame: frame)
     }
@@ -1099,6 +1177,23 @@ public final class GTKNativeControlBackend: NativeControlBackend {
     public func createStepper(value: Double, minValue: Double, maxValue: Double, stepSize: Double, frame: NSRect) -> NativeHandle {
         let sb = gtk_spin_button_new_with_range(minValue, maxValue, stepSize == 0 ? 1 : stepSize)!
         gtk_spin_button_set_value(OpaquePointer(sb), value)   // GtkSpinButton is opaque
+        // AppKit's NSStepper is the up/down arrows *only* — the value lives in a
+        // separate text field (the demo gives the stepper 20x28 and its own
+        // label). A GtkSpinButton bundles an entry, whose intrinsic minimum is
+        // ~120px, so it used to overrun its frame and cover the value label.
+        // Keep the spin button (it owns the value, range and step, and emits
+        // value-changed) but hide the entry and stack the arrows, which is the
+        // control AppKit actually draws.
+        gtk_widget_add_css_class(sb, "linchocolate-stepper")
+        gtk_widget_add_css_class(sb, "vertical")
+        var child = gtk_widget_get_first_child(sb)
+        while let current = child {
+            let instance = UnsafeMutableRawPointer(current).assumingMemoryBound(to: GTypeInstance.self)
+            if let name = g_type_name_from_instance(instance), String(cString: name) == "GtkText" {
+                gtk_widget_set_visible(current, gboolean(0))
+            }
+            child = gtk_widget_get_next_sibling(current)
+        }
         gtk_widget_set_size_request(sb, Int32(frame.width), Int32(frame.height))
         let h = allocate(sb, .stepper, frame: frame)
         ranges[h.rawValue] = (minValue, maxValue)
@@ -1604,27 +1699,66 @@ public final class GTKNativeControlBackend: NativeControlBackend {
         gtk_paned_set_position(paned, gint(position))
     }
     public func setViewFlipped(_ flipped: Bool, for handle: NativeHandle) {
+        let was = flippedViews.contains(handle.rawValue)
         if flipped { flippedViews.insert(handle.rawValue) } else { flippedViews.remove(handle.rawValue) }
+        // isFlipped is per-view, not app-wide: this view may disagree with its
+        // parent and its own children. Changing it re-reads every child's Y.
+        if was != flipped { replaceChildren(of: handle.rawValue) }
+    }
+
+    /// Re-places every child of `parentRaw` from its (unchanged) AppKit frame.
+    ///
+    /// A child's GTK Y is derived from *this* parent's height and *this*
+    /// parent's flip — so resizing the parent, or flipping it, invalidates
+    /// every child's position even though no child's frame changed. Only
+    /// unflipped parents actually move their children, but re-placing is
+    /// idempotent, so it is not worth special-casing.
+    private func replaceChildren(of parentRaw: UInt) {
+        guard let container = containerFixed(of: parentRaw) else { return }
+        var moved = false
+        for childRaw in childrenByParent[parentRaw] ?? [] {
+            guard let w = widgets[childRaw], let childFrame = frames[childRaw] else { continue }
+            setExactRect(placement(for: childFrame, in: parentRaw), on: w)
+            moved = true
+        }
+        if moved { gtk_widget_queue_allocate(asWidget(container)) }
     }
 
     /// Whether `view` draws in a top-left (flipped) coordinate space.
     func isViewFlipped(_ view: UInt) -> Bool { flippedViews.contains(view) }
 
-    /// The GTK (top-left) Y at which to place `childFrame` inside `parentRaw`.
-    /// A flipped parent already uses a top-left origin (Win32/WinChocolate), so
-    /// its child Y passes through; otherwise flip AppKit's bottom-left origin.
+    /// The exact rect `childFrame` occupies inside `parentRaw`, in GTK's
+    /// top-left space. The one place a child's geometry is decided — see
+    /// `CoordinateSpace.place`.
+    private func placement(for childFrame: NSRect, in parentRaw: UInt) -> NSRect {
+        CoordinateSpace.place(childFrame,
+                              inParentOfHeight: frames[parentRaw]?.height ?? 0,
+                              parentIsFlipped: flippedViews.contains(parentRaw))
+    }
+
+    /// The GTK (top-left) Y for `childFrame` inside `parentRaw`.
     private func placementY(for childFrame: NSRect, in parentRaw: UInt) -> CGFloat {
-        if flippedViews.contains(parentRaw) { return childFrame.origin.y }
-        let parentHeight = frames[parentRaw]?.height ?? 0
-        return CoordinateSpace.gtkY(for: childFrame, parentHeight: parentHeight)
+        placement(for: childFrame, in: parentRaw).origin.y
     }
 
     public func addSubview(_ child: NativeHandle, to parent: NativeHandle) {
-        guard let p = containerFixed(of: parent.rawValue), let c = widget(child) else { return }
+        guard let c = widget(child) else { return }
+        guard let p = containerFixed(of: parent.rawValue) else {
+            // The parent hosts no children (it is not an NSView-backed
+            // container). Silently dropping the child is how controls went
+            // missing, so say so instead.
+            let kind = kinds[parent.rawValue].map { String(describing: $0) } ?? "?"
+            let message = "LinChocolate: cannot add a subview to a " + kind
+                + " - it has no child area; the child will not appear.\n"
+            FileHandle.standardError.write(Data(message.utf8))
+            return
+        }
         parents[child.rawValue] = parent.rawValue
+        childrenByParent[parent.rawValue, default: []].append(child.rawValue)
         let childFrame = frames[child.rawValue] ?? .zero
-        let y = placementY(for: childFrame, in: parent.rawValue)
-        gtk_fixed_put(asFixed(p), asWidget(c), Double(childFrame.origin.x), Double(y))
+        setExactRect(placement(for: childFrame, in: parent.rawValue), on: c)
+        gtk_widget_set_parent(asWidget(c), asWidget(p))
+        gtk_widget_queue_allocate(asWidget(p))
         // AppKit groups radio buttons that share a superview; mirror that so the
         // GtkCheckButtons render round and behave mutually exclusively.
         if kinds[child.rawValue] == .radio {
@@ -1661,16 +1795,16 @@ public final class GTKNativeControlBackend: NativeControlBackend {
             return
         }
 
-        // Pop-ups keep their natural (control) height regardless of an oversized
-        // frame height (see createPopUpButton).
-        let requestHeight: Int32 = kinds[handle.rawValue] == .popUp ? -1 : Int32(frame.height)
-        gtk_widget_set_size_request(asWidget(w), Int32(frame.width), requestHeight)
+        gtk_widget_set_size_request(asWidget(w), Int32(frame.width), Int32(frame.height))
 
-        // If placed in a parent GtkFixed, move to the new position.
+        // Re-place at the new exact rect within our own parent...
         if let parentRaw = parents[handle.rawValue], let p = containerFixed(of: parentRaw) {
-            let y = placementY(for: frame, in: parentRaw)
-            gtk_fixed_move(asFixed(p), asWidget(w), Double(frame.origin.x), Double(y))
+            setExactRect(placement(for: frame, in: parentRaw), on: w)
+            gtk_widget_queue_allocate(asWidget(p))
         }
+        // ...and re-place our children, whose Y is measured against our height
+        // when we are unflipped.
+        replaceChildren(of: handle.rawValue)
     }
     public func setDrawHandler(for handle: NativeHandle, handler: @escaping (NativeGraphicsContext, Double, Double) -> Void) {
         guard let area = viewDrawAreas[handle.rawValue] else { return }
@@ -2645,3 +2779,91 @@ private let boxDestroyNotify: @convention(c) (gpointer?) -> Void = { data in
     Unmanaged<AnyObject>.fromOpaque(data).release()
 }
 #endif
+
+// MARK: - Frame-authoritative layout
+
+/// The key under which a child's exact GTK rect is stashed on the widget, so
+/// the layout manager's C callbacks can read it without touching Swift state.
+private let linChocolateFrameKey = "linchocolate-frame"
+
+/// Records `rect` (parent-relative, GTK top-left) as `child`'s exact allocation.
+func setExactRect(_ rect: NSRect, on child: OpaquePointer) {
+    let box = g_malloc(gsize(MemoryLayout<graphene_rect_t>.size)).assumingMemoryBound(to: graphene_rect_t.self)
+    box.pointee = graphene_rect_t(
+        origin: graphene_point_t(x: Float(rect.origin.x), y: Float(rect.origin.y)),
+        size: graphene_size_t(width: Float(rect.size.width), height: Float(rect.size.height))
+    )
+    g_object_set_data_full(UnsafeMutablePointer<GObject>(child), linChocolateFrameKey, box, { g_free($0) })
+}
+
+/// The exact rect recorded for `child`, or nil when it is laid out natively.
+private func exactRect(of child: UnsafeMutablePointer<GtkWidget>) -> UnsafeMutablePointer<graphene_rect_t>? {
+    g_object_get_data(UnsafeMutablePointer<GObject>(OpaquePointer(child)), linChocolateFrameKey)?
+        .assumingMemoryBound(to: graphene_rect_t.self)
+}
+
+/// `GtkLayoutManagerClass.measure` — the container's size is the extent of its
+/// children's frames (AppKit containers don't negotiate; they're told a frame).
+private let lcLayoutMeasure: @convention(c) (
+    UnsafeMutablePointer<GtkLayoutManager>?, UnsafeMutablePointer<GtkWidget>?,
+    GtkOrientation, gint,
+    UnsafeMutablePointer<gint>?, UnsafeMutablePointer<gint>?,
+    UnsafeMutablePointer<gint>?, UnsafeMutablePointer<gint>?
+) -> Void = { _, widget, orientation, _, minimum, natural, _, _ in
+    var extent: Float = 0
+    var child = gtk_widget_get_first_child(widget)
+    while let current = child {
+        if gtk_widget_should_layout(current) != 0, let rect = exactRect(of: current) {
+            let edge = orientation == GTK_ORIENTATION_HORIZONTAL
+                ? rect.pointee.origin.x + rect.pointee.size.width
+                : rect.pointee.origin.y + rect.pointee.size.height
+            extent = max(extent, edge)
+        }
+        child = gtk_widget_get_next_sibling(current)
+    }
+    minimum?.pointee = gint(extent)
+    natural?.pointee = gint(extent)
+}
+
+/// `GtkLayoutManagerClass.allocate` — every child gets exactly its AppKit
+/// frame, at its AppKit position. No negotiation: this is what makes a frame
+/// mean the same thing on GTK as it does on AppKit.
+private let lcLayoutAllocate: @convention(c) (
+    UnsafeMutablePointer<GtkLayoutManager>?, UnsafeMutablePointer<GtkWidget>?,
+    gint, gint, gint
+) -> Void = { _, widget, _, _, _ in
+    var child = gtk_widget_get_first_child(widget)
+    while let current = child {
+        defer { child = gtk_widget_get_next_sibling(current) }
+        guard gtk_widget_should_layout(current) != 0, let rect = exactRect(of: current) else { continue }
+        let width = gint(rect.pointee.size.width)
+        let height = gint(rect.pointee.size.height)
+        // GTK requires a measure before an allocate, even when the result is
+        // ignored: it caches the request and warns loudly without it.
+        gtk_widget_measure(current, GTK_ORIENTATION_HORIZONTAL, -1, nil, nil, nil, nil)
+        gtk_widget_measure(current, GTK_ORIENTATION_VERTICAL, width, nil, nil, nil, nil)
+        var origin = graphene_point_t(x: rect.pointee.origin.x, y: rect.pointee.origin.y)
+        gtk_widget_allocate(current, width, height, -1, gsk_transform_translate(nil, &origin))
+    }
+}
+
+private let lcLayoutClassInit: @convention(c) (gpointer?, gpointer?) -> Void = { klass, _ in
+    let layoutClass = klass!.assumingMemoryBound(to: GtkLayoutManagerClass.self)
+    layoutClass.pointee.measure = lcLayoutMeasure
+    layoutClass.pointee.allocate = lcLayoutAllocate
+}
+
+nonisolated(unsafe) private var lcLayoutTypeStorage: GType = 0
+
+/// The GType of LinChocolate's frame-authoritative layout manager.
+func linChocolateFixedLayoutType() -> GType {
+    if lcLayoutTypeStorage != 0 { return lcLayoutTypeStorage }
+    var info = GTypeInfo()
+    info.class_size = guint16(MemoryLayout<GtkLayoutManagerClass>.size)
+    info.class_init = lcLayoutClassInit
+    info.instance_size = guint16(MemoryLayout<GtkLayoutManager>.size)
+    lcLayoutTypeStorage = g_type_register_static(
+        gtk_layout_manager_get_type(), "LinChocolateFixedLayout", &info, GTypeFlags(rawValue: 0)
+    )
+    return lcLayoutTypeStorage
+}

@@ -1139,6 +1139,136 @@ do {
     check(backend.shownPopovers.count == 1, "re-showing works and reuses one popover")
 }
 
+/// A view whose `isFlipped` changes at runtime (AppKit re-reads it; a cache lies).
+final class DynamicFlipView: NSView {
+    var flipsNow = true
+    override var isFlipped: Bool { flipsNow }
+}
+
+// MARK: 30b — CoordinateSpace: the one place a child's geometry is decided
+do {
+    // An unflipped (AppKit-default) parent: the child's bottom-left origin
+    // becomes a top-left origin, so y = parentHeight - y - height.
+    let child = NSMakeRect(10, 20, 100, 30)
+    let placed = CoordinateSpace.place(child, inParentOfHeight: 200, parentIsFlipped: false)
+    check(placed.origin.y == 150, "an unflipped parent flips the child's Y")
+    check(placed.origin.x == 10, "X never flips")
+
+    // A flipped parent (Win32/WinChocolate, and the shared demo) already
+    // measures from the top, so Y passes through untouched.
+    let flipped = CoordinateSpace.place(child, inParentOfHeight: 200, parentIsFlipped: true)
+    check(flipped.origin.y == 20, "a flipped parent passes the child's Y through")
+
+    // Size is never negotiated: in AppKit a view *is* its frame. This is the
+    // property that stopped controls overlapping — GTK's size_request is only
+    // a minimum, so a control whose intrinsic minimum exceeded its frame used
+    // to overflow onto its neighbours.
+    check(placed.size == child.size, "size passes through unchanged (the frame is law)")
+    check(flipped.size == child.size, "size passes through unchanged when flipped too")
+
+    // The flip is an involution: placing twice returns the original Y.
+    let back = CoordinateSpace.place(placed, inParentOfHeight: 200, parentIsFlipped: false)
+    check(back.origin.y == child.origin.y, "flipping twice restores the original Y")
+
+    // A child taller than its parent lands above the top edge, not clamped —
+    // AppKit does not clamp frames either.
+    let tall = CoordinateSpace.place(NSMakeRect(0, 0, 10, 300), inParentOfHeight: 200, parentIsFlipped: false)
+    check(tall.origin.y == -100, "an oversized child is placed, not clamped")
+}
+
+// MARK: 30b-i — stackedRowY: the container's OWN flip decides
+do {
+    // Row 0 is topmost under both conventions; rows 0..2 of 24pt content in a
+    // 100pt container. Flipped counts down from 0; unflipped counts back from
+    // the top edge. Both must agree on the visual order.
+    let flippedYs = (0..<3).map {
+        CoordinateSpace.stackedRowY(index: $0, rowHeight: 24, contentHeight: 24,
+                                    containerHeight: 100, isFlipped: true)
+    }
+    let unflippedYs = (0..<3).map {
+        CoordinateSpace.stackedRowY(index: $0, rowHeight: 24, contentHeight: 24,
+                                    containerHeight: 100, isFlipped: false)
+    }
+    check(flippedYs == [0, 24, 48], "flipped rows count down from the top")
+    check(unflippedYs == [76, 52, 28], "unflipped rows count back from the top edge")
+    check(flippedYs[0] < flippedYs[1] && unflippedYs[0] > unflippedYs[1],
+          "row 0 is topmost under both conventions (the Y ordering inverts)")
+
+    // Spacing applies to the pitch, not the content height.
+    check(CoordinateSpace.stackedRowY(index: 2, rowHeight: 20, spacing: 4, contentHeight: 20,
+                                      containerHeight: 100, isFlipped: true) == 48,
+          "spacing widens the row pitch")
+    // A control shorter than its row is top-aligned within it when unflipped.
+    check(CoordinateSpace.stackedRowY(index: 0, rowHeight: 40, contentHeight: 24,
+                                      containerHeight: 100, isFlipped: false) == 76,
+          "a short control is top-aligned in its row")
+}
+
+// MARK: 30b-ii — isFlipped is PER VIEW: neighbours need not agree
+/// Two sibling containers that disagree about `isFlipped`, plus a child that
+/// disagrees with its parent — AppKit reads each view's own flag.
+final class FlippedView: NSView {
+    override var isFlipped: Bool { true }
+}
+final class UnflippedView: NSView {
+    override var isFlipped: Bool { false }
+}
+do {
+    let backend = InMemoryNativeControlBackend()
+    NSApplication.shared.nativeBackend = backend
+    // The app-wide default must not decide any individual view's answer.
+    NSView.defaultIsFlipped = true
+    defer { NSView.defaultIsFlipped = true }
+
+    let root = FlippedView(frame: NSMakeRect(0, 0, 400, 400))
+    let flipped = FlippedView(frame: NSMakeRect(0, 0, 200, 200))
+    let unflipped = UnflippedView(frame: NSMakeRect(200, 0, 200, 200))
+    root.addSubview(flipped)
+    root.addSubview(unflipped)
+    check(backend.flippedViews[flipped.handle.rawValue] == true, "a flipped view reports flipped")
+    check(backend.flippedViews[unflipped.handle.rawValue] == false,
+          "an unflipped sibling reports unflipped, despite the app-wide default")
+
+    // A child that disagrees with its parent: the parent's flip places the
+    // child; the child's own flip governs its own children and drawing.
+    let childOfUnflipped = FlippedView(frame: NSMakeRect(10, 20, 50, 30))
+    unflipped.addSubview(childOfUnflipped)
+    check(backend.flippedViews[unflipped.handle.rawValue] == false, "the parent keeps its own flip")
+    check(backend.flippedViews[childOfUnflipped.handle.rawValue] == true, "the child keeps its own flip")
+
+    // The two flips produce genuinely different placements for the same frame,
+    // which is the whole reason they must not be assumed uniform.
+    let frame = NSMakeRect(10, 20, 50, 30)
+    let inFlipped = CoordinateSpace.place(frame, inParentOfHeight: 200, parentIsFlipped: true)
+    let inUnflipped = CoordinateSpace.place(frame, inParentOfHeight: 200, parentIsFlipped: false)
+    check(inFlipped.origin.y == 20 && inUnflipped.origin.y == 150,
+          "the same frame lands in two different places under the two flips")
+
+    // A dynamic override must be re-read, not cached from the first addSubview.
+    let dynamic = DynamicFlipView(frame: NSMakeRect(0, 0, 100, 100))
+    root.addSubview(dynamic)
+    check(backend.flippedViews[dynamic.handle.rawValue] == true, "the initial flip reaches the backend")
+    dynamic.flipsNow = false
+    dynamic.frame = NSMakeRect(0, 0, 100, 101)   // any re-placement re-reads it
+    check(backend.flippedViews[dynamic.handle.rawValue] == false,
+          "a changed isFlipped is re-read, not served from the add-time cache")
+}
+
+// MARK: 30c — NSSplitView: panes are subviews (AppKit's original API)
+do {
+    let backend = InMemoryNativeControlBackend()
+    NSApplication.shared.nativeBackend = backend
+    let split = NSSplitView(vertical: true, frame: NSMakeRect(0, 0, 240, 96))
+    let left = NSView(frame: .zero)
+    let right = NSView(frame: .zero)
+    split.addSubview(left)      // AppKit: a split view's subviews ARE its panes
+    split.addSubview(right)
+    check(split.arrangedSubviews.count == 2, "addSubview adds a pane")
+    check(split.subviews.count == 2, "the panes are also subviews")
+    check(left.superview === split, "a pane's superview is the split view")
+    check(backend.splitPanes[split.handle.rawValue]?.count == 2, "both panes reach the backend")
+}
+
 // MARK: 31 — Toolbar customization (NSToolbarDelegate + palette)
 final class CustomizeDelegate: NSToolbarDelegate {
     let items: [String: NSToolbarItem]

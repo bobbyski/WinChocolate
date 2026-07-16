@@ -2,6 +2,23 @@
 
 This document tracks AppKit control coverage for WinChocolate. The project goal is Mac-first API compatibility: application code should keep AppKit/Cocoa names and behavior, while WinChocolate chooses the closest native Windows implementation behind the backend boundary.
 
+## The Rule (set in stone)
+
+> **We are implementing the Apple API, not creating something similar.**
+
+Apple's implementation is the specification. The demo builds against real AppKit on macOS, and **that build is the ground truth**. Any difference between a backend and the macOS build is a backend bug, full stop — the Apple side is never "wrong" and is never adjusted to match a backend.
+
+This rule is not negotiable. It decomposes into four obligations:
+
+1. **Exact API.** Same class names, properties, enum cases, **defaults**, and behavior. If `NSDatePicker.datePickerStyle` defaults to `.textFieldAndStepper` on AppKit, it defaults to `.textFieldAndStepper` everywhere. Getting a *default* wrong is as much a bug as getting a call wrong.
+2. **Never substitute or combine controls for the user.** The framework does not get to decide the app wanted a simpler control. If the app asks for a date picker with a stepper, it gets a date picker with a stepper. Application code composes controls; the framework never composes them on the app's behalf.
+3. **No native equivalent ⇒ build a compound custom control.** When a platform has no native counterpart, implement the Apple control as a **custom control composed of the primitives that do exist** (text field + stepper + label, …). It must expose the **exact Apple API** and behave the same; the compound is an internal detail and must never leak into the public API. This is usually *easier* and more reliable than forcing the platform's nearest complex control to impersonate the Apple one.
+4. **Native look is fine; substituted behavior is not.** It may look like a Windows or Linux app. It must still *be* the Apple control: same API, same semantics, same composition.
+
+**Verification.** `Demo/ViewInfo` dumps every view, every property set on it, and its actions from the demo source. Run it against the source the macOS app builds and compare control-by-control — a missing property, a wrong default, or an unimplemented style becomes obvious. See `Demo/ViewInfo/README.md`.
+
+**Worked example — `NSDatePicker` (the case that established this rule).** The demo never sets `datePickerStyle`, so AppKit uses the default `.textFieldAndStepper`: a date field, a time field (because `datePickerElements = [.yearMonthDay, .hourMinuteSecond]`), and a stepper. A backend that renders a bare text field has silently substituted the `.textField` style — a real Apple style, but not the one asked for. The fix is never to redefine the demo; it is to honor the default and build `.textFieldAndStepper` as a compound of a text field plus a stepper.
+
 Status values:
 
 - `Done`: Implemented in the named backend.
@@ -110,6 +127,49 @@ These are out of scope unless they become useful as an implementation detail beh
 - Toolbar customization cleanup: return to `NSToolbar` after the next control work pass and finish the remaining polish around the customization dialog, including final visual matching, drag/drop edge cases, overflow, autosave, and parity with AppKit's customization sheet.
 - SF Symbols compatibility: define the Windows-side strategy for `NSImage(systemSymbolName:)` and SF-symbol-style names, including allowed licensing boundaries, symbol-name-to-Windows-icon mappings, and any bundled replacement asset set needed for names that do not map to common-control or Windows-native icons.
 - Native tooltip popups: `NSView.toolTip` now flows through the backend API, but the Win32 backend still needs a `tooltips_class32` host so users actually see tooltip bubbles.
+
+## Parity Gap Sweep (ViewInfo)
+
+Produced by running `ViewInfo` over the demo and checking every property the demo
+sets against the framework. The demo is an Apple app, so anything it touches is,
+by the Rule above, a requirement. Re-run with:
+
+    cd Demo/ViewInfo && swift run ViewInfo ../DemoApplication/main.swift ../DemoApplication/DemoConveniences.swift
+
+### P1 — API the demo uses that does not exist
+
+The demo sets these; the framework never declares them. Same severity as the
+`NSDatePicker` stepper: Apple code that will not port.
+
+- `NSBrowser.columnResizingType` — demo sets `.userColumnResizing` (main.swift:4062). Needs the `NSBrowser.ColumnResizingType` enum (`.noColumnResizing`, `.autoColumnResizing`, `.userColumnResizing`) with AppKit's `.autoColumnResizing` default.
+- `NSBrowser.minColumnWidth` — demo sets `170` (main.swift:4066). AppKit's default is `100`, which is what truncates "Application" to "Applicat…" in the demo.
+- `NSForm.setBezeled(_:)` — demo calls `form.setBezeled(false)` (main.swift:2487). Applies to every cell.
+- `NSForm.setBordered(_:)` — demo calls `form.setBordered(true)` (main.swift:2488).
+
+### P2 — declared but inert (set it, nothing happens)
+
+The `NSDatePicker` defect class: the API accepts the value and silently drops it.
+
+- `NSVisualEffectView.blendingMode` — stored, and its `didSet` calls `updateFallbackBackground()`, but that method never reads `blendingMode`, so `.withinWindow` and `.behindWindow` are identical. Either honor it or document the fallback as a known limit.
+- `NSScrollView.allowsMagnification` — stored, never read; gesture magnification is unimplemented. Already documented in-source as pending, so this is a known gap rather than a silent one.
+
+### P3 — style frozen at peer-creation time
+
+These pick the *peer type* from a style property inside `createNativePeer`, and
+peers are realized on `addSubview` (`NSView.swift:647`). Setting the style after
+that point works in AppKit but is ignored here. The demo happens to set them
+before `addSubview`, so it renders correctly today — this is latent, not live.
+
+- `NSLevelIndicator.levelIndicatorStyle` — no observer; chooses plain-view-with-custom-drawing vs. native progress bar at creation.
+- `NSProgressIndicator.style` — same shape; already documents the divergence in-source.
+
+Fix shape for both: recreate the peer on style change, or realize the superset
+peer and switch rendering.
+
+### Verified NOT gaps
+
+- `NSLevelIndicator` `.rating` **is** implemented — `draw(_:)` renders a real five-pointed `starPath`. The stars missing from the screenshot are therefore a runtime problem (the framework-drawn plain-view peer not painting), not absent code, and need on-device Windows debugging rather than new API.
+- The `on…`-style closures the demo uses (`onSelectionChanged`, `onTextChanged`, `onDoubleAction`, …) are demo-side conveniences declared in `DemoConveniences.swift`, not AppKit API. Not framework gaps.
 
 ## Special Mismatch Notes
 

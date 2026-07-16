@@ -14,9 +14,24 @@ open class NSView: NSResponder {
     /// origin). Setting it repositions/resizes the native control.
     public var frame: NSRect {
         didSet {
+            // `isFlipped` is per-view and overridable, so a subclass may compute
+            // it rather than return a constant. Re-read both flips that decide
+            // this frame's placement (our parent's, for our own Y; and ours, for
+            // our children's) instead of trusting what was cached when the view
+            // was first added.
+            refreshFlips()
             backend.setFrame(frame, for: handle)
             layout()
         }
+    }
+
+    /// Pushes this view's flip, and its parent's, to the backend. Cheap, and it
+    /// keeps a dynamic `isFlipped` override honest.
+    private func refreshFlips() {
+        if let superview {
+            backend.setViewFlipped(superview.isFlipped, for: superview.handle)
+        }
+        backend.setViewFlipped(isFlipped, for: handle)
     }
 
     /// Lays out subviews after a frame change (AppKit's `layout()`). The base
@@ -135,14 +150,21 @@ open class NSView: NSResponder {
     /// `NSView.defaultIsFlipped` to change it app-wide.
     open var isFlipped: Bool { NSView.defaultIsFlipped }
 
-    public func addSubview(_ view: NSView) {
+    open func addSubview(_ view: NSView) {
+        adoptSubview(view)
+        backend.addSubview(view.handle, to: handle)
+    }
+
+    /// Records `view` in the hierarchy without placing it natively. Containers
+    /// whose native side parents children itself (`NSSplitView`'s panes) call
+    /// this instead of going through the generic child-area path.
+    func adoptSubview(_ view: NSView) {
         subviews.append(view)
         view.superview = self
         // Record this parent's flip (for positioning children) and the child's
         // own flip (for its own drawing coordinate space).
         backend.setViewFlipped(isFlipped, for: handle)
         backend.setViewFlipped(view.isFlipped, for: view.handle)
-        backend.addSubview(view.handle, to: handle)
     }
 
     /// Detaches the view from its parent. Native detach isn't modeled yet, so

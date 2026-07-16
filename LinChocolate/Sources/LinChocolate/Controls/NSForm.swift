@@ -56,12 +56,11 @@ open class NSForm: NSControl {
     @discardableResult
     public func addEntry(_ title: String) -> NSFormCell {
         let index = cells.count
-        // The first row sits at the top in both conventions. Flipped (top-left):
-        // rows increase downward from y=0. Unflipped (AppKit bottom-left): rows
-        // descend from the top edge.
-        let y = isFlipped
-            ? Double(index) * rowHeight
-            : frame.height - Double(index + 1) * rowHeight + (rowHeight - 24)
+        // Row 0 is topmost either way; `isFlipped` is this form's own answer.
+        let y = CoordinateSpace.stackedRowY(index: index, rowHeight: rowHeight,
+                                            contentHeight: 24,
+                                            containerHeight: frame.height,
+                                            isFlipped: isFlipped)
         let label = NSTextField(labelWithString: title,
                                 frame: NSMakeRect(0, y, titleWidth, 24))
         let field = NSTextField(string: "",

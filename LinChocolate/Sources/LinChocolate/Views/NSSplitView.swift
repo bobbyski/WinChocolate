@@ -29,7 +29,16 @@ public final class NSSplitView: NSView {
     /// Adds the next pane. Panes beyond the second are ignored in this slice.
     public func addArrangedSubview(_ view: NSView) {
         arrangedSubviews.append(view)
+        adoptSubview(view)
         backend.addSplitPane(view.handle, to: handle)
+    }
+
+    /// A split view's panes *are* its subviews, so `addSubview(_:)` adds a pane
+    /// — AppKit's original API, and what the demo uses. Without this the panes
+    /// took `NSView`'s generic path, which looks for a child area a GtkPaned
+    /// doesn't have, and both panes silently never appeared.
+    public override func addSubview(_ view: NSView) {
+        addArrangedSubview(view)
     }
 
     /// Moves the divider to `position` (pixels from the leading edge).

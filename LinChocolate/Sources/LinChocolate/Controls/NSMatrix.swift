@@ -91,10 +91,11 @@ open class NSMatrix: NSControl {
         for r in 0..<rows {
             for c in 0..<columns {
                 let x = Double(c) * (cw + hs)
-                // Row 0 at the top in both conventions.
-                let y = isFlipped
-                    ? Double(r) * (ch + vs)
-                    : frame.height - Double(r + 1) * ch - Double(r) * vs
+                // Row 0 is topmost either way; `isFlipped` is this matrix's own.
+                let y = CoordinateSpace.stackedRowY(index: r, rowHeight: ch, spacing: vs,
+                                                    contentHeight: ch,
+                                                    containerHeight: frame.height,
+                                                    isFlipped: isFlipped)
                 cellButtons[r][c].frame = NSMakeRect(x, y, cw, ch)
             }
         }

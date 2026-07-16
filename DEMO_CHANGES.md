@@ -33,6 +33,134 @@ verified** — running the demo, not just building it.
 
 ---
 
+## 2026-07-15 — Geometry audit: the frame is now law on Linux (376 violations → 0) (framework work; demo untouched)
+
+**The question:** how can controls overlap on Linux when the demo source — the frames —
+is byte-for-byte the same source AppKit lays out correctly?
+
+**The answer: the frame was a *floor*, not law.** In AppKit a view **is** its frame; the
+frame is the allocation. GTK instead *negotiates* size, and
+`gtk_widget_set_size_request()` is documented as setting a **minimum** that "will not
+cause a widget to be smaller than its natural size." So every control whose intrinsic
+minimum exceeded its AppKit frame silently grew past it and sat on top of its neighbour.
+Same frames, different contract.
+
+### The audit
+
+Added `LINCHOCOLATE_GEOMETRY_AUDIT=1`, which walks every mapped widget and compares its
+AppKit frame against what GTK actually allocated it, alongside the widget's intrinsic
+minimum. Run across all 11 pages it found **376 violations — every control on every
+page**. The `min` column named the culprits outright:
+
+| control | demo frame | GTK intrinsic min | was |
+|---|---|---|---|
+| `NSStepper` | 20×28 | **120×33** | spilled 86px across its value label |
+| `NSDatePicker` (calendar) | 276×168 | **291×198** | overran "Rating:" |
+| `NSColorWell` | 32×28 | **58×28** | pushed into "Font…" |
+| `NSLevelIndicator` | 144×18 | **152×18** | 8px over |
+
+### The fix — one place decides geometry
+
+`CoordinateSpace.place(_:inParentOfHeight:parentIsFlipped:)` is now **the single function
+that decides a child's rect**, and both placement paths (`addSubview`, `setFrame`) go
+through it. Size passes through untouched *by design* — that is what makes a frame mean
+the same thing on both platforms.
+
+To make it authoritative, LinChocolate now registers its own GObject layout manager,
+**`LinChocolateFixedLayout`**, on every view's child area. GtkFixed's own layout manager
+allocates each child its *minimum* size; ours allocates each child **exactly its frame,
+at its frame's position** — no negotiation, which is precisely AppKit's model.
+
+**Result: 376 → 0 violations across all 11 pages.**
+
+### Bugs the audit found that screenshots could not
+
+- **`NSSplitView` silently dropped both its panes.** The demo uses `splitView.addSubview(pane)`
+  — Apple's original API, where a split view's subviews **are** its panes — but
+  LinChocolate only implemented `addArrangedSubview`, so the panes took `NSView`'s generic
+  path, which looked for a child area a `GtkPaned` doesn't have, and vanished. 22 dropped
+  children (2 per page) were failing as GTK criticals nobody read. `NSSplitView.addSubview`
+  now routes to the pane path, and the generic path **reports** a missing child area
+  instead of dropping it. The demo's green/pink panes now render for the first time.
+- **`NSStepper` was the wrong widget.** AppKit's stepper is the arrows *only* (the value
+  lives in a separate field — the demo gives it 20×28 plus its own label). A
+  `GtkSpinButton` bundles an entry, hence the 120px minimum. It keeps the spin button
+  (which owns value/range/step and emits value-changed) but hides the entry and stacks the
+  arrows: the control AppKit actually draws.
+- **A pop-up workaround defending a case that never existed.** `createPopUpButton` forced
+  natural height with `valign = START`, commented "the demo gives the alert-style pop-up
+  96px of menu room." The demo's pop-ups are 26, 28 and 26 — there is no 96px pop-up. That
+  stale workaround was the *last* 30 violations. Removed; the frame rules.
+
+### Two traps worth remembering
+
+- **`gtk_widget_get_width()` is not the allocation.** It returns the CSS *content* box —
+  allocation minus margin, border and padding — so a perfectly placed control reads short
+  by exactly its padding. My first audit "found" 28 violations that were pure measurement
+  error (button −22 = 2×(10+1) padding+border; entry −14 = 2×(6+1); scale −24 = 2×12).
+  Use `gtk_widget_compute_bounds()` for the real rect. *A metric that indicts every single
+  row is usually indicting itself.*
+- Swift's `print` to a pipe is fully buffered — a killed process loses the lot. `fflush(nil)`
+  (not `fflush(stdout)`: `stdout` is a `var` and trips Swift 6 concurrency checking).
+
+**Verified:** audit reports 0/11 pages violating and 0 dropped children; Values page
+screenshot confirms the stepper reduced to `− +` with its label clear, the calendar clear
+of "Rating:", the colour well a proper swatch; the split view's panes visibly render; all
+contract tests pass, including new ones pinning `CoordinateSpace.place` (flip, involution,
+size pass-through, no clamping) and split panes as subviews.
+
+### Follow-up: `isFlipped` is **per view** — neighbours need not agree
+
+Bobby's callout: *"don't forget to account for the flipped transformation as it is per
+view so you can't assume they will all be the same."* Correct, and the audit had been
+hiding it: all 12 of the demo's `isFlipped` overrides return `true`, matching
+`defaultIsFlipped`, so **the unflipped path is never exercised by RealDemo** — every
+placement was a pass-through. Two real latent bugs were sitting in it:
+
+- **Nothing re-placed children when a parent resized.** An unflipped parent's child sits at
+  `parentHeight − y − height`, so resizing the parent stranded every child at a stale Y.
+  `setFrame` now re-places its children (`replaceChildren`), tracked via a new
+  `childrenByParent` map.
+- **The flip was cached at first-`addSubview` and never refreshed**, though `isFlipped` is
+  an `open var` a subclass may compute from state. `NSView.frame` now re-reads both flips
+  that decide a placement — the parent's (for its own Y) and its own (for its children's) —
+  and a flip change re-places every child.
+
+`NSForm` and `NSMatrix` each hand-rolled the same "stack rows from the top edge, flip
+dependent" math. Both now call **`CoordinateSpace.stackedRowY(index:rowHeight:spacing:contentHeight:containerHeight:isFlipped:)`**,
+which takes the container's *own* flip. (`LayoutSolver` also branches on the flip, but it
+maps the `top`/`bottom` *attributes* rather than translating a rect — genuinely a different
+operation, and it already reads `container.isFlipped` per view. The Cairo draw path reads
+each view's own flip too, and applies the axis transform only for unflipped views.)
+
+Contract tests now pin the per-view rule: sibling containers that disagree, a child that
+disagrees with its parent, a **dynamic** `isFlipped` that changes at runtime (proving the
+value is re-read, not served from the add-time cache), the same frame landing in two
+different places under the two flips, and `stackedRowY`'s ordering inverting while row 0
+stays topmost. Re-audit after the change: still **0 violations on all 11 pages**, 0 dropped
+children, all contract tests pass, and the `NSMatrix`/`NSForm` layouts are unchanged
+on screen.
+
+### Still open (rendering fidelity, not geometry — for the page-by-page pass)
+
+- GtkCalendar's intrinsic minimum (291×198) still exceeds the demo's deliberate 276×168,
+  so its last week row draws outside its allocation. Needs CSS to shrink the calendar's
+  own padding/font — the frame is honoured, the widget just draws past it.
+- Stepper arrows render side-by-side rather than stacked (the `.vertical` class did not
+  take).
+- Vertical slider track and level indicator render thinner than AppKit's.
+
+**Files touched** (all LinChocolate)
+
+- `Geometry/CoordinateSpace.swift` — `place(_:inParentOfHeight:parentIsFlipped:)`
+- `Native/GTK/GTKNativeControlBackend.swift` — `LinChocolateFixedLayout`, placement routed
+  through `place`, strict child-area check, stepper, pop-up workaround removed, the audit
+- `Views/NSView.swift` — `adoptSubview`; `addSubview` is `open`
+- `Views/NSSplitView.swift` — `addSubview` adds a pane
+- `Tests/LinChocolateContractTests` — geometry + split-pane tests
+
+---
+
 ## 2026-07-15 — Toolbar customization is now Apple's real sheet, with drag-and-drop (framework work; demo untouched)
 
 The tile-toggle panel from earlier today was, correctly, called out as "a prettier version
