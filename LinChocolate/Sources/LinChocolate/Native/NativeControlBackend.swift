@@ -423,6 +423,24 @@ public protocol NativeControlBackend: AnyObject {
     /// Switches a date picker between the graphical calendar and the compact
     /// text-field style (AppKit's `datePickerStyle`).
     func setDatePickerGraphical(_ graphical: Bool, for handle: NativeHandle)
+    /// Clamps the picker's selectable range (AppKit's `minDate`/`maxDate`).
+    func setDateRange(min: Date?, max: Date?, for handle: NativeHandle)
+    /// Sets the compact picker's display text. The **framework** formats it
+    /// (locale, elements, calendar all being AppKit semantics, not GTK's), so
+    /// the backend only renders what it is given.
+    func setDatePickerText(_ text: String, for handle: NativeHandle)
+    /// Highlights the selected element's character range in the compact field.
+    func setDatePickerSelection(location: Int, length: Int, for handle: NativeHandle)
+    /// The stepper reports a direction (+1/-1); the framework decides which
+    /// element that moves.
+    func setDateStepAction(for handle: NativeHandle, action: @escaping (Int) -> Void)
+    /// A click in the compact field reports the character offset hit.
+    func setDatePickerCursorAction(for handle: NativeHandle, action: @escaping (Int) -> Void)
+    /// Left/right keys report -1/+1 to move the selected element.
+    func setDatePickerMoveAction(for handle: NativeHandle, action: @escaping (Int) -> Void)
+    /// A typed character (a digit, or "a"/"p" for AM/PM) reaches the selected
+    /// element — AppKit's date field is type-to-edit, not stepper-only.
+    func setDatePickerTypeAction(for handle: NativeHandle, action: @escaping (String) -> Void)
     /// Rebuilds a button as a push button, checkbox, or radio (AppKit's
     /// `setButtonType(_:)` applied to a control created as a plain button).
     func setButtonKind(_ kind: NativeButtonKind, title: String, for handle: NativeHandle)

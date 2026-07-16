@@ -1720,10 +1720,10 @@ let segmentedControl = NSSegmentedControl(labels: ["One", "Two", "Three"], frame
 let scrollerLabel = NSTextField(string: "Scroller:", frame: NSMakeRect(32, 334, 88, 24))
 let scroller = NSScroller(frame: NSMakeRect(128, 340, 240, 18))
 let scrollerValueLabel = NSTextField(string: "0", frame: NSMakeRect(384, 334, 48, 24))
-let timerTickLabel = NSTextField(string: "Timer: 0s", frame: NSMakeRect(548, 382, 160, 24))
+let timerTickLabel = NSTextField(string: "Timer: 0s", frame: NSMakeRect(898, 382, 160, 24))
 let dateLabel = NSTextField(string: "Date:", frame: NSMakeRect(32, 382, 88, 24))
 let datePicker = NSDatePicker(date: Date(timeIntervalSince1970: 1_780_272_000), frame: NSMakeRect(128, 378, 184, 28))
-let dateValueLabel = NSTextField(string: "2026-06-01", frame: NSMakeRect(328, 382, 192, 24))
+let dateValueLabel = NSTextField(string: "2026-06-01", frame: NSMakeRect(328, 382, 550, 24))
 let calendarLabel = NSTextField(string: "Calendar:", frame: NSMakeRect(724, 60, 120, 24))
 // A .clockAndCalendar picker draws a calendar AND a clock side by side. AppKit's
 // intrinsicContentSize is 275.5 x 148, so the old 224-wide frame clipped the clock off

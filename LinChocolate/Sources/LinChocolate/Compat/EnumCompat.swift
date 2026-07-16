@@ -35,14 +35,24 @@ public extension Int {
 
 public enum NSDatePickerStyle: Sendable { case textFieldAndStepper, clockAndCalendar, textField }
 
+/// AppKit's `NSDatePicker.ElementFlags`.
+///
+/// These are Apple's exact raw values, read out of real AppKit rather than
+/// invented — the previous `1 << n` values meant any app passing a literal
+/// raw value (or round-tripping through one) got a different control. Note
+/// they are **cumulative**: `yearMonthDay` (0xe0) contains `yearMonth` (0xc0),
+/// and `hourMinuteSecond` (0xe) contains `hourMinute` (0xc), so test for the
+/// wider flag first. Apple spells the era one `.era`; there is no
+/// `.yearMonthDayEra`.
 public struct NSDatePickerElementFlags: OptionSet, Sendable {
     public let rawValue: UInt
     public init(rawValue: UInt) { self.rawValue = rawValue }
-    public static let yearMonthDay = NSDatePickerElementFlags(rawValue: 1 << 0)
-    public static let yearMonthDayEra = NSDatePickerElementFlags(rawValue: 1 << 1)
-    public static let hourMinute = NSDatePickerElementFlags(rawValue: 1 << 2)
-    public static let hourMinuteSecond = NSDatePickerElementFlags(rawValue: 1 << 3)
-    public static let timeZone = NSDatePickerElementFlags(rawValue: 1 << 4)
+    public static let hourMinute = NSDatePickerElementFlags(rawValue: 0x000c)
+    public static let hourMinuteSecond = NSDatePickerElementFlags(rawValue: 0x000e)
+    public static let timeZone = NSDatePickerElementFlags(rawValue: 0x0010)
+    public static let yearMonth = NSDatePickerElementFlags(rawValue: 0x00c0)
+    public static let yearMonthDay = NSDatePickerElementFlags(rawValue: 0x00e0)
+    public static let era = NSDatePickerElementFlags(rawValue: 0x0100)
 }
 
 public struct NSTableViewGridLineStyle: OptionSet, Sendable {

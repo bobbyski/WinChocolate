@@ -592,6 +592,65 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     public func setSliderVertical(_ vertical: Bool, for handle: NativeHandle) {
         sliderVerticals[handle.rawValue] = vertical
     }
+    /// Recorded date ranges, for tests.
+    public private(set) var dateRanges: [UInt: (min: Date?, max: Date?)] = [:]
+    public func setDateRange(min: Date?, max: Date?, for handle: NativeHandle) {
+        dateRanges[handle.rawValue] = (min, max)
+        // Clamping is the control's contract, so model it here too.
+        if let current = dates[handle.rawValue] {
+            if let min, current < min { setDateValue(min, for: handle) }
+            if let max, current > max { setDateValue(max, for: handle) }
+        }
+    }
+
+    /// The compact field's rendered text, for tests.
+    public private(set) var datePickerTexts: [UInt: String] = [:]
+    public func setDatePickerText(_ text: String, for handle: NativeHandle) {
+        datePickerTexts[handle.rawValue] = text
+    }
+
+    /// The highlighted element's range, for tests.
+    public private(set) var datePickerSelections: [UInt: (location: Int, length: Int)] = [:]
+    public func setDatePickerSelection(location: Int, length: Int, for handle: NativeHandle) {
+        datePickerSelections[handle.rawValue] = (location, length)
+    }
+
+    private var dateStepActions: [UInt: (Int) -> Void] = [:]
+    public func setDateStepAction(for handle: NativeHandle, action: @escaping (Int) -> Void) {
+        dateStepActions[handle.rawValue] = action
+    }
+    /// Test hook: press the picker's stepper.
+    public func simulateDateStep(_ direction: Int, for handle: NativeHandle) {
+        dateStepActions[handle.rawValue]?(direction)
+    }
+
+    private var datePickerCursorActions: [UInt: (Int) -> Void] = [:]
+    public func setDatePickerCursorAction(for handle: NativeHandle, action: @escaping (Int) -> Void) {
+        datePickerCursorActions[handle.rawValue] = action
+    }
+    /// Test hook: click the compact field at a character offset.
+    public func simulateDatePickerClick(atCharacter offset: Int, for handle: NativeHandle) {
+        datePickerCursorActions[handle.rawValue]?(offset)
+    }
+
+    private var datePickerTypeActions: [UInt: (String) -> Void] = [:]
+    public func setDatePickerTypeAction(for handle: NativeHandle, action: @escaping (String) -> Void) {
+        datePickerTypeActions[handle.rawValue] = action
+    }
+    /// Test hook: type into the compact field's selected element.
+    public func simulateDatePickerTyping(_ text: String, for handle: NativeHandle) {
+        for character in text { datePickerTypeActions[handle.rawValue]?(String(character)) }
+    }
+
+    private var datePickerMoveActions: [UInt: (Int) -> Void] = [:]
+    public func setDatePickerMoveAction(for handle: NativeHandle, action: @escaping (Int) -> Void) {
+        datePickerMoveActions[handle.rawValue] = action
+    }
+    /// Test hook: press left/right in the compact field.
+    public func simulateDatePickerMove(_ delta: Int, for handle: NativeHandle) {
+        datePickerMoveActions[handle.rawValue]?(delta)
+    }
+
     public func setDatePickerGraphical(_ graphical: Bool, for handle: NativeHandle) {
         datePickerGraphical[handle.rawValue] = graphical
     }

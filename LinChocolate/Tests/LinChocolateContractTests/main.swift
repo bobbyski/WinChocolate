@@ -1145,6 +1145,231 @@ final class DynamicFlipView: NSView {
     override var isFlipped: Bool { flipsNow }
 }
 
+// MARK: 30a — NSDatePicker: format, elements, and stepping the SELECTED field
+//
+// Expected strings were read out of REAL AppKit (a probe printing
+// NSDatePicker.stringValue and rendering the control to a PNG), not invented:
+//   field       -> "5/31/2026, 8:00:00 PM"
+//   stringValue -> "Sunday, May 31, 2026 at 8:00:00 PM Eastern Daylight Time"
+// for 2026-06-01T00:00Z in en_US / America/New_York.
+//
+// NOTE the \u{202F}: ICU puts a NARROW NO-BREAK SPACE before AM/PM, on macOS
+// and Linux alike (verified by dumping scalars on both). It is spelled with an
+// escape here so the literal can't silently differ from the code by an
+// invisible character.
+//
+// The picker's own surface stays Apple-exact (no `segments`/`displayText` on
+// the control), so the rendered text and selection are observed where they
+// actually cross the boundary: the backend seam.
+do {
+    let backend = InMemoryNativeControlBackend()
+    NSApplication.shared.nativeBackend = backend
+    let start = Date(timeIntervalSince1970: 1_780_272_000)   // 5/31/2026 8:00:00 PM EDT
+
+    /// A fresh picker per assertion: stepping mutates the date, and calendar
+    /// arithmetic does not round-trip (see the month check below), so sharing
+    /// one picker across checks makes later expectations drift.
+    func picker(_ elements: NSDatePickerElementFlags = [.yearMonthDay, .hourMinuteSecond]) -> NSDatePicker {
+        let p = NSDatePicker(date: start, frame: NSMakeRect(0, 0, 184, 28))
+        p.locale = Locale(identifier: "en_US")
+        p.timeZone = TimeZone(identifier: "America/New_York")!
+        p.calendar = Calendar(identifier: .gregorian)
+        p.datePickerElements = elements
+        return p
+    }
+    func field(_ p: NSDatePicker) -> String { backend.datePickerTexts[p.handle.rawValue] ?? "" }
+    func selection(_ p: NSDatePicker) -> (location: Int, length: Int)? {
+        backend.datePickerSelections[p.handle.rawValue]
+    }
+
+    check(picker().datePickerStyle == .textFieldAndStepper, "the default style is textFieldAndStepper")
+
+    // Apple's real raw values — cumulative, not 1<<n.
+    check(NSDatePickerElementFlags.yearMonthDay.rawValue == 0x00e0, "yearMonthDay is Apple's 0xe0")
+    check(NSDatePickerElementFlags.hourMinuteSecond.rawValue == 0x000e, "hourMinuteSecond is Apple's 0xe")
+    check(NSDatePickerElementFlags.yearMonthDay.contains(.yearMonth), "yearMonthDay contains yearMonth")
+    check(NSDatePickerElementFlags.hourMinuteSecond.contains(.hourMinute), "hourMinuteSecond contains hourMinute")
+
+    // The field renders AppKit's locale format, not ISO.
+    check(field(picker()) == "5/31/2026, 8:00:00\u{202F}PM",
+          "the field renders AppKit's locale format (was ISO) — got [\(field(picker()))]")
+
+    // stringValue is AppKit's full/full style, independent of the elements.
+    check(picker().stringValue == "Sunday, May 31, 2026 at 8:00:00\u{202F}PM Eastern Daylight Time",
+          "stringValue is AppKit's full date+time (was Swift's Date description)")
+
+    // The leftmost field starts selected and highlighted.
+    check(selection(picker())?.location == 0, "the first field starts selected")
+
+    // Stepping moves THE SELECTED field. The bug: it always moved the day.
+    let month = picker()
+    backend.simulateDateStep(1, for: month.handle)
+    check(field(month) == "6/30/2026, 8:00:00\u{202F}PM",
+          "stepping the selected month moves the MONTH — got [\(field(month))]")
+    // ...and May 31 + 1 month is June *30*: the day clamps to the shorter month,
+    // so stepping back lands on May 30, not May 31. That is Gregorian
+    // arithmetic (Calendar's, and AppKit's), not a rounding bug.
+    backend.simulateDateStep(-1, for: month.handle)
+    check(field(month) == "5/30/2026, 8:00:00\u{202F}PM",
+          "month arithmetic clamps and does not round-trip — got [\(field(month))]")
+
+    // Click the year and step it.
+    let year = picker()
+    backend.simulateDatePickerClick(atCharacter: 6, for: year.handle)
+    check(selection(year)?.location == 5 && selection(year)?.length == 4,
+          "clicking the year highlights the year")
+    backend.simulateDateStep(1, for: year.handle)
+    check(field(year) == "5/31/2027, 8:00:00\u{202F}PM",
+          "stepping the selected year moves the YEAR — got [\(field(year))]")
+
+    // Click the minute and step it.
+    let minute = picker()
+    let minuteOffset = field(minute).distance(from: field(minute).startIndex,
+                                              to: field(minute).range(of: ":00:")!.lowerBound) + 1
+    backend.simulateDatePickerClick(atCharacter: minuteOffset, for: minute.handle)
+    backend.simulateDateStep(1, for: minute.handle)
+    check(field(minute) == "5/31/2026, 8:01:00\u{202F}PM",
+          "stepping the selected minute moves the MINUTE — got [\(field(minute))]")
+
+    // Left/right move the selection, as AppKit's arrow keys do.
+    let day = picker()
+    backend.simulateDatePickerClick(atCharacter: 0, for: day.handle)
+    backend.simulateDatePickerMove(1, for: day.handle)
+    backend.simulateDateStep(1, for: day.handle)
+    check(field(day) == "6/1/2026, 8:00:00\u{202F}PM",
+          "after moving right, stepping moves the DAY — got [\(field(day))]")
+
+    // The AM/PM field flips by half a day.
+    let ampm = picker()
+    backend.simulateDatePickerClick(atCharacter: field(ampm).count - 1, for: ampm.handle)
+    backend.simulateDateStep(1, for: ampm.handle)
+    check(field(ampm) == "6/1/2026, 8:00:00\u{202F}AM",
+          "stepping AM/PM moves by twelve hours — got [\(field(ampm))]")
+
+    // ── Typing into the selected element (AppKit's date field is type-to-edit;
+    //    stepping a minute to 55 one click at a time is unusable). ──
+
+    // Type a two-digit minute: digits accumulate, then the selection moves on.
+    let typed = picker()
+    let minuteAt = field(typed).distance(from: field(typed).startIndex,
+                                         to: field(typed).range(of: ":00:")!.lowerBound) + 1
+    backend.simulateDatePickerClick(atCharacter: minuteAt, for: typed.handle)
+    backend.simulateDatePickerTyping("4", for: typed.handle)
+    check(field(typed) == "5/31/2026, 8:04:00\u{202F}PM",
+          "the first digit applies immediately — got [\(field(typed))]")
+    backend.simulateDatePickerTyping("5", for: typed.handle)
+    check(field(typed) == "5/31/2026, 8:45:00\u{202F}PM",
+          "the second digit extends it to 45, not 5 — got [\(field(typed))]")
+    // The field was full, so the selection advanced to the seconds.
+    backend.simulateDatePickerTyping("3", for: typed.handle)
+    check(field(typed) == "5/31/2026, 8:45:03\u{202F}PM",
+          "a full field advances, so the next digit lands in seconds — got [\(field(typed))]")
+
+    // A field advances as soon as no further digit could be valid: no month
+    // starts with 4 (40+ is impossible), so "4" commits April and hops on.
+    // Typing the month also clamps the day — April has no 31st — matching what
+    // stepping does rather than rolling over into May 1.
+    let m = picker()
+    backend.simulateDatePickerClick(atCharacter: 0, for: m.handle)
+    backend.simulateDatePickerTyping("4", for: m.handle)
+    check(field(m) == "4/30/2026, 8:00:00\u{202F}PM",
+          "typing 4 selects April and clamps the day to the 30th — got [\(field(m))]")
+    backend.simulateDatePickerTyping("9", for: m.handle)
+    check(field(m) == "4/9/2026, 8:00:00\u{202F}PM",
+          "the month already advanced, so 9 lands in the day — got [\(field(m))]")
+
+    // A digit that can't extend the run starts a fresh value instead of being
+    // dropped: on the day field, 3 then 5 is not 35 — it is the 5th.
+    let restart = picker()
+    backend.simulateDatePickerClick(atCharacter: 2, for: restart.handle)
+    backend.simulateDatePickerTyping("3", for: restart.handle)
+    check(field(restart) == "5/3/2026, 8:00:00\u{202F}PM",
+          "typing 3 in the day waits for a second digit — got [\(field(restart))]")
+    backend.simulateDatePickerTyping("5", for: restart.handle)
+    check(field(restart) == "5/5/2026, 8:00:00\u{202F}PM",
+          "35 is no day, so 5 starts over as the 5th — got [\(field(restart))]")
+
+    // A leading zero is held, not rejected: "0" then "7" is July.
+    let z = picker()
+    backend.simulateDatePickerClick(atCharacter: 0, for: z.handle)
+    backend.simulateDatePickerTyping("07", for: z.handle)
+    check(field(z) == "7/31/2026, 8:00:00\u{202F}PM",
+          "a leading zero is buffered, so 07 is July — got [\(field(z))]")
+
+    // Four digits type a year.
+    let y = picker()
+    backend.simulateDatePickerClick(atCharacter: 6, for: y.handle)
+    backend.simulateDatePickerTyping("1999", for: y.handle)
+    check(field(y) == "5/31/1999, 8:00:00\u{202F}PM",
+          "the year takes four digits — got [\(field(y))]")
+
+    // Typing a 12-hour hour keeps the current half-day (8 PM -> 11 PM, not AM).
+    let h = picker()
+    let hourAt = field(h).distance(from: field(h).startIndex,
+                                   to: field(h).range(of: "8:")!.lowerBound)
+    backend.simulateDatePickerClick(atCharacter: hourAt, for: h.handle)
+    backend.simulateDatePickerTyping("11", for: h.handle)
+    check(field(h) == "5/31/2026, 11:00:00\u{202F}PM",
+          "typing an hour keeps PM — got [\(field(h))]")
+
+    // AM/PM takes letters, not digits.
+    let ap = picker()
+    backend.simulateDatePickerClick(atCharacter: field(ap).count - 1, for: ap.handle)
+    backend.simulateDatePickerTyping("a", for: ap.handle)
+    check(field(ap) == "5/31/2026, 8:00:00\u{202F}AM", "typing 'a' selects AM — got [\(field(ap))]")
+    backend.simulateDatePickerTyping("p", for: ap.handle)
+    check(field(ap) == "5/31/2026, 8:00:00\u{202F}PM", "typing 'p' selects PM — got [\(field(ap))]")
+    backend.simulateDatePickerTyping("7", for: ap.handle)
+    check(field(ap) == "5/31/2026, 8:00:00\u{202F}PM", "a digit does nothing to AM/PM")
+
+    // Typing fires the action, as AppKit does.
+    var typedFired = 0
+    let notify = picker()
+    notify.onDateChange = { _ in typedFired += 1 }
+    backend.simulateDatePickerClick(atCharacter: 0, for: notify.handle)
+    backend.simulateDatePickerTyping("3", for: notify.handle)
+    check(typedFired == 1, "typing fires the picker's action")
+
+    // Moving to a different field abandons a number in progress: "1" starts a
+    // month, then clicking the day makes the next digit a day, not "15".
+    let reset = picker()
+    backend.simulateDatePickerClick(atCharacter: 0, for: reset.handle)
+    backend.simulateDatePickerTyping("1", for: reset.handle)
+    check(field(reset) == "1/31/2026, 8:00:00\u{202F}PM", "typing 1 starts January")
+    backend.simulateDatePickerClick(atCharacter: 2, for: reset.handle)   // the day
+    backend.simulateDatePickerTyping("5", for: reset.handle)
+    check(field(reset) == "1/5/2026, 8:00:00\u{202F}PM",
+          "changing field restarts the typed number — got [\(field(reset))]")
+
+    // ...but the *same* field re-reporting its own selection must not: the GTK
+    // backend echoes the selection back after every text change, so a reset
+    // there would swallow the second digit (this exact bug: "45" -> "05").
+    let echo = picker()
+    let echoMinute = field(echo).distance(from: field(echo).startIndex,
+                                          to: field(echo).range(of: ":00:")!.lowerBound) + 1
+    backend.simulateDatePickerClick(atCharacter: echoMinute, for: echo.handle)
+    backend.simulateDatePickerTyping("4", for: echo.handle)
+    backend.simulateDatePickerClick(atCharacter: echoMinute, for: echo.handle)   // the echo
+    backend.simulateDatePickerTyping("5", for: echo.handle)
+    check(field(echo) == "5/31/2026, 8:45:00\u{202F}PM",
+          "the field re-reporting itself keeps the run going — got [\(field(echo))]")
+
+    // minDate/maxDate clamp real steps (they were no-op stubs).
+    let bounded = picker()
+    bounded.maxDate = start                       // already at the ceiling
+    backend.simulateDateStep(1, for: bounded.handle)
+    check(bounded.dateValue == start, "a step past maxDate is clamped")
+    check(backend.dateRanges[bounded.handle.rawValue]?.max == start, "maxDate still reaches the backend")
+
+    // The elements decide the field, and only the field.
+    let dateOnly = picker([.yearMonthDay])
+    check(field(dateOnly) == "5/31/2026", "a date-only picker shows only the date")
+    check(dateOnly.stringValue == "Sunday, May 31, 2026 at 8:00:00\u{202F}PM Eastern Daylight Time",
+          "stringValue ignores the elements, as on Apple")
+    check(field(picker([.hourMinute])) == "8:00\u{202F}PM",
+          "hourMinute drops the seconds — got [\(field(picker([.hourMinute])))]")
+}
+
 // MARK: 30b — CoordinateSpace: the one place a child's geometry is decided
 do {
     // An unflipped (AppKit-default) parent: the child's bottom-left origin

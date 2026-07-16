@@ -33,6 +33,181 @@ verified** — running the demo, not just building it.
 
 ---
 
+## Control reference: `NSDatePicker`
+
+Reference for the control as it now stands, because its behaviour was rebuilt from measured
+AppKit rather than assumption and the reasoning is worth keeping. The chronological story is
+in *Follow-up 2/4/5* under the geometry entry below; this is the summary of **what it does
+and why**.
+
+### Ground truth (measured, not guessed)
+
+Everything here was read out of **real AppKit** with a throwaway probe on the Mac —
+`swiftc probe.swift && ./probe` — printing the API and rendering the control to a PNG with
+`bitmapImageRepForCachingDisplay` + `cacheDisplay(in:to:)`. Guessing was wrong on every one
+of these:
+
+| Question | Answer from real AppKit |
+|---|---|
+| Default style | `.textFieldAndStepper` — a field **with a stepper** |
+| Field text for `[.yearMonthDay, .hourMinuteSecond]` | `5/31/2026, 8:00:00 PM` (en_US, local zone) |
+| Where that format comes from | a locale **template**, not a style — a 4-digit year, which `.short` (`5/31/26`) cannot produce |
+| `stringValue` | `Sunday, May 31, 2026 at 8:00:00 PM Eastern Daylight Time` — i.e. `DateFormatter(dateStyle: .full, timeStyle: .full)`, and **independent of `datePickerElements`** |
+| `objectValue` | the `Date` |
+| `formatter` / `locale` / `calendar` / `timeZone` | all `nil` by default |
+| `intrinsicContentSize` | varies with style **and elements**: `(180, 22)` for `.textFieldAndStepper` with date+time, `(95, 22)` date-only, `(275.5, 148)` for `.clockAndCalendar` — **not implemented here** (see *Not done*) |
+
+`DateFormatter.dateFormat(fromTemplate: "Mdyyyyjmmss", options: 0, locale: .current)` →
+`M/d/yyyy, h:mm:ss a` → reproduces AppKit's render exactly. Linux Foundation returns
+**byte-identical** output to macOS for this, for full/full, and for `Calendar` arithmetic —
+which is what makes a shared implementation possible.
+
+### Element flags — Apple's real values
+
+The previous values were invented (`1 << 0`, `1 << 1`, …) and one member,
+`yearMonthDayEra`, **does not exist in AppKit at all**. Apple's:
+
+| Flag | Raw | Notes |
+|---|---|---|
+| `.hourMinute` | `0x000c` | |
+| `.hourMinuteSecond` | `0x000e` | **contains** `.hourMinute` |
+| `.timeZone` | `0x0010` | |
+| `.yearMonth` | `0x00c0` | |
+| `.yearMonthDay` | `0x00e0` | **contains** `.yearMonth` |
+| `.era` | `0x0100` | Apple's spelling — not `yearMonthDayEra` |
+
+They are **cumulative**, so always test the wider flag first (`.yearMonthDay` before
+`.yearMonth`). Compiling proves nothing about raw values: symbolic use worked fine while
+every literal was wrong.
+
+### Architecture: the framework owns the date, the backend renders it
+
+The original split had the *backend* formatting the date — which put locale, calendar, time
+zone and element flags, all AppKit semantics, inside GTK. Now:
+
+**`NSDatePicker` (framework)** builds the pattern from the elements, renders it, records each
+field's character range as a `Segment` (component + step + pattern letter), tracks the
+selected field, steps and types into it via `Calendar`, clamps to `minDate`/`maxDate`, and
+formats `stringValue`. Its public surface stays **Apple-exact** — no `segments` or
+`displayText` leak out; tests observe the backend seam instead.
+
+**The backend** only renders and reports:
+
+| Seam | Direction | Meaning |
+|---|---|---|
+| `setDatePickerText(_:for:)` | → backend | show exactly this text |
+| `setDatePickerSelection(location:length:for:)` | → backend | highlight this range |
+| `setDateStepAction(for:action:)` | ← backend | the stepper moved (+1/-1) — *which* field that means is the framework's call |
+| `setDatePickerCursorAction(for:action:)` | ← backend | a click landed at this character offset |
+| `setDatePickerMoveAction(for:action:)` | ← backend | ←/→ pressed |
+| `setDatePickerTypeAction(for:action:)` | ← backend | this character was typed |
+| `setDateValue(_:for:)` | → backend | only `.clockAndCalendar` needs the value natively |
+| `setDateRange(min:max:for:)` | → backend | recorded for parity; the framework does the authoritative clamping |
+
+### Behaviour
+
+- **Styles.** `.textFieldAndStepper` = field + stepper. `.clockAndCalendar` = GtkCalendar.
+  Switching rebuilds the widget and re-applies both the value and the change action (the old
+  swap dropped both).
+- **The stepper** is two arrow buttons **stacked, up above down** — Apple's control, shared
+  with `NSStepper` via `makeStepperArrows(onStep:)`. It edits **the selected field**, not
+  always the day.
+- **Selection.** Click a field to select it; ←/→ move between fields. A click on a separator
+  picks the field to its left.
+- **Typing.** Digits accumulate into the selected field (`4` `5` → `45`). The selection
+  auto-advances when the field is full **or when no further digit could be valid** — no month
+  starts with `4`, so `4` commits April and hops to the day. A digit that can't extend the run
+  starts a fresh value (`3` `5` on the day = the 5th, not "35"). A leading zero is held, not
+  rejected (`0` `7` = July). The year takes 4 digits. `a`/`p` set AM/PM. Typing an hour on a
+  12-hour clock keeps the current half-day. Typing fires the action.
+- **Day clamping.** Setting a month/year can strand an impossible day (April 31). `Calendar`
+  would roll that into May 1; AppKit clamps to the month's last day — which is what stepping
+  already does (May 31 + 1 month = June 30). Typing and stepping now agree.
+- **`minDate`/`maxDate`** clamp for real (framework-side). They were no-op stubs.
+
+### Traps this control taught (all cost real time)
+
+1. **`gtk_widget_set_size_request` is a *minimum*.** A GtkSpinButton's ~120px minimum made a
+   20×28 `NSStepper` overrun and cover its own value label. See the geometry entry.
+2. **GTK batches the entry's cursor notifications** and delivers them *after*
+   `set_text`/`select_region` return — so the field re-reports its own selection outside any
+   suppression window. Resetting the typed run on every report swallowed the second digit
+   (`45` → `05`). Only a *change* of field abandons a run. `LINCHOCOLATE_DATE_DEBUG=1` traces
+   these; this class will recur.
+3. **ICU emits U+202F** (narrow no-break space) before AM/PM, on macOS and Linux alike. Test
+   literals typed with a plain space fail against correct code and look identical in a
+   terminal. Source spells `\u{202F}`. When every "got" value looks right but the check fails,
+   dump `unicodeScalars`.
+4. **Calendar arithmetic doesn't round-trip** and shouldn't: May 31 +1 month = June 30, and
+   back = May **30**. A test asserting otherwise was the test's bug.
+
+### Verified
+
+Contract tests pin the format, `stringValue`, Apple's raw flag values and their cumulativity,
+per-field stepping, typing (accumulate, auto-advance, restart, leading zero, AM/PM,
+day-clamping, the cursor-echo regression), and min/max clamping. Driven live under Xvfb: the
+year click + step → 2026→2028; typing `4` `5` → `8:45`, `5` `9` → `8:45:59`; month `1` `2` →
+December with the day clamped to the 31st, the weekday recomputed, and the zone flipping to
+Eastern **Standard** Time.
+
+### Not done
+
+- **`intrinsicContentSize` is not overridden**, so it falls back to `NSView`'s default while
+  AppKit reports `(180, 22)` / `(95, 22)` / `(275.5, 148)` depending on style and elements
+  (probed). `LayoutSolver` reads `intrinsicContentSize`, and `NSTextField` already overrides
+  it — so a date picker under Auto Layout would size wrong. The demo places its pickers at
+  explicit frames, which is why this doesn't bite today. Same gap in WinChocolate.
+- The stepper steps a whole unit; AppKit also supports dragging. Not implemented.
+- `.era` and `.timeZone` fields render but are not steppable/typable (no sensible unit).
+- `datePickerMode` (single vs range) is still an accepted no-op in `DemoCompat`.
+- **WinChocolate half untouched**: same invented flags
+  (`Sources/WinChocolate/Controls/NSDatePicker.swift:21`), no locale-template format, no
+  full/full `stringValue`, no selected-element stepping, no typing.
+
+---
+
+## 2026-07-16 — DEMO CHANGE (authorized): the date label was too narrow for AppKit's stringValue
+
+**A rule-break, explicitly authorized** ("lets break the rules and fix the display string
+that shows date and time but cuts the time off so you just see at"). Two frame numbers,
+no logic.
+
+`dateValueLabel` was 192pt wide and seeded with `"2026-06-01"` — sized for a short date.
+But it displays `datePicker.stringValue`, which is AppKit's **full** date and time style
+(`Sunday, May 31, 2026 at 8:00:00 PM Eastern Daylight Time`, ~55–64 chars, ~465pt). It cut
+off mid-sentence at "at".
+
+**This was a latent *demo* bug, not a Linux one** — it would clip identically on real
+macOS, and always would have. It only became visible once LinChocolate's `stringValue`
+stopped returning Swift's short `Date` description and started matching AppKit (see the
+Date/time entry below). The demo's own expectation was simply wrong about the API.
+
+| | was | now |
+|---|---|---|
+| `dateValueLabel` | `328, 382, **192**, 24` | `328, 382, **550**, 24` (328..878) |
+| `timerTickLabel` | `548, 382, 160, 24` | `898, 382, 160, 24` (898..1058) |
+
+The timer slides right, as authorized. Nothing else is on that row: the calendar column
+above ends at y≈294, and the deprecated `NSForm` at x=824 is on the **Controls** page, not
+Values. The page is 1120 wide, so 1058 leaves a margin.
+
+**Sized by measuring, and the first two attempts were wrong.** 420pt looked fine on the
+initial `Sunday, 31 May 2026 …` and still clipped, because the string *grows* with the
+weekday, month and zone name: stepping to `Wednesday, 30 September 2026 at 8:00:00 PM
+Eastern Daylight Time` lost the final "Time". 480 fixed Eastern but left long zone names
+tight. Final sizing was checked three ways:
+
+- **Real AppKit metrics** (`NSTextField.sizeToFit` in the demo's font): worst realistic
+  case `Wednesday, September 30, 2026 at 12:00:00 AM Australian Central Daylight Time` =
+  **498.5pt** → 550 fits with margin. Eastern's worst is 436.5pt.
+- **Driven on Linux with a long zone**: `TZ=Australia/Adelaide` renders
+  `Thursday, 1 October 2026 at 9:30:00 AM Australian Central Standard Time` complete.
+- **Driven on Linux with Eastern**: the exact string that clipped at 420 now renders whole.
+
+Geometry audit **0 violations on all 11 pages**; all contract tests pass.
+
+---
+
 ## 2026-07-15 — Geometry audit: the frame is now law on Linux (376 violations → 0) (framework work; demo untouched)
 
 **The question:** how can controls overlap on Linux when the demo source — the frames —
@@ -141,14 +316,194 @@ stays topmost. Re-audit after the change: still **0 violations on all 11 pages**
 children, all contract tests pass, and the `NSMatrix`/`NSForm` layouts are unchanged
 on screen.
 
+### Follow-up 2: the Date/time control had no stepper — and could not be used at all
+
+Bobby, on reading the note above: *"You are speaking of the missing stepper in the
+Date/time control?"* No — that note was about the standalone `NSStepper` on the Values page.
+But the question found a **separate, worse bug**, and a cluster behind it.
+
+The demo never sets `datePickerStyle`, so `datePicker` takes AppKit's default
+**`.textFieldAndStepper`** — a field *with a stepper*. LinChocolate defaulted to that style
+correctly, then rendered it as a bare read-only `GtkEntry`: **the stepper the style is
+named after did not exist.** Worse, that made the control *entirely inert* — the entry was
+read-only and `setDateChangeAction` only wired `day-selected`, which only the GtkCalendar
+style emits. So the demo's `datePicker.onAction` (main.swift:3113) **could never fire on
+Linux**, and nothing could ever change the date.
+
+Behind it, three properties were accepted-and-ignored no-op stubs in `DemoCompat`
+(`get { nil } set {}`), so the demo's own lines did nothing:
+
+| demo line | was | now |
+|---|---|---|
+| `datePicker.minDate = …` | silently discarded | stored, pushed, **clamps the value** |
+| `datePicker.maxDate = …` | silently discarded | stored, pushed, clamps |
+| `datePicker.datePickerElements = [.yearMonthDay, .hourMinuteSecond]` | silently discarded | drives the field's format |
+
+All three are now real properties on `NSDatePicker` with a backend seam
+(`setDateRange`, `setDatePickerElements`). The compact style is built as a field plus the
+stepper (arrow buttons), which steps the date, clamps to min/max as AppKit does, and fires
+the change action. `setDatePickerGraphical` rebuilds the compact side properly and
+re-applies both the value and the change action, which the old swap dropped.
+
+**A caught assumption:** my first `dateFormat` read bit 1 as "show the clock". Bit 1 is
+`yearMonthDayEra` — `hourMinuteSecond` is bit 3. Reading the actual `OptionSet` instead of
+trusting the bit order I'd assumed turned a silent wrong-format bug into a non-event.
+
+**Verified by driving it** (xdotool, under Xvfb): the field now shows the arrows; two
+clicks up moved **2026-06-01 → 2026-06-03**, one click down → 2026-06-02, and the blue
+`dateValueLabel` beside it tracked every step — that label is only written by
+`datePicker.onAction`, so it proves the action that could never fire now does. The
+`.clockAndCalendar` picker still renders through the rebuilt swap. Geometry re-audit: still
+**0 violations on all 11 pages**; all contract tests pass, including new ones pinning the
+default style, min/max clamping and element round-tripping.
+
+**MUST FIX (both frameworks):** `NSDatePickerElementFlags`' raw values are invented
+(`1 << 0`, `1 << 1`, …). Apple's are `0x00e0` (yearMonthDay), `0x000e` (hourMinuteSecond),
+`0x000c` (hourMinute), `0x0010` (timeZone), `0x00c0` (yearMonth) — and Apple's are
+*cumulative* (`hourMinuteSecond` contains `hourMinute`), which ours are not. Symbolic use
+works; a raw value or a `.contains` check across the pair would not. Same gap in
+WinChocolate.
+
+### Follow-up 3: one stepper, built like Apple's — two buttons stacked
+
+Bobby: *"how is the other stepper implemented - 2 side by side buttons? If we have to
+create controls i would prefer you match apple so two buttons on top of each other."*
+
+It wasn't two buttons at all — `NSStepper` was still a **GtkSpinButton with its text entry
+hidden**, so the `−` `+` were GTK's own built-in spin buttons, side by side, and the
+`.vertical` class meant to stack them never took. Rebuilt from buttons:
+
+**`makeStepperArrows(onStep:)`** — two arrow buttons stacked, up above down — is now the
+single stepper implementation, shared by `NSStepper` and `NSDatePicker`'s
+`.textFieldAndStepper` field. Dropping the spin button means the backend owns what it used
+to provide (value, range, increment, and the change notification): `stepStepper` applies
+the increment, clamps to the range and reports, exactly as AppKit's NSStepper does.
+
+**Verified by driving it:** the stepper renders as ▲ over ▼ in its 20×28 frame with the
+value label clear beside it; three clicks up moved 50 → **53**, one click down → **52**.
+Geometry re-audit: **0 violations across all 11 pages**, 0 dropped children; all contract
+tests pass.
+
+**A near-miss worth recording.** The first click test read 50 → **47** on what I thought was
+the up arrow, which looks exactly like an inverted direction mapping. It wasn't: zooming
+the screenshot showed the control occupying screen y 320–347 with its divider at 335, so
+y=338 was the *down* arrow and my follow-up click at y=352 was below the widget entirely
+(hence "no change"). The mapping was right; my coordinates were wrong. **Measure the
+control before concluding the code is wrong** — a plausible-looking bug report can be an
+artifact of the test.
+
+The audit also learned to tell **"not allocated yet" (0×0 bounds) from "allocated wrongly"**:
+the Auto Layout page animates, so a 2s snapshot intermittently caught a widget mid-relayout
+and reported it as a frame fault. It is now counted and labelled separately.
+
+### Follow-up 4: the date field edits the selected element, and formats like AppKit
+
+Bobby: *"it is always changing the day even when i have other segments selected. It needs
+to increment the selected one. Also the date format is not correct for it or the string
+that gets set because of it."* Both true. **Measured against real AppKit** rather than
+guessed — a probe printed `NSDatePicker.stringValue` and rendered the control to a PNG:
+
+| | LinChocolate was | real AppKit | now |
+|---|---|---|---|
+| field text | `2026-06-01 00:00:00` (ISO, UTC) | `5/31/2026, 8:00:00 PM` | matches |
+| `stringValue` | `2026-06-01 00:00:00 +0000` (Swift's `Date` description) | `Sunday, May 31, 2026 at 8:00:00 PM Eastern Daylight Time` | matches |
+| stepper | always ±1 **day** | edits the **selected** element | matches |
+
+**The format.** AppKit builds the field from a locale *template*, not a style: the render
+shows a 4-digit year, which `.short` (`5/31/26`) can't produce.
+`DateFormatter.dateFormat(fromTemplate: "Mdyyyyjmmss", …)` → `M/d/yyyy, h:mm:ss a` →
+`5/31/2026, 8:00:00 PM`, matching AppKit's pixels exactly. And `stringValue` turned out to
+be plain `DateFormatter(dateStyle: .full, timeStyle: .full)` — **independent of
+`datePickerElements`** (a date-only picker returns the same full string; confirmed by
+probing both).
+
+**The architecture was the real bug.** The *backend* was formatting the date, so locale,
+calendar, time zone and element flags — all AppKit semantics — were being decided in GTK.
+The framework now owns all of it: `NSDatePicker` renders the pattern, records each field's
+character range, tracks the selected field, and steps it via
+`Calendar.date(byAdding:value:to:)`. GTK is reduced to what a backend should be: show this
+text, highlight this range, report a click offset and a stepper direction. Linux Foundation
+produces byte-identical output to macOS's (verified), so this is correct on both.
+Clicking a field selects it, the arrows step it, and ←/→ move between fields.
+
+**Element flags corrected to Apple's actual values** (read from real AppKit):
+`yearMonthDay` = **0xe0** (not `1<<0`), `hourMinuteSecond` = **0xe**, `hourMinute` = 0xc,
+`timeZone` = 0x10, `yearMonth` = 0xc0, `era` = 0x100 — and they are **cumulative**
+(`yearMonthDay` contains `yearMonth`), so the wider flag must be tested first. Apple has
+**no `yearMonthDayEra`**; that member was invented, and is gone. `minDate`/`maxDate`
+clamp for real (framework-side, since it's AppKit semantics).
+
+**Verified by driving it** (xdotool, under Xvfb): clicking the **year** highlighted `2026`,
+and two stepper clicks took it to **2028** — the year, not the day — with the demo's label
+recomputing to `Wednesday, 31 May 2028`, the correct weekday in AppKit's full style. (The
+container's locale renders `31/05/2026` day-first, which is the point: the format follows
+the locale, as AppKit's does.) Geometry re-audit: **0 violations on all 11 pages**; all
+contract tests pass.
+
+**Two assumptions caught by checking:**
+- My test literals used a plain space; ICU emits **U+202F** (narrow no-break space) before
+  AM/PM — on macOS *and* Linux alike. The code was right and the test was wrong. The
+  literals now spell `\\u{202F}` explicitly so an invisible character can never silently
+  decide a comparison.
+- A test asserted stepping the month up then down restores the date. It doesn't, and
+  shouldn't: May 31 + 1 month = June **30** (the day clamps to the shorter month), and back
+  = May **30**. That's Gregorian arithmetic — Calendar's and AppKit's — not a bug. The
+  behaviour is now pinned by a test that says so.
+
+**MUST FIX (WinChocolate):** same invented element flags (`Sources/WinChocolate/Controls/NSDatePicker.swift:21`
+has `yearMonthDay = 1 << 0`); needs Apple's cumulative raw values, `.era`/`.yearMonth`, the
+locale-template field format, `stringValue` as full/full, and stepping the selected element.
+
+### Follow-up 5: the date field is type-to-edit
+
+Bobby: *"when you highlight a segment you should be able to type the number as well (00 to
+55 with a stepper is painful) - apples version does this."* Right — stepping a minute to 55
+one click at a time is unusable. The selected element now takes typed digits.
+
+**Behaviour** (framework-side, so both backends inherit it):
+- Digits accumulate into the selected field: `4` → `8:04`, then `5` → `8:45`.
+- The selection **auto-advances** when the field is full, or when no further digit could be
+  valid — no month starts with `4`, so `4` commits April and hops straight to the day.
+- A digit that can't extend the run **starts a fresh value** rather than being dropped: on
+  the day, `3` then `5` is the 5th, not "35".
+- A leading zero is **held, not rejected**: `0` then `7` is July.
+- The year takes four digits; `a`/`p` set AM/PM; typing fires the picker's action.
+- Typing an hour on a 12-hour clock keeps the current half-day (`11` at 8 PM → 11 PM).
+
+**Typing clamps the day like stepping does.** Typing month `4` onto May **31** produced
+`5/1/2026` — Foundation *rolled* April 31 forward into May 1, while stepping clamps (May 31
++ 1 month = June 30). The two disagreed; typed month/year now clamps the day to the
+month's last, so they agree and match AppKit.
+
+**The bug the contract tests couldn't see.** Typing `4` `5` gave `8:05`, not `8:45` — yet
+the in-memory test passed. Tracing the real backend showed why: GTK **batches the entry's
+cursor notifications and delivers them after** `set_text`/`select_region` return, so the
+field re-reports its own selection mid-typing, outside the suppression window — and
+`selectSegment` was resetting the typed run on every report, swallowing the second digit.
+The cursor position is a leaky proxy for "the user clicked". Fix: **only a *change* of
+field abandons a run.** A regression test now reproduces the echo in-memory, so the seam
+covers it.
+
+**Verified by typing into the running app:** `4` `5` → `8:45` (selection advances to
+seconds), `5` `9` → `8:45:59` (advances to PM), then month `1` `2` → December with the day
+clamped to the 31st, the weekday recomputed to Thursday, and the zone correctly flipping to
+**Eastern Standard** Time. Geometry audit: 0 violations on all 11 pages; all contract tests
+pass.
+
+`LINCHOCOLATE_DATE_DEBUG=1` traces the field's cursor notifications — it is what found the
+batching, and this class of bug will recur.
+
+**MUST FIX (WinChocolate):** same type-to-edit surface — digits into the selected element,
+auto-advance, leading-zero buffering, `a`/`p`, and day-clamping shared with stepping.
+
 ### Still open (rendering fidelity, not geometry — for the page-by-page pass)
 
 - GtkCalendar's intrinsic minimum (291×198) still exceeds the demo's deliberate 276×168,
   so its last week row draws outside its allocation. Needs CSS to shrink the calendar's
   own padding/font — the frame is honoured, the widget just draws past it.
-- Stepper arrows render side-by-side rather than stacked (the `.vertical` class did not
-  take).
 - Vertical slider track and level indicator render thinner than AppKit's.
+- `NSDatePicker`'s stepper steps by one day; AppKit steps whichever element the field's
+  selection is on (year/month/day/hour…). Needs field-level selection first.
 
 **Files touched** (all LinChocolate)
 

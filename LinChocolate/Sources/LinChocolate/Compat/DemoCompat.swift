@@ -328,10 +328,7 @@ public extension NSCollectionView {
 }
 
 public extension NSDatePicker {
-    var datePickerElements: NSDatePickerElementFlags { get { .yearMonthDay } set {} }
     var datePickerMode: Int { get { 0 } set {} }
-    var minDate: Date? { get { nil } set {} }
-    var maxDate: Date? { get { nil } set {} }
 }
 
 public extension NSLevelIndicator {

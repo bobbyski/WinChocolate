@@ -27,9 +27,21 @@ public final class GTKNativeControlBackend: NativeControlBackend {
     private var parents: [UInt: UInt] = [:]   // child -> parent, for repositioning
     private var childrenByParent: [UInt: [UInt]] = [:]   // parent -> children, in add order
     private var ranges: [UInt: (min: Double, max: Double)] = [:]   // slider/progress
+    private var stepperValues: [UInt: Double] = [:]     // stepper -> current value
+    private var stepperSteps: [UInt: Double] = [:]      // stepper -> increment
+    private var valueChangeActions: [UInt: (Double) -> Void] = [:]
     private var comboEntries: [UInt: OpaquePointer] = [:]   // combo -> its GtkEntry child
     private var splitPaneCounts: [UInt: Int] = [:]           // paned -> panes added
     private var viewFixeds: [UInt: OpaquePointer] = [:]      // view -> child-hosting GtkFixed
+    private var datePickerEntries: [UInt: OpaquePointer] = [:]   // compact picker -> its GtkEntry
+    private var dateValues: [UInt: Date] = [:]                   // picker -> current date
+    private var dateRanges: [UInt: (min: Date?, max: Date?)] = [:]
+    private var dateStepActions: [UInt: (Int) -> Void] = [:]
+    private var dateCursorActions: [UInt: (Int) -> Void] = [:]
+    private var dateMoveActions: [UInt: (Int) -> Void] = [:]
+    private var dateTypeActions: [UInt: (String) -> Void] = [:]
+    private var suppressCursorReport: Set<UInt> = []
+    private var dateChangeActions: [UInt: (Date) -> Void] = [:]
     private var viewDrawAreas: [UInt: OpaquePointer] = [:]   // view -> GtkDrawingArea
     private var drawHandlers: [UInt: (NativeGraphicsContext, Double, Double) -> Void] = [:]
     private var windowBoxes: [UInt: OpaquePointer] = [:]     // window -> vertical GtkBox child
@@ -98,11 +110,12 @@ public final class GTKNativeControlBackend: NativeControlBackend {
             spinbutton button { padding: 0 4px; }
             checkbutton { padding: 0; }
             checkbutton check { min-height: 16px; min-width: 16px; }
-            /* NSStepper: arrows only, no entry (see createStepper). */
-            spinbutton.linchocolate-stepper,
-            spinbutton.linchocolate-stepper button {
+            /* AppKit's stepper: two stacked arrows (NSStepper is 20x28 there,
+               so the theme's button minimums have to go). */
+            .linchocolate-stepper button {
                 min-width: 0; min-height: 0; padding: 0;
             }
+            .linchocolate-stepper button image { -gtk-icon-size: 10px; }
             /* Non-editable NSTextFields render as plain labels (no field chrome). */
             entry.linchocolate-label {
                 background: none; background-color: transparent;
@@ -360,6 +373,7 @@ public final class GTKNativeControlBackend: NativeControlBackend {
         print(String(format: "%-14@ %-18@ %-13@ %-13@ %-14@ %@", "kind" as NSString, "frame x,y,w,h" as NSString,
                      "min w,h" as NSString, "alloc w,h" as NSString, "self/parent" as NSString, "verdict" as NSString))
         var violations = 0
+        var pending = 0
         for (raw, w) in widgets.sorted(by: { $0.key < $1.key }) {
             guard let frame = frames[raw], let parentRaw = parents[raw] else { continue }
             guard gtk_widget_get_mapped(asWidget(w)) != 0 else { continue }
@@ -388,6 +402,14 @@ public final class GTKNativeControlBackend: NativeControlBackend {
             let wantX = Double(frame.origin.x)
             let wantY = Double(placementY(for: frame, in: parentRaw))
 
+            // A 0x0 bounds means GTK has not allocated the widget yet, not that
+            // it was allocated wrongly — an animating page (Auto Layout) can be
+            // caught mid-relayout. Report it, but don't call it a frame fault.
+            if allocW == 0 && allocH == 0 {
+                pending += 1
+                print("\(kind) \(Int(frame.origin.x)),\(Int(frame.origin.y)) — not allocated yet (mid-relayout?)")
+                continue
+            }
             var faults: [String] = []
             if allocW >= 0 && Int(frame.width) != allocW { faults.append("W \(Int(frame.width))→\(allocW)") }
             if allocH >= 0 && Int(frame.height) != allocH { faults.append("H \(Int(frame.height))→\(allocH)") }
@@ -401,7 +423,8 @@ public final class GTKNativeControlBackend: NativeControlBackend {
                          "\(minW),\(minH)" as NSString, "\(allocW),\(allocH)" as NSString,
                          flip as NSString, faults.joined(separator: "  ") as NSString))
         }
-        print("── \(violations) control(s) not honouring their AppKit frame ─────────────────")
+        print("── \(violations) control(s) not honouring their AppKit frame"
+              + (pending > 0 ? "; \(pending) not yet allocated" : "") + " ─────────────────")
         fflush(nil)   // stdout is fully buffered when piped
     }
 
@@ -1174,29 +1197,58 @@ public final class GTKNativeControlBackend: NativeControlBackend {
             child = gtk_widget_get_next_sibling(c)
         }
     }
-    public func createStepper(value: Double, minValue: Double, maxValue: Double, stepSize: Double, frame: NSRect) -> NativeHandle {
-        let sb = gtk_spin_button_new_with_range(minValue, maxValue, stepSize == 0 ? 1 : stepSize)!
-        gtk_spin_button_set_value(OpaquePointer(sb), value)   // GtkSpinButton is opaque
-        // AppKit's NSStepper is the up/down arrows *only* — the value lives in a
-        // separate text field (the demo gives the stepper 20x28 and its own
-        // label). A GtkSpinButton bundles an entry, whose intrinsic minimum is
-        // ~120px, so it used to overrun its frame and cover the value label.
-        // Keep the spin button (it owns the value, range and step, and emits
-        // value-changed) but hide the entry and stack the arrows, which is the
-        // control AppKit actually draws.
-        gtk_widget_add_css_class(sb, "linchocolate-stepper")
-        gtk_widget_add_css_class(sb, "vertical")
-        var child = gtk_widget_get_first_child(sb)
-        while let current = child {
-            let instance = UnsafeMutableRawPointer(current).assumingMemoryBound(to: GTypeInstance.self)
-            if let name = g_type_name_from_instance(instance), String(cString: name) == "GtkText" {
-                gtk_widget_set_visible(current, gboolean(0))
-            }
-            child = gtk_widget_get_next_sibling(current)
+    /// AppKit's stepper: two arrow buttons **stacked, up above down** — the
+    /// control Apple actually draws. Shared by `NSStepper` and
+    /// `NSDatePicker`'s `.textFieldAndStepper` field, so there is one stepper.
+    ///
+    /// Built from buttons rather than a GtkSpinButton on purpose: a spin button
+    /// bundles a text entry, which forces a ~120px minimum (it overran and
+    /// covered its own value label), stacks its buttons side by side, and can't
+    /// be talked out of either.
+    private func makeStepperArrows(onStep: @escaping (Int) -> Void) -> UnsafeMutablePointer<GtkWidget> {
+        let arrows = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0)!
+        gtk_widget_add_css_class(arrows, "linked")
+        gtk_widget_add_css_class(arrows, "linchocolate-stepper")
+        for (icon, direction) in [("pan-up-symbolic", 1), ("pan-down-symbolic", -1)] {
+            let button = gtk_button_new_from_icon_name(icon)!
+            gtk_widget_set_vexpand(button, gboolean(1))
+            let action = ActionBox { onStep(direction) }
+            g_signal_connect_data(
+                UnsafeMutableRawPointer(button), "clicked",
+                unsafeBitCast(gtkActionTrampoline, to: GCallback.self),
+                Unmanaged.passRetained(action).toOpaque(), boxRelease, GConnectFlags(rawValue: 0)
+            )
+            gtk_box_append(asBox(OpaquePointer(arrows)), button)
         }
-        gtk_widget_set_size_request(sb, Int32(frame.width), Int32(frame.height))
-        let h = allocate(sb, .stepper, frame: frame)
-        ranges[h.rawValue] = (minValue, maxValue)
+        return arrows
+    }
+
+    /// Steps a stepper's value by one increment, clamped to its range, and
+    /// reports it — AppKit's NSStepper increments and sends its action.
+    private func stepStepper(_ raw: UInt, by direction: Int) {
+        guard let current = stepperValues[raw] else { return }
+        let step = stepperSteps[raw] ?? 1
+        let (lo, hi) = ranges[raw] ?? (0, 100)
+        let stepped = Swift.min(Swift.max(current + Double(direction) * step, lo), hi)
+        guard stepped != current else { return }
+        stepperValues[raw] = stepped
+        valueChangeActions[raw]?(stepped)
+    }
+
+    public func createStepper(value: Double, minValue: Double, maxValue: Double, stepSize: Double, frame: NSRect) -> NativeHandle {
+        // The arrows' handler needs the handle, which `allocate` only hands back
+        // after the widget exists; the closure captures `raw` by reference and
+        // cannot run before then (it takes a click).
+        var raw: UInt = 0
+        let arrows = makeStepperArrows { [weak self] direction in
+            self?.stepStepper(raw, by: direction)
+        }
+        gtk_widget_set_size_request(arrows, Int32(frame.width), Int32(frame.height))
+        let h = allocate(arrows, .stepper, frame: frame)
+        raw = h.rawValue
+        ranges[raw] = (minValue, maxValue)
+        stepperSteps[raw] = stepSize == 0 ? 1 : stepSize
+        stepperValues[raw] = value
         return h
     }
     public func createLevelIndicator(value: Double, minValue: Double, maxValue: Double, frame: NSRect) -> NativeHandle {
@@ -1220,18 +1272,135 @@ public final class GTKNativeControlBackend: NativeControlBackend {
         return allocate(tv, .textView, frame: frame)
     }
     public func createDatePicker(date: Date, frame: NSRect) -> NativeHandle {
-        // AppKit's default style is textFieldAndStepper — a compact field, not a
-        // full month grid. Render that as a read-only entry; clockAndCalendar
-        // swaps in a GtkCalendar via setDatePickerGraphical (whose natural size
-        // fits its 224×168 frame). A GtkCalendar in the compact 184×28 frame
-        // would overflow massively in a GtkFixed.
-        let entry = gtk_entry_new()!
-        gtk_editable_set_editable(OpaquePointer(entry), gboolean(0))
-        gtk_widget_set_size_request(entry, Int32(frame.width), Int32(frame.height))
-        let h = allocate(entry, .datePicker, frame: frame)
+        // AppKit's default style is .textFieldAndStepper — a compact field *with
+        // a stepper*, not a full month grid. clockAndCalendar swaps in a
+        // GtkCalendar via setDatePickerGraphical.
+        let h = allocate(gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0)!, .datePicker, frame: frame)
+        buildCompactDatePicker(raw: h.rawValue, frame: frame)
         setDateValue(date, for: h)
         return h
     }
+
+    /// Fills a compact (.textFieldAndStepper) picker's box: the field, plus the
+    /// stepper the style is named after. GTK has no date-field widget, so the
+    /// stepper is a pair of arrows driving the value directly.
+    private func buildCompactDatePicker(raw: UInt, frame: NSRect) {
+        guard let box = widgets[raw] else { return }
+        while let child = gtk_widget_get_first_child(asWidget(box)) { gtk_widget_unparent(child) }
+        gtk_widget_add_css_class(asWidget(box), "linked")
+
+        let entry = gtk_entry_new()!
+        gtk_widget_set_hexpand(entry, gboolean(1))
+        // Not editable — the framework owns the text — but focusable, so typed
+        // digits reach the selected element.
+        gtk_editable_set_editable(OpaquePointer(entry), gboolean(0))
+        gtk_widget_set_focusable(entry, gboolean(1))
+        gtk_widget_set_can_focus(entry, gboolean(1))
+        gtk_box_append(asBox(box), entry)
+        datePickerEntries[raw] = OpaquePointer(entry)
+
+        // A click moves the cursor; that is how AppKit picks the element to edit.
+        let cursorBox = DateCursorBox(backend: self, raw: raw)
+        g_signal_connect_data(
+            UnsafeMutableRawPointer(entry), "notify::cursor-position",
+            unsafeBitCast(gtkDateCursorTrampoline, to: GCallback.self),
+            Unmanaged.passRetained(cursorBox).toOpaque(), boxRelease, GConnectFlags(rawValue: 0)
+        )
+        let keys = gtk_event_controller_key_new()
+        gtk_event_controller_set_propagation_phase(keys, GTK_PHASE_CAPTURE)
+        let keyBox = DateCursorBox(backend: self, raw: raw)
+        g_signal_connect_data(
+            UnsafeMutableRawPointer(keys), "key-pressed",
+            unsafeBitCast(gtkDateKeyTrampoline, to: GCallback.self),
+            Unmanaged.passRetained(keyBox).toOpaque(), boxRelease, GConnectFlags(rawValue: 0)
+        )
+        gtk_widget_add_controller(entry, keys)
+
+        // The same stacked arrows NSStepper uses — AppKit draws one stepper.
+        // They report only a direction: which element that moves depends on the
+        // selected field, which is the framework's call.
+        let arrows = makeStepperArrows { [weak self] direction in
+            self?.dateStepActions[raw]?(direction)
+        }
+        gtk_box_append(asBox(box), arrows)
+        gtk_widget_set_size_request(asWidget(box), Int32(frame.width), Int32(frame.height))
+    }
+
+    public func setDateRange(min: Date?, max: Date?, for handle: NativeHandle) {
+        // Recorded for parity; the framework does the authoritative clamping
+        // (minDate/maxDate are AppKit semantics, not GTK's).
+        dateRanges[handle.rawValue] = (min, max)
+    }
+
+    public func setDatePickerText(_ text: String, for handle: NativeHandle) {
+        guard let entry = datePickerEntries[handle.rawValue] else { return }
+        guard String(cString: gtk_editable_get_text(entry)) != text else { return }
+        suppressCursorReport.insert(handle.rawValue)
+        gtk_editable_set_text(entry, text)
+        suppressCursorReport.remove(handle.rawValue)
+    }
+
+    public func setDatePickerSelection(location: Int, length: Int, for handle: NativeHandle) {
+        guard let entry = datePickerEntries[handle.rawValue] else { return }
+        // Selecting moves the cursor, which would re-enter the cursor handler
+        // and fight the framework for the selection.
+        suppressCursorReport.insert(handle.rawValue)
+        gtk_editable_select_region(entry, gint(location), gint(location + length))
+        suppressCursorReport.remove(handle.rawValue)
+    }
+
+    public func setDateStepAction(for handle: NativeHandle, action: @escaping (Int) -> Void) {
+        dateStepActions[handle.rawValue] = action
+    }
+
+    public func setDatePickerCursorAction(for handle: NativeHandle, action: @escaping (Int) -> Void) {
+        dateCursorActions[handle.rawValue] = action
+    }
+
+    public func setDatePickerMoveAction(for handle: NativeHandle, action: @escaping (Int) -> Void) {
+        dateMoveActions[handle.rawValue] = action
+    }
+
+    public func setDatePickerTypeAction(for handle: NativeHandle, action: @escaping (String) -> Void) {
+        dateTypeActions[handle.rawValue] = action
+    }
+
+    /// Reports a click's character offset so the framework can select that
+    /// element. Ignored while we are the ones moving the cursor.
+    fileprivate func reportDateCursor(_ raw: UInt) {
+        if ProcessInfo.processInfo.environment["LINCHOCOLATE_DATE_DEBUG"] != nil {
+            let pos = datePickerEntries[raw].map { Int(gtk_editable_get_position($0)) } ?? -1
+            let suppressed = suppressCursorReport.contains(raw)
+            FileHandle.standardError.write(Data("cursor-notify pos=\(pos) suppressed=\(suppressed)\n".utf8))
+        }
+        guard !suppressCursorReport.contains(raw), let entry = datePickerEntries[raw] else { return }
+        dateCursorActions[raw]?(Int(gtk_editable_get_position(entry)))
+    }
+
+    /// AppKit's keyboard for a date field: left/right move the selected
+    /// element, up/down step it, and digits (or "a"/"p") *type* into it.
+    ///
+    /// Returning true stops the key here. That matters: this controller runs in
+    /// the capture phase, so left/right would otherwise reach the entry's
+    /// GtkText and move its cursor, fighting the framework for the selection.
+    fileprivate func reportDateKey(_ raw: UInt, keyval: guint) -> Bool {
+        switch keyval {
+        case guint(GDK_KEY_Left):  dateMoveActions[raw]?(-1); return true
+        case guint(GDK_KEY_Right): dateMoveActions[raw]?(1);  return true
+        case guint(GDK_KEY_Up):    dateStepActions[raw]?(1);  return true
+        case guint(GDK_KEY_Down):  dateStepActions[raw]?(-1); return true
+        default: break
+        }
+        let unicode = gdk_keyval_to_unicode(keyval)
+        guard unicode != 0, let scalar = Unicode.Scalar(unicode) else { return false }
+        let character = Character(scalar)
+        guard character.isNumber || character.lowercased() == "a" || character.lowercased() == "p" else {
+            return false
+        }
+        dateTypeActions[raw]?(String(character))
+        return true
+    }
+
     public func setButtonKind(_ kind: NativeButtonKind, title: String, for handle: NativeHandle) {
         let raw = handle.rawValue
         guard let old = widgets[raw] else { return }
@@ -1257,16 +1426,22 @@ public final class GTKNativeControlBackend: NativeControlBackend {
         if graphical {
             new = gtk_calendar_new()!
             graphicalDatePickers.insert(raw)
+            datePickerEntries[raw] = nil
+            gtk_widget_set_size_request(new, Int32(frame.width), Int32(frame.height))
+            widgets[raw] = OpaquePointer(new)
         } else {
-            new = gtk_entry_new()!
-            gtk_editable_set_editable(OpaquePointer(new), gboolean(0))
+            new = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0)!
             graphicalDatePickers.remove(raw)
+            widgets[raw] = OpaquePointer(new)
+            buildCompactDatePicker(raw: raw, frame: frame)   // field *and* stepper
         }
-        gtk_widget_set_size_request(new, Int32(frame.width), Int32(frame.height))
-        widgets[raw] = OpaquePointer(new)
         // Free the discarded (still-floating, unparented) widget.
         g_object_ref_sink(UnsafeMutableRawPointer(old))
         g_object_unref(UnsafeMutableRawPointer(old))
+        // The swap replaced the widget, so re-apply the value and re-attach the
+        // change action — both were bound to the widget we just discarded.
+        if let date = dateValues[raw] { setDateValue(date, for: handle) }
+        if let action = dateChangeActions[raw] { attachDateChangeAction(action, to: handle) }
     }
     public func createColorWell(color: NSColor, frame: NSRect) -> NativeHandle {
         // GtkColorButton (via the GtkColorChooser interface) is deprecated in
@@ -1942,7 +2117,9 @@ public final class GTKNativeControlBackend: NativeControlBackend {
             let fraction = hi > lo ? (value - lo) / (hi - lo) : 0
             gtk_progress_bar_set_fraction(w, min(1, max(0, fraction)))   // GtkProgressBar is opaque
         case .stepper:
-            gtk_spin_button_set_value(w, value)   // GtkSpinButton is opaque
+            // Arrows only — nothing to display; the value lives in the app's
+            // own field, exactly as AppKit's NSStepper works.
+            stepperValues[handle.rawValue] = value
         case .level:
             // Rendered as a GtkProgressBar; show value as a fill fraction.
             let (lo, hi) = ranges[handle.rawValue] ?? (0, 1)
@@ -1983,15 +2160,17 @@ public final class GTKNativeControlBackend: NativeControlBackend {
         }
     }
     public func setDateValue(_ date: Date, for handle: NativeHandle) {
+        let raw = handle.rawValue
+        dateValues[raw] = date
         guard let w = widget(handle) else { return }
         // GtkCalendar navigates via a GDateTime; unix-local keeps Date exact.
         guard let gdt = g_date_time_new_from_unix_local(gint64(date.timeIntervalSince1970)) else { return }
-        if graphicalDatePickers.contains(handle.rawValue) {
+        if graphicalDatePickers.contains(raw) {
             gtk_calendar_select_day(w, gdt)   // GtkCalendar is opaque
-        } else if let text = g_date_time_format(gdt, "%Y-%m-%d %H:%M:%S") {
-            gtk_editable_set_text(w, text)    // compact read-only entry
-            g_free(gpointer(text))
         }
+        // The compact style's text arrives through setDatePickerText: formatting
+        // needs the locale, calendar and element flags, which are AppKit's to
+        // decide, not the backend's.
         g_date_time_unref(gdt)
     }
     public func setColor(_ color: NSColor, for handle: NativeHandle) {
@@ -2054,10 +2233,13 @@ public final class GTKNativeControlBackend: NativeControlBackend {
     public func setValueChangeAction(for handle: NativeHandle, action: @escaping (Double) -> Void) {
         guard let w = widget(handle) else { return }
         let box = DoubleActionBox(action)
-        // Both GtkScale (via GtkRange) and GtkSpinButton emit "value-changed", but
-        // the value is read from different getters, so pick the right trampoline.
-        let trampoline = kinds[handle.rawValue] == .stepper
-            ? gtkSpinValueChangedTrampoline : gtkValueChangedTrampoline
+        // A stepper is our own arrow buttons, not a GtkRange, so it has no
+        // "value-changed" to connect to: `stepStepper` reports directly.
+        if kinds[handle.rawValue] == .stepper {
+            valueChangeActions[handle.rawValue] = action
+            return
+        }
+        let trampoline = gtkValueChangedTrampoline
         g_signal_connect_data(
             UnsafeMutableRawPointer(w), "value-changed",
             unsafeBitCast(trampoline, to: GCallback.self),
@@ -2106,8 +2288,14 @@ public final class GTKNativeControlBackend: NativeControlBackend {
         )
     }
     public func setDateChangeAction(for handle: NativeHandle, action: @escaping (Date) -> Void) {
-        // Only the graphical (GtkCalendar) style emits day-selected; the compact
-        // entry is display-only.
+        dateChangeActions[handle.rawValue] = action
+        attachDateChangeAction(action, to: handle)
+    }
+
+    /// Binds `action` to the widget currently backing the picker. The graphical
+    /// style emits `day-selected`; the compact style reports through its
+    /// stepper (`stepDate`), which reads `dateChangeActions` directly.
+    private func attachDateChangeAction(_ action: @escaping (Date) -> Void, to handle: NativeHandle) {
         guard let w = widget(handle), graphicalDatePickers.contains(handle.rawValue) else { return }
         let box = DateActionBox(action)
         g_signal_connect_data(
@@ -2427,6 +2615,30 @@ private final class ToolbarToggleBox {
 }
 
 /// Handler for a customization-palette checkbox `toggled` — reports (id, on).
+/// Carries a date picker's backend + handle to its cursor/key handlers.
+private final class DateCursorBox {
+    weak var backend: GTKNativeControlBackend?
+    let raw: UInt
+    init(backend: GTKNativeControlBackend, raw: UInt) {
+        self.backend = backend
+        self.raw = raw
+    }
+}
+
+/// `GtkEditable::notify::cursor-position` on a compact date field.
+private let gtkDateCursorTrampoline: @convention(c) (UnsafeMutableRawPointer?, UnsafeMutableRawPointer?, gpointer?) -> Void = { _, _, userData in
+    guard let userData else { return }
+    let box = Unmanaged<DateCursorBox>.fromOpaque(userData).takeUnretainedValue()
+    box.backend?.reportDateCursor(box.raw)
+}
+
+/// `GtkEventControllerKey::key-pressed` on a compact date field.
+private let gtkDateKeyTrampoline: @convention(c) (UnsafeMutableRawPointer?, guint, guint, GdkModifierType, gpointer?) -> gboolean = { _, keyval, _, _, userData in
+    guard let userData else { return gboolean(0) }
+    let box = Unmanaged<DateCursorBox>.fromOpaque(userData).takeUnretainedValue()
+    return gboolean(box.backend?.reportDateKey(box.raw, keyval: keyval) == true ? 1 : 0)
+}
+
 /// Carries a drag source's string payload to the `prepare` handler.
 private final class DragPayloadBox {
     let payload: String
