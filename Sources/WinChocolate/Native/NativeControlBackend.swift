@@ -314,6 +314,10 @@ extension NativeDrawingContext {
 }
 
 extension NativeControlBackend {
+    /// Default: no run-loop pump, so `NSApplication.run()` keeps using the
+    /// bare message loop. The Win32 backend overrides this.
+    public func makeRunLoopPump() -> RunLoopPlatformPump? { nil }
+
     /// Default: a backend that does not surface double-clicks ignores the
     /// registration (the drawn-cell table path dispatches its own).
     public func registerTableDoubleClickAction(for handle: NativeHandle, action: @escaping () -> Void) {}
@@ -360,6 +364,13 @@ extension NativeControlBackend {
 public protocol NativeControlBackend: AnyObject {
     /// Starts the platform event loop.
     func runApplication()
+
+    /// Creates the run-loop pump that drives `RunLoop.main` on this platform,
+    /// or nil for a backend with no message loop (e.g. the in-memory test
+    /// backend). When non-nil, `NSApplication.run()` installs it and drives
+    /// `RunLoop.main.run()` instead of the bare message loop, so Foundation
+    /// timers and window events share one loop.
+    func makeRunLoopPump() -> RunLoopPlatformPump?
 
     /// Requests application termination.
     func terminateApplication()

@@ -109,10 +109,20 @@ public final class NSApplication: NSObject {
     }
 
     /// Runs the application lifecycle and native event loop.
+    ///
+    /// When the backend provides a run-loop pump, the app is driven by
+    /// `RunLoop.main.run()` — window messages and Foundation timers share one
+    /// loop, as on AppKit. A backend without a pump (the in-memory test
+    /// backend) falls back to the bare message loop.
     public func run() {
         delegate?.applicationWillFinishLaunching(notification(named: "NSApplicationWillFinishLaunchingNotification"))
         delegate?.applicationDidFinishLaunching(notification(named: "NSApplicationDidFinishLaunchingNotification"))
-        nativeBackend.runApplication()
+        if let pump = nativeBackend.makeRunLoopPump() {
+            RunLoop.main.installPlatformPump(pump)
+            RunLoop.main.run()
+        } else {
+            nativeBackend.runApplication()
+        }
     }
 
     /// Windows currently running modal sessions, outermost first.

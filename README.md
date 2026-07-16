@@ -95,6 +95,18 @@ buildandrun.bat
 
 The script builds the Swift package, runs the contract tests, checks native demo window creation, and launches the demo app.
 
+An optional first argument selects which demo to build and run:
+
+```bat
+buildandrun.bat demo       rem the main WinChocolate demo (default)
+buildandrun.bat runloop    rem the RunLoop / Timer demo
+```
+
+Any other arguments pass straight through to the app, so `buildandrun.bat --dark`
+still runs the main demo (with `--dark`), and `buildandrun.bat runloop --dark`
+runs the run-loop demo. The `runloop` app has no `--diagnose` self-check or
+bundled resources, so those steps are skipped for it.
+
 ## Package Layout
 
 ```text
