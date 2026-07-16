@@ -24,8 +24,24 @@ open class NSScroller: NSControl {
 
     public required init(frame: NSRect) {
         self.owner = nil
-        self.isVertical = frame.height > frame.width
-        super.init(frame: frame)
+        let vertical = frame.height > frame.width
+        self.isVertical = vertical
+        let backend = NSApplication.shared.nativeBackend
+        let handle = backend.createScroller(vertical: vertical, frame: frame)
+        super.init(frame: frame, handle: handle, backend: backend)
+        // AppKit's NSScroller is the one control that starts **disabled**
+        // (verified against real AppKit: isEnabled == false, usableParts ==
+        // .noScrollerParts), so no knob is drawn and nothing responds until the
+        // app enables it. Assigning after super.init, so NSControl's observer
+        // fires and the native side agrees.
+        isEnabled = false
+        backend.setScrollerGeometry(value: _value, knobProportion: _knobProportion, for: handle)
+        backend.setScrollerAction(for: handle) { [weak self] value in
+            guard let self else { return }
+            self._value = value          // sync silently — this came *from* the knob
+            self.onAction?(self)
+            self.sendAction()
+        }
     }
 
     private var _value: Double = 0
@@ -45,7 +61,11 @@ open class NSScroller: NSControl {
         }
         set {
             _value = min(1, max(0, newValue))
-            if owner == nil { onAction?(self) }
+            // AppKit does not send a control's action when the value is set in
+            // code — only the user's drag does. (This used to fire `onAction`
+            // here, which reported positions the user never scrolled to.)
+            guard owner == nil else { return }
+            backend.setScrollerGeometry(value: _value, knobProportion: _knobProportion, for: handle)
         }
     }
 
@@ -61,7 +81,11 @@ open class NSScroller: NSControl {
             let (d, v) = isVertical ? (document.height, visible.height) : (document.width, visible.width)
             return d > 0 ? min(1, v / d) : 1
         }
-        set { _knobProportion = min(1, max(0, newValue)) }
+        set {
+            _knobProportion = min(1, max(0, newValue))
+            guard owner == nil else { return }
+            backend.setScrollerGeometry(value: _value, knobProportion: _knobProportion, for: handle)
+        }
     }
 
     /// Whether the scroller is currently needed (document exceeds the viewport).

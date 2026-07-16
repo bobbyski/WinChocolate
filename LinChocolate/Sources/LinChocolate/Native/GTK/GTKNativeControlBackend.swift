@@ -40,6 +40,17 @@ public final class GTKNativeControlBackend: NativeControlBackend {
     private var dateCursorActions: [UInt: (Int) -> Void] = [:]
     private var dateMoveActions: [UInt: (Int) -> Void] = [:]
     private var dateTypeActions: [UInt: (String) -> Void] = [:]
+    private var levelValues: [UInt: Double] = [:]
+    private var levelStyles: [UInt: Int] = [:]
+    private var levelEditable: Set<UInt> = []
+    private var levelThresholds: [UInt: (warning: Double, critical: Double)] = [:]
+    private var levelChangeActions: [UInt: (Double) -> Void] = [:]
+    private var levelClickGestures: Set<UInt> = []   // indicators already wired for clicks
+    private var graphicalCalendars: [UInt: OpaquePointer] = [:]   // clockAndCalendar -> its GtkCalendar
+    private var suppressCalendarReport: Set<UInt> = []
+    private var scrollerAdjustments: [UInt: UnsafeMutablePointer<GtkAdjustment>] = [:]
+    private var scrollerActions: [UInt: (Double) -> Void] = [:]
+    private var suppressScrollerReport: Set<UInt> = []
     private var suppressCursorReport: Set<UInt> = []
     private var dateChangeActions: [UInt: (Date) -> Void] = [:]
     private var viewDrawAreas: [UInt: OpaquePointer] = [:]   // view -> GtkDrawingArea
@@ -110,6 +121,37 @@ public final class GTKNativeControlBackend: NativeControlBackend {
             spinbutton button { padding: 0 4px; }
             checkbutton { padding: 0; }
             checkbutton check { min-height: 16px; min-width: 16px; }
+            /* NSColorWell: GtkButton's default padding is asymmetric (5px 10px),
+               which squeezes the colour swatch into a narrow vertical strip.
+               Symmetric padding gives the colour a consistent margin on all
+               sides, inset in a softly rounded, bordered well like AppKit's. */
+            colorbutton, colorbutton > button {
+                min-width: 0; min-height: 0;
+                border-radius: 7px;
+            }
+            colorbutton > button {
+                padding: 3px;
+                border: 1px solid alpha(currentColor, 0.28);
+                box-shadow: none;
+            }
+            colorbutton > button > colorswatch,
+            colorbutton > button > colorswatch > overlay {
+                border-radius: 4px;
+                min-width: 0; min-height: 0;
+            }
+            /* NSDatePicker's .clockAndCalendar: GtkCalendar's intrinsic minimum
+               (291x198) exceeds the frame AppKit fits a month grid into
+               (276x168 in the demo, deliberately). The frame is law, so the
+               widget must be made to fit rather than allowed to draw past its
+               allocation over the controls below it. */
+            calendar { font-size: 90%; }
+            calendar > grid > label { padding: 1px 2px; min-width: 0; min-height: 0; }
+            calendar > header { padding: 0; min-height: 0; }
+            calendar > header button { padding: 0 2px; min-width: 0; min-height: 0; }
+            calendar > header label { padding: 0; }
+            /* NSLevelIndicator's warningValue/criticalValue tints. */
+            progressbar.linchocolate-level-warning > trough > progress { background-color: #e5a50a; }
+            progressbar.linchocolate-level-critical > trough > progress { background-color: #e01b24; }
             /* AppKit's stepper: two stacked arrows (NSStepper is 20x28 there,
                so the theme's button minimums have to go). */
             .linchocolate-stepper button {
@@ -1251,18 +1293,217 @@ public final class GTKNativeControlBackend: NativeControlBackend {
         stepperValues[raw] = value
         return h
     }
-    public func createLevelIndicator(value: Double, minValue: Double, maxValue: Double, frame: NSRect) -> NativeHandle {
-        // AppKit's NSLevelIndicator is a fill bar. GtkLevelBar's natural width is
-        // unbounded and GtkFixed honors natural size (it can't be size-capped
-        // there), so render the capacity as a GtkProgressBar — which respects its
-        // size_request exactly and shows the same value/max fill fraction.
-        let pb = gtk_progress_bar_new()!
-        gtk_widget_set_size_request(pb, Int32(frame.width), Int32(frame.height))
-        gtk_widget_set_valign(pb, GTK_ALIGN_CENTER)
-        let h = allocate(pb, .level, frame: frame)
-        ranges[h.rawValue] = (minValue, maxValue)
-        setDoubleValue(value, for: h)
+    /// A standalone GtkScrollbar. `NSScroller` used directly (not as an
+    /// NSScrollView's bar) previously fell through to `NSView`'s initializer and
+    /// became an empty container — it simply never appeared.
+    public func createScroller(vertical: Bool, frame: NSRect) -> NativeHandle {
+        // AppKit's value/knobProportion are both 0...1 fractions. A GtkAdjustment
+        // instead runs its value over [lower, upper - page_size], so with
+        // upper = 1 and page_size = knobProportion the knob length is the
+        // proportion and the value spans [0, 1 - proportion]; see scrollerValue().
+        let adjustment = gtk_adjustment_new(0, 0, 1, 0.05, 0.25, 0.25)
+        let bar = gtk_scrollbar_new(vertical ? GTK_ORIENTATION_VERTICAL : GTK_ORIENTATION_HORIZONTAL,
+                                    adjustment)!
+        gtk_widget_set_size_request(bar, Int32(frame.width), Int32(frame.height))
+        // AppKit's NSScroller starts disabled — verified by probing real AppKit
+        // (isEnabled == false, usableParts == .noScrollerParts) — so nothing is
+        // draggable until the app enables it.
+        gtk_widget_set_sensitive(bar, gboolean(0))
+        let h = allocate(bar, .scroller, frame: frame)
+        scrollerAdjustments[h.rawValue] = adjustment
         return h
+    }
+
+    /// The AppKit 0...1 value for a scroller's current adjustment.
+    private func scrollerValue(_ raw: UInt) -> Double {
+        guard let adjustment = scrollerAdjustments[raw] else { return 0 }
+        let span = gtk_adjustment_get_upper(adjustment) - gtk_adjustment_get_page_size(adjustment)
+        return span > 0 ? gtk_adjustment_get_value(adjustment) / span : 0
+    }
+
+    public func setScrollerGeometry(value: Double, knobProportion: Double, for handle: NativeHandle) {
+        guard let adjustment = scrollerAdjustments[handle.rawValue] else { return }
+        let proportion = Swift.min(1, Swift.max(0, knobProportion))
+        // Setting the adjustment emits value-changed; that is us, not the user.
+        suppressScrollerReport.insert(handle.rawValue)
+        gtk_adjustment_set_page_size(adjustment, proportion)
+        gtk_adjustment_set_upper(adjustment, 1)
+        gtk_adjustment_set_value(adjustment, Swift.min(1, Swift.max(0, value)) * (1 - proportion))
+        suppressScrollerReport.remove(handle.rawValue)
+    }
+
+    public func setScrollerAction(for handle: NativeHandle, action: @escaping (Double) -> Void) {
+        guard let adjustment = scrollerAdjustments[handle.rawValue] else { return }
+        scrollerActions[handle.rawValue] = action
+        let box = ScrollerBox(backend: self, raw: handle.rawValue)
+        g_signal_connect_data(
+            UnsafeMutableRawPointer(adjustment), "value-changed",
+            unsafeBitCast(gtkScrollerChangedTrampoline, to: GCallback.self),
+            Unmanaged.passRetained(box).toOpaque(), boxRelease, GConnectFlags(rawValue: 0)
+        )
+    }
+
+    /// Reports a *user* drag. Programmatic geometry changes are suppressed, the
+    /// same trap the date field hit: GTK can't tell us who moved the value.
+    fileprivate func reportScroller(_ raw: UInt) {
+        guard !suppressScrollerReport.contains(raw) else { return }
+        scrollerActions[raw]?(scrollerValue(raw))
+    }
+
+    public func createLevelIndicator(value: Double, minValue: Double, maxValue: Double, frame: NSRect) -> NativeHandle {
+        // A container, because the style decides the content: a capacity bar, or
+        // a row of stars for .rating. AppKit's NSLevelIndicator is one control
+        // that renders either.
+        let box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0)!
+        gtk_widget_set_size_request(box, Int32(frame.width), Int32(frame.height))
+        let h = allocate(box, .level, frame: frame)
+        ranges[h.rawValue] = (minValue, maxValue)
+        levelValues[h.rawValue] = value
+        buildLevelContent(h.rawValue)
+        return h
+    }
+
+    public func setLevelIndicatorStyle(_ rawValue: Int, for handle: NativeHandle) {
+        levelStyles[handle.rawValue] = rawValue
+        buildLevelContent(handle.rawValue)
+    }
+
+    public func setLevelIndicatorEditable(_ editable: Bool, for handle: NativeHandle) {
+        let raw = handle.rawValue
+        guard levelEditable.contains(raw) != editable else { return }
+        if editable { levelEditable.insert(raw) } else { levelEditable.remove(raw) }
+        buildLevelContent(raw)
+    }
+
+    public func setLevelIndicatorRange(min: Double, max: Double, for handle: NativeHandle) {
+        ranges[handle.rawValue] = (min, max)
+        buildLevelContent(handle.rawValue)      // the span is the star count
+    }
+
+    public func setLevelThresholds(warning: Double, critical: Double, for handle: NativeHandle) {
+        levelThresholds[handle.rawValue] = (warning, critical)
+        buildLevelContent(handle.rawValue)
+    }
+
+    public func setLevelChangeAction(for handle: NativeHandle, action: @escaping (Double) -> Void) {
+        levelChangeActions[handle.rawValue] = action
+    }
+
+    /// Renders a level indicator for its current style: a row of stars for
+    /// `.rating` (3), otherwise a capacity bar that turns warning/critical
+    /// coloured past its thresholds, as AppKit's does.
+    private func buildLevelContent(_ raw: UInt) {
+        guard let box = widgets[raw] else { return }
+        while let child = gtk_widget_get_first_child(asWidget(box)) { gtk_widget_unparent(child) }
+        let (lo, hi) = ranges[raw] ?? (0, 1)
+        let value = levelValues[raw] ?? 0
+
+        if levelStyles[raw] == NativeLevelIndicatorStyle.rating {
+            guard Int((hi - lo).rounded()) > 0 else { return }
+            // Stars are drawn, not taken from the icon theme: "starred-symbolic"
+            // is absent on plenty of systems (it is not in this container's
+            // Adwaita at all, and rendered as broken-image placeholders), and a
+            // rating control should not change shape with the user's theme —
+            // AppKit draws its own.
+            let area = gtk_drawing_area_new()!
+            gtk_widget_set_hexpand(area, gboolean(1))
+            gtk_widget_set_vexpand(area, gboolean(1))
+            let drawBox = LevelClickBox(backend: self, raw: raw)
+            gtk_drawing_area_set_draw_func(
+                UnsafeMutablePointer<GtkDrawingArea>(OpaquePointer(area)),
+                gtkStarDrawFunc,
+                Unmanaged.passRetained(drawBox).toOpaque(), boxDestroyNotify
+            )
+            gtk_box_append(asBox(box), area)
+            attachLevelClickGesture(raw, to: box)
+            return
+        }
+
+        let bar = gtk_progress_bar_new()!
+        gtk_widget_set_hexpand(bar, gboolean(1))
+        gtk_widget_set_valign(bar, GTK_ALIGN_CENTER)
+        let span = hi - lo
+        gtk_progress_bar_set_fraction(OpaquePointer(bar), span > 0 ? Swift.min(1, Swift.max(0, (value - lo) / span)) : 0)
+        // AppKit tints the fill once the level reaches warningValue, and again
+        // at criticalValue.
+        if let thresholds = levelThresholds[raw] {
+            if thresholds.critical > 0 && value >= thresholds.critical {
+                gtk_widget_add_css_class(bar, "linchocolate-level-critical")
+            } else if thresholds.warning > 0 && value >= thresholds.warning {
+                gtk_widget_add_css_class(bar, "linchocolate-level-warning")
+            }
+        }
+        gtk_box_append(asBox(box), bar)
+        attachLevelClickGesture(raw, to: box)
+    }
+
+    /// An editable indicator takes clicks in **any** style: AppKit lets you set
+    /// a capacity bar's level by clicking it, not just a rating's stars.
+    private func attachLevelClickGesture(_ raw: UInt, to box: OpaquePointer) {
+        guard levelEditable.contains(raw), !levelClickGestures.contains(raw) else { return }
+        let click = gtk_gesture_click_new()
+        let clickBox = LevelClickBox(backend: self, raw: raw)
+        g_signal_connect_data(
+            UnsafeMutableRawPointer(click), "pressed",
+            unsafeBitCast(gtkLevelClickTrampoline, to: GCallback.self),
+            Unmanaged.passRetained(clickBox).toOpaque(), boxRelease, GConnectFlags(rawValue: 0)
+        )
+        gtk_widget_add_controller(asWidget(box), click)
+        levelClickGestures.insert(raw)
+    }
+
+    /// Draws the rating's stars: filled up to the value, outlined beyond it.
+    fileprivate func drawStars(_ raw: UInt, cr: OpaquePointer, width: Double, height: Double) {
+        let (lo, hi) = ranges[raw] ?? (0, 5)
+        let stars = Int((hi - lo).rounded())
+        guard stars > 0, width > 0, height > 0 else { return }
+        let value = levelValues[raw] ?? 0
+        let slot = width / Double(stars)
+        let radius = Swift.min(slot, height) * 0.42
+        let tone = prefersDarkAppearance ? 0.85 : 0.30
+        for index in 0..<stars {
+            appendStarPath(cr: cr, centreX: slot * (Double(index) + 0.5), centreY: height / 2, radius: radius)
+            cairo_set_source_rgb(cr, tone, tone, tone)
+            if Double(index) < (value - lo) {
+                cairo_fill(cr)
+            } else {
+                cairo_set_line_width(cr, 1.2)
+                cairo_stroke(cr)
+            }
+        }
+    }
+
+    /// A five-pointed star, outer points alternating with inner ones.
+    private func appendStarPath(cr: OpaquePointer, centreX: Double, centreY: Double, radius: Double) {
+        for point in 0..<10 {
+            let r = point % 2 == 0 ? radius : radius * 0.42
+            let angle = -Double.pi / 2 + Double(point) * Double.pi / 5
+            let x = centreX + r * cos(angle)
+            let y = centreY + r * sin(angle)
+            if point == 0 { cairo_move_to(cr, x, y) } else { cairo_line_to(cr, x, y) }
+        }
+        cairo_close_path(cr)
+    }
+
+    /// Reports the star a click landed on, as a level (AppKit sets the rating to
+    /// the clicked star).
+    fileprivate func reportLevelClick(_ raw: UInt, x: Double) {
+        guard levelEditable.contains(raw), let frame = frames[raw], frame.width > 0 else { return }
+        let (lo, hi) = ranges[raw] ?? (0, 1)
+        let value: Double
+        if levelStyles[raw] == NativeLevelIndicatorStyle.rating {
+            // A rating snaps to the star clicked.
+            let stars = Int((hi - lo).rounded())
+            guard stars > 0 else { return }
+            let index = Swift.min(stars - 1, Swift.max(0, Int(x / (frame.width / Double(stars)))))
+            value = lo + Double(index) + 1
+        } else {
+            // A capacity bar takes the level at the point clicked.
+            value = lo + Swift.min(1, Swift.max(0, x / frame.width)) * (hi - lo)
+        }
+        levelValues[raw] = value
+        buildLevelContent(raw)
+        levelChangeActions[raw]?(value)
     }
     public func createTextView(text: String, frame: NSRect) -> NativeHandle {
         let tv = gtk_text_view_new()!
@@ -1288,6 +1529,18 @@ public final class GTKNativeControlBackend: NativeControlBackend {
         guard let box = widgets[raw] else { return }
         while let child = gtk_widget_get_first_child(asWidget(box)) { gtk_widget_unparent(child) }
         gtk_widget_add_css_class(asWidget(box), "linked")
+        gtk_box_append(asBox(box), makeDateEntryRow(raw: raw))
+        gtk_widget_set_size_request(asWidget(box), Int32(frame.width), Int32(frame.height))
+    }
+
+    /// A date/time entry field plus the stacked stepper — the editable part of
+    /// both `.textFieldAndStepper` (the whole control) and `.clockAndCalendar`
+    /// (the time row beneath the calendar). The entry is stored in
+    /// `datePickerEntries[raw]`, so the framework drives its text and selection
+    /// through the same seam either way.
+    private func makeDateEntryRow(raw: UInt) -> UnsafeMutablePointer<GtkWidget> {
+        let row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0)!
+        gtk_widget_add_css_class(row, "linked")
 
         let entry = gtk_entry_new()!
         gtk_widget_set_hexpand(entry, gboolean(1))
@@ -1296,7 +1549,7 @@ public final class GTKNativeControlBackend: NativeControlBackend {
         gtk_editable_set_editable(OpaquePointer(entry), gboolean(0))
         gtk_widget_set_focusable(entry, gboolean(1))
         gtk_widget_set_can_focus(entry, gboolean(1))
-        gtk_box_append(asBox(box), entry)
+        gtk_box_append(asBox(OpaquePointer(row)), entry)
         datePickerEntries[raw] = OpaquePointer(entry)
 
         // A click moves the cursor; that is how AppKit picks the element to edit.
@@ -1316,14 +1569,13 @@ public final class GTKNativeControlBackend: NativeControlBackend {
         )
         gtk_widget_add_controller(entry, keys)
 
-        // The same stacked arrows NSStepper uses — AppKit draws one stepper.
-        // They report only a direction: which element that moves depends on the
-        // selected field, which is the framework's call.
+        // The same stacked arrows NSStepper uses; it reports only a direction —
+        // which element moves is the framework's call (it tracks the selection).
         let arrows = makeStepperArrows { [weak self] direction in
             self?.dateStepActions[raw]?(direction)
         }
-        gtk_box_append(asBox(box), arrows)
-        gtk_widget_set_size_request(asWidget(box), Int32(frame.width), Int32(frame.height))
+        gtk_box_append(asBox(OpaquePointer(row)), arrows)
+        return row
     }
 
     public func setDateRange(min: Date?, max: Date?, for handle: NativeHandle) {
@@ -1424,14 +1676,30 @@ public final class GTKNativeControlBackend: NativeControlBackend {
         if gtk_widget_get_parent(asWidget(old)) != nil { gtk_widget_unparent(asWidget(old)) }
         let new: UnsafeMutablePointer<GtkWidget>
         if graphical {
-            new = gtk_calendar_new()!
+            // AppKit's .clockAndCalendar shows a month grid AND a time editor
+            // (an analog clock on macOS). Here: the calendar for the date, and a
+            // compact time field with a stepper below it — the same type-to-edit
+            // field the .textFieldAndStepper style uses, so the time can be
+            // typed or stepped, which is the functionality that was missing.
+            let column = gtk_box_new(GTK_ORIENTATION_VERTICAL, 4)!
+            let calendar = gtk_calendar_new()!
+            gtk_widget_set_vexpand(calendar, gboolean(1))
+            gtk_box_append(asBox(OpaquePointer(column)), calendar)
+            graphicalCalendars[raw] = OpaquePointer(calendar)
+
+            let timeRow = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0)!
+            gtk_widget_set_halign(timeRow, GTK_ALIGN_CENTER)
+            gtk_box_append(asBox(OpaquePointer(timeRow)), makeDateEntryRow(raw: raw))
+            gtk_box_append(asBox(OpaquePointer(column)), timeRow)
+
+            new = column
             graphicalDatePickers.insert(raw)
-            datePickerEntries[raw] = nil
             gtk_widget_set_size_request(new, Int32(frame.width), Int32(frame.height))
             widgets[raw] = OpaquePointer(new)
         } else {
             new = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0)!
             graphicalDatePickers.remove(raw)
+            graphicalCalendars[raw] = nil
             widgets[raw] = OpaquePointer(new)
             buildCompactDatePicker(raw: raw, frame: frame)   // field *and* stepper
         }
@@ -2121,10 +2389,8 @@ public final class GTKNativeControlBackend: NativeControlBackend {
             // own field, exactly as AppKit's NSStepper works.
             stepperValues[handle.rawValue] = value
         case .level:
-            // Rendered as a GtkProgressBar; show value as a fill fraction.
-            let (lo, hi) = ranges[handle.rawValue] ?? (0, 1)
-            let fraction = hi > lo ? (value - lo) / (hi - lo) : 0
-            gtk_progress_bar_set_fraction(w, min(1, max(0, fraction)))
+            levelValues[handle.rawValue] = value
+            buildLevelContent(handle.rawValue)
         default: break
         }
     }
@@ -2165,10 +2431,14 @@ public final class GTKNativeControlBackend: NativeControlBackend {
         guard let w = widget(handle) else { return }
         // GtkCalendar navigates via a GDateTime; unix-local keeps Date exact.
         guard let gdt = g_date_time_new_from_unix_local(gint64(date.timeIntervalSince1970)) else { return }
-        if graphicalDatePickers.contains(raw) {
-            gtk_calendar_select_day(w, gdt)   // GtkCalendar is opaque
+        if graphicalDatePickers.contains(raw), let calendar = graphicalCalendars[raw] {
+            // Selecting a day re-emits day-selected; that is us, not the user.
+            suppressCalendarReport.insert(raw)
+            gtk_calendar_select_day(calendar, gdt)
+            suppressCalendarReport.remove(raw)
         }
-        // The compact style's text arrives through setDatePickerText: formatting
+        // The compact style's (and clockAndCalendar's time row's) text arrives
+        // through setDatePickerText: formatting
         // needs the locale, calendar and element flags, which are AppKit's to
         // decide, not the backend's.
         g_date_time_unref(gdt)
@@ -2296,10 +2566,16 @@ public final class GTKNativeControlBackend: NativeControlBackend {
     /// style emits `day-selected`; the compact style reports through its
     /// stepper (`stepDate`), which reads `dateChangeActions` directly.
     private func attachDateChangeAction(_ action: @escaping (Date) -> Void, to handle: NativeHandle) {
-        guard let w = widget(handle), graphicalDatePickers.contains(handle.rawValue) else { return }
-        let box = DateActionBox(action)
+        let raw = handle.rawValue
+        guard graphicalDatePickers.contains(raw), let calendar = graphicalCalendars[raw] else { return }
+        // Wrap so our own select_day calls (setDateValue) don't report as user edits.
+        let wrapped: (Date) -> Void = { [weak self] date in
+            guard self?.suppressCalendarReport.contains(raw) != true else { return }
+            action(date)
+        }
+        let box = DateActionBox(wrapped)
         g_signal_connect_data(
-            UnsafeMutableRawPointer(w), "day-selected",
+            UnsafeMutableRawPointer(calendar), "day-selected",
             unsafeBitCast(gtkDaySelectedTrampoline, to: GCallback.self),
             Unmanaged.passRetained(box).toOpaque(), boxRelease, GConnectFlags(rawValue: 0)
         )
@@ -2615,6 +2891,47 @@ private final class ToolbarToggleBox {
 }
 
 /// Handler for a customization-palette checkbox `toggled` — reports (id, on).
+/// Carries an editable level indicator's backend + handle to its click gesture.
+private final class LevelClickBox {
+    weak var backend: GTKNativeControlBackend?
+    let raw: UInt
+    init(backend: GTKNativeControlBackend, raw: UInt) {
+        self.backend = backend
+        self.raw = raw
+    }
+}
+
+/// `GtkDrawingArea` draw func for a rating indicator's stars.
+private let gtkStarDrawFunc: @convention(c) (UnsafeMutablePointer<GtkDrawingArea>?, OpaquePointer?, Int32, Int32, gpointer?) -> Void = { _, cr, width, height, userData in
+    guard let cr, let userData else { return }
+    let box = Unmanaged<LevelClickBox>.fromOpaque(userData).takeUnretainedValue()
+    box.backend?.drawStars(box.raw, cr: cr, width: Double(width), height: Double(height))
+}
+
+/// `GtkGestureClick::pressed` on a rating indicator.
+private let gtkLevelClickTrampoline: @convention(c) (UnsafeMutableRawPointer?, gint, Double, Double, gpointer?) -> Void = { _, _, x, _, userData in
+    guard let userData else { return }
+    let box = Unmanaged<LevelClickBox>.fromOpaque(userData).takeUnretainedValue()
+    box.backend?.reportLevelClick(box.raw, x: x)
+}
+
+/// Carries a standalone scroller's backend + handle to its adjustment handler.
+private final class ScrollerBox {
+    weak var backend: GTKNativeControlBackend?
+    let raw: UInt
+    init(backend: GTKNativeControlBackend, raw: UInt) {
+        self.backend = backend
+        self.raw = raw
+    }
+}
+
+/// `GtkAdjustment::value-changed` for a standalone scroller.
+private let gtkScrollerChangedTrampoline: @convention(c) (UnsafeMutableRawPointer?, gpointer?) -> Void = { _, userData in
+    guard let userData else { return }
+    let box = Unmanaged<ScrollerBox>.fromOpaque(userData).takeUnretainedValue()
+    box.backend?.reportScroller(box.raw)
+}
+
 /// Carries a date picker's backend + handle to its cursor/key handlers.
 private final class DateCursorBox {
     weak var backend: GTKNativeControlBackend?

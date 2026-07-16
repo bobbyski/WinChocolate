@@ -145,14 +145,20 @@ open class NSDatePicker: NSControl {
     /// give "5/31/26").
     private func displayPattern() -> String {
         var template = ""
-        // Cumulative flags: test the wider one first.
-        if datePickerElements.contains(.yearMonthDay) { template += "Mdyyyy" }
-        else if datePickerElements.contains(.yearMonth) { template += "yyyyM" }
-        if datePickerElements.contains(.era) { template += "G" }
-        if datePickerElements.contains(.hourMinuteSecond) { template += "jmmss" }
-        else if datePickerElements.contains(.hourMinute) { template += "jmm" }
-        if datePickerElements.contains(.timeZone) { template += "z" }
-        if template.isEmpty { template = "Mdyyyy" }
+        if datePickerStyle == .clockAndCalendar {
+            // The calendar shows the date; the field beside it edits the TIME.
+            template = datePickerElements.contains(.hourMinute) && !datePickerElements.contains(.hourMinuteSecond)
+                ? "jmm" : "jmmss"
+        } else {
+            // Cumulative flags: test the wider one first.
+            if datePickerElements.contains(.yearMonthDay) { template += "Mdyyyy" }
+            else if datePickerElements.contains(.yearMonth) { template += "yyyyM" }
+            if datePickerElements.contains(.era) { template += "G" }
+            if datePickerElements.contains(.hourMinuteSecond) { template += "jmmss" }
+            else if datePickerElements.contains(.hourMinute) { template += "jmm" }
+            if datePickerElements.contains(.timeZone) { template += "z" }
+            if template.isEmpty { template = "Mdyyyy" }
+        }
         return DateFormatter.dateFormat(fromTemplate: template, options: 0, locale: resolvedLocale)
             ?? "M/d/yyyy"
     }
@@ -230,7 +236,6 @@ open class NSDatePicker: NSControl {
     }
 
     private func refreshDisplay() {
-        guard datePickerStyle != .clockAndCalendar else { return }
         let rendered = renderDisplay()
         segments = rendered.segments
         if selectedSegmentIndex >= segments.count { selectedSegmentIndex = 0 }
@@ -239,7 +244,7 @@ open class NSDatePicker: NSControl {
     }
 
     private func pushSelection() {
-        guard datePickerStyle != .clockAndCalendar, segments.indices.contains(selectedSegmentIndex) else { return }
+        guard segments.indices.contains(selectedSegmentIndex) else { return }
         let range = segments[selectedSegmentIndex].range
         backend.setDatePickerSelection(location: range.lowerBound,
                                        length: range.count, for: handle)
@@ -410,7 +415,20 @@ open class NSDatePicker: NSControl {
     private func wireActions() {
         backend.setDateChangeAction(for: handle) { [weak self] date in
             guard let self else { return }
-            self.backingDate = date            // sync silently
+            if self.datePickerStyle == .clockAndCalendar {
+                // The calendar can only change the *day*; keep the time of day
+                // the user set in the time row, rather than resetting to the
+                // calendar's midnight.
+                let calendar = self.resolvedCalendar
+                let ymd = calendar.dateComponents([.year, .month, .day], from: date)
+                let hms = calendar.dateComponents([.hour, .minute, .second], from: self.backingDate)
+                var merged = DateComponents()
+                merged.year = ymd.year; merged.month = ymd.month; merged.day = ymd.day
+                merged.hour = hms.hour; merged.minute = hms.minute; merged.second = hms.second
+                self.backingDate = calendar.date(from: merged) ?? date
+            } else {
+                self.backingDate = date            // sync silently
+            }
             self.onDateChange?(self)
             self.sendAction()
         }

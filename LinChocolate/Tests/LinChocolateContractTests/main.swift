@@ -1145,6 +1145,87 @@ final class DynamicFlipView: NSView {
     override var isFlipped: Bool { flipsNow }
 }
 
+// MARK: 29a — NSScroller: a standalone scroller is a real scrollbar
+do {
+    let backend = InMemoryNativeControlBackend()
+    NSApplication.shared.nativeBackend = backend
+    let scroller = NSScroller(frame: NSMakeRect(128, 340, 240, 18))
+
+    // It must be a scroller, not a bare view: a standalone NSScroller used to
+    // fall through to NSView's initializer and render as an empty container.
+    check(backend.kinds[scroller.handle.rawValue] == .scroller, "a standalone scroller creates a scrollbar")
+
+    // AppKit's NSScroller is the one control that starts DISABLED (probed from
+    // real AppKit: isEnabled == false, usableParts == .noScrollerParts).
+    check(scroller.isEnabled == false, "an NSScroller starts disabled, unlike every other control")
+    check(backend.enabledStates[scroller.handle.rawValue] == false, "and the native side agrees")
+
+    scroller.isEnabled = true
+    check(backend.enabledStates[scroller.handle.rawValue] == true, "enabling it reaches the backend")
+
+    // Geometry reaches the backend as AppKit's 0...1 fractions.
+    scroller.knobProportion = 0.25
+    scroller.doubleValue = 0.5
+    check(backend.scrollerGeometry[scroller.handle.rawValue]?.knobProportion == 0.25, "knobProportion reaches the backend")
+    check(backend.scrollerGeometry[scroller.handle.rawValue]?.value == 0.5, "doubleValue reaches the backend")
+
+    // Setting the value in code must NOT fire the action — only the user's drag
+    // does. (It used to fire here, reporting positions nobody scrolled to.)
+    var fired = 0
+    scroller.onAction = { _ in fired += 1 }
+    scroller.doubleValue = 0.8
+    check(fired == 0, "setting doubleValue in code does not send the action")
+
+    // A drag does, and syncs the value.
+    backend.simulateScrollerDrag(to: 0.73, for: scroller.handle)
+    check(fired == 1, "the user's drag sends the action")
+    check(abs(scroller.doubleValue - 0.73) < 0.0001, "and the dragged value is readable")
+}
+
+// MARK: 29b — NSLevelIndicator: styles, rating, editability, thresholds
+do {
+    let backend = InMemoryNativeControlBackend()
+    NSApplication.shared.nativeBackend = backend
+    let level = NSLevelIndicator(frame: NSMakeRect(0, 0, 144, 18))
+
+    // Apple's raw values, read from real AppKit.
+    check(NSLevelIndicatorStyle.relevancy.rawValue == 0, "relevancy is 0")
+    check(NSLevelIndicatorStyle.continuousCapacity.rawValue == 1, "continuousCapacity is 1")
+    check(NSLevelIndicatorStyle.discreteCapacity.rawValue == 2, "discreteCapacity is 2")
+    check(NSLevelIndicatorStyle.rating.rawValue == 3, "rating is 3")
+
+    // These were all accepted-and-ignored stubs; the demo sets every one of them.
+    level.minValue = 0
+    level.maxValue = 100
+    level.warningValue = 70
+    level.criticalValue = 90
+    level.isEditable = true
+    check(backend.levelThresholds[level.handle.rawValue]?.warning == 70, "warningValue reaches the backend")
+    check(backend.levelThresholds[level.handle.rawValue]?.critical == 90, "criticalValue reaches the backend")
+    check(backend.levelEditable[level.handle.rawValue] == true, "isEditable reaches the backend")
+
+    // An editable capacity bar takes clicks, as on Apple — not just a rating.
+    var levelFired = 0
+    level.onAction = { _ in levelFired += 1 }
+    backend.simulateLevelClick(to: 80, for: level.handle)
+    check(levelFired == 1, "clicking an editable capacity bar sends the action")
+    check(level.doubleValue == 80, "and sets the level")
+
+    // A rating: the span is the star count.
+    let rating = NSLevelIndicator(frame: NSMakeRect(786, 264, 140, 30))
+    rating.levelIndicatorStyle = .rating
+    rating.minValue = 0
+    rating.maxValue = 5
+    rating.doubleValue = 3
+    rating.isEditable = true
+    check(backend.levelStyles[rating.handle.rawValue] == NSLevelIndicatorStyle.rating.rawValue,
+          "the rating style reaches the backend (it used to be discarded)")
+    var ratingFired = 0
+    rating.onAction = { _ in ratingFired += 1 }
+    backend.simulateLevelClick(to: 5, for: rating.handle)
+    check(ratingFired == 1 && rating.doubleValue == 5, "clicking a star sets the rating")
+}
+
 // MARK: 30a — NSDatePicker: format, elements, and stepping the SELECTED field
 //
 // Expected strings were read out of REAL AppKit (a probe printing
@@ -1368,6 +1449,60 @@ do {
           "stringValue ignores the elements, as on Apple")
     check(field(picker([.hourMinute])) == "8:00\u{202F}PM",
           "hourMinute drops the seconds — got [\(field(picker([.hourMinute])))]")
+}
+
+// MARK: 30a-ii — NSDatePicker .clockAndCalendar: the time is viewable and editable
+//
+// The calendar shows the date; a compact time field beside it shows and edits
+// the time — the functionality that was entirely missing (the calendar had no
+// clock). Time strings carry ICU's U+202F before AM/PM, as elsewhere.
+do {
+    let backend = InMemoryNativeControlBackend()
+    NSApplication.shared.nativeBackend = backend
+    let start = Date(timeIntervalSince1970: 1_780_272_000)   // 5/31/2026 8:00:00 PM EDT
+    let picker = NSDatePicker(date: start, frame: NSMakeRect(724, 88, 276, 168))
+    picker.locale = Locale(identifier: "en_US")
+    picker.timeZone = TimeZone(identifier: "America/New_York")!
+    picker.calendar = Calendar(identifier: .gregorian)
+    picker.datePickerElements = [.yearMonthDay, .hourMinuteSecond]
+    picker.datePickerStyle = .clockAndCalendar
+
+    func field() -> String { backend.datePickerTexts[picker.handle.rawValue] ?? "" }
+
+    // The field shows the TIME (not the date — the calendar owns that).
+    check(field() == "8:00:00\u{202F}PM",
+          "the clock field shows the time, not the date — got [\(field())]")
+    // stringValue is still the full date+time.
+    check(picker.stringValue == "Sunday, May 31, 2026 at 8:00:00\u{202F}PM Eastern Daylight Time",
+          "stringValue stays full date+time in clockAndCalendar mode")
+
+    // Stepping the time field's selected element edits the TIME.
+    backend.simulateDatePickerClick(atCharacter: 0, for: picker.handle)   // the hour
+    backend.simulateDateStep(1, for: picker.handle)
+    check(field() == "9:00:00\u{202F}PM", "stepping the hour edits the time — got [\(field())]")
+
+    // Typing works too.
+    let minuteAt = field().distance(from: field().startIndex, to: field().range(of: ":00:")!.lowerBound) + 1
+    backend.simulateDatePickerClick(atCharacter: minuteAt, for: picker.handle)
+    backend.simulateDatePickerTyping("45", for: picker.handle)
+    check(field() == "9:45:00\u{202F}PM", "typing edits the minute — got [\(field())]")
+
+    // The crux: a calendar day-change keeps the time the user set (it does not
+    // reset to the calendar's midnight). We are now at 9:45 PM on May 31; pick
+    // a different day at a different time — only the DAY should move.
+    var fired = 0
+    picker.onDateChange = { _ in fired += 1 }
+    let otherDay = Date(timeIntervalSince1970: 1_780_272_000 - 12 * 86_400 + 3 * 3600)  // 12 days back, +3h
+    backend.simulateDateChange(picker.handle, otherDay)
+    check(fired == 1, "a calendar pick fires the action")
+    let calendar = picker.calendar!
+    var cal = calendar; cal.timeZone = picker.timeZone!
+    let picked = cal.dateComponents([.year, .month, .day, .hour, .minute, .second], from: picker.dateValue)
+    check(picked.day == 19, "the calendar changed the day to the 19th")
+    check(picked.hour == 21 && picked.minute == 45,
+          "the time the user set (9:45 PM) is preserved across the day change — got \(picked.hour ?? -1):\(picked.minute ?? -1)")
+    // The time field still shows 9:45.
+    check(field() == "9:45:00\u{202F}PM", "the field keeps the preserved time")
 }
 
 // MARK: 30b — CoordinateSpace: the one place a child's geometry is decided

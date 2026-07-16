@@ -203,7 +203,6 @@ public extension NSSearchField {
 }
 
 public extension NSLevelIndicator {
-    var isEditable: Bool { get { false } set {} }
     var numberOfTickMarks: Int { get { 0 } set {} }
     var numberOfMajorTickMarks: Int { get { 0 } set {} }
     var tickMarkPosition: Int { get { 0 } set {} }
@@ -329,12 +328,6 @@ public extension NSCollectionView {
 
 public extension NSDatePicker {
     var datePickerMode: Int { get { 0 } set {} }
-}
-
-public extension NSLevelIndicator {
-    var levelIndicatorStyle: NSLevelIndicatorStyle { get { .continuousCapacity } set {} }
-    var warningValue: Double { get { 0 } set {} }
-    var criticalValue: Double { get { 0 } set {} }
 }
 
 public extension NSAlert {

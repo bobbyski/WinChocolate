@@ -10,8 +10,10 @@ public enum NSStackViewDistribution: Sendable {
 }
 public enum NSStackViewGravity: Sendable { case top, leading, center, bottom, trailing }
 
-public enum NSLevelIndicatorStyle: Sendable {
-    case relevancy, continuousCapacity, discreteCapacity, rating
+/// AppKit's `NSLevelIndicator.Style`. Raw values are Apple's, read from real
+/// AppKit: relevancy 0, continuousCapacity 1, discreteCapacity 2, rating 3.
+public enum NSLevelIndicatorStyle: Int, Sendable {
+    case relevancy = 0, continuousCapacity = 1, discreteCapacity = 2, rating = 3
 }
 
 public enum NSProgressIndicatorStyle: Sendable { case bar, spinning }

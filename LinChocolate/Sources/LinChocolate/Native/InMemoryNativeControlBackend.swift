@@ -51,7 +51,7 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
         case window, view, button, label, textField, secureField, searchField, comboBox
         case checkbox, radio, slider, progress, popUp, stepper, level, textView
         case datePicker, colorWell, tabView, box, scrollView, splitView, segmented, imageView
-        case tokenField, table, outline, collection
+        case tokenField, table, outline, collection, scroller
     }
 
     private var nextRaw: UInt = 1
@@ -649,6 +649,52 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     /// Test hook: press left/right in the compact field.
     public func simulateDatePickerMove(_ delta: Int, for handle: NativeHandle) {
         datePickerMoveActions[handle.rawValue]?(delta)
+    }
+
+    /// Level indicator state, for tests.
+    public private(set) var levelStyles: [UInt: Int] = [:]
+    public private(set) var levelEditable: [UInt: Bool] = [:]
+    public private(set) var levelThresholds: [UInt: (warning: Double, critical: Double)] = [:]
+    public func setLevelIndicatorStyle(_ rawValue: Int, for handle: NativeHandle) {
+        levelStyles[handle.rawValue] = rawValue
+    }
+    public func setLevelIndicatorEditable(_ editable: Bool, for handle: NativeHandle) {
+        levelEditable[handle.rawValue] = editable
+    }
+    public func setLevelIndicatorRange(min: Double, max: Double, for handle: NativeHandle) {
+        ranges[handle.rawValue] = (min, max)
+    }
+    public func setLevelThresholds(warning: Double, critical: Double, for handle: NativeHandle) {
+        levelThresholds[handle.rawValue] = (warning, critical)
+    }
+    private var levelChangeActions: [UInt: (Double) -> Void] = [:]
+    public func setLevelChangeAction(for handle: NativeHandle, action: @escaping (Double) -> Void) {
+        levelChangeActions[handle.rawValue] = action
+    }
+    /// Test hook: click an editable indicator to set `value`.
+    public func simulateLevelClick(to value: Double, for handle: NativeHandle) {
+        levelChangeActions[handle.rawValue]?(value)
+    }
+
+    /// Standalone scrollers, for tests.
+    public private(set) var scrollerGeometry: [UInt: (value: Double, knobProportion: Double)] = [:]
+    public func createScroller(vertical: Bool, frame: NSRect) -> NativeHandle {
+        let h = allocate(.scroller)
+        frames[h.rawValue] = frame
+        enabledStates[h.rawValue] = false    // AppKit's NSScroller starts disabled
+        scrollerGeometry[h.rawValue] = (0, 1)
+        return h
+    }
+    public func setScrollerGeometry(value: Double, knobProportion: Double, for handle: NativeHandle) {
+        scrollerGeometry[handle.rawValue] = (value, knobProportion)
+    }
+    private var scrollerActions: [UInt: (Double) -> Void] = [:]
+    public func setScrollerAction(for handle: NativeHandle, action: @escaping (Double) -> Void) {
+        scrollerActions[handle.rawValue] = action
+    }
+    /// Test hook: drag a standalone scroller to `value`.
+    public func simulateScrollerDrag(to value: Double, for handle: NativeHandle) {
+        scrollerActions[handle.rawValue]?(value)
     }
 
     public func setDatePickerGraphical(_ graphical: Bool, for handle: NativeHandle) {

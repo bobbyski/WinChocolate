@@ -97,6 +97,15 @@ public struct NativeTextRun: Equatable {
 }
 
 /// One row of the toolbar customization palette.
+/// AppKit's `NSLevelIndicator.Style` raw values, so the backend can name them
+/// instead of matching bare integers. Apple's values, read from real AppKit.
+public enum NativeLevelIndicatorStyle {
+    public static let relevancy = 0
+    public static let continuousCapacity = 1
+    public static let discreteCapacity = 2
+    public static let rating = 3
+}
+
 /// Toolbar-wide rendering mode (AppKit's `NSToolbar.DisplayMode`).
 public enum NativeToolbarDisplayMode: Sendable {
     case iconAndLabel, iconOnly, labelOnly
@@ -351,6 +360,26 @@ public protocol NativeControlBackend: AnyObject {
     func createStepper(value: Double, minValue: Double, maxValue: Double, stepSize: Double, frame: NSRect) -> NativeHandle
     /// Creates a determinate level indicator over `[minValue, maxValue]`.
     func createLevelIndicator(value: Double, minValue: Double, maxValue: Double, frame: NSRect) -> NativeHandle
+    /// The level indicator's presentation style (AppKit's `NSLevelIndicator.Style`
+    /// raw value: 0 relevancy, 1 continuousCapacity, 2 discreteCapacity, 3 rating).
+    func setLevelIndicatorStyle(_ rawValue: Int, for handle: NativeHandle)
+    /// Whether the user can set the level by clicking it.
+    func setLevelIndicatorEditable(_ editable: Bool, for handle: NativeHandle)
+    /// The indicator's range. For `.rating` the span is the number of stars.
+    func setLevelIndicatorRange(min: Double, max: Double, for handle: NativeHandle)
+    /// The values at which the fill turns warning/critical coloured; 0 = none.
+    func setLevelThresholds(warning: Double, critical: Double, for handle: NativeHandle)
+    /// Fires when the user sets an editable indicator's level.
+    func setLevelChangeAction(for handle: NativeHandle, action: @escaping (Double) -> Void)
+
+    /// A standalone scrollbar (AppKit's `NSScroller` used directly, rather than
+    /// as an `NSScrollView`'s bar). Starts **disabled**, as AppKit's does.
+    func createScroller(vertical: Bool, frame: NSRect) -> NativeHandle
+    /// Positions a standalone scroller: `value` and `knobProportion` are both
+    /// AppKit's `0...1` fractions.
+    func setScrollerGeometry(value: Double, knobProportion: Double, for handle: NativeHandle)
+    /// Fires when the *user* drags the scroller, with the new `0...1` value.
+    func setScrollerAction(for handle: NativeHandle, action: @escaping (Double) -> Void)
     /// Creates a multi-line, scrollable, editable text view.
     func createTextView(text: String, frame: NSRect) -> NativeHandle
     /// Creates a calendar-style date picker showing `date`.

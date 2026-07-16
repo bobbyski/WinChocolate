@@ -166,6 +166,130 @@ Eastern **Standard** Time.
 
 ---
 
+## 2026-07-16 — Values page: color well, and the clock/calendar gains time editing (framework work; demo untouched)
+
+Three things from a side-by-side macOS vs Linux screenshot.
+
+### The "purple vs red" colour well — not a bug
+
+`demoColors` is `[.red, .green, .blue, .white]` and `colorIndex` starts at 0, so the well
+starts **red**. LinChocolate showed red — *correct*. The macOS window's purple was leftover
+interaction state (its timer showed ~13.8h uptime and its status line said the date picker
+had been clicked; the well cycles/opens a panel on use). No colour-value difference.
+
+### The colour well — prettier, consistent margin
+
+The swatch was a **narrow vertical strip** with wide side gaps: `GtkButton`'s default padding
+is asymmetric (`5px 10px`), so a 32×28 well squeezed the colour to ~12×18. Now symmetric
+`3px` padding with a soft `7px`-radius border and rounded inner swatch — the colour fills
+the well with an even margin on all sides, the inset-pill look AppKit has. Pure CSS.
+
+### The clock/calendar had no way to view or edit the time — fixed
+
+`.clockAndCalendar` rendered a bare `GtkCalendar`: you could pick a **day** but there was no
+clock, so the time was invisible and unchangeable (AppKit draws an editable analog clock
+beside the calendar). Per the brief — *"it does not have to be an editable analog clock like
+apple … but the edit time functionality needs to be there"* — the graphical picker is now a
+calendar **plus a compact time field with a stepper** below it, reusing the exact
+type-to-edit/stepper machinery built for `.textFieldAndStepper`. So the time can be **typed
+or stepped**, per element (hour/minute/second/AM-PM).
+
+Mechanics: the entry+stepper row was factored into `makeDateEntryRow` and is shared by both
+styles. In clockAndCalendar mode the framework renders a **time-only** pattern into that
+field (the calendar owns the date), and a calendar day-pick **merges** the new Y/M/D with
+the current time of day — so changing the day does **not** reset the time to midnight. Our
+own `select_day` calls are suppressed so they don't re-report as user edits (the same
+GTK-echo trap the date field and scroller hit).
+
+**Verified by driving it:** typed the minute to 45 and stepped the hour, then clicked
+calendar day 19 — the field kept **9:45 PM** and the label read
+"Tuesday, 19 May 2026 at 10:00:00 PM" with the day moved and the time preserved; dark mode
+renders the field and stepper correctly. Contract tests pin it deterministically: the field
+shows the time (not the date), `stringValue` stays full date+time, stepping/typing edit the
+time, and a day-change preserves the set time (type 45 → pick the 19th → still 9:45 PM).
+Geometry audit: **0 violations on all 11 pages**; all contract tests pass.
+
+**MUST FIX (WinChocolate):** if its `.clockAndCalendar` lacks a time editor, add one (a
+compact time field is sufficient); check the colour well's swatch margin.
+
+---
+
+## 2026-07-16 — Values page: the scroller, the star rating (and the calendar overflow) (framework work; demo untouched)
+
+Two controls Bobby named — *"the scroller above the date (or not in LinChocolate) and the
+star rating"* — plus a third bug found on the way and the calendar overflow that had been
+sitting in *Still open*.
+
+### `NSScroller` — a standalone scroller wasn't a scrollbar at all
+
+`NSScroller(frame:)` called `super.init(frame:)`, so it took **`NSView`'s** initializer and
+became an empty container: there was **no `createScroller` in the backend**. It rendered as
+nothing — hence "or not in LinChocolate". It now creates a real `GtkScrollbar`.
+
+- **AppKit's NSScroller starts *disabled***, alone among controls — probed from real AppKit:
+  `isEnabled == false`, `usableParts == .noScrollerParts` (0), flipping to `.allScrollerParts`
+  (2) once enabled. The demo's own comment says so; LinChocolate defaulted it enabled. Now
+  `false`, assigned after `super.init` so `NSControl`'s observer fires and the native side
+  agrees.
+- **Value mapping.** AppKit's `doubleValue` and `knobProportion` are both `0...1`. A
+  `GtkAdjustment` instead runs its value over `[lower, upper - page_size]`, so with
+  `upper = 1` and `page_size = knobProportion` the knob length *is* the proportion and the
+  value spans `[0, 1 - proportion]`.
+- **Setting the value in code no longer sends the action.** It used to fire `onAction` from
+  the `doubleValue` setter, reporting positions the user never scrolled to. AppKit sends the
+  action only for the user's drag.
+
+**Verified by dragging it:** the knob moves and the demo's label reads **73**.
+
+### `NSLevelIndicator` — `.rating`, `isEditable`, `warningValue`, `criticalValue`
+
+All four were **accepted-and-ignored no-op stubs** in `DemoCompat` (`get { .continuousCapacity } set {}`),
+so `.rating` was silently discarded and the control rendered as a capacity bar. The demo sets
+every one of them. All are now real properties with a backend seam, and
+`minValue`/`maxValue` push through too (they were plain stored properties, so the demo's
+`maxValue = 5` — the star count — never reached the backend).
+
+- **Style raw values are Apple's**, probed: relevancy 0, continuousCapacity 1,
+  discreteCapacity 2, rating 3.
+- **The stars are drawn with Cairo, not taken from the icon theme.** The first attempt used
+  `starred-symbolic`/`non-starred-symbolic` and rendered **broken-image placeholders**: those
+  icons are not in this container's Adwaita at all (720 icons, no star). A rating control
+  shouldn't change shape with the user's icon theme — AppKit draws its own, so we do too.
+- **An editable *capacity* bar takes clicks as well**, not just a rating — the demo sets
+  `levelIndicator.isEditable = true` on the Level row and gives it an action. First cut wired
+  the gesture only in the rating branch and computed a star index; the click maths now differ
+  per style (a rating snaps to the star, a bar takes the level at the point clicked).
+- **`warningValue`/`criticalValue` tint the fill** amber then red, as AppKit does.
+
+**Verified by clicking:** the rating shows 5 stars / 3 filled (the demo's values), clicking
+the 5th fills all five and the 2nd drops to two; the Level bar goes blue → **amber past 70** →
+**red past 90** → back to blue, and dark mode renders the stars light-on-dark.
+
+### The calendar overflow — closed
+
+`GtkCalendar`'s intrinsic minimum (291×198) exceeded the frame AppKit fits a month grid into
+(276×168, deliberate — see the demo's comment). The frame is law, so the *widget* had to be
+made to fit rather than left to draw past its allocation over the controls below. CSS trims
+the calendar's font and its header/grid padding; its last week row is now inside its border
+and `Rating:` sits clear of it. This had been the top *Still open* item.
+
+**A trap that cost two wrong click-tests:** the Values page's demo→screen Y offset is
+**+226**, not the +238 I'd been estimating (the pages sit at y=144 inside the content view,
+under a ~82px menubar+toolbar). Two "the click did nothing" results were my coordinates
+missing the control by a few pixels, not the code failing. The stepper's zoomed measurement
+is the reliable reference.
+
+Geometry audit: **0 violations on all 11 pages**, 0 dropped children; all contract tests pass,
+including new ones pinning the scroller (kind, disabled-by-default, geometry, code-set sends
+no action, drag does) and the level indicator (Apple's style raw values, thresholds,
+editability, rating clicks).
+
+**MUST FIX (WinChocolate):** `NSScroller`'s disabled-by-default and no-action-on-code-set;
+`NSLevelIndicator`'s `.rating`/`isEditable`/`warningValue`/`criticalValue` if they are stubs
+there too.
+
+---
+
 ## 2026-07-16 — DEMO CHANGE (authorized): the date label was too narrow for AppKit's stringValue
 
 **A rule-break, explicitly authorized** ("lets break the rules and fix the display string
@@ -498,12 +622,10 @@ auto-advance, leading-zero buffering, `a`/`p`, and day-clamping shared with step
 
 ### Still open (rendering fidelity, not geometry — for the page-by-page pass)
 
-- GtkCalendar's intrinsic minimum (291×198) still exceeds the demo's deliberate 276×168,
-  so its last week row draws outside its allocation. Needs CSS to shrink the calendar's
-  own padding/font — the frame is honoured, the widget just draws past it.
-- Vertical slider track and level indicator render thinner than AppKit's.
-- `NSDatePicker`'s stepper steps by one day; AppKit steps whichever element the field's
-  selection is on (year/month/day/hour…). Needs field-level selection first.
+- ~~GtkCalendar overflows its frame~~ — **fixed** 2026-07-16 (see the Values-page entry).
+- ~~`NSDatePicker`'s stepper always steps the day~~ — **fixed**; it steps the selected
+  element, and the field is type-to-edit.
+- Vertical slider track renders thinner than AppKit's.
 
 **Files touched** (all LinChocolate)
 
