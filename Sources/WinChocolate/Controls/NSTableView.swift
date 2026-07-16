@@ -724,7 +724,18 @@ open class NSTableView: NSControl {
     /// (`winRowY`/`winRowHeightAt`) and nudges the clip view only as far as
     /// needed, exactly like AppKit (an already-visible row does not move).
     open func scrollRowToVisible(_ row: Int) {
-        guard row >= 0, row < numberOfRows, let scrollView = enclosingScrollView else {
+        guard row >= 0, row < numberOfRows else {
+            return
+        }
+
+        // A native list peer scrolls itself (LVM_ENSUREVISIBLE); the clip-view
+        // nudge below is the drawn table's mechanism.
+        if !winIsDrawn, let nativeHandle {
+            realizedBackend?.scrollTableRowToVisible(row, for: nativeHandle)
+            return
+        }
+
+        guard let scrollView = enclosingScrollView else {
             return
         }
 

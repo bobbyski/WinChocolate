@@ -560,3 +560,103 @@ works around them):**
   `NSForm`/`NSFormCell` (deprecated macOS 10.10) — audit the whole surface.
 - Audit the rest of `DEMO_CHANGES.md`'s MUST-FIX blocks (NSImageView `open` on Linux, image-drawing
   stubs, etc.) against WinChocolate specifically.
+
+### Round 2 of the Windows re-sync — behavioral fixes from live testing (2026-07-15)
+
+User testing of the frozen demo on Windows surfaced four breaks (Mac side renders correctly —
+see the screenshot round). All fixed framework-side:
+
+1. **Toolbar showed legacy stock icons instead of the demo's Tabler artwork.** The Win32 tile
+   renderer never drew `item.image` at all — it mapped the image *name* onto comctl32's stock
+   image list (`IDB_STD_SMALL_COLOR`, the Win95-era icons) or a generic glyph; the demo's
+   PNG paths matched nothing and stale generator BMPs sat next to the exe. Now a file-path
+   image name draws the actual file via the GDI+ image path, honoring `isTemplate` with a
+   template tint that follows the same contrast rule as the item label (dark glyph on the
+   metallic strip, light glyph on a dark appearance), re-resolved on live theme switch. The
+   tint rides a new 7th field of the composite tile's native text.
+2. **Stepper was completely dead.** The `UDN_DELTAPOS` handler returned 1 — which *blocks*
+   the native position change — without applying the delta or firing the registered action.
+   It now applies one framework increment (`updateStepperPosition(position:delta:)`), fires
+   the action, and still returns 1 so the framework's increment is the only change.
+3. **Color well:** verified the full frozen-demo recipe headlessly — click activates + seeds
+   the panel *without* firing; a panel pick updates the well, fires the action with the new
+   color, and the handler's `contentTintColor` re-tints the template image natively. New
+   contract test `testColorWellPanelPickFiresActionAndTintsTemplate` pins it. (If this still
+   fails live, the remaining suspect is the panel's own slider UI on the real backend.)
+4. **Scroll Selected did nothing on the Tables/Media page.** The page's table is a *native*
+   list peer, and `scrollRowToVisible` only nudged the clip view (the drawn table's
+   mechanism). The native path now routes to the backend's `scrollTableRowToVisible`
+   (`LVM_ENSUREVISIBLE`); the drawn path keeps the minimal clip nudge — pinned by
+   `testDrawnTableScrollRowToVisibleMovesClipView`.
+
+Verified: build 0 errors, suite green (two new tests), demo runs on default/Values/New-in-3.x.
+
+### Round 3 of the Windows re-sync — live-input verification (2026-07-15)
+
+A new probe workflow made the remaining interactive bugs *observable*: an env-gated framework
+diagnostics log (`WinDiagnostics`, `WINCHOCOLATE_DIAG=<file>`) plus a script that posts real
+window messages to the running demo and reads the log/screenshots back. Each fix below was
+verified with real clicks, not just tests.
+
+1. **Stepper frozen at 1 — a C struct-layout bug.** `NMHDR` is padded to 24 bytes on 64-bit
+   C; the hand-declared Swift FFI struct stopped at 20, so every `NM*` struct embedding it
+   read its first field 4 bytes early (`NMUPDOWN.iDelta` was actually reading `iPos`).
+   Padded `NMHDR` explicitly. Also: the UDN_DELTAPOS handler now applies one framework
+   increment from the framework's tracked value and fires the registered action (it used to
+   return 1 — blocking the native change — while doing neither), and the value base is the
+   framework's, not the control's unreliable `iPos`. Live log: `pos=50 delta=1` → 51 → 52,
+   action delivered each click.
+2. **Color well dead — clicks never reached `mouseDown`.** The well's peer was a Win32
+   *static* control, whose clicks arrive as `WM_COMMAND` and fired the registered action
+   directly — `NSColorWell.mouseDown` (activate + present panel) never ran, which the live
+   log proved (`sendAction` with no `mouseDown`). The well now uses a framework view peer
+   with real mouse routing. Live log after: click → `mouseDown` → panel window appears →
+   slider arrow → `colorDidChange` → `winApplyPanelColor` → action delivered.
+3. **Customization palette icons + all name-based toolbar glyphs.** The framework now ships
+   **Tabler Icons artwork** (MIT, © Paweł Kuna — a curated subset embedded as SVG path data
+   in `WinTablerIcons`, rendered by a minimal SVG `d`-parser `WinSVGPath` with arc→Bézier
+   conversion) stroked in the tile's label color. This replaces the comctl32 stock image
+   list (the Win95-era icons) and the hand-drawn glyphs everywhere: palette tiles, standard
+   identifiers (print/colors/fonts), and symbol-name fallbacks. Verified by screenshot: the
+   palette renders folder-open / floppy / search / ban / adjustments / palette / typography /
+   printer consistently in dark mode. Toolbar item labels are no longer clamped by
+   `maxSize` (the label may be wider than the icon box, as on Apple — "Disable Save" shows
+   in full).
+
+Verified: build 0 errors, suite green, live probe logs + screenshots for all three.
+
+## Windows re-sync — Round 4 (2026-07-15, live-probed)
+
+User feedback: scroll-selected deselects and doesn't scroll; clicking the Tables/Media image
+does nothing; the date-picker drop-down calendar clips its bottom; the drawn-table drop
+indicator draws one gap lower than the actual top insert.
+
+1. **"Scroll Selected" looked like it deselected — the unfocused selection was invisible.**
+   Two independent facts, proven by probe: `selectedRow` stayed correct and
+   `LVM_ENSUREVISIBLE` scrolled correctly (status: "Scrolled to selected: row 3 …"), but the
+   themed list view (`DarkMode_Explorer`) paints **no** selection band when the control loses
+   focus, so the row *looked* deselected — on AppKit an unfocused table keeps a gray
+   "unemphasized" band. Fixed with `NM_CUSTOMDRAW`: for a selected row in an unfocused list
+   view, strip `CDIS_SELECTED` (the themed painter ignores the custom-draw colors on its
+   "selected" path) and hand the item `unemphasizedSelectedContentBackgroundColor` /
+   `textColor`. Screenshot-verified: selected row keeps a gray band with focus on the button,
+   and the view scrolls back to it.
+2. **Image-view clicks now route through `mouseDown(with:)`/`mouseUp(with:)`.** A Win32
+   static turns clicks into `WM_COMMAND` (`STN_CLICKED` = `BN_CLICKED`), which fired the
+   control action directly — but AppKit image views never fire an action on click; subclasses
+   override `mouseDown`. The dispatch now recognizes image-view statics and synthesizes
+   mouse events for the registered mouse actions instead. Live-verified: clicking the demo's
+   `DemoClickableImageView` updates the status label ("Mouse up at …").
+3. **Drop-down calendar clipped.** The DTP's popup opens at a default height that cut off the
+   last week row and the "Today" footer. On `DTN_DROPDOWN` the calendar *and its popup
+   parent* are resized to `MCM_GETMINREQRECT` (this also un-gated the dark-palette hook,
+   which previously did nothing in light mode). Screenshot-verified: six week rows + "Today:
+   7/15/2026" footer fully visible.
+4. **Drawn-table drop indicator one gap low at the top.** `winDrawDropIndicator()` measured
+   from `winHeaderHeight`, but rows (and the insertion hit-test `winDropInsertionIndex`)
+   measure from `winBodyTopInset`, which is 0 when the header is pinned in its own strip —
+   so a before-row-0 drop drew its line between rows 1 and 2. The indicator now uses the
+   same `winBodyTopInset` base as the hit-test, making the drawn line and the actual insert
+   agree by construction.
+
+Verified: build 0 errors, contract suite green, live probe screenshots for 1–3.

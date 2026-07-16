@@ -1230,8 +1230,14 @@ open class NSToolbarView: NSView {
             return max(item.minSize.width, total)
         }
 
+        // `minSize`/`maxSize` bound the item's CONTENT (the icon box) — the
+        // label renders below and may be wider, as on Apple, where "Disable
+        // Save" shows in full under a 32×32 item.
+        let showsLabel = mode != .iconOnly
+        let labelWidth = showsLabel ? CGFloat(max(28, item.label.count * 6)) + 8 : 0
         let naturalWidth = standardNaturalWidth(for: item, mode: mode)
-        return max(item.minSize.width, min(item.maxSize.width, naturalWidth))
+        let contentWidth = max(item.minSize.width, min(item.maxSize.width, naturalWidth))
+        return max(contentWidth, labelWidth)
     }
 
     /// The natural width of a standard (composite icon/label) item in a mode.

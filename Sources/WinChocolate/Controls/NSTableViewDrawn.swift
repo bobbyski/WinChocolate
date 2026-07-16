@@ -1002,7 +1002,11 @@ extension NSTableView {
         guard winDraggingRow >= 0, winDropIndex >= 0 else {
             return
         }
-        var y = winHeaderHeight
+        // Rows start at `winBodyTopInset` — 0 when the header is pinned in its
+        // own strip. Measuring from `winHeaderHeight` drew the line one header
+        // height low (a top drop showed between rows 1 and 2 while correctly
+        // inserting before row 1).
+        var y = winBodyTopInset
         for row in 0..<winDropIndex where row < numberOfRows {
             y += winRowHeightAt(row)
         }

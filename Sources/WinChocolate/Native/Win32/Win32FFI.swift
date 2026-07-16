@@ -443,6 +443,11 @@ struct NMHDR {
     var hwndFrom: HWND?
     var idFrom: UInt = 0
     var code: UINT = 0
+    // C pads NMHDR to 24 bytes on 64-bit (alignment 8); Swift's layout stops
+    // at 20 without this, shifting every field of the NM* structs that embed
+    // NMHDR four bytes early (observed: NMUPDOWN.iDelta reading the real
+    // iPos, which froze steppers).
+    private var winTrailingPadding: UINT = 0
 }
 
 struct NMLISTVIEW {
@@ -481,10 +486,21 @@ struct NMCUSTOMDRAW {
     var lItemlParam: LPARAM = 0
 }
 
+/// `NMLVCUSTOMDRAW` — the list-view custom-draw payload. Only the leading
+/// fields are declared (the color pair the framework rewrites); the C struct
+/// continues with subitem/icon fields the framework never touches, and the
+/// pointer received through `WM_NOTIFY` always references the full C struct.
+struct NMLVCUSTOMDRAW {
+    var nmcd: NMCUSTOMDRAW = NMCUSTOMDRAW()
+    var clrText: DWORD = 0
+    var clrTextBk: DWORD = 0
+}
+
 /// `NM_CUSTOMDRAW` (NM_FIRST − 12, as an unsigned notification code).
 let nmCustomDraw: UINT = 0xFFFF_FFF4
 let cddsPrePaint: DWORD = 0x0000_0001
 let cddsItemPrePaint: DWORD = 0x0001_0001
+let cdisSelected: UINT = 0x0001
 let cdrfDoDefault: LRESULT = 0x0000_0000
 let cdrfSkipDefault: LRESULT = 0x0000_0004
 let cdrfNotifyItemDraw: LRESULT = 0x0000_0020
@@ -1066,6 +1082,9 @@ func winSetTextColor(_ deviceContext: HDC?, _ color: DWORD) -> DWORD
 @_silgen_name("SetFocus")
 func winSetFocus(_ hwnd: HWND?) -> HWND?
 
+@_silgen_name("GetFocus")
+func winGetFocus() -> HWND?
+
 @_silgen_name("SetWindowLongPtrW")
 func winSetWindowLongPtrW(_ hwnd: HWND?, _ index: Int32, _ newLong: LONG_PTR) -> LONG_PTR
 
@@ -1626,6 +1645,7 @@ let lvmGetNextItem: UINT = lvmFirst + 12
 let lvmEnsureVisible: UINT = lvmFirst + 19
 let lvmGetHeader: UINT = lvmFirst + 31
 let lvmSetItemState: UINT = lvmFirst + 43
+let lvmGetItemState: UINT = lvmFirst + 44
 let lvmSubItemHitTest: UINT = lvmFirst + 57
 let lvmInsertItemW: UINT = lvmFirst + 77
 let lvmInsertColumnW: UINT = lvmFirst + 97

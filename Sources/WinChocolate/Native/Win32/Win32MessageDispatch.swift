@@ -377,11 +377,28 @@ extension Win32NativeControlBackend {
             // the fresh calendar (explicit colors only work unthemed) and
             // hand it the dynamic palette.
             if header.code == dtnDropDown,
-               NSApplication.shared.effectiveAppearance.winIsDark,
                let picker = header.hwndFrom {
                 let calendar = HWND(bitPattern: winSendMessageW(picker, dtmGetMonthCal, 0, 0))
                 if let calendar {
-                    applyDarkCalendarColorsIfNeeded(calendar)
+                    if NSApplication.shared.effectiveAppearance.winIsDark {
+                        applyDarkCalendarColorsIfNeeded(calendar)
+                    }
+                    // The drop-down popup opens at a default height that clips
+                    // the calendar's last week row and "Today" footer; grow the
+                    // popup (the calendar's parent window) to the calendar's
+                    // own minimum required size.
+                    var required = RECT()
+                    let ok = withUnsafeMutablePointer(to: &required) { pointer in
+                        winSendMessageW(calendar, mcmGetMinReqRect, 0, LPARAM(bitPattern: pointer))
+                    }
+                    if ok != 0 {
+                        let width = Int32(required.right - required.left)
+                        let height = Int32(required.bottom - required.top)
+                        _ = winSetWindowPos(calendar, nil, 0, 0, width, height, swpNoMove | swpNoZOrder | swpNoActivate)
+                        if let popup = winGetParent(calendar) {
+                            _ = winSetWindowPos(popup, nil, 0, 0, width, height, swpNoMove | swpNoZOrder | swpNoActivate)
+                        }
+                    }
                 }
                 return nil
             }
@@ -421,6 +438,14 @@ extension Win32NativeControlBackend {
                     return nil
                 }
 
+                // Apply the arrow's delta as one framework increment and fire
+                // the registered action; returning 1 blocks the control's own
+                // unit step so the framework's increment is the only change.
+                if let upDown = UnsafeRawPointer(bitPattern: lParam)?.assumingMemoryBound(to: NMUPDOWN.self).pointee {
+                    WinDiagnostics.log("stepper.deltaPos pos=\(upDown.iPos) delta=\(upDown.iDelta) action=\(controlActions[handle.rawValue] != nil)")
+                    updateStepperPosition(position: upDown.iPos, delta: upDown.iDelta, for: handle)
+                    controlActions[handle.rawValue]?()
+                }
                 return 1
             }
 
@@ -467,6 +492,39 @@ extension Win32NativeControlBackend {
                         }
                     }
                     return 0
+                }
+            }
+
+            // The list view's Explorer theme paints the focused selection band
+            // but skips the *unfocused* one entirely, so a selected row looks
+            // deselected the moment focus moves to another control — AppKit
+            // keeps an "unemphasized" gray band. Paint that state through
+            // custom draw: for a selected row in an unfocused list view, hand
+            // the item the unemphasized selection fill as its text background.
+            if header.code == nmCustomDraw, let source = header.hwndFrom {
+                let handle = nativeHandle(from: source)
+                guard tableClickedRows[handle.rawValue] != nil,
+                      let draw = UnsafeMutableRawPointer(bitPattern: lParam)?.assumingMemoryBound(to: NMLVCUSTOMDRAW.self) else {
+                    return nil
+                }
+
+                switch draw.pointee.nmcd.dwDrawStage {
+                case cddsPrePaint:
+                    return cdrfNotifyItemDraw
+                case cddsItemPrePaint:
+                    let item = draw.pointee.nmcd.dwItemSpec
+                    let state = winSendMessageW(source, lvmGetItemState, WPARAM(item), LPARAM(lvisSelected))
+                    if (UINT(truncatingIfNeeded: state) & lvisSelected) != 0, winGetFocus() != source {
+                        // The themed painter takes its "selected" path for the
+                        // item and ignores the color pair; strip the selected
+                        // bit so it paints a plain item with these colors.
+                        draw.pointee.nmcd.uItemState &= ~cdisSelected
+                        draw.pointee.clrTextBk = colorRef(from: .unemphasizedSelectedContentBackgroundColor)
+                        draw.pointee.clrText = colorRef(from: .textColor)
+                    }
+                    return cdrfDoDefault
+                default:
+                    return cdrfDoDefault
                 }
             }
 
@@ -596,9 +654,28 @@ extension Win32NativeControlBackend {
                 return 0
             }
 
-            if lParam != 0, notificationCode == bnClicked, let action = controlActions[UInt(bitPattern: lParam)] {
-                action()
-                return 0
+            if lParam != 0, notificationCode == bnClicked {
+                let rawHandle = UInt(bitPattern: lParam)
+                // STN_CLICKED shares BN_CLICKED's code. An image-view static
+                // routes the click through the mouse-event actions — AppKit
+                // image views never fire an action on click, and subclasses
+                // override `mouseDown(with:)` (the documented AppKit way to
+                // make an image clickable).
+                if imageViewHandles.contains(rawHandle) {
+                    let staticHwnd = HWND(bitPattern: lParam)
+                    var cursor = POINT()
+                    _ = winGetCursorPos(&cursor)
+                    _ = winScreenToClient(staticHwnd, &cursor)
+                    let location = NSMakePoint(CGFloat(cursor.x), CGFloat(cursor.y))
+                    mouseDownActions[rawHandle]?(NSEvent(type: .leftMouseDown, locationInWindow: location, modifierFlags: currentModifierFlags()))
+                    mouseUpActions[rawHandle]?(NSEvent(type: .leftMouseUp, locationInWindow: location, modifierFlags: currentModifierFlags()))
+                    return 0
+                }
+
+                if let action = controlActions[rawHandle] {
+                    action()
+                    return 0
+                }
             }
 
             return nil
@@ -1142,10 +1219,11 @@ extension Win32NativeControlBackend {
             return
         }
 
+        // The framework's tracked value is the base — NOT the control's iPos,
+        // which does not reflect UDM_SETPOS32 reliably (observed reporting 0
+        // for a stepper positioned at 50, which froze the value at 0+1).
         let direction = delta > 0 ? 1.0 : -1.0
-        let nativePosition = Double(position)
-        let baseValue = min(max(nativePosition, range.minValue), range.maxValue)
-        setStepperValue(baseValue + (direction * range.increment), for: handle)
+        setStepperValue(range.value + (direction * range.increment), for: handle)
     }
 
     private func updateStepperPosition(fromClickAt point: NSPoint, hwnd: HWND, for handle: NativeHandle) {

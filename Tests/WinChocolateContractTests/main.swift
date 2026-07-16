@@ -3961,7 +3961,7 @@ func testColorWellStoresColorAndSendsAction() {
 
     let handle = colorWell.realizeNativePeer(in: backend, parent: nil)
 
-    expect(backend.records[handle]?.kind == "imageView", "Color well did not request a bordered swatch peer.")
+    expect(backend.records[handle]?.kind == "view", "Color well did not request a mouse-routing swatch peer.")
     expect(backend.records[handle]?.backgroundColor == .red, "Color well color was not synced to background.")
 
     colorWell.color = .blue
@@ -3971,6 +3971,92 @@ func testColorWellStoresColorAndSendsAction() {
 
     expect(colorWell.isActive, "Color well did not activate on click.")
     expect(actionCount == 1, "Color well did not send action on click.")
+}
+
+/// The frozen demo's template-tint recipe end-to-end: clicking a well presents
+/// the shared panel WITHOUT firing the action; a panel pick updates the well,
+/// fires the action, and the handler's `contentTintColor` re-tints a template
+/// image view — the exact New-in-3.x page wiring.
+@MainActor
+func testColorWellPanelPickFiresActionAndTintsTemplate() {
+    let backend = InMemoryNativeControlBackend()
+    let previousBackend = NSApplication.shared.nativeBackend
+    NSApplication.shared.nativeBackend = backend
+    defer {
+        NSApplication.shared.nativeBackend = previousBackend
+    }
+
+    let templateImage = NSImage(contentsOfFile: "C:/art/glyph.png")
+    templateImage?.isTemplate = true
+    let imageView = NSImageView(frame: NSMakeRect(0, 0, 44, 36))
+    imageView.image = templateImage
+    let imageHandle = imageView.realizeNativePeer(in: backend, parent: nil)
+
+    let well = NSColorWell(frame: NSMakeRect(0, 0, 44, 36))
+    well.color = .systemBlue
+    var actionColors: [NSColor] = []
+    well.onAction = { control in
+        guard let well = control as? NSColorWell else {
+            return
+        }
+        actionColors.append(well.color)
+        imageView.contentTintColor = well.color
+    }
+    let wellHandle = well.realizeNativePeer(in: backend, parent: nil)
+
+    // Click: presents the panel and activates the well. (Activation seeds the
+    // panel with the well's color, which counts as the first "change".)
+    backend.mouseDownActions[wellHandle]?(NSEvent(type: .leftMouseDown, locationInWindow: NSMakePoint(2, 2)))
+    expect(well.isActive, "Clicking the well did not activate it.")
+    expect(NSColorPanel.shared.color == .systemBlue, "Activation did not seed the panel with the well's color.")
+
+    // A panel pick (what the panel's sliders/swatches set) must flow back:
+    // well.color updates AND the action fires with the new color.
+    let picked = NSColor(calibratedRed: 0.2, green: 0.7, blue: 0.3, alpha: 1)
+    NSColorPanel.shared.color = picked
+    expect(well.color == picked, "Panel pick did not update the active well's color.")
+    expect(actionColors.last == picked, "Panel pick did not fire the well's action with the picked color.")
+    expect(backend.records[imageHandle]?.imageTint == picked, "contentTintColor did not re-tint the template image natively.")
+
+    well.deactivate()
+}
+
+@MainActor
+func testDrawnTableScrollRowToVisibleMovesClipView() {
+    let backend = InMemoryNativeControlBackend()
+    let scrollView = NSScrollView(frame: NSMakeRect(0, 0, 200, 100))
+    let tableView = NSTableView(frame: NSMakeRect(0, 0, 200, 100))
+    tableView.winUsesViewBasedCells = true
+    let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("name"))
+    column.width = 180
+    tableView.addTableColumn(column)
+    let dataSource = ScrollRowsDataSource()
+    tableView.dataSource = dataSource
+    scrollView.documentView = tableView
+    _ = scrollView.realizeNativePeer(in: backend, parent: nil)
+    tableView.reloadData()
+
+    // Row 30 sits far below the 100pt viewport; scrolling must move the clip.
+    tableView.scrollRowToVisible(30)
+    expect(scrollView.contentView.documentVisibleRect.origin.y > 0,
+           "scrollRowToVisible left the drawn table at the top.")
+
+    // Scrolling to an already-visible row must not move the viewport (the
+    // implementation nudges only as far as needed, so a repeat is a no-op).
+    let afterFirst = scrollView.contentView.documentVisibleRect.origin
+    tableView.scrollRowToVisible(30)
+    expect(scrollView.contentView.documentVisibleRect.origin == afterFirst,
+           "scrollRowToVisible moved the viewport for an already-visible row.")
+
+    // Scrolling back to the first row returns to the top.
+    tableView.scrollRowToVisible(0)
+    expect(scrollView.contentView.documentVisibleRect.origin.y == 0,
+           "scrollRowToVisible did not scroll back up to the first row.")
+}
+
+final class ScrollRowsDataSource: NSObject, NSTableViewDataSource {
+    func numberOfRows(in tableView: NSTableView) -> Int { 40 }
+    func tableView(_ tableView: NSTableView, objectValueFor tableColumn: NSTableColumn?, row: Int) -> Any? { "row \(row)" }
 }
 
 @MainActor
@@ -5162,11 +5248,11 @@ func testToolbarViewComposesItemsAndDispatchesActions() {
 
     let realizedItemTexts = backend.records.values.compactMap(\.text)
     expect(
-        realizedItemTexts.contains("__WinChocolateToolbarItem\tOpen\tfolder\t1\t1\tbelow"),
+        realizedItemTexts.contains("__WinChocolateToolbarItem\tOpen\tfolder\t1\t1\tbelow\t"),
         "Composed toolbar did not render the open item label and image."
     )
     expect(
-        realizedItemTexts.contains("__WinChocolateToolbarItem\tSave\tsave\t1\t1\tbelow"),
+        realizedItemTexts.contains("__WinChocolateToolbarItem\tSave\tsave\t1\t1\tbelow\t"),
         "Composed toolbar did not render the save item label and image."
     )
 
@@ -5191,7 +5277,7 @@ func testToolbarViewComposesItemsAndDispatchesActions() {
 
     let iconOnlyTexts = backend.records.values.compactMap(\.text)
     expect(
-        iconOnlyTexts.contains("__WinChocolateToolbarItem\tOpen\tfolder\t1\t0\tbelow"),
+        iconOnlyTexts.contains("__WinChocolateToolbarItem\tOpen\tfolder\t1\t0\tbelow\t"),
         "Toolbar icon-only mode did not preserve the item image."
     )
 
@@ -5199,7 +5285,7 @@ func testToolbarViewComposesItemsAndDispatchesActions() {
 
     let labelOnlyTexts = backend.records.values.compactMap(\.text)
     expect(
-        labelOnlyTexts.contains("__WinChocolateToolbarItem\tOpen\tfolder\t0\t1\tbelow"),
+        labelOnlyTexts.contains("__WinChocolateToolbarItem\tOpen\tfolder\t0\t1\tbelow\t"),
         "Toolbar label-only mode should preserve item labels."
     )
 }
@@ -5249,7 +5335,7 @@ func testToolbarItemCreatesCompositeImageLabelView() {
     expect(view.subviews.isEmpty, "Toolbar composite view should render as one self-contained native view.")
     expect(view.frame.size.height <= 40, "Toolbar composite view did not fit within the toolbar height.")
     expect(
-        backend.records[handle]?.text == "__WinChocolateToolbarItem\tOpen\tfolder\t1\t1\tbelow",
+        backend.records[handle]?.text == "__WinChocolateToolbarItem\tOpen\tfolder\t1\t1\tbelow\t",
         "Toolbar composite view did not carry the label and image key."
     )
     expect(backend.records[handle]?.drawsBackground == false, "Toolbar composite view should request a clear native background.")
@@ -10723,6 +10809,8 @@ testStepperStoresRangeIncrementAndSyncsNativePeer()
 testStepperNativeActionUpdatesValue()
 testSearchFieldTracksRecentSearchesAndNativeChanges()
 testColorWellStoresColorAndSendsAction()
+testColorWellPanelPickFiresActionAndTintsTemplate()
+testDrawnTableScrollRowToVisibleMovesClipView()
 testColorWellExpandedSwatchPalette()
 testTableViewNativePeerReceivesColumnsRowsAndSelection()
 testTableViewNativeSelectionNotifiesDelegateAndAction()

@@ -267,6 +267,7 @@ open class NSColorPanel: NSPanel {
     }
 
     private func colorDidChange() {
+        WinDiagnostics.log("colorpanel.colorDidChange r=\(color.redComponent) well=\(winActiveColorWell != nil)")
         syncControls()
         // Update the active well's swatch, then dispatch as AppKit does: a
         // target/action pair set through `setTarget`/`setAction` receives the
