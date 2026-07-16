@@ -12,12 +12,12 @@ public protocol NSComboBoxDataSource: NSObjectProtocol {
 /// arrive through `comboBoxSelectionDidChange`.
 public protocol NSComboBoxDelegate: NSTextFieldDelegate {
     /// Tells the delegate the selected item changed.
-    func comboBoxSelectionDidChange(_ notification: NSNotification)
+    func comboBoxSelectionDidChange(_ notification: Notification)
 }
 
 extension NSComboBoxDelegate {
     /// Default no-op so delegates only implement the callbacks they need.
-    public func comboBoxSelectionDidChange(_ notification: NSNotification) {}
+    public func comboBoxSelectionDidChange(_ notification: Notification) {}
 }
 
 /// An editable combo box control.
@@ -225,7 +225,7 @@ open class NSComboBox: NSTextField {
             // A commit whose text matches an item is a selection change.
             if self.indexOfSelectedItem >= 0 {
                 (self.delegate as? NSComboBoxDelegate)?.comboBoxSelectionDidChange(
-                    NSNotification(name: "NSComboBoxSelectionDidChangeNotification", object: self)
+                    Notification(name: Notification.Name("NSComboBoxSelectionDidChangeNotification"), object: self)
                 )
             }
             self.sendAction()

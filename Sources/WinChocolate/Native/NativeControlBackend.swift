@@ -608,7 +608,9 @@ public protocol NativeControlBackend: AnyObject {
     ///
     /// `showsCalendar` selects a month-calendar peer (AppKit's
     /// clock-and-calendar style) instead of the compact text-field picker.
-    func createDatePicker(date: Date, minDate: Date?, maxDate: Date?, showsCalendar: Bool, frame: NSRect, parent: NativeHandle?) -> NativeHandle
+    /// Creates a date-picker peer for an AppKit style: a field with a stepper,
+    /// a graphical calendar, or a bare field.
+    func createDatePicker(date: Date, minDate: Date?, maxDate: Date?, style: NSDatePicker.Style, frame: NSRect, parent: NativeHandle?) -> NativeHandle
 
     /// Creates a native scroll-view child.
     func createScrollView(frame: NSRect, parent: NativeHandle?, hasVerticalScroller: Bool, hasHorizontalScroller: Bool) -> NativeHandle
@@ -796,6 +798,11 @@ public protocol NativeControlBackend: AnyObject {
     func setStepperWraps(_ wraps: Bool, for handle: NativeHandle)
 
     /// Updates native date-picker state.
+    /// Sets the zone a date picker renders its wall clock in. A `SYSTEMTIME`
+    /// carries no zone, so the framework resolves `NSDatePicker.timeZone` and
+    /// tells the backend which one a value means.
+    func setDatePickerTimeZone(_ timeZone: TimeZone, for handle: NativeHandle)
+
     func setDatePickerDate(_ date: Date, minDate: Date?, maxDate: Date?, for handle: NativeHandle)
 
     /// Reads native date-picker value.

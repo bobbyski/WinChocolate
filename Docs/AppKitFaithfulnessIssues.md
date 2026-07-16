@@ -503,3 +503,280 @@ convenience. Test: if a helper needs anything WinChocolate-only, it's a shim and
 sanctioned non-coverage is *exclusion* (row L CoreGraphics, row M Nib): pages gated on Phase 13 / 12.1 are
 `#if`-fenced out and excluded from the "runs on AppKit" claim until their owning phase lands — excluded,
 never shimmed.
+
+---
+
+## Windows re-sync against the frozen AppKit-correct demo — 2026-07-15
+
+The demo is now **frozen** and AppKit-correct (see `DEMO_CHANGES.md`); the direction reversed —
+fix **WinChocolate** to match it, never the demo. Bringing the Windows build back to green
+against the frozen demo took the following framework additions (all matching Apple; the demo
+was not touched, except `@IBAction`/`@IBOutlet` remain `#if`-fenced by the demo itself):
+
+**Build was broken by 35 demo-side errors → now 0. Suite green, demo runs.**
+
+- **`required init(frame:)` cascade.** `NSView.init(frame:)` is `required` (so registered view
+  classes instantiate by metatype in `makeSupplementaryView`/`makeItem`). Added the required init
+  to `NSBrowser.BrowserColumnTableView` and the test's `IntrinsicSizeView`. (Demo subclasses that
+  add no designated init inherit it and were unaffected.)
+- **`NSPasteboardWriting`** protocol added (String/URL/`NSPasteboardItem` conform); the table/outline
+  `pasteboardWriterForRow`/`pasteboardWriterForItem` requirements retyped `Any?` → `NSPasteboardWriting?`.
+- **`NSBrowser` column sizing:** `ColumnResizingType` (+ `.no/.auto/.userColumnResizing`),
+  `columnResizingType` (default `.auto`), `minColumnWidth` (default 100), `setWidth(_:ofColumn:)`,
+  `width(ofColumn:)`; `tile()` honors them.
+- **`NSTableView.setDropRow(_:dropOperation:)`** added (records the retarget; the drawn reorder path
+  already lands on the inter-row gap).
+- **`NSBitmapImageRep`** added (wraps `CGImage`'s BMP codec: `init(cgImage:)`, `init?(data:)`,
+  `representation(using:.bmp)`, `colorAt(x:y:)`, `pixelsWide/High`, `FileType`, `PropertyKey`).
+- **Apple-shaped `CGImage` construction:** `CFData`, `CGDataProvider`, `CGBitmapInfo`,
+  `CGImageAlphaInfo`, `CGColorRenderingIntent`, and the designated
+  `CGImage(width:height:bitsPerComponent:…:provider:…)` init — all placed in **WinCoreGraphics**
+  (they are CoreGraphics types on Apple), alongside `CGImage`. `CGColorSpace` /
+  `CGColorSpaceCreateDeviceRGB()` moved down from WinChocolate to WinCoreGraphics with them, and
+  WinCoreGraphics gained a WinFoundation dependency for `Data`/`CFData` (CoreFoundation sits below
+  CoreGraphics on Apple). WinChocolate re-exports WinCoreGraphics, so the demo and `CGGradient`
+  still see these types unchanged.
+
+**Behavioral MUST-FIXes also landed (from `DEMO_CHANGES.md`):**
+
+- **The "ten dead delegates."** WinChocolate had a distinct `NSNotification` class while the demo
+  (and Apple) use Foundation's `Notification`. Every delegate/notification signature and the ~20
+  construction sites migrated `NSNotification` → `Notification` (framework + tests). The demo's
+  window-resize reflow, table/outline selection, text-editing callbacks, split-resize, etc. are now
+  live on Windows instead of silently no-op'd.
+- **`NSColorWell` fires on color-change, not click.** `mouseDown` only presents the panel now; the
+  panel's pick calls `winApplyPanelColor` on the active well, which sets the color and sends the
+  action (programmatic `color =` does not send).
+- **`NSTableView.scrollRowToVisible(_:)`** implemented (was a no-op stub) — nudges the enclosing
+  clip view only as far as needed, using the drawn table's row geometry.
+
+**Remaining MUST-FIX worklist (behavioral parity; do not block build/run — the demo `#if`s or
+works around them):**
+
+- `NSForm` as a real `NSMatrix` subclass: `cellSize` (with `NSMatrix`'s zero-height default),
+  `intercellSpacing`, `autosizesCells`; `NSForm.setBezeled/setBordered/setEntryWidth/…`; retire the
+  invented `rowHeight`. (Demo `#if`s these out today.)
+- **Deprecation `@available(..., deprecated:, message:)` annotations** matching Apple, starting with
+  `NSForm`/`NSFormCell` (deprecated macOS 10.10) — audit the whole surface.
+- Audit the rest of `DEMO_CHANGES.md`'s MUST-FIX blocks (NSImageView `open` on Linux, image-drawing
+  stubs, etc.) against WinChocolate specifically.
+
+### Round 2 of the Windows re-sync — behavioral fixes from live testing (2026-07-15)
+
+User testing of the frozen demo on Windows surfaced four breaks (Mac side renders correctly —
+see the screenshot round). All fixed framework-side:
+
+1. **Toolbar showed legacy stock icons instead of the demo's Tabler artwork.** The Win32 tile
+   renderer never drew `item.image` at all — it mapped the image *name* onto comctl32's stock
+   image list (`IDB_STD_SMALL_COLOR`, the Win95-era icons) or a generic glyph; the demo's
+   PNG paths matched nothing and stale generator BMPs sat next to the exe. Now a file-path
+   image name draws the actual file via the GDI+ image path, honoring `isTemplate` with a
+   template tint that follows the same contrast rule as the item label (dark glyph on the
+   metallic strip, light glyph on a dark appearance), re-resolved on live theme switch. The
+   tint rides a new 7th field of the composite tile's native text.
+2. **Stepper was completely dead.** The `UDN_DELTAPOS` handler returned 1 — which *blocks*
+   the native position change — without applying the delta or firing the registered action.
+   It now applies one framework increment (`updateStepperPosition(position:delta:)`), fires
+   the action, and still returns 1 so the framework's increment is the only change.
+3. **Color well:** verified the full frozen-demo recipe headlessly — click activates + seeds
+   the panel *without* firing; a panel pick updates the well, fires the action with the new
+   color, and the handler's `contentTintColor` re-tints the template image natively. New
+   contract test `testColorWellPanelPickFiresActionAndTintsTemplate` pins it. (If this still
+   fails live, the remaining suspect is the panel's own slider UI on the real backend.)
+4. **Scroll Selected did nothing on the Tables/Media page.** The page's table is a *native*
+   list peer, and `scrollRowToVisible` only nudged the clip view (the drawn table's
+   mechanism). The native path now routes to the backend's `scrollTableRowToVisible`
+   (`LVM_ENSUREVISIBLE`); the drawn path keeps the minimal clip nudge — pinned by
+   `testDrawnTableScrollRowToVisibleMovesClipView`.
+
+Verified: build 0 errors, suite green (two new tests), demo runs on default/Values/New-in-3.x.
+
+### Round 3 of the Windows re-sync — live-input verification (2026-07-15)
+
+A new probe workflow made the remaining interactive bugs *observable*: an env-gated framework
+diagnostics log (`WinDiagnostics`, `WINCHOCOLATE_DIAG=<file>`) plus a script that posts real
+window messages to the running demo and reads the log/screenshots back. Each fix below was
+verified with real clicks, not just tests.
+
+1. **Stepper frozen at 1 — a C struct-layout bug.** `NMHDR` is padded to 24 bytes on 64-bit
+   C; the hand-declared Swift FFI struct stopped at 20, so every `NM*` struct embedding it
+   read its first field 4 bytes early (`NMUPDOWN.iDelta` was actually reading `iPos`).
+   Padded `NMHDR` explicitly. Also: the UDN_DELTAPOS handler now applies one framework
+   increment from the framework's tracked value and fires the registered action (it used to
+   return 1 — blocking the native change — while doing neither), and the value base is the
+   framework's, not the control's unreliable `iPos`. Live log: `pos=50 delta=1` → 51 → 52,
+   action delivered each click.
+2. **Color well dead — clicks never reached `mouseDown`.** The well's peer was a Win32
+   *static* control, whose clicks arrive as `WM_COMMAND` and fired the registered action
+   directly — `NSColorWell.mouseDown` (activate + present panel) never ran, which the live
+   log proved (`sendAction` with no `mouseDown`). The well now uses a framework view peer
+   with real mouse routing. Live log after: click → `mouseDown` → panel window appears →
+   slider arrow → `colorDidChange` → `winApplyPanelColor` → action delivered.
+3. **Customization palette icons + all name-based toolbar glyphs.** The framework now ships
+   **Tabler Icons artwork** (MIT, © Paweł Kuna — a curated subset embedded as SVG path data
+   in `WinTablerIcons`, rendered by a minimal SVG `d`-parser `WinSVGPath` with arc→Bézier
+   conversion) stroked in the tile's label color. This replaces the comctl32 stock image
+   list (the Win95-era icons) and the hand-drawn glyphs everywhere: palette tiles, standard
+   identifiers (print/colors/fonts), and symbol-name fallbacks. Verified by screenshot: the
+   palette renders folder-open / floppy / search / ban / adjustments / palette / typography /
+   printer consistently in dark mode. Toolbar item labels are no longer clamped by
+   `maxSize` (the label may be wider than the icon box, as on Apple — "Disable Save" shows
+   in full).
+
+Verified: build 0 errors, suite green, live probe logs + screenshots for all three.
+
+## Windows re-sync — Round 4 (2026-07-15, live-probed)
+
+User feedback: scroll-selected deselects and doesn't scroll; clicking the Tables/Media image
+does nothing; the date-picker drop-down calendar clips its bottom; the drawn-table drop
+indicator draws one gap lower than the actual top insert.
+
+1. **"Scroll Selected" looked like it deselected — the unfocused selection was invisible.**
+   Two independent facts, proven by probe: `selectedRow` stayed correct and
+   `LVM_ENSUREVISIBLE` scrolled correctly (status: "Scrolled to selected: row 3 …"), but the
+   themed list view (`DarkMode_Explorer`) paints **no** selection band when the control loses
+   focus, so the row *looked* deselected — on AppKit an unfocused table keeps a gray
+   "unemphasized" band. Fixed with `NM_CUSTOMDRAW`: for a selected row in an unfocused list
+   view, strip `CDIS_SELECTED` (the themed painter ignores the custom-draw colors on its
+   "selected" path) and hand the item `unemphasizedSelectedContentBackgroundColor` /
+   `textColor`. Screenshot-verified: selected row keeps a gray band with focus on the button,
+   and the view scrolls back to it.
+2. **Image-view clicks now route through `mouseDown(with:)`/`mouseUp(with:)`.** A Win32
+   static turns clicks into `WM_COMMAND` (`STN_CLICKED` = `BN_CLICKED`), which fired the
+   control action directly — but AppKit image views never fire an action on click; subclasses
+   override `mouseDown`. The dispatch now recognizes image-view statics and synthesizes
+   mouse events for the registered mouse actions instead. Live-verified: clicking the demo's
+   `DemoClickableImageView` updates the status label ("Mouse up at …").
+3. **Drop-down calendar clipped.** The DTP's popup opens at a default height that cut off the
+   last week row and the "Today" footer. On `DTN_DROPDOWN` the calendar *and its popup
+   parent* are resized to `MCM_GETMINREQRECT` (this also un-gated the dark-palette hook,
+   which previously did nothing in light mode). Screenshot-verified: six week rows + "Today:
+   7/15/2026" footer fully visible.
+4. **Drawn-table drop indicator one gap low at the top.** `winDrawDropIndicator()` measured
+   from `winHeaderHeight`, but rows (and the insertion hit-test `winDropInsertionIndex`)
+   measure from `winBodyTopInset`, which is 0 when the header is pinned in its own strip —
+   so a before-row-0 drop drew its line between rows 1 and 2. The indicator now uses the
+   same `winBodyTopInset` base as the hit-test, making the drawn line and the actual insert
+   agree by construction.
+
+Verified: build 0 errors, contract suite green, live probe screenshots for 1–3.
+
+## Windows re-sync — Round 5 (2026-07-16): NSDatePicker, measured against AppKit
+
+LinChocolate rebuilt this control from **probed** AppKit rather than assumption, and recorded
+the ground truth plus a MUST-FIX list naming WinChocolate in `DEMO_CHANGES.md`. This is that
+list, done. The measured values there are treated as the specification throughout — the Mac
+is where they came from, and guessing was wrong on every one of them.
+
+### The architectural call: configure the native control, don't reimplement it
+
+LinChocolate renders the field itself — building the text, tracking the selected element,
+stepping and typing into it — because **GTK has no date field**. Windows has one.
+`SysDateTimePick32` already selects an element on click, moves between elements with the
+arrow keys, steps *the selected* element, and takes typed digits with auto-advance. That is
+simultaneously the behaviour AppKit specifies and the native Windows look, so the control is
+**configured**, not replaced. Porting LinChocolate's segment engine here would have meant
+hand-rolling a calendar engine too (WinFoundation has no `Calendar`/`DateComponents`) in
+order to end up *less* native. What the framework owns is the AppKit semantics the platform
+cannot know: the element flags, the format they imply, the clamp, the zone, and
+`stringValue`.
+
+1. **The field was showing the wrong time, and silently discarding it.** `systemTime(from:)`
+   hardcoded `wHour`/`wMinute`/`wSecond` to **zero** and formatted in UTC, and the read path
+   kept only year/month/day — so the demo's 2026-06-01T00:00Z rendered `6/1/2026 12:00:00
+   AM` where AppKit renders `5/31/2026, 8:00:00 PM`, and any time the user typed was thrown
+   away on read-back. Both paths now convert a `Date` (an instant) to and from a wall clock
+   in the picker's zone. The field now reads **`5/31/2026, 8:00:00 PM`** — AppKit's probed
+   string, character for character.
+2. **`.textFieldAndStepper` had no stepper.** The default style — a field *with* a stepper
+   and no calendar popup — was created without `DTS_UPDOWN`, so it showed a drop-down
+   calendar button instead: the same bug LinChocolate found, in the same style, for the same
+   reason. Added. The arrows step **the selected element**, which is the MUST-FIX item, and
+   the control does it natively. (`.textField` keeps the drop-down field, the platform's
+   closest bare field; that is also the path the Round 4 calendar-clip fix still serves.)
+3. **Element flags are Apple's.** Cumulative raw values — `hourMinute` 0x000c,
+   `hourMinuteSecond` 0x000e, `timeZone` 0x0010, `yearMonth` 0x00c0, `yearMonthDay` 0x00e0,
+   `era` 0x0100 — replacing invented `1 << n` bits, with `.yearMonth` and `.era` added.
+   Every test now asks the wider flag first. `Style` carries Apple's raw values too.
+4. **The format follows the locale, from the elements.** AppKit builds its field from a
+   locale *template* (`Mdyyyyjmmss` produces `M/d/yyyy, h:mm:ss a`), which is why it shows a
+   four-digit year no short-date style can produce. Windows' own `LOCALE_SSHORTDATE` is
+   already `M/d/yyyy` **and already in the syntax the control wants**, so the locale drives
+   the field order here exactly as it does on Apple, with no template engine:
+   short-date + `", "` + time (the comma is AppKit's), `LOCALE_SSHORTTIME` for
+   `.hourMinute`, the day dropped from the pattern for `.yearMonth`, `gg` for `.era`, and a
+   quoted literal for `.timeZone` (the control has no zone field; nothing steps a zone on
+   Apple either).
+5. **`stringValue` is full/full and element-independent.** It was short/medium and varied
+   with the elements. AppKit's is exactly `DateFormatter(dateStyle: .full, timeStyle: .full)`
+   — a date-only picker returns the same full string — which is why the demo's label was
+   just widened to 550pt.
+6. **`minDate`/`maxDate` reach the control** via `DTM_SETRANGE`; they were accepted and
+   dropped, leaving the framework to correct an out-of-range entry after the fact instead of
+   the field refusing it as AppKit's does.
+7. **`intrinsicContentSize`** uses AppKit's probed numbers where they exist (275.5x148
+   calendar, 180x22 field with date and time, 95x22 date-only) instead of the invented
+   139x148; unprobed element combinations are measured rather than guessed.
+
+### WinFoundation: the gap underneath all of it
+
+`DateFormatter` was **UTC-only** ("time zones beyond UTC are future work") and there was no
+`TimeZone` type — so no amount of control-side work could have rendered a local wall clock or
+matched AppKit's `stringValue`. Added:
+
+- **`TimeZone`** — current zone and fixed offsets, DST-aware. Offsets come from
+  `SystemTimeToTzSpecificLocalTime`, which applies the rule in force *on the date being
+  converted*, and names from `GetTimeZoneInformationForYear`. Whether a date is in DST is
+  decided by comparing its offset against the zone's own yearly extremes — DST always adds,
+  so the larger is daylight, which holds in the southern hemisphere too.
+  `TIME_ZONE_INFORMATION` is read through documented raw offsets rather than a hand-declared
+  Swift struct: it embeds two `WCHAR[32]` arrays, and a layout that drifts from C's reads as
+  data corruption (as `NMHDR`'s missing tail padding did in Round 2).
+- **`DateFormatter.timeZone`**, local-time components, and the full/long styles' zone name.
+  The date and time halves now join per ICU's en_US rule — `" at "` for full/long, `", "` for
+  medium/short — which is where AppKit's "May 31, 2026 **at** 8:00:00 PM" comes from.
+- **`String.replacingOccurrences(of:with:)`**, which was simply missing.
+- Named IANA zones (`America/New_York`) return `nil` rather than silently resolving to
+  something else: Windows has no such database.
+
+### Verified
+
+Contract suite green, including new tests pinning Apple's raw flag values and their
+cumulativity, full/full `stringValue` and its independence from the elements, the
+element-driven format (including year-month, hour-minute and era), the local wall-clock
+round trip with the time of day intact, and each style's stepper. Two **pre-existing tests
+were changed because they pinned the bug**: they asserted UTC rendering (`6/1/2026` for a
+midnight-UTC instant) from a formatter that now renders local time. They are now
+zone-explicit, so they assert the same thing on any machine — and one additionally pins that
+the same instant reads `5/31/2026` at UTC-4, which is the whole point.
+
+Driven live against the running demo (real window messages, screenshots read back):
+
+| | before | after |
+|---|---|---|
+| field | `6/1/2026 12:00:00 AM` | **`5/31/2026, 8:00:00 PM`** (AppKit's probed string) |
+| stepper | absent (drop-down button) | `msctls_updown32` child of the field |
+| click year + 2 steps | stepped the day | **2026 to 2028**, label recomputes to *Wednesday*, May 31, 2028 |
+| type `1` `2` on the month | not possible | **December 31, 2028**, weekday recomputes to *Sunday* |
+| `dateValueLabel` | `6/1/2026` | `Sunday, May 31, 2026 at 8:00:00 PM ...` |
+
+The year-step and month-type results **independently match LinChocolate's** verification of
+the identical interactions (2028/Wednesday; December, day 31) — two implementations, two
+platforms, same AppKit behaviour.
+
+### Known platform boundaries (recorded, not papered over)
+
+- **Zone names are Windows'.** For the major US and European zones the Windows display names
+  coincide with ICU's English long names ("Eastern Daylight Time"), which is what makes
+  `stringValue` match. The two databases are not identical, so an exotic zone can differ.
+  This machine is set to *SA Western Standard Time* (UTC-4, no DST), so the demo's label
+  reads `... 8:00:00 PM SA Western Standard Time` here and would read `... Eastern Daylight
+  Time` on a Mac in Eastern — a machine-configuration difference, not a divergence.
+- **The DST-name branch could not be exercised on this machine** (its zone has no DST); the
+  no-DST branch is verified live, and the logic is pinned by a test that adapts to whichever
+  zone it runs in.
+- **ICU emits U+202F** (narrow no-break space) before AM/PM; Windows' locale data uses a
+  normal space. Identical on screen, one code point apart in `stringValue`. Forcing ICU's
+  convention onto Windows' own locale data would be the wrong trade.
+- **`NSDatePicker.calendar`** is not implemented: WinFoundation has no `Calendar` type, and
+  inventing one to back a property nothing uses would be worse than the honest gap.

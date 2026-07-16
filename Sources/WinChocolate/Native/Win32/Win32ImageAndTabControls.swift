@@ -11,6 +11,7 @@ extension Win32NativeControlBackend {
             style: wsChild | wsVisible | wsBorder | ssNotify | (imagePath == nil ? 0 : ssBitmap | ssCenterImage)
         )
         subclassControlForTabKey(handle)
+        imageViewHandles.insert(handle.rawValue)
         setImagePath(imagePath, description: description, for: handle)
         return handle
     }

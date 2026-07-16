@@ -20,13 +20,13 @@ public enum NSTextAlignment: Sendable {
 /// The methods a text field delegate uses to observe editing.
 public protocol NSTextFieldDelegate: NSObjectProtocol {
     /// Tells the delegate that editing began in the control (focus gained).
-    func controlTextDidBeginEditing(_ obj: NSNotification)
+    func controlTextDidBeginEditing(_ obj: Notification)
 
     /// Tells the delegate that the control's text changed.
-    func controlTextDidChange(_ obj: NSNotification)
+    func controlTextDidChange(_ obj: Notification)
 
     /// Tells the delegate that editing ended in the control (focus lost).
-    func controlTextDidEndEditing(_ obj: NSNotification)
+    func controlTextDidEndEditing(_ obj: Notification)
 
     /// Asks the delegate to handle a field-editor command (AppKit's
     /// `control(_:textView:doCommandBy:)`). Return `true` to consume the
@@ -38,13 +38,13 @@ public protocol NSTextFieldDelegate: NSObjectProtocol {
 
 extension NSTextFieldDelegate {
     /// Default no-op so delegates only implement the callbacks they need.
-    public func controlTextDidBeginEditing(_ obj: NSNotification) {}
+    public func controlTextDidBeginEditing(_ obj: Notification) {}
 
     /// Default no-op so delegates only implement the callbacks they need.
-    public func controlTextDidChange(_ obj: NSNotification) {}
+    public func controlTextDidChange(_ obj: Notification) {}
 
     /// Default no-op so delegates only implement the callbacks they need.
-    public func controlTextDidEndEditing(_ obj: NSNotification) {}
+    public func controlTextDidEndEditing(_ obj: Notification) {}
 
     /// Default: the delegate handles no field-editor commands.
     public func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool { false }
@@ -419,8 +419,8 @@ open class NSTextField: NSControl {
         delegate?.controlTextDidChange(editingNotification(named: Self.textDidChangeNotification))
     }
 
-    func editingNotification(named name: String) -> NSNotification {
-        NSNotification(name: name, object: self)
+    func editingNotification(named name: String) -> Notification {
+        Notification(name: Notification.Name(name), object: self)
     }
 
     func nativeStringValueDidChange() {}

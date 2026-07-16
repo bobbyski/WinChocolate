@@ -125,7 +125,7 @@ extension NSWindowController: NSWindowDelegate {
     }
 
     /// Detaches from the document, closing it with its last window.
-    public func windowWillClose(_ notification: NSNotification) {
+    public func windowWillClose(_ notification: Notification) {
         guard let document else {
             return
         }

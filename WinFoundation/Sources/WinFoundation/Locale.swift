@@ -41,6 +41,14 @@ public struct Locale: Equatable, Sendable {
         WinLocale.info(windowsName, WinLocale.localeTimeFormat) ?? "h:mm:ss tt"
     }
 
+    /// The locale's time pattern without seconds (for example `h:mm tt`).
+    ///
+    /// The OS owns which fields a short time drops; deriving it by cutting
+    /// `:ss` out of `timePattern` would only guess at the separator.
+    public var shortTimePattern: String {
+        WinLocale.info(windowsName, WinLocale.localeShortTime) ?? "h:mm tt"
+    }
+
     /// The decimal separator for the locale (for example `.`).
     public var decimalSeparator: String {
         WinLocale.info(windowsName, WinLocale.localeDecimalSeparator) ?? "."
@@ -61,6 +69,7 @@ public struct Locale: Equatable, Sendable {
 enum WinLocale {
     static let localeShortDate: UInt32 = 0x0000_001F
     static let localeTimeFormat: UInt32 = 0x0000_1003
+    static let localeShortTime: UInt32 = 0x0000_0079
     static let localeDecimalSeparator: UInt32 = 0x0000_000E
     static let localeThousandSeparator: UInt32 = 0x0000_000F
     static let localeCurrencySymbol: UInt32 = 0x0000_0014

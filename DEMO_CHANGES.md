@@ -156,13 +156,24 @@ Eastern **Standard** Time.
   AppKit reports `(180, 22)` / `(95, 22)` / `(275.5, 148)` depending on style and elements
   (probed). `LayoutSolver` reads `intrinsicContentSize`, and `NSTextField` already overrides
   it — so a date picker under Auto Layout would size wrong. The demo places its pickers at
-  explicit frames, which is why this doesn't bite today. Same gap in WinChocolate.
+  explicit frames, which is why this doesn't bite today. ~~Same gap in WinChocolate.~~
+  **Closed on WinChocolate 2026-07-16** (Round 5): it returns the three probed sizes for the
+  configurations Apple was measured in, and measures the rest rather than guessing.
 - The stepper steps a whole unit; AppKit also supports dragging. Not implemented.
 - `.era` and `.timeZone` fields render but are not steppable/typable (no sensible unit).
 - `datePickerMode` (single vs range) is still an accepted no-op in `DemoCompat`.
-- **WinChocolate half untouched**: same invented flags
+- ~~**WinChocolate half untouched**: same invented flags
   (`Sources/WinChocolate/Controls/NSDatePicker.swift:21`), no locale-template format, no
-  full/full `stringValue`, no selected-element stepping, no typing.
+  full/full `stringValue`, no selected-element stepping, no typing.~~ **Done 2026-07-16** —
+  see *Windows re-sync — Round 5* in
+  [`Docs/AppKitFaithfulnessIssues.md`](Docs/AppKitFaithfulnessIssues.md). WinChocolate keeps
+  the native `SysDateTimePick32` (Windows *has* a date field; GTK does not) and configures
+  it: `DTS_UPDOWN` gives `.textFieldAndStepper` the stepper it is named for, and the control
+  natively selects, steps and types into the element — the behaviours this list demands. The
+  framework owns the AppKit semantics: Apple's cumulative flags, the locale-driven format,
+  the clamp, the zone, and full/full `stringValue`. Live-verified to the same results
+  recorded here for Linux (year 2026→2028 with the label recomputing to Wednesday; month
+  typed `1` `2` → December, day 31, weekday Sunday).
 
 ---
 
@@ -545,12 +556,13 @@ clicks up moved **2026-06-01 → 2026-06-03**, one click down → 2026-06-02, an
 **0 violations on all 11 pages**; all contract tests pass, including new ones pinning the
 default style, min/max clamping and element round-tripping.
 
-**MUST FIX (both frameworks):** `NSDatePickerElementFlags`' raw values are invented
+**MUST FIX (both frameworks):** ~~`NSDatePickerElementFlags`' raw values are invented
 (`1 << 0`, `1 << 1`, …). Apple's are `0x00e0` (yearMonthDay), `0x000e` (hourMinuteSecond),
 `0x000c` (hourMinute), `0x0010` (timeZone), `0x00c0` (yearMonth) — and Apple's are
 *cumulative* (`hourMinuteSecond` contains `hourMinute`), which ours are not. Symbolic use
 works; a raw value or a `.contains` check across the pair would not. Same gap in
-WinChocolate.
+WinChocolate.~~ **Done on WinChocolate 2026-07-16** (Round 5), with tests pinning each raw
+value and the cumulativity in both directions.
 
 ### Follow-up 3: one stepper, built like Apple's — two buttons stacked
 
@@ -638,9 +650,13 @@ contract tests pass.
   = May **30**. That's Gregorian arithmetic — Calendar's and AppKit's — not a bug. The
   behaviour is now pinned by a test that says so.
 
-**MUST FIX (WinChocolate):** same invented element flags (`Sources/WinChocolate/Controls/NSDatePicker.swift:21`
+**MUST FIX (WinChocolate):** ~~same invented element flags (`Sources/WinChocolate/Controls/NSDatePicker.swift:21`
 has `yearMonthDay = 1 << 0`); needs Apple's cumulative raw values, `.era`/`.yearMonth`, the
-locale-template field format, `stringValue` as full/full, and stepping the selected element.
+locale-template field format, `stringValue` as full/full, and stepping the selected element.~~
+**Done 2026-07-16** (Round 5, `Docs/AppKitFaithfulnessIssues.md`). The Windows field also
+turned out to be hardcoding its time fields to zero and formatting in UTC, so it read
+`6/1/2026 12:00:00 AM`; it now reads AppKit's probed `5/31/2026, 8:00:00 PM`. This needed a
+`TimeZone` type and a zone-aware `DateFormatter` in WinFoundation, which was UTC-only.
 
 ### Follow-up 5: the date field is type-to-edit
 
@@ -681,8 +697,13 @@ pass.
 `LINCHOCOLATE_DATE_DEBUG=1` traces the field's cursor notifications — it is what found the
 batching, and this class of bug will recur.
 
-**MUST FIX (WinChocolate):** same type-to-edit surface — digits into the selected element,
-auto-advance, leading-zero buffering, `a`/`p`, and day-clamping shared with stepping.
+**MUST FIX (WinChocolate):** ~~same type-to-edit surface — digits into the selected element,
+auto-advance, leading-zero buffering, `a`/`p`, and day-clamping shared with stepping.~~
+**Done 2026-07-16** (Round 5) — supplied by the native `SysDateTimePick32` once the style
+was given its `DTS_UPDOWN` stepper, rather than reimplemented: the control has done
+digits-into-the-selected-element with auto-advance since 1997, and it is the Windows look.
+Live-verified: typing `1` `2` on the month gives December with the day kept at 31 and the
+weekday recomputed to Sunday — the same result recorded here for Linux.
 
 ### Still open (rendering fidelity, not geometry — for the page-by-page pass)
 

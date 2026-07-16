@@ -106,7 +106,10 @@ open class NSControl: NSView {
             return
         }
 
-        _ = sendAction(action, to: target)
+        let delivered = sendAction(action, to: target)
+        if WinDiagnostics.isEnabled {
+            WinDiagnostics.log("control.sendAction \(type(of: self)) action=\(action != nil) delivered=\(delivered)")
+        }
         winInternalAction?(self)
     }
 

@@ -4,31 +4,31 @@ public protocol NSWindowDelegate: NSObjectProtocol {
     func windowShouldClose(_ sender: NSWindow) -> Bool
 
     /// Tells the delegate the window is closing.
-    func windowWillClose(_ notification: NSNotification)
+    func windowWillClose(_ notification: Notification)
 
     /// Tells the delegate the window was resized (by the user or the system).
-    func windowDidResize(_ notification: NSNotification)
+    func windowDidResize(_ notification: Notification)
 
     /// Tells the delegate the window was moved.
-    func windowDidMove(_ notification: NSNotification)
+    func windowDidMove(_ notification: Notification)
 
     /// Tells the delegate the window was minimized.
-    func windowDidMiniaturize(_ notification: NSNotification)
+    func windowDidMiniaturize(_ notification: Notification)
 
     /// Tells the delegate the window was restored from the minimized state.
-    func windowDidDeminiaturize(_ notification: NSNotification)
+    func windowDidDeminiaturize(_ notification: Notification)
 
     /// Tells the delegate the window is about to enter full screen.
-    func windowWillEnterFullScreen(_ notification: NSNotification)
+    func windowWillEnterFullScreen(_ notification: Notification)
 
     /// Tells the delegate the window has entered full screen.
-    func windowDidEnterFullScreen(_ notification: NSNotification)
+    func windowDidEnterFullScreen(_ notification: Notification)
 
     /// Tells the delegate the window is about to exit full screen.
-    func windowWillExitFullScreen(_ notification: NSNotification)
+    func windowWillExitFullScreen(_ notification: Notification)
 
     /// Tells the delegate the window has exited full screen.
-    func windowDidExitFullScreen(_ notification: NSNotification)
+    func windowDidExitFullScreen(_ notification: Notification)
 }
 
 extension NSWindowDelegate {
@@ -38,31 +38,31 @@ extension NSWindowDelegate {
     }
 
     /// Default no-op so delegates only implement the callbacks they need.
-    public func windowWillClose(_ notification: NSNotification) {}
+    public func windowWillClose(_ notification: Notification) {}
 
     /// Default no-op so delegates only implement the callbacks they need.
-    public func windowDidResize(_ notification: NSNotification) {}
+    public func windowDidResize(_ notification: Notification) {}
 
     /// Default no-op so delegates only implement the callbacks they need.
-    public func windowDidMove(_ notification: NSNotification) {}
+    public func windowDidMove(_ notification: Notification) {}
 
     /// Default no-op so delegates only implement the callbacks they need.
-    public func windowDidMiniaturize(_ notification: NSNotification) {}
+    public func windowDidMiniaturize(_ notification: Notification) {}
 
     /// Default no-op so delegates only implement the callbacks they need.
-    public func windowDidDeminiaturize(_ notification: NSNotification) {}
+    public func windowDidDeminiaturize(_ notification: Notification) {}
 
     /// Default no-op so delegates only implement the callbacks they need.
-    public func windowWillEnterFullScreen(_ notification: NSNotification) {}
+    public func windowWillEnterFullScreen(_ notification: Notification) {}
 
     /// Default no-op so delegates only implement the callbacks they need.
-    public func windowDidEnterFullScreen(_ notification: NSNotification) {}
+    public func windowDidEnterFullScreen(_ notification: Notification) {}
 
     /// Default no-op so delegates only implement the callbacks they need.
-    public func windowWillExitFullScreen(_ notification: NSNotification) {}
+    public func windowWillExitFullScreen(_ notification: Notification) {}
 
     /// Default no-op so delegates only implement the callbacks they need.
-    public func windowDidExitFullScreen(_ notification: NSNotification) {}
+    public func windowDidExitFullScreen(_ notification: Notification) {}
 }
 
 /// A top-level application window.
@@ -821,7 +821,7 @@ open class NSWindow: NSResponder {
         toolbarHostView = nil
         nativeHandle = nil
         NSApplication.shared.removeWindowsItem(self)
-        delegate?.windowWillClose(NSNotification(name: "NSWindowWillCloseNotification", object: self))
+        delegate?.windowWillClose(Notification(name: Notification.Name("NSWindowWillCloseNotification"), object: self))
     }
 
     private func nativeWindowDidResize(to size: NSSize) {
@@ -830,13 +830,13 @@ open class NSWindow: NSResponder {
         // Run the layout pass synchronously so live resize tracks the new
         // size instead of waiting for the next pump tick.
         contentView?.layoutSubtreeIfNeeded()
-        delegate?.windowDidResize(NSNotification(name: "NSWindowDidResizeNotification", object: self))
+        delegate?.windowDidResize(Notification(name: Notification.Name("NSWindowDidResizeNotification"), object: self))
     }
 
     private func nativeWindowDidMove(to origin: NSPoint) {
         // Track the native origin without pushing it back to the backend.
         frame.origin = origin
-        delegate?.windowDidMove(NSNotification(name: "NSWindowDidMoveNotification", object: self))
+        delegate?.windowDidMove(Notification(name: Notification.Name("NSWindowDidMoveNotification"), object: self))
     }
 
     // MARK: - Window state
@@ -884,14 +884,14 @@ open class NSWindow: NSResponder {
     open func miniaturize(_ sender: Any?) {
         let handle = realizeNativePeer()
         nativeBackend.setWindowMinimized(true, for: handle)
-        delegate?.windowDidMiniaturize(NSNotification(name: "NSWindowDidMiniaturizeNotification", object: self))
+        delegate?.windowDidMiniaturize(Notification(name: Notification.Name("NSWindowDidMiniaturizeNotification"), object: self))
     }
 
     /// Restores the window from the minimized state.
     open func deminiaturize(_ sender: Any?) {
         let handle = realizeNativePeer()
         nativeBackend.setWindowMinimized(false, for: handle)
-        delegate?.windowDidDeminiaturize(NSNotification(name: "NSWindowDidDeminiaturizeNotification", object: self))
+        delegate?.windowDidDeminiaturize(Notification(name: Notification.Name("NSWindowDidDeminiaturizeNotification"), object: self))
     }
 
     /// Toggles the window between zoomed (maximized) and its normal frame.
@@ -918,9 +918,9 @@ open class NSWindow: NSResponder {
         let didName = entering ? "NSWindowDidEnterFullScreenNotification" : "NSWindowDidExitFullScreenNotification"
 
         if entering {
-            delegate?.windowWillEnterFullScreen(NSNotification(name: willName, object: self))
+            delegate?.windowWillEnterFullScreen(Notification(name: Notification.Name(willName), object: self))
         } else {
-            delegate?.windowWillExitFullScreen(NSNotification(name: willName, object: self))
+            delegate?.windowWillExitFullScreen(Notification(name: Notification.Name(willName), object: self))
         }
 
         winIsFullScreen = entering
@@ -930,9 +930,9 @@ open class NSWindow: NSResponder {
         layoutToolbarAndContent()
 
         if entering {
-            delegate?.windowDidEnterFullScreen(NSNotification(name: didName, object: self))
+            delegate?.windowDidEnterFullScreen(Notification(name: Notification.Name(didName), object: self))
         } else {
-            delegate?.windowDidExitFullScreen(NSNotification(name: didName, object: self))
+            delegate?.windowDidExitFullScreen(Notification(name: Notification.Name(didName), object: self))
         }
     }
 
