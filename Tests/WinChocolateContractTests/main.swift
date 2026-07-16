@@ -238,25 +238,25 @@ final class TestChangeDelegate: NSObject, NSTextFieldDelegate, NSTableViewDelega
         return created
     }
 
-    nonisolated func controlTextDidChange(_ obj: NSNotification) {
+    nonisolated func controlTextDidChange(_ obj: Notification) {
         if let field = obj.object as? NSTextField {
             onFieldChange?(field)
         }
     }
 
-    nonisolated func tableViewSelectionDidChange(_ notification: NSNotification) {
+    nonisolated func tableViewSelectionDidChange(_ notification: Notification) {
         if let table = notification.object as? NSTableView {
             onTableSelection?(table)
         }
     }
 
-    nonisolated func outlineViewSelectionDidChange(_ notification: NSNotification) {
+    nonisolated func outlineViewSelectionDidChange(_ notification: Notification) {
         if let outline = notification.object as? NSOutlineView {
             onOutlineSelection?(outline)
         }
     }
 
-    nonisolated func textDidChange(_ notification: NSNotification) {
+    nonisolated func textDidChange(_ notification: Notification) {
         if let view = notification.object as? NSTextView {
             onTextViewChange?(view)
         }
@@ -387,6 +387,10 @@ final class IntrinsicSizeView: NSView {
     init(_ size: NSSize) {
         intrinsic = size
         super.init(frame: .zero)
+    }
+    required init(frame frameRect: NSRect) {
+        intrinsic = .zero
+        super.init(frame: frameRect)
     }
     override var intrinsicContentSize: NSSize { intrinsic }
 }
@@ -1298,10 +1302,10 @@ func testWindowRealizationCreatesNativeHierarchy() {
 
 final class FullScreenSpyDelegate: NSObject, NSWindowDelegate {
     var willEnter = 0, didEnter = 0, willExit = 0, didExit = 0
-    func windowWillEnterFullScreen(_ notification: NSNotification) { willEnter += 1 }
-    func windowDidEnterFullScreen(_ notification: NSNotification) { didEnter += 1 }
-    func windowWillExitFullScreen(_ notification: NSNotification) { willExit += 1 }
-    func windowDidExitFullScreen(_ notification: NSNotification) { didExit += 1 }
+    func windowWillEnterFullScreen(_ notification: Notification) { willEnter += 1 }
+    func windowDidEnterFullScreen(_ notification: Notification) { didEnter += 1 }
+    func windowWillExitFullScreen(_ notification: Notification) { willExit += 1 }
+    func windowDidExitFullScreen(_ notification: Notification) { didExit += 1 }
 }
 
 @MainActor
@@ -1884,13 +1888,13 @@ final class RecordingCollectionDelegate: NSObject, NSCollectionViewDelegate {
 
 final class RecordingTableDelegate: NSObject, NSTableViewDelegate {
     var selectionChangeCount = 0
-    var lastObject: AnyObject?
+    var lastObject: Any?
     var requestedViewRows: [Int] = []
     var oldSortDescriptorCount = -1
     var rowHeights: [Int: CGFloat] = [:]
     var cellView = NSTableCellView(frame: NSMakeRect(0, 0, 100, 24))
 
-    func tableViewSelectionDidChange(_ notification: NSNotification) {
+    func tableViewSelectionDidChange(_ notification: Notification) {
         selectionChangeCount += 1
         lastObject = notification.object
     }
@@ -1914,8 +1918,8 @@ final class RecordingTableDelegate: NSObject, NSTableViewDelegate {
 /// the drawn peer when a delegate vends views).
 final class CellBasedSelectionDelegate: NSObject, NSTableViewDelegate {
     var selectionChangeCount = 0
-    var lastObject: AnyObject?
-    func tableViewSelectionDidChange(_ notification: NSNotification) {
+    var lastObject: Any?
+    func tableViewSelectionDidChange(_ notification: Notification) {
         selectionChangeCount += 1
         lastObject = notification.object
     }
@@ -3957,7 +3961,7 @@ func testColorWellStoresColorAndSendsAction() {
 
     let handle = colorWell.realizeNativePeer(in: backend, parent: nil)
 
-    expect(backend.records[handle]?.kind == "imageView", "Color well did not request a bordered swatch peer.")
+    expect(backend.records[handle]?.kind == "view", "Color well did not request a mouse-routing swatch peer.")
     expect(backend.records[handle]?.backgroundColor == .red, "Color well color was not synced to background.")
 
     colorWell.color = .blue
@@ -3967,6 +3971,92 @@ func testColorWellStoresColorAndSendsAction() {
 
     expect(colorWell.isActive, "Color well did not activate on click.")
     expect(actionCount == 1, "Color well did not send action on click.")
+}
+
+/// The frozen demo's template-tint recipe end-to-end: clicking a well presents
+/// the shared panel WITHOUT firing the action; a panel pick updates the well,
+/// fires the action, and the handler's `contentTintColor` re-tints a template
+/// image view — the exact New-in-3.x page wiring.
+@MainActor
+func testColorWellPanelPickFiresActionAndTintsTemplate() {
+    let backend = InMemoryNativeControlBackend()
+    let previousBackend = NSApplication.shared.nativeBackend
+    NSApplication.shared.nativeBackend = backend
+    defer {
+        NSApplication.shared.nativeBackend = previousBackend
+    }
+
+    let templateImage = NSImage(contentsOfFile: "C:/art/glyph.png")
+    templateImage?.isTemplate = true
+    let imageView = NSImageView(frame: NSMakeRect(0, 0, 44, 36))
+    imageView.image = templateImage
+    let imageHandle = imageView.realizeNativePeer(in: backend, parent: nil)
+
+    let well = NSColorWell(frame: NSMakeRect(0, 0, 44, 36))
+    well.color = .systemBlue
+    var actionColors: [NSColor] = []
+    well.onAction = { control in
+        guard let well = control as? NSColorWell else {
+            return
+        }
+        actionColors.append(well.color)
+        imageView.contentTintColor = well.color
+    }
+    let wellHandle = well.realizeNativePeer(in: backend, parent: nil)
+
+    // Click: presents the panel and activates the well. (Activation seeds the
+    // panel with the well's color, which counts as the first "change".)
+    backend.mouseDownActions[wellHandle]?(NSEvent(type: .leftMouseDown, locationInWindow: NSMakePoint(2, 2)))
+    expect(well.isActive, "Clicking the well did not activate it.")
+    expect(NSColorPanel.shared.color == .systemBlue, "Activation did not seed the panel with the well's color.")
+
+    // A panel pick (what the panel's sliders/swatches set) must flow back:
+    // well.color updates AND the action fires with the new color.
+    let picked = NSColor(calibratedRed: 0.2, green: 0.7, blue: 0.3, alpha: 1)
+    NSColorPanel.shared.color = picked
+    expect(well.color == picked, "Panel pick did not update the active well's color.")
+    expect(actionColors.last == picked, "Panel pick did not fire the well's action with the picked color.")
+    expect(backend.records[imageHandle]?.imageTint == picked, "contentTintColor did not re-tint the template image natively.")
+
+    well.deactivate()
+}
+
+@MainActor
+func testDrawnTableScrollRowToVisibleMovesClipView() {
+    let backend = InMemoryNativeControlBackend()
+    let scrollView = NSScrollView(frame: NSMakeRect(0, 0, 200, 100))
+    let tableView = NSTableView(frame: NSMakeRect(0, 0, 200, 100))
+    tableView.winUsesViewBasedCells = true
+    let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("name"))
+    column.width = 180
+    tableView.addTableColumn(column)
+    let dataSource = ScrollRowsDataSource()
+    tableView.dataSource = dataSource
+    scrollView.documentView = tableView
+    _ = scrollView.realizeNativePeer(in: backend, parent: nil)
+    tableView.reloadData()
+
+    // Row 30 sits far below the 100pt viewport; scrolling must move the clip.
+    tableView.scrollRowToVisible(30)
+    expect(scrollView.contentView.documentVisibleRect.origin.y > 0,
+           "scrollRowToVisible left the drawn table at the top.")
+
+    // Scrolling to an already-visible row must not move the viewport (the
+    // implementation nudges only as far as needed, so a repeat is a no-op).
+    let afterFirst = scrollView.contentView.documentVisibleRect.origin
+    tableView.scrollRowToVisible(30)
+    expect(scrollView.contentView.documentVisibleRect.origin == afterFirst,
+           "scrollRowToVisible moved the viewport for an already-visible row.")
+
+    // Scrolling back to the first row returns to the top.
+    tableView.scrollRowToVisible(0)
+    expect(scrollView.contentView.documentVisibleRect.origin.y == 0,
+           "scrollRowToVisible did not scroll back up to the first row.")
+}
+
+final class ScrollRowsDataSource: NSObject, NSTableViewDataSource {
+    func numberOfRows(in tableView: NSTableView) -> Int { 40 }
+    func tableView(_ tableView: NSTableView, objectValueFor tableColumn: NSTableColumn?, row: Int) -> Any? { "row \(row)" }
 }
 
 @MainActor
@@ -4062,7 +4152,7 @@ func testTableViewNativeSelectionNotifiesDelegateAndAction() {
     expect(tableView.selectedRow == 2, "Table view did not read native selection.")
     expect(actionCount == 1, "Table view did not send action after selection.")
     expect(delegate.selectionChangeCount == 1, "Table view delegate was not notified.")
-    expect(delegate.lastObject === tableView, "Table view delegate notification object was wrong.")
+    expect((delegate.lastObject as AnyObject) === tableView, "Table view delegate notification object was wrong.")
 }
 
 @MainActor
@@ -5158,11 +5248,11 @@ func testToolbarViewComposesItemsAndDispatchesActions() {
 
     let realizedItemTexts = backend.records.values.compactMap(\.text)
     expect(
-        realizedItemTexts.contains("__WinChocolateToolbarItem\tOpen\tfolder\t1\t1\tbelow"),
+        realizedItemTexts.contains("__WinChocolateToolbarItem\tOpen\tfolder\t1\t1\tbelow\t"),
         "Composed toolbar did not render the open item label and image."
     )
     expect(
-        realizedItemTexts.contains("__WinChocolateToolbarItem\tSave\tsave\t1\t1\tbelow"),
+        realizedItemTexts.contains("__WinChocolateToolbarItem\tSave\tsave\t1\t1\tbelow\t"),
         "Composed toolbar did not render the save item label and image."
     )
 
@@ -5187,7 +5277,7 @@ func testToolbarViewComposesItemsAndDispatchesActions() {
 
     let iconOnlyTexts = backend.records.values.compactMap(\.text)
     expect(
-        iconOnlyTexts.contains("__WinChocolateToolbarItem\tOpen\tfolder\t1\t0\tbelow"),
+        iconOnlyTexts.contains("__WinChocolateToolbarItem\tOpen\tfolder\t1\t0\tbelow\t"),
         "Toolbar icon-only mode did not preserve the item image."
     )
 
@@ -5195,7 +5285,7 @@ func testToolbarViewComposesItemsAndDispatchesActions() {
 
     let labelOnlyTexts = backend.records.values.compactMap(\.text)
     expect(
-        labelOnlyTexts.contains("__WinChocolateToolbarItem\tOpen\tfolder\t0\t1\tbelow"),
+        labelOnlyTexts.contains("__WinChocolateToolbarItem\tOpen\tfolder\t0\t1\tbelow\t"),
         "Toolbar label-only mode should preserve item labels."
     )
 }
@@ -5245,7 +5335,7 @@ func testToolbarItemCreatesCompositeImageLabelView() {
     expect(view.subviews.isEmpty, "Toolbar composite view should render as one self-contained native view.")
     expect(view.frame.size.height <= 40, "Toolbar composite view did not fit within the toolbar height.")
     expect(
-        backend.records[handle]?.text == "__WinChocolateToolbarItem\tOpen\tfolder\t1\t1\tbelow",
+        backend.records[handle]?.text == "__WinChocolateToolbarItem\tOpen\tfolder\t1\t1\tbelow\t",
         "Toolbar composite view did not carry the label and image key."
     )
     expect(backend.records[handle]?.drawsBackground == false, "Toolbar composite view should request a clear native background.")
@@ -5336,12 +5426,12 @@ final class SelectionToolbarDelegate: NSObject, NSToolbarDelegate {
     func toolbarSelectableItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
         [NSToolbarItem.Identifier("inbox"), NSToolbarItem.Identifier("sent")]
     }
-    func toolbarWillAddItem(_ notification: NSNotification) {
+    func toolbarWillAddItem(_ notification: Notification) {
         if let item = notification.userInfo?["item"] as? NSToolbarItem {
             added.append(item)
         }
     }
-    func toolbarDidRemoveItem(_ notification: NSNotification) {
+    func toolbarDidRemoveItem(_ notification: Notification) {
         if let item = notification.userInfo?["item"] as? NSToolbarItem {
             removed.append(item)
         }
@@ -8281,7 +8371,7 @@ func testTextViewUndoRestoresPreviousText() {
 final class SplitResizeRecorder: NSObject, NSSplitViewDelegate {
     var resizeCount = 0
 
-    func splitViewDidResizeSubviews(_ notification: NSNotification) {
+    func splitViewDidResizeSubviews(_ notification: Notification) {
         resizeCount += 1
     }
 }
@@ -9058,11 +9148,11 @@ func testProgressIndicatorIndeterminateSyncsToBackend() {
 final class RecordingTextViewDelegate: NSObject, NSTextViewDelegate {
     var changeCount = 0
     var lastNotificationName = ""
-    var lastObject: AnyObject?
+    var lastObject: Any?
 
-    func textDidChange(_ notification: NSNotification) {
+    func textDidChange(_ notification: Notification) {
         changeCount += 1
-        lastNotificationName = notification.name
+        lastNotificationName = notification.name.rawValue
         lastObject = notification.object
     }
 }
@@ -9110,7 +9200,7 @@ func testTextViewSelectionInsertionAndDelegate() {
     expect(textView.string == "Typed text", "Native text change did not update the string.")
     expect(delegate.changeCount == 1, "Native text change did not notify the delegate.")
     expect(delegate.lastNotificationName == NSTextView.textDidChangeNotification, "textDidChange did not carry the AppKit notification name.")
-    expect(delegate.lastObject === textView, "textDidChange did not carry the text view as the notification object.")
+    expect((delegate.lastObject as AnyObject) === textView, "textDidChange did not carry the text view as the notification object.")
 
     // A selection made before realization applies when the peer appears.
     let deferred = NSTextView(frame: NSMakeRect(0, 0, 100, 40))
@@ -9307,16 +9397,16 @@ final class RecordingTextFieldDelegate: NSObject, NSTextFieldDelegate {
     var ended = 0
     var lastChangedText: String?
 
-    func controlTextDidBeginEditing(_ obj: NSNotification) {
+    func controlTextDidBeginEditing(_ obj: Notification) {
         began += 1
     }
 
-    func controlTextDidChange(_ obj: NSNotification) {
+    func controlTextDidChange(_ obj: Notification) {
         changed += 1
         lastChangedText = (obj.object as? NSTextField)?.stringValue
     }
 
-    func controlTextDidEndEditing(_ obj: NSNotification) {
+    func controlTextDidEndEditing(_ obj: Notification) {
         ended += 1
     }
 }
@@ -10719,6 +10809,8 @@ testStepperStoresRangeIncrementAndSyncsNativePeer()
 testStepperNativeActionUpdatesValue()
 testSearchFieldTracksRecentSearchesAndNativeChanges()
 testColorWellStoresColorAndSendsAction()
+testColorWellPanelPickFiresActionAndTintsTemplate()
+testDrawnTableScrollRowToVisibleMovesClipView()
 testColorWellExpandedSwatchPalette()
 testTableViewNativePeerReceivesColumnsRowsAndSelection()
 testTableViewNativeSelectionNotifiesDelegateAndAction()
@@ -11318,10 +11410,10 @@ final class WindowStateRecordingDelegate: NSObject, NSWindowDelegate {
     var miniaturized = 0
     var deminiaturized = 0
 
-    func windowDidResize(_ notification: NSNotification) { resized += 1 }
-    func windowDidMove(_ notification: NSNotification) { moved += 1 }
-    func windowDidMiniaturize(_ notification: NSNotification) { miniaturized += 1 }
-    func windowDidDeminiaturize(_ notification: NSNotification) { deminiaturized += 1 }
+    func windowDidResize(_ notification: Notification) { resized += 1 }
+    func windowDidMove(_ notification: Notification) { moved += 1 }
+    func windowDidMiniaturize(_ notification: Notification) { miniaturized += 1 }
+    func windowDidDeminiaturize(_ notification: Notification) { deminiaturized += 1 }
 }
 
 @MainActor
@@ -12355,7 +12447,7 @@ final class PasteboardRowDataSource: NSObject, NSTableViewDataSource {
     let items = ["alpha", "bravo", "charlie", "delta"]
     func numberOfRows(in tableView: NSTableView) -> Int { items.count }
     func tableView(_ tableView: NSTableView, objectValueFor tableColumn: NSTableColumn?, row: Int) -> Any? { items[row] }
-    func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> Any? { items[row] }
+    func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> NSPasteboardWriting? { items[row] }
 }
 
 @MainActor
@@ -13385,7 +13477,7 @@ final class ReorderRecipeTableSource: NSObject, NSTableViewDataSource {
         items[row]
     }
 
-    func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> Any? {
+    func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> NSPasteboardWriting? {
         "\(row)"
     }
 }
@@ -13406,7 +13498,7 @@ final class ReorderRecipeOutlineSource: NSObject, NSOutlineViewDataSource {
         false
     }
 
-    func outlineView(_ outlineView: NSOutlineView, pasteboardWriterForItem item: Any) -> Any? {
+    func outlineView(_ outlineView: NSOutlineView, pasteboardWriterForItem item: Any) -> NSPasteboardWriting? {
         String(describing: item)
     }
 

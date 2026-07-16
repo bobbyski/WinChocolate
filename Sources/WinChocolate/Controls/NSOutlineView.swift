@@ -25,7 +25,7 @@ public protocol NSOutlineViewDataSource: NSTableViewDataSource {
     /// `outlineView(_:pasteboardWriterForItem:)`. A non-`nil` writer (plus a
     /// `.move` local mask via `setDraggingSourceOperationMask(_:forLocal:)`)
     /// enables drag-to-reorder.
-    func outlineView(_ outlineView: NSOutlineView, pasteboardWriterForItem item: Any) -> Any?
+    func outlineView(_ outlineView: NSOutlineView, pasteboardWriterForItem item: Any) -> NSPasteboardWriting?
 
     /// Accepts a drop targeting a parent item at a child index, returning
     /// whether it was consumed — AppKit's exact
@@ -48,7 +48,7 @@ public extension NSOutlineViewDataSource {
     }
 
     /// Default: items are not draggable.
-    func outlineView(_ outlineView: NSOutlineView, pasteboardWriterForItem item: Any) -> Any? {
+    func outlineView(_ outlineView: NSOutlineView, pasteboardWriterForItem item: Any) -> NSPasteboardWriting? {
         nil
     }
 
@@ -75,7 +75,7 @@ public protocol NSOutlineViewDelegate: NSTableViewDelegate {
     func outlineView(_ outlineView: NSOutlineView, heightOfRowByItem item: Any) -> CGFloat
 
     /// Tells the delegate the outline's selection changed.
-    func outlineViewSelectionDidChange(_ notification: NSNotification)
+    func outlineViewSelectionDidChange(_ notification: Notification)
 }
 
 public extension NSOutlineViewDelegate {
@@ -90,7 +90,7 @@ public extension NSOutlineViewDelegate {
     }
 
     /// Default no-op so delegates only implement the callbacks they need.
-    func outlineViewSelectionDidChange(_ notification: NSNotification) {}
+    func outlineViewSelectionDidChange(_ notification: Notification) {}
 }
 
 /// A tree-shaped table view.
@@ -156,14 +156,14 @@ open class NSOutlineView: NSTableView {
         }
 
         /// Forwards table selection changes as outline selection changes.
-        nonisolated func tableViewSelectionDidChange(_ notification: NSNotification) {
+        nonisolated func tableViewSelectionDidChange(_ notification: Notification) {
             guard let owner else {
                 return
             }
 
             winMainActor {
                 owner.outlineDelegate?.outlineViewSelectionDidChange(
-                    NSNotification(name: "NSOutlineViewSelectionDidChangeNotification", object: owner)
+                    Notification(name: Notification.Name("NSOutlineViewSelectionDidChangeNotification"), object: owner)
                 )
             }
         }

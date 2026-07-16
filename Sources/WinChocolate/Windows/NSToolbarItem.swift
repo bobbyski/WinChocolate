@@ -69,6 +69,9 @@ final class NSToolbarCompositeItemView: NSView {
     var metallicSlice: (stripHeight: CGFloat, y: CGFloat)? {
         didSet {
             updateNativeTextColor()
+            // The template tint follows the same contrast rule as the label,
+            // and it rides the native text fields — refresh both.
+            updateNativeText()
         }
     }
 
@@ -112,6 +115,7 @@ final class NSToolbarCompositeItemView: NSView {
     var isEnabled: Bool {
         didSet {
             updateNativeTextColor()
+            updateNativeText()
         }
     }
 
@@ -141,6 +145,7 @@ final class NSToolbarCompositeItemView: NSView {
             object: nil, queue: nil
         ) { [weak self] _ in
             self?.updateNativeTextColor()
+            self?.updateNativeText()
             self?.needsDisplay = true
         }
     }
@@ -183,8 +188,30 @@ final class NSToolbarCompositeItemView: NSView {
             imageName,
             showItem ? "1" : "0",
             showLabel ? "1" : "0",
-            labelLocation.nativeName
+            labelLocation.nativeName,
+            templateTintField
         ].joined(separator: "\t")
+    }
+
+    /// The tint a template image renders with ("r,g,b,a", empty = draw the
+    /// image's own pixels). Templates follow the same contrast rule as the
+    /// label: dark glyph on the light metallic strip, light glyph on a dark
+    /// appearance — that is what `isTemplate` means.
+    private var templateTintField: String {
+        guard item?.image?.isTemplate == true else {
+            return ""
+        }
+
+        let onDarkStrip = metallicSlice == nil && NSApplication.shared.effectiveAppearance.winIsDark
+        let tint: NSColor
+        if onDarkStrip {
+            tint = isEnabled ? NSColor(calibratedWhite: 0.92, alpha: 1) : NSColor(calibratedWhite: 0.55, alpha: 1)
+        } else {
+            tint = isEnabled
+                ? NSColor(calibratedRed: 0.08, green: 0.10, blue: 0.12, alpha: 1.0)
+                : NSColor(calibratedRed: 0.42, green: 0.44, blue: 0.46, alpha: 1.0)
+        }
+        return "\(tint.redComponent),\(tint.greenComponent),\(tint.blueComponent),\(tint.alphaComponent)"
     }
 
     private func updateNativeText() {

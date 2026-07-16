@@ -2,12 +2,12 @@
 @MainActor
 public protocol NSTextViewDelegate: NSObjectProtocol {
     /// Tells the delegate that editing changed the text view's text.
-    func textDidChange(_ notification: NSNotification)
+    func textDidChange(_ notification: Notification)
 }
 
 extension NSTextViewDelegate {
     /// Default no-op so delegates only implement the callbacks they need.
-    public func textDidChange(_ notification: NSNotification) {}
+    public func textDidChange(_ notification: Notification) {}
 }
 
 /// A multiline text editing view.
@@ -394,7 +394,7 @@ open class NSTextView: NSControl, NSFontChanging {
         if allowsUndo && previousText != text {
             registerTypingUndo(previousText: previousText, text: text)
         }
-        winMainActor { delegate?.textDidChange(NSNotification(name: Self.textDidChangeNotification, object: self)) }
+        winMainActor { delegate?.textDidChange(Notification(name: Notification.Name(Self.textDidChangeNotification), object: self)) }
     }
 
     /// Registers undo state for one native edit, coalescing typing bursts.
@@ -461,7 +461,7 @@ open class NSTextView: NSControl, NSFontChanging {
         string = text
         objectValue = text
         selectedRange = NSMakeRange(text.utf16.count, 0)
-        winMainActor { delegate?.textDidChange(NSNotification(name: Self.textDidChangeNotification, object: self)) }
+        winMainActor { delegate?.textDidChange(Notification(name: Notification.Name(Self.textDidChangeNotification), object: self)) }
     }
 }
 

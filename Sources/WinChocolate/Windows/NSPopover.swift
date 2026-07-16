@@ -1,30 +1,30 @@
 /// The methods a popover delegate can implement to observe its lifecycle.
 public protocol NSPopoverDelegate: NSObjectProtocol {
     /// Tells the delegate the popover is about to show.
-    func popoverWillShow(_ notification: NSNotification)
+    func popoverWillShow(_ notification: Notification)
 
     /// Tells the delegate the popover has shown.
-    func popoverDidShow(_ notification: NSNotification)
+    func popoverDidShow(_ notification: Notification)
 
     /// Tells the delegate the popover is about to close.
-    func popoverWillClose(_ notification: NSNotification)
+    func popoverWillClose(_ notification: Notification)
 
     /// Tells the delegate the popover has closed.
-    func popoverDidClose(_ notification: NSNotification)
+    func popoverDidClose(_ notification: Notification)
 }
 
 extension NSPopoverDelegate {
     /// Default no-op so delegates only implement the callbacks they need.
-    public func popoverWillShow(_ notification: NSNotification) {}
+    public func popoverWillShow(_ notification: Notification) {}
 
     /// Default no-op so delegates only implement the callbacks they need.
-    public func popoverDidShow(_ notification: NSNotification) {}
+    public func popoverDidShow(_ notification: Notification) {}
 
     /// Default no-op so delegates only implement the callbacks they need.
-    public func popoverWillClose(_ notification: NSNotification) {}
+    public func popoverWillClose(_ notification: Notification) {}
 
     /// Default no-op so delegates only implement the callbacks they need.
-    public func popoverDidClose(_ notification: NSNotification) {}
+    public func popoverDidClose(_ notification: Notification) {}
 }
 
 /// A transient popover window.
@@ -141,8 +141,8 @@ open class NSPopover: NSObject {
         delegate?.popoverDidClose(notification())
     }
 
-    private func notification() -> NSNotification {
-        NSNotification(name: "NSPopoverNotification", object: self)
+    private func notification() -> Notification {
+        Notification(name: Notification.Name("NSPopoverNotification"), object: self)
     }
 
     private func existingOrNewPanel() -> NSPanel {

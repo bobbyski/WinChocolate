@@ -19,11 +19,11 @@ public protocol NSToolbarDelegate: NSObjectProtocol {
 
     /// Called just before an item is added to the toolbar; the item rides
     /// `notification.userInfo?["item"]`, matching AppKit.
-    func toolbarWillAddItem(_ notification: NSNotification)
+    func toolbarWillAddItem(_ notification: Notification)
 
     /// Called after an item is removed from the toolbar; the item rides
     /// `notification.userInfo?["item"]`, matching AppKit.
-    func toolbarDidRemoveItem(_ notification: NSNotification)
+    func toolbarDidRemoveItem(_ notification: Notification)
 }
 
 public extension NSToolbarDelegate {
@@ -49,10 +49,10 @@ public extension NSToolbarDelegate {
     }
 
     /// Default no-op will-add hook.
-    func toolbarWillAddItem(_ notification: NSNotification) {}
+    func toolbarWillAddItem(_ notification: Notification) {}
 
     /// Default no-op did-remove hook.
-    func toolbarDidRemoveItem(_ notification: NSNotification) {}
+    func toolbarDidRemoveItem(_ notification: Notification) {}
 }
 
 /// A toolbar attached to an `NSWindow`.
@@ -256,13 +256,13 @@ open class NSToolbar: NSObject {
     /// Fires the AppKit will-add hooks: the delegate callback and the
     /// `willAddItemNotification` posting, with the item under `"item"`.
     private func notifyWillAdd(_ item: NSToolbarItem) {
-        delegate?.toolbarWillAddItem(NSNotification(name: Self.willAddItemNotification.rawValue, object: self, userInfo: ["item": item]))
+        delegate?.toolbarWillAddItem(Notification(name: Notification.Name(Self.willAddItemNotification.rawValue), object: self, userInfo: ["item": item]))
         NotificationCenter.default.post(name: Self.willAddItemNotification, object: self, userInfo: ["item": item])
     }
 
     /// Fires the AppKit did-remove hooks (delegate + notification).
     private func notifyDidRemove(_ item: NSToolbarItem) {
-        delegate?.toolbarDidRemoveItem(NSNotification(name: Self.didRemoveItemNotification.rawValue, object: self, userInfo: ["item": item]))
+        delegate?.toolbarDidRemoveItem(Notification(name: Notification.Name(Self.didRemoveItemNotification.rawValue), object: self, userInfo: ["item": item]))
         NotificationCenter.default.post(name: Self.didRemoveItemNotification, object: self, userInfo: ["item": item])
     }
 
@@ -1230,8 +1230,14 @@ open class NSToolbarView: NSView {
             return max(item.minSize.width, total)
         }
 
+        // `minSize`/`maxSize` bound the item's CONTENT (the icon box) — the
+        // label renders below and may be wider, as on Apple, where "Disable
+        // Save" shows in full under a 32×32 item.
+        let showsLabel = mode != .iconOnly
+        let labelWidth = showsLabel ? CGFloat(max(28, item.label.count * 6)) + 8 : 0
         let naturalWidth = standardNaturalWidth(for: item, mode: mode)
-        return max(item.minSize.width, min(item.maxSize.width, naturalWidth))
+        let contentWidth = max(item.minSize.width, min(item.maxSize.width, naturalWidth))
+        return max(contentWidth, labelWidth)
     }
 
     /// The natural width of a standard (composite icon/label) item in a mode.

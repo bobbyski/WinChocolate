@@ -1,12 +1,12 @@
 /// The methods a split view delegate uses to respond to pane resizing.
 public protocol NSSplitViewDelegate: NSObjectProtocol {
     /// Tells the delegate that pane frames changed.
-    func splitViewDidResizeSubviews(_ notification: NSNotification)
+    func splitViewDidResizeSubviews(_ notification: Notification)
 }
 
 extension NSSplitViewDelegate {
     /// Default no-op so delegates only implement the callbacks they need.
-    public func splitViewDidResizeSubviews(_ notification: NSNotification) {}
+    public func splitViewDidResizeSubviews(_ notification: Notification) {}
 }
 
 /// A container that divides its bounds between child views.
@@ -124,7 +124,7 @@ open class NSSplitView: NSView {
 
         needsDisplay = true
         updateCursorRegions()
-        delegate?.splitViewDidResizeSubviews(NSNotification(name: Self.didResizeSubviewsNotification, object: self))
+        delegate?.splitViewDidResizeSubviews(Notification(name: Notification.Name(Self.didResizeSubviewsNotification), object: self))
     }
 
     /// Recalculates child pane frames to evenly fill the split view.

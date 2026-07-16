@@ -14,7 +14,7 @@ public protocol NSTableViewDataSource: NSObjectProtocol {
     /// drag out of the table (a `String`, file `URL`, or `NSPasteboardItem`), or
     /// `nil` if the row is not draggable — matching AppKit's
     /// `tableView(_:pasteboardWriterForRow:)`.
-    func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> Any?
+    func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> NSPasteboardWriting?
 
     /// Accepts a drop at a target row, returning whether it was consumed —
     /// AppKit's exact `tableView(_:acceptDrop:row:dropOperation:)`. Covers
@@ -30,7 +30,7 @@ public protocol NSTableViewDataSource: NSObjectProtocol {
 @MainActor
 public protocol NSTableViewDelegate: NSObjectProtocol {
     /// Called after the selected row changes.
-    func tableViewSelectionDidChange(_ notification: NSNotification)
+    func tableViewSelectionDidChange(_ notification: Notification)
 
     /// Returns a view for a row/column in view-based table configurations.
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView?
@@ -55,7 +55,7 @@ public extension NSTableViewDataSource {
     func tableView(_ tableView: NSTableView, setObjectValue object: Any?, for tableColumn: NSTableColumn?, row: Int) {}
 
     /// Default: rows are not draggable out of the table.
-    func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> Any? {
+    func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> NSPasteboardWriting? {
         nil
     }
 
@@ -67,7 +67,7 @@ public extension NSTableViewDataSource {
 
 public extension NSTableViewDelegate {
     /// Default table selection notification.
-    func tableViewSelectionDidChange(_ notification: NSNotification) {}
+    func tableViewSelectionDidChange(_ notification: Notification) {}
 
     /// Default view-based table hook.
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
@@ -141,6 +141,22 @@ open class NSTableView: NSControl {
 
     /// The external-destination source mask.
     package var winExternalDragOperationMask: NSDragOperation = [.copy, .link, .generic]
+
+    /// The drop row/operation a data source retargeted the current drop to via
+    /// `setDropRow(_:dropOperation:)`.
+    package var winProposedDropRow: Int = -1
+    package var winProposedDropOperation: DropOperation = .above
+
+    /// Retargets the current drop to a row and operation — AppKit's
+    /// `setDropRow(_:dropOperation:)`. Called from `validateDrop` to convert a
+    /// proposed `.on` (pointer over a row body) into the reorder gap (`.above`),
+    /// which is the only way to make the whole table a valid reorder target.
+    /// WinChocolate's drawn reorder path already lands on the inter-row gap, so
+    /// this records the retarget for source-compatibility with that recipe.
+    open func setDropRow(_ row: Int, dropOperation: DropOperation) {
+        winProposedDropRow = row
+        winProposedDropOperation = dropOperation
+    }
 
     /// Whether a reorder drag may start from a row: the explicit handler
     /// (framework-internal path), or AppKit's recipe — a `.move` local mask
@@ -703,8 +719,43 @@ open class NSTableView: NSControl {
         selectedRowIndexes.contains(row)
     }
 
-    /// Scrolls a row into view. Stored for compatibility; native scrolling is future work.
-    open func scrollRowToVisible(_ row: Int) {}
+    /// Scrolls the enclosing scroll view so a row is visible — AppKit's
+    /// `scrollRowToVisible(_:)`. Uses the drawn table's row geometry
+    /// (`winRowY`/`winRowHeightAt`) and nudges the clip view only as far as
+    /// needed, exactly like AppKit (an already-visible row does not move).
+    open func scrollRowToVisible(_ row: Int) {
+        guard row >= 0, row < numberOfRows else {
+            return
+        }
+
+        // A native list peer scrolls itself (LVM_ENSUREVISIBLE); the clip-view
+        // nudge below is the drawn table's mechanism.
+        if !winIsDrawn, let nativeHandle {
+            realizedBackend?.scrollTableRowToVisible(row, for: nativeHandle)
+            return
+        }
+
+        guard let scrollView = enclosingScrollView else {
+            return
+        }
+
+        let clip = scrollView.contentView
+        let rowTop = winIsDrawn ? winRowY(row) : CGFloat(row) * rowHeight
+        let rowHeightValue = winIsDrawn ? winRowHeightAt(row) : rowHeight
+        let visible = clip.documentVisibleRect
+
+        var origin = visible.origin
+        if rowTop < visible.origin.y {
+            origin.y = rowTop
+        } else if rowTop + rowHeightValue > visible.origin.y + visible.size.height {
+            origin.y = rowTop + rowHeightValue - visible.size.height
+        } else {
+            return
+        }
+
+        clip.scroll(to: origin)
+        scrollView.reflectScrolledClipView(clip)
+    }
 
     /// Scrolls a column into view. Stored for compatibility; native scrolling is future work.
     open func scrollColumnToVisible(_ column: Int) {}
@@ -1047,7 +1098,7 @@ open class NSTableView: NSControl {
             needsDisplay = true
         }
         winInternalSelectionChanged?(self)
-        winMainActor { winEffectiveDelegate?.tableViewSelectionDidChange(NSNotification(name: Self.selectionDidChangeNotification, object: self)) }
+        winMainActor { winEffectiveDelegate?.tableViewSelectionDidChange(Notification(name: Notification.Name(Self.selectionDidChangeNotification), object: self)) }
     }
 }
 

@@ -22,5 +22,11 @@ public func sqrt(_ x: Double) -> Double
 @_silgen_name("atan2")
 public func atan2(_ y: Double, _ x: Double) -> Double
 
+@_silgen_name("acos")
+public func acos(_ x: Double) -> Double
+
+@_silgen_name("tan")
+public func tan(_ x: Double) -> Double
+
 @_silgen_name("pow")
 public func pow(_ base: Double, _ exponent: Double) -> Double

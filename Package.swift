@@ -33,6 +33,12 @@ let package = Package(
         // genuinely are the AppKit objects.
         .target(
             name: "WinCoreGraphics",
+            dependencies: [
+                // CoreFoundation sits below CoreGraphics on Apple; here that is
+                // WinFoundation, which supplies `Data`/`CFData` for
+                // `CGDataProvider` and the bitmap `CGImage` initializer.
+                .product(name: "WinFoundation", package: "WinFoundation")
+            ],
             swiftSettings: [
                 .swiftLanguageVersion(.v5)
             ]
