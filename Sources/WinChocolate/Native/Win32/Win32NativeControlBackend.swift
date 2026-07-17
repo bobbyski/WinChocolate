@@ -179,7 +179,16 @@ public final class Win32NativeControlBackend: NativeControlBackend {
     /// Converts a device-pixel value back to point space.
     func winToPoints(_ value: CGFloat) -> CGFloat { value / winDeviceScale }
 
+    /// The pump that lets `RunLoop.main` drive the Win32 message loop.
+    public func makeRunLoopPump() -> RunLoopPlatformPump? {
+        Win32RunLoopPump()
+    }
+
     /// Starts the native Windows event loop.
+    ///
+    /// Retained as the fallback for `NSApplication.run()` when no run-loop pump
+    /// is used; the pump path (the default on Win32) drives the same dispatch
+    /// through `RunLoop.main`.
     public func runApplication() {
         var message = MSG()
         while winGetMessageW(&message, nil, 0, 0) > 0 {

@@ -24,26 +24,7 @@ import WinChocolate
 import AppKit
 #endif
 
-#if canImport(WinChocolate)
-// The framework defaults to the modern presentation (ComCtl32 v6 visual
-// styles, plan 8.4); pass --classic to compare against the unthemed classic
-// look. Must be selected before the application (and its backend) is
-// created — the binding is one-way for the process.
-if CommandLine.arguments.contains("--classic") {
-    WinPresentation.selected = .classic
-}
-#endif
-
 let app = NSApplication.shared
-#if canImport(LinChocolate)
-// The one Linux-specific line: install the native GTK backend before any
-// windows/controls are created (WinChocolate wires its Win32 backend itself).
-app.nativeBackend = GTKNativeControlBackend()
-// This demo is authored top-left (Win32/WinChocolate use a top-left origin).
-// LinChocolate defaults to AppKit's bottom-left origin for its own demos, so opt
-// this one into a top-left origin so subview Y coordinates match WinChocolate.
-NSView.defaultIsFlipped = true
-#endif
 
 // The demo follows the Windows system theme by default (AppKit's behavior:
 // no override means the effective appearance tracks the system). --light and
@@ -82,6 +63,13 @@ final class DemoContentView: NSView {
     /// The demo is authored in top-left coordinates (see `DemoFilledView`).
     override var isFlipped: Bool {
         true
+    }
+
+    /// Live system theme switch: AppKit calls this after the view's effective
+    /// appearance changes, so the demo refreshes its appearance-derived colors
+    /// here — the AppKit-standard hook, identical on every target.
+    override func viewDidChangeEffectiveAppearance() {
+        applyLiveAppearanceRefresh()
     }
 
     var onBlankAreaMouseDown: (@MainActor (NSEvent) -> Void)?
@@ -2482,11 +2470,9 @@ formStatusCell.stringValue = "Native"
 //    old-style bezel that reads as a heavy white outline in dark mode, unlike every
 //    other field on the page. It has no bezelStyle, so the modern rounded bezel is
 //    unreachable; a plain border is the closest match to the rest of the page.
-#if !canImport(WinChocolate) && !canImport(LinChocolate)
 form.cellSize = NSMakeSize(256, 26)
 form.setBezeled(false)
 form.setBordered(true)
-#endif
 // The NSTextField rows Apple points to instead of NSForm. Nothing to configure beyond
 // the captions above: an NSTextField is already an editable, bezelled field, so these
 // match every other text field on the page by construction.
@@ -2816,146 +2802,12 @@ nibStatusLabel.isBordered = false
 nibStatusLabel.drawsBackground = false
 nibPage.addSubview(nibStatusLabel)
 
-#if canImport(WinChocolate) || canImport(LinChocolate)
-
-/// Stands in for the xib's `DemoNibPanelController` File's Owner: the xib's
-/// `<outlet>` connections resolve against this object, and the demo reads the
-/// controls back through those records (the 15.4 wiring model).
-final class DemoNibOwner {}
-let nibOwner = DemoNibOwner()
-var nibIncrementCount = 0
-do {
-    let xibPath = demoResourcePath(named: "DemoNibPanel", ofType: "xib")
-    if let xibData = try? Data(contentsOf: URL(fileURLWithPath: xibPath)) {
-        let nib = NSNib(nibData: xibData)
-        if let instance = nib.winInstantiate(withOwner: nibOwner),
-           let panel = instance.topLevelObjects.compactMap({ $0 as? NSView }).first {
-            panel.frame = NSMakeRect(24, 52, panel.frame.size.width, panel.frame.size.height)
-            nibPage.addSubview(panel)
-
-            // Manual outlet wiring through the xib identifiers.
-            let countLabel = instance.view(withIdentifier: "nibCountLabel") as? NSTextField
-            if let button = instance.view(withIdentifier: "nibButton") as? NSButton {
-                button.onAction = { _ in
-                    nibIncrementCount += 1
-                    countLabel?.stringValue = "\(nibIncrementCount)"
-                    statusLabel.stringValue = "Nib button clicked (count \(nibIncrementCount)) — action \(button.action?.name ?? "?") wired from the xib"
-                }
-            }
-            if let slider = instance.view(withIdentifier: "nibSlider") as? NSSlider {
-                slider.onAction = { control in
-                    statusLabel.stringValue = "Nib slider: \((control as? NSSlider)?.doubleValue ?? 0)"
-                }
-            }
-
-            // The Show Outlet Values button reads the live control values back
-            // through the xib's <outlet> connections on File's Owner — the
-            // outlet half of the wiring model (the Increment button proves the
-            // action half). No identifier lookup here: every control below is
-            // resolved from the outlet records the xib declared.
-            let ownerOutlets = instance.connections.filter { $0.kind == .outlet && $0.source === nibOwner }
-            func nibOutlet(_ property: String) -> AnyObject? {
-                ownerOutlets.first { $0.name == property }?.destination
-            }
-            if let showButton = instance.view(withIdentifier: "nibShowButton") as? NSButton {
-                showButton.onAction = { _ in
-                    let field = nibOutlet("nameField") as? NSTextField
-                    let check = nibOutlet("check") as? NSButton
-                    let slider = nibOutlet("slider") as? NSSlider
-                    let popup = nibOutlet("popup") as? NSPopUpButton
-                    let count = nibOutlet("countLabel") as? NSTextField
-                    let alert = NSAlert()
-                    alert.messageText = "Values read through xib outlets"
-                    alert.informativeText = """
-                    nameField: "\(field?.stringValue ?? "?")"
-                    check: \(check?.state == .on ? "on" : "off")
-                    slider: \(slider?.doubleValue ?? 0)
-                    popup: \(popup?.titleOfSelectedItem ?? "?")
-                    countLabel: \(count?.stringValue ?? "?")
-
-                    All five controls were resolved from the <outlet> connections the xib declares on File's Owner — edit the field, toggle the checkbox, drag the slider, then show again.
-                    """
-                    _ = alert.runModal()
-                    statusLabel.stringValue = "Outlet popup shown — \(ownerOutlets.count) outlets resolved from the xib"
-                }
-            }
-
-            let actionWirings = instance.connections.filter { $0.kind == .action }
-            nibStatusLabel.stringValue = "Instantiated \(instance.topLevelObjects.count) top-level object(s), \(instance.objectsByID.count) identified objects, \(actionWirings.count) action connection(s): \(actionWirings.map { $0.name }.joined(separator: ", ")); \(ownerOutlets.count) outlet(s) on File's Owner: \(ownerOutlets.map { $0.name }.joined(separator: ", "))"
-        } else {
-            nibStatusLabel.stringValue = "DemoNibPanel.xib failed to instantiate."
-        }
-    } else {
-        nibStatusLabel.stringValue = "DemoNibPanel.xib not found at \(xibPath)."
-    }
-}
-#else
-// macOS: Apple's automatic @IBOutlet/@IBAction binding.
-//
-// File's Owner in the xib is `customClass="DemoNibPanelController"` with five <outlet>
-// connections and two <action>s. AppKit resolves every one of them through the ObjC
-// runtime during `instantiate(withOwner:topLevelObjects:)` — this class only has to
-// declare them.
-final class DemoNibPanelController: NSObject {
-    @IBOutlet weak var nameField: NSTextField?
-    @IBOutlet weak var check: NSButton?
-    @IBOutlet weak var slider: NSSlider?
-    @IBOutlet weak var popup: NSPopUpButton?
-    @IBOutlet weak var countLabel: NSTextField?
-
-    var increments = 0
-
-    @IBAction func increment(_ sender: Any?) {
-        increments += 1
-        countLabel?.stringValue = "\(increments)"
-        MainActor.assumeIsolated {
-            statusLabel.stringValue = "Nib button clicked (count \(increments)) — action increment: wired from the xib"
-        }
-    }
-
-    @IBAction func showValues(_ sender: Any?) {
-        // Reads the live controls straight off the outlets AppKit bound — the outlet half
-        // of the wiring model, exactly as the Windows/Linux branch does through records.
-        MainActor.assumeIsolated {
-            let alert = NSAlert()
-            alert.messageText = "Values read through xib outlets"
-            alert.informativeText = """
-            nameField: "\(nameField?.stringValue ?? "?")"
-            check: \(check?.state == .on ? "on" : "off")
-            slider: \(slider?.doubleValue ?? 0)
-            popup: \(popup?.titleOfSelectedItem ?? "?")
-            countLabel: \(countLabel?.stringValue ?? "?")
-
-            All five controls were bound automatically from the <outlet> connections the xib declares on File's Owner — edit the field, toggle the checkbox, drag the slider, then show again.
-            """
-            _ = alert.runModal()
-            statusLabel.stringValue = "Outlet popup shown — 5 outlets bound automatically by AppKit"
-        }
-    }
-}
-
-let nibOwner = DemoNibPanelController()
-do {
-    // AppKit loads the COMPILED nib (run-mac.sh runs ibtool over the xib).
-    let nibPath = demoResourcePath(named: "DemoNibPanel", ofType: "nib")
-    if let nibData = try? Data(contentsOf: URL(fileURLWithPath: nibPath)) {
-        var topLevel: NSArray?
-        let nib = NSNib(nibData: nibData, bundle: nil)
-        if nib.instantiate(withOwner: nibOwner, topLevelObjects: &topLevel),
-           let panel = (topLevel as? [Any])?.compactMap({ $0 as? NSView }).first {
-            panel.frame = NSMakeRect(24, 52, panel.frame.size.width, panel.frame.size.height)
-            nibPage.addSubview(panel)
-            let bound = [nibOwner.nameField, nibOwner.check, nibOwner.slider,
-                         nibOwner.popup, nibOwner.countLabel].compactMap { $0 }.count
-            nibStatusLabel.stringValue = "Instantiated \((topLevel as? [Any])?.count ?? 0) top-level object(s); \(bound)/5 outlets and 2 actions (increment:, showValues:) bound automatically by AppKit from the xib's connections."
-        } else {
-            nibStatusLabel.stringValue = "DemoNibPanel.nib failed to instantiate."
-        }
-    } else {
-        nibStatusLabel.stringValue = "DemoNibPanel.nib not found at \(nibPath) — run-mac.sh compiles it from the xib with ibtool."
-    }
-}
-#endif
+// The nib/xib panel: real @IBOutlet/@IBAction auto-binding on macOS, the same
+// wiring read from the xib's connection records on Windows/Linux. Both live in
+// DemoNibConveniences.swift (the sanctioned home for ObjC-interop-divergent
+// demo code — @IBOutlet/@IBAction can't compile off Apple), so this call is
+// import-only here.
+installDemoNibPanel()
 
 contentView.nextKeyView = button
 editableTextField.nextKeyView = secureTextField
@@ -3608,21 +3460,10 @@ tableView.onAction = { control in
         if let sortDescriptor = table.sortDescriptors.first {
             let selectedValues = selectedTableRowValues(table)
             tableDataSource.sort(using: sortDescriptor)
-            #if canImport(WinChocolate) || canImport(LinChocolate)
-            // Windows-only seam: defer the reload past the native header-click
-            // notification (reentrancy protection in the classic backend).
-            NSApp.nativeBackend.dispatchAsync {
-                table.reloadData()
-                if let selectedValues {
-                    suppressNextTableSelectionStatus = selectTableRow(matching: selectedValues, in: table)
-                }
-            }
-            #else
             table.reloadData()
             if let selectedValues {
                 suppressNextTableSelectionStatus = selectTableRow(matching: selectedValues, in: table)
             }
-            #endif
             statusLabel.stringValue = "\(columnSummary), sorted \(sortDescriptor.ascending ? "ascending" : "descending")"
         } else {
             statusLabel.stringValue = columnSummary
@@ -3765,19 +3606,15 @@ valuesPage.addSubview(timerTickLabel)
 // A repeating run-loop Timer ticking the label once per second.
 var timerTicks = 0
 Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
-    // Real Foundation (LinChocolate and AppKit) types this block @Sendable, so
-    // touching the main-actor UI globals directly won't type-check; hop to the
-    // main actor. WinChocolate's WinFoundation block inherits the main actor, so
-    // it stays synchronous and unchanged.
-    #if canImport(WinChocolate)
-    timerTicks += 1
-    timerTickLabel.stringValue = "Timer: \(timerTicks)s"
-    #else
-    Task { @MainActor in
+    // Foundation types this block @Sendable, so touching the main-actor UI
+    // globals directly won't type-check. The timer fires on the main thread on
+    // every target (Foundation schedules on the main run loop; WinChocolate's
+    // WM_TIMER is dispatched on the UI thread), so assume that isolation and
+    // update synchronously — the same line runs everywhere, no async hop.
+    MainActor.assumeIsolated {
         timerTicks += 1
         timerTickLabel.stringValue = "Timer: \(timerTicks)s"
     }
-    #endif
 }
 
 drawingPage.addSubview(canvasLabel)
@@ -4283,20 +4120,6 @@ toggleToolbarMenuItem.onAction = { _ in
     window.toggleToolbarShown(nil)
 }
 viewMenu.addItem(toggleToolbarMenuItem)
-// `winAppleLook` is the sanctioned presentation exception (Project Goal 1:
-// toolbars keep the Apple look on Windows) — a WinChocolate-only surface, so
-// the toggle exists only where WinChocolate is the framework. On real AppKit
-// the toolbar already IS Apple's; there is nothing to toggle.
-#if canImport(WinChocolate) || canImport(LinChocolate)
-let metallicMenuItem = NSMenuItem(title: "Use Metallic Toolbar", action: nil, keyEquivalent: "")
-metallicMenuItem.onAction = { item in
-    let metallic = demoToolbar.winAppleLook == .metallic
-    demoToolbar.winAppleLook = metallic ? .unified : .metallic
-    item.state = metallic ? .off : .on
-    statusLabel.stringValue = "Toolbar look: \(metallic ? "unified" : "metallic")"
-}
-viewMenu.addItem(metallicMenuItem)
-#endif
 viewMenuItem.submenu = viewMenu
 menuBar.addItem(viewMenuItem)
 app.mainMenu = menuBar
@@ -4783,19 +4606,9 @@ func applyLiveAppearanceRefresh() {
     contentView.needsDisplay = true
 }
 
-// Live system theme switches: AppKit has no notification for effective-
-// appearance changes (apps use KVO, which is gated on the 12.1 reflection
-// layer), so this observer is a fenced platform seam — the chocolates post
-// their own notification after re-theming.
-#if canImport(WinChocolate) || canImport(LinChocolate)
-_ = NotificationCenter.default.addObserver(
-    forName: NSApplication.winEffectiveAppearanceDidChangeNotification,
-    object: nil,
-    queue: nil
-) { _ in
-    applyLiveAppearanceRefresh()
-}
-#endif
+// Live system theme switches refresh through `DemoContentView`'s
+// `viewDidChangeEffectiveAppearance()` override (the AppKit-standard hook) —
+// no observer needed here.
 
 // MARK: - Captions
 //
@@ -4892,34 +4705,9 @@ pageSelector.selectItem(at: initialPage)
 showDemoPage(initialPage)
 updateFocusDisplay()
 
-#if canImport(WinChocolate) || canImport(LinChocolate)
-// Windows/Linux-only build diagnostics: `--diagnose` probes the native peer
-// plumbing (backend surface, not AppKit) — a legitimate platform seam (16.2).
-let demoRunsDiagnostics = CommandLine.arguments.contains("--diagnose")
-#else
-let demoRunsDiagnostics = false
-#endif
-
-if demoRunsDiagnostics {
-    #if canImport(WinChocolate) || canImport(LinChocolate)
-    // Validate native window creation without ordering the window front so
-    // build scripts do not flash a full demo window on screen.
-    _ = window.realizeNativePeer()
-    window.makeMain()
-    window.makeKey()
-    print("Window native handle: \(window.nativeHandle?.rawValue ?? 0)")
-    print("App windows: \(NSApp.windows.count)")
-    print("Is key window: \(window.isKeyWindow)")
-    print("Is main window: \(window.isMainWindow)")
-    print("Demo artwork path: \(demoArtworkPath)")
-    print("Demo screen artwork path: \(demoScreenArtworkPath)")
-    window.close()
-    #endif
-} else {
-    statusLabel.stringValue = "Ready - window shown"
-    window.makeKeyAndOrderFront(nil)
-    statusLabel.stringValue = window.isKeyWindow && window.isMainWindow
-        ? "Ready - key/main window"
-        : "Ready - window shown"
-    app.run()
-}
+statusLabel.stringValue = "Ready - window shown"
+window.makeKeyAndOrderFront(nil)
+statusLabel.stringValue = window.isKeyWindow && window.isMainWindow
+    ? "Ready - key/main window"
+    : "Ready - window shown"
+app.run()

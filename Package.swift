@@ -98,6 +98,21 @@ let package = Package(
                     .when(platforms: [.windows])
                 )
             ]
+        ),
+        // A separate app that exercises the run loop and timers (request #7).
+        // Same tri-target rule as the main demo; the frozen demo is untouched.
+        .executableTarget(
+            name: "RunLoopDemo",
+            dependencies: [
+                .target(name: "WinChocolate", condition: .when(platforms: [.windows]))
+            ],
+            path: "Demo/RunLoopDemo",
+            linkerSettings: [
+                .unsafeFlags(
+                    ["-Xlinker", "/SUBSYSTEM:WINDOWS", "-Xlinker", "/ENTRY:mainCRTStartup"],
+                    .when(platforms: [.windows])
+                )
+            ]
         )
     ]
 )

@@ -63,6 +63,16 @@ public final class NSApplication: NSObject {
     /// Posts `winEffectiveAppearanceDidChangeNotification` (called by the Win32
     /// backend after it refreshes windows for a live system theme switch).
     public func winPostEffectiveAppearanceDidChange() {
+        // AppKit-faithful hook first: every view learns its effective appearance
+        // changed via `viewDidChangeEffectiveAppearance()`. App code overrides
+        // that (as on macOS) rather than observing a Windows-only notification.
+        // This always runs on the UI (main) thread — the theme-change message
+        // arrives there — so the main-actor fan-out is a statement of fact.
+        MainActor.assumeIsolated {
+            for window in windows {
+                window.contentView?.winPropagateEffectiveAppearanceChange()
+            }
+        }
         NotificationCenter.default.post(
             name: NSApplication.winEffectiveAppearanceDidChangeNotification,
             object: self
@@ -109,10 +119,20 @@ public final class NSApplication: NSObject {
     }
 
     /// Runs the application lifecycle and native event loop.
+    ///
+    /// When the backend provides a run-loop pump, the app is driven by
+    /// `RunLoop.main.run()` — window messages and Foundation timers share one
+    /// loop, as on AppKit. A backend without a pump (the in-memory test
+    /// backend) falls back to the bare message loop.
     public func run() {
         delegate?.applicationWillFinishLaunching(notification(named: "NSApplicationWillFinishLaunchingNotification"))
         delegate?.applicationDidFinishLaunching(notification(named: "NSApplicationDidFinishLaunchingNotification"))
-        nativeBackend.runApplication()
+        if let pump = nativeBackend.makeRunLoopPump() {
+            RunLoop.main.installPlatformPump(pump)
+            RunLoop.main.run()
+        } else {
+            nativeBackend.runApplication()
+        }
     }
 
     /// Windows currently running modal sessions, outermost first.

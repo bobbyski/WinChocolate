@@ -424,7 +424,10 @@ extension Win32NativeControlBackend {
                 tableClickedRows[handle.rawValue] = -1
                 tableClickedColumns[handle.rawValue] = clickedColumn
                 tableSuppressedColumnClicks[handle.rawValue] = clickedColumn
-                action()
+                // Defer the sort action past this header notification so a
+                // reloadData() inside it never mutates the native list
+                // mid-notification (classic-backend reentrancy protection).
+                dispatchAsync { action() }
                 return 0
             }
 
@@ -575,7 +578,9 @@ extension Win32NativeControlBackend {
 
                 tableClickedRows[handle.rawValue] = -1
                 tableClickedColumns[handle.rawValue] = clickedColumn
-                action()
+                // Defer the sort action past this column-click notification
+                // (classic-backend reentrancy protection; see the header case).
+                dispatchAsync { action() }
                 return 0
             case nmClick:
                 guard let action = controlActions[handle.rawValue] else {

@@ -7315,6 +7315,166 @@ func testWinFoundationUUIDCodableMatchesAppleForm() {
     expect(threw, "Decoding an invalid UUID string should throw a DecodingError.")
 }
 
+// Models for the JSON coder tests.
+private struct JSONAddress: Codable, Equatable { let street: String; let zip: Int }
+private struct JSONPerson: Codable, Equatable {
+    let name: String
+    let age: Int
+    let height: Double
+    let admin: Bool
+    let nickname: String?
+    let tags: [String]
+    let address: JSONAddress
+    let id: UUID
+}
+private struct JSONSnake: Codable, Equatable { let firstName: String; let lastNameHTML: String; let urlString: String }
+private struct JSONDates: Codable, Equatable { let d: Date }
+
+@MainActor
+func testWinFoundationJSONCoderMatchesAppleForm() {
+    // Compact output: keys in declaration order, escaped quote and slash and
+    // tab, nil optional omitted — byte-for-byte Apple's default JSONEncoder.
+    let person = JSONPerson(
+        name: "Bobby \"B\"", age: 42, height: 1.75, admin: true, nickname: nil,
+        tags: ["a", "b/c"], address: JSONAddress(street: "1 Main\tSt", zip: 90210),
+        id: UUID(uuidString: "E621E1F8-C36C-495A-93FC-0C247A3E6E5F")!)
+    let compact = try! JSONEncoder().encode(person)
+    let expectedCompact = "{\"name\":\"Bobby \\\"B\\\"\",\"age\":42,\"height\":1.75,\"admin\":true,\"tags\":[\"a\",\"b\\/c\"],\"address\":{\"street\":\"1 Main\\tSt\",\"zip\":90210},\"id\":\"E621E1F8-C36C-495A-93FC-0C247A3E6E5F\"}"
+    expect(String(decoding: compact, as: UTF8.self) == expectedCompact,
+        "Compact JSON did not match Apple's form; got \(String(decoding: compact, as: UTF8.self)).")
+
+    // Round-trips its own output.
+    let back = try! JSONDecoder().decode(JSONPerson.self, from: compact)
+    expect(back == person, "JSON did not round-trip a model with nested and optional fields.")
+
+    // Integral doubles print without a fractional part; fractions keep precision.
+    let numbers = try! JSONEncoder().encode([5.0, 5.5, -3.25, 100.0])
+    expect(String(decoding: numbers, as: UTF8.self) == "[5,5.5,-3.25,100]",
+        "Number formatting did not match Apple; got \(String(decoding: numbers, as: UTF8.self)).")
+
+    // Date defaults to seconds since the 2001 reference date, a bare number.
+    let dateJSON = try! JSONEncoder().encode(JSONDates(d: Date(timeIntervalSinceReferenceDate: 0)))
+    expect(String(decoding: dateJSON, as: UTF8.self) == "{\"d\":0}",
+        "Default Date encoding was not seconds-since-2001; got \(String(decoding: dateJSON, as: UTF8.self)).")
+
+    // Pretty-printed + sorted keys: two-space indent, ": " separator, sorted.
+    let pretty = JSONEncoder()
+    pretty.outputFormatting = [.prettyPrinted, .sortedKeys]
+    let prettyOut = String(decoding: try! pretty.encode(JSONAddress(street: "x", zip: 1)), as: UTF8.self)
+    expect(prettyOut == "{\n  \"street\" : \"x\",\n  \"zip\" : 1\n}",
+        "Pretty-printed output did not match Apple; got \(prettyOut).")
+
+    // Snake-case key conversion, including Apple's acronym rule
+    // (lastNameHTML -> last_name_html, not last_name_h_t_m_l).
+    let snakeEncoder = JSONEncoder()
+    snakeEncoder.keyEncodingStrategy = .convertToSnakeCase
+    snakeEncoder.outputFormatting = [.sortedKeys]
+    let snake = String(decoding: try! snakeEncoder.encode(JSONSnake(firstName: "a", lastNameHTML: "b", urlString: "u")), as: UTF8.self)
+    expect(snake == "{\"first_name\":\"a\",\"last_name_html\":\"b\",\"url_string\":\"u\"}",
+        "Snake-case conversion did not match Apple's acronym handling; got \(snake).")
+
+    // Decoding transforms snake_case back to camelCase.
+    let snakeDecoder = JSONDecoder()
+    snakeDecoder.keyDecodingStrategy = .convertFromSnakeCase
+    struct Pair: Codable, Equatable { let firstName: String; let lastName: String }
+    let pair = try! snakeDecoder.decode(Pair.self, from: Data("{\"first_name\":\"x\",\"last_name\":\"y\"}".utf8))
+    expect(pair == Pair(firstName: "x", lastName: "y"), "convertFromSnakeCase did not restore camelCase keys.")
+
+    // Non-ASCII passes through unescaped; control characters are \u-escaped;
+    // both survive a round trip.
+    struct Text: Codable, Equatable { let s: String }
+    let unicode = Text(s: "café\u{1F600}\u{01}")
+    let unicodeJSON = try! JSONEncoder().encode(unicode)
+    expect(String(decoding: unicodeJSON, as: UTF8.self) == "{\"s\":\"café😀\\u0001\"}",
+        "Unicode/control-char escaping did not match Apple; got \(String(decoding: unicodeJSON, as: UTF8.self)).")
+    expect(try! JSONDecoder().decode(Text.self, from: unicodeJSON) == unicode, "Unicode text did not round-trip.")
+
+    // The withoutEscapingSlashes option leaves slashes bare.
+    let noSlash = JSONEncoder()
+    noSlash.outputFormatting = [.withoutEscapingSlashes]
+    let slashed = String(decoding: try! noSlash.encode(Text(s: "a/b")), as: UTF8.self)
+    expect(slashed == "{\"s\":\"a/b\"}", "withoutEscapingSlashes should leave slashes bare; got \(slashed).")
+
+    // secondsSince1970 date strategy on both sides round-trips an exact instant.
+    let secEncoder = JSONEncoder(); secEncoder.dateEncodingStrategy = .secondsSince1970
+    let secDecoder = JSONDecoder(); secDecoder.dateDecodingStrategy = .secondsSince1970
+    let instant = JSONDates(d: Date(timeIntervalSince1970: 1_780_272_000))
+    let secJSON = try! secEncoder.encode(instant)
+    expect(String(decoding: secJSON, as: UTF8.self) == "{\"d\":1780272000}",
+        "secondsSince1970 strategy was wrong; got \(String(decoding: secJSON, as: UTF8.self)).")
+    expect(try! secDecoder.decode(JSONDates.self, from: secJSON) == instant, "secondsSince1970 date did not round-trip.")
+
+    // A malformed document throws rather than crashing.
+    var threw = false
+    do { _ = try JSONDecoder().decode(JSONAddress.self, from: Data("{\"street\":".utf8)) } catch { threw = true }
+    expect(threw, "Malformed JSON should throw a DecodingError.")
+}
+
+@MainActor
+func testWinFoundationRunLoopAndTimer() {
+    // `RunLoop` has no public initializer (as on Apple), so this drives
+    // `RunLoop.main` headlessly and invalidates every timer it adds so nothing
+    // leaks to another test. There is no pump in the test process, so time is
+    // advanced deterministically through `fireTimers(forMode:upTo:)`; the live
+    // pump path is covered by RunLoopDemo.
+    let loop = RunLoop.main
+
+    // A repeating timer fires once per elapsed interval and reschedules.
+    var ticks = 0
+    let repeating = WinFoundation.Timer(timeInterval: 1, repeats: true) { _ in ticks += 1 }
+    loop.add(repeating, forMode: .default)
+    let base = repeating.nextFireDate
+
+    loop.fireTimers(forMode: .default, upTo: base.addingTimeInterval(-0.5))
+    expect(ticks == 0, "A timer fired before its first fire date.")
+
+    loop.fireTimers(forMode: .default, upTo: base)
+    loop.fireTimers(forMode: .default, upTo: base.addingTimeInterval(1))
+    loop.fireTimers(forMode: .default, upTo: base.addingTimeInterval(2))
+    expect(ticks == 3, "A repeating timer did not fire once per interval; got \(ticks).")
+    repeating.invalidate()
+
+    // A non-repeating timer fires once and invalidates itself.
+    var oneShots = 0
+    let oneShot = WinFoundation.Timer(timeInterval: 0, repeats: false) { _ in oneShots += 1 }
+    loop.add(oneShot, forMode: .default)
+    let oneShotDate = oneShot.nextFireDate
+    loop.fireTimers(forMode: .default, upTo: oneShotDate)
+    loop.fireTimers(forMode: .default, upTo: oneShotDate.addingTimeInterval(10))
+    expect(oneShots == 1, "A non-repeating timer fired \(oneShots) times, expected 1.")
+    expect(!oneShot.isValid, "A non-repeating timer stayed valid after firing.")
+
+    // An invalidated timer never fires.
+    var invalidatedFires = 0
+    let stopped = WinFoundation.Timer(timeInterval: 0, repeats: true) { _ in invalidatedFires += 1 }
+    loop.add(stopped, forMode: .default)
+    stopped.invalidate()
+    loop.fireTimers(forMode: .default, upTo: Date(timeIntervalSinceNow: 100))
+    expect(invalidatedFires == 0, "An invalidated timer still fired.")
+
+    // A `.common` timer is serviced (and time-limits the loop) while running
+    // any mode.
+    var commonFires = 0
+    let commonTimer = WinFoundation.Timer(timeInterval: 5, repeats: false) { _ in commonFires += 1 }
+    loop.add(commonTimer, forMode: .common)
+    expect(loop.limitDate(forMode: .default) != nil,
+           "A .common timer should be serviced (and time-limited) in .default mode.")
+    loop.fireTimers(forMode: .default, upTo: commonTimer.nextFireDate)
+    expect(commonFires == 1, "A .common-mode timer did not fire while running .default.")
+
+    // `perform` runs its block on the next iteration; with no pump, one pass of
+    // `run(mode:before:)` drains it and returns.
+    var performed = false
+    loop.perform { performed = true }
+    _ = loop.run(mode: .default, before: Date())
+    expect(performed, "A perform block did not run on the next loop iteration.")
+
+    // `RunLoop.Mode` carries Apple's raw values, so `Timer.publish(on:in:)`
+    // can be spelled the same across Foundations.
+    expect(RunLoop.Mode.default.rawValue == "kCFRunLoopDefaultMode", "RunLoop.Mode.default raw value drifted from Apple's.")
+    expect(RunLoop.Mode.common.rawValue == "kCFRunLoopCommonModes", "RunLoop.Mode.common raw value drifted from Apple's.")
+}
+
 @MainActor
 func testWinFoundationCompatibilitySurface() {
     let url = URL(fileURLWithPath: "C:\\AIResearch\\WinChocolate\\")
@@ -11126,6 +11286,8 @@ testPathControlStoresURLAndPathComponentCells()
 testPathControlComponentURLsAndSelection()
 testWinFoundationCompatibilitySurface()
 testWinFoundationUUIDCodableMatchesAppleForm()
+testWinFoundationJSONCoderMatchesAppleForm()
+testWinFoundationRunLoopAndTimer()
 testWinFoundationCoreTypeGapsClosed()
 testImageViewStoresImageAndUsesNativePeer()
 testTabViewStoresItemsSelectionAndUsesNativePeer()

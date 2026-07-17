@@ -941,6 +941,25 @@ func winGetClientRect(_ hwnd: HWND?, _ rectangle: UnsafeMutablePointer<RECT>?) -
 @_silgen_name("GetMessageW")
 func winGetMessageW(_ message: UnsafeMutablePointer<MSG>, _ hwnd: HWND?, _ minimumMessage: UINT, _ maximumMessage: UINT) -> Int32
 
+@_silgen_name("PeekMessageW")
+func winPeekMessageW(_ message: UnsafeMutablePointer<MSG>, _ hwnd: HWND?, _ minimumMessage: UINT, _ maximumMessage: UINT, _ removeMessage: UINT) -> Int32
+
+@_silgen_name("MsgWaitForMultipleObjects")
+func winMsgWaitForMultipleObjects(_ count: DWORD, _ handles: UnsafePointer<UnsafeMutableRawPointer?>?, _ waitAll: Int32, _ milliseconds: DWORD, _ wakeMask: DWORD) -> DWORD
+
+@_silgen_name("PostThreadMessageW")
+func winPostThreadMessageW(_ threadId: DWORD, _ message: UINT, _ wParam: WPARAM, _ lParam: LPARAM) -> Int32
+
+/// `PM_REMOVE` — dequeue the peeked message.
+let pmRemove: UINT = 0x0001
+/// `QS_ALLINPUT` — wake on any queued input.
+let qsAllInput: DWORD = 0x04FF
+/// Wait-forever timeout for `MsgWaitForMultipleObjects`.
+let infiniteTimeout: DWORD = 0xFFFF_FFFF
+/// `WM_QUIT` / `WM_NULL`.
+let wmQuit: UINT = 0x0012
+let wmNull: UINT = 0x0000
+
 @_silgen_name("GetParent")
 func winGetParent(_ hwnd: HWND?) -> HWND?
 

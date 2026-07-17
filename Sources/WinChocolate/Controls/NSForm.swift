@@ -78,6 +78,39 @@ open class NSForm: NSControl {
         }
     }
 
+    /// Apple's `NSForm` is an `NSMatrix` subclass, and `cellSize` sizes every
+    /// cell. The composed implementation maps the height onto its row height so
+    /// old `cellSize`-driven layout code (which sets a concrete height because
+    /// Apple's default is 0) reads the same; the width is governed by the form's
+    /// own frame, as on a matrix laid out to fit.
+    open var cellSize: NSSize = NSMakeSize(0, 0) {
+        didSet {
+            if cellSize.height > 0 {
+                rowHeight = cellSize.height
+            }
+            layoutRows()
+        }
+    }
+
+    /// Mirrors `NSFormCell`'s bezel flag onto the composed entry fields. Applied
+    /// to existing rows and remembered for rows added later.
+    private var winFieldIsBezeled = true
+    open func setBezeled(_ flag: Bool) {
+        winFieldIsBezeled = flag
+        for row in rows {
+            row.field.isBezeled = flag
+        }
+    }
+
+    /// Mirrors `NSFormCell`'s border flag onto the composed entry fields.
+    private var winFieldIsBordered = false
+    open func setBordered(_ flag: Bool) {
+        winFieldIsBordered = flag
+        for row in rows {
+            row.field.isBordered = flag
+        }
+    }
+
     /// Default width for new entries' title columns. Not API (18.7): Apple's
     /// `NSForm` has no form-level title width — each `NSFormCell.titleWidth`
     /// owns its own (which the layout reads) — `package` for the suite.
@@ -118,6 +151,8 @@ open class NSForm: NSControl {
         cell.titleWidth = titleWidth
         let label = NSTextField.label(withString: title)
         let field = NSTextField.textField(withString: cell.stringValue)
+        field.isBezeled = winFieldIsBezeled
+        field.isBordered = winFieldIsBordered
         field.winInternalTextChanged = { [weak self, weak cell] field in
             if let cell, cell.stringValue != field.stringValue {
                 cell.stringValue = field.stringValue

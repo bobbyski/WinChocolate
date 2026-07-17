@@ -9,7 +9,9 @@
 # built only on real AppKit primitives so it compiles on all three targets.
 #
 # Usage:
-#   ./run-mac.sh                 # build the .app, launch it
+#   ./run-mac.sh                 # build the main demo .app, launch it
+#   ./run-mac.sh runloop         # build & launch the RunLoop/Timer demo instead
+#   ./run-mac.sh runloop --build # …compile it only (the faithfulness gate)
 #   ./run-mac.sh --dark          # demo flags pass straight through …
 #   ./run-mac.sh --page 3        # … (--light/--dark/--page N/--stress/--test)
 #   ./run-mac.sh --test          # run headless self-test, print to the terminal
@@ -19,10 +21,23 @@
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-DEMO_DIR="$HERE/Demo/DemoApplication"
+
+# Optional first argument selects which demo to build (mirrors buildandrun.bat):
+#   (default) / demo / winchocolate  → the main WinChocolate demo
+#   runloop / runloopdemo            → the RunLoop / Timer demo
+# Anything else is left for the demo (e.g. --dark), so `./run-mac.sh --dark`
+# still builds and runs the main demo as before.
+APP_NAME="WinChocolateDemo"
+APP_SUBDIR="DemoApplication"
+case "${1:-}" in
+    runloop|runloopdemo) APP_NAME="RunLoopDemo"; APP_SUBDIR="RunLoopDemo"; shift ;;
+    demo|winchocolate)   APP_NAME="WinChocolateDemo"; APP_SUBDIR="DemoApplication"; shift ;;
+esac
+
+DEMO_DIR="$HERE/Demo/$APP_SUBDIR"
 BUILD="$HERE/.build-mac"
-APP="$BUILD/WinChocolateDemo.app"
-BIN="$APP/Contents/MacOS/WinChocolateDemo"
+APP="$BUILD/$APP_NAME.app"
+BIN="$APP/Contents/MacOS/$APP_NAME"
 RES="$APP/Contents/Resources"
 
 # --- flags handled by the script (everything else passes to the demo) --------
@@ -54,14 +69,14 @@ SOURCES=("$DEMO_DIR"/*.swift)
 rm -rf "$APP"
 mkdir -p "$(dirname "$BIN")" "$RES/Resources"
 
-cat > "$APP/Contents/Info.plist" <<'PLIST'
+cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <key>CFBundleExecutable</key><string>WinChocolateDemo</string>
-    <key>CFBundleIdentifier</key><string>com.winchocolate.demo</string>
-    <key>CFBundleName</key><string>WinChocolate Demo</string>
+    <key>CFBundleExecutable</key><string>$APP_NAME</string>
+    <key>CFBundleIdentifier</key><string>com.winchocolate.${APP_NAME}</string>
+    <key>CFBundleName</key><string>$APP_NAME</string>
     <key>CFBundlePackageType</key><string>APPL</string>
     <key>CFBundleShortVersionString</key><string>1.0</string>
     <key>CFBundleVersion</key><string>1</string>
