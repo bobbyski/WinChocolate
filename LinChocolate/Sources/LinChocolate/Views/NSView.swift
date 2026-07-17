@@ -55,8 +55,11 @@ open class NSView: NSResponder {
     public weak var nextKeyView: NSView?
     public weak var previousKeyView: NSView?
 
-    /// The view's identifier (AppKit's `NSUserInterfaceItemIdentifier`).
-    public var identifier: String?
+    /// The view's identifier — Apple's exact type (`NSUserInterfaceItemIdentifier?`,
+    /// the `NSUserInterfaceItemIdentification` conformance). Was `String?`; the
+    /// migration is what lets ONE shared demo source compare identifiers the
+    /// same way on AppKit and here (the nib panel's manual wiring).
+    public var identifier: NSUserInterfaceItemIdentifier?
 
     /// Opaque backend handle for this view. Exposed for advanced/testing use
     /// (e.g. simulating input against a specific control).
@@ -224,6 +227,13 @@ open class NSView: NSResponder {
     public var effectiveAppearance: NSAppearance {
         NSApplication.shared.effectiveAppearance
     }
+
+    /// AppKit calls this after the view's effective appearance changes (a live
+    /// system light/dark switch). Override to refresh appearance-derived colors;
+    /// the base does nothing. `@MainActor`, matching AppKit — overrides may touch
+    /// main-actor UI state.
+    @MainActor
+    open func viewDidChangeEffectiveAppearance() {}
 
     // MARK: - Drag & drop
 

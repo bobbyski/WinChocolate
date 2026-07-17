@@ -177,6 +177,110 @@ Eastern **Standard** Time.
 
 ---
 
+## 2026-07-16 — Demo conveniences rebuilt: ONE shared file, one `#if` (the import selection)
+
+The original `DemoConveniences.swift` carried behavior-splitting `#if` seams (`@objc`
+dispatch on Darwin vs `perform(_:with:)` off it; `Notification` vs `NSNotification`). Two
+rulings shaped the rebuild: *"You can create convenience functions for things like
+onAction — so long as they require no platform specifics and work in AppKit too"*, then
+*"Mac only is not allowed — same sources, one `#if` for header selection."* (A first cut
+that split the trampoline into a Mac-only file is gone; every target compiles the same
+file list.)
+
+**The file is back as one shared source whose only `#if` is the import selection.** Two
+mechanisms make that possible, both real AppKit:
+
+- **Delegate sugar** (`onTextChanged`, `onSelectionChanged`, `onOutlineSelectionChanged`,
+  `onComboBoxTextChanged`): conforming an `NSObject` subclass to an ObjC delegate protocol
+  auto-exposes the methods on Darwin — no `@objc` attribute — and the Chocolate frameworks
+  declare the same protocols as plain Swift. The `textDidChange` seam collapsed to Apple's
+  `Notification` signature (the `NSNotification` spelling was WinChocolate's; its gap now).
+- **Target/action sugar** (`onAction` on `NSControl`/`NSMenuItem`/`NSToolbarItem`,
+  `NSTableView.onDoubleAction`): the trampoline needs ObjC-visible selectors on Darwin,
+  and `@objc` can't compile off Apple — but an **override of an inherited ObjC method is
+  implicitly `@objc`**, no attribute in source. So `DemoActionTarget` subclasses
+  `NSResponder` and overrides two of Apple's standard key-binding action methods —
+  `moveUp(_:)`/`moveDown(_:)`, declared `(Any?) -> Void` no-ops on NSResponder for exactly
+  this kind of selector dispatch — and controls' `action` is set to those REAL selectors
+  (`Selector(("moveUp:"))`, the attribute-free spelling, valid on all three). On Darwin
+  the ObjC runtime dispatches them; on the Chocolates `NSResponder.perform(_:with:)` does.
+  The trampoline never joins a responder chain, so nothing else ever sends it these
+  selectors.
+
+**LinChocolate grew the Apple-parity slice this rides on** (`Runtime/NSObjectRuntime.swift`):
+`NSResponder.moveUp(_:)`/`moveDown(_:)` as open no-ops (`NSStandardKeyBindingResponding`),
+plus `responds(to:)`/`perform(_:with:)` mapping those selectors through the vtable — the
+table Apple's runtime maintains for free, spelled out. `NSTextField`/`NSForm` submit-
+`onAction` (Enter, via the `setSubmitAction` seam) stay from earlier tonight.
+
+**Verified from the SAME sources:**
+- **macOS:** `swiftc -typecheck` (run-mac.sh's exact flags) over the demo directory
+  against real AppKit — **0 errors**. The override-is-implicitly-`@objc` trampoline is
+  compile-checked, not guessed.
+- **Linux:** builds 0 errors; contract tests pass headless; all 11 pages render with
+  **0 geometry violations, 0 dropped children**; clicking the Click button three times
+  counts **Clicks: 3** — GTK click → `sendAction` → `perform("moveUp:")` →
+  override → closure, end to end.
+
+Note: the `DemoNibConveniences.swift` symlink is restored in `Sources/RealDemo/` — every
+target compiles the same file list, and `main.swift` calls `installDemoNibPanel()`. That
+file's `#if` remains the explicitly sanctioned temporary exception for
+`@IBOutlet`/`@IBAction` ("you can temporarily #if them till we add them").
+
+**MUST FIX (WinChocolate, untestable here):**
+- `NSResponder` needs `moveUp(_:)`/`moveDown(_:)` + the `responds(to:)`/`perform(_:with:)`
+  mapping, as LinChocolate now has — the shared trampoline dispatches through it.
+- `NSTextViewDelegate.textDidChange` must take `Notification`, not `NSNotification`.
+- `NSTextField`/`NSForm` submit-`onAction` (Enter), as LinChocolate has.
+
+## 2026-07-16 — Demo rule cleanup: framework absorbs what the `#if` guards used to hide (framework work; demo led)
+
+The demo was cleaned up to enforce the rule more strictly — **no framework-specific `#if`
+blocks in the shared source** beyond the sanctioned `import` and the `@IBOutlet/@IBAction`
+code isolated in `DemoNibConveniences.swift`. Commit `8d26203` removed several
+Chocolate-only branches. Each removal turned a demo shim into a framework obligation;
+LinChocolate had to grow to meet the now-plain-AppKit demo. Four gaps, all fixed
+framework-side (demo led, LinChocolate followed):
+
+1. **Backend selection.** The demo used to carry
+   `#if canImport(LinChocolate) app.nativeBackend = GTKNativeControlBackend() #endif`.
+   Gone — so `NSApplication.shared` must supply the native backend itself. It can't be
+   eager: `GTKNativeControlBackend()` calls `gtk_init()`, which **aborts a headless
+   process**, and the hermetic contract tests run with no display. Fix:
+   `NSApplication.shared.nativeBackend` is **lazily GTK** — built on first *use*, so a test
+   that assigns an in-memory backend before creating any control never triggers `gtk_init`.
+   Without this the app used the in-memory backend, `runApplication` returned immediately,
+   and the window never appeared (silent exit 0 — a nasty symptom, since nothing rendered
+   and nothing logged).
+2. **`NSForm.cellSize` / `setBezeled` / `setBordered`.** The `#if !canImport(LinChocolate)`
+   guard around these was removed, so the demo now calls them unconditionally. Implemented
+   on `NSForm`: `cellSize` sets the row height and re-lays existing rows (works before or
+   after `addEntry`); `setBezeled`/`setBordered` drive the value fields' border.
+3. **`viewDidChangeEffectiveAppearance()`.** The demo overrides AppKit's live-appearance
+   hook on its content view. Added as `@MainActor open func` on `NSView` (the base does
+   nothing) — its `@MainActor` isolation is also what lets the override call the
+   main-actor-isolated `applyLiveAppearanceRefresh()`.
+4. **`installDemoNibPanel()`.** The nib code moved out of `main.swift` into a new
+   `DemoNibConveniences.swift` (the sanctioned home for ObjC-interop-divergent demo code).
+   That file wasn't compiled on Linux — symlinked it into `Sources/RealDemo/`.
+
+Also folded in by the cleanup, needing no framework change: the timer block now updates
+synchronously via `MainActor.assumeIsolated` instead of `Task { @MainActor }`, so the
+libdispatch-drain from the previous entry is no longer exercised by the demo (kept, as
+harmless robustness).
+
+**Verified:** LinChocolate builds (0 errors); contract tests pass **headless** (no
+`gtk_init` abort — the lazy backend stays in-memory there); RealDemo renders all 11 pages
+under Xvfb with **0 geometry violations, 0 dropped children**; the deprecated NSForm draws
+its two bordered rows; the Nib page instantiates `DemoNibPanel.xib`; the timer ticks.
+
+**Gotcha worth keeping:** the shared demo names no backend, so on Linux
+`NSApplication.shared` *is* the backend selector — and it must be lazy, or headless tests
+`gtk_init`-abort. A silent `exit 0` with a blank window and empty log = the in-memory
+backend running (its `runApplication` is a no-op).
+
+---
+
 ## 2026-07-16 — The Values-page timer ticks (Foundation Timer + Task under GTK's loop) (framework work; demo untouched)
 
 *"the timer isn't updating on the values page."* Right — it sat at "Timer: 0s". This one

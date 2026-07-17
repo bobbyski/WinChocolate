@@ -50,6 +50,17 @@ open class NSNib: NSObject {
     /// objects are appended to `topLevelObjects` and `owner` stands in for
     /// File's Owner. Returns whether instantiation succeeded.
     @discardableResult
+    /// Apple's call shape: `var topLevel: NSArray?` + `&topLevel`. (On Darwin
+    /// the parameter is an `AutoreleasingUnsafeMutablePointer<NSArray?>?`; an
+    /// `inout NSArray?` accepts the same `&topLevel` argument, so one shared
+    /// demo line compiles against both.)
+    open func instantiate(withOwner owner: Any?, topLevelObjects: inout NSArray?) -> Bool {
+        var objects: [Any]?
+        let ok = instantiate(withOwner: owner, topLevelObjects: &objects)
+        topLevelObjects = objects.map { NSArray(array: $0) }
+        return ok
+    }
+
     open func instantiate(withOwner owner: Any?, topLevelObjects: inout [Any]?) -> Bool {
         guard let instance = winInstantiate(withOwner: owner) else {
             return false

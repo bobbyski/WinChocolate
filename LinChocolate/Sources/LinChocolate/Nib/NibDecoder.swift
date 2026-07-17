@@ -233,7 +233,7 @@ final class NibDecoder {
 
     private func applyCommonAttributes(_ element: NibXMLElement, to view: NSView) {
         if let identifier = element.attribute("identifier") {
-            view.identifier = identifier
+            view.identifier = NSUserInterfaceItemIdentifier(identifier)
         }
         if bool(element.attribute("hidden")) {
             view.isHidden = true

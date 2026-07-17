@@ -498,6 +498,9 @@ public protocol NativeControlBackend: AnyObject {
     func registerAction(for handle: NativeHandle, action: @escaping () -> Void)
     /// Registers the action to perform when a text field's contents change.
     func setTextChangeAction(for handle: NativeHandle, action: @escaping (String) -> Void)
+    /// Fires when the field is submitted (Enter) — AppKit's control action for
+    /// a text field, distinct from per-keystroke text change.
+    func setSubmitAction(for handle: NativeHandle, action: @escaping () -> Void)
     /// Registers the action to perform when a checkbox/radio toggles; passes the new state.
     func setToggleAction(for handle: NativeHandle, action: @escaping (Bool) -> Void)
     /// Registers the action to perform when a slider's value changes; passes the value.

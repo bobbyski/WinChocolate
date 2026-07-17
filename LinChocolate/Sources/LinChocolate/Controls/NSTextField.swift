@@ -109,5 +109,14 @@ open class NSTextField: NSControl {
             self.onTextChange?(self)
             self.sendAction()
         }
+        backend.setSubmitAction(for: handle) { [weak self] in
+            guard let self else { return }
+            self.onAction?(self)
+            self.sendAction()
+        }
     }
+
+    /// A closure fired when the field is submitted (Enter) — AppKit's control
+    /// action for a text field.
+    public var onAction: ((NSTextField) -> Void)?
 }

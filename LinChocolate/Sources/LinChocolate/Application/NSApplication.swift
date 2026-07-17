@@ -23,7 +23,28 @@ public final class NSApplication {
     nonisolated(unsafe) public static let shared = NSApplication()
 
     /// Backend used to create native controls and run the platform event loop.
-    public var nativeBackend: NativeControlBackend
+    ///
+    /// **Lazily GTK.** The shared demo is platform-agnostic — it never names a
+    /// backend (that would be framework-specific code, which the demo's rules
+    /// forbid) — so `NSApplication.shared` must supply the native one itself.
+    /// It can't be created eagerly: `GTKNativeControlBackend()` calls
+    /// `gtk_init()`, which aborts a headless process, and the hermetic contract
+    /// tests run with no display. So GTK is built only on first *use*; a test
+    /// that assigns an in-memory backend before creating any control never
+    /// triggers it.
+    private var _nativeBackend: NativeControlBackend?
+    public var nativeBackend: NativeControlBackend {
+        get {
+            if let backend = _nativeBackend { return backend }
+            let backend = GTKNativeControlBackend()
+            _nativeBackend = backend
+            return backend
+        }
+        set {
+            _nativeBackend = newValue
+            newValue.setAppearanceDark(appearance?.isDark ?? false)
+        }
+    }
 
     /// The application's windows, in creation order (AppKit's `windows`).
     public internal(set) var windows: [NSWindow] = []
@@ -59,14 +80,17 @@ public final class NSApplication {
         nativeBackend.installMenuBar(mainMenu.menuBarSpecs(), on: window.handle)
     }
 
-    /// Creates an application using the default (in-memory) backend.
-    public convenience init() {
-        self.init(nativeBackend: InMemoryNativeControlBackend())
-    }
+    /// Creates an application whose backend defaults to GTK on first use (see
+    /// `nativeBackend`). Nothing is initialized until a control or the run loop
+    /// asks for it, so this is safe to call in a headless test before assigning
+    /// an in-memory backend.
+    public init() {}
 
-    /// Creates an application with an explicit native backend.
-    public init(nativeBackend: NativeControlBackend) {
-        self.nativeBackend = nativeBackend
+    /// Creates an application with an explicit native backend (tests, and the
+    /// old standalone `LinChocolateDemo`).
+    public convenience init(nativeBackend: NativeControlBackend) {
+        self.init()
+        self._nativeBackend = nativeBackend
     }
 
     /// Runs the platform event loop until the application terminates.

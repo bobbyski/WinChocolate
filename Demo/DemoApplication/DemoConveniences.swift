@@ -1,23 +1,29 @@
 // DemoConveniences.swift — demo-local closure sugar over REAL AppKit
 // mechanisms (Phase 18.1/18.2).
 //
-// WinChocolate's framework surface has no closure actions: controls dispatch
-// their real `target`/`action` selector, tables notify their delegate, text
-// fields call `controlTextDidChange(_:)` — exactly AppKit. This file is APP
-// code (never framework surface) that re-creates the closure ergonomics the
-// demo likes, built ONLY on those real mechanisms:
+// The frameworks' surface has no closure actions: controls dispatch their real
+// `target`/`action` selector, tables notify their delegate, text fields call
+// `controlTextDidChange(_:)` — exactly AppKit. This file is APP code (never
+// framework surface) that re-creates the closure ergonomics the demo likes,
+// built ONLY on those real mechanisms.
 //
-//   * `onAction` holds the closure in a trampoline object and sets the
-//     control's ACTUAL `target`/`action` to it — the framework dispatches the
-//     selector for real; the trampoline just forwards to the closure.
-//   * `onTextChanged`/`onComboBoxTextChanged` install a real
-//     `NSTextFieldDelegate`/`NSTextViewDelegate` trampoline.
+// RULE: this file is SHARED (compiled into all three targets), so it may
+// contain no platform conditionals beyond the import selection below, and
+// everything in it must be valid against real AppKit as well as the Chocolate
+// frameworks. Delegate-based sugar qualifies: conforming an NSObject subclass
+// to an ObjC delegate protocol auto-exposes the methods on Darwin, and the
+// Chocolate frameworks declare the same protocols as plain Swift.
 //
-// Per the set-in-stone rule: the Apple-native way works WITHOUT this file
-// (it is sugar, never required), and each platform side uses that platform's
-// real dispatch — `NSObject.perform(_:with:)` overrides on Windows, `@objc`
-// + `#selector` on macOS (`@objc` does not exist off-Darwin, which is the
-// one reason this file has a platform seam inside it).
+// The target/action closure sugar (`onAction`, `onDoubleAction`) qualifies by
+// the same auto-exposure rule: an AppKit action target needs ObjC-visible
+// selectors on Darwin, and while `@objc` cannot compile off Apple, an OVERRIDE
+// of an inherited ObjC method is implicitly `@objc` — no attribute in source.
+// So the trampoline subclasses NSResponder and overrides two of Apple's
+// standard key-binding action methods (`moveUp(_:)`/`moveDown(_:)` — declared
+// `(Any?) -> Void` no-ops on NSResponder for exactly this kind of selector
+// dispatch), and the controls' `action` is set to those REAL selectors. On
+// Darwin the ObjC runtime dispatches them; on the Chocolate frameworks
+// `NSResponder.perform(_:with:)` does — one source, no platform seam.
 
 #if canImport(LinChocolate)
 import LinChocolate
@@ -151,7 +157,15 @@ extension NSBox {
 /// closure. One trampoline per sender (AppKit controls have a single
 /// `target`, so `action` and `doubleAction` both land here, distinguished by
 /// selector — exactly the shape a hand-written AppKit target has).
-final class DemoActionTarget: NSObject {
+///
+/// An `NSResponder` subclass, because the action selectors are two of
+/// NSResponder's standard key-binding action methods: overriding an inherited
+/// ObjC method is implicitly `@objc` on Darwin (the only attribute-free way to
+/// be selector-reachable there), and a plain Swift override the Chocolate
+/// frameworks dispatch through `NSResponder.perform(_:with:)`. The trampoline
+/// never joins a responder chain, so nothing else ever sends it these
+/// selectors.
+final class DemoActionTarget: NSResponder {
     /// Keeps each sender's trampoline alive (targets are held weakly,
     /// as AppKit does).
     nonisolated(unsafe) static var retained: [ObjectIdentifier: DemoActionTarget] = [:]
@@ -170,65 +184,33 @@ final class DemoActionTarget: NSObject {
         return created
     }
 
-    #if canImport(AppKit) && !canImport(WinChocolate) && !canImport(LinChocolate)
-    // Real AppKit: Objective-C action methods the runtime dispatches. Actions
-    // always arrive on the main thread, so hopping onto the main actor here
-    // is a statement of fact, not a workaround.
-    @objc func demoFire(_ sender: Any?) {
+    // Actions always arrive on the main thread, so hopping onto the main
+    // actor here is a statement of fact, not a workaround.
+    override func moveUp(_ sender: Any?) {
         nonisolated(unsafe) let sent = sender
-        nonisolated(unsafe) let handler = handlers["demoFire:"]
+        nonisolated(unsafe) let handler = handlers["moveUp:"]
         MainActor.assumeIsolated {
             handler?(sent)
         }
     }
 
-    @objc func demoFireDouble(_ sender: Any?) {
+    override func moveDown(_ sender: Any?) {
         nonisolated(unsafe) let sent = sender
-        nonisolated(unsafe) let handler = handlers["demoFireDouble:"]
+        nonisolated(unsafe) let handler = handlers["moveDown:"]
         MainActor.assumeIsolated {
             handler?(sent)
         }
     }
 
-    static let fireSelector = #selector(DemoActionTarget.demoFire(_:))
-    static let doubleFireSelector = #selector(DemoActionTarget.demoFireDouble(_:))
-    #else
-    // WinChocolate/LinChocolate: the same dispatch surface without an ObjC
-    // runtime — the framework sends the selector through
-    // `NSObject.perform(_:with:)`, which app classes override (see the
-    // framework's selector-dispatch note).
-    override func responds(to aSelector: Selector?) -> Bool {
-        guard let aSelector else {
-            return false
-        }
-
-        return handlers[aSelector.name] != nil || super.responds(to: aSelector)
-    }
-
-    @discardableResult
-    override func perform(_ aSelector: Selector, with object: Any?) -> Any? {
-        guard let handler = handlers[aSelector.name] else {
-            return super.perform(aSelector, with: object)
-        }
-
-        // Actions are dispatched from the UI thread — same fact as on macOS.
-        nonisolated(unsafe) let sender = object
-        MainActor.assumeIsolated {
-            handler(sender)
-        }
-        return nil
-    }
-
-    static let fireSelector = Selector("demoFire:")
-    static let doubleFireSelector = Selector("demoFireDouble:")
-    #endif
+    static let fireSelector = Selector(("moveUp:"))
+    static let doubleFireSelector = Selector(("moveDown:"))
 }
 
 // MARK: - Closure actions over real target/action
 
 extension NSControl {
     /// Demo sugar: a closure action wired through the control's REAL
-    /// `target`/`action`. Setting it targets a trampoline; the framework
+    /// `target`/`action`. Setting it targets a trampoline; the platform
     /// dispatches the selector exactly as for any target.
     @MainActor var onAction: (@MainActor (NSControl) -> Void)? {
         get { nil }
@@ -241,7 +223,7 @@ extension NSControl {
             }
 
             let trampoline = DemoActionTarget.trampoline(for: self)
-            trampoline.handlers["demoFire:"] = { [weak self] sender in
+            trampoline.handlers["moveUp:"] = { [weak self] sender in
                 if let control = (sender as? NSControl) ?? self {
                     newValue(control)
                 }
@@ -266,7 +248,7 @@ extension NSMenuItem {
             }
 
             let trampoline = DemoActionTarget.trampoline(for: self)
-            trampoline.handlers["demoFire:"] = { [weak self] sender in
+            trampoline.handlers["moveUp:"] = { [weak self] sender in
                 if let item = (sender as? NSMenuItem) ?? self {
                     newValue(item)
                 }
@@ -291,7 +273,7 @@ extension NSToolbarItem {
             }
 
             let trampoline = DemoActionTarget.trampoline(for: self)
-            trampoline.handlers["demoFire:"] = { [weak self] sender in
+            trampoline.handlers["moveUp:"] = { [weak self] sender in
                 if let item = (sender as? NSToolbarItem) ?? self {
                     newValue(item)
                 }
@@ -376,7 +358,6 @@ final class DemoTextViewChangeDelegate: NSObject, NSTextViewDelegate {
         self.handler = handler
     }
 
-    #if canImport(AppKit) && !canImport(WinChocolate) && !canImport(LinChocolate)
     func textDidChange(_ notification: Notification) {
         if let view = notification.object as? NSTextView {
             nonisolated(unsafe) let sender = view
@@ -386,17 +367,6 @@ final class DemoTextViewChangeDelegate: NSObject, NSTextViewDelegate {
             }
         }
     }
-    #else
-    func textDidChange(_ notification: NSNotification) {
-        if let view = notification.object as? NSTextView {
-            nonisolated(unsafe) let sender = view
-            nonisolated(unsafe) let handler = self.handler
-            MainActor.assumeIsolated {
-                handler(sender)
-            }
-        }
-    }
-    #endif
 }
 
 extension NSTextView {
@@ -495,7 +465,7 @@ extension NSTableView {
             }
 
             let trampoline = DemoActionTarget.trampoline(for: self)
-            trampoline.handlers["demoFireDouble:"] = { [weak self] sender in
+            trampoline.handlers["moveDown:"] = { [weak self] sender in
                 if let table = (sender as? NSTableView) ?? self {
                     newValue(table)
                 }

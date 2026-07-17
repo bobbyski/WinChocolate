@@ -760,6 +760,13 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     public func registerAction(for handle: NativeHandle, action: @escaping () -> Void) {
         actions[handle.rawValue] = action
     }
+    private var submitActions: [UInt: () -> Void] = [:]
+    public func setSubmitAction(for handle: NativeHandle, action: @escaping () -> Void) {
+        submitActions[handle.rawValue] = action
+    }
+    /// Test hook: submit (Enter) a field.
+    public func simulateSubmit(for handle: NativeHandle) { submitActions[handle.rawValue]?() }
+
     public func setTextChangeAction(for handle: NativeHandle, action: @escaping (String) -> Void) {
         textChangeActions[handle.rawValue] = action
     }

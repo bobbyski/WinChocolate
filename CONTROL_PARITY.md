@@ -171,6 +171,141 @@ peer and switch rendering.
 - `NSLevelIndicator` `.rating` **is** implemented — `draw(_:)` renders a real five-pointed `starPath`. The stars missing from the screenshot are therefore a runtime problem (the framework-drawn plain-view peer not painting), not absent code, and need on-device Windows debugging rather than new API.
 - The `on…`-style closures the demo uses (`onSelectionChanged`, `onTextChanged`, `onDoubleAction`, …) are demo-side conveniences declared in `DemoConveniences.swift`, not AppKit API. Not framework gaps.
 
+## FreebirdStudio Port — Required Additions
+
+The concrete list of WinChocolate work required to build & run **FreebirdStudio**
+(a SwiftUI/AppKit code editor) as a pure-AppKit app on Win32 — and later GTK4.
+Companion to the assessment in FreebirdStudio's `Documents/AppKit-Port-Plan.md`;
+this is the *WinChocolate-side* request list (what the framework must grow — the
+app-side SwiftUI→AppKit conversion lives in that plan). Everything is measured
+against the real FreebirdStudio source; counts are call sites in that app. The
+Rule above applies unchanged: implement the Apple API, back it Windows-native, no
+shims.
+
+### Rev 1 — required to run FreebirdStudio
+
+Ordered by cost and dependency. Item 1 is the gate; nothing else matters if it
+can't be built.
+
+**1. A framework-drawn `NSTextView` over a real layout engine ⭐ THE GATE.**
+WinChocolate's `NSTextView` wraps a native Win32 `EDIT`/RichEdit control, which
+lays text out internally and won't report glyph geometry — so the gutter, syntax
+highlighting, diff rendering, and scroll-to-line can't work against it. The editor
+also **subclasses** `NSTextView` and overrides `drawBackground(in:)`, which a
+native peer can't support. Required: `NSTextView` becomes `open` and
+**framework-drawn on a plain `createView` peer** (the pattern already used for
+`NSLevelIndicator` `.rating` / `NSProgressIndicator` `.spinning`), with real
+caret, selection, keyboard input, `insertionPointColor`, and undo — not stubs.
+- Config it sets (must take effect): `isEditable`, `isRichText`, `font`,
+  `backgroundColor`, `insertionPointColor`, `textContainerInset`,
+  `isHorizontallyResizable`, `isVerticallyResizable`, `allowsUndo`, and the
+  automatic-substitution family (`isAutomaticQuoteSubstitutionEnabled`,
+  `isAutomaticDashSubstitutionEnabled`, `isAutomaticTextReplacementEnabled` —
+  editors turn these **off**; honoring "off" is the point).
+- Methods/props it calls: `string`, `selectedRange`, `setSelectedRange(_:)`,
+  `scrollRangeToVisible(_:)`, `textStorage`.
+- Delegate methods that must fire: `textDidChange(_:)`,
+  `textViewDidChangeSelection(_:)`.
+- Backend note: back with **DirectWrite (`IDWriteTextLayout`)**, not CoreText
+  (see Rev 2) — it yields the item-2 geometry and works for proportional text,
+  not just monospace.
+- **Risk:** IME, accessibility, and undo are the classic sinkholes here and are
+  *not* covered by the monospace-arithmetic shortcut (that makes geometry cheap,
+  not text input). This is why item 1 is a spike, not a task.
+
+**2. `NSLayoutManager` — the geometry subset only.** TextKit, not CoreText. The
+editor touches **8 APIs, all geometry** — this is the whole list:
+`glyphRange(forBoundingRect:in:)` ×2, `glyphRange(forCharacterRange:actualCharacterRange:)` ×1,
+`boundingRect(forGlyphRange:in:)` ×1, `lineFragmentRect(forGlyphAt:effectiveRange:)` ×2,
+`enumerateLineFragments(forGlyphRange:using:)` ×2, `characterIndexForGlyph(at:)` ×2,
+`ensureLayout(for:)` ×2, `defaultLineHeight(for:)` ×1, `numberOfGlyphs` ×1.
+Implement these correctly; don't build the rest of TextKit speculatively. If
+backed by monospace arithmetic rather than DirectWrite, **say so** — per the Rule
+it must not silently mislead about proportional text.
+
+**3. `NSTextContainer`.** Companion to item 2 (paired in the bounding-rect and
+`ensureLayout` calls). Needs size + the text-view relationship; wrapping can start
+minimal.
+
+**4. Real `NSTextStorage` edit/notify pipeline.** Today's is a 30-line shim,
+explicitly *"without the layout manager machinery."* It must become the actual
+edit hub: `beginEditing()`/`endEditing()` batching → layout invalidation →
+text-view redraw, with per-range attribute runs preserved (the highlighter sets
+colored runs; the current shim carries only the first run's attributes).
+
+**5. `NSRulerView` — subclassable, for the line-number gutter.** FreebirdStudio's
+`LineNumberRulerView` **subclasses** it and overrides `drawHashMarksAndLabels(in:)`.
+Needs: `open` class with that override, `clientView` (the text view),
+`ruleThickness` (app sets 46), and `NSScrollView` hosting it
+(`hasVerticalRuler`/`verticalRulerView`/`rulersVisible`). Draws by asking item 2
+for line-fragment rects, so it can't precede items 1–2.
+
+**6. Foundation: `Process` + `Pipe`.** `WinFoundation` has `ProcessInfo` but no
+`Process`/`Pipe`. FreebirdStudio shells out to `git`
+(`GitManager/GitCommandRunner.swift`, `ProjectGenerator/ProjectPlatform.swift`);
+without these, **GitManager (1,217 lines, otherwise fully portable) can't run.**
+Preferred fix: confirm real Swift Foundation builds on the target toolchain and
+flip `USE_REAL_FOUNDATION` — `Process`/`Pipe`/`NSRegularExpression` then arrive
+free (`FOUNDATION_SHIMS.md` already states WinFoundation exists only because the
+local Windows ARM64 toolchain fails on `import Foundation`). Fallback only if that
+won't build: shim over `CreateProcess` + anonymous pipes, **draining stdout and
+stderr asynchronously** (FreebirdStudio's runner already hit and fixed the
+pipe-buffer deadlock — don't reintroduce it).
+
+**7. Foundation: `NSRegularExpression`.** The syntax highlighter
+(`Syntax/SyntaxToken.swift`) is regex-based (no SwiftSyntax — a plus). Absent from
+`WinFoundation`; same resolution path as item 6.
+
+**8. App shell / lifecycle parity.** The app converts from the SwiftUI `App`
+lifecycle to `NSApplication` + `NSApplicationDelegate` + `main.swift` — which the
+demo already boots. Mostly confirming menu bar / `NSApp` / delegate hooks exist.
+Low risk; listed for completeness.
+
+**Already present — no work needed:** `NSView`, `NSScrollView`, `NSClipView`,
+`NSButton`, `NSColor`, `NSFont`, `NSAttributedString`, `NSSplitView`,
+`NSTableView`, `NSOutlineView`, `NSToolbar`, `NSStackView`, `NSLayoutConstraint`,
+`NSLayoutAnchor`, `NSGridView`, `NSOpenPanel`, `NSFontManager`. No WebKit, Core
+Animation, Metal, or SwiftSyntax used.
+
+### Rev 2 — deferred (no current client)
+
+Real requests, but nothing in FreebirdStudio calls them, so they stay out of Rev 1
+per the demand-driven discipline used everywhere else here.
+
+- **CoreText** (`CTFont`/`CTLine`/`CTRun`/`CTTypesetter`/`CTFramesetter`) — the
+  "correct" Apple layering under TextKit, and in WinChocolate's longer-term plan.
+  Deferred because: FreebirdStudio calls **zero** CoreText APIs (it calls
+  `NSLayoutManager`, item 2, which can be DirectWrite-backed); CoreText draws via
+  `CTLineDraw(line, cgContext)` into a **`CGContext` that doesn't exist**
+  (WinCoreGraphics is `CGImage`/`CGGeometry`/`Inflate`/PNG only); and its API is
+  CoreFoundation-shaped (`CTFontRef`, `CFRange`), a distinct body of work. **Add
+  when a real client calls `CTLine`.** Prerequisite ordering: `CGContext` first,
+  then CoreText, then optionally re-base `NSLayoutManager` on it.
+- **`CGContext`** (full CoreGraphics drawing context) — the gate for CoreText
+  above. Not required by the port: FreebirdStudio's custom drawing
+  (`drawBackground`, `drawHashMarksAndLabels`, `DiffMergeView.draw`) uses
+  `NSBezierPath`/`NSColor`/`NSGraphicsContext`, all already present.
+- **Full TextKit beyond the 8 geometry APIs** — tab stops, non-contiguous layout,
+  `NSTextList`, complex `NSParagraphStyle`, multiple containers, bidi. None used.
+  Grow on demand.
+
+### Dependency order (Rev 1)
+
+```
+6/7 Foundation (Process, Pipe, NSRegularExpression)   ── independent, do first (free if real Foundation builds)
+        │
+        ▼
+1 NSTextView (framework-drawn, DirectWrite)  ◄── prove in a spike (against the DEMO) before committing
+        │
+        ├─► 2 NSLayoutManager (8 geometry APIs)
+        │        ├─► 3 NSTextContainer
+        │        └─► 5 NSRulerView (needs line-fragment rects)
+        └─► 4 NSTextStorage edit/notify pipeline
+8 App shell — parallel, low risk
+```
+
+If the item-1 spike fails or balloons, stop there — the whole port is gated on it.
+
 ## Special Mismatch Notes
 
 - Some AppKit APIs are controls in daily use even when they are technically views, panels, menus, or application-shell objects. They are included here because Cocoa apps commonly treat them as part of the UI control surface.

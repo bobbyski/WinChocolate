@@ -105,7 +105,7 @@ open class NSCollectionView: NSView {
         let key = supplementaryKey(kind, identifier)
         if var pooled = supplementaryReusePool[key], let reused = pooled.popLast() {
             supplementaryReusePool[key] = pooled
-            reused.identifier = identifier.rawValue
+            reused.identifier = identifier
             return reused
         }
         guard let viewType = supplementaryClasses[key] else {
@@ -116,7 +116,7 @@ open class NSCollectionView: NSView {
                 """)
         }
         let view = viewType.init(frame: .zero)
-        view.identifier = identifier.rawValue
+        view.identifier = identifier
         return view
     }
 

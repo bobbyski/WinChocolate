@@ -49,4 +49,48 @@ open class NSResponder: NSObject {
 
     /// The next responder up the chain, or nil at the top.
     open weak var nextResponder: NSResponder?
+
+    // MARK: Standard key-binding action methods
+    //
+    // Apple's NSResponder declares the NSStandardKeyBindingResponding action
+    // methods (`moveUp(_:)`, `moveDown(_:)`, …) as overridable no-ops, each
+    // reachable by selector. That combination is what lets ONE shared source
+    // implement a selector-dispatched action target on every platform: on
+    // Darwin an override of an ObjC method is implicitly `@objc` (no attribute
+    // needed — attributes wouldn't compile here), and on LinChocolate the
+    // mapping below plays the part of the ObjC runtime. The shared demo's
+    // `DemoActionTarget` is the canonical caller. This is the slice the demo
+    // exercises; the full key-binding set is later parity work.
+
+    /// `NSStandardKeyBindingResponding.moveUp(_:)`. The base does nothing.
+    open func moveUp(_ sender: Any?) {}
+
+    /// `NSStandardKeyBindingResponding.moveDown(_:)`. The base does nothing.
+    open func moveDown(_ sender: Any?) {}
+
+    /// Apple's runtime resolves these selectors automatically; LinChocolate
+    /// spells the table out. Dynamic dispatch through the vtable means a
+    /// subclass override is what actually runs, exactly as on Darwin.
+    open override func responds(to aSelector: Selector?) -> Bool {
+        switch aSelector?.name {
+        case "moveUp:", "moveDown:":
+            return true
+        default:
+            return super.responds(to: aSelector)
+        }
+    }
+
+    @discardableResult
+    open override func perform(_ aSelector: Selector, with object: Any? = nil) -> Any? {
+        switch aSelector.name {
+        case "moveUp:":
+            moveUp(object)
+            return nil
+        case "moveDown:":
+            moveDown(object)
+            return nil
+        default:
+            return super.perform(aSelector, with: object)
+        }
+    }
 }

@@ -2488,6 +2488,17 @@ public final class GTKNativeControlBackend: NativeControlBackend {
             Unmanaged.passRetained(box).toOpaque(), boxRelease, GConnectFlags(rawValue: 0)
         )
     }
+    public func setSubmitAction(for handle: NativeHandle, action: @escaping () -> Void) {
+        guard let w = widget(handle) else { return }
+        // GtkEntry emits "activate" on Enter — AppKit's text-field action.
+        let box = ActionBox(action)
+        g_signal_connect_data(
+            UnsafeMutableRawPointer(w), "activate",
+            unsafeBitCast(gtkActionTrampoline, to: GCallback.self),
+            Unmanaged.passRetained(box).toOpaque(), boxRelease, GConnectFlags(rawValue: 0)
+        )
+    }
+
     public func setTextChangeAction(for handle: NativeHandle, action: @escaping (String) -> Void) {
         let box = StringActionBox(action)
         // A text view's changes come from its GtkTextBuffer, which reads back
