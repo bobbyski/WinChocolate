@@ -489,6 +489,11 @@ public final class GTKNativeControlBackend: NativeControlBackend {
         fflush(nil)   // stdout is fully buffered when piped
     }
 
+    public func hideWindow(_ handle: NativeHandle) {
+        guard let w = widget(handle) else { return }
+        gtk_widget_set_visible(asWidget(w), gboolean(0))
+    }
+
     public func setWindowTitle(_ title: String, for handle: NativeHandle) {
         guard let w = widget(handle) else { return }
         gtk_window_set_title(asWindow(w), title)
@@ -2840,7 +2845,11 @@ private let gtkCloseRequestTrampoline: @convention(c) (UnsafeMutableRawPointer?,
     if let userData {
         Unmanaged<ActionBox>.fromOpaque(userData).takeUnretainedValue().action()
     }
-    return gboolean(0)
+    // TRUE: the close is OURS. Returning FALSE would let GTK destroy the
+    // window after the callback — which is how closing the demo's floating
+    // panel crashed re-presenting it (the NSWindow was reused over a destroyed
+    // GtkWindow). The Swift side hides or terminates instead.
+    return gboolean(1)
 }
 
 /// Handler for `GtkEditable::changed` — reads the new text off the widget.

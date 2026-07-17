@@ -177,6 +177,94 @@ Eastern **Standard** Time.
 
 ---
 
+## 2026-07-16 — Closing a panel no longer closes (or crashes) the app (framework work; demo untouched)
+
+Bobby: *"Closing the Panel closes the app (or crashes it) — can you address that?"* Both
+symptoms were real, from two stacked faults in the close path:
+
+1. **Every window's close button called `NSApplication.terminate`** — the old
+   "single-window convenience" (its own comment admitted the divergence). So the floating
+   inspector panel's X took the whole app down.
+2. **GTK then destroyed the window anyway**: the `close-request` trampoline returned
+   FALSE ("not handled"), so after our callback GTK proceeded with destruction. The demo
+   *reuses* its panel (`inspectorPanel` is kept and re-fronted), so the next "Panel" click
+   presented a destroyed GtkWindow — the crash.
+
+**The fix — Apple's semantics:**
+- The title-bar X routes through **`performClose(_:)`** (AppKit's path), which calls the
+  new **`close()`**: the window **hides** (`hideWindow` seam → `gtk_widget_set_visible 0`);
+  the native window survives. Under ARC, an NSWindow the app still references can be
+  re-presented with `orderFrontRegardless`/`makeKeyAndOrderFront` — exactly what the
+  demo's reusable panel does, and now does without crashing.
+- The trampoline returns TRUE: the close is ours, GTK destroys nothing.
+- `isVisible` is tracked (AppKit's property), and `orderOut(_:)` is real. The old no-op
+  stubs for `close`/`orderOut`/`performClose` in DemoCompat are gone.
+- **Termination policy**: the app quits when the **last visible window** closes. (Apple
+  keeps an app alive at zero windows — menu-bar-only, per
+  `applicationShouldTerminateAfterLastWindowClosed`. GTK has no menu-bar-only mode:
+  in-window menus die with the last window, so staying alive would strand a headless
+  process. Documented divergence until the delegate policy lands.)
+
+**Verified live** (xdotool, Xvfb): open Panel → close its X → **app alive**, main window
+untouched → click Panel again → **the same panel re-presents, no crash** → close the main
+window → **clean exit**. Contract tests pin all four: a panel's X hides the panel and the
+app keeps running; the native window is hidden not destroyed; the closed panel
+re-presents; the last visible window closing terminates. All contract tests pass;
+geometry audit still 0 violations on all 11 pages.
+
+**MUST FIX (WinChocolate):** same close semantics if it terminates on any window's X —
+close closes the window; last-visible-window terminates; reusable panels must re-present.
+
+## 2026-07-16 — The nib panel unified: ONE implementation, identifier-wired (demo led; framework parity work)
+
+`DemoNibConveniences.swift` was the last demo file with a behavior `#if`: a full
+platform split — `@IBOutlet`/`@IBAction` auto-binding on macOS vs reading the xib's
+connection records on the Chocolates. Ruling: *"NO #if conditionals other than the
+AppKit/chocolate selector."* Rebuilt as one implementation.
+
+**The unified wiring model: identifier lookup, pure AppKit.** Every control in
+`DemoNibPanel.xib` already carries an Identity-inspector identifier. The panel is
+instantiated through Apple's `NSNib` API with a **nil owner**, and each control is
+resolved by walking the view tree comparing `NSView.identifier` — the manual-wiring
+pattern AppKit apps use in place of outlets. No File's-Owner controller, no
+`@IBOutlet`/`@IBAction`, nothing needing the ObjC runtime. Behaviors (Increment,
+Show Values, slider) wire through the demo's own seam-free `onAction`.
+
+Two more platform-shaped differences dissolved without conditionals:
+- **Compiled nib vs XML xib**: AppKit instantiates only compiled nibs; the Chocolates
+  read the IB XML. The demo takes `DemoNibPanel.nib` when the file exists (run-mac.sh
+  compiles it) and falls back to the `.xib` — a file-presence check, not a platform check.
+- **Owner connections**: the xib still declares its historical File's-Owner
+  outlets/actions; with a nil owner AppKit skips them (messages to nil) and the
+  Chocolate readers resolve them to nothing. **Probed on real AppKit**: nil-owner
+  instantiate returns true, no throw.
+
+**Framework parity work this rode on (LinChocolate):**
+- `NSView.identifier` migrated `String?` → **`NSUserInterfaceItemIdentifier?`** — Apple's
+  exact type (closes Issue E). Fallout: NibDecoder wraps, NSCollectionView's reuse
+  assignments drop `.rawValue`.
+- `NSNib.instantiate(withOwner:topLevelObjects:)` gained Apple's call shape: an
+  `inout NSArray?` overload, so the shared line `var topLevel: NSArray?` +
+  `&topLevel` compiles against Darwin's `AutoreleasingUnsafeMutablePointer<NSArray?>?`
+  and here alike.
+
+**Verified:**
+- **macOS, at runtime** (not just typecheck): ibtool-compiled the xib, probe loads it with
+  nil owner → instantiate true, **all 7 identifiers resolve**, and a real
+  `button.performClick` dispatches the `moveUp:` trampoline — the whole unified stack
+  proven on genuine AppKit. `swiftc -typecheck` over the demo: 0 errors.
+- **Linux**: builds 0 errors; contract tests pass; all 11 pages **0 geometry violations,
+  0 dropped children**; the Nib page reports *"7/7 controls resolved by identifier"* and
+  two clicks of Increment count **2**.
+- **`#if` audit**: every demo file now contains exactly ONE conditional — the import
+  selection. (main.swift's other `#if` hits are comments.)
+
+**MUST FIX (WinChocolate, untestable here):** `NSView.identifier` as
+`NSUserInterfaceItemIdentifier?`; `NSNib.instantiate(withOwner:topLevelObjects: NSArray?)`
+call shape; connection records resolved against a nil owner must no-op; plus the earlier
+list (NSResponder `moveUp`/`moveDown` dispatch, `Notification`-typed `textDidChange`,
+submit-`onAction`).
+
 ## 2026-07-16 — Demo conveniences rebuilt: ONE shared file, one `#if` (the import selection)
 
 The original `DemoConveniences.swift` carried behavior-splitting `#if` seams (`@objc`

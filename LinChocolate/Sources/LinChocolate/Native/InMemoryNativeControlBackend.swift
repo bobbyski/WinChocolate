@@ -171,10 +171,18 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     }
     public func showWindow(_ handle: NativeHandle) {
         visibleWindows.insert(handle.rawValue)
+        hiddenWindows.remove(handle.rawValue)   // re-presenting un-hides
     }
     public func setWindowTitle(_ title: String, for handle: NativeHandle) {
         titles[handle.rawValue] = title
     }
+    /// Hidden (ordered-out) windows, for tests.
+    public private(set) var hiddenWindows: Set<UInt> = []
+    public func hideWindow(_ handle: NativeHandle) {
+        hiddenWindows.insert(handle.rawValue)
+        visibleWindows.remove(handle.rawValue)
+    }
+
     public func registerWindowCloseAction(for handle: NativeHandle, action: @escaping () -> Void) {
         windowCloseActions[handle.rawValue] = action
     }

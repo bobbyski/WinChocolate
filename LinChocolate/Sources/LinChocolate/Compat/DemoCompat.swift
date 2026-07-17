@@ -381,9 +381,6 @@ public extension NSWindow {
     func makeMain() {}
     func makeKeyAndOrderFront() { makeKeyAndOrderFront(nil) }
     func orderFront(_ sender: Any?) { makeKeyAndOrderFront(sender) }
-    func orderOut(_ sender: Any?) {}
-    func close() {}
-    func performClose(_ sender: Any?) {}
     func zoom(_ sender: Any?) {}
     func miniaturize(_ sender: Any?) {}
     func toggleToolbarShown(_ sender: Any?) {}

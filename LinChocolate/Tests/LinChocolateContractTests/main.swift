@@ -1166,6 +1166,44 @@ do {
     check(ticks == 2, "each tick runs the block")
 }
 
+// MARK: 28y — Window close: a panel's X closes the PANEL, not the app
+do {
+    let backend = InMemoryNativeControlBackend()
+    NSApplication.shared.nativeBackend = backend
+    backend.runApplication()
+    // NSApplication.shared is a singleton, so windows from earlier tests are
+    // still registered; order them out so "last visible window" means ours.
+    NSApplication.shared.windows.forEach { $0.orderOut(nil) }
+
+    let main = NSWindow(contentRect: NSMakeRect(0, 0, 800, 600), styleMask: [.titled], backing: .buffered, defer: false)
+    main.makeKeyAndOrderFront(nil)
+    let panel = NSPanel(contentRect: NSMakeRect(180, 160, 280, 140), styleMask: [.titled, .closable], backing: .buffered, defer: false)
+    panel.orderFrontRegardless()
+    check(main.isVisible && panel.isVisible, "both windows report visible")
+
+    // The panel's close button: the panel hides, the app KEEPS RUNNING
+    // (it used to call terminate outright — closing the demo's floating
+    // inspector took the whole app down).
+    backend.simulateWindowClose(panel.handle)
+    check(!panel.isVisible, "closing the panel hides it")
+    check(main.isVisible, "the main window is untouched")
+    check(backend.isRunning, "the application keeps running")
+    check(backend.hiddenWindows.contains(panel.handle.rawValue), "the native window is hidden, not destroyed")
+
+    // Re-presenting the SAME panel works — the demo reuses its inspector
+    // (this is the path that used to crash: GTK had destroyed the window).
+    panel.orderFrontRegardless()
+    check(panel.isVisible, "the closed panel re-presents")
+    check(!backend.hiddenWindows.contains(panel.handle.rawValue), "the native window is shown again")
+
+    // Closing the LAST visible window quits (GTK has no menu-bar-only mode;
+    // documented divergence from Apple's delegate-driven stay-alive policy).
+    backend.simulateWindowClose(panel.handle)
+    check(backend.isRunning, "app still runs while the main window is up")
+    backend.simulateWindowClose(main.handle)
+    check(!backend.isRunning, "closing the last visible window terminates")
+}
+
 // MARK: 29a — NSScroller: a standalone scroller is a real scrollbar
 do {
     let backend = InMemoryNativeControlBackend()

@@ -222,6 +222,10 @@ public protocol NativeControlBackend: AnyObject {
     func setContentView(_ view: NativeHandle, for window: NativeHandle)
     /// Shows and orders the window to the front.
     func showWindow(_ handle: NativeHandle)
+    /// Hides a window without destroying it (AppKit's `orderOut`): the native
+    /// window survives, so `showWindow` can re-present it — what a reusable
+    /// panel needs.
+    func hideWindow(_ handle: NativeHandle)
     /// Updates a window's title-bar text.
     func setWindowTitle(_ title: String, for handle: NativeHandle)
     /// Registers the action to run when the window is closed by the user.
