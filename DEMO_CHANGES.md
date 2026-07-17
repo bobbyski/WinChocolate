@@ -177,6 +177,66 @@ Eastern **Standard** Time.
 
 ---
 
+## 2026-07-17 — The Tables-page collection was empty on macOS: a bare NSCollectionView never materializes (demo fix)
+
+Bobby: *"the collections buttons are not showing in the mac demo app."* Confirmed on the
+real app — the Tables/Media page rendered everything except the collection: "Collection:"
+beside an empty void where six buttons belong. **On Linux the same demo rendered them
+fine**, so this was a Mac-only demo bug.
+
+### Diagnosis — on the live app, not probes
+
+Offscreen probes proved worthless here: a CLI accessory app never drives AppKit's real
+display cycle, so probe collections behaved differently from the app's (both false
+positives and false negatives — an afternoon of contradictory results). What worked:
+**attach lldb to the running demo and dump `_subtreeDescription`** of the content view.
+That showed, in one run of one app:
+
+- Tables-page collection `f=(152,226,392,96)`: only child an `NSVisualEffectView` (its
+  background). **Zero items.**
+- Lists-page collection (hidden page!): **full of item buttons.**
+
+So hidden/visible was irrelevant; item construction was irrelevant (both sources build raw
+`NSCollectionViewItem()` + `NSButton` — both work). Diffing the two setups and testing each
+candidate **on the real app** (edit → rebuild → lldb dump):
+
+| candidate | result |
+|---|---|
+| `reloadData()` after joining the hierarchy | still empty |
+| layout assigned before dataSource (the Lists order) | still empty |
+| **collection as an `NSScrollView`'s `documentView`** | **all six buttons materialize** |
+
+### Root cause
+
+**A bare `NSCollectionView` added directly as a subview never materializes its items on
+macOS.** The enclosing `NSScrollView`'s clip view drives the visible-rect machinery that
+prepares items; without it the collection lays out nothing, silently — no assert, no log.
+Apple's documentation says to embed collection views in scroll views; the Lists-page
+collection did, the Tables-page one didn't. (LinChocolate's GTK collection carries its own
+internal scroller, which is why Linux never showed the bug.)
+
+### Fix (demo)
+
+The Tables collection now mirrors the Lists structure: `collectionScrollView` wraps the
+collection as its `documentView` at the same frame `(152,226,392,96)`; layout → dataSource
+→ documentView → reload, matching the working page.
+
+**Verified:** live subtree on macOS shows all six buttons flowed in two rows
+(`NSButton (4,4)`, `NSTextField (138,4)`, `NSTableView (272,4)`, `NSImageView (4,40)`, …);
+Linux renders the same six through the wrapper (LinChocolate's `NSScrollView.documentView`
+passes the collection through); geometry audit **0 violations on all 11 pages**; all
+contract tests pass.
+
+**Two lessons for the log:**
+- Collections cannot be probed from CLI accessory apps — materialization needs the real
+  display cycle. **lldb `_subtreeDescription` on the live app** is the reliable instrument.
+- An empty-but-silent NSCollectionView means "no enclosing scroll view" before it means
+  anything about your data source.
+
+**MUST FIX (WinChocolate, untestable here):** the demo now parents this collection via
+`NSScrollView.documentView` — its scroll view must pass a collection document view through
+(LinChocolate's does).
+
 ## 2026-07-16 — Closing a panel no longer closes (or crashes) the app (framework work; demo untouched)
 
 Bobby: *"Closing the Panel closes the app (or crashes it) — can you address that?"* Both

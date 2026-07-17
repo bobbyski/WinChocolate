@@ -1777,7 +1777,12 @@ let browserLabel = NSTextField(string: "Browser:", frame: NSMakeRect(32, 216, 12
 let browser = NSBrowser(frame: NSMakeRect(152, 216, 360, 104))
 let browserDataSource = DemoBrowserDataSource()
 let collectionLabel = NSTextField(string: "Collection:", frame: NSMakeRect(32, 230, 120, 24))
-let collectionView = NSCollectionView(frame: NSMakeRect(152, 226, 392, 96))
+// An NSCollectionView belongs inside a scroll view (its enclosing NSScrollView
+// is how AppKit drives the visible-rect updates that materialize items — the
+// Lists-page collection already does this, and a bare collection sat
+// permanently empty on macOS).
+let collectionScrollView = NSScrollView(frame: NSMakeRect(152, 226, 392, 96))
+let collectionView = NSCollectionView(frame: NSMakeRect(0, 0, 392, 96))
 let collectionDataSource = DemoCollectionDataSource()
 let visualEffectLabel = NSTextField(string: "Visual effect:", frame: NSMakeRect(880, 116, 120, 24))
 let visualEffectView = NSVisualEffectView(frame: NSMakeRect(880, 146, 200, 86))
@@ -2484,14 +2489,20 @@ matrix.intercellSpacing = NSMakeSize(8, 8)
 matrix.selectCell(atRow: 0, column: 0)
 pathLabel.font = NSFont.boldSystemFont(ofSize: 12)
 collectionLabel.font = NSFont.boldSystemFont(ofSize: 12)
-collectionView.dataSource = collectionDataSource
-// Drive the collection with a real flow layout (5.4).
+// Drive the collection with a real flow layout (5.4). The layout is assigned
+// BEFORE the data source, as the Lists-page collection does: assigning
+// collectionViewLayout resets the collection's prepared state (see the
+// registration note there), and on real AppKit a collection whose layout
+// arrived after its data source sat permanently empty — the six buttons never
+// materialized.
 let collectionFlowLayout = NSCollectionViewFlowLayout()
 collectionFlowLayout.itemSize = NSMakeSize(116, 28)
 collectionFlowLayout.minimumInteritemSpacing = 8
 collectionFlowLayout.minimumLineSpacing = 8
 collectionFlowLayout.sectionInset = NSEdgeInsetsMake(4, 4, 4, 4)
 collectionView.collectionViewLayout = collectionFlowLayout
+collectionView.dataSource = collectionDataSource
+collectionScrollView.documentView = collectionView
 collectionView.reloadData()
 visualEffectLabel.font = NSFont.boldSystemFont(ofSize: 12)
 visualEffectView.material = visualEffectMaterials[visualEffectIndex].0
@@ -3641,7 +3652,7 @@ tablesPage.addSubview(clipCornerButton)
 tablesPage.addSubview(pathLabel)
 tablesPage.addSubview(pathControl)
 tablesPage.addSubview(collectionLabel)
-tablesPage.addSubview(collectionView)
+tablesPage.addSubview(collectionScrollView)
 tablesPage.addSubview(visualEffectLabel)
 tablesPage.addSubview(visualEffectView)
 tablesPage.addSubview(splitLabel)
