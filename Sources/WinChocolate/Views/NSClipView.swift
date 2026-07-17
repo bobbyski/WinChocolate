@@ -6,6 +6,14 @@
 open class NSClipView: NSView {
     internal var onScroll: ((NSPoint) -> Void)?
 
+    /// The clip view's background fill, matching AppKit's
+    /// `NSClipView.backgroundColor` (one of the concrete types where Apple
+    /// exposes a background color — plain `NSView` has none).
+    open var backgroundColor: NSColor? {
+        get { winBackgroundColor }
+        set { winBackgroundColor = newValue }
+    }
+
     /// The view shown inside the clip view.
     open var documentView: NSView? {
         didSet {
@@ -41,7 +49,7 @@ open class NSClipView: NSView {
     }
 
     /// Creates a clip view with a frame.
-    public override init(frame frameRect: NSRect) {
+    public required init(frame frameRect: NSRect) {
         self.boundsOrigin = NSZeroPoint
         super.init(frame: frameRect)
     }

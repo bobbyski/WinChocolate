@@ -1,3 +1,21 @@
+/// Adopted by objects that apply live font-panel changes — Apple's shape
+/// since macOS 10.14, when `changeFont(_:)` moved off `NSResponder` onto this
+/// protocol. The font manager sends `changeFont:` down the responder chain
+/// and only adopters receive it.
+public protocol NSFontChanging: AnyObject {
+    /// Applies the font panel's current pick (convert the selection through
+    /// the sender, as in AppKit).
+    func changeFont(_ sender: NSFontManager?)
+}
+
+/// Adopted by objects that apply live color-panel changes — Apple's shape
+/// since macOS 10.14, when `changeColor(_:)` moved off `NSResponder` onto
+/// this protocol.
+public protocol NSColorChanging: AnyObject {
+    /// Applies the color panel's current color.
+    func changeColor(_ sender: NSColorPanel?)
+}
+
 /// Base class for objects that participate in event dispatch.
 ///
 /// AppKit routes keyboard and mouse input through a responder chain. This first
@@ -6,6 +24,79 @@
 open class NSResponder: NSObject {
     /// The next object in the responder chain.
     open weak var nextResponder: NSResponder?
+
+    /// Attempts to perform an action, walking the responder chain on failure —
+    /// AppKit's `tryToPerform(_:with:)`.
+    @discardableResult
+    open func tryToPerform(_ action: Selector, with object: Any?) -> Bool {
+        if responds(to: action) {
+            perform(action, with: object)
+            return true
+        }
+
+        return nextResponder?.tryToPerform(action, with: object) ?? false
+    }
+
+    /// The responder-chain action selectors every `NSResponder` carries
+    /// (their base implementations forward along the chain, so performing one
+    /// on any responder walks the chain exactly as AppKit's nil-target
+    /// dispatch does).
+    private static let winStandardActionSelectors: Set<String> = [
+        "copy:", "cut:", "paste:",
+    ]
+
+    /// Responders handle the standard chain actions by selector name — this is
+    /// what lets real AppKit `Selector`-based dispatch (menu items, controls,
+    /// panels) reach `changeFont(_:)`, `copy(_:)`, … without an Objective-C
+    /// runtime. Subclasses with their own action methods override and fall
+    /// through to `super`.
+    open override func responds(to aSelector: Selector?) -> Bool {
+        guard let aSelector else {
+            return false
+        }
+
+        // Font/color changes reach only adopters of the modern protocols —
+        // Apple's shape since 10.14: `changeFont(_:)`/`changeColor(_:)` live
+        // on `NSFontChanging`/`NSColorChanging`, not on `NSResponder`.
+        if aSelector.name == "changeFont:" {
+            return self is NSFontChanging || super.responds(to: aSelector)
+        }
+        if aSelector.name == "changeColor:" {
+            return self is NSColorChanging || super.responds(to: aSelector)
+        }
+        if Self.winStandardActionSelectors.contains(aSelector.name) {
+            return true
+        }
+
+        return super.responds(to: aSelector)
+    }
+
+    @discardableResult
+    open override func perform(_ aSelector: Selector, with object: Any?) -> Any? {
+        switch aSelector.name {
+        case "changeFont:":
+            if let changing = self as? NSFontChanging {
+                changing.changeFont(object as? NSFontManager)
+            } else {
+                return super.perform(aSelector, with: object)
+            }
+        case "changeColor:":
+            if let changing = self as? NSColorChanging {
+                changing.changeColor(object as? NSColorPanel)
+            } else {
+                return super.perform(aSelector, with: object)
+            }
+        case "copy:":
+            copy(object)
+        case "cut:":
+            cut(object)
+        case "paste:":
+            paste(object)
+        default:
+            return super.perform(aSelector, with: object)
+        }
+        return nil
+    }
 
     /// Whether this responder can become first responder.
     open var acceptsFirstResponder: Bool {
@@ -65,24 +156,6 @@ open class NSResponder: NSObject {
     /// Handles a scroll wheel movement.
     open func scrollWheel(with event: NSEvent) {
         nextResponder?.scrollWheel(with: event)
-    }
-
-    /// Applies a font change from the shared font panel.
-    ///
-    /// AppKit sends `changeFont(_:)` along the responder chain while the font
-    /// panel selection changes; responders that handle fonts override this
-    /// and read the new font from `NSFontManager.shared`. Unhandled changes
-    /// continue to the next responder.
-    open func changeFont(_ sender: Any?) {
-        nextResponder?.changeFont(sender)
-    }
-
-    /// Applies a color change from the shared color panel.
-    ///
-    /// Sent along the responder chain while the color panel selection
-    /// changes, matching AppKit's `changeColor(_:)` convention.
-    open func changeColor(_ sender: Any?) {
-        nextResponder?.changeColor(sender)
     }
 
     /// Copies the selection to the general pasteboard.

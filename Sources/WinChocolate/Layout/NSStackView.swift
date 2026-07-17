@@ -60,7 +60,7 @@ open class NSStackView: NSView {
     open private(set) var arrangedSubviews: [NSView] = []
 
     /// Creates an empty stack view.
-    public override init(frame frameRect: NSRect) {
+    public required init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
     }
 
@@ -136,6 +136,73 @@ open class NSStackView: NSView {
         return customSpacings[ObjectIdentifier(views[index])] ?? spacing
     }
 
+    // MARK: - Gravity areas
+
+    /// The packing region a view occupies when `distribution == .gravityAreas`,
+    /// matching AppKit's `NSStackView.Gravity` (top/bottom alias leading/trailing
+    /// for vertical stacks).
+    public enum Gravity: Int, Sendable {
+        case leading = 1
+        case center = 2
+        case trailing = 3
+
+        /// Vertical-stack alias for `.leading`.
+        public static var top: Gravity { .leading }
+
+        /// Vertical-stack alias for `.trailing`.
+        public static var bottom: Gravity { .trailing }
+    }
+
+    private var gravities: [ObjectIdentifier: Gravity] = [:]
+
+    /// Adds a view to a gravity area (and to the arranged list).
+    open func addView(_ view: NSView, in gravity: Gravity) {
+        gravities[ObjectIdentifier(view)] = gravity
+        addArrangedSubview(view)
+    }
+
+    /// Inserts a view at an index *within* a gravity area.
+    open func insertView(_ view: NSView, at index: Int, in gravity: Gravity) {
+        gravities[ObjectIdentifier(view)] = gravity
+        let group = views(in: gravity).filter { $0 !== view }
+        if index < group.count, let target = arrangedSubviews.firstIndex(where: { $0 === group[index] }) {
+            insertArrangedSubview(view, at: target)
+        } else {
+            addArrangedSubview(view)
+        }
+    }
+
+    /// Removes a view from the stack entirely (AppKit's `removeView`).
+    open func removeView(_ view: NSView) {
+        gravities.removeValue(forKey: ObjectIdentifier(view))
+        removeArrangedSubview(view)
+        view.removeFromSuperview()
+    }
+
+    /// The views currently in a gravity area, in arrangement order.
+    open func views(in gravity: Gravity) -> [NSView] {
+        arrangedSubviews.filter { self.gravity(for: $0) == gravity }
+    }
+
+    /// Replaces the views of a gravity area with a new list.
+    open func setViews(_ newViews: [NSView], in gravity: Gravity) {
+        for view in views(in: gravity) where !newViews.contains(where: { $0 === view }) {
+            removeView(view)
+        }
+        for view in newViews {
+            gravities[ObjectIdentifier(view)] = gravity
+            if !arrangedSubviews.contains(where: { $0 === view }) {
+                addArrangedSubview(view)
+            }
+        }
+        invalidateAndRelayout()
+    }
+
+    /// The gravity area of an arranged view (AppKit's default is leading).
+    private func gravity(for view: NSView) -> Gravity {
+        gravities[ObjectIdentifier(view)] ?? .leading
+    }
+
     // MARK: - Layout
 
     open override func layout() {
@@ -162,7 +229,7 @@ open class NSStackView: NSView {
             : NSSize(width: crossMax + crossInset, height: mainTotal + mainInset)
     }
 
-    private enum CrossAlignment { case leading, center, trailing }
+    private enum CrossAlignment { case leading, center, trailing, baseline }
 
     private func invalidateAndRelayout() {
         invalidateIntrinsicContentSize()
@@ -190,6 +257,10 @@ open class NSStackView: NSView {
             return .leading
         case (.horizontal, .bottom), (.vertical, .trailing):
             return .trailing
+        case (.horizontal, .firstBaseline), (.horizontal, .lastBaseline):
+            // Text baselines line up across a horizontal row (each view's
+            // `baselineOffsetFromBottom`); meaningless for vertical stacks.
+            return .baseline
         default:
             return .center
         }
@@ -237,17 +308,65 @@ open class NSStackView: NSView {
             let leftover = availableMain - totalSpacing - intrinsicMains.reduce(0, +)
             let share = leftover / CGFloat(count)
             mains = intrinsicMains.map { max($0 + share, 0) }
-        case .equalSpacing, .equalCentering:
+        case .equalSpacing:
             // Views keep their intrinsic size; the gaps grow uniformly to fill.
             let freeSpace = availableMain - intrinsicMains.reduce(0, +)
             if count > 1 {
                 let uniform = max(spacing, freeSpace / CGFloat(count - 1))
                 gaps = (0..<count).map { $0 < count - 1 ? uniform : 0 }
             }
+        case .equalCentering:
+            // Views keep their intrinsic size; their *centers* space equally
+            // across the axis (positions computed explicitly below).
+            break
+        }
+
+        // Explicit main-axis positions, when the distribution places views by
+        // position rather than by packing with gaps.
+        var explicitPositions: [CGFloat]?
+        if distribution == .equalCentering, count > 0 {
+            let slot = availableMain / CGFloat(count)
+            explicitPositions = (0..<count).map { index in
+                mainStart + slot * (CGFloat(index) + 0.5) - mains[index] / 2
+            }
+        }
+        if distribution == .gravityAreas, !gravities.isEmpty {
+            // True gravity packing: the leading group packs at the start, the
+            // trailing group at the end, and the center group centers as a
+            // block; views keep their intrinsic sizes.
+            mains = intrinsicMains
+            var positions = [CGFloat](repeating: mainStart, count: count)
+            func pack(_ indexes: [Int], from start: CGFloat) -> CGFloat {
+                var cursor = start
+                for i in indexes {
+                    positions[i] = cursor
+                    cursor += mains[i] + spacing
+                }
+                return cursor - (indexes.isEmpty ? 0 : spacing)
+            }
+            let leading = views.indices.filter { gravity(for: views[$0]) == .leading }
+            let center = views.indices.filter { gravity(for: views[$0]) == .center }
+            let trailing = views.indices.filter { gravity(for: views[$0]) == .trailing }
+            _ = pack(leading, from: mainStart)
+            let trailingTotal = trailing.reduce(CGFloat(0)) { $0 + mains[$1] } + spacing * CGFloat(max(trailing.count - 1, 0))
+            _ = pack(trailing, from: mainStart + availableMain - trailingTotal)
+            let centerTotal = center.reduce(CGFloat(0)) { $0 + mains[$1] } + spacing * CGFloat(max(center.count - 1, 0))
+            _ = pack(center, from: mainStart + (availableMain - centerTotal) / 2)
+            explicitPositions = positions
+        }
+
+        // For baseline alignment: the deepest baseline-from-top across the row,
+        // so every view hangs from a common baseline.
+        let alignmentMode = crossAlignment()
+        var commonBaseline: CGFloat = 0
+        if alignmentMode == .baseline {
+            for view in views {
+                let height = min(arrangedSize(view).height, availableCross)
+                commonBaseline = max(commonBaseline, height - view.baselineOffsetFromBottom)
+            }
         }
 
         // Place each view along the main axis, aligned across it.
-        let alignmentMode = crossAlignment()
         var mainCursor = mainStart
         for (index, view) in views.enumerated() {
             let mainLen = mains[index]
@@ -259,15 +378,18 @@ open class NSStackView: NSView {
                 case .leading: crossPos = crossStart
                 case .center: crossPos = crossStart + (availableCross - crossLen) / 2
                 case .trailing: crossPos = crossStart + availableCross - crossLen
+                case .baseline:
+                    crossPos = crossStart + commonBaseline - (crossLen - view.baselineOffsetFromBottom)
                 }
             } else {
                 // No intrinsic cross size → fill the cross axis.
                 crossLen = availableCross
                 crossPos = crossStart
             }
+            let mainPos = explicitPositions?[index] ?? mainCursor
             view.frame = horizontal
-                ? NSRect(x: mainCursor, y: crossPos, width: mainLen, height: crossLen)
-                : NSRect(x: crossPos, y: mainCursor, width: crossLen, height: mainLen)
+                ? NSRect(x: mainPos, y: crossPos, width: mainLen, height: crossLen)
+                : NSRect(x: crossPos, y: mainPos, width: crossLen, height: mainLen)
             mainCursor += mainLen + gaps[index]
         }
     }

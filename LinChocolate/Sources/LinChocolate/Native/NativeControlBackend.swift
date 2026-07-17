@@ -16,16 +16,43 @@ public struct NativeFontSpec: Equatable {
 }
 
 /// Platform-neutral description of one toolbar item carried across the seam.
+/// The concrete kind a button should take on (AppKit's button types collapse
+/// to these three native shapes).
+public enum NativeButtonKind: Sendable { case push, checkbox, radio }
+
 public struct NativeToolbarItemSpec {
+    /// File-backed icon (PNG/BMP path) and whether to tint it as a template.
+    public var imagePath: String?
+    public var imageIsTemplate: Bool = false
     public let identifier: String
     public let label: String
+    /// GTK icon-theme name for the item's image, or nil for a text-only item.
+    public let iconName: String?
     public let isFlexibleSpace: Bool
+    /// A custom control to embed for this item (AppKit's `NSToolbarItem.view`),
+    /// e.g. the page-selector pop-up or a search field. When set, the toolbar
+    /// hosts this widget instead of a plain button.
+    public let viewHandle: NativeHandle?
     public let action: (() -> Void)?
-    public init(identifier: String, label: String, isFlexibleSpace: Bool = false, action: (() -> Void)? = nil) {
+    public init(imagePath: String? = nil, imageIsTemplate: Bool = false, identifier: String, label: String, iconName: String? = nil, isFlexibleSpace: Bool = false, viewHandle: NativeHandle? = nil, action: (() -> Void)? = nil) {
+        self.imagePath = imagePath
+        self.imageIsTemplate = imageIsTemplate
         self.identifier = identifier
         self.label = label
+        self.iconName = iconName
         self.isFlexibleSpace = isFlexibleSpace
+        self.viewHandle = viewHandle
         self.action = action
+    }
+}
+
+/// One color stop of a gradient (location in 0...1).
+public struct NativeGradientStop: Equatable {
+    public let color: NSColor
+    public let location: CGFloat
+    public init(color: NSColor, location: CGFloat) {
+        self.color = color
+        self.location = location
     }
 }
 
@@ -40,9 +67,21 @@ public protocol NativeGraphicsContext: AnyObject {
     func move(toX x: Double, y: Double)
     func line(toX x: Double, y: Double)
     func curve(toX x: Double, y: Double, c1x: Double, c1y: Double, c2x: Double, c2y: Double)
+    /// Appends an arc to the current path (angles in radians, AppKit space).
+    func addArc(centerX: Double, centerY: Double, radius: Double, startAngleRadians: Double, endAngleRadians: Double, clockwise: Bool)
     func closePath()
     func fillPath()
     func strokePath()
+    /// Saves / restores the drawing state (clip, source) for scoped clipping.
+    func saveState()
+    func restoreState()
+    /// Intersects the clip region with the current path (consumes the path).
+    func clipToCurrentPath()
+    /// Fills `rect` with a linear gradient at `angleDegrees` (0 = left→right,
+    /// 90 = bottom→top, AppKit convention).
+    func fillLinearGradient(_ stops: [NativeGradientStop], inRect rect: NSRect, angleDegrees: Double)
+    /// Fills `rect` with a radial gradient centered in it.
+    func fillRadialGradient(_ stops: [NativeGradientStop], inRect rect: NSRect)
 }
 
 /// One styled run of text (carries `NSAttributedString` content across the seam).
@@ -57,15 +96,79 @@ public struct NativeTextRun: Equatable {
     }
 }
 
+/// One row of the toolbar customization palette.
+/// Toolbar-wide rendering mode (AppKit's `NSToolbar.DisplayMode`).
+public enum NativeToolbarDisplayMode: Sendable {
+    case iconAndLabel, iconOnly, labelOnly
+}
+
+/// Everything the customization panel shows: the live strip (a duplicate of
+/// the current toolbar — the drag-and-drop surface), the palette of allowed
+/// items, the default set, and the current display mode.
+public struct NativeToolbarCustomizationSession {
+    public var strip: [NativeToolbarItemSpec]
+    public var palette: [NativeToolbarPaletteItem]
+    public var defaultSet: [NativeToolbarPaletteItem]
+    public var displayModeIndex: Int
+    public init(strip: [NativeToolbarItemSpec], palette: [NativeToolbarPaletteItem],
+                defaultSet: [NativeToolbarPaletteItem], displayModeIndex: Int) {
+        self.strip = strip
+        self.palette = palette
+        self.defaultSet = defaultSet
+        self.displayModeIndex = displayModeIndex
+    }
+}
+
+/// The customization panel's edit callbacks — Apple's drag model, not a
+/// toggle list: drag a palette item in (insert), drag a strip item out
+/// (remove), drag within the strip (move), drag the default set in (reset).
+public struct NativeToolbarCustomizationHandlers {
+    public let onInsert: (String, Int) -> Void
+    public let onMove: (Int, Int) -> Void
+    public let onRemove: (Int) -> Void
+    public let onResetToDefault: () -> Void
+    public let onDisplayMode: (Int) -> Void
+    public let onClose: () -> Void
+    public init(onInsert: @escaping (String, Int) -> Void, onMove: @escaping (Int, Int) -> Void,
+                onRemove: @escaping (Int) -> Void, onResetToDefault: @escaping () -> Void,
+                onDisplayMode: @escaping (Int) -> Void, onClose: @escaping () -> Void) {
+        self.onInsert = onInsert
+        self.onMove = onMove
+        self.onRemove = onRemove
+        self.onResetToDefault = onResetToDefault
+        self.onDisplayMode = onDisplayMode
+        self.onClose = onClose
+    }
+}
+
+public struct NativeToolbarPaletteItem {
+    public let identifier: String
+    public let label: String
+    public let isInToolbar: Bool
+    /// Tile artwork: a file-backed image (recolored when template) or a theme
+    /// icon name, mirroring `NativeToolbarItemSpec`.
+    public var imagePath: String?
+    public var imageIsTemplate: Bool = false
+    public var iconName: String?
+    public init(identifier: String, label: String, isInToolbar: Bool) {
+        self.identifier = identifier
+        self.label = label
+        self.isInToolbar = isInToolbar
+    }
+}
+
 /// Platform-neutral description of one menu-bar item, used to carry `NSMenu`
 /// structures across the backend seam without the seam knowing API types.
 public struct NativeMenuItemSpec {
     public let title: String
     public let isSeparator: Bool
+    /// GTK accelerator string for the key equivalent (e.g. "<Control>n"), or nil.
+    public let accelerator: String?
     public let action: (() -> Void)?
-    public init(title: String, isSeparator: Bool = false, action: (() -> Void)? = nil) {
+    public init(title: String, isSeparator: Bool = false, accelerator: String? = nil, action: (() -> Void)? = nil) {
         self.title = title
         self.isSeparator = isSeparator
+        self.accelerator = accelerator
         self.action = action
     }
 }
@@ -112,7 +215,20 @@ public protocol NativeControlBackend: AnyObject {
     /// Installs (or replaces) the menu bar shown at the top of `window`.
     func installMenuBar(_ menus: [NativeMenuSpec], on window: NativeHandle)
     /// Installs (or replaces) the Apple-look toolbar under the menu bar.
-    func installToolbar(_ items: [NativeToolbarItemSpec], on window: NativeHandle)
+    /// Records whether `handle` uses a top-left (flipped) coordinate system for
+    /// positioning its children, so subview placement flips Y appropriately.
+    func setViewFlipped(_ flipped: Bool, for handle: NativeHandle)
+    func installToolbar(_ items: [NativeToolbarItemSpec], displayMode: NativeToolbarDisplayMode, on window: NativeHandle)
+    /// Shows the toolbar customization panel: a duplicate of the live bar as
+    /// the drag surface, the palette of allowed items, and the default set.
+    /// Edits arrive through `handlers`; the framework then pushes a refreshed
+    /// session via `updateToolbarCustomization` while the panel stays open.
+    func runToolbarCustomization(_ session: NativeToolbarCustomizationSession,
+                                 handlers: NativeToolbarCustomizationHandlers,
+                                 for window: NativeHandle)
+
+    /// Rebuilds the open customization panel's strip/palette after an edit.
+    func updateToolbarCustomization(_ session: NativeToolbarCustomizationSession)
     /// Shows a modal alert and blocks until a button is pressed; returns the
     /// pressed button's index in `buttons` (AppKit order: first = default,
     /// shown rightmost).
@@ -139,6 +255,17 @@ public protocol NativeControlBackend: AnyObject {
     /// Registers `handle` as a drag source; `provider` supplies the string
     /// carried when the user drags it (nil cancels).
     func registerDragSource(for handle: NativeHandle, provider: @escaping () -> String?)
+
+    // MARK: Popover
+    /// Creates a popover (a `GtkPopover`), initially empty and unattached.
+    func createPopover() -> NativeHandle
+    /// Installs `content` as the popover's child and sizes it.
+    func setPopoverContent(_ content: NativeHandle, size: NSSize, for popover: NativeHandle)
+    /// Anchors the popover to `view` (pointing at `rect` in the view's AppKit
+    /// coordinates, `edge` = `NSRectEdge` raw value) and pops it up.
+    func showPopover(_ popover: NativeHandle, relativeTo view: NativeHandle, rect: NSRect, edge: Int)
+    /// Pops the popover down.
+    func closePopover(_ popover: NativeHandle)
 
     // MARK: Views & controls
     /// Creates a container view (absolute child placement, like AppKit frames).
@@ -177,6 +304,16 @@ public protocol NativeControlBackend: AnyObject {
     func createTableView(frame: NSRect) -> NativeHandle
     /// Appends a titled column to a table.
     func addTableColumn(title: String, to table: NativeHandle)
+    /// Updates an existing column's header title.
+    func setTableColumnTitle(_ title: String, columnIndex: Int, for table: NativeHandle)
+    /// Makes a column's header clickable to sort (reports via `setSortChangeAction`).
+    func setColumnSortable(_ columnIndex: Int, for table: NativeHandle)
+    /// Registers the action fired when the user clicks a sortable header;
+    /// passes the column index and whether the new order is ascending.
+    func setSortChangeAction(for table: NativeHandle, action: @escaping (Int, Bool) -> Void)
+    /// Registers the action fired when a row is activated (double-click / Enter);
+    /// passes the row index.
+    func setRowActivateAction(for table: NativeHandle, action: @escaping (Int) -> Void)
     /// Sets the number of rows and re-binds visible cells.
     func setTableRowCount(_ count: Int, for table: NativeHandle)
     /// Supplies cell text on demand: `(row, columnIndex) -> String`.
@@ -229,6 +366,19 @@ public protocol NativeControlBackend: AnyObject {
     func createBox(title: String, frame: NSRect) -> NativeHandle
     /// Creates a scroll container (`setContentView` installs its document view).
     func createScrollView(frame: NSRect) -> NativeHandle
+    /// Sets whether each scroller may appear (true = show when needed).
+    func setScrollerPolicy(vertical: Bool, horizontal: Bool, for handle: NativeHandle)
+    /// Scrolls so the content offset (distance from the top-left of the
+    /// document) becomes `(x, y)`, clamped to the scrollable range.
+    func setScrollOffset(x: Double, y: Double, for handle: NativeHandle)
+    /// The current content offset (distance scrolled from the top-left).
+    func scrollOffset(for handle: NativeHandle) -> (x: Double, y: Double)
+    /// The document (total scrollable content) size.
+    func scrollDocumentSize(for handle: NativeHandle) -> (width: Double, height: Double)
+    /// The visible viewport size (the clip view's size).
+    func scrollVisibleSize(for handle: NativeHandle) -> (width: Double, height: Double)
+    /// Registers the action fired when the scroll offset changes; passes `(x, y)`.
+    func setScrollChangeAction(for handle: NativeHandle, action: @escaping (Double, Double) -> Void)
     /// Creates a two-pane split container. `vertical` follows AppKit: a
     /// vertical *divider*, panes side by side.
     func createSplitView(vertical: Bool, frame: NSRect) -> NativeHandle
@@ -246,6 +396,8 @@ public protocol NativeControlBackend: AnyObject {
     func setFrame(_ frame: NSRect, for handle: NativeHandle)
     /// Enables or disables a control.
     func setEnabled(_ isEnabled: Bool, for handle: NativeHandle)
+    /// Shows or hides a control.
+    func setHidden(_ isHidden: Bool, for handle: NativeHandle)
     /// Applies a font to a control's text.
     func setFont(_ font: NativeFontSpec, for handle: NativeHandle)
     /// Applies a foreground text color to a control.
@@ -266,6 +418,40 @@ public protocol NativeControlBackend: AnyObject {
     func setDoubleValue(_ value: Double, for handle: NativeHandle)
     /// Sets a pop-up button's selected item index.
     func setSelectedIndex(_ index: Int, for handle: NativeHandle)
+    /// Orients a slider vertically or horizontally (AppKit's `isVertical`).
+    func setSliderVertical(_ vertical: Bool, for handle: NativeHandle)
+    /// Switches a date picker between the graphical calendar and the compact
+    /// text-field style (AppKit's `datePickerStyle`).
+    func setDatePickerGraphical(_ graphical: Bool, for handle: NativeHandle)
+    /// Clamps the picker's selectable range (AppKit's `minDate`/`maxDate`).
+    func setDateRange(min: Date?, max: Date?, for handle: NativeHandle)
+    /// Sets the compact picker's display text. The **framework** formats it
+    /// (locale, elements, calendar all being AppKit semantics, not GTK's), so
+    /// the backend only renders what it is given.
+    func setDatePickerText(_ text: String, for handle: NativeHandle)
+    /// Highlights the selected element's character range in the compact field.
+    func setDatePickerSelection(location: Int, length: Int, for handle: NativeHandle)
+    /// The stepper reports a direction (+1/-1); the framework decides which
+    /// element that moves.
+    func setDateStepAction(for handle: NativeHandle, action: @escaping (Int) -> Void)
+    /// A click in the compact field reports the character offset hit.
+    func setDatePickerCursorAction(for handle: NativeHandle, action: @escaping (Int) -> Void)
+    /// Left/right keys report -1/+1 to move the selected element.
+    func setDatePickerMoveAction(for handle: NativeHandle, action: @escaping (Int) -> Void)
+    /// A typed character (a digit, or "a"/"p" for AM/PM) reaches the selected
+    /// element — AppKit's date field is type-to-edit, not stepper-only.
+    func setDatePickerTypeAction(for handle: NativeHandle, action: @escaping (String) -> Void)
+    /// Rebuilds a button as a push button, checkbox, or radio (AppKit's
+    /// `setButtonType(_:)` applied to a control created as a plain button).
+    func setButtonKind(_ kind: NativeButtonKind, title: String, for handle: NativeHandle)
+    /// Toggles a text field between an editable, framed field and a borderless
+    /// static label (AppKit's `isEditable`; the frame follows editability).
+    func setTextEditable(_ editable: Bool, for handle: NativeHandle)
+    /// Paints the view's background (`NSView.backgroundColor`); nil clears it.
+    func setBackgroundColor(_ color: NSColor?, for handle: NativeHandle)
+    /// Rebuilds a pop-up button's item list (AppKit's `addItems`/`removeAllItems`)
+    /// and selects `selectedIndex`.
+    func setPopUpItems(_ titles: [String], selectedIndex: Int, for handle: NativeHandle)
     /// Sets a date picker's date.
     func setDateValue(_ date: Date, for handle: NativeHandle)
     /// Sets a color well's color.

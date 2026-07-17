@@ -1,5 +1,5 @@
 /// The methods an alert delegate can implement.
-public protocol NSAlertDelegate: AnyObject {
+public protocol NSAlertDelegate: NSObjectProtocol {
     /// Called when the user clicks the alert's help button; return `true` if
     /// the help request was handled.
     func alertShowHelp(_ alert: NSAlert) -> Bool
@@ -58,11 +58,9 @@ open class NSAlert: NSObject {
     /// The help anchor consulted when the help button is clicked.
     open var helpAnchor: String?
 
-    /// The alert delegate, consulted for help-button clicks.
+    /// The alert delegate, consulted for help-button clicks
+    /// (`alertShowHelp(_:)`), matching AppKit.
     open weak var delegate: NSAlertDelegate?
-
-    /// A fallback help handler used when no delegate handles the help button.
-    open var winHelpButtonAction: (() -> Void)?
 
     /// A custom icon shown instead of the style badge.
     open var icon: NSImage?
@@ -83,7 +81,7 @@ open class NSAlert: NSObject {
     open var suppressionButton: NSButton? {
         if storedSuppressionButton == nil {
             let button = NSButton(title: "Do not show this message again", frame: NSMakeRect(0, 0, 280, 20))
-            button.setButtonType(.switchButton)
+            button.setButtonType(.switch)
             storedSuppressionButton = button
         }
         return storedSuppressionButton
@@ -141,6 +139,20 @@ open class NSAlert: NSObject {
     /// Alerts without custom buttons use the native message box; alerts with
     /// custom button titles or a suppression checkbox run as a composed modal
     /// panel so AppKit button semantics are preserved exactly.
+    /// Whether the alert can use the OS `MessageBox`: only a plain alert
+    /// (default buttons, no suppression/accessory/help/custom icon) qualifies,
+    /// and **only in light mode** — the native message box does not honor dark
+    /// mode, so a dark app composes the alert from its own dark-aware views
+    /// instead (matching the 8.5 owner-draw-what-doesn't-theme rule).
+    private var winCanUseNativeMessageBox: Bool {
+        buttonTitles.isEmpty
+            && !showsSuppressionButton
+            && accessoryView == nil
+            && !showsHelp
+            && icon == nil
+            && !NSApplication.shared.effectiveAppearance.winIsDark
+    }
+
     open func runModal() -> NSApplication.ModalResponse {
         let application = NSApplication.shared
         let keyWindow = application.keyWindow
@@ -148,7 +160,7 @@ open class NSAlert: NSObject {
         let firstResponder = keyWindow?.firstResponder
 
         let response: NSApplication.ModalResponse
-        if buttonTitles.isEmpty && !showsSuppressionButton && accessoryView == nil && !showsHelp && icon == nil {
+        if winCanUseNativeMessageBox {
             response = application.nativeBackend.runAlert(self)
         } else {
             response = runComposedPanel(in: application)
@@ -173,7 +185,7 @@ open class NSAlert: NSObject {
     open func beginSheetModal(for window: NSWindow, completionHandler handler: ((NSApplication.ModalResponse) -> Void)? = nil) {
         let application = NSApplication.shared
         let response: NSApplication.ModalResponse
-        if buttonTitles.isEmpty && !showsSuppressionButton && accessoryView == nil && !showsHelp && icon == nil {
+        if winCanUseNativeMessageBox {
             response = application.nativeBackend.runAlert(self)
         } else {
             response = runComposedPanel(in: application, attachedTo: window)
@@ -186,29 +198,54 @@ open class NSAlert: NSObject {
         let margin: CGFloat = 24
         let textLeft: CGFloat = 80
         // Size the panel to the measured message so long prompts never clip.
-        let messageSize = messageText.size(withAttributes: [.font: NSFont.boldSystemFont(ofSize: 13)])
+        let messageFont = NSFont.boldSystemFont(ofSize: 13)
+        let messageSize = messageText.size(withAttributes: [.font: messageFont])
         let width: CGFloat = min(640, max(420, textLeft + messageSize.width + margin + 8))
+        let textWidth = width - textLeft - margin
         var y: CGFloat = 20
 
+        // Height of `text` word-wrapped at `textWidth`, counting explicit
+        // newlines *and* wrapping — so multi-line message/informative text
+        // (which the plain wrapped measure alone can under-count on embedded
+        // "\n") gets a label tall enough to show every line.
+        func wrappedHeight(_ text: String, font: NSFont) -> CGFloat {
+            let lineHeight = font.pointSize + 7
+            var total: CGFloat = 0
+            for segment in text.split(separator: "\n", omittingEmptySubsequences: false) {
+                let line = segment.isEmpty ? " " : String(segment)
+                let measured = line.size(withAttributes: [.font: font], maxWidth: textWidth).height
+                total += max(measured, lineHeight)
+            }
+            return total
+        }
+
         let content = NSView(frame: NSMakeRect(0, 0, width, 200))
-        content.backgroundColor = .windowBackgroundColor
+        content.winBackgroundColor = .windowBackgroundColor
 
         let iconView = AlertIconView(style: alertStyle, icon: icon, frame: NSMakeRect(24, 20, 40, 40))
         content.addSubview(iconView)
 
-        let messageLabel = NSTextField(string: messageText, frame: NSMakeRect(textLeft, y, width - textLeft - margin, 24))
+        let messageHeight = max(24, wrappedHeight(messageText, font: messageFont))
+        let messageLabel = NSTextField(string: messageText, frame: NSMakeRect(textLeft, y, textWidth, messageHeight))
         messageLabel.isBordered = false
         messageLabel.drawsBackground = false
-        messageLabel.font = NSFont.boldSystemFont(ofSize: 13)
+        messageLabel.font = messageFont
+        messageLabel.usesSingleLineMode = false
+        messageLabel.maximumNumberOfLines = 0
         content.addSubview(messageLabel)
-        y += 34
+        y += messageHeight + 10
 
         if !informativeText.isEmpty {
-            let informativeLabel = NSTextField(string: informativeText, frame: NSMakeRect(textLeft, y, width - textLeft - margin, 40))
+            let informativeFont = NSFont.systemFont(ofSize: 12)
+            let informativeHeight = wrappedHeight(informativeText, font: informativeFont)
+            let informativeLabel = NSTextField(string: informativeText, frame: NSMakeRect(textLeft, y, textWidth, informativeHeight))
             informativeLabel.isBordered = false
             informativeLabel.drawsBackground = false
+            informativeLabel.font = informativeFont
+            informativeLabel.usesSingleLineMode = false
+            informativeLabel.maximumNumberOfLines = 0
             content.addSubview(informativeLabel)
-            y += 48
+            y += informativeHeight + 12
         }
 
         if showsSuppressionButton, let suppressionButton {
@@ -238,7 +275,7 @@ open class NSAlert: NSObject {
             let buttonWidth = max(76, CGFloat(button.title.count * 7 + 28))
             button.frame = NSMakeRect(buttonRight - buttonWidth, y + 8, buttonWidth, 28)
             let code = NSApplication.ModalResponse(rawValue: button.tag)
-            button.onAction = { _ in
+            button.winInternalAction = { _ in
                 application.stopModal(withCode: code)
             }
             content.addSubview(button)
@@ -249,13 +286,11 @@ open class NSAlert: NSObject {
         // alert, matching AppKit's round "?" help affordance.
         if showsHelp {
             let helpButton = NSButton(title: "?", frame: NSMakeRect(margin, y + 8, 28, 28))
-            helpButton.onAction = { [weak self] _ in
+            helpButton.winInternalAction = { [weak self] _ in
                 guard let self else {
                     return
                 }
-                if self.delegate?.alertShowHelp(self) != true {
-                    self.winHelpButtonAction?()
-                }
+                _ = self.delegate?.alertShowHelp(self)
             }
             content.addSubview(helpButton)
         }
@@ -296,6 +331,13 @@ private final class AlertIconView: NSView {
         self.style = style
         self.icon = icon
         super.init(frame: frameRect)
+    }
+
+    /// Inherited from `NSView.init(frame:)` being `required`. This is a private
+    /// helper that cannot exist without a style, and it is never registered
+    /// with a collection view, so the frame-only path is unsupported.
+    required init(frame frameRect: NSRect) {
+        fatalError("AlertIconView requires init(style:icon:frame:)")
     }
 
     override func draw(_ dirtyRect: NSRect) {

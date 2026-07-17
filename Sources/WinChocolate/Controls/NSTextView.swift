@@ -1,20 +1,20 @@
 /// The methods a text view delegate uses to respond to editing.
 @MainActor
-public protocol NSTextViewDelegate: AnyObject {
+public protocol NSTextViewDelegate: NSObjectProtocol {
     /// Tells the delegate that editing changed the text view's text.
-    func textDidChange(_ notification: NSNotification)
+    func textDidChange(_ notification: Notification)
 }
 
 extension NSTextViewDelegate {
     /// Default no-op so delegates only implement the callbacks they need.
-    public func textDidChange(_ notification: NSNotification) {}
+    public func textDidChange(_ notification: Notification) {}
 }
 
 /// A multiline text editing view.
 ///
 /// This first slice provides the common AppKit `string` surface and maps to a
 /// native multiline Windows edit control.
-open class NSTextView: NSControl {
+open class NSTextView: NSControl, NSFontChanging {
     /// Posted to the delegate when editing changes the text.
     public static let textDidChangeNotification = "NSTextDidChangeNotification"
 
@@ -105,12 +105,12 @@ open class NSTextView: NSControl {
 
     // `font` is inherited from `NSControl` (AppKit's declaration point).
 
-    /// Applies a live font panel change.
+    /// Applies a live font panel change (`NSFontChanging`, as on Apple).
     ///
     /// Rich text views convert the selected range, matching AppKit; plain
     /// views (or an empty selection) convert the whole view's font.
-    open override func changeFont(_ sender: Any?) {
-        let converted = NSFontManager.shared.convert(font ?? NSFont.systemFont(ofSize: 13))
+    open func changeFont(_ sender: NSFontManager?) {
+        let converted = (sender ?? NSFontManager.shared).convert(font ?? NSFont.systemFont(ofSize: 13))
         let selection = selectedRange
         if isRichText && selection.length > 0 {
             setFont(converted, range: selection)
@@ -209,9 +209,6 @@ open class NSTextView: NSControl {
         }
     }
 
-    /// Swift-native callback invoked when editing changes the text.
-    open var onTextChanged: ((NSTextView) -> Void)?
-
     /// The selected character range, in UTF-16 units.
     ///
     /// Realized text views read and write the live native selection; unrealized
@@ -236,7 +233,7 @@ open class NSTextView: NSControl {
     }
 
     /// Creates a text view with a frame.
-    public override init(frame frameRect: NSRect) {
+    public required init(frame frameRect: NSRect) {
         self.string = ""
         self.isEditable = true
         self.isSelectable = true
@@ -397,8 +394,7 @@ open class NSTextView: NSControl {
         if allowsUndo && previousText != text {
             registerTypingUndo(previousText: previousText, text: text)
         }
-        onTextChanged?(self)
-        winMainActor { delegate?.textDidChange(NSNotification(name: Self.textDidChangeNotification, object: self)) }
+        winMainActor { delegate?.textDidChange(Notification(name: Notification.Name(Self.textDidChangeNotification), object: self)) }
     }
 
     /// Registers undo state for one native edit, coalescing typing bursts.
@@ -465,8 +461,7 @@ open class NSTextView: NSControl {
         string = text
         objectValue = text
         selectedRange = NSMakeRange(text.utf16.count, 0)
-        onTextChanged?(self)
-        winMainActor { delegate?.textDidChange(NSNotification(name: Self.textDidChangeNotification, object: self)) }
+        winMainActor { delegate?.textDidChange(Notification(name: Notification.Name(Self.textDidChangeNotification), object: self)) }
     }
 }
 

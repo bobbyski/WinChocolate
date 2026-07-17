@@ -94,7 +94,7 @@ open class NSScroller: NSControl {
     }
 
     /// Creates a scroller with a frame.
-    public override init(frame frameRect: NSRect) {
+    public required init(frame frameRect: NSRect) {
         self.doubleValue = 0
         self.knobProportion = 0.1
         self.hitPart = .noPart

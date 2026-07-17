@@ -104,7 +104,7 @@ open class NSVisualEffectView: NSView {
     private var winAppearanceObserver: NSObjectProtocol?
 
     /// Creates a visual effect view.
-    public override init(frame frameRect: NSRect) {
+    public required init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         updateFallbackBackground()
         // The material's fallback color is resolved for the current appearance
@@ -131,7 +131,7 @@ open class NSVisualEffectView: NSView {
     }
 
     private func updateFallbackBackground() {
-        backgroundColor = fallbackColor
+        winBackgroundColor = fallbackColor
     }
 
     private var fallbackColor: NSColor {

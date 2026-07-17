@@ -4,7 +4,7 @@
 /// password-style native edit control in the Windows backend.
 open class NSSecureTextField: NSTextField {
     /// Creates a secure text field with a frame.
-    public override init(frame frameRect: NSRect) {
+    public required init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         isEditable = true
         isSelectable = true
@@ -13,7 +13,7 @@ open class NSSecureTextField: NSTextField {
     }
 
     /// Creates a secure text field with text and a frame.
-    public override init(string stringValue: String, frame frameRect: NSRect) {
+    override init(string stringValue: String, frame frameRect: NSRect) {
         super.init(string: stringValue, frame: frameRect)
         isEditable = true
         isSelectable = true

@@ -33,7 +33,7 @@ open class NSTokenField: NSTextField {
     }
 
     /// Current token strings.
-    open private(set) var tokens: [String] = []
+    package private(set) var tokens: [String] = []
 
     /// Token visual style.
     open var tokenStyle: TokenStyle = .rounded
@@ -57,7 +57,7 @@ open class NSTokenField: NSTextField {
     open var completionHandler: CompletionHandler?
 
     /// Creates a token field with a frame.
-    public override init(frame frameRect: NSRect) {
+    public required init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         isEditable = true
         isSelectable = true
@@ -69,18 +69,31 @@ open class NSTokenField: NSTextField {
     }
 
     /// Creates a token field with an initial token list.
-    public init(tokens: [String], frame frameRect: NSRect) {
+    init(tokens: [String], frame frameRect: NSRect) {
         super.init(string: tokens.joined(separator: ", "), frame: frameRect)
         isEditable = true
         isSelectable = true
         self.tokens = tokens
-        objectValue = tokens
+        super.objectValue = tokens
+    }
+
+    /// Setting an array as the object value replaces the tokens — AppKit's
+    /// way of assigning a token field's content (`objectValue = ["a", "b"]`).
+    open override var objectValue: Any? {
+        get { super.objectValue }
+        set {
+            if let list = newValue as? [String] {
+                setTokens(list)
+            } else {
+                super.objectValue = newValue
+            }
+        }
     }
 
     /// Replaces all tokens and updates the visible text.
     open func setTokens(_ tokens: [String]) {
         self.tokens = tokens
-        objectValue = tokens
+        super.objectValue = tokens
         stringValue = tokens.joined(separator: "\(tokenizingCharacter) ")
         if usesChipRendering {
             needsDisplay = true

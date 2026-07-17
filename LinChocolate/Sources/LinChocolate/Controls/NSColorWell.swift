@@ -3,7 +3,7 @@ import Foundation
 /// AppKit-shaped color well (GtkColorButton) — a swatch that opens the native
 /// color chooser. Reports changes through `onColorChange`; `color` is the
 /// current selection.
-public final class NSColorWell: NSView {
+open class NSColorWell: NSControl {
 
     private var backingColor: NSColor
 
@@ -19,8 +19,17 @@ public final class NSColorWell: NSView {
 
     /// Called when the user picks a color in the chooser.
     public var onColorChange: ((NSColorWell) -> Void)?
+    /// Control-action alias (accepted for API parity).
+    public var onAction: ((NSColorWell) -> Void)? {
+        get { onColorChange }
+        set { onColorChange = newValue }
+    }
 
     /// Creates a color well showing `color`.
+    public required convenience init(frame: NSRect) {
+        self.init(color: .blue, frame: frame)
+    }
+
     public init(color: NSColor = .blue, frame: NSRect) {
         self.backingColor = color
         let backend = NSApplication.shared.nativeBackend
@@ -30,6 +39,7 @@ public final class NSColorWell: NSView {
             guard let self else { return }
             self.backingColor = color          // sync silently
             self.onColorChange?(self)
+            self.sendAction()
         }
     }
 }

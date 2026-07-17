@@ -20,6 +20,14 @@ import WinChocolate
 
 The public API intentionally uses familiar Apple names such as `NSApplication`, `NSWindow`, `NSView`, `NSButton`, `NSTextField`, `NSMenu`, `NSMenuItem`, and `NSAlert`, while the implementation wraps native Windows controls.
 
+## The Rule (set in stone)
+
+> **We are implementing the Apple API, not creating something similar.**
+
+Apple's implementation is the specification, and the demo's macOS build against real AppKit is the ground truth. Any divergence from it is a backend bug. The framework must match Apple's API exactly — including **defaults** — and must **never substitute or combine controls on the app's behalf**. Where a platform has no native equivalent, implement the Apple control as a **custom compound control** built from the primitives that do exist, exposing the **exact Apple API**. It may look like a Windows or Linux app; it must still *be* the Apple control.
+
+See [CONTROL_PARITY.md](CONTROL_PARITY.md#the-rule-set-in-stone) for the full rule, the obligations it implies, and the `NSDatePicker` case that established it.
+
 ## Status
 
 WinChocolate is early and intentionally incomplete. The current milestone proves the basic native loop:
@@ -86,6 +94,18 @@ buildandrun.bat
 ```
 
 The script builds the Swift package, runs the contract tests, checks native demo window creation, and launches the demo app.
+
+An optional first argument selects which demo to build and run:
+
+```bat
+buildandrun.bat demo       rem the main WinChocolate demo (default)
+buildandrun.bat runloop    rem the RunLoop / Timer demo
+```
+
+Any other arguments pass straight through to the app, so `buildandrun.bat --dark`
+still runs the main demo (with `--dark`), and `buildandrun.bat runloop --dark`
+runs the run-loop demo. The `runloop` app has no `--diagnose` self-check or
+bundled resources, so those steps are skipped for it.
 
 ## Package Layout
 

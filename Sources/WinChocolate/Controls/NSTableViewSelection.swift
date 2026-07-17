@@ -1,7 +1,6 @@
 nonisolated(unsafe) private var tableAllowsColumnSelection: [ObjectIdentifier: Bool] = [:]
 nonisolated(unsafe) private var tableSelectedColumnIndexes: [ObjectIdentifier: Set<Int>] = [:]
 nonisolated(unsafe) private var tableDoubleActions: [ObjectIdentifier: Selector] = [:]
-nonisolated(unsafe) private var tableDoubleActionHandlers: [ObjectIdentifier: (NSTableView) -> Void] = [:]
 
 public extension NSTableView {
     /// Most recent row activated by mouse or keyboard, or `-1`.
@@ -64,16 +63,6 @@ public extension NSTableView {
         }
     }
 
-    /// Swift-native double-action callback for table rows.
-    var onDoubleAction: ((NSTableView) -> Void)? {
-        get {
-            tableDoubleActionHandlers[ObjectIdentifier(self)]
-        }
-        set {
-            tableDoubleActionHandlers[ObjectIdentifier(self)] = newValue
-        }
-    }
-
     /// Selects columns when column selection is enabled.
     func selectColumnIndexes(_ indexes: Set<Int>, byExtendingSelection extend: Bool) {
         guard allowsColumnSelection else {
@@ -126,12 +115,13 @@ public extension NSTableView {
         return nextDescriptor
     }
 
-    /// Sends the table's double-action callback.
+    /// Sends the table's double-click action, dispatching the `doubleAction`
+    /// selector to `target` (or down the responder chain), as AppKit does.
     func sendDoubleAction() {
         guard isEnabled else {
             return
         }
 
-        onDoubleAction?(self)
+        _ = sendAction(doubleAction, to: target)
     }
 }

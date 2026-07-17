@@ -32,6 +32,26 @@ public final class NSAppearance: Equatable, Sendable {
     public static let aqua = NSAppearance(named: .aqua)
     public static let darkAqua = NSAppearance(named: .darkAqua)
 
+    /// The best-matching name among `appearances` (AppKit's matching hook —
+    /// the demo's standard `bestMatch(from: [.aqua, .darkAqua])` idiom).
+    /// Dark appearances match the dark names first, light ones the light.
+    public func bestMatch(from appearances: [Name]) -> Name? {
+        if appearances.contains(name) {
+            return name
+        }
+        if isDark {
+            return appearances.first { Self(named: $0).isDark } ?? appearances.first
+        }
+        return appearances.first { !Self(named: $0).isDark } ?? appearances.first
+    }
+
+    /// The appearance active for the drawing pass currently underway
+    /// (AppKit's `currentDrawing()`). LinChocolate's appearance is
+    /// application-scoped, so this resolves to the app's effective appearance.
+    public static func currentDrawing() -> NSAppearance {
+        NSApplication.shared.effectiveAppearance
+    }
+
     public static func == (lhs: NSAppearance, rhs: NSAppearance) -> Bool {
         lhs.name == rhs.name
     }

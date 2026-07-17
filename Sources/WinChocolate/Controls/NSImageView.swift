@@ -1,3 +1,50 @@
+/// How an image is scaled inside an image view — AppKit's top-level
+/// `NSImageScaling` (18.3: the type is not nested on `NSImageView`).
+public enum NSImageScaling: Sendable {
+    /// Scale down proportionally when the image is larger than the view.
+    case scaleProportionallyDown
+
+    /// Scale independently along each axis.
+    case scaleAxesIndependently
+
+    /// Do not scale the image.
+    case scaleNone
+
+    /// Scale up or down proportionally to fit.
+    case scaleProportionallyUpOrDown
+}
+
+/// How an image is aligned inside an image view — AppKit's top-level
+/// `NSImageAlignment`.
+public enum NSImageAlignment: Sendable {
+    /// Center the image.
+    case alignCenter
+
+    /// Align to the top edge.
+    case alignTop
+
+    /// Align to the top-left corner.
+    case alignTopLeft
+
+    /// Align to the top-right corner.
+    case alignTopRight
+
+    /// Align to the left edge.
+    case alignLeft
+
+    /// Align to the bottom edge.
+    case alignBottom
+
+    /// Align to the bottom-left corner.
+    case alignBottomLeft
+
+    /// Align to the bottom-right corner.
+    case alignBottomRight
+
+    /// Align to the right edge.
+    case alignRight
+}
+
 /// A simple image value.
 ///
 /// This is an initial placeholder for AppKit's `NSImage`. It records a name so
@@ -105,20 +152,48 @@ open class NSImage: NSObject {
     /// (`withTintColor`-style) without a bitmap-compositing pipeline.
     open var winTint: NSColor?
 
+    /// The decoded in-memory bitmap, lazily produced from `data` (BMP/PNG) the
+    /// first time it is needed and cached. This is the WinCoreGraphics (13.6)
+    /// backing that closes the data-backed drawing boundary; file-backed images
+    /// still blit their decoded file directly.
+    private var winDecodedImage: CGImage??
+
+    /// The data-backed image decoded to a `CGImage`, or `nil` when there is no
+    /// data or it is an unsupported format. Result is memoized.
+    open var winCGImage: CGImage? {
+        if let cached = winDecodedImage {
+            return cached
+        }
+        let decoded = data.flatMap { CGImage.decode(Array($0)) }
+        winDecodedImage = .some(decoded)
+        if let decoded, size == .zero {
+            size = NSSize(width: CGFloat(decoded.width), height: CGFloat(decoded.height))
+        }
+        return decoded
+    }
+
     /// Draws the image scaled into a rectangle of the current graphics context.
     ///
     /// Template images (`isTemplate`) render as the current fill color shaped
     /// by the image's alpha, matching AppKit's template drawing; set a color
     /// (`NSColor.set()`) before drawing to pick the tint (black by default).
-    /// An explicit `winTint` wins over both. Only file-backed images draw;
-    /// named and data-backed images are a no-op until in-memory bitmap
-    /// decoding lands.
+    /// An explicit `winTint` wins over both. File-backed images blit their
+    /// decoded file; **data-backed images decode through WinCoreGraphics (13.6)
+    /// and blit their pixels** — the in-memory boundary noted in 3.13 is closed
+    /// (named-only images without data still no-op).
     open func draw(in rect: NSRect) {
-        guard let filePath, let context = NSGraphicsContext.current else {
+        guard let context = NSGraphicsContext.current else {
             return
         }
+        let tint = winTint ?? (isTemplate ? context.fillColor : nil)
 
-        context.nativeContext.drawImage(atPath: filePath, in: rect, tint: winTint ?? (isTemplate ? context.fillColor : nil))
+        if let filePath {
+            context.nativeContext.drawImage(atPath: filePath, in: rect, tint: tint)
+            return
+        }
+        if let image = winCGImage {
+            context.nativeContext.drawImage(rgbaPixels: image.pixels, width: image.width, height: image.height, in: rect, tint: tint)
+        }
     }
 
     /// Draws the image into a rectangle, ignoring the source crop, compositing
@@ -160,49 +235,14 @@ public enum NSCompositingOperation: Int, Sendable {
 /// The first backend slice records the image name and uses a native static peer
 /// as a placeholder. Real bitmap loading and drawing are future work.
 open class NSImageView: NSControl {
-    /// How the image is scaled inside the image view.
-    public enum ImageScaling: Sendable {
-        /// Scale down proportionally when the image is larger than the view.
-        case scaleProportionallyDown
+    // MARK: Accessibility
 
-        /// Scale independently along each axis.
-        case scaleAxesIndependently
-
-        /// Do not scale the image.
-        case scaleNone
-
-        /// Scale up or down proportionally to fit.
-        case scaleProportionallyUpOrDown
-    }
-
-    /// How the image is aligned inside the image view.
-    public enum ImageAlignment: Sendable {
-        /// Center the image.
-        case alignCenter
-
-        /// Align to the top edge.
-        case alignTop
-
-        /// Align to the top-left corner.
-        case alignTopLeft
-
-        /// Align to the top-right corner.
-        case alignTopRight
-
-        /// Align to the left edge.
-        case alignLeft
-
-        /// Align to the bottom edge.
-        case alignBottom
-
-        /// Align to the bottom-left corner.
-        case alignBottomLeft
-
-        /// Align to the bottom-right corner.
-        case alignBottomRight
-
-        /// Align to the right edge.
-        case alignRight
+    /// An image view reports `.image`; its label defaults to the underlying
+    /// image's accessibility description (the alt text set at image creation).
+    open override var winIntrinsicAccessibilityRole: NSAccessibilityRole { .image }
+    open override var winIntrinsicAccessibilityLabel: String? {
+        let description = image?.accessibilityDescription ?? ""
+        return description.isEmpty ? nil : description
     }
 
     /// The frame style drawn around the image view.
@@ -240,14 +280,14 @@ open class NSImageView: NSControl {
     }
 
     /// The scaling mode used for the displayed image.
-    open var imageScaling: ImageScaling = .scaleProportionallyDown {
+    open var imageScaling: NSImageScaling = .scaleProportionallyDown {
         didSet {
             updateNativeDescription()
         }
     }
 
     /// The alignment mode used for the displayed image.
-    open var imageAlignment: ImageAlignment = .alignCenter {
+    open var imageAlignment: NSImageAlignment = .alignCenter {
         didSet {
             updateNativeDescription()
         }
@@ -279,7 +319,7 @@ open class NSImageView: NSControl {
     }
 
     /// Creates an image view with a frame.
-    public override init(frame frameRect: NSRect) {
+    public required init(frame frameRect: NSRect) {
         self.image = nil
         super.init(frame: frameRect)
     }

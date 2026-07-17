@@ -1,34 +1,34 @@
 /// The methods a window delegate uses to participate in window lifecycle.
-public protocol NSWindowDelegate: AnyObject {
+public protocol NSWindowDelegate: NSObjectProtocol {
     /// Returns whether the window may close; false vetoes a title-bar close.
     func windowShouldClose(_ sender: NSWindow) -> Bool
 
     /// Tells the delegate the window is closing.
-    func windowWillClose(_ notification: NSNotification)
+    func windowWillClose(_ notification: Notification)
 
     /// Tells the delegate the window was resized (by the user or the system).
-    func windowDidResize(_ notification: NSNotification)
+    func windowDidResize(_ notification: Notification)
 
     /// Tells the delegate the window was moved.
-    func windowDidMove(_ notification: NSNotification)
+    func windowDidMove(_ notification: Notification)
 
     /// Tells the delegate the window was minimized.
-    func windowDidMiniaturize(_ notification: NSNotification)
+    func windowDidMiniaturize(_ notification: Notification)
 
     /// Tells the delegate the window was restored from the minimized state.
-    func windowDidDeminiaturize(_ notification: NSNotification)
+    func windowDidDeminiaturize(_ notification: Notification)
 
     /// Tells the delegate the window is about to enter full screen.
-    func windowWillEnterFullScreen(_ notification: NSNotification)
+    func windowWillEnterFullScreen(_ notification: Notification)
 
     /// Tells the delegate the window has entered full screen.
-    func windowDidEnterFullScreen(_ notification: NSNotification)
+    func windowDidEnterFullScreen(_ notification: Notification)
 
     /// Tells the delegate the window is about to exit full screen.
-    func windowWillExitFullScreen(_ notification: NSNotification)
+    func windowWillExitFullScreen(_ notification: Notification)
 
     /// Tells the delegate the window has exited full screen.
-    func windowDidExitFullScreen(_ notification: NSNotification)
+    func windowDidExitFullScreen(_ notification: Notification)
 }
 
 extension NSWindowDelegate {
@@ -38,31 +38,31 @@ extension NSWindowDelegate {
     }
 
     /// Default no-op so delegates only implement the callbacks they need.
-    public func windowWillClose(_ notification: NSNotification) {}
+    public func windowWillClose(_ notification: Notification) {}
 
     /// Default no-op so delegates only implement the callbacks they need.
-    public func windowDidResize(_ notification: NSNotification) {}
+    public func windowDidResize(_ notification: Notification) {}
 
     /// Default no-op so delegates only implement the callbacks they need.
-    public func windowDidMove(_ notification: NSNotification) {}
+    public func windowDidMove(_ notification: Notification) {}
 
     /// Default no-op so delegates only implement the callbacks they need.
-    public func windowDidMiniaturize(_ notification: NSNotification) {}
+    public func windowDidMiniaturize(_ notification: Notification) {}
 
     /// Default no-op so delegates only implement the callbacks they need.
-    public func windowDidDeminiaturize(_ notification: NSNotification) {}
+    public func windowDidDeminiaturize(_ notification: Notification) {}
 
     /// Default no-op so delegates only implement the callbacks they need.
-    public func windowWillEnterFullScreen(_ notification: NSNotification) {}
+    public func windowWillEnterFullScreen(_ notification: Notification) {}
 
     /// Default no-op so delegates only implement the callbacks they need.
-    public func windowDidEnterFullScreen(_ notification: NSNotification) {}
+    public func windowDidEnterFullScreen(_ notification: Notification) {}
 
     /// Default no-op so delegates only implement the callbacks they need.
-    public func windowWillExitFullScreen(_ notification: NSNotification) {}
+    public func windowWillExitFullScreen(_ notification: Notification) {}
 
     /// Default no-op so delegates only implement the callbacks they need.
-    public func windowDidExitFullScreen(_ notification: NSNotification) {}
+    public func windowDidExitFullScreen(_ notification: Notification) {}
 }
 
 /// A top-level application window.
@@ -499,27 +499,78 @@ open class NSWindow: NSResponder {
         nativeBackend.setHidden(true, for: nativeHandle)
     }
 
+    /// The sheet currently attached to this window, if any (AppKit's
+    /// `attachedSheet`). While a sheet is attached, additional `beginSheet`
+    /// calls queue behind it.
+    open internal(set) var attachedSheet: NSWindow?
+
+    /// The window this window is a sheet of, if any (AppKit's `sheetParent`).
+    open internal(set) weak var sheetParent: NSWindow?
+
+    // Sheets requested while another sheet is attached, presented FIFO as each
+    // preceding sheet ends — matching AppKit's sheet queue.
+    private var winQueuedSheets: [(NSWindow, ((NSApplication.ModalResponse) -> Void)?)] = []
+
+    /// The vertical inset from this window's top at which an attached sheet
+    /// hangs: the title area, plus the toolbar strip when a visible toolbar is
+    /// docked, so the sheet drops below the toolbar rather than under the bare
+    /// title bar (the positioning owned here, moved from 6.2).
+    open var winSheetTopInset: CGFloat {
+        var inset: CGFloat = 56
+        if let toolbar, toolbar.isVisible {
+            inset += toolbarHeight
+        }
+        return inset
+    }
+
+    /// The origin at which a sheet of the given size attaches: horizontally
+    /// centered, dropped below the title area (and toolbar, if any).
+    open func winSheetOrigin(for sheetSize: NSSize) -> NSPoint {
+        NSMakePoint(
+            frame.origin.x + max((frame.size.width - sheetSize.width) / 2, 0),
+            frame.origin.y + winSheetTopInset
+        )
+    }
+
     /// Presents a window as a sheet attached to this window.
     ///
-    /// The classic backend runs sheets as application-modal sessions
-    /// positioned under this window's title area; the handler receives the
-    /// code passed to `endSheet(_:returnCode:)`. Window-modal sheets with
-    /// slide animation arrive with the modern appearance.
+    /// The sheet attaches below the title area (and any docked toolbar), links
+    /// to this window through `sheetParent`/`attachedSheet`, and runs a modal
+    /// session that blocks this window; the handler receives the code passed to
+    /// `endSheet(_:returnCode:)`. A second `beginSheet` while a sheet is
+    /// attached queues behind it. Slide animation and parent dimming arrive
+    /// with the modern appearance.
     open func beginSheet(_ sheetWindow: NSWindow, completionHandler handler: ((NSApplication.ModalResponse) -> Void)? = nil) {
+        // A sheet is already up — queue this one behind it.
+        if attachedSheet != nil {
+            winQueuedSheets.append((sheetWindow, handler))
+            return
+        }
+        winPresentSheet(sheetWindow, completionHandler: handler)
+    }
+
+    private func winPresentSheet(_ sheetWindow: NSWindow, completionHandler handler: ((NSApplication.ModalResponse) -> Void)?) {
         let sheetSize = sheetWindow.frame.size
-        let origin = NSMakePoint(
-            frame.origin.x + max((frame.size.width - sheetSize.width) / 2, 0),
-            frame.origin.y + 56
-        )
-        sheetWindow.setFrame(NSRect(origin: origin, size: sheetSize), display: true)
+        sheetWindow.setFrame(NSRect(origin: winSheetOrigin(for: sheetSize), size: sheetSize), display: true)
+        attachedSheet = sheetWindow
+        sheetWindow.sheetParent = self
         let response = NSApplication.shared.runModal(for: sheetWindow)
         handler?(response)
     }
 
-    /// Ends a sheet session presented with `beginSheet(_:completionHandler:)`.
+    /// Ends a sheet session presented with `beginSheet(_:completionHandler:)`,
+    /// unlinks it, and presents the next queued sheet if one is waiting.
     open func endSheet(_ sheetWindow: NSWindow, returnCode: NSApplication.ModalResponse = .OK) {
         NSApplication.shared.stopModal(withCode: returnCode)
         sheetWindow.close()
+        if attachedSheet === sheetWindow {
+            attachedSheet = nil
+        }
+        sheetWindow.sheetParent = nil
+        if !winQueuedSheets.isEmpty {
+            let (next, handler) = winQueuedSheets.removeFirst()
+            winPresentSheet(next, completionHandler: handler)
+        }
     }
 
     /// Makes the window the key window.
@@ -770,7 +821,7 @@ open class NSWindow: NSResponder {
         toolbarHostView = nil
         nativeHandle = nil
         NSApplication.shared.removeWindowsItem(self)
-        delegate?.windowWillClose(NSNotification(name: "NSWindowWillCloseNotification", object: self))
+        delegate?.windowWillClose(Notification(name: Notification.Name("NSWindowWillCloseNotification"), object: self))
     }
 
     private func nativeWindowDidResize(to size: NSSize) {
@@ -779,13 +830,13 @@ open class NSWindow: NSResponder {
         // Run the layout pass synchronously so live resize tracks the new
         // size instead of waiting for the next pump tick.
         contentView?.layoutSubtreeIfNeeded()
-        delegate?.windowDidResize(NSNotification(name: "NSWindowDidResizeNotification", object: self))
+        delegate?.windowDidResize(Notification(name: Notification.Name("NSWindowDidResizeNotification"), object: self))
     }
 
     private func nativeWindowDidMove(to origin: NSPoint) {
         // Track the native origin without pushing it back to the backend.
         frame.origin = origin
-        delegate?.windowDidMove(NSNotification(name: "NSWindowDidMoveNotification", object: self))
+        delegate?.windowDidMove(Notification(name: Notification.Name("NSWindowDidMoveNotification"), object: self))
     }
 
     // MARK: - Window state
@@ -833,14 +884,14 @@ open class NSWindow: NSResponder {
     open func miniaturize(_ sender: Any?) {
         let handle = realizeNativePeer()
         nativeBackend.setWindowMinimized(true, for: handle)
-        delegate?.windowDidMiniaturize(NSNotification(name: "NSWindowDidMiniaturizeNotification", object: self))
+        delegate?.windowDidMiniaturize(Notification(name: Notification.Name("NSWindowDidMiniaturizeNotification"), object: self))
     }
 
     /// Restores the window from the minimized state.
     open func deminiaturize(_ sender: Any?) {
         let handle = realizeNativePeer()
         nativeBackend.setWindowMinimized(false, for: handle)
-        delegate?.windowDidDeminiaturize(NSNotification(name: "NSWindowDidDeminiaturizeNotification", object: self))
+        delegate?.windowDidDeminiaturize(Notification(name: Notification.Name("NSWindowDidDeminiaturizeNotification"), object: self))
     }
 
     /// Toggles the window between zoomed (maximized) and its normal frame.
@@ -867,9 +918,9 @@ open class NSWindow: NSResponder {
         let didName = entering ? "NSWindowDidEnterFullScreenNotification" : "NSWindowDidExitFullScreenNotification"
 
         if entering {
-            delegate?.windowWillEnterFullScreen(NSNotification(name: willName, object: self))
+            delegate?.windowWillEnterFullScreen(Notification(name: Notification.Name(willName), object: self))
         } else {
-            delegate?.windowWillExitFullScreen(NSNotification(name: willName, object: self))
+            delegate?.windowWillExitFullScreen(Notification(name: Notification.Name(willName), object: self))
         }
 
         winIsFullScreen = entering
@@ -879,9 +930,9 @@ open class NSWindow: NSResponder {
         layoutToolbarAndContent()
 
         if entering {
-            delegate?.windowDidEnterFullScreen(NSNotification(name: didName, object: self))
+            delegate?.windowDidEnterFullScreen(Notification(name: Notification.Name(didName), object: self))
         } else {
-            delegate?.windowDidExitFullScreen(NSNotification(name: didName, object: self))
+            delegate?.windowDidExitFullScreen(Notification(name: Notification.Name(didName), object: self))
         }
     }
 
@@ -962,7 +1013,7 @@ open class NSWindow: NSResponder {
     }
 
     private func nextKeyView(after responder: NSResponder?) -> NSView? {
-        if let view = responder as? NSView, let nextKeyView = firstFocusableNextKeyView(startingAt: view.nextKeyView) {
+        if let view = responder as? NSView, let nextKeyView = firstFocusableNextKeyView(startingAt: view.winEffectiveNextKeyView) {
             return nextKeyView
         }
 
@@ -993,11 +1044,11 @@ open class NSWindow: NSResponder {
                 return candidate
             }
 
-            if let focusableChild = firstFocusableView(startingAt: candidate) {
+            if candidate.winShouldDescendInKeyLoop, let focusableChild = firstFocusableView(startingAt: candidate) {
                 return focusableChild
             }
 
-            current = candidate.nextKeyView
+            current = candidate.winEffectiveNextKeyView
         }
 
         return nil
@@ -1019,7 +1070,7 @@ open class NSWindow: NSResponder {
                 return candidate
             }
 
-            if let focusableChild = lastFocusableView(in: candidate) {
+            if candidate.winShouldDescendInKeyLoop, let focusableChild = lastFocusableView(in: candidate) {
                 return focusableChild
             }
 

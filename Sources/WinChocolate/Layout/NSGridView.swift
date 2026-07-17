@@ -147,7 +147,14 @@ open class NSGridView: NSView {
     open var yPlacement: NSGridCell.Placement = .center { didSet { relayout() } }
 
     /// Grid-wide default row alignment (stored for API fidelity).
-    open var rowAlignment: NSGridRow.Alignment = .firstBaseline { didSet { relayout() } }
+    /// The grid's default row alignment. `.firstBaseline`/`.lastBaseline`
+    /// align a row's cell contents on their text baselines (via each view's
+    /// `baselineOffsetFromBottom`), overriding row/grid y-placement; a cell's
+    /// own explicit `yPlacement` still wins. WinChocolate defaults to `.none`
+    /// (centered placement) — a documented divergence from AppKit's
+    /// `.firstBaseline` default, pinned by existing consumers; set it
+    /// explicitly for baseline rows.
+    open var rowAlignment: NSGridRow.Alignment = .none { didSet { relayout() } }
 
     /// Space between adjacent rows.
     open var rowSpacing: CGFloat = 8 { didSet { relayout() } }
@@ -171,7 +178,7 @@ open class NSGridView: NSView {
     /// Cells indexed `[rowIndex][columnIndex]`.
     private var cells: [[NSGridCell]] = []
 
-    public override init(frame frameRect: NSRect) {
+    public required init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
     }
 
@@ -427,8 +434,34 @@ open class NSGridView: NSView {
     }
 
     open override func layout() {
-        let widths = columnWidths()
-        let heights = rowHeights()
+        var widths = columnWidths()
+        var heights = rowHeights()
+
+        // An over-sized grid distributes its extra space equally to the
+        // content-sized tracks (explicit-width/height tracks keep their size),
+        // so a grid pinned larger than its fitting size fills the frame —
+        // matching AppKit's constraint-driven stretching. The fitting
+        // (intrinsic) size is unaffected.
+        let fittingWidth = visibleColumns.reduce(0) { $0 + widths[$1] }
+            + columnSpacing * CGFloat(max(visibleColumns.count - 1, 0))
+        let extraWidth = bounds.size.width - fittingWidth
+        if extraWidth > 0 {
+            let stretchable = visibleColumns.filter { columns[$0].width == NSGridView.sizedForContent }
+            if !stretchable.isEmpty {
+                let share = extraWidth / CGFloat(stretchable.count)
+                for c in stretchable { widths[c] += share }
+            }
+        }
+        let fittingHeight = visibleRows.reduce(0) { $0 + heights[$1] }
+            + rowSpacing * CGFloat(max(visibleRows.count - 1, 0))
+        let extraHeight = bounds.size.height - fittingHeight
+        if extraHeight > 0 {
+            let stretchable = visibleRows.filter { rows[$0].height == NSGridView.sizedForContent }
+            if !stretchable.isEmpty {
+                let share = extraHeight / CGFloat(stretchable.count)
+                for r in stretchable { heights[r] += share }
+            }
+        }
 
         // Column x-origins (left to right, skipping hidden columns).
         var columnX = [CGFloat](repeating: 0, count: columns.count)
@@ -446,6 +479,20 @@ open class NSGridView: NSView {
         }
 
         for r in visibleRows {
+            // Baseline row alignment (row overrides grid; `.inherited` falls
+            // through): the row's cell contents hang from a common baseline
+            // computed from each view's `baselineOffsetFromBottom`. A cell's
+            // own explicit `yPlacement` still wins.
+            let effectiveAlignment = rows[r].rowAlignment == .inherited ? rowAlignment : rows[r].rowAlignment
+            let alignsBaselines = effectiveAlignment == .firstBaseline || effectiveAlignment == .lastBaseline
+            var rowBaseline: CGFloat = 0
+            if alignsBaselines {
+                for c in visibleColumns where mergedRegion(row: r, column: c) == nil {
+                    guard let content = cells[r][c].contentView else { continue }
+                    let size = contentSize(cell: content)
+                    rowBaseline = max(rowBaseline, size.height - content.baselineOffsetFromBottom)
+                }
+            }
             for c in visibleColumns {
                 // A merged region is laid out once, at its head cell; other
                 // covered cells are skipped.
@@ -472,8 +519,13 @@ open class NSGridView: NSView {
                                       y: rowY[r] + rows[r].topPadding,
                                       width: max(widths[c] - columns[c].leadingPadding - columns[c].trailingPadding, 0),
                                       height: max(heights[r] - rows[r].topPadding - rows[r].bottomPadding, 0))
-                content.frame = placeContent(content, in: cellRect,
-                                             x: resolvedX(cell), y: resolvedY(cell))
+                var frame = placeContent(content, in: cellRect,
+                                         x: resolvedX(cell), y: resolvedY(cell))
+                if alignsBaselines, cell.yPlacement == .inherited {
+                    frame.origin.y = cellRect.origin.y + rowBaseline
+                        - (frame.size.height - content.baselineOffsetFromBottom)
+                }
+                content.frame = frame
             }
         }
     }

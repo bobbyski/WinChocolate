@@ -10,6 +10,7 @@ public class NSSavePanel {
 
     /// Directory the panel starts in.
     public var directoryURL: URL?
+    public var title: String = ""
 
     /// Suggested file name shown in the name field.
     public var nameFieldStringValue = ""

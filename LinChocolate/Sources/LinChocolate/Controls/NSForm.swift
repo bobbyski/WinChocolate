@@ -22,13 +22,26 @@ public final class NSFormCell {
         get { textField.stringValue }
         set { textField.stringValue = newValue }
     }
+
+    /// Width of the title column for this row (Apple keeps title widths on the
+    /// cells). Setting it re-lays the row's label and field.
+    public var titleWidth: CGFloat {
+        get { titleLabel.frame.width }
+        set {
+            let y = titleLabel.frame.origin.y
+            let total = max(titleLabel.frame.width + 8 + textField.frame.width, newValue + 48)
+            titleLabel.frame = NSMakeRect(0, y, newValue, 24)
+            textField.frame = NSMakeRect(newValue + 8, textField.frame.origin.y,
+                                         max(40, total - newValue - 8), 24)
+        }
+    }
 }
 
 /// AppKit-shaped `NSForm`: a vertical stack of labelled text-entry rows. No GTK
 /// peer — it's a composed control (like `NSTokenField`/`NSSegmentedControl`),
 /// built from `NSTextField` labels and fields laid out in this view's frame.
 /// The legacy grid look is dropped in favor of plain native fields (Goal 2).
-public final class NSForm: NSView {
+open class NSForm: NSControl {
 
     /// Width of the title column (pixels). Set before adding entries.
     public var titleWidth: Double = 80
@@ -43,18 +56,27 @@ public final class NSForm: NSView {
     @discardableResult
     public func addEntry(_ title: String) -> NSFormCell {
         let index = cells.count
-        // AppKit bottom-left coordinates: the first row sits at the top.
-        let y = frame.height - Double(index + 1) * rowHeight + (rowHeight - 24)
+        // Row 0 is topmost either way; `isFlipped` is this form's own answer.
+        let y = CoordinateSpace.stackedRowY(index: index, rowHeight: rowHeight,
+                                            contentHeight: 24,
+                                            containerHeight: frame.height,
+                                            isFlipped: isFlipped)
         let label = NSTextField(labelWithString: title,
                                 frame: NSMakeRect(0, y, titleWidth, 24))
         let field = NSTextField(string: "",
                                 frame: NSMakeRect(titleWidth + 8, y,
                                                   max(40, frame.width - titleWidth - 8), 24))
+        field.isEditable = true   // form entries are editable input fields (framed)
         addSubview(label)
         addSubview(field)
         let cell = NSFormCell(titleLabel: label, textField: field)
         cells.append(cell)
         return cell
+    }
+
+    /// The row's cell (AppKit's `cell(at:)`).
+    public func cell(at index: Int) -> NSFormCell? {
+        cells.indices.contains(index) ? cells[index] : nil
     }
 
     /// The editable field for a row (AppKit's `cell(at:)`/`textField(at:)`).

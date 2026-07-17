@@ -3,12 +3,25 @@
 /// This first slice covers the shared controller, the open-documents list,
 /// the recent-documents list, and a panel-driven `openDocument(_:)`.
 open class NSDocumentController: NSObject {
+    /// Backing store for `shared`, captured by the first instantiation.
+    nonisolated(unsafe) private static var sharedStorage: NSDocumentController?
+
     /// The shared document controller.
     ///
+    /// As in AppKit, **the first document controller instantiated becomes the
+    /// shared one** — an application subclasses `NSDocumentController`
+    /// (overriding `documentClass(forType:)`) and creates its instance early;
+    /// otherwise a plain controller is created on first access.
     /// WinChocolate UI objects are single-threaded on the main thread, so the
     /// shared instance opts out of strict concurrency checking like the other
     /// framework singletons.
-    nonisolated(unsafe) public static let shared = NSDocumentController()
+    public static var shared: NSDocumentController {
+        if let sharedStorage {
+            return sharedStorage
+        }
+
+        return NSDocumentController()
+    }
 
     /// All open documents, in the order they were added.
     open private(set) var documents: [NSDocument] = []
@@ -19,16 +32,32 @@ open class NSDocumentController: NSObject {
     /// Recently opened document locations, most recent first.
     open private(set) var recentDocumentURLs: [URL] = []
 
-    /// The document class `openDocument(_:)` instantiates.
-    ///
-    /// AppKit resolves document classes from Info.plist document types;
-    /// WinChocolate has no Info.plist yet, so this `win`-prefixed hook lets an
-    /// application point the shared controller at its `NSDocument` subclass.
-    open var winDocumentClass: NSDocument.Type = NSDocument.self
+    /// The fallback document class when `documentClass(forType:)` is not
+    /// overridden. Not API (18.8): applications override AppKit's real
+    /// `documentClass(forType:)` on an `NSDocumentController` subclass.
+    package var winDocumentClass: NSDocument.Type = NSDocument.self
 
-    /// Creates a document controller.
+    /// Returns the document class for a type, matching AppKit's
+    /// `documentClass(forType:)`. AppKit resolves this from Info.plist
+    /// document types; WinChocolate has no Info.plist, so subclasses override
+    /// this to supply their `NSDocument` subclass (any type name maps to the
+    /// app's one class in the common single-type case).
+    open func documentClass(forType typeName: String) -> AnyClass? {
+        winDocumentClass
+    }
+
+    /// The class `documentClass(forType:)` resolves, as a document type.
+    private func winResolvedDocumentClass(forType typeName: String) -> NSDocument.Type {
+        (documentClass(forType: typeName) as? NSDocument.Type) ?? winDocumentClass
+    }
+
+    /// Creates a document controller. As in AppKit, the first controller
+    /// created becomes `shared`.
     public override init() {
         super.init()
+        if NSDocumentController.sharedStorage == nil {
+            NSDocumentController.sharedStorage = self
+        }
     }
 
     /// Registers a document and makes it current.
@@ -49,7 +78,7 @@ open class NSDocumentController: NSObject {
     /// Creates a new untitled document with its windows shown.
     @discardableResult
     open func newDocument(_ sender: Any?) -> NSDocument {
-        let document = winDocumentClass.init()
+        let document = winResolvedDocumentClass(forType: "").init()
         addDocument(document)
         document.makeWindowControllers()
         document.showWindows()
@@ -70,7 +99,7 @@ open class NSDocumentController: NSObject {
         }
 
         for url in panel.urls {
-            let document = winDocumentClass.init()
+            let document = winResolvedDocumentClass(forType: url.pathExtension).init()
             do {
                 try document.read(from: url, ofType: url.pathExtension)
             } catch {

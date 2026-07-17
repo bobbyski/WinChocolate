@@ -2,7 +2,7 @@
 ///
 /// `NSMenuItem` keeps AppKit-compatible `title`, `action`, `keyEquivalent`,
 /// `target`, and `submenu` properties. On Windows, action dispatch is bridged
-/// through `performAction()` and the Swift-native `onAction` closure.
+/// through `performAction()`, dispatching the real target/action selector.
 open class NSMenuItem: NSObject {
     /// The menu item title.
     open var title: String
@@ -40,8 +40,10 @@ open class NSMenuItem: NSObject {
     /// The parent menu containing this item.
     public weak var menu: NSMenu?
 
-    /// Swift-native action invoked by `performAction()`.
-    open var onAction: ((NSMenuItem) -> Void)?
+    /// Framework-internal action hook for menu items the framework builds
+    /// itself (search-field recents, toolbar context menus). Not API:
+    /// application menu items use real target/action.
+    var winInternalAction: ((NSMenuItem) -> Void)?
 
     /// Creates a blank item, matching AppKit's shape — callers set the title
     /// or attach a submenu afterwards.
@@ -64,15 +66,16 @@ open class NSMenuItem: NSObject {
             return false
         }
 
-        if let onAction {
-            onAction(self)
+        if let winInternalAction {
+            winInternalAction(self)
             return true
         }
 
-        if action?.name == "terminate:" {
-            let application = target as? NSApplication ?? NSApplication.shared
-            application.terminate(self)
-            return true
+        // Real AppKit dispatch: the action selector goes to the explicit
+        // target, or down the nil-target responder chain (which ends at
+        // `NSApplication`, so `terminate:` works with no target set).
+        if let action {
+            return NSApplication.shared.sendAction(action, to: target, from: self)
         }
 
         return false

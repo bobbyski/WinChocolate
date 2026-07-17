@@ -12,7 +12,11 @@ let package = Package(
     name: "LinChocolate",
     products: [
         .library(name: "LinChocolate", targets: ["LinChocolate"]),
-        .executable(name: "LinChocolateDemo", targets: ["LinChocolateDemo"])
+        .executable(name: "LinChocolateDemo", targets: ["LinChocolateDemo"]),
+        // The real WinChocolate demo built against LinChocolate (plan L15).
+        // Its source symlinks into ../Demo, so builds need the repo root mounted
+        // (run-linux.sh does this). Work-in-progress port.
+        .executable(name: "RealDemo", targets: ["RealDemo"])
     ],
     targets: [
         // Thin C-interop binding to GTK4, resolved via pkg-config `gtk4`.
@@ -37,6 +41,16 @@ let package = Package(
             dependencies: ["LinChocolate"],
             path: "Sources/LinChocolateDemo",
             exclude: ["Resources"]
+        ),
+
+        // The shared WinChocolate demo source (symlinked from ../Demo), built
+        // against LinChocolate — the AppKit-compat proof (plan L15). Builds only
+        // when the repo root is mounted (so the symlink resolves); run-linux.sh
+        // now mounts the repo root for exactly this.
+        .executableTarget(
+            name: "RealDemo",
+            dependencies: ["LinChocolate"],
+            path: "Sources/RealDemo"
         ),
 
         // Hermetic contract tests (in-memory backend, no display).

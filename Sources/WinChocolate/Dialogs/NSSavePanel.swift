@@ -54,7 +54,9 @@ open class NSSavePanel: NSObject {
     }
 
     /// Returns a new save panel.
-    public class func savePanel() -> NSSavePanel {
+    /// Legacy factory. Not API (18.7): Apple deprecated `savePanel()` in favor
+    /// of `init()` — package for the framework and suite.
+    package class func savePanel() -> NSSavePanel {
         NSSavePanel()
     }
 
@@ -150,7 +152,9 @@ open class NSOpenPanel: NSSavePanel {
     public internal(set) var urls: [URL] = []
 
     /// Returns a new open panel.
-    public class func openPanel() -> NSOpenPanel {
+    /// Legacy factory. Not API (18.7): Apple deprecated `openPanel()` in favor
+    /// of `init()` — package for the framework and suite.
+    package class func openPanel() -> NSOpenPanel {
         NSOpenPanel()
     }
 

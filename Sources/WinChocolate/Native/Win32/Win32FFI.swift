@@ -443,6 +443,11 @@ struct NMHDR {
     var hwndFrom: HWND?
     var idFrom: UInt = 0
     var code: UINT = 0
+    // C pads NMHDR to 24 bytes on 64-bit (alignment 8); Swift's layout stops
+    // at 20 without this, shifting every field of the NM* structs that embed
+    // NMHDR four bytes early (observed: NMUPDOWN.iDelta reading the real
+    // iPos, which froze steppers).
+    private var winTrailingPadding: UINT = 0
 }
 
 struct NMLISTVIEW {
@@ -481,10 +486,21 @@ struct NMCUSTOMDRAW {
     var lItemlParam: LPARAM = 0
 }
 
+/// `NMLVCUSTOMDRAW` — the list-view custom-draw payload. Only the leading
+/// fields are declared (the color pair the framework rewrites); the C struct
+/// continues with subitem/icon fields the framework never touches, and the
+/// pointer received through `WM_NOTIFY` always references the full C struct.
+struct NMLVCUSTOMDRAW {
+    var nmcd: NMCUSTOMDRAW = NMCUSTOMDRAW()
+    var clrText: DWORD = 0
+    var clrTextBk: DWORD = 0
+}
+
 /// `NM_CUSTOMDRAW` (NM_FIRST − 12, as an unsigned notification code).
 let nmCustomDraw: UINT = 0xFFFF_FFF4
 let cddsPrePaint: DWORD = 0x0000_0001
 let cddsItemPrePaint: DWORD = 0x0001_0001
+let cdisSelected: UINT = 0x0001
 let cdrfDoDefault: LRESULT = 0x0000_0000
 let cdrfSkipDefault: LRESULT = 0x0000_0004
 let cdrfNotifyItemDraw: LRESULT = 0x0000_0020
@@ -925,6 +941,25 @@ func winGetClientRect(_ hwnd: HWND?, _ rectangle: UnsafeMutablePointer<RECT>?) -
 @_silgen_name("GetMessageW")
 func winGetMessageW(_ message: UnsafeMutablePointer<MSG>, _ hwnd: HWND?, _ minimumMessage: UINT, _ maximumMessage: UINT) -> Int32
 
+@_silgen_name("PeekMessageW")
+func winPeekMessageW(_ message: UnsafeMutablePointer<MSG>, _ hwnd: HWND?, _ minimumMessage: UINT, _ maximumMessage: UINT, _ removeMessage: UINT) -> Int32
+
+@_silgen_name("MsgWaitForMultipleObjects")
+func winMsgWaitForMultipleObjects(_ count: DWORD, _ handles: UnsafePointer<UnsafeMutableRawPointer?>?, _ waitAll: Int32, _ milliseconds: DWORD, _ wakeMask: DWORD) -> DWORD
+
+@_silgen_name("PostThreadMessageW")
+func winPostThreadMessageW(_ threadId: DWORD, _ message: UINT, _ wParam: WPARAM, _ lParam: LPARAM) -> Int32
+
+/// `PM_REMOVE` — dequeue the peeked message.
+let pmRemove: UINT = 0x0001
+/// `QS_ALLINPUT` — wake on any queued input.
+let qsAllInput: DWORD = 0x04FF
+/// Wait-forever timeout for `MsgWaitForMultipleObjects`.
+let infiniteTimeout: DWORD = 0xFFFF_FFFF
+/// `WM_QUIT` / `WM_NULL`.
+let wmQuit: UINT = 0x0012
+let wmNull: UINT = 0x0000
+
 @_silgen_name("GetParent")
 func winGetParent(_ hwnd: HWND?) -> HWND?
 
@@ -1066,6 +1101,9 @@ func winSetTextColor(_ deviceContext: HDC?, _ color: DWORD) -> DWORD
 @_silgen_name("SetFocus")
 func winSetFocus(_ hwnd: HWND?) -> HWND?
 
+@_silgen_name("GetFocus")
+func winGetFocus() -> HWND?
+
 @_silgen_name("SetWindowLongPtrW")
 func winSetWindowLongPtrW(_ hwnd: HWND?, _ index: Int32, _ newLong: LONG_PTR) -> LONG_PTR
 
@@ -1122,6 +1160,30 @@ func winGlobalFree(_ memory: UnsafeMutableRawPointer?) -> UnsafeMutableRawPointe
 
 @_silgen_name("SetGraphicsMode")
 func winSetGraphicsMode(_ deviceContext: HDC?, _ mode: Int32) -> Int32
+
+// MARK: - Per-monitor DPI awareness (10.7)
+
+/// DPI_AWARENESS_CONTEXT is an opaque handle passed by value; the well-known
+/// per-monitor-v2 handle is -4 (as a pointer-sized sentinel), system-aware -2.
+let winDpiAwarenessPerMonitorV2 = UnsafeMutableRawPointer(bitPattern: Int(bitPattern: UInt(bitPattern: -4)))
+let winDpiAwarenessSystem = UnsafeMutableRawPointer(bitPattern: Int(bitPattern: UInt(bitPattern: -2)))
+
+/// Opts the process into a DPI-awareness mode (Windows 10 1703+). Returns
+/// nonzero on success.
+@_silgen_name("SetProcessDpiAwarenessContext")
+func winSetProcessDpiAwarenessContext(_ context: UnsafeMutableRawPointer?) -> Int32
+
+/// Legacy fallback: system-DPI awareness (Vista+).
+@_silgen_name("SetProcessDPIAware")
+func winSetProcessDPIAware() -> Int32
+
+/// The DPI of the display that a window is on (Windows 10 1607+). 96 = 100%.
+@_silgen_name("GetDpiForWindow")
+func winGetDpiForWindow(_ hwnd: HWND?) -> UINT
+
+/// The system DPI (Windows 10 1607+). 96 = 100%.
+@_silgen_name("GetDpiForSystem")
+func winGetDpiForSystem() -> UINT
 
 @_silgen_name("SetWorldTransform")
 func winSetWorldTransform(_ deviceContext: HDC?, _ transform: UnsafePointer<XFORM>) -> Int32
@@ -1602,6 +1664,7 @@ let lvmGetNextItem: UINT = lvmFirst + 12
 let lvmEnsureVisible: UINT = lvmFirst + 19
 let lvmGetHeader: UINT = lvmFirst + 31
 let lvmSetItemState: UINT = lvmFirst + 43
+let lvmGetItemState: UINT = lvmFirst + 44
 let lvmSubItemHitTest: UINT = lvmFirst + 57
 let lvmInsertItemW: UINT = lvmFirst + 77
 let lvmInsertColumnW: UINT = lvmFirst + 97
@@ -1691,11 +1754,19 @@ let iccDateClasses: DWORD = 0x00000100
 let dtmFirst: UINT = 0x1000
 let dtmGetSystemTime: UINT = dtmFirst + 1
 let dtmSetSystemTime: UINT = dtmFirst + 2
+let dtmSetRange: UINT = dtmFirst + 4
 let dtmSetFormatW: UINT = dtmFirst + 50
 let gdtValid: WPARAM = 0
+/// `GDTR_MIN`/`GDTR_MAX` — which halves of a `DTM_SETRANGE` pair are set.
+let gdtrMin: WPARAM = 0x0001
+let gdtrMax: WPARAM = 0x0002
+/// `DTS_UPDOWN` — the field carries a stepper instead of a drop-down calendar,
+/// which is AppKit's `.textFieldAndStepper`.
+let dtsUpDown: DWORD = 0x0001
 let mcmFirst: UINT = 0x1000
 let mcmGetCurSel: UINT = mcmFirst + 1
 let mcmSetCurSel: UINT = mcmFirst + 2
+let mcmSetRange: UINT = mcmFirst + 7
 let mcmGetMinReqRect: UINT = mcmFirst + 9
 /// `MCM_SETCOLOR` and its color-part indexes (dark calendar palette).
 let mcmSetColor: UINT = mcmFirst + 10
@@ -1742,6 +1813,8 @@ let gwlpWndProc: Int32 = -4
 let gwChild: UINT = 5
 let gwHwndNext: UINT = 2
 let wmSettingChange: UINT = 0x001A
+/// WM_DPICHANGED: a window moved to a display with a different DPI (10.7).
+let wmDpiChanged: UINT = 0x02E0
 let rdwFrame: UINT = 0x0400
 let clrDefault: DWORD = 0xFF00_0000
 let gclpHbrBackground: Int32 = -10

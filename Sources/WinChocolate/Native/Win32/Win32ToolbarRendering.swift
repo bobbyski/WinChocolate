@@ -105,9 +105,11 @@ extension Win32NativeControlBackend {
         // Custom content drawn through `NSView.draw(_:)` paints above the
         // background and below any composed toolbar glyphs.
         if let drawAction = drawActions[handle.rawValue] {
-            // Magnified views draw in logical coordinates through a GDI
-            // world transform, which scales paths, text, and blits alike.
-            let scale = contentScales[handle.rawValue] ?? 1
+            // Views draw in logical (point) coordinates through a GDI world
+            // transform, which scales paths, text, and blits alike. The factor
+            // is the display's device scale (10.7, DPI) times any per-view
+            // magnification (3.3), so custom drawing renders crisp at HiDPI.
+            let scale = winDeviceScale * (contentScales[handle.rawValue] ?? 1)
             let dirtyRect = NSMakeRect(
                 0,
                 0,
@@ -146,7 +148,13 @@ extension Win32NativeControlBackend {
 
         let parts = toolbarPreviewRects(for: preview, in: rectangle)
         if preview.showItem {
-            drawToolbarItemGlyph(preview: preview, in: parts.image, deviceContext: deviceContext, parentWindow: hwnd)
+            // Glyph strokes follow the tile's label color (so palette tiles
+            // and toolbar tiles both contrast with their background); an
+            // explicit template tint from the composite item wins.
+            let strokeColor = toolbarTemplateTint(from: preview.templateTint)
+                ?? textColors[handle.rawValue].map(nsColor(fromColorRef:))
+                ?? NSColor(calibratedRed: 0.25, green: 0.27, blue: 0.30, alpha: 1)
+            drawToolbarItemGlyph(preview: preview, in: parts.image, strokeColor: strokeColor, deviceContext: deviceContext, parentWindow: hwnd)
         }
 
         let toolbarFont = toolbarPreviewFont()
@@ -174,6 +182,7 @@ extension Win32NativeControlBackend {
         var showItem: Bool
         var showLabel: Bool
         var labelPosition: String
+        var templateTint: String = ""
     }
 
     private func toolbarPreview(from text: String) -> ToolbarPreview {
@@ -184,12 +193,14 @@ extension Win32NativeControlBackend {
             let showItem = fields.count > 3 ? fields[3] == "1" : true
             let showLabel = fields.count > 4 ? fields[4] == "1" : true
             let labelPosition = fields.count > 5 ? fields[5] : "below"
+            let templateTint = fields.count > 6 ? fields[6] : ""
             return ToolbarPreview(
                 label: label,
                 imageName: imageName,
                 showItem: showItem,
                 showLabel: showLabel,
-                labelPosition: labelPosition
+                labelPosition: labelPosition,
+                templateTint: templateTint
             )
         }
 
@@ -259,13 +270,29 @@ extension Win32NativeControlBackend {
         }
     }
 
-    private func drawToolbarItemGlyph(preview: ToolbarPreview, in rectangle: RECT, deviceContext: HDC?, parentWindow: HWND?) {
+    private func drawToolbarItemGlyph(preview: ToolbarPreview, in rectangle: RECT, strokeColor: NSColor, deviceContext: HDC?, parentWindow: HWND?) {
         let width = rectangle.right - rectangle.left
         let height = rectangle.bottom - rectangle.top
         let glyphSize = max(12, min(18, height))
         let glyphLeft = rectangle.left + max((width - glyphSize) / 2, 2)
         let glyphTop = rectangle.top + max((height - glyphSize) / 2, 0)
         let kind = preview.imageName.lowercased()
+
+        // A file-path image name is the item's real artwork (the AppKit path:
+        // `item.image = NSImage(contentsOfFile:)`). Draw the actual file via
+        // GDI+ — with the template tint when the image is a template — instead
+        // of mapping the name onto glyph artwork.
+        if preview.imageName.contains("\\") || preview.imageName.contains("/") {
+            if let deviceContext {
+                let drawRect = NSMakeRect(
+                    CGFloat(glyphLeft), CGFloat(glyphTop),
+                    CGFloat(glyphSize), CGFloat(glyphSize)
+                )
+                Win32DrawingContext(deviceContext: deviceContext)
+                    .drawImage(atPath: preview.imageName, in: drawRect, tint: toolbarTemplateTint(from: preview.templateTint))
+            }
+            return
+        }
 
         if kind.contains("separator") {
             drawSeparatorGlyph(left: glyphLeft, top: glyphTop, size: glyphSize, deviceContext: deviceContext)
@@ -280,14 +307,43 @@ extension Win32NativeControlBackend {
             return
         }
 
-        let imageIndex = toolbarImageIndex(for: preview.imageName)
-        if imageIndex != iImageNone, let imageList = standardToolbarImages(parentWindow: parentWindow) {
-            let imageLeft = rectangle.left + max((width - 16) / 2, 2)
-            _ = winImageListDraw(imageList, imageIndex, deviceContext, imageLeft, glyphTop, ildNormal)
+        // Name-based glyphs render the framework's Tabler artwork (see
+        // `WinTablerIcons`) as strokes in the tile's label color — replacing
+        // the legacy comctl32 stock image list and the hand-drawn document
+        // glyph, so palette tiles and fallback items match the item artwork's
+        // style everywhere.
+        guard let deviceContext else {
             return
         }
+        let iconName = WinTablerIcons.iconName(forGlyphKey: preview.imageName) ?? "file"
+        let side = CGFloat(glyphSize)
+        let origin = NSPoint(x: CGFloat(glyphLeft), y: CGFloat(glyphTop))
+        if let paths = WinTablerIcons.paths(named: iconName, scaledTo: side, at: origin) {
+            let context = Win32DrawingContext(deviceContext: deviceContext)
+            let strokeWidth = max(1.2, 2 * side / WinTablerIcons.designSize)
+            for path in paths {
+                context.strokePath(path.nativeSegments, color: strokeColor, lineWidth: strokeWidth)
+            }
+        }
+    }
 
-        drawDocumentGlyph(left: glyphLeft, top: glyphTop, size: glyphSize, accent: toolbarGlyphColor(for: preview.imageName), deviceContext: deviceContext)
+    /// Converts a stored COLORREF back to an `NSColor` (BGR byte order).
+    private func nsColor(fromColorRef reference: DWORD) -> NSColor {
+        NSColor(
+            calibratedRed: CGFloat(reference & 0xFF) / 255,
+            green: CGFloat((reference >> 8) & 0xFF) / 255,
+            blue: CGFloat((reference >> 16) & 0xFF) / 255,
+            alpha: 1
+        )
+    }
+
+    /// Parses the composite tile's "r,g,b,a" template-tint field.
+    private func toolbarTemplateTint(from field: String) -> NSColor? {
+        let parts = field.split(separator: ",").compactMap { Double($0) }
+        guard parts.count == 4 else {
+            return nil
+        }
+        return NSColor(calibratedRed: CGFloat(parts[0]), green: CGFloat(parts[1]), blue: CGFloat(parts[2]), alpha: CGFloat(parts[3]))
     }
 
     private func standardToolbarImages(parentWindow: HWND?) -> HIMAGELIST? {

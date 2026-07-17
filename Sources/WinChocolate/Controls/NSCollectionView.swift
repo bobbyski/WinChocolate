@@ -1,6 +1,6 @@
 /// Data source for an AppKit-shaped collection view.
 @MainActor
-public protocol NSCollectionViewDataSource: AnyObject {
+public protocol NSCollectionViewDataSource: NSObjectProtocol {
     /// Returns the number of sections.
     func numberOfSections(in collectionView: NSCollectionView) -> Int
 
@@ -11,7 +11,11 @@ public protocol NSCollectionViewDataSource: AnyObject {
     func collectionView(_ collectionView: NSCollectionView, itemForRepresentedObjectAt indexPath: IndexPath) -> NSCollectionViewItem
 
     /// Returns a supplementary view (e.g. a section header) for an index path.
-    func collectionView(_ collectionView: NSCollectionView, viewForSupplementaryElementOfKind kind: String, at indexPath: IndexPath) -> NSView?
+    ///
+    /// The returned view MUST come from
+    /// `makeSupplementaryView(ofKind:withIdentifier:for:)` — real AppKit asserts
+    /// on any other view. See Issue N in `Docs/AppKitFaithfulnessIssues.md`.
+    func collectionView(_ collectionView: NSCollectionView, viewForSupplementaryElementOfKind kind: NSCollectionView.SupplementaryElementKind, at indexPath: IndexPath) -> NSView
 }
 
 public extension NSCollectionViewDataSource {
@@ -20,15 +24,16 @@ public extension NSCollectionViewDataSource {
         1
     }
 
-    /// Default: no supplementary views.
-    func collectionView(_ collectionView: NSCollectionView, viewForSupplementaryElementOfKind kind: String, at indexPath: IndexPath) -> NSView? {
-        nil
+    /// Default: an empty view (the protocol returns non-optional `NSView`,
+    /// exactly as Apple's).
+    func collectionView(_ collectionView: NSCollectionView, viewForSupplementaryElementOfKind kind: String, at indexPath: IndexPath) -> NSView {
+        NSView()
     }
 }
 
 /// Delegate for collection-view selection notifications.
 @MainActor
-public protocol NSCollectionViewDelegate: AnyObject {
+public protocol NSCollectionViewDelegate: NSObjectProtocol {
     /// Called after items are selected.
     func collectionView(_ collectionView: NSCollectionView, didSelectItemsAt indexPaths: Set<IndexPath>)
 
@@ -75,7 +80,7 @@ open class NSCollectionViewItem: NSObject {
     /// Whether the item is currently selected.
     open var isSelected: Bool = false {
         didSet {
-            view.backgroundColor = isSelected
+            view.winBackgroundColor = isSelected
                 ? NSColor(calibratedRed: 0.82, green: 0.9, blue: 1.0, alpha: 1.0)
                 : nil
         }
@@ -144,10 +149,15 @@ open class NSCollectionView: NSControl {
     open var isSelectable: Bool = true
 
     /// The supplementary element kind for a section header.
-    public static let elementKindSectionHeader = "NSCollectionElementKindSectionHeader"
+    ///
+    /// The `UI` prefix is not a typo: AppKit's collection view is implemented on
+    /// top of the UICollectionView code (hence `UICollectionView.m` in its
+    /// assertions), and these are the exact strings Apple vends. Verified by
+    /// printing them from real AppKit.
+    public static let elementKindSectionHeader: SupplementaryElementKind = "UICollectionElementKindSectionHeader"
 
     /// The supplementary element kind for a section footer.
-    public static let elementKindSectionFooter = "NSCollectionElementKindSectionFooter"
+    public static let elementKindSectionFooter: SupplementaryElementKind = "UICollectionElementKindSectionFooter"
 
     /// Hosted supplementary (header) views, by section.
     private var hostedSupplementaryViews: [Int: NSView] = [:]
@@ -192,8 +202,20 @@ open class NSCollectionView: NSControl {
     /// Recycled items available for reuse, keyed by their reuse identifier.
     private var reusePool: [String: [NSCollectionViewItem]] = [:]
 
+    /// View classes registered for a supplementary kind+identifier.
+    private var supplementaryClasses: [String: NSView.Type] = [:]
+    /// Recycled supplementary views, keyed by kind+identifier.
+    private var supplementaryReusePool: [String: [NSView]] = [:]
+
+    /// Joins a kind and an identifier into one pool key. `\u{1}` cannot occur in
+    /// either component, so the join is unambiguous.
+    private func supplementaryKey(_ kind: SupplementaryElementKind,
+                                  _ identifier: NSUserInterfaceItemIdentifier) -> String {
+        "\(kind)\u{1}\(identifier.rawValue)"
+    }
+
     /// Creates a collection view.
-    public override init(frame frameRect: NSRect) {
+    public required init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
     }
 
@@ -212,6 +234,54 @@ open class NSCollectionView: NSControl {
             itemClassesByIdentifier.removeValue(forKey: identifier.rawValue)
             reusePool.removeValue(forKey: identifier.rawValue)
         }
+    }
+
+    /// Registers a view class to instantiate for a supplementary kind+identifier.
+    /// Passing `nil` unregisters. Matches AppKit's
+    /// `register(_:forSupplementaryViewOfKind:withIdentifier:)`.
+    ///
+    /// Instantiating the class from its metatype is why `NSView.init(frame:)` is
+    /// `required` — the same reason `NSCollectionViewItem.init()` is.
+    open func register(_ viewClass: AnyClass?,
+                       forSupplementaryViewOfKind kind: SupplementaryElementKind,
+                       withIdentifier identifier: NSUserInterfaceItemIdentifier) {
+        let key = supplementaryKey(kind, identifier)
+        guard let viewClass else {
+            supplementaryClasses.removeValue(forKey: key)
+            supplementaryReusePool.removeValue(forKey: key)
+            return
+        }
+        guard let viewType = viewClass as? NSView.Type else {
+            fatalError("\(viewClass) is not an NSView subclass")
+        }
+        supplementaryClasses[key] = viewType
+    }
+
+    /// Returns a supplementary view for a kind+identifier, recycling one when
+    /// available. Data sources MUST vend their header/footer views from here
+    /// rather than constructing them: real AppKit raises "the view returned from
+    /// -collectionView:viewForSupplementaryElementOfKind: … was not retrieved by
+    /// calling -makeSupplementaryViewOfKind:withIdentifier:forIndexPath:", so a
+    /// data source that builds its own views works here but crashes on Apple.
+    open func makeSupplementaryView(ofKind kind: SupplementaryElementKind,
+                                    withIdentifier identifier: NSUserInterfaceItemIdentifier,
+                                    for indexPath: IndexPath) -> NSView {
+        let key = supplementaryKey(kind, identifier)
+        if var pooled = supplementaryReusePool[key], let reused = pooled.popLast() {
+            supplementaryReusePool[key] = pooled
+            reused.identifier = identifier
+            return reused
+        }
+        guard let viewType = supplementaryClasses[key] else {
+            fatalError("""
+                no class registered for supplementary view of kind '\(kind)' with \
+                identifier '\(identifier.rawValue)' — call \
+                register(_:forSupplementaryViewOfKind:withIdentifier:) first
+                """)
+        }
+        let view = viewType.init(frame: .zero)
+        view.identifier = identifier
+        return view
     }
 
     /// Returns a recycled item for the identifier if one is available, otherwise
@@ -325,15 +395,17 @@ open class NSCollectionView: NSControl {
     /// (item-size/spacing changes, scrolling) never re-asks the data source or
     /// re-allocates supplementary views.
     ///
-    /// NOTE: this is the interim "option C" recycling. AppKit's real
-    /// `register(_:forSupplementaryViewOfKind:withIdentifier:)` /
-    /// `makeSupplementaryView(...)` API is deferred to Rev 2.0 — see
-    /// `Docs/Rev2-SupplementaryViewRecycling.md`. When that lands, delete this
-    /// method and `positionSupplementaryViews`, and drive supplementary views
-    /// through the reuse pool exactly like `makeItem`.
+    /// Views the data source vends now come from `makeSupplementaryView`, so
+    /// retire each one into the reuse pool here (keyed by the kind its slot
+    /// encodes plus the identifier `makeSupplementaryView` stamped on it) rather
+    /// than dropping it — otherwise every rebuild would allocate afresh.
     private func rebuildSupplementaryViews() {
-        for view in hostedSupplementaryViews.values {
+        for (key, view) in hostedSupplementaryViews {
             view.removeFromSuperview()
+            let kind = (key % 2 == 0) ? Self.elementKindSectionHeader : Self.elementKindSectionFooter
+            if let identifier = view.identifier {
+                supplementaryReusePool[supplementaryKey(kind, identifier), default: []].append(view)
+            }
         }
         hostedSupplementaryViews.removeAll()
 
@@ -434,8 +506,8 @@ open class NSCollectionView: NSControl {
 
     private func wireSelectionAction(for item: NSCollectionViewItem, at indexPath: IndexPath) {
         if let control = item.view as? NSControl {
-            let previousAction = control.onAction
-            control.onAction = { [weak self, weak control] _ in
+            let previousAction = control.winInternalAction
+            control.winInternalAction = { [weak self, weak control] _ in
                 previousAction?(control ?? NSControl(frame: NSZeroRect))
                 self?.selectItems(at: [indexPath])
             }

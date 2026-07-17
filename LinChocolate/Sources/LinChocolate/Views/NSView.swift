@@ -8,13 +8,55 @@ import Foundation
 /// Control subclasses (`NSButton`, `NSTextField`) create their own native
 /// control through the backend and hand its handle to the designated
 /// initializer (controls render natively and do not custom-draw).
-open class NSView {
+open class NSView: NSResponder {
 
     /// The view's frame in its parent's coordinate space (AppKit bottom-left
     /// origin). Setting it repositions/resizes the native control.
     public var frame: NSRect {
-        didSet { backend.setFrame(frame, for: handle) }
+        didSet {
+            // `isFlipped` is per-view and overridable, so a subclass may compute
+            // it rather than return a constant. Re-read both flips that decide
+            // this frame's placement (our parent's, for our own Y; and ours, for
+            // our children's) instead of trusting what was cached when the view
+            // was first added.
+            refreshFlips()
+            backend.setFrame(frame, for: handle)
+            layout()
+        }
     }
+
+    /// Pushes this view's flip, and its parent's, to the backend. Cheap, and it
+    /// keeps a dynamic `isFlipped` override honest.
+    private func refreshFlips() {
+        if let superview {
+            backend.setViewFlipped(superview.isFlipped, for: superview.handle)
+        }
+        backend.setViewFlipped(isFlipped, for: handle)
+    }
+
+    /// Lays out subviews after a frame change (AppKit's `layout()`). The base
+    /// implementation does nothing; containers that position their own children
+    /// (e.g. `NSStackView`) override it.
+    open func layout() {}
+
+    /// The view's bounds — its own coordinate space, origin at (0, 0).
+    open var bounds: NSRect { NSMakeRect(0, 0, frame.width, frame.height) }
+
+    /// Whether the view is hidden.
+    public var isHidden: Bool = false {
+        didSet { backend.setHidden(isHidden, for: handle) }
+    }
+
+    /// The tooltip shown on hover.
+    public var toolTip: String?
+
+    /// The key-view loop links (AppKit's focus chain). Stored for API parity;
+    /// native focus traversal is a later item.
+    public weak var nextKeyView: NSView?
+    public weak var previousKeyView: NSView?
+
+    /// The view's identifier (AppKit's `NSUserInterfaceItemIdentifier`).
+    public var identifier: String?
 
     /// Opaque backend handle for this view. Exposed for advanced/testing use
     /// (e.g. simulating input against a specific control).
@@ -26,10 +68,19 @@ open class NSView {
     /// Views added via `addSubview(_:)`, in back-to-front order.
     public private(set) var subviews: [NSView] = []
 
-    /// Whether the control accepts input.
-    public var isEnabled: Bool = true {
-        didSet { backend.setEnabled(isEnabled, for: handle) }
+    /// Whether the view is `view` or sits anywhere below it (AppKit's
+    /// `isDescendant(of:)` — a view is a descendant of itself).
+    public func isDescendant(of view: NSView) -> Bool {
+        var current: NSView? = self
+        while let candidate = current {
+            if candidate === view {
+                return true
+            }
+            current = candidate.superview
+        }
+        return false
     }
+
 
     /// The font for the control's text (nil = platform default).
     public var font: NSFont? {
@@ -40,10 +91,22 @@ open class NSView {
     }
 
     /// Creates a plain container view (custom drawing enabled).
-    public init(frame: NSRect) {
+    ///
+    /// `required` so a view class registered with `NSCollectionView`'s
+    /// `register(_:forSupplementaryViewOfKind:withIdentifier:)` can be
+    /// instantiated from its metatype in `makeSupplementaryView` — AppKit's
+    /// contract. Every subclass declaring its own designated initializer must
+    /// therefore provide `required init(frame:)` too.
+    /// AppKit's parameterless initializer: a zero-frame view, sized later.
+    public override convenience init() {
+        self.init(frame: .zero)
+    }
+
+    public required init(frame: NSRect) {
         self.frame = frame
         self.backend = NSApplication.shared.nativeBackend
         self.handle = backend.createView(frame: frame)
+        super.init()
         backend.setDrawHandler(for: handle) { [weak self] native, width, height in
             guard let self else { return }
             NSGraphicsContext.setCurrent(NSGraphicsContext(native: native))
@@ -68,12 +131,48 @@ open class NSView {
         self.frame = frame
         self.handle = handle
         self.backend = backend
+        super.init()
     }
 
     /// Adds `view` as a subview, placing it at its frame within this view.
-    public func addSubview(_ view: NSView) {
-        subviews.append(view)
+    /// The view's parent in the hierarchy, or nil if unattached.
+    public internal(set) weak var superview: NSView?
+
+    /// App-wide default for `isFlipped`. AppKit's default is `false` (bottom-left
+    /// origin, +Y up), which the native `LinChocolateDemo` is authored against.
+    /// The shared WinChocolate demo is authored top-left (Win32/WinChocolate use
+    /// a top-left origin), so `RealDemo` sets this to `true`.
+    nonisolated(unsafe) public static var defaultIsFlipped = false
+
+    /// Whether this view uses a top-left origin (AppKit's `NSView.isFlipped`).
+    /// When true, a subview's `frame.origin.y` is measured from the top; when
+    /// false, from the bottom (AppKit's default). Override in a subclass, or set
+    /// `NSView.defaultIsFlipped` to change it app-wide.
+    open var isFlipped: Bool { NSView.defaultIsFlipped }
+
+    open func addSubview(_ view: NSView) {
+        adoptSubview(view)
         backend.addSubview(view.handle, to: handle)
+    }
+
+    /// Records `view` in the hierarchy without placing it natively. Containers
+    /// whose native side parents children itself (`NSSplitView`'s panes) call
+    /// this instead of going through the generic child-area path.
+    func adoptSubview(_ view: NSView) {
+        subviews.append(view)
+        view.superview = self
+        // Record this parent's flip (for positioning children) and the child's
+        // own flip (for its own drawing coordinate space).
+        backend.setViewFlipped(isFlipped, for: handle)
+        backend.setViewFlipped(view.isFlipped, for: view.handle)
+    }
+
+    /// Detaches the view from its parent. Native detach isn't modeled yet, so
+    /// the widget is hidden; the logical hierarchy is updated.
+    public func removeFromSuperview() {
+        superview?.subviews.removeAll { $0 === self }
+        superview = nil
+        backend.setHidden(true, for: handle)
     }
 
     // MARK: - Auto Layout
@@ -155,4 +254,42 @@ open class NSView {
     public func registerDraggingSource(_ provider: @escaping () -> String?) {
         backend.registerDragSource(for: handle, provider: provider)
     }
+
+    // MARK: - Responder / event surface (NSResponder)
+    //
+    // Override points so AppKit-shaped custom views compile and can be routed to
+    // later. Native GTK controls handle their own input; actual delivery to
+    // these is a later parity item — they exist so the same source builds.
+
+    open override var acceptsFirstResponder: Bool { false }
+    @discardableResult open func becomeFirstResponder() -> Bool { true }
+    @discardableResult open func resignFirstResponder() -> Bool { true }
+
+    open func mouseDown(with event: NSEvent) {}
+    open func mouseUp(with event: NSEvent) {}
+    open func mouseDragged(with event: NSEvent) {}
+    open func mouseMoved(with event: NSEvent) {}
+    open func mouseEntered(with event: NSEvent) {}
+    open func mouseExited(with event: NSEvent) {}
+    open func rightMouseDown(with event: NSEvent) {}
+    open func scrollWheel(with event: NSEvent) {}
+    open func keyDown(with event: NSEvent) {}
+    open func keyUp(with event: NSEvent) {}
+
+    open func resetCursorRects() {}
+    open func addCursorRect(_ rect: NSRect, cursor: NSCursor) {}
+    open func updateTrackingAreas() {}
+    public private(set) var trackingAreas: [NSTrackingArea] = []
+    public func addTrackingArea(_ area: NSTrackingArea) { trackingAreas.append(area) }
+    public func removeTrackingArea(_ area: NSTrackingArea) { trackingAreas.removeAll { $0 === area } }
+
+    /// Point conversion (identity stub — LinChocolate views currently share the
+    /// window's coordinate space).
+    public func convert(_ point: NSPoint, from view: NSView?) -> NSPoint { point }
+    public func convert(_ point: NSPoint, to view: NSView?) -> NSPoint { point }
+
+    // Drag-destination method form (mirrors the `onDraggingEntered` closures).
+    open func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation { .copy }
+    open func draggingExited(_ sender: NSDraggingInfo?) {}
+    open func performDragOperation(_ sender: NSDraggingInfo) -> Bool { false }
 }

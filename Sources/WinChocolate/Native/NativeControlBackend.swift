@@ -279,6 +279,11 @@ public protocol NativeDrawingContext: AnyObject {
     /// tint color while the image's own alpha shapes the result.
     func drawImage(atPath path: String, in rect: NSRect, tint: NSColor?)
 
+    /// Draws an in-memory RGBA8 bitmap (top row first, `width*height*4` bytes)
+    /// scaled to fill a rectangle — the path a data-backed `NSImage` decoded to
+    /// a `CGImage` takes. `tint` renders it as a template as in the file form.
+    func drawImage(rgbaPixels: [UInt8], width: Int, height: Int, in rect: NSRect, tint: NSColor?)
+
     /// Fills a rectangle with a linear gradient along an angle in degrees.
     ///
     /// Stops are ordered by location within 0...1. Angle 0 runs left to right
@@ -302,12 +307,34 @@ extension NativeDrawingContext {
     public func drawImage(atPath path: String, in rect: NSRect) {
         drawImage(atPath: path, in: rect, tint: nil)
     }
+
+    /// Default: a backend without an in-memory bitmap path ignores it. Real
+    /// backends (Win32 DIB blit, the in-memory recorder) override.
+    public func drawImage(rgbaPixels: [UInt8], width: Int, height: Int, in rect: NSRect, tint: NSColor?) {}
 }
 
 extension NativeControlBackend {
+    /// Default: no run-loop pump, so `NSApplication.run()` keeps using the
+    /// bare message loop. The Win32 backend overrides this.
+    public func makeRunLoopPump() -> RunLoopPlatformPump? { nil }
+
     /// Default: a backend that does not surface double-clicks ignores the
     /// registration (the drawn-cell table path dispatches its own).
     public func registerTableDoubleClickAction(for handle: NativeHandle, action: @escaping () -> Void) {}
+
+    /// The primary display's scale factor (device pixels per logical point):
+    /// 1.0 at 96 DPI, 1.5 at 144 DPI, and so on. Default 1.0; the Win32 backend
+    /// reads the real DPI. This is the queryable half of per-monitor DPI
+    /// awareness (10.7); applying the scale to all device-pixel geometry and
+    /// declaring per-monitor-v2 awareness is the coordinated native pass tracked
+    /// on that item.
+    public func winDisplayScale() -> CGFloat { 1.0 }
+
+    /// Default: a backend with no accessibility channel ignores the name. The
+    /// Win32 backend overrides to annotate the control's accessible name so
+    /// assistive technology reads the app's explicit `accessibilityLabel`
+    /// instead of the control's window text; the in-memory backend records it.
+    public func setAccessibilityName(_ name: String?, for handle: NativeHandle) {}
 
     /// Updates an image-view bitmap source with no tint.
     public func setImagePath(_ imagePath: String?, description: String, for handle: NativeHandle) {
@@ -337,6 +364,13 @@ extension NativeControlBackend {
 public protocol NativeControlBackend: AnyObject {
     /// Starts the platform event loop.
     func runApplication()
+
+    /// Creates the run-loop pump that drives `RunLoop.main` on this platform,
+    /// or nil for a backend with no message loop (e.g. the in-memory test
+    /// backend). When non-nil, `NSApplication.run()` installs it and drives
+    /// `RunLoop.main.run()` instead of the bare message loop, so Foundation
+    /// timers and window events share one loop.
+    func makeRunLoopPump() -> RunLoopPlatformPump?
 
     /// Requests application termination.
     func terminateApplication()
@@ -585,7 +619,9 @@ public protocol NativeControlBackend: AnyObject {
     ///
     /// `showsCalendar` selects a month-calendar peer (AppKit's
     /// clock-and-calendar style) instead of the compact text-field picker.
-    func createDatePicker(date: Date, minDate: Date?, maxDate: Date?, showsCalendar: Bool, frame: NSRect, parent: NativeHandle?) -> NativeHandle
+    /// Creates a date-picker peer for an AppKit style: a field with a stepper,
+    /// a graphical calendar, or a bare field.
+    func createDatePicker(date: Date, minDate: Date?, maxDate: Date?, style: NSDatePicker.Style, frame: NSRect, parent: NativeHandle?) -> NativeHandle
 
     /// Creates a native scroll-view child.
     func createScrollView(frame: NSRect, parent: NativeHandle?, hasVerticalScroller: Bool, hasHorizontalScroller: Bool) -> NativeHandle
@@ -668,6 +704,12 @@ public protocol NativeControlBackend: AnyObject {
 
     /// Updates a native control's tooltip text.
     func setToolTip(_ toolTip: String?, for handle: NativeHandle)
+
+    /// Annotates a native control's accessibility name (from the AppKit
+    /// `accessibilityLabel`). A default no-op is provided, but declaring it a
+    /// requirement makes it a dynamic-dispatch customization point so the
+    /// Win32 and in-memory backends' overrides are actually called.
+    func setAccessibilityName(_ name: String?, for handle: NativeHandle)
 
     /// Updates a native control's font.
     func setFont(_ font: NSFont?, for handle: NativeHandle)
@@ -767,6 +809,11 @@ public protocol NativeControlBackend: AnyObject {
     func setStepperWraps(_ wraps: Bool, for handle: NativeHandle)
 
     /// Updates native date-picker state.
+    /// Sets the zone a date picker renders its wall clock in. A `SYSTEMTIME`
+    /// carries no zone, so the framework resolves `NSDatePicker.timeZone` and
+    /// tells the backend which one a value means.
+    func setDatePickerTimeZone(_ timeZone: TimeZone, for handle: NativeHandle)
+
     func setDatePickerDate(_ date: Date, minDate: Date?, maxDate: Date?, for handle: NativeHandle)
 
     /// Reads native date-picker value.

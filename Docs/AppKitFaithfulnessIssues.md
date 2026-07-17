@@ -1,0 +1,782 @@
+# AppKit-Faithfulness Issues
+
+**Principle:** the shared demo (`Demo/DemoApplication/main.swift`) is written **once against
+Apple's real AppKit API**. WinChocolate (Win32) and LinChocolate (GTK) are meant to be
+*faithful re-implementations of that API*, so the exact same source compiles and runs on all
+three platforms **with no shim**.
+
+Therefore, **every place the demo fails to compile against real Apple AppKit is a bug in
+WinChocolate/LinChocolate** — we added a convenience, renamed an enum case, changed a type,
+or leaked internal API, and the demo came to depend on it. The fix is always to make
+WinChocolate/LinChocolate match Apple (and, where the *demo* itself reaches for something
+non-AppKit, to rewrite that line in terms of real AppKit) — **never** to add an AppKit shim.
+
+**How this list was produced.** Compile the demo alone against the macOS SDK, no shim files:
+
+```sh
+swiftc -typecheck -sdk "$(xcrun --show-sdk-path --sdk macosx)" \
+    -target arm64-apple-macos13.0 Demo/DemoApplication/main.swift
+```
+
+Result: **1,064 errors**, which collapse into the distinct divergences below. Counts are
+approximate error-line tallies (one divergence usually produces several errors + cascades).
+
+---
+
+## A. Closure-based actions (`onAction`) instead of target/action  — ~300 errors
+
+AppKit controls fire through **target/action** (`control.target = x; control.action = #selector(…)`).
+WinChocolate/LinChocolate added a closure convenience, `onAction`, and the demo uses it
+everywhere. Real AppKit has no such member, so it fails — and because the closure's parameter
+type can't be inferred, it cascades into "cannot infer type of closure parameter" (192) and
+"main actor-isolated global function … in a nonisolated context" (86).
+
+Missing members the demo relies on:
+
+| Member | On types |
+|---|---|
+| `onAction` | `NSButton`, `NSPopUpButton`, `NSSlider`, `NSStepper`, `NSColorWell`, `NSSearchField`, `NSSegmentedControl`, `NSDatePicker`, `NSImageView`, `NSLevelIndicator`, `NSBrowser`, `NSCollectionView`, `NSTableView`, `NSMenuItem` |
+| `onDoubleAction` | `NSTableView` |
+| `onSelectionChanged` | `NSTableView`, `NSOutlineView` |
+| `onTextChanged` | `NSTextView`, `NSSearchField` |
+| `onComboBoxTextChanged` | `NSComboBox` |
+
+**Divergence:** these closure hooks are a WinChocolate/LinChocolate invention. **Decision needed:**
+either (a) the demo must drive controls through real target/action (and the chocolate frameworks
+must implement genuine target/action), or (b) if the closure convenience is kept, it must be
+introduced in a way that is *also* legal AppKit — which by definition means a shim, which is
+disallowed. The AppKit-faithful answer is **(a): use target/action.**
+
+---
+
+## B. Frame-carrying initializers that AppKit doesn't have  — ~264 errors
+
+The demo constructs controls with a single init that takes both content **and** a frame. AppKit
+has no such initializers (`title:`/`labelWithString:` inits size to fit; `frame` is set
+separately, or `init(frame:)` takes only a frame).
+
+| Demo call | Real AppKit |
+|---|---|
+| `NSButton(title:frame:)` | `NSButton(title:target:action:)` then set `.frame` |
+| `NSButton(checkboxWithTitle:frame:)` | `NSButton(checkboxWithTitle:target:action:)` |
+| `NSButton(radioWithTitle:frame:)` | `NSButton(radioButtonWithTitle:target:action:)` |
+| `NSTextField(string:frame:)` | `NSTextField(string:)` / `init(frame:)` |
+| `NSTextField(labelWithString:frame:)` | `NSTextField(labelWithString:)` |
+| `NSSegmentedControl(labels:frame:)` | `NSSegmentedControl(labels:trackingMode:target:action:)` |
+| `NSDatePicker(date:frame:)` | `init(frame:)` then set `.dateValue` |
+| `NSTokenField(…tokens:)` | set `.objectValue` |
+| `NSPathControl(url:frame:)` | `init(frame:)` then set `.url` |
+
+Symptoms: `extra argument 'frame'` (146), `'title'` (80), `'labels'` (18), `'string'` (10),
+`'tokens'` (4), `'date'` (4), `'url'` (2).
+
+**Divergence:** WinChocolate/LinChocolate added frame-carrying convenience inits. The demo must
+use AppKit's real initializers and set the frame separately (AppKit views default to a fitting
+or zero frame otherwise).
+
+---
+
+## C. `NSView.backgroundColor`  — 42 errors
+
+The demo sets `someView.backgroundColor = …` on plain `NSView`s (and the `DemoContentView`
+subclass). **AppKit's `NSView` has no `backgroundColor`** — only `NSBox`, `NSTextField`,
+`NSTableView`, `NSScrollView`, and layer-backed views expose one; a generic view is colored
+via `wantsLayer = true; layer?.backgroundColor = …`.
+
+**Divergence:** WinChocolate/LinChocolate added `NSView.backgroundColor`. Either the demo's
+color-fill views must be an AppKit type that has it (a small custom `NSView` subclass that
+draws its fill in `draw(_:)`, or a layer-backed view), or the frameworks should only expose
+`backgroundColor` where AppKit does.
+
+---
+
+## D. Framework-internal / `win`-prefixed API leaking into the demo  — ~44 errors
+
+The demo calls members that are WinChocolate/LinChocolate implementation surface, absent from
+AppKit entirely:
+
+| Member | Notes |
+|---|---|
+| `NSAppearance.winIsDark` (20) | AppKit: compare `effectiveAppearance.bestMatch(from:)` against `.darkAqua` |
+| `NSColorPanel.winColorDidChange` | AppKit: target/action on the shared color panel |
+| `NSFontManager.winFontDidChange` | AppKit: `changeFont(_:)` on the responder chain |
+| `NSAlert.winHelpButtonAction` | AppKit: `showsHelp` + `NSAlertDelegate.alertShowHelp` |
+| `NSToolbar.winAppleLook` / `.metallic` | not an AppKit concept |
+| `NSTableView.winRowReorderHandler`, `NSOutlineView.winOutlineReorderHandler` | AppKit: drag-and-drop `NSTableViewDataSource` reorder methods |
+| `NSDocumentController.winDocumentClass` | AppKit: `NSDocumentController.documentClass(forType:)` |
+| `NSApplication.nativeBackend`, `NSView/NSWindow.nativeHandle`, `NSWindow.realizeNativePeer` | pure backend plumbing — must never appear in shared demo code |
+
+**Divergence:** these are the clearest violations — internal or platform-only API that should not
+be reachable from AppKit-shaped demo code at all. The demo must be rewritten to the AppKit
+equivalent; the frameworks should keep this surface `internal`/underscored.
+
+---
+
+## E. Identifier types collapsed to `String`  — ~72 errors
+
+AppKit models identifiers as real `RawRepresentable` structs — `NSToolbarItem.Identifier`,
+`NSUserInterfaceItemIdentifier` — with `ExpressibleByStringLiteral`. WinChocolate/LinChocolate
+declared them as `typealias … = String`, so the demo passes bare `String`s and does
+`.rawValue` on them. Against real AppKit those `String`s won't convert.
+
+Symptoms: `String` → `NSToolbarItem.Identifier` (36), `String` → `NSUserInterfaceItemIdentifier`
+(18), `NSUserInterfaceItemIdentifier?` → `String` (6), `Int` → `String`/`Identifier` (12).
+
+**Divergence (already logged in `AppKitCompatibilityDivergences.md`):** promote both identifier
+typealiases in WinChocolate/LinChocolate to real `RawRepresentable` + `ExpressibleByStringLiteral`
+structs matching AppKit. The demo can then use string literals unchanged.
+
+---
+
+## F. Enum case-name divergences  — ~80 errors
+
+The demo names enum cases that don't exist under those names in AppKit. `cannot infer contextual
+base in reference to member 'X'`:
+
+| Demo uses | Real AppKit case | Enum |
+|---|---|---|
+| `.radioButton`, `.switchButton` | `.radio`, `.switch` | `NSButton.ButtonType` |
+| `.on` / `.off` | `.on` / `.off` **on `NSControl.StateValue`** | state value is nested differently in the chocolates |
+| `.rounded`, `.roundedDisclosure`, `.disclosure`, `.circular`, `.recessed`, `.texturedSquare`, `.inline` | AppKit `NSButton.BezelStyle` names differ (`.push`, `.flexiblePush`, `.disclosure`, `.circular`, `.badge`, …) | `NSButton.BezelStyle` |
+| `.rounded`, `.separated`, `.texturedSquare`, `.capsule` | `NSSegmentedControl.Style` names | segment style |
+| `.scaleProportionallyDown`, `.scaleAxesIndependently`, `.scaleNone`, `.scaleProportionallyUpOrDown` | `NSImageScaling` cases | image scaling |
+| `.alignCenter`, `.alignTopLeft`, `.right` | `NSImageAlignment` cases | image alignment |
+| `.clockAndCalendar` | `NSDatePicker.Style` | date-picker style |
+
+**Divergence:** WinChocolate/LinChocolate coined non-Apple case names (and in the `.on`/`.off`
+case, a differently-nested state-value type). Rename to match AppKit exactly.
+
+---
+
+## G. Delegate protocols don't refine `NSObjectProtocol`  — 30 errors
+
+The demo's delegate/data-source classes (`DemoWindowDelegate`, `DemoToolbarDelegate`,
+`DemoTableDataSource`, `DemoViewTableDelegate`, `DemoOutlineDataSource`, `DemoSplitDelegate`,
+`DemoStatusRow*`, `EditMenuController`, …) declare conformance to AppKit delegate protocols
+**without inheriting `NSObject`**. AppKit's delegate protocols refine `NSObjectProtocol`, so a
+conformer must be an `NSObject` subclass → *"cannot declare conformance to 'NSObjectProtocol' in
+Swift; 'X' should inherit 'NSObject'."*
+
+**Divergence:** WinChocolate/LinChocolate declared their delegate protocols as plain
+`: AnyObject`, so the demo's delegate classes were written as bare classes. Make the chocolate
+delegate protocols refine `NSObjectProtocol` (as AppKit does) and have the demo's delegates
+inherit `NSObject`.
+
+---
+
+## H. `NSToolbar` population API  — 16 errors
+
+The demo builds the toolbar with `demoToolbar.addItem(someNSToolbarItem)`. AppKit's `NSToolbar`
+has **no `addItem`** — items are supplied by the `NSToolbarDelegate`
+(`toolbar(_:itemForItemIdentifier:willBeInsertedIntoToolbar:)` + default/allowed identifier
+lists), and inserted with `insertItem(withItemIdentifier:at:)`.
+
+**Divergence:** WinChocolate/LinChocolate added a direct `addItem(_:)`. The demo must populate
+the toolbar the AppKit way (delegate + identifiers).
+
+---
+
+## I. `NSForm` custom accessors  — 30 errors
+
+The demo uses `form.textField(at:)`, `form.setStringValue(_:at:)`, `form.titleWidth`. AppKit's
+`NSForm` (a `NSMatrix` subclass, deprecated) exposes cells via `cell(atIndex:)` /
+`NSFormCell` — none of those three members exist.
+
+**Divergence:** WinChocolate/LinChocolate invented a friendlier `NSForm` accessor set. Match
+AppKit's `NSFormCell`-based API (or, given `NSForm` is deprecated in AppKit, reconsider the demo
+section).
+
+---
+
+## J. Method label / signature divergences  — ~24 errors
+
+| Demo call | Real AppKit | Type |
+|---|---|---|
+| `NSPopUpButton.setTag(_:forItemAt:)` (6) | tags live on `NSMenuItem` (`item(at:).tag`) | `NSPopUpButton` |
+| `browser.value(atColumn:row:)` (8) | `NSBrowser.item(at:inPropertyWithKey:)` / `selectedCell(inColumn:)` | `NSBrowser` |
+| `outlineView.tableColumn(at:)` (4) | `tableColumn(withIdentifier:)` | `NSTableView`/`NSOutlineView` |
+| `NSAlert(error:)` argument shape (2) | `NSAlert(error:)` exists but the demo's call mismatches | `NSAlert` |
+| `NSButton` cell/`title:` init (`textCell:`) (2) | AppKit `NSCell` init labels | cells |
+
+**Divergence:** small per-method label/shape mismatches — align each to Apple's signature.
+
+---
+
+## K. Immediate-mode drawing free functions  — 22 errors
+
+The demo calls `NSFrameRect(_:)` and `NSRectFill(_:)`. These *are* real AppKit functions, yet the
+compiler reports *"cannot find 'NSFrameRect'/'NSRectFill' in scope."*
+
+**Divergence / to verify:** confirm whether the current macOS SDK still surfaces these to Swift
+(they may require `import AppKit` only, or may have moved). If AppKit provides them, this is a
+false positive to re-check once the cascade above is cleared; if not, the demo should use the
+`NSBezierPath` / `.fill()` / `.stroke()` equivalents that all three platforms share.
+
+---
+
+## L. `CGImage` / WinCoreGraphics API on the CoreGraphics page  — ~16 errors
+
+The Phase-13 CoreGraphics page uses `CGImage(width:height:rgbaPixels:)`, `image.pixel(atX:y:)`,
+and `image.encodeBMP()` — the **WinCoreGraphics** BMP-centric surface. Apple's real
+`CoreGraphics.CGImage` has none of these; `CGImage(width:height:rgbaPixels:)` even mis-resolves
+against `CGWindowListCreateImage`-family symbols.
+
+**Divergence:** WinCoreGraphics reimplemented `CGImage` with a different (in-memory-BMP) API
+rather than modeling Apple's `CGImage`/`CGContext`/`CGDataProvider`. On macOS the same source
+should build against real CoreGraphics — so either the demo's pixel/BMP round-trip must be
+expressed through Apple's `CGImage` + a `CGDataProvider`/`CGImageDestination`, or WinCoreGraphics
+must present an Apple-shaped `CGImage`.
+
+---
+
+## M. Nib manual-wiring surface (`winInstantiate` / connection records)  — ~12 errors
+
+*Found 2026-07-14, after the develop merge added the Nib (15) page.*
+
+The Nib page loads `DemoNibPanel.xib` and then wires it up through a **`win`-prefixed manual
+surface** that Apple's `NSNib` does not have:
+
+| Demo uses | Real AppKit |
+|---|---|
+| `nib.winInstantiate(withOwner:)` → rich instance | `nib.instantiate(withOwner:topLevelObjects:)` returning `Bool`, filling an `[Any]` |
+| `instance.view(withIdentifier:)` | no such lookup — outlets are bound by name via KVC |
+| `instance.connections` / `.kind == .outlet` / `.action` | AppKit exposes no parsed `<connections>` records |
+| `instance.objectsByID`, `instance.topLevelObjects` on the instance | AppKit hands back only the top-level object array |
+| `button.action?.name` | real `Selector` is the Obj-C selector — **no `.name`** (use `NSStringFromSelector`) |
+
+**Root cause (an honest gap, not a rename):** AppKit's nib loader binds `@IBOutlet`/`@IBAction`
+**automatically by name**, using the Objective-C runtime's KVC/reflection. WinChocolate and
+LinChocolate have no such runtime, so instead of automatic binding they *expose the parsed graph*
+— `winInstantiate` → an instance object carrying `objectsByID` + `connections`, which the app
+walks by hand (`view(withIdentifier:)`, `connections.filter { $0.kind == .outlet }`). The whole
+`win*` nib API, and the demo's Nib page written against it, exist only to stand in for the missing
+KVC layer. Likewise the chocolates' `Selector` is a `struct { let name }`, whereas AppKit's is the
+opaque Obj-C selector.
+
+**Fix locus:** this is the same class of gap as Cocoa bindings — it needs a KVC/reflection layer
+(or Swift `Mirror`-based outlet binding) in the frameworks so that `instantiate(withOwner:
+topLevelObjects:)` binds `@IBOutlet`s directly and the demo's Nib page can be rewritten to plain
+outlet properties with no `winInstantiate`, no connection walking, and no `Selector.name`. Until
+that lands, the Nib page is inherently non-portable to real AppKit. (LinChocolate currently
+mirrors WinChocolate's `win*` surface so the shared demo builds+runs on GTK — see the nib port —
+but that is deliberately *matching a divergence*, not resolving it.)
+
+---
+
+## N. `NSCollectionView` supplementary views must be registered + dequeued  — **runtime crash**
+
+*Found 2026-07-14 — the first divergence caught at **runtime**, not compile time.*
+
+The demo's flow-layout data source builds a supplementary view fresh and returns it:
+
+```swift
+func collectionView(_ cv: NSCollectionView, viewForSupplementaryElementOfKind kind: String,
+                    at indexPath: IndexPath) -> NSView {
+    let header = NSTextField(string: "  \(section.title)", frame: .zero)   // ← raw view
+    return header
+}
+```
+
+On real AppKit this **crashes the app on launch** (`EXC_BREAKPOINT` via
+`+[NSApplication _crashOnException:]`), with:
+
+```
+*** Assertion failure in -[_NSCollectionViewCore
+      _createPreparedSupplementaryViewForElementOfKind:atIndexPath:withLayoutAttributes:applyAttributes:]
+the view returned from -collectionView:viewForSupplementaryElementOfKind:
+  UICollectionElementKindSectionFooter atIndexPath:{length = 2, path = 0 - 0}
+  was not retrieved by calling -makeSupplementaryViewOfKind:withIdentifier:forIndexPath:
+  or is nil (<NSTextField: 0x…>)
+```
+
+Reached via `makeKeyAndOrderFront` → `_setUpFirstResponderBeforeBecomingVisible` →
+`layoutIfNeeded` → `-[NSCollectionView layout]` → supplementary creation.
+
+**Real AppKit's contract:** register a class/nib per kind, then dequeue in the data source —
+
+```swift
+cv.register(MyHeader.self, forSupplementaryViewOfKind: NSCollectionView.elementKindSectionHeader,
+            withIdentifier: NSUserInterfaceItemIdentifier("hdr"))
+…
+let v = cv.makeSupplementaryView(ofKind: kind, withIdentifier: .init("hdr"), for: indexPath)
+```
+
+**Divergence:** WinChocolate/LinChocolate accept *any* view the data source hands back (no
+registration, no reuse identity), so the demo was written to that laxer contract. WinChocolate's
+own source states it outright — `NSCollectionView.swift`:
+
+> *"The `register(_:forSupplementaryViewOfKind:withIdentifier:)` / `makeSupplementaryView(...)`
+> API is deferred to Rev 2.0"*
+
+Items already follow Apple (`register(_:forItemWithIdentifier:)` + `makeItem(withIdentifier:for:)`
+exist and pool for reuse); only the **supplementary** half was skipped. That deferral is the bug.
+
+**Measured against real AppKit** (isolated repro, layout forced):
+
+| Data source returns | Result |
+|---|---|
+| a freshly-built view (today's demo) | **crash** |
+| `register(class)` + `makeSupplementaryView` | **works** |
+| `makeSupplementaryView` with *no* prior `register` | **crash** |
+
+So Apple requires **both** halves — registration *and* dequeue.
+
+**Fix + its architectural consequence.** Implement `register(_ viewClass: AnyClass?,
+forSupplementaryViewOfKind:withIdentifier:)` and `makeSupplementaryView(ofKind:withIdentifier:for:)`
+in both frameworks (mirroring the existing `makeItem` reuse pool), and rewrite the demo's
+header/footer to register + dequeue. Note the knock-on: instantiating a registered `AnyClass`
+requires metatype construction, so **`NSView.init(frame:)` must become `required`** in both
+frameworks —
+
+```
+error: constructing an object of class type 'V' with a metatype value must use a 'required' initializer
+```
+
+### Status: **RESOLVED 2026-07-14**
+
+Implemented in both frameworks + the demo. The demo now launches and runs on real AppKit.
+
+**The `required` modifier is an implementation necessity, not an API divergence.** Apple's NSView
+is *not* `required` in Swift terms — AppKit instantiates registered classes through the Objective-C
+runtime (`[[cls alloc] initWithFrame:]`), which has no such rule. Pure Swift has no equivalent
+escape hatch, so the modifier is forced on us by the platform. Crucially it constrains *subclasses
+inside the frameworks*, not callers, and it **does not leak into the shared demo**: of the demo's 12
+`NSView` subclasses, 11 declare no initializer and one (`DemoFilledView`) declares only a
+*convenience* init — none of which blocks initializer inheritance. (Verified: this matters, because
+`required init(frame:)` and `required override init(frame:)` are mutually exclusive between AppKit
+and Lin/Win, so a demo subclass with a designated init *would* have needed an `#if` — i.e. a shim.)
+
+**Measured cascade** (compiler-enumerated, not estimated — both smaller and far more mechanical
+than the "~33 / ~35" first guessed):
+
+| | Classes needing `required init(frame:)` | Shape of the fix |
+|---|---|---|
+| LinChocolate | **27** | 18 were `override`→`required` (one word); 9 needed a new init |
+| WinChocolate | **37** | 33 were `override`→`required` (one word); 4 needed a new init |
+
+The 4 in WinChocolate (`AlertIconView`, `ColorSwatchView`, `NSToolbarCompositeItemView`,
+`NSToolbarCustomizationTile`) are internal helpers that cannot exist without collaborators and are
+never registered, so their `required init(frame:)` is `fatalError` — the same idiom as the
+ubiquitous `required init?(coder:) { fatalError(…) }`.
+
+### Two further divergences found while fixing this
+
+**N.1 — `elementKindSectionHeader`/`Footer` had the wrong values in WinChocolate.** Printed from
+real AppKit, the constants are `UICollectionElementKindSectionHeader` / `…Footer` (the `UI` prefix
+is not a typo — AppKit's collection view is built on the UICollectionView implementation, hence
+`UICollectionView.m` in its assertion). LinChocolate already matched; WinChocolate vended
+`NSCollectionElementKindSectionHeader`. Latent rather than live, since callers use the symbol —
+but observable, and wrong. Fixed. (`elementKindInterItemGapIndicator` *is* `NSCollection…`-prefixed.)
+
+**N.2 — assigning `collectionViewLayout` discards supplementary registrations.** Measured on real
+AppKit:
+
+| Order | Result |
+|---|---|
+| `register(…)` then set `collectionViewLayout` | **crash** — registration silently lost |
+| set `collectionViewLayout` then `register(…)` | **works** |
+
+When the registration is lost, `makeSupplementaryView` falls back to loading a **nib named after the
+identifier**, and the failure surfaces as the thoroughly misleading
+`-[NSNib _initWithNibNamed:bundle:options:] could not load the nib 'DemoSectionFooter'`. Callers
+must register *after* the layout is assigned; the demo now documents this at the call site.
+
+### Correction to a prior claim in this document
+
+An earlier revision predicted the **items** path would throw the identical assertion, since the demo
+hand-builds `NSCollectionViewItem()` in `itemForRepresentedObjectAt` rather than calling `makeItem`.
+**That is wrong.** The repro hand-built its items and survived, and the fixed demo runs on AppKit
+with the item path untouched. Apple enforces register+dequeue for **supplementary views only**;
+items may be constructed directly. Using `makeItem` remains better practice (it is what the reuse
+pool is for), but it is *not* required for correctness and is not a crash risk.
+
+---
+
+## O. `NSBrowser` delegate protocol shape  — **runtime**
+
+*Found 2026-07-14, logged at launch on real AppKit:*
+
+```
+*** Illegal NSBrowser delegate (<DemoBrowserDataSource: 0x…>).  Must implement
+    browser:willDisplayCell:atRow:column: and either browser:numberOfRowsInColumn:
+    or browser:createRowsForColumn:inMatrix:
+```
+
+### Status: **RESOLVED 2026-07-14** — and the original diagnosis above was wrong
+
+The first reading of this error (that AppKit "requires the classic matrix-based trio" and that the
+demo "implements methods AppKit has never heard of") is **incorrect**. AppKit fully supports the
+modern *item-based* `NSBrowserDelegate`, and every method `DemoBrowserDataSource` implements is a
+genuine AppKit method. The error message misleads: it names the matrix-based methods because that is
+the interface AppKit *fell back to*, not the one it wanted.
+
+**Actual cause.** The item-based interface requires **all four** of
+`browser(_:numberOfChildrenOfItem:)`, `browser(_:child:ofItem:)`, `browser(_:isLeafItem:)` and
+`browser(_:objectValueForItem:)`. AppKit probes for them with `respondsToSelector:`; if *any* is
+missing it concludes the delegate is not item-based and falls back to the matrix interface, which
+the delegate also doesn't implement — hence "Illegal NSBrowser delegate".
+
+The demo implemented only the first three. It compiled and worked on WinChocolate anyway, because
+**WinChocolate supplies `objectValueForItem` as a Swift protocol-extension default**:
+
+```swift
+public extension NSBrowserDelegate {
+    /// Default display value uses item description.
+    func browser(_ browser: NSBrowser, objectValueForItem item: Any?) -> Any? {
+        item.map { String(describing: $0) }
+    }
+}
+```
+
+**A Swift protocol-extension default is invisible to `respondsToSelector:`** — it is static dispatch,
+it adds no Objective-C method to the class. So the framework's convenience made the demo *look*
+complete while it was missing a method Apple requires, and the gap could only ever appear at runtime,
+on Apple.
+
+**Fix applied:** the demo implements `browser(_:objectValueForItem:)` itself. This is the no-shim
+rule doing exactly its job — the demo line was wrong, and the framework was hiding it.
+
+**Generalized lesson (worth auditing for):** any Swift protocol-extension default that stands in for
+a method AppKit probes via `respondsToSelector:` is a latent runtime divergence of this shape. It is
+strictly more dangerous than a compile error, because the frameworks report success. Candidates to
+audit: the remaining `NSBrowserDelegate` defaults (`isLeafItem`, `titleOfColumn`, `imageForItem`)
+and any other `public extension …Delegate` in either framework.
+
+**Still open (LinChocolate):** its `NSBrowserDelegate` declares only three methods (no
+`objectValueForItem`) and refines `AnyObject` rather than `NSObjectProtocol` (see Issue G). The demo
+now implements a fourth method LinChocolate's protocol doesn't declare — harmless (it is simply an
+extra method on the class), but LinChocolate's browser will not call it, so its display path stays
+on the older shape. Aligning it is tracked with Issue G.
+
+---
+
+## Summary
+
+| # | Divergence | ~Errors | Fix locus |
+|---|---|---|---|
+| A | `onAction` closures vs target/action | ~300 | frameworks + demo |
+| B | Frame-carrying initializers | 264 | frameworks + demo |
+| F | Enum case-name mismatches | 80 | frameworks (rename to Apple) |
+| E | Identifier types as `String` | 72 | frameworks (real structs) |
+| C | `NSView.backgroundColor` | 42 | frameworks + demo |
+| D | `win*` / `native*` internal API leak | 44 | frameworks (hide) + demo |
+| G | Delegate protocols miss `NSObjectProtocol` | 30 | frameworks + demo |
+| I | `NSForm` accessors | 30 | frameworks |
+| J | Method label/signature mismatches | 24 | frameworks |
+| K | `NSFrameRect`/`NSRectFill` scope | 22 | verify / demo |
+| H | `NSToolbar.addItem` | 16 | frameworks + demo |
+| L | `CGImage`/WinCoreGraphics surface | 16 | frameworks + demo |
+| M | Nib manual-wiring (`winInstantiate`) — missing KVC layer | ~12 | frameworks (KVC/reflection) + demo |
+| N | Collection supplementary views not registered/dequeued | **runtime crash** | ✅ **fixed** — frameworks + demo |
+| O | `NSBrowser` delegate: Swift default hid a required method | **runtime** | ✅ **fixed** — demo (LinChocolate parity open) |
+
+Note that **A–M are compile-time** divergences; **N and O only surface at runtime**, once the demo
+actually builds against AppKit. Expect more of this class as the compile errors are retired — a
+clean build is necessary but not sufficient for faithfulness.
+
+With N and O fixed, the shared demo **launches and runs against real AppKit** (`./run-mac.sh`).
+That validates the tri-target premise on the macOS leg for the first time. Both were found only by
+running, and both were invisible to every compiler — N because the frameworks accepted a view Apple
+rejects, O because a Swift protocol-extension default silently satisfied a requirement Apple probes
+for at runtime. The second pattern (**framework conveniences that mask missing methods**) is the
+more dangerous of the two and is worth a dedicated audit; see Issue O.
+
+Every row is a place WinChocolate/LinChocolate diverged from Apple. None are to be resolved with
+an AppKit shim — each is fixed by making the chocolate frameworks match AppKit exactly and, where
+the demo itself reached for a non-Apple spelling, rewriting that line against real AppKit.
+
+**Remediation is tracked as Phase 18** (`ProjectPlan.md`). The governing rule there is **SET IN STONE
+(Bobby, 2026-07-14): the Apple-native way must work, and must be *sufficient*.** WinChocolate genuinely
+implements the real AppKit mechanisms (target/action, real inits, delegate protocols) so unmodified
+pure-AppKit source builds **and runs**, and **no convenience is ever *required*.** Two moves close the
+rows: *CORRECT* the framework toward Apple (rename/retype to Apple's exact spelling: rows E, F, G, H, I, J),
+or *move added conveniences out of the framework* (rows A, B, C) — remove `onAction`/frame-inits/
+`NSView.backgroundColor` from WinChocolate and let the demo use the real AppKit idiom (target/action, real
+inits + `.frame`, an `NSView` subclass that draws its fill). `win*`/`native*` leaks (row D) are *hidden* and
+the demo rewritten to the Apple equivalent.
+
+**A convenience helper *is* allowed** — but only as **demo-local** code built entirely on real Apple/AppKit
+primitives (e.g. a closure `onAction` that sets the *actual* `target`/`action`), so it compiles and runs on
+real AppKit too and is never required. **Banned:** a non-Apple addition on WinChocolate's own surface that
+the demo depends on; a one-sided `#if os(macOS)` shim (why `PlatformShims.swift` was deleted); any *required*
+convenience. Test: if a helper needs anything WinChocolate-only, it's a shim and it's out. The only
+sanctioned non-coverage is *exclusion* (row L CoreGraphics, row M Nib): pages gated on Phase 13 / 12.1 are
+`#if`-fenced out and excluded from the "runs on AppKit" claim until their owning phase lands — excluded,
+never shimmed.
+
+---
+
+## Windows re-sync against the frozen AppKit-correct demo — 2026-07-15
+
+The demo is now **frozen** and AppKit-correct (see `DEMO_CHANGES.md`); the direction reversed —
+fix **WinChocolate** to match it, never the demo. Bringing the Windows build back to green
+against the frozen demo took the following framework additions (all matching Apple; the demo
+was not touched, except `@IBAction`/`@IBOutlet` remain `#if`-fenced by the demo itself):
+
+**Build was broken by 35 demo-side errors → now 0. Suite green, demo runs.**
+
+- **`required init(frame:)` cascade.** `NSView.init(frame:)` is `required` (so registered view
+  classes instantiate by metatype in `makeSupplementaryView`/`makeItem`). Added the required init
+  to `NSBrowser.BrowserColumnTableView` and the test's `IntrinsicSizeView`. (Demo subclasses that
+  add no designated init inherit it and were unaffected.)
+- **`NSPasteboardWriting`** protocol added (String/URL/`NSPasteboardItem` conform); the table/outline
+  `pasteboardWriterForRow`/`pasteboardWriterForItem` requirements retyped `Any?` → `NSPasteboardWriting?`.
+- **`NSBrowser` column sizing:** `ColumnResizingType` (+ `.no/.auto/.userColumnResizing`),
+  `columnResizingType` (default `.auto`), `minColumnWidth` (default 100), `setWidth(_:ofColumn:)`,
+  `width(ofColumn:)`; `tile()` honors them.
+- **`NSTableView.setDropRow(_:dropOperation:)`** added (records the retarget; the drawn reorder path
+  already lands on the inter-row gap).
+- **`NSBitmapImageRep`** added (wraps `CGImage`'s BMP codec: `init(cgImage:)`, `init?(data:)`,
+  `representation(using:.bmp)`, `colorAt(x:y:)`, `pixelsWide/High`, `FileType`, `PropertyKey`).
+- **Apple-shaped `CGImage` construction:** `CFData`, `CGDataProvider`, `CGBitmapInfo`,
+  `CGImageAlphaInfo`, `CGColorRenderingIntent`, and the designated
+  `CGImage(width:height:bitsPerComponent:…:provider:…)` init — all placed in **WinCoreGraphics**
+  (they are CoreGraphics types on Apple), alongside `CGImage`. `CGColorSpace` /
+  `CGColorSpaceCreateDeviceRGB()` moved down from WinChocolate to WinCoreGraphics with them, and
+  WinCoreGraphics gained a WinFoundation dependency for `Data`/`CFData` (CoreFoundation sits below
+  CoreGraphics on Apple). WinChocolate re-exports WinCoreGraphics, so the demo and `CGGradient`
+  still see these types unchanged.
+
+**Behavioral MUST-FIXes also landed (from `DEMO_CHANGES.md`):**
+
+- **The "ten dead delegates."** WinChocolate had a distinct `NSNotification` class while the demo
+  (and Apple) use Foundation's `Notification`. Every delegate/notification signature and the ~20
+  construction sites migrated `NSNotification` → `Notification` (framework + tests). The demo's
+  window-resize reflow, table/outline selection, text-editing callbacks, split-resize, etc. are now
+  live on Windows instead of silently no-op'd.
+- **`NSColorWell` fires on color-change, not click.** `mouseDown` only presents the panel now; the
+  panel's pick calls `winApplyPanelColor` on the active well, which sets the color and sends the
+  action (programmatic `color =` does not send).
+- **`NSTableView.scrollRowToVisible(_:)`** implemented (was a no-op stub) — nudges the enclosing
+  clip view only as far as needed, using the drawn table's row geometry.
+
+**Remaining MUST-FIX worklist (behavioral parity; do not block build/run — the demo `#if`s or
+works around them):**
+
+- `NSForm` as a real `NSMatrix` subclass: `cellSize` (with `NSMatrix`'s zero-height default),
+  `intercellSpacing`, `autosizesCells`; `NSForm.setBezeled/setBordered/setEntryWidth/…`; retire the
+  invented `rowHeight`. (Demo `#if`s these out today.)
+- **Deprecation `@available(..., deprecated:, message:)` annotations** matching Apple, starting with
+  `NSForm`/`NSFormCell` (deprecated macOS 10.10) — audit the whole surface.
+- Audit the rest of `DEMO_CHANGES.md`'s MUST-FIX blocks (NSImageView `open` on Linux, image-drawing
+  stubs, etc.) against WinChocolate specifically.
+
+### Round 2 of the Windows re-sync — behavioral fixes from live testing (2026-07-15)
+
+User testing of the frozen demo on Windows surfaced four breaks (Mac side renders correctly —
+see the screenshot round). All fixed framework-side:
+
+1. **Toolbar showed legacy stock icons instead of the demo's Tabler artwork.** The Win32 tile
+   renderer never drew `item.image` at all — it mapped the image *name* onto comctl32's stock
+   image list (`IDB_STD_SMALL_COLOR`, the Win95-era icons) or a generic glyph; the demo's
+   PNG paths matched nothing and stale generator BMPs sat next to the exe. Now a file-path
+   image name draws the actual file via the GDI+ image path, honoring `isTemplate` with a
+   template tint that follows the same contrast rule as the item label (dark glyph on the
+   metallic strip, light glyph on a dark appearance), re-resolved on live theme switch. The
+   tint rides a new 7th field of the composite tile's native text.
+2. **Stepper was completely dead.** The `UDN_DELTAPOS` handler returned 1 — which *blocks*
+   the native position change — without applying the delta or firing the registered action.
+   It now applies one framework increment (`updateStepperPosition(position:delta:)`), fires
+   the action, and still returns 1 so the framework's increment is the only change.
+3. **Color well:** verified the full frozen-demo recipe headlessly — click activates + seeds
+   the panel *without* firing; a panel pick updates the well, fires the action with the new
+   color, and the handler's `contentTintColor` re-tints the template image natively. New
+   contract test `testColorWellPanelPickFiresActionAndTintsTemplate` pins it. (If this still
+   fails live, the remaining suspect is the panel's own slider UI on the real backend.)
+4. **Scroll Selected did nothing on the Tables/Media page.** The page's table is a *native*
+   list peer, and `scrollRowToVisible` only nudged the clip view (the drawn table's
+   mechanism). The native path now routes to the backend's `scrollTableRowToVisible`
+   (`LVM_ENSUREVISIBLE`); the drawn path keeps the minimal clip nudge — pinned by
+   `testDrawnTableScrollRowToVisibleMovesClipView`.
+
+Verified: build 0 errors, suite green (two new tests), demo runs on default/Values/New-in-3.x.
+
+### Round 3 of the Windows re-sync — live-input verification (2026-07-15)
+
+A new probe workflow made the remaining interactive bugs *observable*: an env-gated framework
+diagnostics log (`WinDiagnostics`, `WINCHOCOLATE_DIAG=<file>`) plus a script that posts real
+window messages to the running demo and reads the log/screenshots back. Each fix below was
+verified with real clicks, not just tests.
+
+1. **Stepper frozen at 1 — a C struct-layout bug.** `NMHDR` is padded to 24 bytes on 64-bit
+   C; the hand-declared Swift FFI struct stopped at 20, so every `NM*` struct embedding it
+   read its first field 4 bytes early (`NMUPDOWN.iDelta` was actually reading `iPos`).
+   Padded `NMHDR` explicitly. Also: the UDN_DELTAPOS handler now applies one framework
+   increment from the framework's tracked value and fires the registered action (it used to
+   return 1 — blocking the native change — while doing neither), and the value base is the
+   framework's, not the control's unreliable `iPos`. Live log: `pos=50 delta=1` → 51 → 52,
+   action delivered each click.
+2. **Color well dead — clicks never reached `mouseDown`.** The well's peer was a Win32
+   *static* control, whose clicks arrive as `WM_COMMAND` and fired the registered action
+   directly — `NSColorWell.mouseDown` (activate + present panel) never ran, which the live
+   log proved (`sendAction` with no `mouseDown`). The well now uses a framework view peer
+   with real mouse routing. Live log after: click → `mouseDown` → panel window appears →
+   slider arrow → `colorDidChange` → `winApplyPanelColor` → action delivered.
+3. **Customization palette icons + all name-based toolbar glyphs.** The framework now ships
+   **Tabler Icons artwork** (MIT, © Paweł Kuna — a curated subset embedded as SVG path data
+   in `WinTablerIcons`, rendered by a minimal SVG `d`-parser `WinSVGPath` with arc→Bézier
+   conversion) stroked in the tile's label color. This replaces the comctl32 stock image
+   list (the Win95-era icons) and the hand-drawn glyphs everywhere: palette tiles, standard
+   identifiers (print/colors/fonts), and symbol-name fallbacks. Verified by screenshot: the
+   palette renders folder-open / floppy / search / ban / adjustments / palette / typography /
+   printer consistently in dark mode. Toolbar item labels are no longer clamped by
+   `maxSize` (the label may be wider than the icon box, as on Apple — "Disable Save" shows
+   in full).
+
+Verified: build 0 errors, suite green, live probe logs + screenshots for all three.
+
+## Windows re-sync — Round 4 (2026-07-15, live-probed)
+
+User feedback: scroll-selected deselects and doesn't scroll; clicking the Tables/Media image
+does nothing; the date-picker drop-down calendar clips its bottom; the drawn-table drop
+indicator draws one gap lower than the actual top insert.
+
+1. **"Scroll Selected" looked like it deselected — the unfocused selection was invisible.**
+   Two independent facts, proven by probe: `selectedRow` stayed correct and
+   `LVM_ENSUREVISIBLE` scrolled correctly (status: "Scrolled to selected: row 3 …"), but the
+   themed list view (`DarkMode_Explorer`) paints **no** selection band when the control loses
+   focus, so the row *looked* deselected — on AppKit an unfocused table keeps a gray
+   "unemphasized" band. Fixed with `NM_CUSTOMDRAW`: for a selected row in an unfocused list
+   view, strip `CDIS_SELECTED` (the themed painter ignores the custom-draw colors on its
+   "selected" path) and hand the item `unemphasizedSelectedContentBackgroundColor` /
+   `textColor`. Screenshot-verified: selected row keeps a gray band with focus on the button,
+   and the view scrolls back to it.
+2. **Image-view clicks now route through `mouseDown(with:)`/`mouseUp(with:)`.** A Win32
+   static turns clicks into `WM_COMMAND` (`STN_CLICKED` = `BN_CLICKED`), which fired the
+   control action directly — but AppKit image views never fire an action on click; subclasses
+   override `mouseDown`. The dispatch now recognizes image-view statics and synthesizes
+   mouse events for the registered mouse actions instead. Live-verified: clicking the demo's
+   `DemoClickableImageView` updates the status label ("Mouse up at …").
+3. **Drop-down calendar clipped.** The DTP's popup opens at a default height that cut off the
+   last week row and the "Today" footer. On `DTN_DROPDOWN` the calendar *and its popup
+   parent* are resized to `MCM_GETMINREQRECT` (this also un-gated the dark-palette hook,
+   which previously did nothing in light mode). Screenshot-verified: six week rows + "Today:
+   7/15/2026" footer fully visible.
+4. **Drawn-table drop indicator one gap low at the top.** `winDrawDropIndicator()` measured
+   from `winHeaderHeight`, but rows (and the insertion hit-test `winDropInsertionIndex`)
+   measure from `winBodyTopInset`, which is 0 when the header is pinned in its own strip —
+   so a before-row-0 drop drew its line between rows 1 and 2. The indicator now uses the
+   same `winBodyTopInset` base as the hit-test, making the drawn line and the actual insert
+   agree by construction.
+
+Verified: build 0 errors, contract suite green, live probe screenshots for 1–3.
+
+## Windows re-sync — Round 5 (2026-07-16): NSDatePicker, measured against AppKit
+
+LinChocolate rebuilt this control from **probed** AppKit rather than assumption, and recorded
+the ground truth plus a MUST-FIX list naming WinChocolate in `DEMO_CHANGES.md`. This is that
+list, done. The measured values there are treated as the specification throughout — the Mac
+is where they came from, and guessing was wrong on every one of them.
+
+### The architectural call: configure the native control, don't reimplement it
+
+LinChocolate renders the field itself — building the text, tracking the selected element,
+stepping and typing into it — because **GTK has no date field**. Windows has one.
+`SysDateTimePick32` already selects an element on click, moves between elements with the
+arrow keys, steps *the selected* element, and takes typed digits with auto-advance. That is
+simultaneously the behaviour AppKit specifies and the native Windows look, so the control is
+**configured**, not replaced. Porting LinChocolate's segment engine here would have meant
+hand-rolling a calendar engine too (WinFoundation has no `Calendar`/`DateComponents`) in
+order to end up *less* native. What the framework owns is the AppKit semantics the platform
+cannot know: the element flags, the format they imply, the clamp, the zone, and
+`stringValue`.
+
+1. **The field was showing the wrong time, and silently discarding it.** `systemTime(from:)`
+   hardcoded `wHour`/`wMinute`/`wSecond` to **zero** and formatted in UTC, and the read path
+   kept only year/month/day — so the demo's 2026-06-01T00:00Z rendered `6/1/2026 12:00:00
+   AM` where AppKit renders `5/31/2026, 8:00:00 PM`, and any time the user typed was thrown
+   away on read-back. Both paths now convert a `Date` (an instant) to and from a wall clock
+   in the picker's zone. The field now reads **`5/31/2026, 8:00:00 PM`** — AppKit's probed
+   string, character for character.
+2. **`.textFieldAndStepper` had no stepper.** The default style — a field *with* a stepper
+   and no calendar popup — was created without `DTS_UPDOWN`, so it showed a drop-down
+   calendar button instead: the same bug LinChocolate found, in the same style, for the same
+   reason. Added. The arrows step **the selected element**, which is the MUST-FIX item, and
+   the control does it natively. (`.textField` keeps the drop-down field, the platform's
+   closest bare field; that is also the path the Round 4 calendar-clip fix still serves.)
+3. **Element flags are Apple's.** Cumulative raw values — `hourMinute` 0x000c,
+   `hourMinuteSecond` 0x000e, `timeZone` 0x0010, `yearMonth` 0x00c0, `yearMonthDay` 0x00e0,
+   `era` 0x0100 — replacing invented `1 << n` bits, with `.yearMonth` and `.era` added.
+   Every test now asks the wider flag first. `Style` carries Apple's raw values too.
+4. **The format follows the locale, from the elements.** AppKit builds its field from a
+   locale *template* (`Mdyyyyjmmss` produces `M/d/yyyy, h:mm:ss a`), which is why it shows a
+   four-digit year no short-date style can produce. Windows' own `LOCALE_SSHORTDATE` is
+   already `M/d/yyyy` **and already in the syntax the control wants**, so the locale drives
+   the field order here exactly as it does on Apple, with no template engine:
+   short-date + `", "` + time (the comma is AppKit's), `LOCALE_SSHORTTIME` for
+   `.hourMinute`, the day dropped from the pattern for `.yearMonth`, `gg` for `.era`, and a
+   quoted literal for `.timeZone` (the control has no zone field; nothing steps a zone on
+   Apple either).
+5. **`stringValue` is full/full and element-independent.** It was short/medium and varied
+   with the elements. AppKit's is exactly `DateFormatter(dateStyle: .full, timeStyle: .full)`
+   — a date-only picker returns the same full string — which is why the demo's label was
+   just widened to 550pt.
+6. **`minDate`/`maxDate` reach the control** via `DTM_SETRANGE`; they were accepted and
+   dropped, leaving the framework to correct an out-of-range entry after the fact instead of
+   the field refusing it as AppKit's does.
+7. **`intrinsicContentSize`** uses AppKit's probed numbers where they exist (275.5x148
+   calendar, 180x22 field with date and time, 95x22 date-only) instead of the invented
+   139x148; unprobed element combinations are measured rather than guessed.
+
+### WinFoundation: the gap underneath all of it
+
+`DateFormatter` was **UTC-only** ("time zones beyond UTC are future work") and there was no
+`TimeZone` type — so no amount of control-side work could have rendered a local wall clock or
+matched AppKit's `stringValue`. Added:
+
+- **`TimeZone`** — current zone and fixed offsets, DST-aware. Offsets come from
+  `SystemTimeToTzSpecificLocalTime`, which applies the rule in force *on the date being
+  converted*, and names from `GetTimeZoneInformationForYear`. Whether a date is in DST is
+  decided by comparing its offset against the zone's own yearly extremes — DST always adds,
+  so the larger is daylight, which holds in the southern hemisphere too.
+  `TIME_ZONE_INFORMATION` is read through documented raw offsets rather than a hand-declared
+  Swift struct: it embeds two `WCHAR[32]` arrays, and a layout that drifts from C's reads as
+  data corruption (as `NMHDR`'s missing tail padding did in Round 2).
+- **`DateFormatter.timeZone`**, local-time components, and the full/long styles' zone name.
+  The date and time halves now join per ICU's en_US rule — `" at "` for full/long, `", "` for
+  medium/short — which is where AppKit's "May 31, 2026 **at** 8:00:00 PM" comes from.
+- **`String.replacingOccurrences(of:with:)`**, which was simply missing.
+- Named IANA zones (`America/New_York`) return `nil` rather than silently resolving to
+  something else: Windows has no such database.
+
+### Verified
+
+Contract suite green, including new tests pinning Apple's raw flag values and their
+cumulativity, full/full `stringValue` and its independence from the elements, the
+element-driven format (including year-month, hour-minute and era), the local wall-clock
+round trip with the time of day intact, and each style's stepper. Two **pre-existing tests
+were changed because they pinned the bug**: they asserted UTC rendering (`6/1/2026` for a
+midnight-UTC instant) from a formatter that now renders local time. They are now
+zone-explicit, so they assert the same thing on any machine — and one additionally pins that
+the same instant reads `5/31/2026` at UTC-4, which is the whole point.
+
+Driven live against the running demo (real window messages, screenshots read back):
+
+| | before | after |
+|---|---|---|
+| field | `6/1/2026 12:00:00 AM` | **`5/31/2026, 8:00:00 PM`** (AppKit's probed string) |
+| stepper | absent (drop-down button) | `msctls_updown32` child of the field |
+| click year + 2 steps | stepped the day | **2026 to 2028**, label recomputes to *Wednesday*, May 31, 2028 |
+| type `1` `2` on the month | not possible | **December 31, 2028**, weekday recomputes to *Sunday* |
+| `dateValueLabel` | `6/1/2026` | `Sunday, May 31, 2026 at 8:00:00 PM ...` |
+
+The year-step and month-type results **independently match LinChocolate's** verification of
+the identical interactions (2028/Wednesday; December, day 31) — two implementations, two
+platforms, same AppKit behaviour.
+
+### Known platform boundaries (recorded, not papered over)
+
+- **Zone names are Windows'.** For the major US and European zones the Windows display names
+  coincide with ICU's English long names ("Eastern Daylight Time"), which is what makes
+  `stringValue` match. The two databases are not identical, so an exotic zone can differ.
+  This machine is set to *SA Western Standard Time* (UTC-4, no DST), so the demo's label
+  reads `... 8:00:00 PM SA Western Standard Time` here and would read `... Eastern Daylight
+  Time` on a Mac in Eastern — a machine-configuration difference, not a divergence.
+- **The DST-name branch could not be exercised on this machine** (its zone has no DST); the
+  no-DST branch is verified live, and the logic is pinned by a test that adapts to whichever
+  zone it runs in.
+- **ICU emits U+202F** (narrow no-break space) before AM/PM; Windows' locale data uses a
+  normal space. Identical on screen, one code point apart in `stringValue`. Forcing ICU's
+  convention onto Windows' own locale data would be the wrong trade.
+- **`NSDatePicker.calendar`** is not implemented: WinFoundation has no `Calendar` type, and
+  inventing one to back a property nothing uses would be worse than the honest gap.

@@ -70,6 +70,14 @@ public struct NSColor: Equatable, Sendable {
         textColor
     }
 
+    /// The selection fill for a selected row/item in a non-key (unemphasized)
+    /// view — a neutral gray that follows the appearance so it doesn't read as a
+    /// light island under dark mode, matching AppKit's semantic color.
+    public static var unemphasizedSelectedContentBackgroundColor: NSColor {
+        winDynamic(light: NSColor(white: 0.85, alpha: 1),
+                   dark: NSColor(white: 0.32, alpha: 1))
+    }
+
     /// Black.
     public static var black: NSColor {
         NSColor(calibratedRed: 0, green: 0, blue: 0, alpha: 1)

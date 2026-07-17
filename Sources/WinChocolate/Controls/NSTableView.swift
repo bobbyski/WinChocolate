@@ -1,6 +1,6 @@
 /// Data source for an AppKit-shaped table view.
 @MainActor
-public protocol NSTableViewDataSource: AnyObject {
+public protocol NSTableViewDataSource: NSObjectProtocol {
     /// Returns the number of rows in the table.
     func numberOfRows(in tableView: NSTableView) -> Int
 
@@ -14,21 +14,23 @@ public protocol NSTableViewDataSource: AnyObject {
     /// drag out of the table (a `String`, file `URL`, or `NSPasteboardItem`), or
     /// `nil` if the row is not draggable — matching AppKit's
     /// `tableView(_:pasteboardWriterForRow:)`.
-    func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> Any?
+    func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> NSPasteboardWriting?
 
-    /// Accepts a drop of external (or cross-view) content at a target row,
-    /// returning whether it was consumed — matching AppKit's
-    /// `tableView(_:acceptDrop:row:dropOperation:)`. Read the payload from
-    /// `info.draggingPasteboard`. The table must be registered for the dragged
-    /// types (`registerForDraggedTypes`).
-    func tableView(_ tableView: NSTableView, acceptDrop info: NSDraggingInfo, row: Int) -> Bool
+    /// Accepts a drop at a target row, returning whether it was consumed —
+    /// AppKit's exact `tableView(_:acceptDrop:row:dropOperation:)`. Covers
+    /// external (or cross-view) content drops AND the table's own row-reorder
+    /// drops (a `.move`-masked local drag whose pasteboard carries the dragged
+    /// row indexes as a comma-separated string). Read the payload from
+    /// `info.draggingPasteboard`; external drops require the table to be
+    /// registered for the dragged types (`registerForDraggedTypes`).
+    func tableView(_ tableView: NSTableView, acceptDrop info: NSDraggingInfo, row: Int, dropOperation: NSTableView.DropOperation) -> Bool
 }
 
 /// Delegate for table-view notifications.
 @MainActor
-public protocol NSTableViewDelegate: AnyObject {
+public protocol NSTableViewDelegate: NSObjectProtocol {
     /// Called after the selected row changes.
-    func tableViewSelectionDidChange(_ notification: NSNotification)
+    func tableViewSelectionDidChange(_ notification: Notification)
 
     /// Returns a view for a row/column in view-based table configurations.
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView?
@@ -53,19 +55,19 @@ public extension NSTableViewDataSource {
     func tableView(_ tableView: NSTableView, setObjectValue object: Any?, for tableColumn: NSTableColumn?, row: Int) {}
 
     /// Default: rows are not draggable out of the table.
-    func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> Any? {
+    func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> NSPasteboardWriting? {
         nil
     }
 
-    /// Default: the table refuses external drops.
-    func tableView(_ tableView: NSTableView, acceptDrop info: NSDraggingInfo, row: Int) -> Bool {
+    /// Default: the table refuses drops.
+    func tableView(_ tableView: NSTableView, acceptDrop info: NSDraggingInfo, row: Int, dropOperation: NSTableView.DropOperation) -> Bool {
         false
     }
 }
 
 public extension NSTableViewDelegate {
     /// Default table selection notification.
-    func tableViewSelectionDidChange(_ notification: NSNotification) {}
+    func tableViewSelectionDidChange(_ notification: Notification) {}
 
     /// Default view-based table hook.
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
@@ -109,6 +111,65 @@ open class NSTableView: NSControl {
         public static let solidVerticalGridLineMask = GridLineStyle(rawValue: 1 << 1)
     }
 
+    /// Where a drop lands relative to a row, matching AppKit's
+    /// `NSTableView.DropOperation`: `.on` targets the row itself, `.above`
+    /// inserts between rows (the row-reorder form).
+    public enum DropOperation: Int, Sendable {
+        case on = 0
+        case above = 1
+    }
+
+    /// The operations this table permits as a drag source, split by
+    /// destination locality — AppKit's `setDraggingSourceOperationMask(_:forLocal:)`.
+    /// A **local mask containing `.move`** (plus a data source that vends
+    /// `pasteboardWriterForRow`) enables drag-to-reorder: the drop arrives at
+    /// the data source's `tableView(_:acceptDrop:row:dropOperation:)` with
+    /// `.above`, carrying the dragged row indexes on the pasteboard.
+    open func setDraggingSourceOperationMask(_ mask: NSDragOperation, forLocal isLocal: Bool) {
+        if isLocal {
+            winLocalDragOperationMask = mask
+        } else {
+            winExternalDragOperationMask = mask
+        }
+    }
+
+    /// The local-destination source mask (see
+    /// `setDraggingSourceOperationMask(_:forLocal:)`). WinChocolate defaults
+    /// to no `.move` so reorder is opt-in, as porting apps expect to call the
+    /// mask setter explicitly.
+    package var winLocalDragOperationMask: NSDragOperation = [.copy, .link, .generic]
+
+    /// The external-destination source mask.
+    package var winExternalDragOperationMask: NSDragOperation = [.copy, .link, .generic]
+
+    /// The drop row/operation a data source retargeted the current drop to via
+    /// `setDropRow(_:dropOperation:)`.
+    package var winProposedDropRow: Int = -1
+    package var winProposedDropOperation: DropOperation = .above
+
+    /// Retargets the current drop to a row and operation — AppKit's
+    /// `setDropRow(_:dropOperation:)`. Called from `validateDrop` to convert a
+    /// proposed `.on` (pointer over a row body) into the reorder gap (`.above`),
+    /// which is the only way to make the whole table a valid reorder target.
+    /// WinChocolate's drawn reorder path already lands on the inter-row gap, so
+    /// this records the retarget for source-compatibility with that recipe.
+    open func setDropRow(_ row: Int, dropOperation: DropOperation) {
+        winProposedDropRow = row
+        winProposedDropOperation = dropOperation
+    }
+
+    /// Whether a reorder drag may start from a row: the explicit handler
+    /// (framework-internal path), or AppKit's recipe — a `.move` local mask
+    /// plus a data-source pasteboard writer for the row.
+    package func winReorderDragEnabled(forRow row: Int) -> Bool {
+        if winRowReorderHandler != nil {
+            return true
+        }
+
+        return winLocalDragOperationMask.contains(.move)
+            && winMainActor { winEffectiveDataSource?.tableView(self, pasteboardWriterForRow: row) } != nil
+    }
+
     /// Selection highlight style.
     public enum SelectionHighlightStyle: Sendable {
         /// Regular table selection highlight.
@@ -144,6 +205,16 @@ open class NSTableView: NSControl {
 
     /// Object notified about selection changes.
     open weak var delegate: NSTableViewDelegate?
+
+    /// The data source the table machinery actually reads: `dataSource` for a
+    /// plain table; `NSOutlineView` overrides this to interpose its
+    /// row-flattening adapter while `dataSource` keeps AppKit's semantics
+    /// (returning the outline data source the app assigned).
+    var winEffectiveDataSource: NSTableViewDataSource? { dataSource }
+
+    /// The delegate the table machinery actually consults (see
+    /// `winEffectiveDataSource`).
+    var winEffectiveDelegate: NSTableViewDelegate? { delegate }
 
     /// Whether multiple rows may be selected.
     open var allowsMultipleSelection: Bool = false {
@@ -268,7 +339,7 @@ open class NSTableView: NSControl {
     /// Current table sort descriptors.
     open var sortDescriptors: [NSSortDescriptor] = [] {
         didSet {
-            winMainActor { delegate?.tableView(self, sortDescriptorsDidChange: oldValue) }
+            winMainActor { winEffectiveDelegate?.tableView(self, sortDescriptorsDidChange: oldValue) }
         }
     }
 
@@ -280,8 +351,10 @@ open class NSTableView: NSControl {
         return header
     }()
 
-    /// Swift-native selection callback.
-    open var onSelectionChanged: ((NSTableView) -> Void)?
+    /// Framework-internal selection hook (browser columns, the font panel's
+    /// family list). Not API: applications use
+    /// `tableViewSelectionDidChange(_:)` on the delegate, as in AppKit.
+    var winInternalSelectionChanged: ((NSTableView) -> Void)?
 
     /// Current selected row, or `-1` when nothing is selected.
     public private(set) var selectedRow: Int = -1
@@ -362,10 +435,11 @@ open class NSTableView: NSControl {
     /// Delegate-vended full-width row background views, by row.
     var winHostedRowViews: [Int: NSTableRowView] = [:]
 
-    /// When set, drawn-table rows can be reordered by dragging: the handler is
-    /// called with the source row and the destination insertion index (0...n)
-    /// on drop. A convenience ahead of the full `NSDraggingSession` protocol.
-    open var winRowReorderHandler: ((_ fromRows: IndexSet, _ toIndex: Int) -> Void)?
+    /// Framework-internal reorder hook (the outline's row bridge uses it).
+    /// Not API (18.8): applications enable reorder with AppKit's recipe —
+    /// `setDraggingSourceOperationMask(.move, forLocal: true)`, a data-source
+    /// `pasteboardWriterForRow`, and `tableView(_:acceptDrop:row:dropOperation:)`.
+    package var winRowReorderHandler: ((_ fromRows: IndexSet, _ toIndex: Int) -> Void)?
     /// The row the reorder drag started on, or `-1`.
     var winDraggingRow = -1
     /// The set of rows being dragged (the pressed row, or the whole selection
@@ -395,6 +469,13 @@ open class NSTableView: NSControl {
     var winDrawnEditField: NSTextField?
     var winDrawnEditRow = -1
     var winDrawnEditColumn = -1
+
+    /// Whether a drawn cell is currently being edited in the overlay editor.
+    public var winIsEditingDrawnCell: Bool { winDrawnEditField != nil }
+    /// The row currently being edited in the drawn overlay, or `-1`.
+    public var winEditingRow: Int { winDrawnEditRow }
+    /// The column currently being edited in the drawn overlay, or `-1`.
+    public var winEditingColumn: Int { winDrawnEditColumn }
     /// Shared delegate that commits the drawn-cell overlay on editing end.
     lazy var winCellEditor: WinDrawnCellEditor = {
         let editor = WinDrawnCellEditor()
@@ -541,7 +622,7 @@ open class NSTableView: NSControl {
     }
 
     /// Returns a column at an index.
-    open func tableColumn(at columnIndex: Int) -> NSTableColumn? {
+    package func tableColumn(at columnIndex: Int) -> NSTableColumn? {
         guard tableColumns.indices.contains(columnIndex) else {
             return nil
         }
@@ -638,8 +719,43 @@ open class NSTableView: NSControl {
         selectedRowIndexes.contains(row)
     }
 
-    /// Scrolls a row into view. Stored for compatibility; native scrolling is future work.
-    open func scrollRowToVisible(_ row: Int) {}
+    /// Scrolls the enclosing scroll view so a row is visible — AppKit's
+    /// `scrollRowToVisible(_:)`. Uses the drawn table's row geometry
+    /// (`winRowY`/`winRowHeightAt`) and nudges the clip view only as far as
+    /// needed, exactly like AppKit (an already-visible row does not move).
+    open func scrollRowToVisible(_ row: Int) {
+        guard row >= 0, row < numberOfRows else {
+            return
+        }
+
+        // A native list peer scrolls itself (LVM_ENSUREVISIBLE); the clip-view
+        // nudge below is the drawn table's mechanism.
+        if !winIsDrawn, let nativeHandle {
+            realizedBackend?.scrollTableRowToVisible(row, for: nativeHandle)
+            return
+        }
+
+        guard let scrollView = enclosingScrollView else {
+            return
+        }
+
+        let clip = scrollView.contentView
+        let rowTop = winIsDrawn ? winRowY(row) : CGFloat(row) * rowHeight
+        let rowHeightValue = winIsDrawn ? winRowHeightAt(row) : rowHeight
+        let visible = clip.documentVisibleRect
+
+        var origin = visible.origin
+        if rowTop < visible.origin.y {
+            origin.y = rowTop
+        } else if rowTop + rowHeightValue > visible.origin.y + visible.size.height {
+            origin.y = rowTop + rowHeightValue - visible.size.height
+        } else {
+            return
+        }
+
+        clip.scroll(to: origin)
+        scrollView.reflectScrolledClipView(clip)
+    }
 
     /// Scrolls a column into view. Stored for compatibility; native scrolling is future work.
     open func scrollColumnToVisible(_ column: Int) {}
@@ -651,12 +767,12 @@ open class NSTableView: NSControl {
             return nil
         }
 
-        return winMainActor { delegate?.tableView(self, viewFor: tableColumn(at: column), row: row) }
+        return winMainActor { winEffectiveDelegate?.tableView(self, viewFor: tableColumn(at: column), row: row) }
     }
 
     /// Returns the delegate-provided height for a row.
     open func heightOfRow(_ row: Int) -> CGFloat {
-        winMainActor { delegate?.tableView(self, heightOfRow: row) } ?? rowHeight
+        winMainActor { winEffectiveDelegate?.tableView(self, heightOfRow: row) } ?? rowHeight
     }
 
     /// Sets a model value through the data source.
@@ -665,18 +781,77 @@ open class NSTableView: NSControl {
             return
         }
 
-        winMainActor { dataSource?.tableView(self, setObjectValue: object, for: tableColumn, row: row) }
+        winMainActor { winEffectiveDataSource?.tableView(self, setObjectValue: object, for: tableColumn, row: row) }
         reloadData()
     }
 
     /// Returns the display value for a loaded row and column.
-    open func value(atColumn columnIndex: Int, row rowIndex: Int) -> String? {
+    package func value(atColumn columnIndex: Int, row rowIndex: Int) -> String? {
         guard rowValues.indices.contains(rowIndex),
               rowValues[rowIndex].indices.contains(columnIndex) else {
             return nil
         }
 
         return rowValues[rowIndex][columnIndex]
+    }
+
+    // MARK: Accessibility
+    //
+    // The framework-drawn table draws its own cells, so — unlike a control
+    // backed by a native window — it has no child views for assistive tech to
+    // find. Instead it publishes a synthetic element tree: the table is an
+    // `AXTable` whose children are `AXRow`s, each holding one `AXCell` per
+    // column carrying that cell's text. This is the moved-from-5.1 data-view
+    // accessibility work; `NSOutlineView` refines the rows to `AXOutline`.
+
+    /// The role the drawn table reports. A single-column table with no header
+    /// reads as a list, matching AppKit's source-list heuristic.
+    open override var winIntrinsicAccessibilityRole: NSAccessibilityRole {
+        tableColumns.count <= 1 && !winReportsAsOutline ? .list : winReportsAsOutline ? .outline : .table
+    }
+
+    /// Subclasses (`NSOutlineView`) set this so the shared child-building path
+    /// tags rows as outline rows.
+    open var winReportsAsOutline: Bool { false }
+
+    /// Approximate window-space frame of a data row, derived from `rowHeight`.
+    /// Assistive technology uses it only for hit-testing, so the fixed-height
+    /// approximation is acceptable for variable-height rows.
+    open func winAccessibilityRowFrame(_ row: Int) -> NSRect {
+        let step = rowHeight + intercellSpacing.height
+        let local = NSRect(x: 0, y: CGFloat(row) * step, width: bounds.width, height: rowHeight)
+        return convert(local, to: nil)
+    }
+
+    open override func accessibilityChildren() -> [Any]? {
+        // The data-driven row/cell tree is the table's accessibility surface:
+        // it carries every cell's text whether the table draws its own cells
+        // or hosts cell views, so assistive technology and the contract tests
+        // see the same structure. An explicit app override still wins.
+        if let explicit = winExplicitAccessibilityChildren { return explicit }
+        guard numberOfRows > 0 else { return nil }
+        var rows: [NSAccessibilityProtocol] = []
+        for row in 0..<numberOfRows {
+            let rowElement = NSAccessibilityElement()
+            rowElement.setAccessibilityRole(.row)
+            rowElement.setAccessibilitySubrole(winReportsAsOutline ? .outlineRow : .tableRow)
+            rowElement.accessibilityFrameInParentSpace = winAccessibilityRowFrame(row)
+            rowElement.winAccessibilityParent = self
+            var cells: [NSAccessibilityProtocol] = []
+            for column in 0..<max(1, tableColumns.count) {
+                let cell = NSAccessibilityElement()
+                cell.setAccessibilityRole(.cell)
+                cell.setAccessibilityValue(value(atColumn: column, row: row) ?? "")
+                if tableColumns.indices.contains(column) {
+                    cell.setAccessibilityLabel(tableColumns[column].title)
+                }
+                cell.accessibilityFrameInParentSpace = winAccessibilityRowFrame(row)
+                cells.append(cell)
+            }
+            rowElement.setAccessibilityChildren(cells)
+            rows.append(rowElement)
+        }
+        return rows
     }
 
     /// Returns the value for a column object and row.
@@ -694,7 +869,7 @@ open class NSTableView: NSControl {
         let columns = columnIndexes.isEmpty ? Set(tableColumns.indices) : columnIndexes
         for row in rowIndexes where rowValues.indices.contains(row) {
             for column in columns where tableColumns.indices.contains(column) {
-                let value = winMainActor { dataSource?.tableView(self, objectValueFor: tableColumns[column], row: row) }
+                let value = winMainActor { winEffectiveDataSource?.tableView(self, objectValueFor: tableColumns[column], row: row) }
                 let text = winDisplayString(from: value)
                 rowValues[row][column] = text
                 if rowRawValues.indices.contains(row), rowRawValues[row].indices.contains(column) {
@@ -709,7 +884,7 @@ open class NSTableView: NSControl {
 
     /// Reloads all rows from the data source.
     open func reloadData() {
-        let count = winMainActor { dataSource?.numberOfRows(in: self) } ?? 0
+        let count = winMainActor { winEffectiveDataSource?.numberOfRows(in: self) } ?? 0
         var nextRows: [[String]] = []
         var nextRaw: [[Any?]] = []
 
@@ -717,7 +892,7 @@ open class NSTableView: NSControl {
             var strings: [String] = []
             var raws: [Any?] = []
             for column in tableColumns {
-                let value = winMainActor { dataSource?.tableView(self, objectValueFor: column, row: row) }
+                let value = winMainActor { winEffectiveDataSource?.tableView(self, objectValueFor: column, row: row) }
                 raws.append(value)
                 strings.append(winDisplayString(from: value))
             }
@@ -792,11 +967,11 @@ open class NSTableView: NSControl {
     /// drop location and forwards to the data source's `acceptDrop` hook. The
     /// table must be registered for the dragged types to receive the drop.
     open override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
-        guard let dataSource else {
+        guard let dataSource = winEffectiveDataSource else {
             return false
         }
         let row = winIsDrawn ? winDropInsertionIndex(atY: sender.draggingLocation.y) : numberOfRows
-        return winMainActor { dataSource.tableView(self, acceptDrop: sender, row: row) }
+        return winMainActor { dataSource.tableView(self, acceptDrop: sender, row: row, dropOperation: .above) }
     }
 
     /// Ensures native table state and selection dispatch are wired.
@@ -922,8 +1097,8 @@ open class NSTableView: NSControl {
         if winIsDrawn {
             needsDisplay = true
         }
-        onSelectionChanged?(self)
-        winMainActor { delegate?.tableViewSelectionDidChange(NSNotification(name: Self.selectionDidChangeNotification, object: self)) }
+        winInternalSelectionChanged?(self)
+        winMainActor { winEffectiveDelegate?.tableViewSelectionDidChange(Notification(name: Notification.Name(Self.selectionDidChangeNotification), object: self)) }
     }
 }
 
@@ -934,6 +1109,11 @@ extension NSTableView: NSDraggingSource {
     /// The operations the table permits when dragging a row out. A reorder-
     /// enabled table moves; otherwise it copies the row's pasteboard content.
     public func draggingSession(_ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
-        winRowReorderHandler != nil ? .move : .copy
+        switch context {
+        case .withinApplication:
+            return winRowReorderHandler != nil ? .move : winLocalDragOperationMask
+        case .outsideApplication:
+            return winExternalDragOperationMask
+        }
     }
 }

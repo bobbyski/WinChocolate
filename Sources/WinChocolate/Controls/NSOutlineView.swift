@@ -1,6 +1,13 @@
 /// Data source for an AppKit-shaped outline view.
+///
+/// Refines `NSTableViewDataSource` so an outline source can be assigned to
+/// AppKit's real `outlineView.dataSource` property (Apple retypes the
+/// inherited property covariantly via the ObjC runtime; Swift-only code gets
+/// the same assignment shape through this refinement, with defaults below so
+/// outline sources never implement the flat-table API — the outline's
+/// internal adapter supplies it).
 @MainActor
-public protocol NSOutlineViewDataSource: AnyObject {
+public protocol NSOutlineViewDataSource: NSTableViewDataSource {
     /// Returns the number of children below an item. `nil` means the root.
     func outlineView(_ outlineView: NSOutlineView, numberOfChildrenOfItem item: Any?) -> Int
 
@@ -12,19 +19,54 @@ public protocol NSOutlineViewDataSource: AnyObject {
 
     /// Returns a display value for a column and item.
     func outlineView(_ outlineView: NSOutlineView, objectValueFor tableColumn: NSTableColumn?, byItem item: Any?) -> Any?
+
+    /// Returns the object supplying an item's pasteboard representation for a
+    /// drag, or `nil` if the item is not draggable — AppKit's
+    /// `outlineView(_:pasteboardWriterForItem:)`. A non-`nil` writer (plus a
+    /// `.move` local mask via `setDraggingSourceOperationMask(_:forLocal:)`)
+    /// enables drag-to-reorder.
+    func outlineView(_ outlineView: NSOutlineView, pasteboardWriterForItem item: Any) -> NSPasteboardWriting?
+
+    /// Accepts a drop targeting a parent item at a child index, returning
+    /// whether it was consumed — AppKit's exact
+    /// `outlineView(_:acceptDrop:item:childIndex:)`. Reorder drops report the
+    /// proposed parent (`nil` = root) and the model child index; read the
+    /// dragged item's representation from `info.draggingPasteboard`.
+    func outlineView(_ outlineView: NSOutlineView, acceptDrop info: NSDraggingInfo, item: Any?, childIndex index: Int) -> Bool
 }
 
 public extension NSOutlineViewDataSource {
+    /// Outline sources never implement the flat-table row count — the
+    /// outline's internal adapter supplies it from the flattened tree.
+    func numberOfRows(in tableView: NSTableView) -> Int {
+        0
+    }
+
     /// Default object value uses the item description.
     func outlineView(_ outlineView: NSOutlineView, objectValueFor tableColumn: NSTableColumn?, byItem item: Any?) -> Any? {
         item.map { String(describing: $0) }
+    }
+
+    /// Default: items are not draggable.
+    func outlineView(_ outlineView: NSOutlineView, pasteboardWriterForItem item: Any) -> NSPasteboardWriting? {
+        nil
+    }
+
+    /// Default: the outline refuses drops.
+    func outlineView(_ outlineView: NSOutlineView, acceptDrop info: NSDraggingInfo, item: Any?, childIndex index: Int) -> Bool {
+        false
     }
 }
 
 /// Delegate that can vend per-column cell views for an outline's items,
 /// matching AppKit's `NSOutlineViewDelegate` view-based hook.
+///
+/// Refines `NSTableViewDelegate` so an outline delegate can be assigned to
+/// AppKit's real `outlineView.delegate` property (see the data-source note);
+/// the table-level callbacks all have defaults, so pure-AppKit outline
+/// delegates conform unchanged.
 @MainActor
-public protocol NSOutlineViewDelegate: AnyObject {
+public protocol NSOutlineViewDelegate: NSTableViewDelegate {
     /// Returns a view to host for a column and item, or `nil` for drawn text.
     func outlineView(_ outlineView: NSOutlineView, viewFor tableColumn: NSTableColumn?, item: Any) -> NSView?
 
@@ -33,7 +75,7 @@ public protocol NSOutlineViewDelegate: AnyObject {
     func outlineView(_ outlineView: NSOutlineView, heightOfRowByItem item: Any) -> CGFloat
 
     /// Tells the delegate the outline's selection changed.
-    func outlineViewSelectionDidChange(_ notification: NSNotification)
+    func outlineViewSelectionDidChange(_ notification: Notification)
 }
 
 public extension NSOutlineViewDelegate {
@@ -48,7 +90,7 @@ public extension NSOutlineViewDelegate {
     }
 
     /// Default no-op so delegates only implement the callbacks they need.
-    func outlineViewSelectionDidChange(_ notification: NSNotification) {}
+    func outlineViewSelectionDidChange(_ notification: Notification) {}
 }
 
 /// A tree-shaped table view.
@@ -58,6 +100,9 @@ public extension NSOutlineViewDelegate {
 /// per-level indentation on its first column (via the drawn-cell hooks), with
 /// clicks on the triangle expanding/collapsing the item.
 open class NSOutlineView: NSTableView {
+    /// An outline reports `AXOutline` with `AXOutlineRow` rows.
+    open override var winReportsAsOutline: Bool { true }
+
     private struct OutlineRow {
         var item: Any
         var level: Int
@@ -72,10 +117,10 @@ open class NSOutlineView: NSTableView {
     // (inferring @MainActor on this class), but everything it touches on
     // the owner is nonisolated control state, and every call happens on the
     // Win32 UI thread.
-    private final class OutlineTableAdapter: NSTableViewDataSource, NSTableViewDelegate {
+    private final class OutlineTableAdapter: NSObject, NSTableViewDataSource, NSTableViewDelegate {
         nonisolated(unsafe) weak var owner: NSOutlineView?
 
-        nonisolated init() {}
+        nonisolated override init() {}
 
         nonisolated func numberOfRows(in tableView: NSTableView) -> Int {
             owner?.visibleRows.count ?? 0
@@ -97,15 +142,28 @@ open class NSOutlineView: NSTableView {
             owner?.hostedRowHeight(row: row) ?? -1
         }
 
+        /// Bridges a row-level reorder drop to the outline data source's
+        /// item-based `outlineView(_:acceptDrop:item:childIndex:)`.
+        nonisolated func tableView(_ tableView: NSTableView, acceptDrop info: NSDraggingInfo, row: Int, dropOperation: NSTableView.DropOperation) -> Bool {
+            guard let owner else {
+                return false
+            }
+            let rowList = info.draggingPasteboard.string(forType: .string) ?? ""
+            let fromRows = IndexSet(rowList.split(separator: ",").compactMap { Int($0) })
+            return winMainActor {
+                owner.winAcceptOutlineReorderDrop(fromRows: fromRows, toIndex: row, info: info)
+            }
+        }
+
         /// Forwards table selection changes as outline selection changes.
-        nonisolated func tableViewSelectionDidChange(_ notification: NSNotification) {
+        nonisolated func tableViewSelectionDidChange(_ notification: Notification) {
             guard let owner else {
                 return
             }
 
             winMainActor {
                 owner.outlineDelegate?.outlineViewSelectionDidChange(
-                    NSNotification(name: "NSOutlineViewSelectionDidChangeNotification", object: owner)
+                    Notification(name: Notification.Name("NSOutlineViewSelectionDidChangeNotification"), object: owner)
                 )
             }
         }
@@ -115,19 +173,44 @@ open class NSOutlineView: NSTableView {
     private var visibleRows: [OutlineRow] = []
     private var expandedItemKeys: Set<String> = []
 
-    /// Object that provides outline children and values.
-    open weak var outlineDataSource: NSOutlineViewDataSource? {
+    /// Object that provides outline children and values. Not API (18.12):
+    /// applications assign AppKit's real `dataSource` property, which routes
+    /// here; `package` for framework internals and the suite.
+    package weak var outlineDataSource: NSOutlineViewDataSource? {
         didSet {
             reloadData()
         }
     }
 
-    /// Object that can vend per-column cell views for items (view-based outline).
-    open weak var outlineDelegate: NSOutlineViewDelegate? {
+    /// Object that can vend per-column cell views for items. Not API
+    /// (18.12): applications assign AppKit's real `delegate` property.
+    package weak var outlineDelegate: NSOutlineViewDelegate? {
         didSet {
             reloadData()
         }
     }
+
+    /// AppKit's real property shape: an outline's `dataSource` is its
+    /// outline data source (Apple retypes the inherited property; here the
+    /// outline protocol refines the table one so the same assignment
+    /// compiles). The flattening adapter is interposed internally through
+    /// `winEffectiveDataSource`, never through this property.
+    open override var dataSource: NSTableViewDataSource? {
+        get { outlineDataSource }
+        set { outlineDataSource = newValue as? NSOutlineViewDataSource }
+    }
+
+    /// AppKit's real property shape for the outline delegate (see
+    /// `dataSource`).
+    open override var delegate: NSTableViewDelegate? {
+        get { outlineDelegate }
+        set { outlineDelegate = newValue as? NSOutlineViewDelegate }
+    }
+
+    /// The table machinery reads the flattening adapter, whatever the app
+    /// assigned to `dataSource`/`delegate`.
+    override var winEffectiveDataSource: NSTableViewDataSource? { outlineAdapter }
+    override var winEffectiveDelegate: NSTableViewDelegate? { outlineAdapter }
 
     /// Bridges a drawn-cell view request (column, row) to the outline delegate's
     /// item-based hook. Returns `nil` — drawn text — when no delegate view.
@@ -178,13 +261,13 @@ open class NSOutlineView: NSTableView {
     open var showsDisclosureText: Bool = true
 
     /// Creates an outline view.
-    public override init(frame frameRect: NSRect) {
+    public required init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
+        // The adapter (also the table delegate) bridges the drawn table's
+        // flat row requests to the outline's item hooks; it is interposed
+        // through winEffectiveDataSource/Delegate, leaving the public
+        // `dataSource`/`delegate` with AppKit's outline semantics.
         outlineAdapter.owner = self
-        dataSource = outlineAdapter
-        // The adapter is also the table delegate: it bridges per-cell view
-        // requests to the outline delegate's item-based hook.
-        delegate = outlineAdapter
         // Outlines always use the framework-drawn table so they can draw
         // disclosure triangles and indentation themselves.
         winUsesViewBasedCells = true
@@ -203,7 +286,6 @@ open class NSOutlineView: NSTableView {
         })
 
         rebuildVisibleRows()
-        dataSource = outlineAdapter
         super.reloadData()
 
         guard !selectedKeys.isEmpty else {
@@ -237,10 +319,12 @@ open class NSOutlineView: NSTableView {
         reloadData()
     }
 
-    /// Expands a collapsed item, or collapses an expanded item.
-    open func toggleItem(_ item: Any?) {
+    /// Expands a collapsed item, or collapses an expanded item. Not API
+    /// (18.7): Apple has only expandItem(_:)/collapseItem(_:) — package for
+    /// the disclosure-click machinery and the suite.
+    package func toggleItem(_ item: Any?) {
         guard let item,
-              isItemExpandable(item) else {
+              isExpandable(item) else {
             return
         }
 
@@ -261,7 +345,7 @@ open class NSOutlineView: NSTableView {
     }
 
     /// Returns whether an item can expand.
-    open func isItemExpandable(_ item: Any?) -> Bool {
+    open func isExpandable(_ item: Any?) -> Bool {
         guard let item else {
             return false
         }
@@ -314,7 +398,11 @@ open class NSOutlineView: NSTableView {
     /// below an expanded branch inserts as that branch's first child; otherwise
     /// the drop joins the parent of the row above it. A drop that would move an
     /// item into itself or its own subtree is rejected.
-    open var winOutlineReorderHandler: ((_ movedItem: Any, _ parent: Any?, _ childIndex: Int) -> Void)? {
+    /// Framework-internal reorder hook. Not API (18.8): applications use
+    /// AppKit's recipe — `setDraggingSourceOperationMask(.move, forLocal:
+    /// true)`, `outlineView(_:pasteboardWriterForItem:)`, and
+    /// `outlineView(_:acceptDrop:item:childIndex:)`.
+    package var winOutlineReorderHandler: ((_ movedItem: Any, _ parent: Any?, _ childIndex: Int) -> Void)? {
         didSet { installOutlineReorderBridge() }
     }
 
@@ -328,11 +416,13 @@ open class NSOutlineView: NSTableView {
         }
     }
 
-    private func handleOutlineReorder(fromRows: IndexSet, toIndex: Int) {
+    /// Maps a row-level reorder drop to the outline's item terms: the moved
+    /// item, its proposed parent (`nil` = root), and the model child index.
+    /// Returns `nil` for invalid drops (out of range, into own subtree).
+    private func winMapReorderDrop(fromRows: IndexSet, toIndex: Int) -> (moved: Any, parent: Any?, childIndex: Int)? {
         guard let fromRow = fromRows.first,
-              visibleRows.indices.contains(fromRow),
-              let handler = winOutlineReorderHandler else {
-            return
+              visibleRows.indices.contains(fromRow) else {
+            return nil
         }
         let moved = visibleRows[fromRow]
 
@@ -344,7 +434,7 @@ open class NSOutlineView: NSTableView {
             targetParent = nil
         } else {
             let above = visibleRows[min(toIndex, visibleRows.count) - 1]
-            if isItemExpandable(above.item), isItemExpanded(above.item) {
+            if isExpandable(above.item), isItemExpanded(above.item) {
                 targetParent = above.item
             } else {
                 targetParent = above.parent
@@ -353,7 +443,7 @@ open class NSOutlineView: NSTableView {
 
         // Never move an item into itself or its own subtree.
         if let targetParent, isItem(targetParent, descendantOfOrEqualTo: moved.item) {
-            return
+            return nil
         }
 
         // The proposed child index is the count of the target parent's visible
@@ -365,8 +455,54 @@ open class NSOutlineView: NSTableView {
             visibleRows[idx].parent.map { key(for: $0) } == parentKey
         }
         let targetChildIndex = siblingRows.filter { $0 < toIndex }.count
-        handler(moved.item, targetParent, targetChildIndex)
+        return (moved.item, targetParent, targetChildIndex)
+    }
+
+    private func handleOutlineReorder(fromRows: IndexSet, toIndex: Int) {
+        guard let handler = winOutlineReorderHandler,
+              let target = winMapReorderDrop(fromRows: fromRows, toIndex: toIndex) else {
+            return
+        }
+        handler(target.moved, target.parent, target.childIndex)
         reloadData()
+    }
+
+    /// Accepts a row-level reorder drop through AppKit's outline data-source
+    /// pathway: maps the drop to item terms and forwards to
+    /// `outlineView(_:acceptDrop:item:childIndex:)`.
+    package func winAcceptOutlineReorderDrop(fromRows: IndexSet, toIndex: Int, info: NSDraggingInfo) -> Bool {
+        guard let outlineDataSource,
+              let target = winMapReorderDrop(fromRows: fromRows, toIndex: toIndex) else {
+            return false
+        }
+        // The pasteboard handed to the data source carries the app's OWN
+        // representation of the dragged item (its `pasteboardWriterForItem`
+        // output), exactly what an AppKit acceptDrop expects to read back.
+        let writer = winMainActor { outlineDataSource.outlineView(self, pasteboardWriterForItem: target.moved) }
+        let itemText = (writer as? String) ?? String(describing: target.moved)
+        let itemInfo = WinDraggingInfo(
+            content: NativeDropContent(text: itemText, filePaths: []),
+            location: info.draggingLocation
+        )
+        let accepted = winMainActor { outlineDataSource.outlineView(self, acceptDrop: itemInfo, item: target.parent, childIndex: target.childIndex) }
+        if accepted {
+            reloadData()
+        }
+        return accepted
+    }
+
+    /// Reorder drags also arm via AppKit's outline recipe: a `.move` local
+    /// mask plus a data-source `pasteboardWriterForItem` for the dragged row.
+    package override func winReorderDragEnabled(forRow row: Int) -> Bool {
+        if super.winReorderDragEnabled(forRow: row) {
+            return true
+        }
+        guard winLocalDragOperationMask.contains(.move),
+              visibleRows.indices.contains(row),
+              let outlineDataSource else {
+            return false
+        }
+        return winMainActor { outlineDataSource.outlineView(self, pasteboardWriterForItem: visibleRows[row].item) } != nil
     }
 
     /// Whether `candidate` is `ancestor` itself or sits within its subtree, by
@@ -461,7 +597,7 @@ open class NSOutlineView: NSTableView {
     /// Draws the disclosure triangle for expandable items on the first column.
     open override func winDrawnDrawDecoration(forRow row: Int, column: Int, cellRect: NSRect) {
         guard column == 0, visibleRows.indices.contains(row),
-              isItemExpandable(visibleRows[row].item) else {
+              isExpandable(visibleRows[row].item) else {
             return
         }
         let x = disclosureX(forRow: row, cellRect: cellRect)
@@ -486,7 +622,7 @@ open class NSOutlineView: NSTableView {
     /// A click on the disclosure triangle toggles the item instead of selecting.
     open override func winDrawnHandleDecorationClick(forRow row: Int, column: Int, at point: NSPoint) -> Bool {
         guard column == 0, visibleRows.indices.contains(row),
-              isItemExpandable(visibleRows[row].item) else {
+              isExpandable(visibleRows[row].item) else {
             return false
         }
         let cellRect = winCellRect(row: row, column: 0)

@@ -1,5 +1,5 @@
 /// Supplies a data-source-backed combo box with its items.
-public protocol NSComboBoxDataSource: AnyObject {
+public protocol NSComboBoxDataSource: NSObjectProtocol {
     /// Returns how many items the combo box shows.
     func numberOfItems(in comboBox: NSComboBox) -> Int
 
@@ -12,12 +12,12 @@ public protocol NSComboBoxDataSource: AnyObject {
 /// arrive through `comboBoxSelectionDidChange`.
 public protocol NSComboBoxDelegate: NSTextFieldDelegate {
     /// Tells the delegate the selected item changed.
-    func comboBoxSelectionDidChange(_ notification: NSNotification)
+    func comboBoxSelectionDidChange(_ notification: Notification)
 }
 
 extension NSComboBoxDelegate {
     /// Default no-op so delegates only implement the callbacks they need.
-    public func comboBoxSelectionDidChange(_ notification: NSNotification) {}
+    public func comboBoxSelectionDidChange(_ notification: Notification) {}
 }
 
 /// An editable combo box control.
@@ -27,8 +27,10 @@ extension NSComboBoxDelegate {
 open class NSComboBox: NSTextField {
     private var items: [String] = []
 
-    /// Swift-native callback invoked when native text changes.
-    open var onComboBoxTextChanged: ((NSComboBox) -> Void)?
+    /// Framework-internal edit hook (the font panel tracks its size combo).
+    /// Not API: applications use the text-field delegate surface
+    /// (`controlTextDidChange(_:)`), as in AppKit.
+    var winInternalComboTextChanged: ((NSComboBox) -> Void)?
 
     /// The data source that supplies items when `usesDataSource` is set.
     open weak var dataSource: NSComboBoxDataSource?
@@ -80,7 +82,7 @@ open class NSComboBox: NSTextField {
     }
 
     /// Creates a combo box with a frame.
-    public override init(frame frameRect: NSRect) {
+    public required init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         isEditable = true
         isSelectable = true
@@ -207,7 +209,7 @@ open class NSComboBox: NSTextField {
 
             _ = self.window?.makeFirstResponder(self)
             self.updateStringValueFromNative(text)
-            self.onComboBoxTextChanged?(self)
+            self.winInternalComboTextChanged?(self)
         }
         backend.registerAction(for: handle) { [weak self, weak backend] in
             guard let self, let backend, let nativeHandle = self.nativeHandle else {
@@ -223,7 +225,7 @@ open class NSComboBox: NSTextField {
             // A commit whose text matches an item is a selection change.
             if self.indexOfSelectedItem >= 0 {
                 (self.delegate as? NSComboBoxDelegate)?.comboBoxSelectionDidChange(
-                    NSNotification(name: "NSComboBoxSelectionDidChangeNotification", object: self)
+                    Notification(name: Notification.Name("NSComboBoxSelectionDidChangeNotification"), object: self)
                 )
             }
             self.sendAction()

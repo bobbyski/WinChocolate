@@ -4,3 +4,5 @@
 .DS_Store
 *-shot.png
 /*.png
+# Throwaway verification screenshots from headless Xvfb runs (not used by build).
+.artifacts/

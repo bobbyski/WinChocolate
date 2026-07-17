@@ -13,7 +13,15 @@ public final class NSLayoutConstraint {
         case leading, trailing
         case width, height
         case centerX, centerY
+        /// The text baseline nearest the top / bottom. WinChocolate resolves
+        /// both through `baselineOffsetFromBottom` (single-line model: first
+        /// and last baseline coincide; multi-line first-baseline is a
+        /// documented refinement).
+        case firstBaseline, lastBaseline
         case notAnAttribute
+
+        /// AppKit's alias for the last baseline.
+        public static var baseline: Attribute { .lastBaseline }
 
         /// Whether the attribute lives on the horizontal axis.
         var isHorizontal: Bool {

@@ -5,12 +5,15 @@ import Foundation
 public final class NSButtonCell {
     public var title: String
     public init(title: String) { self.title = title }
+
+    /// Apple's cell initializer spelling.
+    public convenience init(textCell: String) { self.init(title: textCell) }
 }
 
 /// AppKit-shaped `NSMatrix`: a grid of button cells. No GTK peer — a composed
 /// control built from `NSButton`s laid out in a rows×columns grid. Selecting a
 /// cell updates `selectedRow`/`selectedColumn` and fires `onAction`.
-public final class NSMatrix: NSView {
+open class NSMatrix: NSControl {
 
     /// The matrix tracking mode (accepted for API parity; all modes render as a
     /// clickable button grid in this slice).
@@ -34,6 +37,14 @@ public final class NSMatrix: NSView {
     /// Fired when the user selects a cell.
     public var onAction: ((NSMatrix) -> Void)?
 
+    /// Creates an empty matrix, as AppKit's `init(frame:)` does — no rows, no
+    /// columns, default tracking mode. Cells arrive via the designated
+    /// initializer below.
+    public required convenience init(frame: NSRect) {
+        self.init(frame: frame, mode: .trackModeMatrix, prototype: NSButtonCell(title: ""),
+                  numberOfRows: 0, numberOfColumns: 0)
+    }
+
     public init(frame: NSRect, mode: Mode, prototype: NSButtonCell,
                 numberOfRows: Int, numberOfColumns: Int) {
         self.mode = mode
@@ -49,6 +60,7 @@ public final class NSMatrix: NSView {
                     guard let self else { return }
                     self.selectCell(atRow: r, column: c)
                     self.onAction?(self)
+                    self.sendAction()
                 }
                 addSubview(button)
                 rowButtons.append(button)
@@ -56,6 +68,12 @@ public final class NSMatrix: NSView {
             cellButtons.append(rowButtons)
         }
         layoutCells()
+    }
+
+    /// The button backing the cell at `(row, column)`, if any.
+    public func button(atRow row: Int, column: Int) -> NSButton? {
+        guard cellButtons.indices.contains(row), cellButtons[row].indices.contains(column) else { return nil }
+        return cellButtons[row][column]
     }
 
     /// Selects a cell without firing the action.
@@ -73,7 +91,11 @@ public final class NSMatrix: NSView {
         for r in 0..<rows {
             for c in 0..<columns {
                 let x = Double(c) * (cw + hs)
-                let y = frame.height - Double(r + 1) * ch - Double(r) * vs
+                // Row 0 is topmost either way; `isFlipped` is this matrix's own.
+                let y = CoordinateSpace.stackedRowY(index: r, rowHeight: ch, spacing: vs,
+                                                    contentHeight: ch,
+                                                    containerHeight: frame.height,
+                                                    isFlipped: isFlipped)
                 cellButtons[r][c].frame = NSMakeRect(x, y, cw, ch)
             }
         }

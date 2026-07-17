@@ -6,11 +6,34 @@ open class NSFormCell: NSTextFieldCell {
     /// Label shown before the editable entry.
     open var title: String
 
-    /// Width reserved for the title column.
-    open var titleWidth: CGFloat = 96
+    /// Lets the owning form relayout when the title column width changes.
+    var winInternalTitleWidthChanged: (() -> Void)?
+
+    /// Lets the owning form mirror programmatic value changes into its
+    /// composed field — on Apple the cell IS the entry, so assigning
+    /// `stringValue` updates the display; the composed implementation keeps
+    /// that contract here.
+    var winInternalValueChanged: ((String) -> Void)?
+
+    open override var stringValue: String {
+        get {
+            super.stringValue
+        }
+        set {
+            super.stringValue = newValue
+            winInternalValueChanged?(newValue)
+        }
+    }
+
+    /// Width reserved for the title column (Apple's `NSFormCell` accessor).
+    open var titleWidth: CGFloat = 96 {
+        didSet {
+            winInternalTitleWidthChanged?()
+        }
+    }
 
     /// Creates a form cell with a title.
-    public init(title: String) {
+    package init(title: String) {
         self.title = title
         super.init(textCell: "")
         self.isEditable = true
@@ -55,8 +78,43 @@ open class NSForm: NSControl {
         }
     }
 
-    /// Width reserved for labels.
-    open var titleWidth: CGFloat = 96 {
+    /// Apple's `NSForm` is an `NSMatrix` subclass, and `cellSize` sizes every
+    /// cell. The composed implementation maps the height onto its row height so
+    /// old `cellSize`-driven layout code (which sets a concrete height because
+    /// Apple's default is 0) reads the same; the width is governed by the form's
+    /// own frame, as on a matrix laid out to fit.
+    open var cellSize: NSSize = NSMakeSize(0, 0) {
+        didSet {
+            if cellSize.height > 0 {
+                rowHeight = cellSize.height
+            }
+            layoutRows()
+        }
+    }
+
+    /// Mirrors `NSFormCell`'s bezel flag onto the composed entry fields. Applied
+    /// to existing rows and remembered for rows added later.
+    private var winFieldIsBezeled = true
+    open func setBezeled(_ flag: Bool) {
+        winFieldIsBezeled = flag
+        for row in rows {
+            row.field.isBezeled = flag
+        }
+    }
+
+    /// Mirrors `NSFormCell`'s border flag onto the composed entry fields.
+    private var winFieldIsBordered = false
+    open func setBordered(_ flag: Bool) {
+        winFieldIsBordered = flag
+        for row in rows {
+            row.field.isBordered = flag
+        }
+    }
+
+    /// Default width for new entries' title columns. Not API (18.7): Apple's
+    /// `NSForm` has no form-level title width — each `NSFormCell.titleWidth`
+    /// owns its own (which the layout reads) — `package` for the suite.
+    package var titleWidth: CGFloat = 96 {
         didSet {
             for index in rows.indices {
                 rows[index].cell.titleWidth = titleWidth
@@ -71,7 +129,7 @@ open class NSForm: NSControl {
     }
 
     /// Creates a form with a frame.
-    public override init(frame frameRect: NSRect) {
+    public required init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
     }
 
@@ -93,8 +151,24 @@ open class NSForm: NSControl {
         cell.titleWidth = titleWidth
         let label = NSTextField.label(withString: title)
         let field = NSTextField.textField(withString: cell.stringValue)
-        field.onTextChanged = { [weak cell] field in
-            cell?.stringValue = field.stringValue
+        field.isBezeled = winFieldIsBezeled
+        field.isBordered = winFieldIsBordered
+        field.winInternalTextChanged = { [weak self, weak cell] field in
+            if let cell, cell.stringValue != field.stringValue {
+                cell.stringValue = field.stringValue
+            }
+            // Apple's continuous controls send their action while editing.
+            if let self, self.isContinuous {
+                self.sendAction()
+            }
+        }
+        cell.winInternalValueChanged = { [weak field] value in
+            if let field, field.stringValue != value {
+                field.stringValue = value
+            }
+        }
+        cell.winInternalTitleWidthChanged = { [weak self] in
+            self?.layoutRows()
         }
 
         let row = Row(cell: cell, label: label, field: field)
@@ -103,6 +177,7 @@ open class NSForm: NSControl {
         addSubview(label)
         addSubview(field)
         layoutRows()
+        refreshKeyViewLoop()
         return cell
     }
 
@@ -116,10 +191,42 @@ open class NSForm: NSControl {
         row.label.removeFromSuperview()
         row.field.removeFromSuperview()
         layoutRows()
+        refreshKeyViewLoop()
     }
 
-    /// Returns the cell at a row.
-    open func cell(at index: Int) -> NSFormCell? {
+    /// On Apple, Tab moves through the form's entries. The composed
+    /// implementation gets the same behavior by interposing its fields into
+    /// the key loop: the public `nextKeyView` keeps Apple's semantics (returns
+    /// what was set), while the window's focus walk enters via the first
+    /// field and leaves from the last.
+    open override var nextKeyView: NSView? {
+        get {
+            super.nextKeyView
+        }
+        set {
+            super.nextKeyView = newValue
+            refreshKeyViewLoop()
+        }
+    }
+
+    override var winEffectiveNextKeyView: NSView? {
+        rows.first?.field ?? super.winEffectiveNextKeyView
+    }
+
+    override var winShouldDescendInKeyLoop: Bool {
+        false
+    }
+
+    private func refreshKeyViewLoop() {
+        for (index, row) in rows.enumerated() {
+            row.field.nextKeyView = index + 1 < rows.count ? rows[index + 1].field : super.nextKeyView
+        }
+        rows.first?.field.winPreviousKeyView = self
+    }
+
+    /// Returns the cell at a row. Typed `Any?` to match Apple's `id`-returning
+    /// `cellAtIndex:` exactly (callers cast to `NSFormCell`).
+    open func cell(at index: Int) -> Any? {
         guard rows.indices.contains(index) else {
             return nil
         }
@@ -132,8 +239,20 @@ open class NSForm: NSControl {
         rows.firstIndex { $0.cell === cell } ?? -1
     }
 
-    /// Returns the editable text field for a row.
-    open func textField(at index: Int) -> NSTextField? {
+    /// Duplicate row accessor. Not API (18.7): Apple imports `cellAtIndex:`
+    /// as `cell(at:)` — package for the suite.
+    package func cell(atIndex index: Int) -> NSFormCell? {
+        guard rows.indices.contains(index) else {
+            return nil
+        }
+
+        return rows[index].cell
+    }
+
+    /// Returns the editable text field for a row. Not API (18.7): AppKit's
+    /// `NSForm` is cell-drawn and vends no field views — `package` for the
+    /// composed implementation and the suite.
+    package func textField(at index: Int) -> NSTextField? {
         guard rows.indices.contains(index) else {
             return nil
         }
@@ -152,7 +271,7 @@ open class NSForm: NSControl {
     }
 
     /// Updates an entry's value.
-    open func setStringValue(_ value: String, at index: Int) {
+    package func setStringValue(_ value: String, at index: Int) {
         guard rows.indices.contains(index) else {
             return
         }
@@ -164,8 +283,9 @@ open class NSForm: NSControl {
     private func layoutRows() {
         for (index, row) in rows.enumerated() {
             let y = CGFloat(index) * rowHeight
-            row.label.frame = NSMakeRect(0, y + 3, titleWidth, 24)
-            row.field.frame = NSMakeRect(titleWidth + 8, y, max(0, frame.size.width - titleWidth - 8), 28)
+            let width = row.cell.titleWidth
+            row.label.frame = NSMakeRect(0, y + 3, width, 24)
+            row.field.frame = NSMakeRect(width + 8, y, max(0, frame.size.width - width - 8), 28)
         }
     }
 }

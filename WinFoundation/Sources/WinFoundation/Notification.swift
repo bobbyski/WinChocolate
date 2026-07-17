@@ -38,8 +38,20 @@ public struct Notification {
     }
 }
 
-/// Minimal NSObjectProtocol stand-in for Foundation observer tokens.
-public protocol NSObjectProtocol: AnyObject {}
+/// `NSObjectProtocol`, matching Foundation's core requirements so that — as
+/// on Apple platforms — conforming to it (directly or through a delegate
+/// protocol that refines it) effectively requires inheriting `NSObject`,
+/// which provides these members.
+public protocol NSObjectProtocol: AnyObject {
+    /// Identity/equality, matching `NSObjectProtocol.isEqual(_:)`.
+    func isEqual(_ object: Any?) -> Bool
+
+    /// The object's hash, matching `NSObjectProtocol.hash`.
+    var hash: Int { get }
+
+    /// A textual description, matching `NSObjectProtocol.description`.
+    var description: String { get }
+}
 
 /// Minimal operation queue stand-in. The current NotificationCenter shim invokes observers synchronously.
 public final class OperationQueue: @unchecked Sendable {
@@ -59,6 +71,19 @@ public final class NotificationCenter: @unchecked Sendable {
             self.name = name
             self.object = object
             self.block = block
+        }
+
+        // NSObjectProtocol requirements (identity semantics).
+        func isEqual(_ object: Any?) -> Bool {
+            (object as? Observer) === self
+        }
+
+        var hash: Int {
+            ObjectIdentifier(self).hashValue
+        }
+
+        var description: String {
+            "NotificationCenter.Observer"
         }
 
         func matches(_ notification: Notification) -> Bool {

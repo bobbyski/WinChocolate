@@ -1,5 +1,5 @@
 /// Provides AppKit-compatible toolbar item customization hooks.
-public protocol NSToolbarDelegate: AnyObject {
+public protocol NSToolbarDelegate: NSObjectProtocol {
     /// Returns the identifiers allowed in the toolbar customization palette.
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier]
 
@@ -19,11 +19,11 @@ public protocol NSToolbarDelegate: AnyObject {
 
     /// Called just before an item is added to the toolbar; the item rides
     /// `notification.userInfo?["item"]`, matching AppKit.
-    func toolbarWillAddItem(_ notification: NSNotification)
+    func toolbarWillAddItem(_ notification: Notification)
 
     /// Called after an item is removed from the toolbar; the item rides
     /// `notification.userInfo?["item"]`, matching AppKit.
-    func toolbarDidRemoveItem(_ notification: NSNotification)
+    func toolbarDidRemoveItem(_ notification: Notification)
 }
 
 public extension NSToolbarDelegate {
@@ -49,10 +49,10 @@ public extension NSToolbarDelegate {
     }
 
     /// Default no-op will-add hook.
-    func toolbarWillAddItem(_ notification: NSNotification) {}
+    func toolbarWillAddItem(_ notification: Notification) {}
 
     /// Default no-op did-remove hook.
-    func toolbarDidRemoveItem(_ notification: NSNotification) {}
+    func toolbarDidRemoveItem(_ notification: Notification) {}
 }
 
 /// A toolbar attached to an `NSWindow`.
@@ -169,11 +169,27 @@ open class NSToolbar: NSObject {
 
     /// Which Apple toolbar look the strip renders — toolbars are the project's
     /// deliberate exception to the "look like Windows" rule, and this selects
-    /// among the Apple looks: `.unified` (the flat modern default) or
-    /// `.metallic` (the classic brushed-gradient chrome).
-    open var winAppleLook: WinToolbarAppleLook = .unified {
+    /// among the Apple looks: `.automatic` (follow the app-wide presentation,
+    /// the default), `.unified` (the flat modern look), or `.metallic` (the
+    /// classic brushed-gradient chrome).
+    open var winAppleLook: WinToolbarAppleLook = .automatic {
         didSet {
             itemsDidChange?()
+        }
+    }
+
+    /// The concrete look the renderer draws, resolving `.automatic` against the
+    /// app-wide presentation (Phase 8): classic → metallic, modern → unified.
+    /// This is the coordination point between the toolbar's Apple looks and the
+    /// `WinPresentation` switch the rest of the app already follows.
+    public var winResolvedAppleLook: WinToolbarAppleLook {
+        switch winAppleLook {
+        case .automatic:
+            return WinPresentation.selected == .classic ? .metallic : .unified
+        case .unified:
+            return .unified
+        case .metallic:
+            return .metallic
         }
     }
 
@@ -203,13 +219,15 @@ open class NSToolbar: NSObject {
         self.init(identifier: "NSToolbar")
     }
 
-    /// Adds an item at the end of the toolbar.
-    open func addItem(_ item: NSToolbarItem) {
+    /// Adds an item at the end of the toolbar. Not API: AppKit populates
+    /// toolbars only through the delegate + `insertItem(withItemIdentifier:at:)`
+    /// (18.6); this remains for framework internals (palette, tests).
+    package func addItem(_ item: NSToolbarItem) {
         insertItem(item, at: items.count)
     }
 
     /// Inserts an item at the requested index.
-    open func insertItem(_ item: NSToolbarItem, at index: Int) {
+    package func insertItem(_ item: NSToolbarItem, at index: Int) {
         item.toolbar = nil
         notifyWillAdd(item)
         let insertionIndex = min(max(index, 0), items.count)
@@ -238,13 +256,13 @@ open class NSToolbar: NSObject {
     /// Fires the AppKit will-add hooks: the delegate callback and the
     /// `willAddItemNotification` posting, with the item under `"item"`.
     private func notifyWillAdd(_ item: NSToolbarItem) {
-        delegate?.toolbarWillAddItem(NSNotification(name: Self.willAddItemNotification.rawValue, object: self, userInfo: ["item": item]))
+        delegate?.toolbarWillAddItem(Notification(name: Notification.Name(Self.willAddItemNotification.rawValue), object: self, userInfo: ["item": item]))
         NotificationCenter.default.post(name: Self.willAddItemNotification, object: self, userInfo: ["item": item])
     }
 
     /// Fires the AppKit did-remove hooks (delegate + notification).
     private func notifyDidRemove(_ item: NSToolbarItem) {
-        delegate?.toolbarDidRemoveItem(NSNotification(name: Self.didRemoveItemNotification.rawValue, object: self, userInfo: ["item": item]))
+        delegate?.toolbarDidRemoveItem(Notification(name: Notification.Name(Self.didRemoveItemNotification.rawValue), object: self, userInfo: ["item": item]))
         NotificationCenter.default.post(name: Self.didRemoveItemNotification, object: self, userInfo: ["item": item])
     }
 
@@ -375,19 +393,19 @@ open class NSToolbar: NSObject {
         case .showColors:
             item = NSToolbarItem(itemIdentifier: identifier)
             item.label = "Colors"
-            item.onAction = { toolbarItem in
+            item.winInternalAction = { toolbarItem in
                 NSColorPanel.shared.makeKeyAndOrderFront(toolbarItem)
             }
         case .showFonts:
             item = NSToolbarItem(itemIdentifier: identifier)
             item.label = "Fonts"
-            item.onAction = { toolbarItem in
+            item.winInternalAction = { toolbarItem in
                 NSFontPanel.shared.makeKeyAndOrderFront(toolbarItem)
             }
         case .customizeToolbar:
             item = NSToolbarItem(itemIdentifier: identifier)
             item.label = "Customize"
-            item.onAction = { [weak self] toolbarItem in
+            item.winInternalAction = { [weak self] toolbarItem in
                 self?.runCustomizationPalette(toolbarItem)
             }
         case .toggleSidebar:
@@ -410,7 +428,7 @@ open class NSToolbar: NSObject {
         case .print:
             item = NSToolbarItem(itemIdentifier: identifier)
             item.label = "Print"
-            item.onAction = { [weak self] _ in
+            item.winInternalAction = { [weak self] _ in
                 // AppKit sends printDocument: up the responder chain; the
                 // closest classic-backend behavior prints the toolbar window's
                 // content view. Apps override by assigning their own action.
@@ -448,6 +466,12 @@ open class NSToolbar: NSObject {
     internal func attach(to window: NSWindow?) {
         self.window = window
         if window != nil {
+            // AppKit's population flow: a toolbar with no items yet fills
+            // itself from the delegate's default identifiers when it attaches
+            // (each resolved through `toolbar(_:itemForItemIdentifier:...)`).
+            if items.isEmpty, delegate != nil {
+                resetVisibleItemsToDefault()
+            }
             restoreAutosavedConfigurationIfNeeded()
         }
     }
@@ -584,11 +608,11 @@ open class NSToolbarView: NSView {
     private var winAppearanceObserver: NSObjectProtocol?
 
     /// Creates a toolbar view.
-    public override init(frame frameRect: NSRect) {
+    public required init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         // Blend with the window chrome the way AppKit toolbars extend the
         // title bar; a bottom hairline separates the strip from content.
-        backgroundColor = .windowBackgroundColor
+        winBackgroundColor = .windowBackgroundColor
         // The strip fill is resolved for the current appearance and cached as a
         // brush; re-resolve it on a live system theme switch so the toolbar
         // follows the window chrome instead of staying its old shade.
@@ -596,7 +620,7 @@ open class NSToolbarView: NSView {
             forName: NSApplication.winEffectiveAppearanceDidChangeNotification,
             object: nil, queue: nil
         ) { [weak self] _ in
-            self?.backgroundColor = .windowBackgroundColor
+            self?.winBackgroundColor = .windowBackgroundColor
             self?.needsDisplay = true
         }
     }
@@ -644,7 +668,7 @@ open class NSToolbarView: NSView {
     /// the classic brushed silver gradient; `.unified` keeps the flat
     /// background fill.
     open override func draw(_ dirtyRect: NSRect) {
-        guard toolbar?.winAppleLook == .metallic else {
+        guard toolbar?.winResolvedAppleLook == .metallic else {
             return
         }
         Self.winMetallicChromeGradient()?.draw(in: bounds, angle: -90)
@@ -674,7 +698,7 @@ open class NSToolbarView: NSView {
 
         if let clickedItem, toolbar.allowsUserCustomization {
             let remove = NSMenuItem(title: "Remove Item", action: nil, keyEquivalent: "")
-            remove.onAction = { [weak toolbar, weak clickedItem] _ in
+            remove.winInternalAction = { [weak toolbar, weak clickedItem] _ in
                 guard let toolbar, let clickedItem,
                       let index = toolbar.items.firstIndex(where: { $0 === clickedItem }) else {
                     return
@@ -689,7 +713,7 @@ open class NSToolbarView: NSView {
         func addModeItem(_ title: String, _ mode: NSToolbar.DisplayMode) {
             let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
             item.state = currentMode == mode ? .on : .off
-            item.onAction = { [weak toolbar] _ in
+            item.winInternalAction = { [weak toolbar] _ in
                 toolbar?.displayMode = mode
             }
             menu.addItem(item)
@@ -701,7 +725,7 @@ open class NSToolbarView: NSView {
         if toolbar.allowsUserCustomization {
             menu.addItem(NSMenuItem.separator())
             let customize = NSMenuItem(title: "Customize Toolbar…", action: nil, keyEquivalent: "")
-            customize.onAction = { [weak toolbar] _ in
+            customize.winInternalAction = { [weak toolbar] _ in
                 toolbar?.runCustomizationPalette(nil)
             }
             menu.addItem(customize)
@@ -717,7 +741,7 @@ open class NSToolbarView: NSView {
 
         // The strip's own background is what transparent child windows erase
         // with: in metallic it must be the chrome midtone, never white.
-        backgroundColor = toolbar.winAppleLook == .metallic
+        winBackgroundColor = toolbar.winResolvedAppleLook == .metallic
             ? Self.winMetallicMidtone
             : .windowBackgroundColor
         notifyPreferredHeightIfNeeded()
@@ -821,9 +845,9 @@ open class NSToolbarView: NSView {
                         )
                         // Selected subitems show the selection band.
                         if group.isSelected(at: index) {
-                            tile.backgroundColor = NSColor(calibratedRed: 0.80, green: 0.84, blue: 0.90, alpha: 1.0)
+                            tile.winBackgroundColor = NSColor(calibratedRed: 0.80, green: 0.84, blue: 0.90, alpha: 1.0)
                         }
-                        if toolbar.winAppleLook == .metallic, let composite = tile as? NSToolbarCompositeItemView {
+                        if toolbar.winResolvedAppleLook == .metallic, let composite = tile as? NSToolbarCompositeItemView {
                             composite.metallicSlice = (stripHeight: frame.size.height, y: entry.frame.origin.y)
                         }
                         addRenderedSubview(tile)
@@ -837,7 +861,7 @@ open class NSToolbarView: NSView {
                     let button = NSButton(title: title, frame: entry.frame)
                     button.isEnabled = item.isEnabled
                     button.toolTip = item.toolTip
-                    button.onAction = { [weak item] _ in
+                    button.winInternalAction = { [weak item] _ in
                         item?.performAction()
                     }
                     addSubview(button)
@@ -853,11 +877,11 @@ open class NSToolbarView: NSView {
                 // A selected item (selectedItemIdentifier) shows a subtle
                 // pressed/selected band, matching the Mac toolbar look.
                 if toolbar.selectedItemIdentifier == item.itemIdentifier {
-                    compositeView.backgroundColor = NSColor(calibratedRed: 0.80, green: 0.84, blue: 0.90, alpha: 1.0)
+                    compositeView.winBackgroundColor = NSColor(calibratedRed: 0.80, green: 0.84, blue: 0.90, alpha: 1.0)
                 }
                 // Metallic: the tile paints its slice of the chrome gradient
                 // so the child window never breaks the strip's chrome.
-                if toolbar.winAppleLook == .metallic, let composite = compositeView as? NSToolbarCompositeItemView {
+                if toolbar.winResolvedAppleLook == .metallic, let composite = compositeView as? NSToolbarCompositeItemView {
                     composite.metallicSlice = (stripHeight: frame.size.height, y: entry.frame.origin.y)
                 }
                 addRenderedSubview(compositeView)
@@ -900,7 +924,7 @@ open class NSToolbarView: NSView {
             let chevron = NSToolbarOverflowChevronView(
                 frame: NSMakeRect(max(frame.size.width - 26, 0), 0, 24, frame.size.height)
             )
-            if toolbar.winAppleLook == .metallic {
+            if toolbar.winResolvedAppleLook == .metallic {
                 chevron.metallicSlice = (stripHeight: frame.size.height, y: 0)
             }
             chevron.onOpenMenu = { [weak self, weak toolbar] chevronView in
@@ -912,7 +936,7 @@ open class NSToolbarView: NSView {
                     let title = item.menuFormRepresentation?.title ?? item.label
                     let menuItem = NSMenuItem(title: title, action: nil, keyEquivalent: "")
                     menuItem.isEnabled = item.isEnabled
-                    menuItem.onAction = { [weak item] _ in
+                    menuItem.winInternalAction = { [weak item] _ in
                         item?.performAction()
                     }
                     menu.addItem(menuItem)
@@ -925,7 +949,7 @@ open class NSToolbarView: NSView {
         // Chrome hairline separating the toolbar strip from window content.
         // Added after the item views so item indices stay stable for callers.
         let bottomEdge = NSView(frame: NSMakeRect(0, max(frame.size.height - 1, 0), frame.size.width, 1))
-        bottomEdge.backgroundColor = NSColor(calibratedRed: 0.85, green: 0.85, blue: 0.85, alpha: 1.0)
+        bottomEdge.winBackgroundColor = NSColor(calibratedRed: 0.85, green: 0.85, blue: 0.85, alpha: 1.0)
         bottomEdge.autoresizingMask = [.width]
         addSubview(bottomEdge)
         renderedItemViews.append(bottomEdge)
@@ -937,7 +961,7 @@ open class NSToolbarView: NSView {
         // (e.g. the selected-item highlight band) draw their own backgrounds.
         let keepsOwnBackground = view is NSToolbarSeparatorView
             || ((view as? NSTextField)?.isEditable ?? false)
-            || view.backgroundColor != nil
+            || view.winBackgroundColor != nil
         if !keepsOwnBackground {
             applyRealizedTransparentBackground(to: view)
         }
@@ -945,7 +969,7 @@ open class NSToolbarView: NSView {
     }
 
     private func applyToolbarControlAppearance(to view: NSView) {
-        view.backgroundColor = nil
+        view.winBackgroundColor = nil
 
         // Label-style text fields blend into the toolbar strip; editable
         // fields (search fields, text entries) keep their border and
@@ -1206,8 +1230,14 @@ open class NSToolbarView: NSView {
             return max(item.minSize.width, total)
         }
 
+        // `minSize`/`maxSize` bound the item's CONTENT (the icon box) — the
+        // label renders below and may be wider, as on Apple, where "Disable
+        // Save" shows in full under a 32×32 item.
+        let showsLabel = mode != .iconOnly
+        let labelWidth = showsLabel ? CGFloat(max(28, item.label.count * 6)) + 8 : 0
         let naturalWidth = standardNaturalWidth(for: item, mode: mode)
-        return max(item.minSize.width, min(item.maxSize.width, naturalWidth))
+        let contentWidth = max(item.minSize.width, min(item.maxSize.width, naturalWidth))
+        return max(contentWidth, labelWidth)
     }
 
     /// The natural width of a standard (composite icon/label) item in a mode.
@@ -1250,10 +1280,10 @@ final class NSToolbarOverflowChevronView: NSView {
     /// Metallic chrome slice (see `NSToolbarCompositeItemView.metallicSlice`).
     var metallicSlice: (stripHeight: CGFloat, y: CGFloat)?
 
-    override init(frame frameRect: NSRect) {
+    required init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         toolTip = "More toolbar items"
-        backgroundColor = nil
+        winBackgroundColor = nil
     }
 
     override var acceptsFirstResponder: Bool {
@@ -1285,11 +1315,11 @@ final class NSToolbarOverflowChevronView: NSView {
 /// Separator line used by composed toolbar rendering.
 open class NSToolbarSeparatorView: NSView {
     /// Creates a separator view.
-    public override init(frame frameRect: NSRect) {
+    public required init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         // The view itself is the thin vertical bar; layout centers it inside
         // a wider separator slot so whitespace frames it on either side.
-        backgroundColor = NSColor(calibratedRed: 0.66, green: 0.66, blue: 0.66, alpha: 1.0)
+        winBackgroundColor = NSColor(calibratedRed: 0.66, green: 0.66, blue: 0.66, alpha: 1.0)
     }
 
     /// Separators are display-only.
@@ -1305,607 +1335,3 @@ open class NSToolbarSeparatorView: NSView {
     }
 }
 
-/// The Apple toolbar looks selectable per the phase design note ("support
-/// several Apple looks — for example the older metallic style and the modern
-/// unified style").
-public enum WinToolbarAppleLook: Sendable {
-    /// The modern flat look (default): the strip blends with the window chrome.
-    case unified
-
-    /// The classic brushed-metal look: a silver vertical gradient chrome.
-    case metallic
-}
-
-/// WinChocolate-specific rendering style for toolbar separator items.
-public enum WinToolbarSeparatorStyle: Sendable {
-    /// Follow the active presentation: classic Win32 renders a bar, the
-    /// future modern look renders a blank gap.
-    case automatic
-
-    /// A vertical bar with a little whitespace on either side.
-    case bar
-
-    /// A blank gap.
-    case space
-}
-
-/// Position of a toolbar item's label relative to its item image or view.
-public enum WinToolbarLabelPosition: Sendable {
-    /// Place the label below the item image or view.
-    case below
-
-    /// Place the label above the item image or view.
-    case above
-
-    /// Place the label to the left of the item image or view.
-    case left
-
-    /// Place the label to the right of the item image or view.
-    case right
-}
-
-/// WinChocolate-specific representation used while dragging a toolbar item.
-public enum WinToolbarDragRepresentation {
-    /// Use an image as the drag representation.
-    case image(NSImage)
-
-    /// Use a view as the drag representation.
-    case view(NSView)
-}
-
-private final class NSToolbarCompositeItemView: NSView {
-    weak var item: NSToolbarItem?
-
-    /// When the toolbar renders the metallic look, the tile paints its exact
-    /// slice of the strip's chrome gradient (strip height + this tile's y
-    /// offset) so the chrome reads continuous through the child windows.
-    /// Set after creation, so re-resolve the label color (metallic = light
-    /// silver strip → dark text; unified dark → light text).
-    var metallicSlice: (stripHeight: CGFloat, y: CGFloat)? {
-        didSet {
-            updateNativeTextColor()
-        }
-    }
-
-    override func draw(_ dirtyRect: NSRect) {
-        guard let metallicSlice, backgroundColor == nil else {
-            return
-        }
-        // Paint the full strip gradient shifted up by this tile's offset; the
-        // child surface clips it to the tile's own slice.
-        NSToolbarView.winMetallicChromeGradient()?.draw(
-            in: NSMakeRect(0, -metallicSlice.y, frame.size.width, metallicSlice.stripHeight),
-            angle: -90
-        )
-    }
-
-    var title: String {
-        didSet {
-            updateNativeText()
-        }
-    }
-    var imageName: String {
-        didSet {
-            updateNativeText()
-        }
-    }
-    var showItem: Bool {
-        didSet {
-            updateNativeText()
-        }
-    }
-    var showLabel: Bool {
-        didSet {
-            updateNativeText()
-        }
-    }
-    var labelLocation: WinToolbarLabelPosition {
-        didSet {
-            updateNativeText()
-        }
-    }
-    var isEnabled: Bool {
-        didSet {
-            updateNativeTextColor()
-        }
-    }
-
-    init(
-        item: NSToolbarItem,
-        title: String,
-        imageName: String,
-        showItem: Bool,
-        showLabel: Bool,
-        labelLocation: WinToolbarLabelPosition,
-        frame frameRect: NSRect
-    ) {
-        self.item = item
-        self.title = title
-        self.imageName = imageName
-        self.showItem = showItem
-        self.showLabel = showLabel
-        self.labelLocation = labelLocation
-        self.isEnabled = item.isEnabled
-        super.init(frame: frameRect)
-        toolTip = item.toolTip
-        backgroundColor = nil
-        // The label color contrasts with the strip (light text on a dark strip,
-        // dark text on light); re-resolve it on a live system theme switch.
-        winAppearanceObserver = NotificationCenter.default.addObserver(
-            forName: NSApplication.winEffectiveAppearanceDidChangeNotification,
-            object: nil, queue: nil
-        ) { [weak self] _ in
-            self?.updateNativeTextColor()
-            self?.needsDisplay = true
-        }
-    }
-
-    private var winAppearanceObserver: NSObjectProtocol?
-
-    deinit {
-        if let winAppearanceObserver {
-            NotificationCenter.default.removeObserver(winAppearanceObserver)
-        }
-    }
-
-    override var acceptsFirstResponder: Bool {
-        false
-    }
-
-    override func createNativePeer(in backend: NativeControlBackend, parent: NativeHandle?) -> NativeHandle {
-        let handle = backend.createView(frame: frame, parent: parent)
-        backend.setText(nativeText, for: handle)
-        backend.setDrawsBackground(false, for: handle)
-        updateNativeTextColor(for: handle, backend: backend)
-        return handle
-    }
-
-    override func mouseUp(with event: NSEvent) {
-        item?.performAction()
-    }
-
-    private var nativeText: String {
-        [
-            "__WinChocolateToolbarItem",
-            title,
-            imageName,
-            showItem ? "1" : "0",
-            showLabel ? "1" : "0",
-            labelLocation.nativeName
-        ].joined(separator: "\t")
-    }
-
-    private func updateNativeText() {
-        guard let nativeHandle else {
-            return
-        }
-
-        realizedBackend?.setText(nativeText, for: nativeHandle)
-    }
-
-    private func updateNativeTextColor() {
-        guard let nativeHandle, let realizedBackend else {
-            return
-        }
-
-        updateNativeTextColor(for: nativeHandle, backend: realizedBackend)
-    }
-
-    private func updateNativeTextColor(for handle: NativeHandle, backend: NativeControlBackend) {
-        // The label contrasts with the tile's background: the metallic look
-        // paints a light silver slice (dark text regardless of appearance),
-        // otherwise the tile is transparent over the strip, so a dark
-        // appearance needs light text.
-        let onDarkStrip = metallicSlice == nil && NSApplication.shared.effectiveAppearance.winIsDark
-        let color: NSColor
-        if onDarkStrip {
-            color = isEnabled ? NSColor(calibratedWhite: 0.92, alpha: 1) : NSColor(calibratedWhite: 0.55, alpha: 1)
-        } else {
-            color = isEnabled
-                ? NSColor(calibratedRed: 0.08, green: 0.10, blue: 0.12, alpha: 1.0)
-                : NSColor(calibratedRed: 0.42, green: 0.44, blue: 0.46, alpha: 1.0)
-        }
-        backend.setTextColor(color, for: handle)
-    }
-}
-
-private extension WinToolbarLabelPosition {
-    var nativeName: String {
-        switch self {
-        case .below:
-            return "below"
-        case .above:
-            return "above"
-        case .left:
-            return "left"
-        case .right:
-            return "right"
-        }
-    }
-}
-
-/// Lets an action target control a toolbar item's enabled state, matching
-/// AppKit's `NSToolbarItemValidation` informal contract: `validate()` asks the
-/// item's target and applies the answer to `isEnabled`.
-public protocol NSToolbarItemValidation: AnyObject {
-    /// Returns whether the item should be enabled right now.
-    func validateToolbarItem(_ item: NSToolbarItem) -> Bool
-}
-
-/// A toolbar item model matching AppKit naming.
-open class NSToolbarItem: NSObject {
-    /// Toolbar item identifier.
-    public struct Identifier: RawRepresentable, Hashable, Sendable, ExpressibleByStringLiteral {
-        /// Raw identifier string.
-        public let rawValue: String
-
-        /// Creates an identifier from a raw string.
-        public init(rawValue: String) {
-            self.rawValue = rawValue
-        }
-
-        /// Creates an identifier from a string, matching AppKit's
-        /// unlabeled convenience spelling.
-        public init(_ rawValue: String) {
-            self.rawValue = rawValue
-        }
-
-        /// Creates an identifier from a string literal.
-        public init(stringLiteral value: String) {
-            self.rawValue = value
-        }
-
-        /// Space item identifier.
-        public static let space = Identifier(rawValue: "NSToolbarSpaceItem")
-
-        /// Flexible space item identifier.
-        public static let flexibleSpace = Identifier(rawValue: "NSToolbarFlexibleSpaceItem")
-
-        /// Separator item identifier.
-        public static let separator = Identifier(rawValue: "NSToolbarSeparatorItem")
-
-        /// Standard print item; prints the key window's content by default.
-        public static let print = Identifier(rawValue: "NSToolbarPrintItem")
-
-        /// Standard show-colors item; opens the shared color panel.
-        public static let showColors = Identifier(rawValue: "NSToolbarShowColorsItem")
-
-        /// Standard show-fonts item; opens the shared font panel.
-        public static let showFonts = Identifier(rawValue: "NSToolbarShowFontsItem")
-
-        /// Classic customize-toolbar item; runs the customization palette.
-        public static let customizeToolbar = Identifier(rawValue: "NSToolbarCustomizeToolbarItem")
-
-        /// Modern toggle-sidebar item (macOS 11 shape). The classic backend
-        /// stores the identifier; apps wire the action (AppKit's responder-chain
-        /// `toggleSidebar:` is the documented boundary).
-        public static let toggleSidebar = Identifier(rawValue: "NSToolbarToggleSidebarItem")
-
-        /// Modern sidebar tracking separator (macOS 11 shape); renders as a gap.
-        public static let sidebarTrackingSeparator = Identifier(rawValue: "NSToolbarSidebarTrackingSeparatorItem")
-
-        /// Modern inspector tracking separator (macOS 14 shape); renders as a gap.
-        public static let inspectorTrackingSeparator = Identifier(rawValue: "NSToolbarInspectorTrackingSeparatorItem")
-
-        /// Modern toggle-inspector item (macOS 14 shape); like `toggleSidebar`,
-        /// the app wires the action to its own inspector pane.
-        public static let toggleInspector = Identifier(rawValue: "NSToolbarToggleInspectorItem")
-
-        /// Cloud-sharing item (macOS 10.12 shape). Windows has no macOS
-        /// sharing service, so the synthesized item is a labeled placeholder
-        /// the app wires to its own sharing UI.
-        public static let cloudSharing = Identifier(rawValue: "NSToolbarCloudSharingItem")
-    }
-
-    /// Toolbar item visibility priority.
-    public enum VisibilityPriority: Int, Sendable {
-        case standard = 0
-        case low = -1000
-        case high = 1000
-        case user = 2000
-    }
-
-    /// The item identifier.
-    public let itemIdentifier: Identifier
-
-    /// Primary visible label.
-    open var label: String {
-        didSet {
-            toolbar?.validateVisibleItems()
-        }
-    }
-
-    /// Label used in customization UI.
-    open var paletteLabel: String
-
-    /// Title shown by bordered (button-style) items, matching AppKit.
-    open var title: String = ""
-
-    /// Whether the item renders as a bordered control (macOS 10.15+ shape).
-    /// The classic presentation stores the flag; the modern look will render it.
-    open var isBordered: Bool = false
-
-    /// Application-defined integer tag, matching AppKit.
-    open var tag: Int = -1
-
-    /// Compact menu representation used when the item moves into the overflow
-    /// menu (or text-only menus), matching AppKit's `menuFormRepresentation`.
-    open var menuFormRepresentation: NSMenuItem?
-
-    /// Whether `validateVisibleItems()` includes this item, matching AppKit's
-    /// `autovalidates` (default `true`).
-    open var autovalidates: Bool = true
-
-    /// Tooltip text.
-    open var toolTip: String?
-
-    /// Target object for `action`.
-    open weak var target: AnyObject?
-
-    /// Selector sent when the item is activated.
-    open var action: Selector?
-
-    /// Custom view for this item.
-    open var view: NSView?
-
-    /// Image shown by icon-capable toolbar renderers.
-    open var image: NSImage? {
-        didSet {
-            toolbar?.validateVisibleItems()
-        }
-    }
-
-    /// WinChocolate-specific image shown for this item in the customization palette.
-    open var winImageForPallate: NSImage?
-
-    /// WinChocolate-specific image or view used as this item's drag representation.
-    open var winRenderForDrag: WinToolbarDragRepresentation?
-
-    /// Minimum item size.
-    open var minSize: NSSize = NSMakeSize(32, 28)
-
-    /// Maximum item size.
-    open var maxSize: NSSize = NSMakeSize(160, 28)
-
-    /// Whether this item is enabled.
-    open var isEnabled: Bool = true {
-        didSet {
-            guard oldValue != isEnabled else {
-                return
-            }
-            (view as? NSControl)?.isEnabled = isEnabled
-            toolbar?.validateVisibleItems()
-        }
-    }
-
-    /// Visibility priority used when a toolbar overflows.
-    open var visibilityPriority: VisibilityPriority = .standard
-
-    /// Swift-native action invoked by `performAction()`.
-    open var onAction: ((NSToolbarItem) -> Void)?
-
-    /// The containing toolbar.
-    public internal(set) weak var toolbar: NSToolbar?
-
-    /// The group this item belongs to as a subitem, if any — activation then
-    /// routes through the group (selection + group action), matching AppKit.
-    internal weak var winGroup: NSToolbarItemGroup?
-
-    /// This item's index within its group's `subitems`.
-    internal var winGroupIndex: Int = -1
-
-    /// Creates a toolbar item.
-    public init(itemIdentifier: Identifier) {
-        self.itemIdentifier = itemIdentifier
-        self.label = itemIdentifier.rawValue
-        self.paletteLabel = itemIdentifier.rawValue
-        self.image = nil
-        super.init()
-    }
-
-    /// Refreshes `isEnabled` from the item's target, matching AppKit's
-    /// `validate()`: a target adopting `NSToolbarItemValidation` decides the
-    /// enabled state; view-based items and targetless items are left alone.
-    open func validate() {
-        guard view == nil else {
-            return
-        }
-        guard let validator = target as? NSToolbarItemValidation else {
-            return
-        }
-        let valid = validator.validateToolbarItem(self)
-        if valid != isEnabled {
-            isEnabled = valid
-        }
-    }
-
-    /// Programmatically activates the item.
-    open func performAction() {
-        guard isEnabled else {
-            return
-        }
-
-        // A group subitem routes through its group: selection state updates
-        // per the group's mode, then the group's action fires (AppKit shape).
-        if let group = winGroup, winGroupIndex >= 0 {
-            group.winSubitemActivated(at: winGroupIndex)
-            return
-        }
-
-        if let control = view as? NSControl {
-            control.sendAction()
-            return
-        }
-
-        onAction?(self)
-    }
-
-    /// Creates a transparent composite view for this item in a toolbar.
-    open func winCompositeView(
-        showItem: Bool,
-        showLabel: Bool,
-        winLabelLocation: WinToolbarLabelPosition = .below,
-        toolbarHeight: CGFloat
-    ) -> NSView {
-        if itemIdentifier == .separator {
-            let separatorView = NSToolbarSeparatorView(frame: NSMakeRect(0, 0, 8, max(toolbarHeight - 12, 8)))
-            separatorView.toolTip = toolTip
-            return separatorView
-        }
-
-        let imageSize = NSMakeSize(24, 20)
-        let labelSize = showLabel ? NSMakeSize(max(28, CGFloat(label.count * 6)), 13) : NSMakeSize(0, 0)
-        let gap: CGFloat = showItem && showLabel ? 2 : 0
-        let itemSize = showItem ? imageSize : NSMakeSize(0, 0)
-        let horizontal = winLabelLocation == .left || winLabelLocation == .right
-        let width = horizontal
-            ? itemSize.width + labelSize.width + gap + 8
-            : max(itemSize.width, labelSize.width) + 8
-        let contentHeight = horizontal
-            ? max(itemSize.height, labelSize.height)
-            : itemSize.height + labelSize.height + gap
-        let height = min(max(contentHeight + 4, 20), max(toolbarHeight, 20))
-        return NSToolbarCompositeItemView(
-            item: self,
-            title: label,
-            imageName: winToolbarImageName,
-            showItem: showItem,
-            showLabel: showLabel,
-            labelLocation: winLabelLocation,
-            frame: NSMakeRect(0, 0, width, height)
-        )
-    }
-
-    private var winToolbarImageName: String {
-        if let name = (image ?? winImageForPallate)?.name, !name.isEmpty {
-            return name
-        }
-
-        return itemIdentifier.rawValue
-    }
-}
-
-/// A toolbar item composed of adjacent subitems, matching AppKit's
-/// `NSToolbarItemGroup`: subitems render side by side, and activation updates
-/// the group's selection per its `selectionMode` before firing the group's
-/// action.
-open class NSToolbarItemGroup: NSToolbarItem {
-    /// How subitem activation affects the group's selection, matching AppKit.
-    public enum SelectionMode: Sendable {
-        /// Exactly one subitem is selected at a time (radio behavior).
-        case selectOne
-
-        /// Any combination of subitems may be selected (toggle behavior).
-        case selectAny
-
-        /// Activation fires the action without persisting a selection.
-        case momentary
-    }
-
-    /// The grouped subitems, rendered side by side.
-    open var subitems: [NSToolbarItem] = [] {
-        didSet {
-            adoptSubitems()
-        }
-    }
-
-    /// Wires the subitems' group back-references and prunes stale selection.
-    /// Called from `didSet` and explicitly from initializers (Swift property
-    /// observers do not fire during initialization).
-    private func adoptSubitems() {
-        for (index, subitem) in subitems.enumerated() {
-            subitem.winGroup = self
-            subitem.winGroupIndex = index
-        }
-        selectedIndexes = selectedIndexes.filter { subitems.indices.contains($0) }
-        toolbar?.validateVisibleItems()
-    }
-
-    /// How activation affects selection.
-    open var selectionMode: SelectionMode = .momentary
-
-    private var selectedIndexes: Set<Int> = []
-
-    /// The selected subitem index for `selectOne` groups (the lowest selected
-    /// index otherwise), or `-1` when nothing is selected. Matches AppKit.
-    open var selectedIndex: Int {
-        get {
-            selectedIndexes.min() ?? -1
-        }
-        set {
-            selectedIndexes = subitems.indices.contains(newValue) ? [newValue] : []
-            toolbar?.validateVisibleItems()
-        }
-    }
-
-    /// Sets a subitem's selected state, matching AppKit's `setSelected(_:at:)`.
-    open func setSelected(_ selected: Bool, at index: Int) {
-        guard subitems.indices.contains(index) else {
-            return
-        }
-        if selected {
-            if selectionMode == .selectOne {
-                selectedIndexes = [index]
-            } else {
-                selectedIndexes.insert(index)
-            }
-        } else {
-            selectedIndexes.remove(index)
-        }
-        toolbar?.validateVisibleItems()
-    }
-
-    /// Whether a subitem is selected, matching AppKit's `isSelected(at:)`.
-    open func isSelected(at index: Int) -> Bool {
-        selectedIndexes.contains(index)
-    }
-
-    /// Creates a group whose subitems are built from titles, matching AppKit's
-    /// convenience shape (labels default to the titles).
-    public convenience init(
-        itemIdentifier: NSToolbarItem.Identifier,
-        titles: [String],
-        selectionMode: SelectionMode,
-        labels: [String]? = nil,
-        target: AnyObject? = nil,
-        action: Selector? = nil
-    ) {
-        self.init(itemIdentifier: itemIdentifier)
-        self.selectionMode = selectionMode
-        self.target = target
-        self.action = action
-        self.subitems = titles.enumerated().map { index, title in
-            let subitem = NSToolbarItem(itemIdentifier: NSToolbarItem.Identifier(rawValue: "\(itemIdentifier.rawValue)#\(index)"))
-            subitem.label = labels?.indices.contains(index) == true ? labels![index] : title
-            subitem.title = title
-            return subitem
-        }
-        // Property observers do not fire inside initializers; wire explicitly.
-        adoptSubitems()
-    }
-
-    /// A subitem was activated: update the selection per the mode, then fire
-    /// the group's action.
-    internal func winSubitemActivated(at index: Int) {
-        guard isEnabled, subitems.indices.contains(index) else {
-            return
-        }
-        switch selectionMode {
-        case .selectOne:
-            selectedIndexes = [index]
-        case .selectAny:
-            if selectedIndexes.contains(index) {
-                selectedIndexes.remove(index)
-            } else {
-                selectedIndexes.insert(index)
-            }
-        case .momentary:
-            break
-        }
-        toolbar?.validateVisibleItems()
-        onAction?(self)
-    }
-}
-
-/// AppKit-compatible toolbar item identifier alias.
-public typealias NSToolbarItemIdentifier = NSToolbarItem.Identifier

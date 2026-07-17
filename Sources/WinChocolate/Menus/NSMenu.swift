@@ -5,7 +5,7 @@
 /// submenus such as the application menu containing Quit.
 /// The methods a menu delegate uses to refresh a menu before display,
 /// matching AppKit's shape.
-public protocol NSMenuDelegate: AnyObject {
+public protocol NSMenuDelegate: NSObjectProtocol {
     /// Asks the delegate to bring the menu's items up to date.
     func menuNeedsUpdate(_ menu: NSMenu)
 }
@@ -80,7 +80,7 @@ open class NSMenu: NSObject {
             return validator.validateMenuItem(item)
         }
 
-        return item.onAction != nil || item.action != nil
+        return item.winInternalAction != nil || item.action != nil
     }
 
     /// Adds an item to the end of the menu.

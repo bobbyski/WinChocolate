@@ -2,7 +2,13 @@ import Foundation
 
 /// AppKit-shaped secure (password) text field (GtkPasswordEntry). Like an
 /// editable `NSTextField` but the characters are masked.
-public final class NSSecureTextField: NSView {
+open class NSSecureTextField: NSControl {
+
+    /// Background fill (inherited from NSTextField on Apple; these classes are
+    /// NSControl siblings here until the field hierarchy lands — Issue tracked).
+    public var backgroundColor: NSColor? {
+        didSet { backend.setBackgroundColor(backgroundColor, for: handle) }
+    }
 
     private var backingValue: String
 
@@ -20,6 +26,10 @@ public final class NSSecureTextField: NSView {
     public var onTextChange: ((NSSecureTextField) -> Void)?
 
     /// Creates a masked text field.
+    public required convenience init(frame: NSRect) {
+        self.init(string: "", frame: frame)
+    }
+
     public init(string: String, frame: NSRect) {
         self.backingValue = string
         let backend = NSApplication.shared.nativeBackend
@@ -29,6 +39,7 @@ public final class NSSecureTextField: NSView {
             guard let self else { return }
             self.backingValue = text          // sync silently
             self.onTextChange?(self)
+            self.sendAction()
         }
     }
 }

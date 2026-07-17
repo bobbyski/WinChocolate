@@ -18,26 +18,36 @@ public enum NSTextAlignment: Sendable {
 }
 
 /// The methods a text field delegate uses to observe editing.
-public protocol NSTextFieldDelegate: AnyObject {
+public protocol NSTextFieldDelegate: NSObjectProtocol {
     /// Tells the delegate that editing began in the control (focus gained).
-    func controlTextDidBeginEditing(_ obj: NSNotification)
+    func controlTextDidBeginEditing(_ obj: Notification)
 
     /// Tells the delegate that the control's text changed.
-    func controlTextDidChange(_ obj: NSNotification)
+    func controlTextDidChange(_ obj: Notification)
 
     /// Tells the delegate that editing ended in the control (focus lost).
-    func controlTextDidEndEditing(_ obj: NSNotification)
+    func controlTextDidEndEditing(_ obj: Notification)
+
+    /// Asks the delegate to handle a field-editor command (AppKit's
+    /// `control(_:textView:doCommandBy:)`). Return `true` to consume the
+    /// command. The drawn table's cell editor uses this to intercept
+    /// `insertTab:`/`insertBacktab:` and move editing to the next cell instead
+    /// of letting focus leave the field.
+    func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool
 }
 
 extension NSTextFieldDelegate {
     /// Default no-op so delegates only implement the callbacks they need.
-    public func controlTextDidBeginEditing(_ obj: NSNotification) {}
+    public func controlTextDidBeginEditing(_ obj: Notification) {}
 
     /// Default no-op so delegates only implement the callbacks they need.
-    public func controlTextDidChange(_ obj: NSNotification) {}
+    public func controlTextDidChange(_ obj: Notification) {}
 
     /// Default no-op so delegates only implement the callbacks they need.
-    public func controlTextDidEndEditing(_ obj: NSNotification) {}
+    public func controlTextDidEndEditing(_ obj: Notification) {}
+
+    /// Default: the delegate handles no field-editor commands.
+    public func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool { false }
 }
 
 /// A single-line text entry or label control.
@@ -130,6 +140,38 @@ open class NSTextField: NSControl {
 
     /// Whether the text field accepts selection.
     open var isSelectable: Bool = false
+
+    /// Text fields the user can edit or select from show the I-beam cursor over
+    /// their content, like AppKit. A pure static label keeps the arrow.
+    open override func resetCursorRects() {
+        guard isEditable || isSelectable else { return }
+        addCursorRect(bounds, cursor: .iBeam)
+    }
+
+    // MARK: Accessibility
+
+    /// An editable field is a text field; a static (label) field is static text
+    /// — matching AppKit, where a non-editable, non-selectable field reports
+    /// `AXStaticText`.
+    open override var winIntrinsicAccessibilityRole: NSAccessibilityRole {
+        (isEditable || isSelectable) ? .textField : .staticText
+    }
+
+    /// The field's text is its accessibility value; the placeholder is its
+    /// label when no explicit label was set.
+    open override var winIntrinsicAccessibilityValue: Any? { stringValue }
+    open override var winIntrinsicAccessibilityLabel: String? {
+        let placeholder = placeholderString ?? ""
+        return placeholder.isEmpty ? nil : placeholder
+    }
+
+    /// The field's background fill, matching AppKit's
+    /// `NSTextField.backgroundColor` (one of the concrete types where Apple
+    /// exposes a background color — plain `NSView` has none).
+    open var backgroundColor: NSColor? {
+        get { winBackgroundColor }
+        set { winBackgroundColor = newValue }
+    }
 
     /// Whether the text field draws a border.
     open var isBordered: Bool = true
@@ -227,13 +269,23 @@ open class NSTextField: NSControl {
     }
     private var storedAttributedStringValue: NSAttributedString?
 
-    /// Swift-native action invoked when user editing changes the string value.
-    open var onTextChanged: ((NSTextField) -> Void)?
+    /// Framework-internal edit hook (form cells track their field's text).
+    /// Not API: applications use `controlTextDidChange(_:)` on the delegate,
+    /// as in AppKit.
+    var winInternalTextChanged: ((NSTextField) -> Void)?
 
     /// Creates a text field with a frame.
-    public override init(frame frameRect: NSRect) {
+    public required init(frame frameRect: NSRect) {
         self.stringValue = ""
         super.init(frame: frameRect)
+    }
+
+    /// The field's baseline sits above its bottom edge by the bezel/border
+    /// padding plus an approximated font descent (~21% of the point size, the
+    /// typical ratio for UI faces; exact per-font metrics are a refinement).
+    open override var baselineOffsetFromBottom: CGFloat {
+        let pad: CGFloat = isBezeled ? 3 : (isBordered ? 2 : 1)
+        return pad + (font ?? NSFont.systemFont(ofSize: 12)).pointSize * 0.21
     }
 
     /// The field's natural size for Auto Layout (9.2): its text measured with
@@ -249,7 +301,7 @@ open class NSTextField: NSControl {
     }
 
     /// Creates a text field with text and a frame.
-    public init(string stringValue: String, frame frameRect: NSRect) {
+    init(string stringValue: String, frame frameRect: NSRect) {
         self.stringValue = stringValue
         super.init(frame: frameRect)
     }
@@ -316,7 +368,7 @@ open class NSTextField: NSControl {
         // Labels (non-editable, no explicit background color) show the window
         // color instead of an opaque control-face rectangle. Editable fields
         // and any field given a background color stay opaque.
-        let showsBackground = (isEditable || backgroundColor != nil) && drawsBackground
+        let showsBackground = (isEditable || winBackgroundColor != nil) && drawsBackground
         backend.setDrawsBackground(showsBackground, for: handle)
         if isBezeled {
             backend.setTextFieldBezeled(true, for: handle)
@@ -363,12 +415,12 @@ open class NSTextField: NSControl {
         stringValue = text
         isUpdatingFromNative = false
         nativeStringValueDidChange()
-        onTextChanged?(self)
+        winInternalTextChanged?(self)
         delegate?.controlTextDidChange(editingNotification(named: Self.textDidChangeNotification))
     }
 
-    func editingNotification(named name: String) -> NSNotification {
-        NSNotification(name: name, object: self)
+    func editingNotification(named name: String) -> Notification {
+        Notification(name: Notification.Name(name), object: self)
     }
 
     func nativeStringValueDidChange() {}

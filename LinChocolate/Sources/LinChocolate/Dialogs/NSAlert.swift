@@ -23,7 +23,25 @@ public final class NSAlert {
     /// Button titles in the order added.
     public private(set) var buttonTitles: [String] = []
 
+    /// AppKit-shaped alert severity (accepted for parity; the native dialog
+    /// picks its own presentation).
+    public enum Style: Sendable { case warning, informational, critical }
+    public var alertStyle: Style = .warning
+
+    /// Whether a Help button is shown (accepted for parity).
+    public var showsHelp: Bool = false
+
+    /// Receives `alertShowHelp(_:)` when the help button is clicked.
+    public weak var delegate: NSAlertDelegate?
+
     public init() {}
+
+    /// Convenience initializer building an alert from an `Error`.
+    public convenience init(error: Error) {
+        self.init()
+        messageText = (error as NSError).localizedDescription
+        informativeText = (error as NSError).localizedFailureReason ?? ""
+    }
 
     /// Adds a response button. The first added is the default (rightmost).
     public func addButton(withTitle title: String) {

@@ -64,7 +64,7 @@ open class NSColorWell: NSControl {
     }
 
     /// Creates a color well with a frame.
-    public override init(frame frameRect: NSRect) {
+    public required init(frame frameRect: NSRect) {
         self.color = .white
         self.isActive = false
         super.init(frame: frameRect)
@@ -87,9 +87,14 @@ open class NSColorWell: NSControl {
         }
     }
 
-    /// Creates the native swatch peer.
+    /// Creates the native swatch peer. A framework view (not a system static
+    /// control): a Win32 static turns clicks into `WM_COMMAND`, which fires the
+    /// registered action directly and never reaches `mouseDown(with:)` — so
+    /// the well could not present the color panel. The framework view routes
+    /// real mouse events through the responder overrides, and the swatch is
+    /// just its background fill.
     open override func createNativePeer(in backend: NativeControlBackend, parent: NativeHandle?) -> NativeHandle {
-        backend.createImageView(description: "", imagePath: nil, frame: frame, parent: parent)
+        backend.createView(frame: frame, parent: parent)
     }
 
     /// Ensures the swatch color is synced after realization.
@@ -100,9 +105,21 @@ open class NSColorWell: NSControl {
         return handle
     }
 
-    open override func mouseDown(with event: NSEvent) {
-        objectValue = color
+    /// Applies a color chosen in the shared color panel: updates the swatch and
+    /// **sends the action** — AppKit's contract is that a well fires when its
+    /// color CHANGES (a panel pick), not when it is clicked. Programmatic
+    /// `color` assignment does not send.
+    package func winApplyPanelColor(_ newColor: NSColor) {
+        WinDiagnostics.log("colorwell.applyPanelColor r=\(newColor.redComponent) target=\(target != nil) action=\(action != nil)")
+        color = newColor
+        objectValue = newColor
         sendAction()
+    }
+
+    open override func mouseDown(with event: NSEvent) {
+        WinDiagnostics.log("colorwell.mouseDown style=\(colorWellStyle)")
+        // Clicking a well presents the panel/palette; it does NOT send the
+        // action (that happens when the color changes — see winApplyPanelColor).
         if colorWellStyle == .expanded {
             // The expanded style drops down a swatch palette instead of jumping
             // straight to the color panel.
@@ -132,7 +149,7 @@ open class NSColorWell: NSControl {
         let height = gridHeight + 30 + gap
 
         let content = NSView(frame: NSMakeRect(0, 0, width, height))
-        content.backgroundColor = .windowBackgroundColor
+        content.winBackgroundColor = .windowBackgroundColor
         swatchViews = []
         for (index, swatchColor) in NSColorWell.swatchColors.enumerated() {
             let column = index % columns, row = index / columns
@@ -150,7 +167,7 @@ open class NSColorWell: NSControl {
         }
 
         let moreButton = NSButton(title: "Show Colors…", frame: NSMakeRect(gap, gridHeight, width - 2 * gap, 28))
-        moreButton.onAction = { [weak self, weak popover] _ in
+        moreButton.winInternalAction = { [weak self, weak popover] _ in
             popover?.performClose(nil)
             guard let self else {
                 return
@@ -176,7 +193,14 @@ final class ColorSwatchView: NSView {
         self.swatchColor = color
         self.onPick = onPick
         super.init(frame: frame)
-        backgroundColor = color
+        winBackgroundColor = color
+    }
+
+    /// Inherited from `NSView.init(frame:)` being `required`. A swatch has no
+    /// meaning without a color and a pick handler, and it is never registered
+    /// with a collection view, so the frame-only path is unsupported.
+    required init(frame frameRect: NSRect) {
+        fatalError("ColorSwatchView requires init(color:frame:onPick:)")
     }
 
     override func draw(_ dirtyRect: NSRect) {

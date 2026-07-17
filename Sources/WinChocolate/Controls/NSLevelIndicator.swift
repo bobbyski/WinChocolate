@@ -99,7 +99,7 @@ open class NSLevelIndicator: NSControl {
     }
 
     /// Creates a level indicator with a frame.
-    public override init(frame frameRect: NSRect) {
+    public required init(frame frameRect: NSRect) {
         self.minValue = 0
         self.maxValue = 100
         self.doubleValue = 0

@@ -119,16 +119,16 @@ internal final class NSToolbarCustomizationPanel: NSPanel {
         let width = Metrics.contentSize.width
         let height = Metrics.contentSize.height
         content.tag = Self.contentTag
-        content.backgroundColor = WinCustomizeColors.content
+        content.winBackgroundColor = WinCustomizeColors.content
 
         strip.tag = Self.stripTag
         // Match the live toolbar, which blends with the window chrome.
-        strip.backgroundColor = .windowBackgroundColor
+        strip.winBackgroundColor = .windowBackgroundColor
         strip.autoresizingMask = [.width]
         content.addSubview(strip)
 
         let stripEdge = NSView(frame: NSMakeRect(0, Metrics.stripHeight, width, 1))
-        stripEdge.backgroundColor = WinCustomizeColors.stripEdge
+        stripEdge.winBackgroundColor = WinCustomizeColors.stripEdge
         stripEdge.autoresizingMask = [.width]
         content.addSubview(stripEdge)
 
@@ -146,14 +146,14 @@ internal final class NSToolbarCustomizationPanel: NSPanel {
         content.addSubview(defaultStrip)
 
         let divider = NSView(frame: NSMakeRect(0, height - Metrics.bottomBarHeight, width, 1))
-        divider.backgroundColor = WinCustomizeColors.divider
+        divider.winBackgroundColor = WinCustomizeColors.divider
         divider.autoresizingMask = [.width, .minYMargin]
         content.addSubview(divider)
 
         buildBottomBar(for: toolbar, width: width, height: height)
 
         rebuildStripTiles()
-        insertionIndicator.backgroundColor = NSColor(calibratedRed: 0.16, green: 0.45, blue: 0.85, alpha: 1.0)
+        insertionIndicator.winBackgroundColor = NSColor(calibratedRed: 0.16, green: 0.45, blue: 0.85, alpha: 1.0)
         insertionIndicator.isHidden = true
         content.addSubview(insertionIndicator)
         dragPreview.style = .preview
@@ -178,7 +178,7 @@ internal final class NSToolbarCustomizationPanel: NSPanel {
 
         let paletteView = NSView(frame: NSMakeRect(Metrics.margin, top, width, paletteHeight))
         paletteView.tag = Self.paletteTag
-        paletteView.backgroundColor = WinCustomizeColors.palette
+        paletteView.winBackgroundColor = WinCustomizeColors.palette
         paletteView.autoresizingMask = [.width]
 
         for (index, identifier) in identifiers.enumerated() {
@@ -223,7 +223,7 @@ internal final class NSToolbarCustomizationPanel: NSPanel {
         let identifiers = toolbar.customizationDefaultIdentifiers
         let strip = NSView(frame: NSMakeRect(Metrics.margin, top, width, Metrics.stripHeight))
         strip.tag = Self.defaultStripTag
-        strip.backgroundColor = WinCustomizeColors.palette
+        strip.winBackgroundColor = WinCustomizeColors.palette
         strip.autoresizingMask = [.width]
 
         // Cap tile widths so the whole default set fits inside the strip;
@@ -270,7 +270,7 @@ internal final class NSToolbarCustomizationPanel: NSPanel {
         case .labelOnly:
             displayModePopup.selectItem(at: 2)
         }
-        displayModePopup.onAction = { [weak self] control in
+        displayModePopup.winInternalAction = { [weak self] control in
             guard let popup = control as? NSPopUpButton else {
                 return
             }
@@ -288,7 +288,7 @@ internal final class NSToolbarCustomizationPanel: NSPanel {
 
         let doneButton = NSButton(title: "Done", frame: NSMakeRect(width - Metrics.margin - 90, height - 48, 90, 28))
         doneButton.autoresizingMask = [.minXMargin, .minYMargin]
-        doneButton.onAction = { [weak self] _ in
+        doneButton.winInternalAction = { [weak self] _ in
             self?.close()
         }
         content.addSubview(doneButton)
@@ -395,7 +395,7 @@ internal final class NSToolbarCustomizationPanel: NSPanel {
         // Removal affordance: dragging a strip item outside the strip tints
         // the preview toward the removal state (dropping there removes it).
         if case .toolbar = dragSource {
-            dragPreview.backgroundColor = pendingInsertionIndex == nil
+            dragPreview.winBackgroundColor = pendingInsertionIndex == nil
                 ? WinCustomizeColors.removeTint
                 : WinCustomizeColors.tileSelected
         }
@@ -666,6 +666,13 @@ internal final class NSToolbarCustomizationTile: NSView {
         updateAppearance()
     }
 
+    /// Inherited from `NSView.init(frame:)` being `required`. A tile always has
+    /// a title, and it is never registered with a collection view, so the
+    /// frame-only path is unsupported.
+    internal required init(frame frameRect: NSRect) {
+        fatalError("NSToolbarCustomizationTile requires init(title:imageName:frame:)")
+    }
+
     internal override var acceptsFirstResponder: Bool {
         false
     }
@@ -737,15 +744,15 @@ internal final class NSToolbarCustomizationTile: NSView {
     private func updateAppearance() {
         switch style {
         case .toolbar:
-            backgroundColor = nil
+            winBackgroundColor = nil
         case .palette:
             // Disabled palette tiles (item already in the toolbar) dim to a
             // flat gray, matching Apple's palette filtering.
-            backgroundColor = isEnabled ? WinCustomizeColors.tileEnabled : WinCustomizeColors.tileDisabled
+            winBackgroundColor = isEnabled ? WinCustomizeColors.tileEnabled : WinCustomizeColors.tileDisabled
         case .defaultSet:
-            backgroundColor = WinCustomizeColors.tileDefaultSet
+            winBackgroundColor = WinCustomizeColors.tileDefaultSet
         case .preview:
-            backgroundColor = WinCustomizeColors.tileSelected
+            winBackgroundColor = WinCustomizeColors.tileSelected
         }
     }
 

@@ -16,6 +16,9 @@ set -euo pipefail
 
 IMAGE="linchocolate-dev"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Mount the *repo root* (parent of LinChocolate) so the shared demo source that
+# RealDemo symlinks to (../Demo/DemoApplication) resolves inside the container.
+REPO="$(cd "$HERE/.." && pwd)"
 export PATH="/opt/X11/bin:$PATH"   # XQuartz ships xhost/Xquartz here
 
 command -v xhost >/dev/null 2>&1 || {
@@ -74,7 +77,7 @@ run_args=(
     --rm -it
     -e "DISPLAY=${HOST_IP}:0"
     -e "GSK_RENDERER=${GSK_RENDERER:-cairo}"
-    -v "$HERE":/work -w /work
+    -v "$REPO":/work -w /work/LinChocolate
     "$IMAGE"
 )
 
@@ -82,4 +85,20 @@ echo "• XQuartz listening, access authorized, DISPLAY=${HOST_IP}:0"
 if [[ "${1:-}" == "--shell" ]]; then
     exec docker run "${run_args[@]}" bash
 fi
-exec docker run "${run_args[@]}" swift run "${1:-GTKHelloSpike}"
+
+TARGET="${1:-GTKHelloSpike}"
+shift || true          # remaining args (--page N, --dark, …) pass to the demo
+# RealDemo loads artwork + DemoNibPanel.xib via Bundle.main (the executable's
+# directory), so stage the shared demo Resources next to the built binary first.
+exec docker run "${run_args[@]}" bash -c '
+    set -e
+    swift build --product '"$TARGET"' 2>&1 | tail -1
+    if [ "'"$TARGET"'" = "RealDemo" ]; then
+        for d in .build/*/debug; do
+            [ -d "$d" ] || continue
+            mkdir -p "$d/Resources"
+            cp -f ../Demo/DemoApplication/Resources/* "$d/Resources/" 2>/dev/null || true
+        done
+    fi
+    swift run '"$TARGET"' '"$*"'
+'

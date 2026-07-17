@@ -135,8 +135,11 @@ open class NSPrintOperation: NSObject {
     /// The document name shown in the print queue.
     open var jobTitle: String
 
-    /// Creates a print operation for a view.
-    public class func printOperation(with view: NSView, printInfo: NSPrintInfo = .shared) -> NSPrintOperation {
+
+    /// Creates a print operation for a view. Not API (18.7): Apple spells
+    /// this `NSPrintOperation(view:printInfo:)` in Swift — package for the
+    /// framework and suite.
+    package class func printOperation(with view: NSView, printInfo: NSPrintInfo = .shared) -> NSPrintOperation {
         NSPrintOperation(view: view, printInfo: printInfo)
     }
 

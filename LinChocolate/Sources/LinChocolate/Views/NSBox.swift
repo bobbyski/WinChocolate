@@ -5,8 +5,16 @@ import Foundation
 public final class NSBox: NSView {
 
     /// The box's title.
+    private var backingTitle: String
+
+    /// The box's title. Computed over backing storage for the same reason as
+    /// `NSButton.title` — initializer assignments must reach the native side.
     public var title: String {
-        didSet { backend.setText(title, for: handle) }
+        get { backingTitle }
+        set {
+            backingTitle = newValue
+            backend.setText(newValue, for: handle)
+        }
     }
 
     /// The view framed by the box.
@@ -18,8 +26,12 @@ public final class NSBox: NSView {
     }
 
     /// Creates a titled box.
+    public required convenience init(frame: NSRect) {
+        self.init(title: "", frame: frame)
+    }
+
     public init(title: String, frame: NSRect) {
-        self.title = title
+        self.backingTitle = title
         let backend = NSApplication.shared.nativeBackend
         let handle = backend.createBox(title: title, frame: frame)
         super.init(frame: frame, handle: handle, backend: backend)

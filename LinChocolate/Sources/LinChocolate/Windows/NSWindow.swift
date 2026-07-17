@@ -6,7 +6,7 @@ import Foundation
 /// application by default (a single-window convenience for this slice; the
 /// AppKit `applicationShouldTerminateAfterLastWindowClosed` policy is a later
 /// parity item).
-public final class NSWindow {
+open class NSWindow {
 
     /// Window style options. A subset of AppKit's, matching WinChocolate's shape.
     public struct StyleMask: OptionSet, Sendable {
@@ -39,6 +39,12 @@ public final class NSWindow {
             backend.setContentView(contentView.handle, for: handle)
         }
     }
+
+    /// Delegate + content-size constraints + key-view root (accepted for parity).
+    public weak var delegate: NSWindowDelegate?
+    public var contentMinSize: NSSize = .zero
+    public var contentMaxSize: NSSize = NSMakeSize(100000, 100000)
+    public weak var initialFirstResponder: NSView?
 
     /// Creates a window with the given content rect and style.
     public init(contentRect: NSRect, styleMask: StyleMask, backing: BackingStoreType, defer flag: Bool) {
@@ -75,6 +81,6 @@ public final class NSWindow {
     /// Rebuilds the native toolbar from the current items.
     func reinstallToolbar() {
         guard let toolbar else { return }
-        backend.installToolbar(toolbar.specs(), on: handle)
+        backend.installToolbar(toolbar.specs(), displayMode: toolbar.nativeDisplayMode, on: handle)
     }
 }

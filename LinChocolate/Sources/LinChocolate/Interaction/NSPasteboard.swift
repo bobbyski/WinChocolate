@@ -25,6 +25,36 @@ public final class NSPasteboard {
     public let name: String
     private let pushesToSystem: Bool
     private var contents: [PasteboardType: String] = [:]
+
+    /// The board's items — one per written object (writer-per-row drags read
+    /// their rows back from here, as on Apple). `nil` when the board is empty.
+    public private(set) var pasteboardItems: [NSPasteboardItem]?
+
+    /// Writes `objects`, one pasteboard item per object (AppKit's multi-object
+    /// write). The first object's `.string` value also lands in the flat
+    /// `string(forType:)` store so single-string readers keep working.
+    @discardableResult
+    public func writeObjects(_ objects: [NSPasteboardWriting]) -> Bool {
+        var items: [NSPasteboardItem] = pasteboardItems ?? []
+        for object in objects {
+            if let ready = object as? NSPasteboardItem {
+                items.append(ready)
+                continue
+            }
+            let item = NSPasteboardItem()
+            for type in object.writableTypes(for: self) {
+                if let value = object.pasteboardPropertyList(forType: type) as? String {
+                    item.setString(value, forType: type)
+                }
+            }
+            items.append(item)
+        }
+        pasteboardItems = items.isEmpty ? nil : items
+        if contents[.string] == nil, let first = items.first?.string(forType: .string) {
+            contents[.string] = first
+        }
+        return true
+    }
     /// Bumped on every `clearContents()` — AppKit's ownership change count.
     public private(set) var changeCount: Int = 0
 
@@ -44,6 +74,7 @@ public final class NSPasteboard {
     @discardableResult
     public func clearContents() -> Int {
         contents.removeAll()
+        pasteboardItems = nil
         changeCount += 1
         return changeCount
     }

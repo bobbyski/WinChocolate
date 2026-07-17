@@ -1,7 +1,31 @@
 # Rev 2.0 question — `NSCollectionView` supplementary-view recycling
 
-**Status:** open research item for Rev 2.0. Referenced from the project plan
-under **Phase 12 — Rev 2.0 Issues** (item 12.x).
+> ## ✅ CLOSED — 2026-07-14. Deferral overtaken by events; the API is implemented.
+>
+> This was never merely a recycling-efficiency question: deferring the API made the
+> frameworks accept supplementary views that **real AppKit rejects with a launch
+> crash**, and the shared demo was written to that laxer contract. Once the demo was
+> built against genuine AppKit it crashed immediately.
+>
+> `register(_:forSupplementaryViewOfKind:withIdentifier:)` and
+> `makeSupplementaryView(ofKind:withIdentifier:for:)` now exist in **both**
+> WinChocolate and LinChocolate, driven by a reuse pool exactly like `makeItem`, and
+> the demo registers + dequeues. `rebuildSupplementaryViews()` /
+> `positionSupplementaryViews(with:)` survive, but now retire their views into that
+> pool rather than dropping them.
+>
+> The full analysis, the measured AppKit contract, the `required init(frame:)`
+> consequence, and two further divergences found along the way (wrong
+> `elementKindSection*` constants; assigning `collectionViewLayout` silently
+> discards registrations) are in **Issue N** of
+> [`AppKitFaithfulnessIssues.md`](AppKitFaithfulnessIssues.md).
+>
+> The analysis below is retained as the historical record of the deferral.
+
+---
+
+**Status:** ~~open research item for Rev 2.0~~ — closed, see above. Referenced from
+the project plan under **Phase 12 — Rev 2.0 Issues** (item 12.x).
 
 **Owner of the interim code:** `Sources/WinChocolate/Controls/NSCollectionView.swift`
 (`rebuildSupplementaryViews()` + `positionSupplementaryViews(with:)`).

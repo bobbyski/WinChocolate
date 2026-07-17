@@ -1,12 +1,12 @@
 /// The methods a split view delegate uses to respond to pane resizing.
-public protocol NSSplitViewDelegate: AnyObject {
+public protocol NSSplitViewDelegate: NSObjectProtocol {
     /// Tells the delegate that pane frames changed.
-    func splitViewDidResizeSubviews(_ notification: NSNotification)
+    func splitViewDidResizeSubviews(_ notification: Notification)
 }
 
 extension NSSplitViewDelegate {
     /// Default no-op so delegates only implement the callbacks they need.
-    public func splitViewDidResizeSubviews(_ notification: NSNotification) {}
+    public func splitViewDidResizeSubviews(_ notification: Notification) {}
 }
 
 /// A container that divides its bounds between child views.
@@ -124,7 +124,7 @@ open class NSSplitView: NSView {
 
         needsDisplay = true
         updateCursorRegions()
-        delegate?.splitViewDidResizeSubviews(NSNotification(name: Self.didResizeSubviewsNotification, object: self))
+        delegate?.splitViewDidResizeSubviews(Notification(name: Notification.Name(Self.didResizeSubviewsNotification), object: self))
     }
 
     /// Recalculates child pane frames to evenly fill the split view.
@@ -245,9 +245,9 @@ open class NSSplitView: NSView {
             : NSColor(calibratedRed: 0.63, green: 0.63, blue: 0.63, alpha: 1)
         dividerColor.setFill()
         if isVertical {
-            NSRectFill(NSMakeRect(rect.origin.x + rect.size.width / 2 - 0.5, rect.origin.y + 2, 1, max(0, rect.size.height - 4)))
+            NSMakeRect(rect.origin.x + rect.size.width / 2 - 0.5, rect.origin.y + 2, 1, max(0, rect.size.height - 4)).fill()
         } else {
-            NSRectFill(NSMakeRect(rect.origin.x + 2, rect.origin.y + rect.size.height / 2 - 0.5, max(0, rect.size.width - 4), 1))
+            NSMakeRect(rect.origin.x + 2, rect.origin.y + rect.size.height / 2 - 0.5, max(0, rect.size.width - 4), 1).fill()
         }
     }
 }

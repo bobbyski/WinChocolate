@@ -334,3 +334,73 @@ open class NSPasteboardItem: NSObject {
         return nil
     }
 }
+
+extension NSPasteboard {
+    /// Options controlling how an object writes itself to the pasteboard,
+    /// matching AppKit's `NSPasteboard.WritingOptions`.
+    public struct WritingOptions: OptionSet, Sendable {
+        public let rawValue: UInt
+
+        public init(rawValue: UInt) {
+            self.rawValue = rawValue
+        }
+
+        /// The data is provided lazily when a reader asks for it.
+        public static let promised = WritingOptions(rawValue: 1 << 9)
+    }
+}
+
+/// A type that can write itself to a pasteboard — AppKit's `NSPasteboardWriting`.
+///
+/// Apple refines `NSObjectProtocol`; WinChocolate does not, so value types
+/// bridged as `NSString`/`URL` (which are Swift value types here, not ObjC
+/// classes) can conform. `NSString`, `URL`, and `NSPasteboardItem` conform, as
+/// on Apple.
+public protocol NSPasteboardWriting {
+    /// The pasteboard types this object can provide.
+    func writableTypes(for pasteboard: NSPasteboard) -> [NSPasteboard.PasteboardType]
+
+    /// Options for writing a given type (default: none).
+    func writingOptions(forType type: NSPasteboard.PasteboardType, pasteboard: NSPasteboard) -> NSPasteboard.WritingOptions
+
+    /// The property-list representation for a type.
+    func pasteboardPropertyList(forType type: NSPasteboard.PasteboardType) -> Any?
+}
+
+extension NSPasteboardWriting {
+    public func writingOptions(forType type: NSPasteboard.PasteboardType, pasteboard: NSPasteboard) -> NSPasteboard.WritingOptions {
+        []
+    }
+}
+
+// `NSString` is `typealias NSString = String` here, so this conformance is what
+// the demo's `"…" as NSString` relies on.
+extension String: NSPasteboardWriting {
+    public func writableTypes(for pasteboard: NSPasteboard) -> [NSPasteboard.PasteboardType] {
+        [.string]
+    }
+
+    public func pasteboardPropertyList(forType type: NSPasteboard.PasteboardType) -> Any? {
+        self
+    }
+}
+
+extension URL: NSPasteboardWriting {
+    public func writableTypes(for pasteboard: NSPasteboard) -> [NSPasteboard.PasteboardType] {
+        [.fileURL]
+    }
+
+    public func pasteboardPropertyList(forType type: NSPasteboard.PasteboardType) -> Any? {
+        absoluteString
+    }
+}
+
+extension NSPasteboardItem: NSPasteboardWriting {
+    public func writableTypes(for pasteboard: NSPasteboard) -> [NSPasteboard.PasteboardType] {
+        types
+    }
+
+    public func pasteboardPropertyList(forType type: NSPasteboard.PasteboardType) -> Any? {
+        string(forType: type) ?? data(forType: type)
+    }
+}

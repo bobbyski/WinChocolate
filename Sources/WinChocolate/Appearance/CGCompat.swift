@@ -25,25 +25,10 @@ extension NSColor {
     public var cgColor: CGColor { self }
 }
 
-/// A color-space stand-in. WinChocolate colors are device-independent RGBA
-/// values, so spaces carry no conversion — the type exists so AppKit-shaped
-/// gradient code compiles unchanged.
-public final class CGColorSpace: @unchecked Sendable {
-    /// The sRGB space name.
-    public static let sRGB = "kCGColorSpaceSRGB"
-
-    /// Creates a named color space; all names resolve to the same identity
-    /// space here.
-    public init?(name: String) {}
-
-    /// Creates the device RGB space.
-    init() {}
-}
-
-/// Creates the device RGB color space, matching the C-style CG spelling.
-public func CGColorSpaceCreateDeviceRGB() -> CGColorSpace {
-    CGColorSpace()
-}
+// `CGColorSpace` and `CGColorSpaceCreateDeviceRGB()` moved to WinCoreGraphics
+// (they are CoreGraphics value types on Apple, and `CGImage`'s designated
+// initializer takes a `CGColorSpace`). They remain visible here via
+// WinChocolate's `@_exported import WinCoreGraphics`.
 
 /// Core Foundation array stand-in for the `colors as CFArray` gradient idiom.
 public typealias CFArray = [Any]

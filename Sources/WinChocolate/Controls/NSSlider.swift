@@ -40,6 +40,12 @@ open class NSSlider: NSControl {
         }
     }
 
+    // MARK: Accessibility
+
+    /// A slider reports `.slider`; its accessibility value is its current value.
+    open override var winIntrinsicAccessibilityRole: NSAccessibilityRole { .slider }
+    open override var winIntrinsicAccessibilityValue: Any? { doubleValue }
+
     /// The slider's current integer value.
     open var intValue: Int32 {
         get {
@@ -138,7 +144,7 @@ open class NSSlider: NSControl {
     }
 
     /// Creates a slider with a frame.
-    public override init(frame frameRect: NSRect) {
+    public required init(frame frameRect: NSRect) {
         self.minValue = 0
         self.maxValue = 1
         self.doubleValue = 0

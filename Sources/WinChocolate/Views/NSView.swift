@@ -51,9 +51,17 @@ open class NSView: NSResponder {
     /// The view frame in its parent coordinate space.
     open var frame: NSRect {
         didSet {
+            // Assigning the same frame is a no-op, as in AppKit. Layout runs
+            // on every scroll/resize and re-assigns identical frames to views
+            // that did not move; pushing those to the backend would repaint
+            // (and flicker) every control each pass, so skip unchanged frames.
+            guard frame != oldValue else {
+                return
+            }
+
             autoresizeSubviews(from: oldValue.size, to: frame.size)
 
-            if postsFrameChangedNotifications, frame != oldValue {
+            if postsFrameChangedNotifications {
                 NotificationCenter.default.post(name: NSView.frameDidChangeNotification, object: self)
             }
 
@@ -103,11 +111,39 @@ open class NSView: NSResponder {
     /// The view's child views.
     public private(set) var subviews: [NSView] = []
 
-    /// The next view in the keyboard focus loop.
-    open weak var nextKeyView: NSView?
+    /// The next view in the keyboard focus loop. Setting it maintains the
+    /// reverse link, so `previousKeyView` is derived — matching AppKit, where
+    /// only `nextKeyView` is settable.
+    open weak var nextKeyView: NSView? {
+        didSet {
+            oldValue?.winPreviousKeyView = nil
+            nextKeyView?.winPreviousKeyView = self
+        }
+    }
 
-    /// The previous view in the keyboard focus loop.
-    open weak var previousKeyView: NSView?
+    /// Backing storage for the derived reverse key-loop link.
+    weak var winPreviousKeyView: NSView?
+
+    /// The link the window's focus walk follows. Composed containers
+    /// (`NSForm`, `NSMatrix`) override this to route Tab into their child
+    /// controls while `nextKeyView` keeps Apple's read-back semantics.
+    var winEffectiveNextKeyView: NSView? {
+        nextKeyView
+    }
+
+    /// Whether the focus walk may land on this view's focusable descendants
+    /// when the view itself refuses focus. Composed containers that manage
+    /// their own key loop (`NSForm`, `NSMatrix`) return `false` so the walk
+    /// passes through them instead of re-entering their children.
+    var winShouldDescendInKeyLoop: Bool {
+        true
+    }
+
+    /// The previous view in the keyboard focus loop — **get-only**, as in
+    /// AppKit (derived from the `nextKeyView` chain).
+    open var previousKeyView: NSView? {
+        winPreviousKeyView
+    }
 
     /// The nearest containing window, when this view is attached to one.
     open var window: NSWindow? {
@@ -149,14 +185,19 @@ open class NSView: NSResponder {
         }
     }
 
-    /// The view background color, when explicitly set.
-    open var backgroundColor: NSColor? {
+    /// The view's background fill, when explicitly set.
+    ///
+    /// Not public API: AppKit's `NSView` has no `winBackgroundColor` (18.2) —
+    /// only concrete types like `NSTextField`, `NSTableRowView`, and
+    /// `NSPathControl` expose one, and those forward here. `package` so the
+    /// contract tests can probe framework chrome fills.
+    package var winBackgroundColor: NSColor? {
         didSet {
             guard let nativeHandle else {
                 return
             }
 
-            realizedBackend?.setBackgroundColor(backgroundColor, for: nativeHandle)
+            realizedBackend?.setBackgroundColor(winBackgroundColor, for: nativeHandle)
         }
     }
 
@@ -186,6 +227,12 @@ open class NSView: NSResponder {
 
     /// Sentinel used by `intrinsicContentSize` when a dimension has no natural size.
     public static let noIntrinsicMetric: CGFloat = -1
+
+    /// The distance from the view's bottom edge up to its text baseline, used
+    /// by baseline anchors and baseline alignment. A plain view's baseline is
+    /// its bottom edge (0), matching AppKit; text controls override with a
+    /// descent-derived offset.
+    open var baselineOffsetFromBottom: CGFloat { 0 }
 
     /// Whether the view has been flagged as needing layout.
     ///
@@ -239,6 +286,23 @@ open class NSView: NSResponder {
     /// Lays out the view's subviews. Subclasses override to position children.
     open func layout() {}
 
+    /// Called after the view's effective appearance changes — a live system
+    /// dark/light switch, or an `appearance` override taking effect. The base
+    /// does nothing; subclasses override to refresh appearance-derived state.
+    /// The framework's own windows and controls are already re-themed by the
+    /// time this runs. `@MainActor` to match AppKit's annotation, so app
+    /// overrides read the same on every target.
+    @MainActor open func viewDidChangeEffectiveAppearance() {}
+
+    /// Framework-internal: fans `viewDidChangeEffectiveAppearance()` out over
+    /// this view and its whole subtree on a live theme switch.
+    @MainActor func winPropagateEffectiveAppearanceChange() {
+        viewDidChangeEffectiveAppearance()
+        for subview in subviews {
+            subview.winPropagateEffectiveAppearanceChange()
+        }
+    }
+
     /// The view's context menu, shown on right-click when set.
     open var menu: NSMenu?
 
@@ -253,41 +317,160 @@ open class NSView: NSResponder {
         super.rightMouseDown(with: event)
     }
 
-    // Stored accessibility strings. Narrator/UIA wiring is a later slice;
-    // storing them keeps AppKit-shaped consumers building and preserves the
-    // values for when the backend exposes them.
-    private var storedAccessibilityLabel: String?
-    private var storedAccessibilityValue: String?
-    private var storedAccessibilityHelp: String?
+    // MARK: - Accessibility (NSAccessibilityProtocol)
+    //
+    // Every view exposes AppKit's informal accessibility protocol. Each getter
+    // returns the app's explicit override when one was set (via the matching
+    // setter), otherwise the view's *intrinsic* value — the `winIntrinsic…`
+    // hooks, which subclasses (controls, data views) override to describe
+    // themselves. This mirrors AppKit, where `setAccessibilityRole(_:)` wins
+    // over a subclass's built-in role and a plain override of `accessibilityRole()`
+    // replaces both. The values feed the native UIA/WM_GETOBJECT bridge and the
+    // deterministic `winAccessibilitySnapshot()` used by the contract tests.
 
-    /// Sets the accessibility label read by assistive technology.
+    private var storedAccessibilityLabel: String?
+    private var storedAccessibilityTitle: String?
+    private var storedAccessibilityValue: Any?
+    private var storedAccessibilityHelp: String?
+    private var storedAccessibilityRole: NSAccessibilityRole?
+    private var storedAccessibilitySubrole: NSAccessibilitySubrole?
+    private var storedAccessibilityRoleDescription: String?
+    private var storedIsAccessibilityElement: Bool?
+    private var storedIsAccessibilityEnabled: Bool?
+    private var storedAccessibilityChildren: [NSAccessibilityProtocol]?
+    private var storedAccessibilityIdentifier: String?
+
+    // Intrinsic values a subclass supplies for itself. NSView is a generic
+    // container: not an element, role .group, no title/value of its own.
+    /// The role this view reports when the app has not overridden it.
+    open var winIntrinsicAccessibilityRole: NSAccessibilityRole { .group }
+    /// The subrole this view reports when the app has not overridden it.
+    open var winIntrinsicAccessibilitySubrole: NSAccessibilitySubrole? { nil }
+    /// The label this view reports when the app has not overridden it.
+    open var winIntrinsicAccessibilityLabel: String? { nil }
+    /// The title this view reports when the app has not overridden it.
+    open var winIntrinsicAccessibilityTitle: String? { nil }
+    /// The value this view reports when the app has not overridden it.
+    open var winIntrinsicAccessibilityValue: Any? { nil }
+    /// Whether this view is itself an accessibility element (a leaf assistive
+    /// technology can land on). Containers return false; controls return true.
+    open var winIsIntrinsicAccessibilityElement: Bool { false }
+
+    /// Sets the accessibility label read by assistive technology. When the view
+    /// is realized over a native control, the label is pushed to the backend so
+    /// the OS accessibility layer (MSAA/UIA) reads the app's label rather than
+    /// the control's window text.
     open func setAccessibilityLabel(_ label: String?) {
         storedAccessibilityLabel = label
+        if let nativeHandle {
+            realizedBackend?.setAccessibilityName(label, for: nativeHandle)
+        }
     }
 
     /// The accessibility label read by assistive technology.
     open func accessibilityLabel() -> String? {
-        storedAccessibilityLabel
+        storedAccessibilityLabel ?? winIntrinsicAccessibilityLabel
+    }
+
+    /// Sets the accessibility title (the element's own text, e.g. a button's).
+    open func setAccessibilityTitle(_ title: String?) { storedAccessibilityTitle = title }
+
+    /// The accessibility title read by assistive technology.
+    open func accessibilityTitle() -> String? {
+        storedAccessibilityTitle ?? winIntrinsicAccessibilityTitle
     }
 
     /// Sets the accessibility value read by assistive technology.
-    open func setAccessibilityValue(_ value: Any?) {
-        storedAccessibilityValue = value.map { String(describing: $0) }
-    }
+    open func setAccessibilityValue(_ value: Any?) { storedAccessibilityValue = value }
 
     /// The accessibility value read by assistive technology.
     open func accessibilityValue() -> Any? {
-        storedAccessibilityValue
+        storedAccessibilityValue ?? winIntrinsicAccessibilityValue
     }
 
     /// Sets the accessibility help text read by assistive technology.
-    open func setAccessibilityHelp(_ help: String?) {
-        storedAccessibilityHelp = help
-    }
+    open func setAccessibilityHelp(_ help: String?) { storedAccessibilityHelp = help }
 
     /// The accessibility help text read by assistive technology.
     open func accessibilityHelp() -> String? {
-        storedAccessibilityHelp
+        storedAccessibilityHelp ?? toolTip
+    }
+
+    /// Sets the accessibility role, overriding the view's intrinsic role.
+    open func setAccessibilityRole(_ role: NSAccessibilityRole?) { storedAccessibilityRole = role }
+
+    /// The accessibility role read by assistive technology.
+    open func accessibilityRole() -> NSAccessibilityRole? {
+        storedAccessibilityRole ?? winIntrinsicAccessibilityRole
+    }
+
+    /// Sets the accessibility subrole.
+    open func setAccessibilitySubrole(_ subrole: NSAccessibilitySubrole?) { storedAccessibilitySubrole = subrole }
+
+    /// The accessibility subrole read by assistive technology.
+    open func accessibilitySubrole() -> NSAccessibilitySubrole? {
+        storedAccessibilitySubrole ?? winIntrinsicAccessibilitySubrole
+    }
+
+    /// Sets a custom role description.
+    open func setAccessibilityRoleDescription(_ description: String?) { storedAccessibilityRoleDescription = description }
+
+    /// The human-readable role description assistive technology speaks.
+    open func accessibilityRoleDescription() -> String? {
+        storedAccessibilityRoleDescription ?? accessibilityRole()?.winDefaultRoleDescription
+    }
+
+    /// Overrides whether the view is an accessibility element.
+    open func setAccessibilityElement(_ isElement: Bool) { storedIsAccessibilityElement = isElement }
+
+    /// Whether assistive technology treats this view as a navigable element.
+    open func isAccessibilityElement() -> Bool {
+        storedIsAccessibilityElement ?? winIsIntrinsicAccessibilityElement
+    }
+
+    /// Overrides the element's enabled state as reported to assistive technology.
+    open func setAccessibilityEnabled(_ enabled: Bool) { storedIsAccessibilityEnabled = enabled }
+
+    /// Whether the element is enabled for assistive technology.
+    open func isAccessibilityEnabled() -> Bool {
+        storedIsAccessibilityEnabled ?? winIntrinsicAccessibilityEnabled
+    }
+
+    /// The intrinsic enabled state; controls override to reflect `isEnabled`.
+    open var winIntrinsicAccessibilityEnabled: Bool { true }
+
+    /// A stable identifier for the element (AppKit's `accessibilityIdentifier`).
+    open var accessibilityIdentifier: String {
+        get { storedAccessibilityIdentifier ?? identifier?.rawValue ?? "" }
+        set { storedAccessibilityIdentifier = newValue }
+    }
+
+    /// Overrides the element's children in the accessibility tree.
+    open func setAccessibilityChildren(_ children: [NSAccessibilityProtocol]?) {
+        storedAccessibilityChildren = children
+    }
+
+    /// The app-set children override, if any (`nil` means "use the default
+    /// tree"). Data views consult this so an explicit override still wins over
+    /// their synthesized row/cell elements.
+    public var winExplicitAccessibilityChildren: [NSAccessibilityProtocol]? {
+        storedAccessibilityChildren
+    }
+
+    /// The element's children in the accessibility tree. By default these are
+    /// the subviews that are visible; data views override this to synthesize
+    /// row/cell elements for content they draw themselves.
+    open func accessibilityChildren() -> [Any]? {
+        if let storedAccessibilityChildren { return storedAccessibilityChildren }
+        let kids = subviews.filter { !$0.isHidden }
+        return kids.isEmpty ? nil : kids
+    }
+
+    /// The element's frame in screen/window coordinates for hit-testing by
+    /// assistive technology. We report window-relative coordinates, which the
+    /// native bridge maps to screen space.
+    open func accessibilityFrame() -> NSRect {
+        convert(bounds, to: nil)
     }
 
     /// The view's mouse-tracking areas.
@@ -440,7 +623,19 @@ open class NSView: NSResponder {
         self.init(frame: .zero)
     }
 
-    public init(frame frameRect: NSRect) {
+    /// `required` so a view class registered with `NSCollectionView`'s
+    /// `register(_:forSupplementaryViewOfKind:withIdentifier:)` can be built
+    /// from its metatype in `makeSupplementaryView`, matching the same reason
+    /// `NSCollectionViewItem.init()` is required.
+    ///
+    /// Apple's NSView does not need this: AppKit instantiates registered
+    /// classes through the Objective-C runtime (`[[cls alloc] initWithFrame:]`),
+    /// which has no Swift `required` rule. In pure Swift there is no such
+    /// escape hatch, so the modifier is an implementation necessity rather than
+    /// a divergence in the public API's shape — it constrains subclasses inside
+    /// the framework, not callers. See Issue N in
+    /// `Docs/AppKitFaithfulnessIssues.md`.
+    public required init(frame frameRect: NSRect) {
         self.frame = frameRect
         super.init()
     }
@@ -619,8 +814,13 @@ open class NSView: NSResponder {
         nativeHandle = handle
         realizedBackend = backend
         backend.setHidden(isHidden, for: handle)
-        backend.setBackgroundColor(backgroundColor, for: handle)
+        backend.setBackgroundColor(winBackgroundColor, for: handle)
         backend.setToolTip(toolTip, for: handle)
+        // Replay an explicit accessibility label set before realization so the
+        // backend's accessibility annotation matches, regardless of order.
+        if let storedAccessibilityLabel {
+            backend.setAccessibilityName(storedAccessibilityLabel, for: handle)
+        }
         backend.registerMouseDownAction(for: handle) { [weak self] event in
             _ = self?.window?.makeFirstResponder(self)
             self?.mouseDown(with: event)
@@ -711,14 +911,21 @@ open class NSView: NSResponder {
 
     /// Discards, rebuilds, and pushes cursor rectangles to the native peer.
     internal func updateCursorRegions() {
-        discardCursorRects()
-        resetCursorRects()
+        let regions = winResolvedCursorRegions()
         guard let nativeHandle, let realizedBackend else {
             return
         }
 
-        let regions = cursorRects.map { NativeCursorRegion(rect: $0.rect, cursorName: $0.cursor.cursorName) }
         realizedBackend.setCursorRegions(regions, for: nativeHandle)
+    }
+
+    /// Rebuilds this view's cursor rectangles (via `resetCursorRects()`) and
+    /// returns them as backend regions. Exposed so the cursor behavior can be
+    /// verified without a realized native peer.
+    public func winResolvedCursorRegions() -> [NativeCursorRegion] {
+        discardCursorRects()
+        resetCursorRects()
+        return cursorRects.map { NativeCursorRegion(rect: $0.rect, cursorName: $0.cursor.cursorName) }
     }
 
     /// The nearest ancestor scroll view containing this view, if any.
@@ -789,9 +996,9 @@ open class NSView: NSResponder {
     /// Draws the view's custom content.
     ///
     /// Called during a native paint pass with `NSGraphicsContext.current`
-    /// installed, after the view's `backgroundColor` has been painted.
+    /// installed, after the view's `winBackgroundColor` has been painted.
     /// Subclasses override this and draw with `NSBezierPath`, `NSColor`, and
-    /// `NSRectFill`; the base implementation draws nothing.
+    /// `NSRect.fill()`; the base implementation draws nothing.
     open func draw(_ dirtyRect: NSRect) {
     }
 

@@ -63,6 +63,16 @@ public final class NSApplication: NSObject {
     /// Posts `winEffectiveAppearanceDidChangeNotification` (called by the Win32
     /// backend after it refreshes windows for a live system theme switch).
     public func winPostEffectiveAppearanceDidChange() {
+        // AppKit-faithful hook first: every view learns its effective appearance
+        // changed via `viewDidChangeEffectiveAppearance()`. App code overrides
+        // that (as on macOS) rather than observing a Windows-only notification.
+        // This always runs on the UI (main) thread — the theme-change message
+        // arrives there — so the main-actor fan-out is a statement of fact.
+        MainActor.assumeIsolated {
+            for window in windows {
+                window.contentView?.winPropagateEffectiveAppearanceChange()
+            }
+        }
         NotificationCenter.default.post(
             name: NSApplication.winEffectiveAppearanceDidChangeNotification,
             object: self
@@ -109,10 +119,20 @@ public final class NSApplication: NSObject {
     }
 
     /// Runs the application lifecycle and native event loop.
+    ///
+    /// When the backend provides a run-loop pump, the app is driven by
+    /// `RunLoop.main.run()` — window messages and Foundation timers share one
+    /// loop, as on AppKit. A backend without a pump (the in-memory test
+    /// backend) falls back to the bare message loop.
     public func run() {
         delegate?.applicationWillFinishLaunching(notification(named: "NSApplicationWillFinishLaunchingNotification"))
         delegate?.applicationDidFinishLaunching(notification(named: "NSApplicationDidFinishLaunchingNotification"))
-        nativeBackend.runApplication()
+        if let pump = nativeBackend.makeRunLoopPump() {
+            RunLoop.main.installPlatformPump(pump)
+            RunLoop.main.run()
+        } else {
+            nativeBackend.runApplication()
+        }
     }
 
     /// Windows currently running modal sessions, outermost first.
@@ -156,6 +176,119 @@ public final class NSApplication: NSObject {
     public func terminate(_ sender: Any?) {
         delegate?.applicationWillTerminate(notification(named: "NSApplicationWillTerminateNotification"))
         nativeBackend.terminateApplication()
+    }
+
+    // MARK: Action dispatch (Phase 18.1)
+
+    /// Sends an action to a target, matching AppKit's
+    /// `sendAction(_:to:from:)`. With an explicit target the action is
+    /// performed on it directly (when it responds). With a `nil` target the
+    /// action walks AppKit's nil-target chain: the key window's first
+    /// responder up its responder chain, then the key window, then the main
+    /// window's chain when that is a different window, then the application
+    /// itself, and finally the application delegate.
+    @discardableResult
+    public func sendAction(_ action: Selector, to target: Any?, from sender: Any?) -> Bool {
+        if let target {
+            guard let object = target as? NSObject else {
+                return false
+            }
+
+            if let responder = object as? NSResponder {
+                // Explicit responder targets still get chain semantics for
+                // actions they don't handle themselves, as AppKit does.
+                return responder.tryToPerform(action, with: sender)
+            }
+
+            guard object.responds(to: action) else {
+                return false
+            }
+
+            object.perform(action, with: sender)
+            return true
+        }
+
+        // Nil target: the standard responder chain.
+        if let keyWindow {
+            let start = keyWindow.firstResponder ?? keyWindow
+            if start.tryToPerform(action, with: sender) {
+                return true
+            }
+        }
+
+        if let mainWindow, mainWindow !== keyWindow {
+            let start = mainWindow.firstResponder ?? mainWindow
+            if start.tryToPerform(action, with: sender) {
+                return true
+            }
+        }
+
+        if responds(to: action) {
+            perform(action, with: sender)
+            return true
+        }
+
+        if let delegateObject = delegate as? NSObject, delegateObject.responds(to: action) {
+            delegateObject.perform(action, with: sender)
+            return true
+        }
+
+        return false
+    }
+
+    /// Returns the object that would receive an action, matching AppKit's
+    /// `target(forAction:)` (nil-target resolution without sending).
+    public func target(forAction action: Selector) -> Any? {
+        if let keyWindow {
+            var responder: NSResponder? = keyWindow.firstResponder ?? keyWindow
+            while let current = responder {
+                if current.responds(to: action) {
+                    return current
+                }
+                responder = current.nextResponder
+            }
+        }
+
+        if responds(to: action) {
+            return self
+        }
+
+        if let delegateObject = delegate as? NSObject, delegateObject.responds(to: action) {
+            return delegateObject
+        }
+
+        return nil
+    }
+
+    /// Application-level action selectors (the `NSApplication` methods menu
+    /// items commonly target), dispatched by name — see `NSObject`'s
+    /// selector-dispatch note.
+    private static let winApplicationSelectors: [String: (NSApplication, Any?) -> Void] = [
+        "terminate:": { application, sender in application.terminate(sender) },
+        "orderFrontColorPanel:": { application, sender in application.orderFrontColorPanel(sender) },
+        "stopModal": { application, _ in application.stopModal() },
+    ]
+
+    public override func responds(to aSelector: Selector?) -> Bool {
+        guard let aSelector else {
+            return false
+        }
+
+        if Self.winApplicationSelectors[aSelector.name] != nil {
+            return true
+        }
+
+        return super.responds(to: aSelector)
+    }
+
+    @discardableResult
+    public override func perform(_ aSelector: Selector, with object: Any?) -> Any? {
+        if let handler = Self.winApplicationSelectors[aSelector.name] {
+            handler(self, object)
+            return nil
+        }
+
+        return super.perform(aSelector, with: object)
     }
 
     /// Records that a window is owned by this application.
@@ -210,8 +343,8 @@ public final class NSApplication: NSObject {
         return mainWindow
     }
 
-    private func notification(named name: String) -> NSNotification {
-        NSNotification(name: name, object: self)
+    private func notification(named name: String) -> Notification {
+        Notification(name: Notification.Name(name), object: self)
     }
 }
 

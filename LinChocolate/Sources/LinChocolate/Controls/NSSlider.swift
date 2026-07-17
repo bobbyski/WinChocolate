@@ -2,10 +2,10 @@ import Foundation
 
 /// AppKit-shaped horizontal slider (GtkScale). Reports live value changes
 /// through `onValueChange`; `doubleValue` reflects the current position.
-public final class NSSlider: NSView {
+open class NSSlider: NSControl {
 
-    public let minValue: Double
-    public let maxValue: Double
+    public var minValue: Double
+    public var maxValue: Double
 
     private var backingValue: Double
 
@@ -22,7 +22,22 @@ public final class NSSlider: NSView {
     /// Called as the user moves the slider.
     public var onValueChange: ((NSSlider) -> Void)?
 
+    /// Whether the slider is oriented vertically (AppKit's `isVertical`).
+    public var isVertical: Bool = false {
+        didSet { backend.setSliderVertical(isVertical, for: handle) }
+    }
+
     /// Creates a slider over `[minValue, maxValue]` starting at `value`.
+    /// AppKit's target/action form (no frame); gets a default size.
+    public convenience init(value: Double, minValue: Double, maxValue: Double, target: AnyObject?, action: String?) {
+        self.init(value: value, minValue: minValue, maxValue: maxValue, frame: NSMakeRect(0, 0, 120, 24))
+    }
+
+    /// AppKit's frame-only initializer: a `0…100` slider at 0.
+    public required convenience init(frame: NSRect) {
+        self.init(value: 0, minValue: 0, maxValue: 100, frame: frame)
+    }
+
     public init(value: Double, minValue: Double, maxValue: Double, frame: NSRect) {
         self.minValue = minValue
         self.maxValue = maxValue
@@ -34,6 +49,7 @@ public final class NSSlider: NSView {
             guard let self else { return }
             self.backingValue = value          // sync silently
             self.onValueChange?(self)
+            self.sendAction()
         }
     }
 }

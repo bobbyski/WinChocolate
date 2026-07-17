@@ -7,6 +7,7 @@
 
 import LinChocolate
 import Foundation
+import class LinChocolate.NSSortDescriptor   // ours (Foundation's Linux one lacks `key:`)
 
 let app = NSApplication.shared
 app.nativeBackend = GTKNativeControlBackend()   // native Linux backend (GTK4)
@@ -66,6 +67,25 @@ for control in [counter, button, disable, sizeLabel, sizeResult, small, medium, 
                 searchLabel, search, comboLabel, combo, passwordLabel, password, echo] as [NSView] {
     basics.addSubview(control)
 }
+
+// NSPopover anchored to a button (transient GtkPopover).
+let popoverButton = NSButton(title: "Show Popover", frame: NSMakeRect(340, 470, 160, 34))
+basics.addSubview(popoverButton)
+let basicsPopover = NSPopover()
+let popoverBody = NSView(frame: NSMakeRect(0, 0, 240, 110))
+let popTitle = NSTextField(labelWithString: "NSPopover", frame: NSMakeRect(16, 72, 200, 22))
+popTitle.font = .boldSystemFont(ofSize: 14)
+let popInfo = NSTextField(labelWithString: "A transient GtkPopover.", frame: NSMakeRect(16, 46, 220, 22))
+let popClose = NSButton(title: "Close", frame: NSMakeRect(16, 10, 80, 28))
+for c in [popTitle, popInfo, popClose] as [NSView] { popoverBody.addSubview(c) }
+basicsPopover.contentSize = NSMakeSize(240, 110)
+basicsPopover.behavior = .transient
+basicsPopover.contentViewController = NSViewController(view: popoverBody)
+popoverButton.onAction = { _ in
+    if basicsPopover.isShown { basicsPopover.performClose(nil) }
+    else { basicsPopover.show(relativeTo: popoverButton.bounds, of: popoverButton, preferredEdge: .maxY) }
+}
+popClose.onAction = { _ in basicsPopover.performClose(nil) }
 
 // MARK: - Page 2 · Values
 let values = NSView(frame: NSMakeRect(0, 0, pageWidth, pageHeight))
@@ -176,14 +196,24 @@ split.setPosition(200)
 
 let scrollLabel = NSTextField(labelWithString: "Scroll view (tall document):", frame: NSMakeRect(24, r5.next(22), 300, 22))
 let scroll = NSScrollView(frame: NSMakeRect(24, r5.next(200), 486, 200))
-let document = NSView(frame: NSMakeRect(0, 0, 440, 600))
-var docRows = Rows(top: 600 - 10)
-for i in 1...12 {
+// Size the document to exactly fit its rows (no trailing empty space), so
+// scrolling to the end lands the last row against the bottom edge.
+let rowCount = 12, rowStride = 38.0, docTopMargin = 10.0, docBottomMargin = 10.0
+let documentHeight = docTopMargin + Double(rowCount) * rowStride - (rowStride - 24) + docBottomMargin
+let document = NSView(frame: NSMakeRect(0, 0, 440, documentHeight))
+var docRows = Rows(top: documentHeight - docTopMargin)
+for i in 1...rowCount {
     document.addSubview(NSTextField(labelWithString: "Scrollable row \(i)", frame: NSMakeRect(16, docRows.next(24), 300, 24)))
 }
 scroll.documentView = document
 
-for control in [splitLabel, split, scrollLabel, scroll] as [NSView] {
+let scrollButtonY = r5.next(28)
+let scrollButton = NSButton(title: "Scroll to bottom", frame: NSMakeRect(24, scrollButtonY, 150, 28))
+let scrollInfo = NSTextField(labelWithString: "Offset: (0, 0)", frame: NSMakeRect(184, scrollButtonY + 3, 320, 22))
+scroll.onScroll = { p in scrollInfo.stringValue = "Offset: (\(Int(p.x)), \(Int(p.y)))" }
+scrollButton.onAction = { _ in scroll.scrollToEndOfDocument() }
+
+for control in [splitLabel, split, scrollLabel, scroll, scrollButton, scrollInfo] as [NSView] {
     layoutPage.addSubview(control)
 }
 
@@ -198,6 +228,15 @@ final class DemoTableData: NSTableViewDataSource {
     func tableView(_ tableView: NSTableView, objectValueFor tableColumn: NSTableColumn?, row: Int) -> Any? {
         guard row < rows.count else { return nil }
         return tableColumn?.identifier == "status" ? rows[row].status : rows[row].name
+    }
+    func tableView(_ tableView: NSTableView, sortDescriptorsDidChange old: [NSSortDescriptor]) {
+        guard let descriptor = tableView.sortDescriptors.first else { return }
+        let key = descriptor.key
+        rows.sort { a, b in
+            let (l, r) = key == "status" ? (a.status, b.status) : (a.name, b.name)
+            return descriptor.ascending ? l < r : l > r
+        }
+        tableView.reloadData()
     }
 }
 let tableData = DemoTableData()
@@ -242,10 +281,16 @@ let tableTitle = NSTextField(labelWithString: "Projects (NSTableView):", frame: 
 let table = NSTableView(frame: NSMakeRect(24, r6.next(200), 486, 200))
 let nameColumn = NSTableColumn(identifier: "name");   nameColumn.title = "Name"
 let statusColumn = NSTableColumn(identifier: "status"); statusColumn.title = "Status"
+nameColumn.sortDescriptorPrototype = NSSortDescriptor(key: "name", ascending: true)
+statusColumn.sortDescriptorPrototype = NSSortDescriptor(key: "status", ascending: true)
 table.addTableColumn(nameColumn)
 table.addTableColumn(statusColumn)
 table.dataSource = tableData
-let tableResult = NSTextField(labelWithString: "Selected: —", frame: NSMakeRect(24, r6.next(24), 486, 24))
+let tableResult = NSTextField(labelWithString: "Click a header to sort; double-click a row.", frame: NSMakeRect(24, r6.next(24), 486, 24))
+table.onDoubleClick = { row in
+    tableResult.stringValue = row < tableData.rows.count
+        ? "Opened: \(tableData.rows[row].name)" : "Opened: —"
+}
 
 let outlineTitle = NSTextField(labelWithString: "Departments (NSOutlineView):", frame: NSMakeRect(24, r6.next(22), 300, 22))
 let outline = NSOutlineView(frame: NSMakeRect(24, r6.next(170), 486, 170))
@@ -312,6 +357,20 @@ final class DemoCanvasView: NSView {
         diagonal.line(to: NSMakePoint(470, 220))
         diagonal.lineWidth = 6
         diagonal.stroke()
+
+        // Linear gradient filling a rounded-rect "capsule".
+        let capsule = NSBezierPath(roundedRect: NSMakeRect(30, 30, 200, 90), xRadius: 24, yRadius: 24)
+        NSGradient(starting: NSColor(red: 0.45, green: 0.30, blue: 0.75),
+                   ending: NSColor(red: 0.90, green: 0.55, blue: 0.90))?.draw(in: capsule, angle: -60)
+        NSColor(red: 0.35, green: 0.22, blue: 0.58).setStroke()
+        capsule.lineWidth = 2
+        capsule.stroke()
+
+        // Radial gradient in a filled circle (appendArc).
+        let orb = NSBezierPath()
+        orb.appendArc(withCenter: NSMakePoint(360, 130), radius: 55, startAngle: 0, endAngle: 360)
+        NSGradient(colorsAndLocations: (NSColor.white, 0),
+                                       (NSColor(red: 0.20, green: 0.55, blue: 0.95), 1))?.draw(in: orb, angle: 90)
     }
 }
 
@@ -373,6 +432,7 @@ appearancePage.addSubview(themeToggle)
 
 // Sample controls that visibly re-theme when the appearance flips.
 let sampleField = NSTextField(string: "Editable text re-themes", frame: NSMakeRect(24, r10.next(30), 300, 30))
+sampleField.isEditable = true
 let buttonRowY = r10.next(32)
 let sampleButton = NSButton(title: "A button", frame: NSMakeRect(24, buttonRowY, 140, 32))
 let sampleCheck = NSButton(checkboxWithTitle: "A checkbox", frame: NSMakeRect(180, buttonRowY + 4, 160, 24))
@@ -404,6 +464,7 @@ var r11 = Rows(top: pageHeight - 16)
 // Copy / paste through NSPasteboard.general.
 let copyLabel = NSTextField(labelWithString: "Clipboard:", frame: NSMakeRect(24, r11.next(24) + 2, 90, 22))
 let copyField = NSTextField(string: "Copy me", frame: NSMakeRect(120, copyLabel.frame.minY - 4, 200, 30))
+copyField.isEditable = true
 let copyButton = NSButton(title: "Copy", frame: NSMakeRect(330, copyLabel.frame.minY - 5, 80, 30))
 let pasteButton = NSButton(title: "Paste", frame: NSMakeRect(418, copyLabel.frame.minY - 5, 80, 30))
 let pasteResult = NSTextField(labelWithString: "Pasted: —", frame: NSMakeRect(120, r11.next(24), 380, 22))
@@ -478,9 +539,46 @@ demoMatrix.onAction = { m in
     matrixEcho.stringValue = "Matrix selected: row \(m.selectedRow + 1), column \(m.selectedColumn + 1)"
 }
 
+// MARK: - Page 13 · Browser (NSBrowser column navigation)
+final class DemoBrowserData: NSBrowserDelegate {
+    let roots = ["Application", "Controls", "Tables"]
+    let children = [
+        "Application": ["NSApplication", "NSWindow", "NSMenu", "NSAlert"],
+        "Controls": ["NSButton", "NSTextField", "NSComboBox", "NSBrowser"],
+        "Tables": ["NSTableView", "NSOutlineView", "NSTableColumn", "NSScrollView"],
+    ]
+    func browser(_ b: NSBrowser, numberOfChildrenOfItem item: Any?) -> Int {
+        guard let item else { return roots.count }
+        return children[String(describing: item)]?.count ?? 0
+    }
+    func browser(_ b: NSBrowser, child index: Int, ofItem item: Any?) -> Any {
+        guard let item else { return roots[index] }
+        return children[String(describing: item)]?[index] ?? ""
+    }
+    func browser(_ b: NSBrowser, isLeafItem item: Any?) -> Bool {
+        guard let item else { return false }
+        return children[String(describing: item)] == nil
+    }
+}
+let browserPage = NSView(frame: NSMakeRect(0, 0, pageWidth, pageHeight))
+var r13 = Rows(top: pageHeight - 16)
+let browserTitle = NSTextField(labelWithString: "Column browser (NSBrowser) — click through the columns:", frame: NSMakeRect(24, r13.next(24), 500, 22))
+browserPage.addSubview(browserTitle)
+let demoBrowser = NSBrowser(frame: NSMakeRect(24, r13.next(300), 486, 300))
+demoBrowser.columnWidth = 162
+let browserData = DemoBrowserData()
+demoBrowser.delegate = browserData
+demoBrowser.loadColumnZero()
+demoBrowser.setTitle("Frameworks", ofColumn: 0)
+browserPage.addSubview(demoBrowser)
+let browserPath = NSTextField(labelWithString: "Path: /", frame: NSMakeRect(24, r13.next(24), 640, 22))
+browserPath.font = .boldSystemFont(ofSize: 12)
+browserPage.addSubview(browserPath)
+demoBrowser.onAction = { b in browserPath.stringValue = "Path: \(b.path())" }
+
 // MARK: - Tab view assembly
 let tabView = NSTabView(frame: NSMakeRect(0, 0, pageWidth, pageHeight + 60))
-for (label, page) in [("Basics", basics), ("Values", values), ("Pickers", pickers), ("Text", textPage), ("Layout", layoutPage), ("Table", tablePage), ("Grid", gridPage), ("Drawing", drawingPage), ("Auto Layout", autoLayoutPage), ("Appearance", appearancePage), ("Drag & Drop", dndPage), ("Forms", formsPage)] {
+for (label, page) in [("Basics", basics), ("Values", values), ("Pickers", pickers), ("Text", textPage), ("Layout", layoutPage), ("Table", tablePage), ("Grid", gridPage), ("Drawing", drawingPage), ("Auto Layout", autoLayoutPage), ("Appearance", appearancePage), ("Drag & Drop", dndPage), ("Forms", formsPage), ("Browser", browserPage)] {
     let item = NSTabViewItem()
     item.label = label
     item.view = page
@@ -538,12 +636,14 @@ let mainMenu = NSMenu()
 
 let fileItem = NSMenuItem(title: "File")
 let fileMenu = NSMenu(title: "File")
-fileMenu.addItem(withTitle: "Reset Counter") { _ in
+let resetItem = fileMenu.addItem(withTitle: "Reset Counter") { _ in
     clicks = 0
     counter.stringValue = "Clicks: 0 (reset)"
 }
+resetItem.keyEquivalent = "r"   // ⌘R → Ctrl+R on Linux
 fileMenu.addItem(.separator())
-fileMenu.addItem(withTitle: "Quit") { _ in NSApp.terminate(nil) }
+let quitItem = fileMenu.addItem(withTitle: "Quit") { _ in NSApp.terminate(nil) }
+quitItem.keyEquivalent = "q"
 mainMenu.addItem(fileItem)
 mainMenu.setSubmenu(fileMenu, for: fileItem)
 
@@ -567,6 +667,7 @@ NSApp.mainMenu = mainMenu
 let toolbar = NSToolbar(identifier: "main")
 let openItem = NSToolbarItem(itemIdentifier: "open")
 openItem.label = "Open"
+openItem.image = NSImage(named: "document-open-symbolic")
 openItem.onAction = { _ in
     let panel = NSOpenPanel()
     echo.stringValue = panel.runModal() == NSModalResponseOK
@@ -574,6 +675,7 @@ openItem.onAction = { _ in
 }
 let saveItem = NSToolbarItem(itemIdentifier: "save")
 saveItem.label = "Save"
+saveItem.image = NSImage(named: "document-save-symbolic")
 saveItem.onAction = { _ in
     let panel = NSSavePanel()
     panel.nameFieldStringValue = "untitled.txt"
@@ -582,16 +684,45 @@ saveItem.onAction = { _ in
 }
 let infoItem = NSToolbarItem(itemIdentifier: "info")
 infoItem.label = "Info"
+infoItem.image = NSImage(named: "dialog-information-symbolic")
 infoItem.onAction = { _ in
     let alert = NSAlert()
     alert.messageText = "Toolbar"
     alert.informativeText = "The Apple-look toolbar exception, on Linux."
     alert.runModal()
 }
+let customizeItem = NSToolbarItem(itemIdentifier: "customize")
+customizeItem.label = "Customize"
+customizeItem.paletteLabel = "Customize Toolbar"
+customizeItem.image = NSImage(named: "emblem-system-symbolic")
+customizeItem.onAction = { _ in toolbar.runCustomizationPalette(nil) }
+
+final class DemoToolbarDelegate: NSToolbarDelegate {
+    let provider: (String) -> NSToolbarItem?
+    init(_ provider: @escaping (String) -> NSToolbarItem?) { self.provider = provider }
+    func toolbarAllowedItemIdentifiers(_ t: NSToolbar) -> [String] {
+        ["open", "save", "info", "customize", NSToolbarItem.flexibleSpaceIdentifier]
+    }
+    func toolbar(_ t: NSToolbar, itemForItemIdentifier id: String, willBeInsertedIntoToolbar f: Bool) -> NSToolbarItem? {
+        provider(id)
+    }
+}
+let toolbarDelegate = DemoToolbarDelegate { id in
+    switch id {
+    case "open": return openItem
+    case "save": return saveItem
+    case "info": return infoItem
+    case "customize": return customizeItem
+    default: return nil
+    }
+}
+toolbar.allowsUserCustomization = true
+toolbar.delegate = toolbarDelegate
 toolbar.addItem(openItem)
 toolbar.addItem(saveItem)
 toolbar.addItem(.flexibleSpace())
 toolbar.addItem(infoItem)
+toolbar.addItem(customizeItem)
 window.toolbar = toolbar
 
 window.contentView = tabView

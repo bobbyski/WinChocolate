@@ -22,11 +22,24 @@ public final class NSVisualEffectView: NSView {
         case hudWindow
         case contentBackground
         case underWindowBackground
+        case selection
+        case titlebarAndBar
+        case fullScreenUI
     }
+
+    /// Blending mode + active state (accepted for API parity).
+    public enum BlendingMode: Sendable { case behindWindow, withinWindow }
+    public enum State: Sendable { case followsWindowActiveState, active, inactive }
+    public var blendingMode: BlendingMode = .behindWindow
+    public var state: State = .followsWindowActiveState
 
     /// The material shown. Changing it restyles the backdrop.
     public var material: Material {
         didSet { backend.setMaterial(material.rawValue, for: handle) }
+    }
+
+    public required convenience init(frame: NSRect) {
+        self.init(frame: frame, material: .contentBackground)
     }
 
     public init(frame: NSRect, material: Material = .contentBackground) {

@@ -18,9 +18,21 @@ public final class RecordingGraphicsContext: NativeGraphicsContext {
     public func curve(toX x: Double, y: Double, c1x: Double, c1y: Double, c2x: Double, c2y: Double) {
         ops.append("curve(\(Int(x)),\(Int(y)))")
     }
+    public func addArc(centerX: Double, centerY: Double, radius: Double, startAngleRadians: Double, endAngleRadians: Double, clockwise: Bool) {
+        ops.append("arc(\(Int(centerX)),\(Int(centerY)),\(Int(radius)))")
+    }
     public func closePath() { ops.append("close") }
     public func fillPath() { ops.append("fill") }
     public func strokePath() { ops.append("stroke") }
+    public func saveState() { ops.append("save") }
+    public func restoreState() { ops.append("restore") }
+    public func clipToCurrentPath() { ops.append("clip") }
+    public func fillLinearGradient(_ stops: [NativeGradientStop], inRect rect: NSRect, angleDegrees: Double) {
+        ops.append("linearGradient[\(stops.map { rgb($0.color) }.joined(separator: ";"))]@\(Int(angleDegrees))")
+    }
+    public func fillRadialGradient(_ stops: [NativeGradientStop], inRect rect: NSRect) {
+        ops.append("radialGradient[\(stops.map { rgb($0.color) }.joined(separator: ";"))]")
+    }
 }
 
 /// A backend that records state in memory instead of touching a display.
@@ -56,6 +68,12 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     public private(set) var buttonStates: [UInt: Bool] = [:]
     public private(set) var doubleValues: [UInt: Double] = [:]
     public private(set) var selectedIndices: [UInt: Int] = [:]
+    public private(set) var popUpItems: [UInt: [String]] = [:]
+    public private(set) var flippedViews: [UInt: Bool] = [:]
+    public private(set) var sliderVerticals: [UInt: Bool] = [:]
+    public private(set) var datePickerGraphical: [UInt: Bool] = [:]
+    public private(set) var textEditable: [UInt: Bool] = [:]
+    public private(set) var backgroundColors: [UInt: NSColor?] = [:]
     public private(set) var itemsByHandle: [UInt: [String]] = [:]
     private var ranges: [UInt: (min: Double, max: Double)] = [:]
     private var radioGroups: [UInt: [UInt]] = [:]   // member -> all members in its group
@@ -82,6 +100,9 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     public private(set) var displayRequests: [UInt: Int] = [:]
     private var drawHandlers: [UInt: (NativeGraphicsContext, Double, Double) -> Void] = [:]
     public private(set) var tableColumns: [UInt: [String]] = [:]
+    public private(set) var sortableColumns: [UInt: Set<Int>] = [:]
+    private var sortActions: [UInt: (Int, Bool) -> Void] = [:]
+    private var rowActivateActions: [UInt: (Int) -> Void] = [:]
     public private(set) var tableRowCounts: [UInt: Int] = [:]
     private var tableCellProviders: [UInt: (Int, Int) -> String] = [:]
     public private(set) var collectionItemCounts: [UInt: Int] = [:]
@@ -150,13 +171,57 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     public func installMenuBar(_ menus: [NativeMenuSpec], on window: NativeHandle) {
         menuBars[window.rawValue] = menus
     }
-    public func installToolbar(_ items: [NativeToolbarItemSpec], on window: NativeHandle) {
+    public private(set) var toolbarDisplayModes: [UInt: NativeToolbarDisplayMode] = [:]
+    public func installToolbar(_ items: [NativeToolbarItemSpec], displayMode: NativeToolbarDisplayMode = .iconAndLabel, on window: NativeHandle) {
+        toolbarDisplayModes[window.rawValue] = displayMode
         toolbars[window.rawValue] = items
     }
     /// Fires toolbar item `index`'s action, as if the user clicked it.
     public func simulateToolbarActivate(_ window: NativeHandle, item index: Int) {
         guard let items = toolbars[window.rawValue], index < items.count else { return }
         items[index].action?()
+    }
+
+    /// The palette items from the most recent customization request.
+    public private(set) var toolbarCustomizationItems: [NativeToolbarPaletteItem] = []
+    private var toolbarCustomizationClose: (() -> Void)?
+    public func runToolbarCustomization(_ session: NativeToolbarCustomizationSession,
+                                        handlers: NativeToolbarCustomizationHandlers,
+                                        for window: NativeHandle) {
+        toolbarCustomizationSession = session
+        toolbarCustomizationItems = session.palette
+        toolbarCustomizationHandlers = handlers
+        toolbarCustomizationClose = handlers.onClose
+    }
+
+    public func updateToolbarCustomization(_ session: NativeToolbarCustomizationSession) {
+        toolbarCustomizationSession = session
+        toolbarCustomizationItems = session.palette
+    }
+
+    /// The last session pushed to the (recorded) customization panel.
+    public private(set) var toolbarCustomizationSession: NativeToolbarCustomizationSession?
+    private var toolbarCustomizationHandlers: NativeToolbarCustomizationHandlers?
+
+    /// Test hooks: drive the panel exactly as drags would.
+    public func simulateToolbarCustomizationInsert(_ identifier: String, at index: Int) {
+        toolbarCustomizationHandlers?.onInsert(identifier, index)
+    }
+    public func simulateToolbarCustomizationRemove(at index: Int) {
+        toolbarCustomizationHandlers?.onRemove(index)
+    }
+    public func simulateToolbarCustomizationMove(from: Int, to: Int) {
+        toolbarCustomizationHandlers?.onMove(from, to)
+    }
+    public func simulateToolbarCustomizationReset() {
+        toolbarCustomizationHandlers?.onResetToDefault()
+    }
+    public func simulateToolbarCustomizationDisplayMode(_ index: Int) {
+        toolbarCustomizationHandlers?.onDisplayMode(index)
+    }
+    /// Test hook: closes the open customization palette.
+    public func simulateToolbarCustomizationClose() {
+        toolbarCustomizationClose?()
     }
     public func runAlert(message: String, informative: String, buttons: [String], for window: NativeHandle?) -> Int {
         alerts.append((message: message, informative: informative, buttons: buttons))
@@ -173,6 +238,21 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
 
     // MARK: Appearance
     public func setAppearanceDark(_ dark: Bool) { appearanceIsDark = dark }
+
+    // MARK: Popover
+    public private(set) var popoverContents: [UInt: UInt] = [:]
+    public private(set) var shownPopovers: Set<UInt> = []
+    public func createPopover() -> NativeHandle { allocate(.view) }
+    public func setPopoverContent(_ content: NativeHandle, size: NSSize, for popover: NativeHandle) {
+        popoverContents[popover.rawValue] = content.rawValue
+        frames[content.rawValue] = NSMakeRect(0, 0, size.width, size.height)
+    }
+    public func showPopover(_ popover: NativeHandle, relativeTo view: NativeHandle, rect: NSRect, edge: Int) {
+        shownPopovers.insert(popover.rawValue)
+    }
+    public func closePopover(_ popover: NativeHandle) {
+        shownPopovers.remove(popover.rawValue)
+    }
 
     // MARK: Pasteboard & drag-and-drop
     public func setClipboardString(_ string: String) { clipboard = string }
@@ -348,6 +428,28 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     public func addTableColumn(title: String, to table: NativeHandle) {
         tableColumns[table.rawValue, default: []].append(title)
     }
+    public func setTableColumnTitle(_ title: String, columnIndex: Int, for table: NativeHandle) {
+        guard var cols = tableColumns[table.rawValue], columnIndex < cols.count else { return }
+        cols[columnIndex] = title
+        tableColumns[table.rawValue] = cols
+    }
+    public func setColumnSortable(_ columnIndex: Int, for table: NativeHandle) {
+        sortableColumns[table.rawValue, default: []].insert(columnIndex)
+    }
+    public func setSortChangeAction(for table: NativeHandle, action: @escaping (Int, Bool) -> Void) {
+        sortActions[table.rawValue] = action
+    }
+    public func setRowActivateAction(for table: NativeHandle, action: @escaping (Int) -> Void) {
+        rowActivateActions[table.rawValue] = action
+    }
+    /// Test hook: simulates a click on a sortable column header.
+    public func simulateSortColumn(_ columnIndex: Int, ascending: Bool, on table: NativeHandle) {
+        sortActions[table.rawValue]?(columnIndex, ascending)
+    }
+    /// Test hook: simulates activating a row (double-click / Enter).
+    public func simulateRowActivate(_ row: Int, on table: NativeHandle) {
+        rowActivateActions[table.rawValue]?(row)
+    }
     public func setTableRowCount(_ count: Int, for table: NativeHandle) {
         tableRowCounts[table.rawValue] = count
     }
@@ -433,6 +535,45 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     public func createScrollView(frame: NSRect) -> NativeHandle {
         let h = allocate(.scrollView); frames[h.rawValue] = frame; return h
     }
+
+    /// Whether each scroller is allowed to appear, per scroll view.
+    public private(set) var scrollerPolicies: [UInt: (vertical: Bool, horizontal: Bool)] = [:]
+    private var scrollOffsets: [UInt: NSPoint] = [:]
+    private var scrollActions: [UInt: (Double, Double) -> Void] = [:]
+
+    public func setScrollerPolicy(vertical: Bool, horizontal: Bool, for handle: NativeHandle) {
+        scrollerPolicies[handle.rawValue] = (vertical, horizontal)
+    }
+    public func scrollDocumentSize(for handle: NativeHandle) -> (width: Double, height: Double) {
+        // The document view's frame is the scrollable content size.
+        let docFrame = contentViews[handle.rawValue].flatMap { frames[$0] } ?? frames[handle.rawValue] ?? .zero
+        return (Double(docFrame.width), Double(docFrame.height))
+    }
+    public func scrollVisibleSize(for handle: NativeHandle) -> (width: Double, height: Double) {
+        let frame = frames[handle.rawValue] ?? .zero
+        return (Double(frame.width), Double(frame.height))
+    }
+    public func setScrollOffset(x: Double, y: Double, for handle: NativeHandle) {
+        // Clamp to the scrollable range, as GTK's adjustments do.
+        let doc = scrollDocumentSize(for: handle), vis = scrollVisibleSize(for: handle)
+        let cx = min(max(0, x), max(0, doc.width - vis.width))
+        let cy = min(max(0, y), max(0, doc.height - vis.height))
+        scrollOffsets[handle.rawValue] = NSMakePoint(CGFloat(cx), CGFloat(cy))
+        scrollActions[handle.rawValue]?(cx, cy)
+    }
+    public func scrollOffset(for handle: NativeHandle) -> (x: Double, y: Double) {
+        let p = scrollOffsets[handle.rawValue] ?? .zero
+        return (Double(p.x), Double(p.y))
+    }
+    public func setScrollChangeAction(for handle: NativeHandle, action: @escaping (Double, Double) -> Void) {
+        scrollActions[handle.rawValue] = action
+    }
+
+    /// Test hook: simulates the user scrolling to `(x, y)` (clamped), firing the
+    /// scroll-change action.
+    public func simulateScroll(to point: NSPoint, on handle: NativeHandle) {
+        setScrollOffset(x: Double(point.x), y: Double(point.y), for: handle)
+    }
     public func createSplitView(vertical: Bool, frame: NSRect) -> NativeHandle {
         let h = allocate(.splitView); frames[h.rawValue] = frame; return h
     }
@@ -445,11 +586,95 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     public func addSubview(_ child: NativeHandle, to parent: NativeHandle) {
         subviews[parent.rawValue, default: []].append(child.rawValue)
     }
+    public func setViewFlipped(_ flipped: Bool, for handle: NativeHandle) {
+        flippedViews[handle.rawValue] = flipped
+    }
+    public func setSliderVertical(_ vertical: Bool, for handle: NativeHandle) {
+        sliderVerticals[handle.rawValue] = vertical
+    }
+    /// Recorded date ranges, for tests.
+    public private(set) var dateRanges: [UInt: (min: Date?, max: Date?)] = [:]
+    public func setDateRange(min: Date?, max: Date?, for handle: NativeHandle) {
+        dateRanges[handle.rawValue] = (min, max)
+        // Clamping is the control's contract, so model it here too.
+        if let current = dates[handle.rawValue] {
+            if let min, current < min { setDateValue(min, for: handle) }
+            if let max, current > max { setDateValue(max, for: handle) }
+        }
+    }
+
+    /// The compact field's rendered text, for tests.
+    public private(set) var datePickerTexts: [UInt: String] = [:]
+    public func setDatePickerText(_ text: String, for handle: NativeHandle) {
+        datePickerTexts[handle.rawValue] = text
+    }
+
+    /// The highlighted element's range, for tests.
+    public private(set) var datePickerSelections: [UInt: (location: Int, length: Int)] = [:]
+    public func setDatePickerSelection(location: Int, length: Int, for handle: NativeHandle) {
+        datePickerSelections[handle.rawValue] = (location, length)
+    }
+
+    private var dateStepActions: [UInt: (Int) -> Void] = [:]
+    public func setDateStepAction(for handle: NativeHandle, action: @escaping (Int) -> Void) {
+        dateStepActions[handle.rawValue] = action
+    }
+    /// Test hook: press the picker's stepper.
+    public func simulateDateStep(_ direction: Int, for handle: NativeHandle) {
+        dateStepActions[handle.rawValue]?(direction)
+    }
+
+    private var datePickerCursorActions: [UInt: (Int) -> Void] = [:]
+    public func setDatePickerCursorAction(for handle: NativeHandle, action: @escaping (Int) -> Void) {
+        datePickerCursorActions[handle.rawValue] = action
+    }
+    /// Test hook: click the compact field at a character offset.
+    public func simulateDatePickerClick(atCharacter offset: Int, for handle: NativeHandle) {
+        datePickerCursorActions[handle.rawValue]?(offset)
+    }
+
+    private var datePickerTypeActions: [UInt: (String) -> Void] = [:]
+    public func setDatePickerTypeAction(for handle: NativeHandle, action: @escaping (String) -> Void) {
+        datePickerTypeActions[handle.rawValue] = action
+    }
+    /// Test hook: type into the compact field's selected element.
+    public func simulateDatePickerTyping(_ text: String, for handle: NativeHandle) {
+        for character in text { datePickerTypeActions[handle.rawValue]?(String(character)) }
+    }
+
+    private var datePickerMoveActions: [UInt: (Int) -> Void] = [:]
+    public func setDatePickerMoveAction(for handle: NativeHandle, action: @escaping (Int) -> Void) {
+        datePickerMoveActions[handle.rawValue] = action
+    }
+    /// Test hook: press left/right in the compact field.
+    public func simulateDatePickerMove(_ delta: Int, for handle: NativeHandle) {
+        datePickerMoveActions[handle.rawValue]?(delta)
+    }
+
+    public func setDatePickerGraphical(_ graphical: Bool, for handle: NativeHandle) {
+        datePickerGraphical[handle.rawValue] = graphical
+    }
+    public func setTextEditable(_ editable: Bool, for handle: NativeHandle) {
+        textEditable[handle.rawValue] = editable
+    }
+    public func setBackgroundColor(_ color: NSColor?, for handle: NativeHandle) {
+        backgroundColors[handle.rawValue] = color
+    }
+    public func setButtonKind(_ kind: NativeButtonKind, title: String, for handle: NativeHandle) {
+        switch kind {
+        case .push:     kinds[handle.rawValue] = .button
+        case .checkbox: kinds[handle.rawValue] = .checkbox
+        case .radio:    kinds[handle.rawValue] = .radio
+        }
+        texts[handle.rawValue] = title
+    }
 
     // MARK: Mutators
     public func setText(_ text: String, for handle: NativeHandle) { texts[handle.rawValue] = text }
     public func setFrame(_ frame: NSRect, for handle: NativeHandle) { frames[handle.rawValue] = frame }
     public func setEnabled(_ isEnabled: Bool, for handle: NativeHandle) { enabledStates[handle.rawValue] = isEnabled }
+    public private(set) var hiddenStates: [UInt: Bool] = [:]
+    public func setHidden(_ isHidden: Bool, for handle: NativeHandle) { hiddenStates[handle.rawValue] = isHidden }
     public func setFont(_ font: NativeFontSpec, for handle: NativeHandle) { fonts[handle.rawValue] = font }
     public func setTextColor(_ color: NSColor, for handle: NativeHandle) { textColors[handle.rawValue] = color }
     public func setMaterial(_ material: String, for handle: NativeHandle) { materials[handle.rawValue] = material }
@@ -490,6 +715,10 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     }
     public func setSelectedIndex(_ index: Int, for handle: NativeHandle) {
         selectedIndices[handle.rawValue] = index
+    }
+    public func setPopUpItems(_ titles: [String], selectedIndex: Int, for handle: NativeHandle) {
+        popUpItems[handle.rawValue] = titles
+        selectedIndices[handle.rawValue] = selectedIndex
     }
     public func setToggleAction(for handle: NativeHandle, action: @escaping (Bool) -> Void) {
         toggleActions[handle.rawValue] = action

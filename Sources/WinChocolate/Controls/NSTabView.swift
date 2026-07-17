@@ -20,7 +20,7 @@ open class NSTabViewItem: NSObject {
 
 /// The methods a tab-view delegate uses to observe selection, matching
 /// AppKit's shape.
-public protocol NSTabViewDelegate: AnyObject {
+public protocol NSTabViewDelegate: NSObjectProtocol {
     /// Tells the delegate a tab item was selected.
     func tabView(_ tabView: NSTabView, didSelect tabViewItem: NSTabViewItem?)
 }
@@ -62,9 +62,6 @@ open class NSTabView: NSControl {
                       height: contentHeight + tabBarHeight + 16)
     }
 
-    /// Swift-native callback invoked when tab selection changes.
-    open var onSelectionChanged: ((NSTabView) -> Void)?
-
     /// The delegate notified when tab selection changes.
     open weak var delegate: NSTabViewDelegate?
 
@@ -83,7 +80,7 @@ open class NSTabView: NSControl {
     }
 
     /// Creates a tab view with a frame.
-    public override init(frame frameRect: NSRect) {
+    public required init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
     }
 
@@ -131,7 +128,6 @@ open class NSTabView: NSControl {
         if !isUpdatingSelectionFromNative, let nativeHandle {
             realizedBackend?.setTabViewSelectedIndex(selectedIndex, for: nativeHandle)
         }
-        onSelectionChanged?(self)
         delegate?.tabView(self, didSelect: selectedTabViewItem)
     }
 
@@ -158,7 +154,7 @@ open class NSTabView: NSControl {
             self.selectedIndex = backend.tabViewSelectedIndex(for: nativeHandle)
             self.isUpdatingSelectionFromNative = false
             _ = self.window?.makeFirstResponder(self)
-            self.onSelectionChanged?(self)
+            self.delegate?.tabView(self, didSelect: self.selectedTabViewItem)
             self.sendAction()
         }
         return handle

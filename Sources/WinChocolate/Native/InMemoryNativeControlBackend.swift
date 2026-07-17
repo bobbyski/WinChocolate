@@ -69,6 +69,24 @@ public final class RecordingDrawingContext: NativeDrawingContext {
         }
     }
 
+    /// A recorded in-memory (data-backed) bitmap draw.
+    public struct BitmapImage: Equatable {
+        public let width: Int
+        public let height: Int
+        public let rect: NSRect
+        public let tint: NSColor?
+        /// The RGBA byte count supplied (width*height*4), for assertions.
+        public let byteCount: Int
+
+        public init(width: Int, height: Int, rect: NSRect, tint: NSColor?, byteCount: Int) {
+            self.width = width
+            self.height = height
+            self.rect = rect
+            self.tint = tint
+            self.byteCount = byteCount
+        }
+    }
+
     /// A recorded linear-gradient command.
     public struct Gradient: Equatable {
         /// The gradient color stops in order.
@@ -108,6 +126,9 @@ public final class RecordingDrawingContext: NativeDrawingContext {
     /// Image commands in draw order.
     public private(set) var images: [Image] = []
 
+    /// In-memory bitmap draws in order (data-backed images).
+    public private(set) var bitmapImages: [BitmapImage] = []
+
     /// Linear-gradient commands in draw order.
     public private(set) var gradients: [Gradient] = []
 
@@ -139,6 +160,11 @@ public final class RecordingDrawingContext: NativeDrawingContext {
     /// Records an image command.
     public func drawImage(atPath path: String, in rect: NSRect, tint: NSColor?) {
         images.append(Image(path: path, rect: rect, tint: tint))
+    }
+
+    /// Records an in-memory bitmap draw.
+    public func drawImage(rgbaPixels: [UInt8], width: Int, height: Int, in rect: NSRect, tint: NSColor?) {
+        bitmapImages.append(BitmapImage(width: width, height: height, rect: rect, tint: tint, byteCount: rgbaPixels.count))
     }
 
     /// Records a linear-gradient command.
@@ -308,6 +334,9 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
         /// Recorded tooltip text.
         public var toolTip: String?
 
+        /// Recorded explicit accessibility name (from `accessibilityLabel`).
+        public var accessibilityName: String?
+
         /// Recorded font.
         public var font: NSFont?
 
@@ -349,6 +378,10 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
 
         /// Recorded date-picker display format.
         public var datePickerFormat: String?
+        /// Whether the peer was asked for a stepper (`.textFieldAndStepper`).
+        public var datePickerShowsStepper = false
+        /// The zone the peer renders its wall clock in.
+        public var datePickerTimeZone: TimeZone?
 
         /// Recorded button image file path.
         public var buttonImagePath: String?
@@ -1021,12 +1054,21 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     }
 
     /// Records a date picker creation request.
-    public func createDatePicker(date: Date, minDate: Date?, maxDate: Date?, showsCalendar: Bool, frame: NSRect, parent: NativeHandle?) -> NativeHandle {
-        let handle = makeHandle(kind: showsCalendar ? "calendarDatePicker" : "datePicker", text: "", frame: frame, parent: parent)
+    public func createDatePicker(date: Date, minDate: Date?, maxDate: Date?, style: NSDatePicker.Style, frame: NSRect, parent: NativeHandle?) -> NativeHandle {
+        let handle = makeHandle(kind: style == .clockAndCalendar ? "calendarDatePicker" : "datePicker", text: "", frame: frame, parent: parent)
         records[handle]?.datePickerDate = date
         records[handle]?.datePickerMinDate = minDate
         records[handle]?.datePickerMaxDate = maxDate
+        // The stepper is the observable half of `.textFieldAndStepper` — the
+        // style is named for it, and a field without one is the bug this
+        // records so a test can catch.
+        records[handle]?.datePickerShowsStepper = style == .textFieldAndStepper
         return handle
+    }
+
+    /// Records a date picker's zone.
+    public func setDatePickerTimeZone(_ timeZone: TimeZone, for handle: NativeHandle) {
+        records[handle]?.datePickerTimeZone = timeZone
     }
 
     /// Records a scroll view creation request.
@@ -1142,8 +1184,13 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
         records[handle] = record
     }
 
+    /// Number of `setFrame` calls that reached the backend per handle. Used to
+    /// verify the framework coalesces duplicate frame pushes (flicker guard).
+    public private(set) var setFrameCallCounts: [NativeHandle: Int] = [:]
+
     /// Updates a recorded control frame.
     public func setFrame(_ frame: NSRect, for handle: NativeHandle) {
+        setFrameCallCounts[handle, default: 0] += 1
         guard var record = records[handle] else {
             return
         }
@@ -1326,6 +1373,22 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
         }
 
         record.toolTip = toolTip
+        records[handle] = record
+    }
+
+    /// The display scale reported by `winDisplayScale()`, scriptable for tests.
+    public var scriptedDisplayScale: CGFloat = 1.0
+
+    /// Returns the scripted display scale.
+    public func winDisplayScale() -> CGFloat { scriptedDisplayScale }
+
+    /// Records the explicit accessibility name pushed from `accessibilityLabel`.
+    public func setAccessibilityName(_ name: String?, for handle: NativeHandle) {
+        guard var record = records[handle] else {
+            return
+        }
+
+        record.accessibilityName = name
         records[handle] = record
     }
 

@@ -83,7 +83,7 @@ open class NSStepper: NSControl {
     }
 
     /// Creates a stepper with a frame.
-    public override init(frame frameRect: NSRect) {
+    public required init(frame frameRect: NSRect) {
         self.minValue = 0
         self.maxValue = 100
         self.increment = 1

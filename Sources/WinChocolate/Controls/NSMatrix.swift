@@ -14,7 +14,7 @@ open class NSButtonCell: NSCell {
     }
 
     /// Creates a button cell with a title.
-    public init(title: String) {
+    package init(title: String) {
         self.title = title
         self.state = .off
         super.init(textCell: title)
@@ -82,7 +82,7 @@ open class NSMatrix: NSControl {
     public private(set) var selectedColumn: Int = -1
 
     /// Creates an empty matrix.
-    public override init(frame frameRect: NSRect) {
+    public required init(frame frameRect: NSRect) {
         self.mode = .radioModeMatrix
         self.cellSize = NSMakeSize(96, 28)
         self.intercellSpacing = NSMakeSize(8, 6)
@@ -161,13 +161,45 @@ open class NSMatrix: NSControl {
         entries[index].button.state = buttonCell.state
     }
 
-    /// Returns the visual button for tests and demo wiring.
-    open func button(atRow row: Int, column: Int) -> NSButton? {
+    /// Returns the composed visual button. Not API (18.7): AppKit's `NSMatrix`
+    /// is cell-drawn and vends no button views — `package` for the composed
+    /// implementation and the suite.
+    package func button(atRow row: Int, column: Int) -> NSButton? {
         guard let index = flatIndex(row: row, column: column) else {
             return nil
         }
 
         return entries[index].button
+    }
+
+    /// On Apple, Tab enters the matrix and moves through its cells. The
+    /// composed implementation interposes its buttons into the key loop the
+    /// same way `NSForm` does: `nextKeyView` keeps Apple's read-back
+    /// semantics while the focus walk enters via the first button and leaves
+    /// from the last.
+    open override var nextKeyView: NSView? {
+        get {
+            super.nextKeyView
+        }
+        set {
+            super.nextKeyView = newValue
+            refreshKeyViewLoop()
+        }
+    }
+
+    override var winEffectiveNextKeyView: NSView? {
+        entries.first?.button ?? super.winEffectiveNextKeyView
+    }
+
+    override var winShouldDescendInKeyLoop: Bool {
+        false
+    }
+
+    private func refreshKeyViewLoop() {
+        for (index, entry) in entries.enumerated() {
+            entry.button.nextKeyView = index + 1 < entries.count ? entries[index + 1].button : super.nextKeyView
+        }
+        entries.first?.button.winPreviousKeyView = self
     }
 
     private func buildCells(prototype: NSCell?) {
@@ -186,15 +218,16 @@ open class NSMatrix: NSControl {
         syncButtonTypes()
         wireActions()
         layoutCells()
+        refreshKeyViewLoop()
     }
 
     private func syncButtonTypes() {
         for entry in entries {
             switch mode {
             case .radioModeMatrix:
-                entry.button.setButtonType(.radioButton)
+                entry.button.setButtonType(.radio)
             case .highlightModeMatrix, .listModeMatrix:
-                entry.button.setButtonType(.switchButton)
+                entry.button.setButtonType(.switch)
             case .trackModeMatrix:
                 entry.button.setButtonType(.momentaryPushIn)
             }
@@ -203,7 +236,7 @@ open class NSMatrix: NSControl {
 
     private func wireActions() {
         for index in entries.indices {
-            entries[index].button.onAction = { [weak self] _ in
+            entries[index].button.winInternalAction = { [weak self] _ in
                 guard let self else {
                     return
                 }

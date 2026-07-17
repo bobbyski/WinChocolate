@@ -7,6 +7,9 @@
 
 import LinChocolate
 import Foundation
+// swift-corelibs-foundation also exports NSSortDescriptor (deprecated, no `key:`
+// init); pull LinChocolate's into direct scope so the name resolves to ours.
+import class LinChocolate.NSSortDescriptor
 
 var failures = 0
 // Top-level `main.swift` code is @MainActor in Swift 6, so `failures` is
@@ -598,6 +601,7 @@ do {
     let toolbar = NSToolbar(identifier: "main")
     let open = NSToolbarItem(itemIdentifier: "open")
     open.label = "Open"
+    open.image = NSImage(named: "document-open-symbolic")
     open.onAction = { _ in opened += 1 }
     toolbar.addItem(open)
     toolbar.addItem(.flexibleSpace())
@@ -609,7 +613,10 @@ do {
     let specs = backend.toolbars[window.handle.rawValue]
     check(specs?.count == 3, "toolbar installs three items")
     check(specs?[0].label == "Open" && specs?[2].label == "Save", "item labels preserved in order")
+    check(specs?[0].iconName == "document-open-symbolic", "toolbar item icon reaches the backend")
+    check(specs?[2].iconName == nil, "an item without an image has no icon")
     check(specs?[1].isFlexibleSpace == true, "flexible space carried through the seam")
+    check(NSImage(named: "") == nil, "an empty image name is rejected (AppKit init? semantics)")
 
     backend.simulateToolbarActivate(window.handle, item: 0)
     check(opened == 1, "toolbar item action fires")
@@ -913,9 +920,678 @@ do {
     check(firedRC?.0 == 1 && firedRC?.1 == 1, "cell click fires onAction with the cell's row/column")
 }
 
+// MARK: 26 — Scrolling stack (NSScrollView + NSClipView + NSScroller)
+do {
+    let backend = InMemoryNativeControlBackend()
+    NSApplication.shared.nativeBackend = backend
+
+    // 200×100 viewport onto a 200×400 document.
+    let scrollView = NSScrollView(frame: NSMakeRect(0, 0, 200, 100))
+    let document = NSView(frame: NSMakeRect(0, 0, 200, 400))
+    scrollView.documentView = document
+
+    check(scrollView.contentView.documentRect == NSMakeRect(0, 0, 200, 400), "clip view reports the document rect")
+    check(scrollView.documentVisibleRect == NSMakeRect(0, 0, 200, 100), "visible rect starts at the top-left")
+    check(scrollView.verticalScroller.isVisible, "vertical scroller shows when content overflows")
+    check(!scrollView.horizontalScroller.isVisible, "horizontal scroller hidden when content fits width")
+    check(abs(scrollView.verticalScroller.knobProportion - 0.25) < 0.001, "knob proportion = visible/document (100/400)")
+
+    // Scroller policy reaches the backend.
+    scrollView.hasHorizontalScroller = false
+    check(backend.scrollerPolicies[scrollView.handle.rawValue]?.horizontal == false, "scroller policy reaches the backend")
+
+    // Programmatic scroll, clamped to the range and reported.
+    var scrolled: NSPoint?
+    scrollView.onScroll = { scrolled = $0 }
+    scrollView.scroll(to: NSMakePoint(0, 150))
+    check(scrollView.documentVisibleRect.origin.y == 150, "scroll(to:) moves the visible rect")
+    check(scrollView.contentView.bounds.origin.y == 150, "clip view bounds origin follows the offset")
+    check(scrolled == NSMakePoint(0, 150), "onScroll fires with the new offset")
+    check(abs(scrollView.verticalScroller.doubleValue - 0.5) < 0.001, "scroller knob at 0.5 (150 of 300 range)")
+
+    // Over-scroll clamps to the max offset (document 400 − visible 100 = 300).
+    backend.simulateScroll(to: NSMakePoint(0, 999), on: scrollView.handle)
+    check(scrollView.documentVisibleRect.origin.y == 300, "over-scroll clamps to the bottom")
+    check(abs(scrollView.verticalScroller.doubleValue - 1.0) < 0.001, "scroller knob at the end")
+
+    // scrollToEndOfDocument lands exactly at the max offset (last content at the
+    // bottom edge, not overshot); scrollToBeginningOfDocument returns to the top.
+    scrollView.scrollToBeginningOfDocument()
+    check(scrollView.documentVisibleRect.origin.y == 0, "scrollToBeginningOfDocument returns to the top")
+    scrollView.scrollToEndOfDocument()
+    check(scrollView.documentVisibleRect.origin.y == 300, "scrollToEndOfDocument aligns the document end to the viewport bottom")
+}
+
+// MARK: 27 — Table sorting + double-click (NSSortDescriptor)
+final class SortableTableSource: NSTableViewDataSource {
+    var rows = ["Beta", "Alpha", "Gamma"]
+    var lastSortKey: String?
+    var lastAscending: Bool?
+    func numberOfRows(in tableView: NSTableView) -> Int { rows.count }
+    func tableView(_ t: NSTableView, objectValueFor c: NSTableColumn?, row: Int) -> Any? { rows[row] }
+    func tableView(_ t: NSTableView, sortDescriptorsDidChange old: [NSSortDescriptor]) {
+        guard let d = t.sortDescriptors.first else { return }
+        lastSortKey = d.key
+        lastAscending = d.ascending
+        rows.sort(by: d.ascending ? { $0 < $1 } : { $0 > $1 })
+        t.reloadData()
+    }
+}
+do {
+    let backend = InMemoryNativeControlBackend()
+    NSApplication.shared.nativeBackend = backend
+
+    let table = NSTableView(frame: NSMakeRect(0, 0, 300, 200))
+    let nameCol = NSTableColumn(identifier: "name")
+    nameCol.title = "Name"
+    nameCol.sortDescriptorPrototype = NSSortDescriptor(key: "name", ascending: true)
+    table.addTableColumn(nameCol)
+    let source = SortableTableSource()
+    table.dataSource = source
+
+    check(backend.sortableColumns[table.handle.rawValue]?.contains(0) == true, "column with a prototype becomes sortable")
+    check(backend.tableColumns[table.handle.rawValue]?.first == "Name", "column header title reaches the backend")
+
+    // Live retitle.
+    nameCol.title = "Renamed"
+    check(backend.tableColumns[table.handle.rawValue]?.first == "Renamed", "retitling a column updates the live header")
+
+    // Header click (descending) → sortDescriptors update + data source re-sorts.
+    backend.simulateSortColumn(0, ascending: false, on: table.handle)
+    check(table.sortDescriptors.first?.key == "name", "clicking a header sets the column's sort key")
+    check(table.sortDescriptors.first?.ascending == false, "sort direction reflects the click")
+    check(source.lastSortKey == "name" && source.lastAscending == false, "data source's sortDescriptorsDidChange fires")
+    check(source.rows == ["Gamma", "Beta", "Alpha"], "data source re-sorted descending")
+
+    // Reversed descriptor helper.
+    check(NSSortDescriptor(key: "x", ascending: true).reversedSortDescriptor.ascending == false, "reversedSortDescriptor flips direction")
+
+    // Double-click activation.
+    var activated: Int?
+    table.onDoubleClick = { activated = $0 }
+    backend.simulateRowActivate(2, on: table.handle)
+    check(activated == 2, "onDoubleClick fires with the activated row")
+    check(table.selectedRow == 2, "row activation also selects the row")
+}
+
+// MARK: 28 — NSBrowser (column navigation)
+final class DemoBrowser: NSBrowserDelegate {
+    let roots = ["Application", "Controls", "Tables"]
+    let children = [
+        "Application": ["NSApplication", "NSWindow"],
+        "Controls": ["NSButton", "NSTextField", "NSBrowser"],
+        "Tables": ["NSTableView", "NSOutlineView"],
+    ]
+    func browser(_ b: NSBrowser, numberOfChildrenOfItem item: Any?) -> Int {
+        guard let item else { return roots.count }
+        return children[String(describing: item)]?.count ?? 0
+    }
+    func browser(_ b: NSBrowser, child index: Int, ofItem item: Any?) -> Any {
+        guard let item else { return roots[index] }
+        return children[String(describing: item)]?[index] ?? ""
+    }
+    func browser(_ b: NSBrowser, isLeafItem item: Any?) -> Bool {
+        guard let item else { return false }
+        return children[String(describing: item)] == nil
+    }
+}
+do {
+    let backend = InMemoryNativeControlBackend()
+    NSApplication.shared.nativeBackend = backend
+
+    let browser = NSBrowser(frame: NSMakeRect(0, 0, 480, 150))
+    browser.columnWidth = 160
+    let delegate = DemoBrowser()
+    browser.delegate = delegate
+    browser.loadColumnZero()
+
+    check(browser.numberOfRows(inColumn: 0) == 3, "column zero shows the root items")
+    check(browser.numberOfRows(inColumn: 1) == 0, "deeper columns empty until a parent is selected")
+    check(browser.path() == "/", "path starts at root")
+
+    // Drill into "Controls" (index 1) → column 1 shows its 3 children.
+    browser.selectRow(1, inColumn: 0)
+    check(browser.numberOfRows(inColumn: 1) == 3, "selecting a parent populates the next column")
+    check(browser.path() == "/Controls", "path reflects the first selection")
+    check(browser.selectedRow(inColumn: 0) == 1, "selectedRow(inColumn:) reports the selection")
+
+    // Drill into "NSTextField" (index 1 of Controls).
+    browser.selectRow(1, inColumn: 1)
+    check(browser.path() == "/Controls/NSTextField", "path extends through the second column")
+    // NSTextField is a leaf → column 2 empty.
+    check(browser.numberOfRows(inColumn: 2) == 0, "a leaf selection leaves the next column empty")
+
+    // Re-selecting a shallower column truncates the deeper path.
+    browser.selectRow(2, inColumn: 0)   // "Tables"
+    check(browser.path() == "/Tables", "changing a shallow selection truncates the path")
+    check(browser.numberOfRows(inColumn: 1) == 2, "and repopulates the next column for the new parent")
+}
+
+// MARK: 29 — Gradients + arcs + rounded rects (NSGradient / NSBezierPath)
+final class GradientCanvas: NSView {
+    override func draw(_ dirtyRect: NSRect) {
+        NSGradient(starting: .red, ending: .blue)?.draw(in: NSMakeRect(0, 0, 100, 50), angle: 90)
+        let circle = NSBezierPath()
+        circle.appendArc(withCenter: NSMakePoint(50, 50), radius: 20, startAngle: 0, endAngle: 360)
+        NSColor.green.setFill()
+        circle.fill()
+        let capsule = NSBezierPath(roundedRect: NSMakeRect(10, 10, 80, 40), xRadius: 8, yRadius: 8)
+        NSGradient(colorsAndLocations: (.red, 0), (.green, 0.5), (.blue, 1))?.draw(in: capsule, angle: 45)
+    }
+}
+do {
+    let backend = InMemoryNativeControlBackend()
+    NSApplication.shared.nativeBackend = backend
+
+    let canvas = GradientCanvas(frame: NSMakeRect(0, 0, 120, 80))
+    canvas.needsDisplay = true
+    let ops = backend.lastDrawOps[canvas.handle.rawValue] ?? []
+
+    check(ops.contains { $0.hasPrefix("linearGradient[1.00,0.00,0.00;0.00,0.00,1.00]@90") },
+          "linear gradient fills a rect with its stops at the given angle")
+    check(ops.contains("arc(50,50,20)"), "appendArc reaches the context as an arc op")
+    // Path-clipped gradient: save → build path → clip → gradient → restore.
+    let save = ops.firstIndex(of: "save"), clip = ops.firstIndex(of: "clip"), restore = ops.firstIndex(of: "restore")
+    check(save != nil && clip != nil && restore != nil && save! < clip! && clip! < restore!,
+          "path gradient clips inside a save/restore scope")
+    check(ops.contains { $0.hasPrefix("linearGradient[1.00,0.00,0.00;0.00,1.00,0.00;0.00,0.00,1.00]") },
+          "three-stop gradient carries all stops")
+    // Rounded rect builds four Bézier corners + four edges.
+    check(ops.filter { $0.hasPrefix("curve") }.count >= 4, "rounded rect uses four Bézier corners")
+
+    check(NSGradient(colors: [.red])?.numberOfColorStops == nil, "a one-color gradient is nil (needs ≥2)")
+    check(NSGradient(colors: [.red, .green, .blue])?.numberOfColorStops == 3, "colors init spaces stops evenly")
+
+    let path = NSBezierPath(roundedRect: NSMakeRect(10, 20, 100, 40), xRadius: 5, yRadius: 5)
+    check(!path.isEmpty, "rounded rect path is non-empty")
+    check(abs(path.bounds.width - 100) < 0.01 && abs(path.bounds.minX - 10) < 0.01, "path bounds cover the rect")
+}
+
+// MARK: 30 — NSPopover
+do {
+    let backend = InMemoryNativeControlBackend()
+    NSApplication.shared.nativeBackend = backend
+
+    let anchor = NSButton(title: "Anchor", frame: NSMakeRect(0, 0, 80, 30))
+    let content = NSView(frame: .zero)
+    content.addSubview(NSTextField(labelWithString: "Hello", frame: NSMakeRect(8, 8, 100, 20)))
+
+    let popover = NSPopover()
+    popover.behavior = .transient
+    popover.contentSize = NSMakeSize(220, 120)
+    popover.contentViewController = NSViewController(view: content)
+
+    check(!popover.isShown, "popover starts hidden")
+    check(backend.shownPopovers.isEmpty, "no popovers shown initially")
+
+    popover.show(relativeTo: anchor.bounds, of: anchor, preferredEdge: .maxY)
+    check(popover.isShown, "show marks the popover shown")
+    check(backend.shownPopovers.count == 1, "the popover reaches the backend as shown")
+    check(content.frame.size == NSMakeSize(220, 120), "content view is sized to contentSize")
+    check(backend.popoverContents.values.contains(content.handle.rawValue), "content installs into the popover")
+
+    popover.performClose(nil)
+    check(!popover.isShown, "performClose hides the popover")
+    check(backend.shownPopovers.isEmpty, "closing removes it from the backend")
+
+    // Re-show reuses the same popover handle.
+    popover.show(relativeTo: anchor.bounds, of: anchor, preferredEdge: .maxY)
+    check(backend.shownPopovers.count == 1, "re-showing works and reuses one popover")
+}
+
+/// A view whose `isFlipped` changes at runtime (AppKit re-reads it; a cache lies).
+final class DynamicFlipView: NSView {
+    var flipsNow = true
+    override var isFlipped: Bool { flipsNow }
+}
+
+// MARK: 30a — NSDatePicker: format, elements, and stepping the SELECTED field
+//
+// Expected strings were read out of REAL AppKit (a probe printing
+// NSDatePicker.stringValue and rendering the control to a PNG), not invented:
+//   field       -> "5/31/2026, 8:00:00 PM"
+//   stringValue -> "Sunday, May 31, 2026 at 8:00:00 PM Eastern Daylight Time"
+// for 2026-06-01T00:00Z in en_US / America/New_York.
+//
+// NOTE the \u{202F}: ICU puts a NARROW NO-BREAK SPACE before AM/PM, on macOS
+// and Linux alike (verified by dumping scalars on both). It is spelled with an
+// escape here so the literal can't silently differ from the code by an
+// invisible character.
+//
+// The picker's own surface stays Apple-exact (no `segments`/`displayText` on
+// the control), so the rendered text and selection are observed where they
+// actually cross the boundary: the backend seam.
+do {
+    let backend = InMemoryNativeControlBackend()
+    NSApplication.shared.nativeBackend = backend
+    let start = Date(timeIntervalSince1970: 1_780_272_000)   // 5/31/2026 8:00:00 PM EDT
+
+    /// A fresh picker per assertion: stepping mutates the date, and calendar
+    /// arithmetic does not round-trip (see the month check below), so sharing
+    /// one picker across checks makes later expectations drift.
+    func picker(_ elements: NSDatePickerElementFlags = [.yearMonthDay, .hourMinuteSecond]) -> NSDatePicker {
+        let p = NSDatePicker(date: start, frame: NSMakeRect(0, 0, 184, 28))
+        p.locale = Locale(identifier: "en_US")
+        p.timeZone = TimeZone(identifier: "America/New_York")!
+        p.calendar = Calendar(identifier: .gregorian)
+        p.datePickerElements = elements
+        return p
+    }
+    func field(_ p: NSDatePicker) -> String { backend.datePickerTexts[p.handle.rawValue] ?? "" }
+    func selection(_ p: NSDatePicker) -> (location: Int, length: Int)? {
+        backend.datePickerSelections[p.handle.rawValue]
+    }
+
+    check(picker().datePickerStyle == .textFieldAndStepper, "the default style is textFieldAndStepper")
+
+    // Apple's real raw values — cumulative, not 1<<n.
+    check(NSDatePickerElementFlags.yearMonthDay.rawValue == 0x00e0, "yearMonthDay is Apple's 0xe0")
+    check(NSDatePickerElementFlags.hourMinuteSecond.rawValue == 0x000e, "hourMinuteSecond is Apple's 0xe")
+    check(NSDatePickerElementFlags.yearMonthDay.contains(.yearMonth), "yearMonthDay contains yearMonth")
+    check(NSDatePickerElementFlags.hourMinuteSecond.contains(.hourMinute), "hourMinuteSecond contains hourMinute")
+
+    // The field renders AppKit's locale format, not ISO.
+    check(field(picker()) == "5/31/2026, 8:00:00\u{202F}PM",
+          "the field renders AppKit's locale format (was ISO) — got [\(field(picker()))]")
+
+    // stringValue is AppKit's full/full style, independent of the elements.
+    check(picker().stringValue == "Sunday, May 31, 2026 at 8:00:00\u{202F}PM Eastern Daylight Time",
+          "stringValue is AppKit's full date+time (was Swift's Date description)")
+
+    // The leftmost field starts selected and highlighted.
+    check(selection(picker())?.location == 0, "the first field starts selected")
+
+    // Stepping moves THE SELECTED field. The bug: it always moved the day.
+    let month = picker()
+    backend.simulateDateStep(1, for: month.handle)
+    check(field(month) == "6/30/2026, 8:00:00\u{202F}PM",
+          "stepping the selected month moves the MONTH — got [\(field(month))]")
+    // ...and May 31 + 1 month is June *30*: the day clamps to the shorter month,
+    // so stepping back lands on May 30, not May 31. That is Gregorian
+    // arithmetic (Calendar's, and AppKit's), not a rounding bug.
+    backend.simulateDateStep(-1, for: month.handle)
+    check(field(month) == "5/30/2026, 8:00:00\u{202F}PM",
+          "month arithmetic clamps and does not round-trip — got [\(field(month))]")
+
+    // Click the year and step it.
+    let year = picker()
+    backend.simulateDatePickerClick(atCharacter: 6, for: year.handle)
+    check(selection(year)?.location == 5 && selection(year)?.length == 4,
+          "clicking the year highlights the year")
+    backend.simulateDateStep(1, for: year.handle)
+    check(field(year) == "5/31/2027, 8:00:00\u{202F}PM",
+          "stepping the selected year moves the YEAR — got [\(field(year))]")
+
+    // Click the minute and step it.
+    let minute = picker()
+    let minuteOffset = field(minute).distance(from: field(minute).startIndex,
+                                              to: field(minute).range(of: ":00:")!.lowerBound) + 1
+    backend.simulateDatePickerClick(atCharacter: minuteOffset, for: minute.handle)
+    backend.simulateDateStep(1, for: minute.handle)
+    check(field(minute) == "5/31/2026, 8:01:00\u{202F}PM",
+          "stepping the selected minute moves the MINUTE — got [\(field(minute))]")
+
+    // Left/right move the selection, as AppKit's arrow keys do.
+    let day = picker()
+    backend.simulateDatePickerClick(atCharacter: 0, for: day.handle)
+    backend.simulateDatePickerMove(1, for: day.handle)
+    backend.simulateDateStep(1, for: day.handle)
+    check(field(day) == "6/1/2026, 8:00:00\u{202F}PM",
+          "after moving right, stepping moves the DAY — got [\(field(day))]")
+
+    // The AM/PM field flips by half a day.
+    let ampm = picker()
+    backend.simulateDatePickerClick(atCharacter: field(ampm).count - 1, for: ampm.handle)
+    backend.simulateDateStep(1, for: ampm.handle)
+    check(field(ampm) == "6/1/2026, 8:00:00\u{202F}AM",
+          "stepping AM/PM moves by twelve hours — got [\(field(ampm))]")
+
+    // ── Typing into the selected element (AppKit's date field is type-to-edit;
+    //    stepping a minute to 55 one click at a time is unusable). ──
+
+    // Type a two-digit minute: digits accumulate, then the selection moves on.
+    let typed = picker()
+    let minuteAt = field(typed).distance(from: field(typed).startIndex,
+                                         to: field(typed).range(of: ":00:")!.lowerBound) + 1
+    backend.simulateDatePickerClick(atCharacter: minuteAt, for: typed.handle)
+    backend.simulateDatePickerTyping("4", for: typed.handle)
+    check(field(typed) == "5/31/2026, 8:04:00\u{202F}PM",
+          "the first digit applies immediately — got [\(field(typed))]")
+    backend.simulateDatePickerTyping("5", for: typed.handle)
+    check(field(typed) == "5/31/2026, 8:45:00\u{202F}PM",
+          "the second digit extends it to 45, not 5 — got [\(field(typed))]")
+    // The field was full, so the selection advanced to the seconds.
+    backend.simulateDatePickerTyping("3", for: typed.handle)
+    check(field(typed) == "5/31/2026, 8:45:03\u{202F}PM",
+          "a full field advances, so the next digit lands in seconds — got [\(field(typed))]")
+
+    // A field advances as soon as no further digit could be valid: no month
+    // starts with 4 (40+ is impossible), so "4" commits April and hops on.
+    // Typing the month also clamps the day — April has no 31st — matching what
+    // stepping does rather than rolling over into May 1.
+    let m = picker()
+    backend.simulateDatePickerClick(atCharacter: 0, for: m.handle)
+    backend.simulateDatePickerTyping("4", for: m.handle)
+    check(field(m) == "4/30/2026, 8:00:00\u{202F}PM",
+          "typing 4 selects April and clamps the day to the 30th — got [\(field(m))]")
+    backend.simulateDatePickerTyping("9", for: m.handle)
+    check(field(m) == "4/9/2026, 8:00:00\u{202F}PM",
+          "the month already advanced, so 9 lands in the day — got [\(field(m))]")
+
+    // A digit that can't extend the run starts a fresh value instead of being
+    // dropped: on the day field, 3 then 5 is not 35 — it is the 5th.
+    let restart = picker()
+    backend.simulateDatePickerClick(atCharacter: 2, for: restart.handle)
+    backend.simulateDatePickerTyping("3", for: restart.handle)
+    check(field(restart) == "5/3/2026, 8:00:00\u{202F}PM",
+          "typing 3 in the day waits for a second digit — got [\(field(restart))]")
+    backend.simulateDatePickerTyping("5", for: restart.handle)
+    check(field(restart) == "5/5/2026, 8:00:00\u{202F}PM",
+          "35 is no day, so 5 starts over as the 5th — got [\(field(restart))]")
+
+    // A leading zero is held, not rejected: "0" then "7" is July.
+    let z = picker()
+    backend.simulateDatePickerClick(atCharacter: 0, for: z.handle)
+    backend.simulateDatePickerTyping("07", for: z.handle)
+    check(field(z) == "7/31/2026, 8:00:00\u{202F}PM",
+          "a leading zero is buffered, so 07 is July — got [\(field(z))]")
+
+    // Four digits type a year.
+    let y = picker()
+    backend.simulateDatePickerClick(atCharacter: 6, for: y.handle)
+    backend.simulateDatePickerTyping("1999", for: y.handle)
+    check(field(y) == "5/31/1999, 8:00:00\u{202F}PM",
+          "the year takes four digits — got [\(field(y))]")
+
+    // Typing a 12-hour hour keeps the current half-day (8 PM -> 11 PM, not AM).
+    let h = picker()
+    let hourAt = field(h).distance(from: field(h).startIndex,
+                                   to: field(h).range(of: "8:")!.lowerBound)
+    backend.simulateDatePickerClick(atCharacter: hourAt, for: h.handle)
+    backend.simulateDatePickerTyping("11", for: h.handle)
+    check(field(h) == "5/31/2026, 11:00:00\u{202F}PM",
+          "typing an hour keeps PM — got [\(field(h))]")
+
+    // AM/PM takes letters, not digits.
+    let ap = picker()
+    backend.simulateDatePickerClick(atCharacter: field(ap).count - 1, for: ap.handle)
+    backend.simulateDatePickerTyping("a", for: ap.handle)
+    check(field(ap) == "5/31/2026, 8:00:00\u{202F}AM", "typing 'a' selects AM — got [\(field(ap))]")
+    backend.simulateDatePickerTyping("p", for: ap.handle)
+    check(field(ap) == "5/31/2026, 8:00:00\u{202F}PM", "typing 'p' selects PM — got [\(field(ap))]")
+    backend.simulateDatePickerTyping("7", for: ap.handle)
+    check(field(ap) == "5/31/2026, 8:00:00\u{202F}PM", "a digit does nothing to AM/PM")
+
+    // Typing fires the action, as AppKit does.
+    var typedFired = 0
+    let notify = picker()
+    notify.onDateChange = { _ in typedFired += 1 }
+    backend.simulateDatePickerClick(atCharacter: 0, for: notify.handle)
+    backend.simulateDatePickerTyping("3", for: notify.handle)
+    check(typedFired == 1, "typing fires the picker's action")
+
+    // Moving to a different field abandons a number in progress: "1" starts a
+    // month, then clicking the day makes the next digit a day, not "15".
+    let reset = picker()
+    backend.simulateDatePickerClick(atCharacter: 0, for: reset.handle)
+    backend.simulateDatePickerTyping("1", for: reset.handle)
+    check(field(reset) == "1/31/2026, 8:00:00\u{202F}PM", "typing 1 starts January")
+    backend.simulateDatePickerClick(atCharacter: 2, for: reset.handle)   // the day
+    backend.simulateDatePickerTyping("5", for: reset.handle)
+    check(field(reset) == "1/5/2026, 8:00:00\u{202F}PM",
+          "changing field restarts the typed number — got [\(field(reset))]")
+
+    // ...but the *same* field re-reporting its own selection must not: the GTK
+    // backend echoes the selection back after every text change, so a reset
+    // there would swallow the second digit (this exact bug: "45" -> "05").
+    let echo = picker()
+    let echoMinute = field(echo).distance(from: field(echo).startIndex,
+                                          to: field(echo).range(of: ":00:")!.lowerBound) + 1
+    backend.simulateDatePickerClick(atCharacter: echoMinute, for: echo.handle)
+    backend.simulateDatePickerTyping("4", for: echo.handle)
+    backend.simulateDatePickerClick(atCharacter: echoMinute, for: echo.handle)   // the echo
+    backend.simulateDatePickerTyping("5", for: echo.handle)
+    check(field(echo) == "5/31/2026, 8:45:00\u{202F}PM",
+          "the field re-reporting itself keeps the run going — got [\(field(echo))]")
+
+    // minDate/maxDate clamp real steps (they were no-op stubs).
+    let bounded = picker()
+    bounded.maxDate = start                       // already at the ceiling
+    backend.simulateDateStep(1, for: bounded.handle)
+    check(bounded.dateValue == start, "a step past maxDate is clamped")
+    check(backend.dateRanges[bounded.handle.rawValue]?.max == start, "maxDate still reaches the backend")
+
+    // The elements decide the field, and only the field.
+    let dateOnly = picker([.yearMonthDay])
+    check(field(dateOnly) == "5/31/2026", "a date-only picker shows only the date")
+    check(dateOnly.stringValue == "Sunday, May 31, 2026 at 8:00:00\u{202F}PM Eastern Daylight Time",
+          "stringValue ignores the elements, as on Apple")
+    check(field(picker([.hourMinute])) == "8:00\u{202F}PM",
+          "hourMinute drops the seconds — got [\(field(picker([.hourMinute])))]")
+}
+
+// MARK: 30b — CoordinateSpace: the one place a child's geometry is decided
+do {
+    // An unflipped (AppKit-default) parent: the child's bottom-left origin
+    // becomes a top-left origin, so y = parentHeight - y - height.
+    let child = NSMakeRect(10, 20, 100, 30)
+    let placed = CoordinateSpace.place(child, inParentOfHeight: 200, parentIsFlipped: false)
+    check(placed.origin.y == 150, "an unflipped parent flips the child's Y")
+    check(placed.origin.x == 10, "X never flips")
+
+    // A flipped parent (Win32/WinChocolate, and the shared demo) already
+    // measures from the top, so Y passes through untouched.
+    let flipped = CoordinateSpace.place(child, inParentOfHeight: 200, parentIsFlipped: true)
+    check(flipped.origin.y == 20, "a flipped parent passes the child's Y through")
+
+    // Size is never negotiated: in AppKit a view *is* its frame. This is the
+    // property that stopped controls overlapping — GTK's size_request is only
+    // a minimum, so a control whose intrinsic minimum exceeded its frame used
+    // to overflow onto its neighbours.
+    check(placed.size == child.size, "size passes through unchanged (the frame is law)")
+    check(flipped.size == child.size, "size passes through unchanged when flipped too")
+
+    // The flip is an involution: placing twice returns the original Y.
+    let back = CoordinateSpace.place(placed, inParentOfHeight: 200, parentIsFlipped: false)
+    check(back.origin.y == child.origin.y, "flipping twice restores the original Y")
+
+    // A child taller than its parent lands above the top edge, not clamped —
+    // AppKit does not clamp frames either.
+    let tall = CoordinateSpace.place(NSMakeRect(0, 0, 10, 300), inParentOfHeight: 200, parentIsFlipped: false)
+    check(tall.origin.y == -100, "an oversized child is placed, not clamped")
+}
+
+// MARK: 30b-i — stackedRowY: the container's OWN flip decides
+do {
+    // Row 0 is topmost under both conventions; rows 0..2 of 24pt content in a
+    // 100pt container. Flipped counts down from 0; unflipped counts back from
+    // the top edge. Both must agree on the visual order.
+    let flippedYs = (0..<3).map {
+        CoordinateSpace.stackedRowY(index: $0, rowHeight: 24, contentHeight: 24,
+                                    containerHeight: 100, isFlipped: true)
+    }
+    let unflippedYs = (0..<3).map {
+        CoordinateSpace.stackedRowY(index: $0, rowHeight: 24, contentHeight: 24,
+                                    containerHeight: 100, isFlipped: false)
+    }
+    check(flippedYs == [0, 24, 48], "flipped rows count down from the top")
+    check(unflippedYs == [76, 52, 28], "unflipped rows count back from the top edge")
+    check(flippedYs[0] < flippedYs[1] && unflippedYs[0] > unflippedYs[1],
+          "row 0 is topmost under both conventions (the Y ordering inverts)")
+
+    // Spacing applies to the pitch, not the content height.
+    check(CoordinateSpace.stackedRowY(index: 2, rowHeight: 20, spacing: 4, contentHeight: 20,
+                                      containerHeight: 100, isFlipped: true) == 48,
+          "spacing widens the row pitch")
+    // A control shorter than its row is top-aligned within it when unflipped.
+    check(CoordinateSpace.stackedRowY(index: 0, rowHeight: 40, contentHeight: 24,
+                                      containerHeight: 100, isFlipped: false) == 76,
+          "a short control is top-aligned in its row")
+}
+
+// MARK: 30b-ii — isFlipped is PER VIEW: neighbours need not agree
+/// Two sibling containers that disagree about `isFlipped`, plus a child that
+/// disagrees with its parent — AppKit reads each view's own flag.
+final class FlippedView: NSView {
+    override var isFlipped: Bool { true }
+}
+final class UnflippedView: NSView {
+    override var isFlipped: Bool { false }
+}
+do {
+    let backend = InMemoryNativeControlBackend()
+    NSApplication.shared.nativeBackend = backend
+    // The app-wide default must not decide any individual view's answer.
+    NSView.defaultIsFlipped = true
+    defer { NSView.defaultIsFlipped = true }
+
+    let root = FlippedView(frame: NSMakeRect(0, 0, 400, 400))
+    let flipped = FlippedView(frame: NSMakeRect(0, 0, 200, 200))
+    let unflipped = UnflippedView(frame: NSMakeRect(200, 0, 200, 200))
+    root.addSubview(flipped)
+    root.addSubview(unflipped)
+    check(backend.flippedViews[flipped.handle.rawValue] == true, "a flipped view reports flipped")
+    check(backend.flippedViews[unflipped.handle.rawValue] == false,
+          "an unflipped sibling reports unflipped, despite the app-wide default")
+
+    // A child that disagrees with its parent: the parent's flip places the
+    // child; the child's own flip governs its own children and drawing.
+    let childOfUnflipped = FlippedView(frame: NSMakeRect(10, 20, 50, 30))
+    unflipped.addSubview(childOfUnflipped)
+    check(backend.flippedViews[unflipped.handle.rawValue] == false, "the parent keeps its own flip")
+    check(backend.flippedViews[childOfUnflipped.handle.rawValue] == true, "the child keeps its own flip")
+
+    // The two flips produce genuinely different placements for the same frame,
+    // which is the whole reason they must not be assumed uniform.
+    let frame = NSMakeRect(10, 20, 50, 30)
+    let inFlipped = CoordinateSpace.place(frame, inParentOfHeight: 200, parentIsFlipped: true)
+    let inUnflipped = CoordinateSpace.place(frame, inParentOfHeight: 200, parentIsFlipped: false)
+    check(inFlipped.origin.y == 20 && inUnflipped.origin.y == 150,
+          "the same frame lands in two different places under the two flips")
+
+    // A dynamic override must be re-read, not cached from the first addSubview.
+    let dynamic = DynamicFlipView(frame: NSMakeRect(0, 0, 100, 100))
+    root.addSubview(dynamic)
+    check(backend.flippedViews[dynamic.handle.rawValue] == true, "the initial flip reaches the backend")
+    dynamic.flipsNow = false
+    dynamic.frame = NSMakeRect(0, 0, 100, 101)   // any re-placement re-reads it
+    check(backend.flippedViews[dynamic.handle.rawValue] == false,
+          "a changed isFlipped is re-read, not served from the add-time cache")
+}
+
+// MARK: 30c — NSSplitView: panes are subviews (AppKit's original API)
+do {
+    let backend = InMemoryNativeControlBackend()
+    NSApplication.shared.nativeBackend = backend
+    let split = NSSplitView(vertical: true, frame: NSMakeRect(0, 0, 240, 96))
+    let left = NSView(frame: .zero)
+    let right = NSView(frame: .zero)
+    split.addSubview(left)      // AppKit: a split view's subviews ARE its panes
+    split.addSubview(right)
+    check(split.arrangedSubviews.count == 2, "addSubview adds a pane")
+    check(split.subviews.count == 2, "the panes are also subviews")
+    check(left.superview === split, "a pane's superview is the split view")
+    check(backend.splitPanes[split.handle.rawValue]?.count == 2, "both panes reach the backend")
+}
+
+// MARK: 31 — Toolbar customization (NSToolbarDelegate + palette)
+final class CustomizeDelegate: NSToolbarDelegate {
+    let items: [String: NSToolbarItem]
+    init(_ items: [String: NSToolbarItem]) { self.items = items }
+    func toolbarAllowedItemIdentifiers(_ t: NSToolbar) -> [String] { ["open", "save", "info"] }
+    func toolbarDefaultItemIdentifiers(_ t: NSToolbar) -> [String] { ["open", "save"] }
+    func toolbar(_ t: NSToolbar, itemForItemIdentifier id: String, willBeInsertedIntoToolbar f: Bool) -> NSToolbarItem? {
+        items[id]
+    }
+}
+do {
+    let backend = InMemoryNativeControlBackend()
+    NSApplication.shared.nativeBackend = backend
+
+    let window = NSWindow(contentRect: NSMakeRect(0, 0, 400, 300), styleMask: [.titled], backing: .buffered, defer: false)
+    let toolbar = NSToolbar(identifier: "custom")
+    func item(_ id: String, _ label: String) -> NSToolbarItem {
+        let i = NSToolbarItem(itemIdentifier: id); i.label = label; return i
+    }
+    let delegate = CustomizeDelegate(["open": item("open", "Open"), "save": item("save", "Save"), "info": item("info", "Info")])
+    toolbar.allowsUserCustomization = true
+    toolbar.delegate = delegate
+    window.toolbar = toolbar
+
+    // Delegate default identifiers populate the toolbar (info is absent).
+    check(backend.toolbars[window.handle.rawValue]?.map { $0.label } == ["Open", "Save"], "delegate default items populate the toolbar")
+
+    // Customization palette: allowed items become palette rows, with the
+    // currently-present ones checked.
+    check(!toolbar.customizationPaletteIsRunning, "palette starts closed")
+    toolbar.runCustomizationPalette(nil)
+    check(toolbar.customizationPaletteIsRunning, "runCustomizationPalette opens it")
+    let palette = backend.toolbarCustomizationItems
+    check(palette.map { $0.identifier } == ["open", "save", "info"], "palette lists the allowed identifiers")
+    check(palette.first { $0.identifier == "info" }?.isInToolbar == false, "an absent item shows available (undimmed)")
+    check(palette.first { $0.identifier == "open" }?.isInToolbar == true, "a present item shows dimmed")
+
+    // The session mirrors Apple's sheet: the live strip plus the default set.
+    check(backend.toolbarCustomizationSession?.strip.map { $0.label } == ["Open", "Save"], "the session's strip duplicates the live toolbar")
+    check(backend.toolbarCustomizationSession?.defaultSet.map { $0.identifier } == ["open", "save"], "the session carries the default set")
+
+    // Dragging "info" into the strip at position 1 inserts it live.
+    backend.simulateToolbarCustomizationInsert("info", at: 1)
+    check(backend.toolbars[window.handle.rawValue]?.map { $0.label } == ["Open", "Info", "Save"], "dragging an item in inserts at the drop position")
+    // Dragging within the strip reorders.
+    backend.simulateToolbarCustomizationMove(from: 0, to: 3)
+    check(backend.toolbars[window.handle.rawValue]?.map { $0.label } == ["Info", "Save", "Open"], "dragging within the strip reorders")
+    // Dragging an item off the strip removes it.
+    backend.simulateToolbarCustomizationRemove(at: 1)
+    check(backend.toolbars[window.handle.rawValue]?.map { $0.label } == ["Info", "Open"], "dragging an item off the strip removes it")
+    // The refreshed session dims palette items now present.
+    check(backend.toolbarCustomizationSession?.palette.first { $0.identifier == "info" }?.isInToolbar == true, "the pushed session reflects edits")
+    // Dragging the default set in resets the strip.
+    backend.simulateToolbarCustomizationReset()
+    check(backend.toolbars[window.handle.rawValue]?.map { $0.label } == ["Open", "Save"], "dragging the default set in resets the toolbar")
+    // The Show popup drives displayMode.
+    backend.simulateToolbarCustomizationDisplayMode(1)
+    check(toolbar.displayMode == .iconOnly, "the Show popup drives displayMode")
+    check(backend.toolbarDisplayModes[window.handle.rawValue] == .iconOnly, "displayMode reaches the installed bar")
+    backend.simulateToolbarCustomizationDisplayMode(0)
+
+    backend.simulateToolbarCustomizationClose()
+    check(!toolbar.customizationPaletteIsRunning, "closing the palette clears the running flag")
+
+    // Programmatic insert/remove also refresh the installed toolbar.
+    toolbar.insertItem(withItemIdentifier: "save", at: 0)
+    check(backend.toolbars[window.handle.rawValue]?.first?.label == "Save", "insertItem places the item at the index")
+    let countBefore = backend.toolbars[window.handle.rawValue]?.count ?? 0
+    toolbar.removeItem(at: 0)
+    check(backend.toolbars[window.handle.rawValue]?.count == countBefore - 1, "removeItem drops an item")
+
+    // Customization requires opt-in.
+    let locked = NSToolbar(identifier: "locked")
+    locked.delegate = delegate
+    window.toolbar = locked
+    locked.runCustomizationPalette(nil)
+    check(!locked.customizationPaletteIsRunning, "runCustomizationPalette is a no-op without allowsUserCustomization")
+}
+
 if failures == 0 {
     print("\nAll contract tests passed.")
 } else {
     print("\n\(failures) contract test(s) FAILED.")
     exit(1)
+}
+
+// MARK: — Button title set post-creation (the shared demo's convenience path:
+// `NSButton(frame:)` then `.title =`), which must reach the backend.
+do {
+    let backend = InMemoryNativeControlBackend()
+    NSApplication.shared.nativeBackend = backend
+    let button = NSButton(frame: NSMakeRect(0, 0, 100, 30))
+    button.title = "Click"
+    check(backend.texts[button.handle.rawValue] == "Click",
+          "post-creation title reaches the backend (demo convenience path)")
+
+    let radio = NSButton(radioWithTitle: "Info", frame: .zero)
+    radio.frame = NSMakeRect(0, 0, 88, 24)
+    check(backend.texts[radio.handle.rawValue] == "Info",
+          "radio created with title keeps it after a frame change")
 }

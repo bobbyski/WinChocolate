@@ -76,10 +76,25 @@ struct WinDrawnTableStyle {
 
 /// Commits the drawn table's in-place edit overlay when its field ends editing
 /// (focus loss / Enter), then tears the overlay down.
-public final class WinDrawnCellEditor: NSTextFieldDelegate {
+public final class WinDrawnCellEditor: NSObject, NSTextFieldDelegate {
     weak var table: NSTableView?
-    public func controlTextDidEndEditing(_ obj: NSNotification) {
+    public func controlTextDidEndEditing(_ obj: Notification) {
         table?.winCommitDrawnEdit()
+    }
+
+    /// Intercepts the field editor's Tab/Backtab so editing commits and moves
+    /// to the next/previous editable cell instead of letting Windows move focus
+    /// off the field — AppKit's `control(_:textView:doCommandBy:)` contract.
+    public func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
+        guard let table else { return false }
+        switch commandSelector {
+        case "insertTab:":
+            return table.winAdvanceDrawnEdit(reversed: false)
+        case "insertBacktab:":
+            return table.winAdvanceDrawnEdit(reversed: true)
+        default:
+            return false
+        }
     }
 }
 
@@ -135,7 +150,7 @@ extension NSTableView {
         if winUsesViewBasedCells {
             return true
         }
-        guard let delegate else {
+        guard let delegate = winEffectiveDelegate else {
             return false
         }
         return winMainActor { delegate.tableView(self, viewFor: tableColumns[0], row: 0) != nil
@@ -178,7 +193,7 @@ extension NSTableView {
     /// — in that case we keep the drawn baseline (`winDrawnRowHeight`). A value
     /// that differs is a genuine per-row customization and is honored.
     func winRowHeight(_ row: Int) -> CGFloat {
-        if let delegate {
+        if let delegate = winEffectiveDelegate {
             let h = winMainActor { delegate.tableView(self, heightOfRow: row) }
             if h > 0, h != rowHeight {
                 return max(16, h)
@@ -293,7 +308,7 @@ extension NSTableView {
             // A delegate-vended row view sits full-width behind the cells and
             // paints the row background/selection. Add it first so cells layer
             // on top.
-            if let rowView = winMainActor({ delegate?.tableView(self, rowViewFor: row) }) {
+            if let rowView = winMainActor({ winEffectiveDelegate?.tableView(self, rowViewFor: row) }) {
                 rowView.frame = NSRect(x: 0, y: winRowY(row), width: width, height: winRowHeightAt(row))
                 rowView.isSelected = selectedRowIndexes.contains(row)
                 addSubview(rowView)
@@ -301,7 +316,7 @@ extension NSTableView {
                 winHostedRowViews[row] = rowView
             }
             for column in tableColumns.indices {
-                guard let cellView = winMainActor({ delegate?.tableView(self, viewFor: tableColumns[column], row: row) }) else {
+                guard let cellView = winMainActor({ winEffectiveDelegate?.tableView(self, viewFor: tableColumns[column], row: row) }) else {
                     continue
                 }
                 // Inset the cell view slightly so grid lines/selection show,
@@ -438,7 +453,7 @@ extension NSTableView {
                 let clipRect = NSRect(x: winColumnX(column), y: textY,
                                       width: max(0, columnWidth - trailing), height: h)
                 NSGraphicsContext.saveGraphicsState()
-                NSRectClip(clipRect)
+                (clipRect).clip()
                 if let attributed = winAttributedValue(atColumn: column, row: row), attributed.length > 0 {
                     // A data-source `NSAttributedString`: draw with the value's
                     // own attributes (single dominant style at its start), unless
@@ -760,6 +775,50 @@ extension NSTableView {
         field.removeFromSuperview()
     }
 
+    /// The next editable, non-hosted drawn cell after `(row, column)`, scanning
+    /// forward (or backward when `reversed`) across columns and then wrapping to
+    /// the next/previous row. Returns `nil` when there is no further editable
+    /// cell — matching AppKit, where Tab past the last field ends editing.
+    func winNextEditableDrawnCell(afterRow row: Int, column: Int, reversed: Bool) -> (row: Int, column: Int)? {
+        guard numberOfRows > 0, !tableColumns.isEmpty else { return nil }
+        let columnCount = tableColumns.count
+        var r = row
+        var c = column
+        // Bound the walk so a table with no other editable cell terminates.
+        for _ in 0..<(numberOfRows * columnCount) {
+            if reversed {
+                c -= 1
+                if c < 0 { c = columnCount - 1; r -= 1 }
+            } else {
+                c += 1
+                if c >= columnCount { c = 0; r += 1 }
+            }
+            guard r >= 0, r < numberOfRows else { return nil }
+            if tableColumns[c].isEditable, !winCellIsHosted(row: r, column: c) {
+                return (r, c)
+            }
+        }
+        return nil
+    }
+
+    /// Tab/Backtab inside the drawn cell editor: commits the current edit and
+    /// begins editing the next (or previous) editable cell, selecting its row.
+    /// Returns whether editing advanced; `false` means there was nowhere to go
+    /// (the caller lets editing end, as AppKit does).
+    @discardableResult
+    public func winAdvanceDrawnEdit(reversed: Bool) -> Bool {
+        guard winDrawnEditField != nil else { return false }
+        let fromRow = winDrawnEditRow
+        let fromColumn = winDrawnEditColumn
+        guard let next = winNextEditableDrawnCell(afterRow: fromRow, column: fromColumn, reversed: reversed) else {
+            return false
+        }
+        winCommitDrawnEdit()
+        selectRowIndexes(IndexSet(integer: next.row), byExtendingSelection: false)
+        winBeginDrawnEdit(row: next.row, column: next.column)
+        return true
+    }
+
     /// Handles a click in the drawn table: selects the hit row, or sorts on a
     /// header click.
     func winDrawnMouseDown(_ event: NSEvent) {
@@ -799,7 +858,7 @@ extension NSTableView {
         // must not collapse the selection yet — that would prevent dragging all
         // of them. Defer the collapse to mouse-up (only if no drag happens) and
         // arm a multi-row drag now. (AppKit's mouse-down-and-drag behavior.)
-        if !extend, winRowReorderHandler != nil, selectedRowIndexes.contains(row), selectedRowIndexes.count > 1 {
+        if !extend, winReorderDragEnabled(forRow: row), selectedRowIndexes.contains(row), selectedRowIndexes.count > 1 {
             winDraggingRow = row
             winDraggingRows = IndexSet(selectedRowIndexes)
             winDropIndex = -1
@@ -816,15 +875,16 @@ extension NSTableView {
         winInvalidateTree()
         sendAction()
 
-        // Arm a single-row reorder drag from this row, or — when the table
-        // isn't reorderable but the data source vends a pasteboard writer for
-        // the row — an external (system/OLE) drag out of the table.
-        if winRowReorderHandler != nil {
+        // Arm a single-row reorder drag from this row (the explicit handler,
+        // or AppKit's recipe: `.move` local mask + a data-source pasteboard
+        // writer), or — when the table isn't reorderable but the data source
+        // vends a writer — an external (system/OLE) drag out of the table.
+        if winReorderDragEnabled(forRow: row) {
             winDraggingRow = row
             winDraggingRows = IndexSet(integer: row)
             winDropIndex = -1
             winPendingCollapseRow = -1
-        } else if winMainActor { dataSource?.tableView(self, pasteboardWriterForRow: row) } != nil {
+        } else if winMainActor { winEffectiveDataSource?.tableView(self, pasteboardWriterForRow: row) } != nil {
             winExternalDragRow = row
         }
 
@@ -877,7 +937,7 @@ extension NSTableView {
         let row = winExternalDragRow
         winExternalDragRow = -1
         guard row >= 0, row < numberOfRows,
-              let writer = winMainActor({ dataSource?.tableView(self, pasteboardWriterForRow: row) }) else {
+              let writer = winMainActor({ winEffectiveDataSource?.tableView(self, pasteboardWriterForRow: row) }) else {
             return
         }
         let item = NSDraggingItem(pasteboardWriter: writer)
@@ -905,15 +965,36 @@ extension NSTableView {
             }
             return
         }
-        guard let handler = winRowReorderHandler, winDraggingRow >= 0, !winDraggingRows.isEmpty else {
+        guard winDraggingRow >= 0, !winDraggingRows.isEmpty else {
             return
         }
         // A single-row drop just above or below its own row is a no-op.
         if winDraggingRows.count == 1, winDropIndex == winDraggingRow || winDropIndex == winDraggingRow + 1 {
             return
         }
-        handler(winDraggingRows, winDropIndex)
-        reloadData()
+        if let handler = winRowReorderHandler {
+            handler(winDraggingRows, winDropIndex)
+            reloadData()
+            return
+        }
+        // AppKit's reorder pathway: the drop arrives at the data source's
+        // `tableView(_:acceptDrop:row:dropOperation:)` with `.above`, the
+        // dragged row indexes riding the pasteboard as a comma-separated
+        // string (the local-drag payload convention).
+        guard let dataSource = winEffectiveDataSource else {
+            return
+        }
+        let rowList = winDraggingRows.map(String.init).joined(separator: ",")
+        let info = WinDraggingInfo(
+            content: NativeDropContent(text: rowList, filePaths: []),
+            location: NSMakePoint(0, 0)
+        )
+        let accepted = winMainActor {
+            dataSource.tableView(self, acceptDrop: info, row: winDropIndex, dropOperation: .above)
+        }
+        if accepted {
+            reloadData()
+        }
     }
 
     /// Draws the reorder drop-line indicator, if a drag is active.
@@ -921,7 +1002,11 @@ extension NSTableView {
         guard winDraggingRow >= 0, winDropIndex >= 0 else {
             return
         }
-        var y = winHeaderHeight
+        // Rows start at `winBodyTopInset` — 0 when the header is pinned in its
+        // own strip. Measuring from `winHeaderHeight` drew the line one header
+        // height low (a top drop showed between rows 1 and 2 while correctly
+        // inserting before row 1).
+        var y = winBodyTopInset
         for row in 0..<winDropIndex where row < numberOfRows {
             y += winRowHeightAt(row)
         }

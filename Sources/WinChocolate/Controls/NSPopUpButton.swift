@@ -45,7 +45,7 @@ open class NSPopUpButton: NSControl {
     }
 
     /// Creates a pop-up button with a frame.
-    public override init(frame frameRect: NSRect) {
+    public required init(frame frameRect: NSRect) {
         self.titles = []
         self.indexOfSelectedItem = -1
         super.init(frame: frameRect)
@@ -155,7 +155,7 @@ open class NSPopUpButton: NSControl {
     }
 
     /// Sets the tag for an item at an index.
-    open func setTag(_ tag: Int, forItemAt index: Int) {
+    package func setTag(_ tag: Int, forItemAt index: Int) {
         guard tags.indices.contains(index) else {
             return
         }
