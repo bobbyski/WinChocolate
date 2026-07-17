@@ -63,20 +63,6 @@ if errorlevel 1 (
     exit /b 1
 )
 
-rem The main demo supports a --diagnose self-check that creates its windows and
-rem exits; the run-loop demo has no such mode, so this step is main-demo only.
-if /I "%APP_NAME%"=="WinChocolateDemo" (
-    echo.
-    echo Checking native demo window creation...
-    "%APP_EXE%" --diagnose %APP_ARGS%
-    if errorlevel 1 (
-        echo.
-        echo Demo native window creation failed.
-        popd >nul
-        exit /b 1
-    )
-)
-
 echo.
 echo Launching %APP_NAME%...
 if not exist "%RUN_DIR%" mkdir "%RUN_DIR%"

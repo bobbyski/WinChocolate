@@ -286,6 +286,23 @@ open class NSView: NSResponder {
     /// Lays out the view's subviews. Subclasses override to position children.
     open func layout() {}
 
+    /// Called after the view's effective appearance changes — a live system
+    /// dark/light switch, or an `appearance` override taking effect. The base
+    /// does nothing; subclasses override to refresh appearance-derived state.
+    /// The framework's own windows and controls are already re-themed by the
+    /// time this runs. `@MainActor` to match AppKit's annotation, so app
+    /// overrides read the same on every target.
+    @MainActor open func viewDidChangeEffectiveAppearance() {}
+
+    /// Framework-internal: fans `viewDidChangeEffectiveAppearance()` out over
+    /// this view and its whole subtree on a live theme switch.
+    @MainActor func winPropagateEffectiveAppearanceChange() {
+        viewDidChangeEffectiveAppearance()
+        for subview in subviews {
+            subview.winPropagateEffectiveAppearanceChange()
+        }
+    }
+
     /// The view's context menu, shown on right-click when set.
     open var menu: NSMenu?
 

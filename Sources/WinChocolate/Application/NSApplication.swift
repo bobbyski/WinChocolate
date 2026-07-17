@@ -63,6 +63,16 @@ public final class NSApplication: NSObject {
     /// Posts `winEffectiveAppearanceDidChangeNotification` (called by the Win32
     /// backend after it refreshes windows for a live system theme switch).
     public func winPostEffectiveAppearanceDidChange() {
+        // AppKit-faithful hook first: every view learns its effective appearance
+        // changed via `viewDidChangeEffectiveAppearance()`. App code overrides
+        // that (as on macOS) rather than observing a Windows-only notification.
+        // This always runs on the UI (main) thread — the theme-change message
+        // arrives there — so the main-actor fan-out is a statement of fact.
+        MainActor.assumeIsolated {
+            for window in windows {
+                window.contentView?.winPropagateEffectiveAppearanceChange()
+            }
+        }
         NotificationCenter.default.post(
             name: NSApplication.winEffectiveAppearanceDidChangeNotification,
             object: self

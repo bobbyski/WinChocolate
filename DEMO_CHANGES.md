@@ -177,7 +177,7 @@ Eastern **Standard** Time.
 
 ---
 
-## 2026-07-16 — COMPLIANCE AUDIT: non-import conditionals in `DemoApplication/main.swift`
+## 2026-07-16 — DIRECTIVE: strip every non-import `#if` from the demo apps
 
 **Rule One (set in stone): an AppKit-compatibility library. The ONLY conditional
 a shared demo may use is the framework-import switch** — `import LinChocolate` /
@@ -185,13 +185,59 @@ a shared demo may use is the framework-import switch** — `import LinChocolate`
 and means the same on every target. Demo-local convenience functions are allowed
 (e.g. a closure `onAction` mapping to real `target`/`action`), and *they* may carry
 the AppKit-vs-Chocolate switch internally, **but they must be genuinely
-AppKit-compatible** (the AppKit branch is real `@objc`/`#selector` target/action).
+AppKit-compatible** (the AppKit branch is real `@objc`/`#selector` target/action) —
+those files are the sanctioned home for ObjC-interop-divergent code
+(`@objc`/`#selector`/`@IBOutlet`/`@IBAction`, none of which the Windows Swift
+toolchain can compile).
 
-`DemoApplication/main.swift` predates this rule and still has **9 non-import
-`#if` blocks** (the import block at lines 19–25 is the one allowed). Recorded here
-for Bobby to address on the Mac — the frozen demo is not edited from this repo.
-Each needs the framework to absorb the difference so the demo line goes
-unconditional, OR the demo line moved out (for genuinely platform-only features).
+**Bobby's call (2026-07-16): "other than the import switches they all have to go."**
+`DemoApplication/main.swift` predates the rule and had **9 non-import `#if` blocks**
+(the import block at lines 19–25 is the one allowed). They are being removed now:
+each is either absorbed by a framework change so the line goes unconditional, moved
+into a conveniences file (ObjC-interop divergence), deleted (WinChocolate-only, no
+AppKit form), or noted as a LinChocolate-side fix. WinChocolate is driven to build
+against the resulting import-only demo; LinChocolate fixes are listed, not made.
+
+### Resolution + status (WinChocolate side) — **DONE 2026-07-16**
+
+`DemoApplication/main.swift` now carries **only** the framework-import `#if` (lines
+19–25). Build green, contract suite green, and live-probe-verified on Windows:
+nib page instantiates, table header-click sort survives repeated clicks (no crash,
+re-sorts), values/form page renders, the `Timer: Ns` label ticks 1→5→8.
+
+| # | Approach | Status |
+|---|---|---|
+| A1 | Framework: `NSForm.cellSize`/`setBezeled`/`setBordered` on WinChocolate (map onto row height + composed-field bezel/border) → line unconditional | ✅ built |
+| A2 | Nib `@IBOutlet`/`@IBAction` path moved to `Demo/DemoApplication/DemoNibConveniences.swift` (sanctioned `#if`, same basis as the action trampolines: `@IBOutlet`/`@IBAction`/`@objc` can't compile off Apple). `main.swift` calls `installDemoNibPanel()` import-only | ✅ live-verified |
+| A3 | Framework: Win32 header-click/column-click dispatch now defers the control action via `dispatchAsync` (runs after the native notification), so the demo's plain `reloadData()` + reselect is reentrancy-safe | ✅ live-verified |
+| A4 | No framework change: block uses `MainActor.assumeIsolated { … }` (the timer fires on the main thread on every target, so it updates synchronously). NB: `Task { @MainActor in }` does **not** work on Windows — the Win32 loop doesn't pump Swift's main-actor executor, so the label froze; `assumeIsolated` is the correct unified form | ✅ live-verified (ticks) |
+| A5 | Framework: `NSView.viewDidChangeEffectiveAppearance()` added (`@MainActor`, matches AppKit) + fanned over the window subtree on a theme switch; demo's `DemoContentView` overrides it (drops the win-only notification observer) | ✅ built (fires on live theme switch) |
+| B1 | Deleted from demo; LinChocolate must absorb it (below) | ✅ removed |
+| C1/C2/C3 | Deleted from demo (WinChocolate-only: `--classic`, metallic-toolbar toggle, `--diagnose`); `--diagnose` self-check also dropped from `buildandrun.bat` | ✅ removed |
+
+### Suggested LinChocolate fixes (not made here — flagged per the no-fix-LinChocolate rule)
+
+The demo is now import-only, so LinChocolate must absorb the same differences the
+WinChocolate framework did. Mirror these on the LinChocolate side:
+
+- **B1 — backend + origin (was the LinChocolate `#if`).** `NSApplication.shared`
+  must install the GTK backend itself (WinChocolate/AppKit do it implicitly); the
+  demo no longer sets `app.nativeBackend = GTKNativeControlBackend()`. And it no
+  longer sets `NSView.defaultIsFlipped = true` — the demo's content views subclass
+  `isFlipped == true`, but verify any non-subclassed view still lands top-left on
+  GTK, else default LinChocolate's origin to top-left.
+- **A1 — `NSForm`.** Add `cellSize` / `setBezeled(_:)` / `setBordered(_:)` to
+  LinChocolate's `NSForm` (the demo now calls them unconditionally).
+- **A2 — nib.** `DemoNibConveniences.swift`'s Chocolate branch uses
+  `NSNib(nibData:)` + `winInstantiate(withOwner:)` + `instance.view(withIdentifier:)`
+  / `.connections` / `.objectsByID`. LinChocolate must expose the same surface.
+- **A3 — table sort reentrancy.** LinChocolate's header/column-click dispatch must
+  likewise defer the control action past the native notification (or be
+  reentrancy-safe), since the demo now calls `reloadData()` directly in the action.
+- **A4 — timer isolation.** LinChocolate's `Timer.scheduledTimer` block must fire on
+  the main thread (as Foundation does) so `MainActor.assumeIsolated` holds.
+- **A5 — appearance hook.** Add `NSView.viewDidChangeEffectiveAppearance()` and call
+  it on the view subtree when the system theme changes, so the demo's override fires.
 
 ### A — framework API gaps: close these and the demo line becomes unconditional
 
