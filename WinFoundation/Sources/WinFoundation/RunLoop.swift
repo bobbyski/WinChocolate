@@ -90,16 +90,19 @@ public final class RunLoop: @unchecked Sendable {
         // Snapshot: a firing block may add or invalidate timers.
         let due = timers(forMode: mode).filter { $0.isValid && $0.nextFireDate <= now }
         for timer in due where timer.isValid {
-            timer.fire()
-            if timer.repeats, timer.isValid {
-                // Advance to the next interval strictly after `now`, so a long
-                // stall doesn't fire a burst of catch-up ticks.
+            // Schedule the next fire *before* invoking the block, as Foundation
+            // does: if the block enters a nested run loop, the timer's fire date
+            // is already advanced, so it does not re-fire immediately inside the
+            // nested run. Advance to the next interval strictly after `now` so a
+            // long stall doesn't fire a burst of catch-up ticks.
+            if timer.repeats {
                 var next = timer.nextFireDate.addingTimeInterval(timer.timeInterval)
                 if next <= now {
                     next = now.addingTimeInterval(timer.timeInterval)
                 }
                 timer.nextFireDate = next
             }
+            timer.fire()
         }
         pruneInvalidTimers()
         return !due.isEmpty

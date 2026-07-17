@@ -177,6 +177,103 @@ Eastern **Standard** Time.
 
 ---
 
+## 2026-07-16 — COMPLIANCE AUDIT: non-import conditionals in `DemoApplication/main.swift`
+
+**Rule One (set in stone): an AppKit-compatibility library. The ONLY conditional
+a shared demo may use is the framework-import switch** — `import LinChocolate` /
+`import WinChocolate` / `import AppKit`. Everything else runs once, unconditionally,
+and means the same on every target. Demo-local convenience functions are allowed
+(e.g. a closure `onAction` mapping to real `target`/`action`), and *they* may carry
+the AppKit-vs-Chocolate switch internally, **but they must be genuinely
+AppKit-compatible** (the AppKit branch is real `@objc`/`#selector` target/action).
+
+`DemoApplication/main.swift` predates this rule and still has **9 non-import
+`#if` blocks** (the import block at lines 19–25 is the one allowed). Recorded here
+for Bobby to address on the Mac — the frozen demo is not edited from this repo.
+Each needs the framework to absorb the difference so the demo line goes
+unconditional, OR the demo line moved out (for genuinely platform-only features).
+
+### A — framework API gaps: close these and the demo line becomes unconditional
+
+| # | main.swift | What the `#if` does | Compliance path |
+|---|---|---|---|
+| A1 | **2485–2489** (`!WinChocolate && !LinChocolate`, i.e. AppKit-only) | `form.cellSize` / `setBezeled(false)` / `setBordered(true)` on the deprecated `NSForm` — skipped on the chocolates | Give `WinChocolate`/`LinChocolate` `NSForm.cellSize`/`setBezeled`/`setBordered` with matching semantics, then the demo calls them everywhere with no `#if`. (An `NSForm`-as-real-`NSMatrix` parity item.) |
+| A2 | **2819–2958** (Chocolate vs AppKit) | The xib/nib path. AppKit uses real `@IBOutlet`/`@IBAction` auto-binding via `DemoNibPanelController`; the chocolates use a `DemoNibOwner` stand-in and read outlets manually | **The one sanctioned temporary exception** — add `@IBOutlet`/`@IBAction` macros to WinChocolate/LinChocolate (leave the AppKit binding as the canonical side). When they exist, delete the `#if` and keep only the AppKit path. |
+| A3 | **3611–3625** (Chocolate vs AppKit) | Table sort-descriptor reload deferred through `NSApp.nativeBackend.dispatchAsync` on the chocolates (classic-backend header-click reentrancy); direct `table.reloadData()` on AppKit | Make the chocolate backends reentrancy-safe so `reloadData()` from the sort callback is fine unconditionally — the demo must not reference `NSApp.nativeBackend`. |
+| A4 | **3772–3780** (`WinChocolate` vs else) | Timer tick: WinChocolate updates synchronously; AppKit wraps in `Task { @MainActor in }` because Foundation's `Timer` block is nonisolated | Align `WinFoundation.Timer`'s block isolation with Foundation's (nonisolated), then the demo uses the `Task { @MainActor in }` form on both — no `#if`. (Directly touches the new `WinFoundation.Timer`.) |
+| A5 | **4790–4798** (Chocolate-only) | Observes `NSApplication.winEffectiveAppearanceDidChangeNotification` and calls `applyLiveAppearanceRefresh()`; AppKit re-themes automatically | Expose an AppKit-compatible appearance-change hook (e.g. `viewDidChangeEffectiveAppearance`, or KVO on `effectiveAppearance`) that fires on both, or have the chocolates re-theme internally so the demo needs no observer. |
+
+### B — LinChocolate setup the framework should absorb
+
+| # | main.swift | What the `#if` does | Compliance path |
+|---|---|---|---|
+| B1 | **38–46** (`LinChocolate`) | `app.nativeBackend = GTKNativeControlBackend()` and `NSView.defaultIsFlipped = true` | LinChocolate should install its GTK backend itself on `NSApplication.shared` (WinChocolate/AppKit do it implicitly), and the demo should get top-left coordinates from a flipped content-view subclass rather than the global default — removing the block. (LinChocolate-side; not edited from here.) |
+
+### C — WinChocolate-only features/diagnostics with **no AppKit equivalent**
+
+These aren't AppKit-compatibility surface — the API literally doesn't exist on
+AppKit — so "make it unconditional" isn't possible. The compliant move is to take
+them **out of the shared demo** (into a WinChocolate-only harness/among the build
+scripts), or accept them as non-demo diagnostics:
+
+| # | main.swift | What the `#if` does |
+|---|---|---|
+| C1 | **27–35** (`WinChocolate`) | `--classic` → `WinPresentation.selected = .classic` (ComCtl32 classic vs modern; AppKit has no such toggle) |
+| C2 | **4290–4299** (Chocolate-only) | "Use Metallic Toolbar" menu item toggling `demoToolbar.winAppleLook` (a `win*` API; AppKit's toolbar already *is* Apple's) |
+| C3 | **4895–4917** (Chocolate-only) | `--diagnose` build probe of the native peer plumbing (`nativeHandle`/`nativeBackend`) — a build-script seam, not AppKit surface |
+
+**Summary:** A1–A5 close by framework API work (A2 is the pre-blessed
+`@IBOutlet`/`@IBAction` one; A4 folds into the just-landed `WinFoundation.Timer`).
+B1 is LinChocolate's own. C1–C3 should move out of the shared source, since they
+demo WinChocolate-specific behavior rather than prove AppKit compatibility.
+
+---
+
+## 2026-07-16 — NEW APP: RunLoopDemo (a second shared demo), single-source, imports-only
+
+A new, **separate** app — one file, `Demo/RunLoopDemo/main.swift` — exercises the
+run loop and its timers, the interactive proof for the RunLoop work
+(`Docs/RunLoopDesign.md`). The **frozen demo is untouched.**
+
+**Rule One (set in stone): the only conditional is the framework-import switch.**
+`main.swift`'s single `#if` picks the world — `import WinChocolate` (which
+re-exports WinFoundation) on Windows, `import AppKit` (which re-exports
+Foundation) on macOS — and **every other line runs unconditionally**. This forced
+the demo's shape: a hand-rolled custom action needs `@objc`/`#selector` on real
+AppKit, which the Windows Swift toolchain can't compile — i.e. a *second*
+conditional, which the rule forbids. So the demo **has no buttons/custom
+target/action**; it drives itself from the repeating `Timer`'s block (a plain
+Swift closure, no `@objc`): the tick label rises each second, at tick 2 it
+enqueues a `RunLoop.main.perform` block, and at tick 4 it enters a nested
+`RunLoop.main.run(mode:before:)` for 2s. `Quit` uses the framework's own
+`terminate:` (a string selector that resolves on both), needing no conditional.
+
+Two consequences worth noting:
+
+- **Two targets, not three.** The import switch is AppKit ↔ WinChocolate only;
+  adding a LinChocolate branch would be a third switch, which Rule One doesn't
+  sanction. So this demo is a WinChocolate/AppKit proof; wiring it on Linux is
+  LinChocolate's own call (out of scope here — LinChocolate is not edited from
+  this repo).
+- **Import one framework per branch, not the Foundation partner too.** `import
+  WinFoundation` alongside `import WinChocolate` pulls the second `Timer`
+  directly into scope and makes `Timer` ambiguous; the single framework import
+  (which already re-exports its Foundation) is both correct and unambiguous.
+
+Framework fix this shook out (WinFoundation, not the demo): `RunLoop.fireTimers`
+now advances a repeating timer's next fire date **before** invoking its block, as
+Foundation does — otherwise a nested run *inside* a timer handler saw the stale
+date and re-fired the timer immediately. With the fix the nested run reports
+exactly 2 clean ticks.
+
+- **Windows:** `buildandrun.bat runloop` builds, runs the contract tests, launches
+  it. Live-verified — ticks rise 1→9; perform fires at tick 2 ("block ran on the
+  next iteration"); the nested run at tick 4 returns "2 ticks fired during it".
+  Pinned headlessly by `testWinFoundationRunLoopAndTimer`.
+- **macOS:** `./run-mac.sh runloop` builds & runs it; `./run-mac.sh runloop --build`
+  is the compile-only faithfulness gate (both scripts gained the same `runloop`
+  selector as `buildandrun.bat`; default behaviour unchanged).
+
 ## 2026-07-16 — DEMO CHANGE (authorized): the date label was too narrow for AppKit's stringValue
 
 **A rule-break, explicitly authorized** ("lets break the rules and fix the display string

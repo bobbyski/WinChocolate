@@ -28,10 +28,10 @@ in WinChocolate) and nothing depends on that.
 - **Frozen demo, live:** its "Timer: Ns" label ticks 4→7→10s and the Click button
   responds — WinChocolate.Timer's `WM_TIMER` is still dispatched by the pump, input
   still flows, under the RunLoop-driven `NSApplication.run()`.
-- **RunLoopDemo, live:** the timer ticks while Bump increments (one loop, both jobs);
-  `RunLoop.main.perform` runs its block next iteration; a nested
-  `RunLoop.main.run(mode:.default, before:+2s)` returns after 2s with the timer
-  continuing across it (2 ticks during) — the re-entrancy case working.
+- **RunLoopDemo, live:** the self-driving demo (see below) ticks 1→9; at tick 2
+  `RunLoop.main.perform` runs its block on the next iteration; at tick 4 a nested
+  `RunLoop.main.run(mode:.default, before:+2s)` returns with the timer continuing
+  across it (exactly 2 ticks during) — the re-entrancy case working.
 
 The design as originally written follows.
 
@@ -132,21 +132,28 @@ WinFoundation:
 
 ## RunLoopDemo (new app — the frozen demo is not touched)
 
-A separate `Demo/RunLoopDemo/` target that compiles against all three
-backends (WinChocolate/Win32, real AppKit/Foundation on Mac, LinChocolate later).
-It proves the loop drives timers **and** window messages simultaneously:
+A separate single-file app, `Demo/RunLoopDemo/main.swift`, compiled against
+WinChocolate/Win32 and real AppKit/Foundation on the Mac. **Rule One (set in
+stone): the only conditional is the framework-import switch** — AppKit ↔
+WinChocolate, nothing else. That decides the demo's shape: a hand-rolled custom
+target/action needs `@objc`/`#selector` on real AppKit, which the Windows Swift
+toolchain can't compile — a *second* conditional, which the rule forbids. So the
+demo has **no buttons/custom actions**; it drives itself from the repeating
+`Timer`'s block (a plain Swift closure — no `@objc`):
 
-- A repeating `Timer.scheduledTimer(every: 1s)` ticking a label, next to a button
-  whose click still responds instantly (proves messages flow while timers fire).
-- A non-repeating timer that invalidates after firing.
-- `RunLoop.main.perform { }` updating the UI on the next iteration.
-- A "Run nested 2s" button that enters `RunLoop.main.run(mode:.default, before: +2s)`
-  and returns — with the ticking label continuing across it (proves nested runs and
-  `.common`-mode timer servicing).
-- Timer `invalidate()` from a button, and a count of fires.
+- The tick label rises once a second (`Timer.scheduledTimer(withTimeInterval:1,
+  repeats:true) { … }`).
+- At tick 2, `RunLoop.main.perform { }` updates a label on the next iteration.
+- At tick 4, a nested `RunLoop.main.run(mode:.default, before: +2s)` returns after
+  its window with the tick count still rising across it (exactly 2 ticks during) —
+  the nested-run / re-entrancy proof.
+- `Quit` uses the framework's own `terminate:` (a string selector resolving on
+  both), so it needs no conditional.
 
 On the Mac this is plain Foundation/AppKit and must build unmodified — the
-faithfulness gate for the API shape.
+faithfulness gate for the API shape. It is a two-target (AppKit/WinChocolate)
+proof; a LinChocolate branch would be a third import switch Rule One doesn't
+allow, so Linux is out of scope for this demo.
 
 ## Obstacles / risks (the honest list)
 
