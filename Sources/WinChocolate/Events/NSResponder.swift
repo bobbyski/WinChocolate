@@ -43,6 +43,7 @@ open class NSResponder: NSObject {
     /// dispatch does).
     private static let winStandardActionSelectors: Set<String> = [
         "copy:", "cut:", "paste:",
+        "moveUp:", "moveDown:",
     ]
 
     /// Responders handle the standard chain actions by selector name — this is
@@ -92,6 +93,10 @@ open class NSResponder: NSObject {
             cut(object)
         case "paste:":
             paste(object)
+        case "moveUp:":
+            moveUp(object)
+        case "moveDown:":
+            moveDown(object)
         default:
             return super.perform(aSelector, with: object)
         }
@@ -174,6 +179,20 @@ open class NSResponder: NSObject {
     /// Inserts the general pasteboard's contents at the selection.
     open func paste(_ sender: Any?) {
         nextResponder?.paste(sender)
+    }
+
+    /// Moves the insertion point up — one of AppKit's standard key-binding
+    /// action methods. The base forwards along the responder chain; objects
+    /// that handle it override (and demo action trampolines override it
+    /// precisely because overriding an inherited method is `@objc`-free on every
+    /// target, so the same source builds against real AppKit too).
+    open func moveUp(_ sender: Any?) {
+        nextResponder?.moveUp(sender)
+    }
+
+    /// Moves the insertion point down (see `moveUp(_:)`).
+    open func moveDown(_ sender: Any?) {
+        nextResponder?.moveDown(sender)
     }
 
     /// Handles a key press.

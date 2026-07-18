@@ -127,6 +127,13 @@ open class NSSplitView: NSView {
         delegate?.splitViewDidResizeSubviews(Notification(name: Notification.Name(Self.didResizeSubviewsNotification), object: self))
     }
 
+    /// Re-adjusts panes when the split view is resized by a layout system — a
+    /// split framed after its panes are added (the common case) must re-fill
+    /// them, exactly as AppKit does.
+    override func winLayoutAfterFrameSizeChange() {
+        adjustSubviews()
+    }
+
     /// Recalculates child pane frames to evenly fill the split view.
     open func adjustSubviews() {
         guard !subviews.isEmpty else {

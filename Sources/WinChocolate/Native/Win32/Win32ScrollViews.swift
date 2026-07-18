@@ -3,7 +3,9 @@ extension Win32NativeControlBackend {
     /// Creates a native scroll-view child.
     public func createScrollView(frame: NSRect, parent: NativeHandle?, hasVerticalScroller: Bool, hasHorizontalScroller: Bool) -> NativeHandle {
         registerViewClassIfNeeded()
-        var style = wsChild | wsVisible | wsClipChildren | wsBorder
+        // A programmatically created AppKit `NSScrollView` has `borderType ==
+        // .noBorder`; match that (a bordered type is opt-in via `borderType`).
+        var style = wsChild | wsVisible | wsClipChildren
         if hasVerticalScroller {
             style |= wsVScroll
         }
