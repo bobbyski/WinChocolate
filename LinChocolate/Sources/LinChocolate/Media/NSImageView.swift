@@ -29,5 +29,13 @@ open class NSImageView: NSControl {
         let backend = NSApplication.shared.nativeBackend
         let handle = backend.createImageView(frame: frame)
         super.init(frame: frame, handle: handle, backend: backend)
+        // Clicks dispatch through AppKit's responder method, so subclasses that
+        // override `mouseDown(with:)` (the demo's click-to-cycle image) work.
+        backend.setClickAction(for: handle) { [weak self] x, y in
+            guard let self else { return }
+            let event = NSEvent()
+            event.locationInWindow = NSMakePoint(x, y)
+            self.mouseDown(with: event)
+        }
     }
 }

@@ -177,6 +177,96 @@ Eastern **Standard** Time.
 
 ---
 
+## 2026-07-17 — Values page: the activity bar animates, and the rating stars are the right grey (framework work; demo untouched)
+
+Bobby, on the Mac Values tab: *"the progress bar … second from the progress label should
+be animated. Also check the colors of the stars."*
+
+### The indeterminate activity bar now animates
+
+The demo has two progress indicators on the Progress row: a determinate bar (fills to the
+slider value) and, beside it, `activityIndicator` with `isIndeterminate = true` +
+`startAnimation(nil)` — an animated barber-pole on the Mac. On Linux `isIndeterminate` was a
+plain stored property and `startAnimation`/`stopAnimation` were no-ops, so it sat static.
+
+Wired through: `isIndeterminate` and `start/stopAnimation` reach new backend seams
+(`setProgressIndeterminate`, `setProgressAnimating`); an indeterminate+animating bar drives
+`gtk_progress_bar_pulse` on a 100 ms `g_timeout` — GTK's analog of the barber-pole. Crucially
+`startAnimation` on a *determinate* bar no-ops, exactly as AppKit does. Verified: the bar's
+block sweeps back and forth (**27 pulses in ~3 s** = the 10 Hz timer), and a determinate bar
+still shows its value.
+
+### Rating stars: Apple's fixed mid-grey, not appearance-inverted
+
+The stars were tone-`0.85` in dark mode → near-**white**, nothing like the Mac's grey stars.
+Rendering AppKit's `.rating` `NSLevelIndicator` on-screen (offscreen `cacheDisplay` is blank
+for cell controls) showed the stars are a **fixed mid-grey (~0.5), the SAME in light and
+dark** — Apple does not invert them with appearance. Changed the Cairo star tone to a fixed
+`0.5`; the filled stars now read as grey on both backgrounds, matching the Mac.
+
+All contract tests pass (new ones pin indeterminate-animates / determinate-doesn't);
+geometry audit **0 violations on all 11 pages**.
+
+**MUST FIX (WinChocolate):** `NSProgressIndicator.isIndeterminate` + `start/stopAnimation`
+must drive a real barber-pole (no-op on a determinate bar); the `.rating` star colour must
+be a fixed mid-grey, not appearance-inverted.
+
+## 2026-07-17 — Tables/Media on Linux: collection hosts REAL buttons; image click works; split panes draw (framework work; demo untouched)
+
+Bobby: *"the collections are not rendering as buttons, the image click doesn't work. The
+goal is to make it look and work like the apple app (native linux controls … but it should
+be close)."* Three fixes, all LinChocolate:
+
+### The collection hosts each item's real view (buttons, like the Mac)
+
+LinChocolate's collection was a `GtkGridView` of **text tiles** — it stringified each
+item's `representedObject`. Apple's collection hosts each `NSCollectionViewItem`'s VIEW,
+and the demo's items are push buttons, so tiles could never look like the Mac. Rebuilt as a
+**`GtkFlowBox` hosting each item's native widget**:
+
+- `NSCollectionView.reloadData()` now **materializes the items** (calls the data source's
+  `itemForRepresentedObjectAt` and retains them) — which also made `item(at:)` and
+  `selectionIndexPaths` real (they were `nil`/`[]` stubs, so the demo's selection status
+  line could never have worked). A new `setCollectionItemViewProvider` seam hands the
+  backend each item's view handle; items with a zero-frame view fall back to the old text
+  pipeline (used by the native `LinChocolateDemo`).
+- **One click both selects and presses.** A button inside a flow-box child swallows the
+  click, so the child would never select. A capture-phase `GtkGestureClick` on each child
+  selects it without claiming the event — click "NSTableView" and the status reads
+  *"Collection selected: NSTableView"* while the button also presses.
+- Widget re-parenting holds a reference across the move (the standing GTK4 lesson).
+
+### The image cycles on click
+
+The demo's `DemoClickableImageView` overrides **`mouseDown(with:)`** — real AppKit — but
+nothing on Linux ever dispatched clicks to an image view. A new `setClickAction` backend
+seam (a `GtkGestureClick` on the picture) feeds `NSImageView`, which constructs an
+`NSEvent` and calls `self.mouseDown(with:)` — so the demo's subclass override runs
+unmodified. Clicking the artwork now cycles image/scaling/alignment, as on the Mac.
+
+### The split panes draw again (bounds is now truthful)
+
+The demo's panes are `DemoFilledView(frame: NSZeroRect)` — **Apple's split view sizes its
+subviews during layout**, so `draw(_:)` filling `bounds` works there. LinChocolate's
+`GtkPaned` sizes the *widgets* natively while `NSView.frame` stayed zero → `bounds` was
+zero → the fill painted nothing. `NSView` now records its **native layout size at draw
+time**, and `bounds` falls back to it when the frame is zero. The pale-blue/peach panes
+render with the divider at the demo's position.
+
+**Verified live:** collection shows the six push buttons in a wrapped flow (matching the
+Mac's two rows); clicking one selects it (highlight + status line) and presses it; the
+image cycles on click; the split panes fill. Contract tests all pass; geometry audit **0
+violations on all 11 pages, 0 dropped children**.
+
+**Still open on this page vs the Mac (next up):**
+- **Clip view**: the Home/Center/Corner buttons and "origin 0,0" label render inside the
+  document tiles instead of beside a clipped, scrollable document box.
+- **Path control**: renders an empty bar; the Mac shows the breadcrumb components.
+
+**MUST FIX (WinChocolate):** collection must host item views (not text), with one-click
+select+press; `item(at:)`/`selectionIndexPaths` real; image views must dispatch
+`mouseDown(with:)`; natively-sized children need truthful `bounds`.
+
 ## 2026-07-17 — The Tables-page collection was empty on macOS: a bare NSCollectionView never materializes (demo fix)
 
 Bobby: *"the collections buttons are not showing in the mac demo app."* Confirmed on the

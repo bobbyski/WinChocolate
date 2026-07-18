@@ -310,6 +310,10 @@ public protocol NativeControlBackend: AnyObject {
     func createSlider(value: Double, minValue: Double, maxValue: Double, frame: NSRect) -> NativeHandle
     /// Creates a determinate progress indicator over `[minValue, maxValue]`.
     func createProgressIndicator(value: Double, minValue: Double, maxValue: Double, frame: NSRect) -> NativeHandle
+    /// Determinate (fills to a value) vs indeterminate (an animated barber-pole).
+    func setProgressIndeterminate(_ indeterminate: Bool, for handle: NativeHandle)
+    /// Starts/stops an indeterminate bar's animation (AppKit's start/stopAnimation).
+    func setProgressAnimating(_ animating: Bool, for handle: NativeHandle)
     /// Creates a pop-up (dropdown) button.
     func createPopUpButton(items: [String], selectedIndex: Int, frame: NSRect) -> NativeHandle
     /// Creates a segmented control (`setSelectedIndex` selects a segment;
@@ -356,6 +360,10 @@ public protocol NativeControlBackend: AnyObject {
     func setCollectionItemCount(_ count: Int, for collection: NativeHandle)
     /// Supplies tile text on demand by item index.
     func setCollectionItemProvider(for collection: NativeHandle, provider: @escaping (Int) -> String)
+    /// The native widget for a collection item, or nil to fall back to the
+    /// text provider. Apple's collection hosts each item's real VIEW (the
+    /// demo's items are buttons); this is what renders them as such.
+    func setCollectionItemViewProvider(for collection: NativeHandle, provider: @escaping (Int) -> NativeHandle?)
     /// Creates a token field (chips + text entry; Enter commits a token,
     /// clicking a chip removes it).
     func createTokenField(tokens: [String], frame: NSRect) -> NativeHandle
@@ -448,6 +456,11 @@ public protocol NativeControlBackend: AnyObject {
     /// Registers custom drawing for a container view: `(context, width, height)`
     /// in AppKit's bottom-left coordinate space.
     func setDrawHandler(for handle: NativeHandle, handler: @escaping (NativeGraphicsContext, Double, Double) -> Void)
+    /// Fires when the view is clicked, with the position in the view's own
+    /// coordinates — the seam behind `NSView.mouseDown(with:)` for views whose
+    /// widget has no built-in action (image views; custom views use the draw
+    /// area's gestures).
+    func setClickAction(for handle: NativeHandle, action: @escaping (Double, Double) -> Void)
     /// Requests a redraw of a view with a draw handler.
     func setNeedsDisplay(_ handle: NativeHandle)
     /// Sets a checkbox/radio's on/off state.

@@ -27,6 +27,8 @@ public final class GTKNativeControlBackend: NativeControlBackend {
     private var parents: [UInt: UInt] = [:]   // child -> parent, for repositioning
     private var childrenByParent: [UInt: [UInt]] = [:]   // parent -> children, in add order
     private var ranges: [UInt: (min: Double, max: Double)] = [:]   // slider/progress
+    private var indeterminateProgress: Set<UInt> = []
+    private var progressPulseSources: [UInt: guint] = [:]
     private var stepperValues: [UInt: Double] = [:]     // stepper -> current value
     private var stepperSteps: [UInt: Double] = [:]      // stepper -> increment
     private var valueChangeActions: [UInt: (Double) -> Void] = [:]
@@ -81,6 +83,11 @@ public final class GTKNativeControlBackend: NativeControlBackend {
     private var collectionLists: [UInt: OpaquePointer] = [:]  // collection -> GtkStringList
     private var collectionItemCounts: [UInt: Int] = [:]
     private var collectionProviders: [UInt: (Int) -> String] = [:]
+    private var collectionViewProviders: [UInt: (Int) -> NativeHandle?] = [:]
+    private var collectionFlows: [UInt: OpaquePointer] = [:]   // collection -> GtkFlowBox
+    private var collectionSelectionActions: [UInt: (Int) -> Void] = [:]
+    private var suppressCollectionSelection: Set<UInt> = []
+    private var clickActionBoxes: [UInt: Bool] = [:]
     private var outlineColumnViews: [UInt: OpaquePointer] = [:]
     private var outlineRootLists: [UInt: OpaquePointer] = [:]
     private var outlineRootCounts: [UInt: Int] = [:]
@@ -1235,6 +1242,39 @@ public final class GTKNativeControlBackend: NativeControlBackend {
         setDoubleValue(value, for: h)
         return h
     }
+
+    public func setProgressIndeterminate(_ indeterminate: Bool, for handle: NativeHandle) {
+        if indeterminate { indeterminateProgress.insert(handle.rawValue) }
+        else { indeterminateProgress.remove(handle.rawValue); stopProgressPulse(handle.rawValue) }
+    }
+
+    public func setProgressAnimating(_ animating: Bool, for handle: NativeHandle) {
+        let raw = handle.rawValue
+        // Only an indeterminate bar animates — AppKit's `startAnimation` on a
+        // determinate bar is a no-op.
+        guard animating, indeterminateProgress.contains(raw) else { stopProgressPulse(raw); return }
+        guard progressPulseSources[raw] == nil, let w = widgets[raw] else { return }
+        gtk_progress_bar_pulse(w)
+        // GtkProgressBar's "pulse" moves a block back and forth — the GTK
+        // analog of AppKit's barber-pole indeterminate bar. Drive it ~10×/s.
+        let box = ActionBox { [weak self] in
+            guard let self, let w = self.widgets[raw] else { return }
+            gtk_progress_bar_pulse(w)
+        }
+        let id = g_timeout_add(guint(100), { userData in
+            guard let userData else { return gboolean(0) }
+            Unmanaged<ActionBox>.fromOpaque(userData).takeUnretainedValue().action()
+            return gboolean(1)   // keep pulsing
+        }, Unmanaged.passRetained(box).toOpaque())
+        progressPulseSources[raw] = id
+    }
+
+    private func stopProgressPulse(_ raw: UInt) {
+        if let id = progressPulseSources.removeValue(forKey: raw) {
+            g_source_remove(id)
+            if let w = widgets[raw] { gtk_progress_bar_set_fraction(w, 0) }
+        }
+    }
     public func createPopUpButton(items: [String], selectedIndex: Int, frame: NSRect) -> NativeHandle {
         // gtk_drop_down_new_from_strings takes a NULL-terminated C string array;
         // it copies the strings, so the temporaries are freed right after.
@@ -1484,7 +1524,10 @@ public final class GTKNativeControlBackend: NativeControlBackend {
         let value = levelValues[raw] ?? 0
         let slot = width / Double(stars)
         let radius = Swift.min(slot, height) * 0.42
-        let tone = prefersDarkAppearance ? 0.85 : 0.30
+        // AppKit's rating star is a fixed mid-gray in BOTH appearances (probed:
+        // ~0.5, not appearance-inverted). The old 0.85 made dark-mode stars
+        // near-white — nothing like the Mac's grey stars.
+        let tone = 0.5
         for index in 0..<stars {
             appendStarPath(cr: cr, centreX: slot * (Double(index) + 0.5), centreY: height / 2, radius: radius)
             cairo_set_source_rgb(cr, tone, tone, tone)
@@ -1883,50 +1926,95 @@ public final class GTKNativeControlBackend: NativeControlBackend {
         tableProviders[table]?(row, column) ?? ""
     }
     public func createCollectionView(frame: NSRect) -> NativeHandle {
-        // GtkGridView over the same count-only GtkStringList trick as tables;
-        // one factory renders every tile, pulling text from the provider.
-        let list = gtk_string_list_new(nil)!
-        let selection = gtk_single_selection_new(list)!
-        let factory = gtk_signal_list_item_factory_new()!
-        g_signal_connect_data(
-            UnsafeMutableRawPointer(factory), "setup",
-            unsafeBitCast(gtkCollectionTileSetupTrampoline, to: GCallback.self),
-            nil, nil, GConnectFlags(rawValue: 0)
-        )
-        let gv = gtk_grid_view_new(selection, factory)!
-        gtk_grid_view_set_min_columns(OpaquePointer(gv), 3)
-        gtk_grid_view_set_max_columns(OpaquePointer(gv), 4)
+        // A GtkFlowBox hosting each item's REAL widget — Apple's collection
+        // hosts each NSCollectionViewItem's view (the demo's items are push
+        // buttons), so a text-tile grid was never going to look like the Mac.
+        // The flow box wraps children by width, like NSCollectionViewFlowLayout.
+        let flow = gtk_flow_box_new()!
+        gtk_flow_box_set_selection_mode(OpaquePointer(flow), GTK_SELECTION_SINGLE)
+        gtk_flow_box_set_homogeneous(OpaquePointer(flow), gboolean(0))
+        gtk_flow_box_set_column_spacing(OpaquePointer(flow), 8)
+        gtk_flow_box_set_row_spacing(OpaquePointer(flow), 8)
+        gtk_flow_box_set_max_children_per_line(OpaquePointer(flow), 8)
+        gtk_widget_add_css_class(flow, "linchocolate-collection")
         let scroller = gtk_scrolled_window_new()!
-        gtk_scrolled_window_set_child(OpaquePointer(scroller), gv)
+        gtk_scrolled_window_set_child(OpaquePointer(scroller), flow)
         gtk_widget_set_size_request(scroller, Int32(frame.width), Int32(frame.height))
         let h = allocate(scroller, .collection, frame: frame)
+        collectionFlows[h.rawValue] = OpaquePointer(flow)
         let box = CollectionBox(backend: self, collection: h.rawValue)
         g_signal_connect_data(
-            UnsafeMutableRawPointer(factory), "bind",
-            unsafeBitCast(gtkCollectionTileBindTrampoline, to: GCallback.self),
+            UnsafeMutableRawPointer(flow), "selected-children-changed",
+            unsafeBitCast(gtkFlowSelectionTrampoline, to: GCallback.self),
             Unmanaged.passRetained(box).toOpaque(), boxRelease, GConnectFlags(rawValue: 0)
         )
-        collectionLists[h.rawValue] = list
-        tableSelections[h.rawValue] = selection   // shared selection routing
         return h
     }
     public func setCollectionItemCount(_ count: Int, for collection: NativeHandle) {
-        guard let list = collectionLists[collection.rawValue] else { return }
-        let old = collectionItemCounts[collection.rawValue] ?? 0
-        var additions: [UnsafePointer<CChar>?] = (0..<count).map { _ in UnsafePointer(strdup("")) }
-        additions.append(nil)
-        additions.withUnsafeBufferPointer {
-            gtk_string_list_splice(list, 0, guint(old), $0.baseAddress)
-        }
-        for s in additions where s != nil { free(UnsafeMutableRawPointer(mutating: s)) }
-        collectionItemCounts[collection.rawValue] = count
+        let raw = collection.rawValue
+        collectionItemCounts[raw] = count
+        rebuildCollectionChildren(raw)
     }
     public func setCollectionItemProvider(for collection: NativeHandle, provider: @escaping (Int) -> String) {
         collectionProviders[collection.rawValue] = provider
     }
-    /// Tile text for the collection bind trampoline.
-    func collectionItemText(collection: UInt, index: Int) -> String {
-        collectionProviders[collection]?(index) ?? ""
+    public func setCollectionItemViewProvider(for collection: NativeHandle, provider: @escaping (Int) -> NativeHandle?) {
+        collectionViewProviders[collection.rawValue] = provider
+    }
+
+    /// (Re)fills the flow box: each item contributes its real widget when the
+    /// view provider has one, else a text label from the text provider.
+    private func rebuildCollectionChildren(_ raw: UInt) {
+        guard let flow = collectionFlows[raw] else { return }
+        suppressCollectionSelection.insert(raw)
+        while let child = gtk_flow_box_get_child_at_index(flow, 0) {
+            gtk_flow_box_remove(flow, asWidget(OpaquePointer(child)))
+        }
+        let count = collectionItemCounts[raw] ?? 0
+        for index in 0..<count {
+            let content: UnsafeMutablePointer<GtkWidget>
+            if let handle = collectionViewProviders[raw]?(index), let widget = widgets[handle.rawValue] {
+                // Hold a reference across the move (the toolbar lesson: an
+                // unparented GTK4 widget with no other ref is destroyed).
+                g_object_ref(UnsafeMutableRawPointer(widget))
+                if gtk_widget_get_parent(asWidget(widget)) != nil { gtk_widget_unparent(asWidget(widget)) }
+                content = asWidget(widget)
+                gtk_flow_box_insert(flow, content, -1)
+                g_object_unref(UnsafeMutableRawPointer(widget))
+            } else {
+                content = gtk_label_new(collectionProviders[raw]?(index) ?? "")!
+                gtk_flow_box_insert(flow, content, -1)
+            }
+            // An item hosting a control (a button) would swallow the click and
+            // the flow box would never select the child — so select it from a
+            // capture-phase gesture that doesn't claim the event: one click
+            // both selects the item and presses its control.
+            if let child = gtk_widget_get_parent(content) {
+                let click = gtk_gesture_click_new()
+                gtk_event_controller_set_propagation_phase(click, GTK_PHASE_CAPTURE)
+                let selectBox = FlowChildBox(flow: flow, child: OpaquePointer(child))
+                g_signal_connect_data(
+                    UnsafeMutableRawPointer(click), "pressed",
+                    unsafeBitCast(gtkFlowChildSelectTrampoline, to: GCallback.self),
+                    Unmanaged.passRetained(selectBox).toOpaque(), boxRelease, GConnectFlags(rawValue: 0)
+                )
+                gtk_widget_add_controller(asWidget(OpaquePointer(child)), click)
+            }
+        }
+        suppressCollectionSelection.remove(raw)
+    }
+
+    /// Reports a flow-box selection as an item index.
+    fileprivate func reportCollectionSelection(_ raw: UInt) {
+        guard !suppressCollectionSelection.contains(raw), let flow = collectionFlows[raw] else { return }
+        var index = -1
+        if let selected = gtk_flow_box_get_selected_children(flow) {
+            if let first = selected.pointee.data {
+                index = Int(gtk_flow_box_child_get_index(first.assumingMemoryBound(to: GtkFlowBoxChild.self)))
+            }
+            g_list_free(selected)
+        }
+        collectionSelectionActions[raw]?(index)
     }
     public func createOutlineView(frame: NSRect) -> NativeHandle {
         // Tree table: GtkTreeListModel over a root GtkStringList of path keys
@@ -2273,6 +2361,18 @@ public final class GTKNativeControlBackend: NativeControlBackend {
         // when we are unflipped.
         replaceChildren(of: handle.rawValue)
     }
+    public func setClickAction(for handle: NativeHandle, action: @escaping (Double, Double) -> Void) {
+        guard let w = widget(handle) else { return }
+        let click = gtk_gesture_click_new()
+        let box = ClickBox(action)
+        g_signal_connect_data(
+            UnsafeMutableRawPointer(click), "pressed",
+            unsafeBitCast(gtkViewClickTrampoline, to: GCallback.self),
+            Unmanaged.passRetained(box).toOpaque(), boxRelease, GConnectFlags(rawValue: 0)
+        )
+        gtk_widget_add_controller(asWidget(w), click)
+    }
+
     public func setDrawHandler(for handle: NativeHandle, handler: @escaping (NativeGraphicsContext, Double, Double) -> Void) {
         guard let area = viewDrawAreas[handle.rawValue] else { return }
         drawHandlers[handle.rawValue] = handler
@@ -2405,6 +2505,7 @@ public final class GTKNativeControlBackend: NativeControlBackend {
         case .slider:
             gtk_range_set_value(asRange(w), value)
         case .progress:
+            guard !indeterminateProgress.contains(handle.rawValue) else { break }
             let (lo, hi) = ranges[handle.rawValue] ?? (0, 1)
             let fraction = hi > lo ? (value - lo) / (hi - lo) : 0
             gtk_progress_bar_set_fraction(w, min(1, max(0, fraction)))   // GtkProgressBar is opaque
@@ -2552,6 +2653,10 @@ public final class GTKNativeControlBackend: NativeControlBackend {
         )
     }
     public func setSelectionChangeAction(for handle: NativeHandle, action: @escaping (Int) -> Void) {
+        if collectionFlows[handle.rawValue] != nil {
+            collectionSelectionActions[handle.rawValue] = action
+            return
+        }
         guard let w = widget(handle) else { return }
         let box = IntActionBox(action)
         if [.table, .outline, .collection].contains(kinds[handle.rawValue]) {
@@ -2940,6 +3045,43 @@ private final class TimerBox {
     }
 }
 
+/// Carries a flow-box child to its capture-phase select-on-click gesture.
+private final class FlowChildBox {
+    let flow: OpaquePointer
+    let child: OpaquePointer
+    init(flow: OpaquePointer, child: OpaquePointer) {
+        self.flow = flow
+        self.child = child
+    }
+}
+
+/// Capture-phase `pressed` on a flow-box child: select it, let the event
+/// continue to the hosted control.
+private let gtkFlowChildSelectTrampoline: @convention(c) (UnsafeMutableRawPointer?, gint, Double, Double, gpointer?) -> Void = { _, _, _, _, userData in
+    guard let userData else { return }
+    let box = Unmanaged<FlowChildBox>.fromOpaque(userData).takeUnretainedValue()
+    gtk_flow_box_select_child(box.flow, UnsafeMutablePointer<GtkFlowBoxChild>(box.child))
+}
+
+/// Carries a view's click action to its gesture handler.
+private final class ClickBox {
+    let action: (Double, Double) -> Void
+    init(_ action: @escaping (Double, Double) -> Void) { self.action = action }
+}
+
+/// `GtkGestureClick::pressed` on a plain view (image views) — reports the point.
+private let gtkViewClickTrampoline: @convention(c) (UnsafeMutableRawPointer?, gint, Double, Double, gpointer?) -> Void = { _, _, x, y, userData in
+    guard let userData else { return }
+    Unmanaged<ClickBox>.fromOpaque(userData).takeUnretainedValue().action(x, y)
+}
+
+/// `GtkFlowBox::selected-children-changed` — a collection selection.
+private let gtkFlowSelectionTrampoline: @convention(c) (UnsafeMutableRawPointer?, gpointer?) -> Void = { _, userData in
+    guard let userData else { return }
+    let box = Unmanaged<CollectionBox>.fromOpaque(userData).takeUnretainedValue()
+    box.backend?.reportCollectionSelection(box.collection)
+}
+
 /// Carries an editable level indicator's backend + handle to its click gesture.
 private final class LevelClickBox {
     weak var backend: GTKNativeControlBackend?
@@ -3112,24 +3254,7 @@ private final class CollectionBox {
     }
 }
 
-/// Collection factory `setup` — a centered tile label with breathing room.
-private let gtkCollectionTileSetupTrampoline: @convention(c) (UnsafeMutableRawPointer?, UnsafeMutableRawPointer?, gpointer?) -> Void = { _, item, _ in
-    guard let item else { return }
-    let label = gtk_label_new("")!
-    gtk_widget_set_margin_start(label, 12); gtk_widget_set_margin_end(label, 12)
-    gtk_widget_set_margin_top(label, 16); gtk_widget_set_margin_bottom(label, 16)
-    gtk_list_item_set_child(OpaquePointer(item), label)
-}
 
-/// Collection factory `bind` — fills the tile from the item provider.
-private let gtkCollectionTileBindTrampoline: @convention(c) (UnsafeMutableRawPointer?, UnsafeMutableRawPointer?, gpointer?) -> Void = { _, item, userData in
-    guard let item, let userData else { return }
-    let box = Unmanaged<CollectionBox>.fromOpaque(userData).takeUnretainedValue()
-    let index = Int(gtk_list_item_get_position(OpaquePointer(item)))
-    guard let child = gtk_list_item_get_child(OpaquePointer(item)) else { return }
-    let text = box.backend?.collectionItemText(collection: box.collection, index: index) ?? ""
-    gtk_label_set_text(OpaquePointer(child), text)
-}
 
 /// `GtkTreeListModel` create-func — returns a child path list, or nil for leaves.
 private let outlineCreateChildModelFunc: @convention(c) (gpointer?, gpointer?) -> OpaquePointer? = { item, userData in

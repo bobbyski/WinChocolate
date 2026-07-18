@@ -373,6 +373,17 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
         doubleValues[h.rawValue] = value
         return h
     }
+    /// Progress-bar state, for tests.
+    public private(set) var indeterminateProgress: Set<UInt> = []
+    public private(set) var animatingProgress: Set<UInt> = []
+    public func setProgressIndeterminate(_ indeterminate: Bool, for handle: NativeHandle) {
+        if indeterminate { indeterminateProgress.insert(handle.rawValue) }
+        else { indeterminateProgress.remove(handle.rawValue); animatingProgress.remove(handle.rawValue) }
+    }
+    public func setProgressAnimating(_ animating: Bool, for handle: NativeHandle) {
+        if animating && indeterminateProgress.contains(handle.rawValue) { animatingProgress.insert(handle.rawValue) }
+        else { animatingProgress.remove(handle.rawValue) }
+    }
     public func createPopUpButton(items: [String], selectedIndex: Int, frame: NSRect) -> NativeHandle {
         let h = allocate(.popUp)
         frames[h.rawValue] = frame
@@ -515,6 +526,21 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     public func setCollectionItemCount(_ count: Int, for collection: NativeHandle) {
         collectionItemCounts[collection.rawValue] = count
     }
+    /// Recorded item-view providers, for tests.
+    public private(set) var collectionItemViewProviders: [UInt: (Int) -> NativeHandle?] = [:]
+    public func setCollectionItemViewProvider(for collection: NativeHandle, provider: @escaping (Int) -> NativeHandle?) {
+        collectionItemViewProviders[collection.rawValue] = provider
+    }
+
+    private var clickActions: [UInt: (Double, Double) -> Void] = [:]
+    public func setClickAction(for handle: NativeHandle, action: @escaping (Double, Double) -> Void) {
+        clickActions[handle.rawValue] = action
+    }
+    /// Test hook: click a view at a position in its own coordinates.
+    public func simulateClick(at x: Double, _ y: Double, for handle: NativeHandle) {
+        clickActions[handle.rawValue]?(x, y)
+    }
+
     public func setCollectionItemProvider(for collection: NativeHandle, provider: @escaping (Int) -> String) {
         collectionItemProviders[collection.rawValue] = provider
     }

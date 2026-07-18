@@ -276,10 +276,7 @@ public extension NSView {
 }
 
 public extension NSCollectionView {
-    func item(at indexPath: IndexPath) -> NSCollectionViewItem? { nil }
-    func item(at index: Int) -> NSCollectionViewItem? { nil }
-    // elementKindSectionHeader/Footer now live on NSCollectionView itself,
-    // alongside the register/makeSupplementaryView pipeline they belong to.
+    // item(at:) now lives on NSCollectionView itself (items are materialized).
     func reloadSections(_ sections: IndexSet) { reloadData() }
     func register(_ itemClass: AnyClass?, forItemWithIdentifier identifier: String) {}
 }
@@ -322,7 +319,6 @@ public extension NSOutlineView {
 }
 
 public extension NSCollectionView {
-    var selectionIndexPaths: Set<IndexPath> { get { [] } set {} }
     var onAction: ((NSCollectionView) -> Void)? { get { onSelectionChange } set { onSelectionChange = newValue } }
 }
 

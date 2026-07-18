@@ -141,11 +141,40 @@ open class NSCollectionView: NSView {
     public weak var delegate: NSCollectionViewDelegate?
     public func selectItems(at indexPaths: Set<IndexPath>, scrollPosition: Int) {}
 
+    /// The materialized items, in index order — what Apple's collection keeps
+    /// and `item(at:)` returns. Rebuilt by `reloadData()`.
+    private var materializedItems: [NSCollectionViewItem] = []
+
+    /// The item at `indexPath` (AppKit's `item(at:)`), nil when out of range.
+    public func item(at indexPath: IndexPath) -> NSCollectionViewItem? {
+        materializedItems.indices.contains(indexPath.item) ? materializedItems[indexPath.item] : nil
+    }
+
+    /// The item at a flat index.
+    public func item(at index: Int) -> NSCollectionViewItem? {
+        materializedItems.indices.contains(index) ? materializedItems[index] : nil
+    }
+
+    /// The selected item index paths (AppKit's shape; single selection).
+    public var selectionIndexPaths: Set<IndexPath> {
+        get { backingSelection >= 0 ? [IndexPath(item: backingSelection, section: 0)] : [] }
+        set { backingSelection = newValue.first?.item ?? -1 }
+    }
+
     /// Creates an empty collection view.
     public required init(frame: NSRect) {
         let backend = NSApplication.shared.nativeBackend
         let handle = backend.createCollectionView(frame: frame)
         super.init(frame: frame, handle: handle, backend: backend)
+        // Items host their real views (Apple's model: the demo's items are
+        // push buttons, and they must render as buttons). Items with a
+        // zero-frame view fall back to the text provider below.
+        backend.setCollectionItemViewProvider(for: handle) { [weak self] index in
+            guard let self, self.materializedItems.indices.contains(index) else { return nil }
+            let view = self.materializedItems[index].view
+            guard view.frame.size != .zero else { return nil }
+            return view.handle
+        }
         backend.setCollectionItemProvider(for: handle) { [weak self] index in
             guard let self, let dataSource = self.dataSource else { return "" }
             let value = dataSource.collectionView(self, representedObjectForItemAt: index)
@@ -154,6 +183,7 @@ open class NSCollectionView: NSView {
         backend.setSelectionChangeAction(for: handle) { [weak self] index in
             guard let self else { return }
             self.backingSelection = index      // sync silently
+            if let item = self.item(at: index) { item.isSelected = true }
             self.onSelectionChange?(self)
             if index >= 0 {
                 self.delegate?.collectionView(self, didSelectItemsAt: [IndexPath(item: index, section: 0)])
@@ -161,9 +191,14 @@ open class NSCollectionView: NSView {
         }
     }
 
-    /// Re-queries the data source and re-renders the tiles.
+    /// Re-queries the data source, materializing every item (they host real
+    /// views), and re-renders.
     public func reloadData() {
         let count = dataSource?.collectionView(self, numberOfItemsInSection: 0) ?? 0
+        materializedItems = (0..<count).map { index in
+            dataSource?.collectionView(self, itemForRepresentedObjectAt: IndexPath(item: index, section: 0))
+                ?? NSCollectionViewItem()
+        }
         backend.setCollectionItemCount(count, for: handle)
     }
 }

@@ -1145,6 +1145,28 @@ final class DynamicFlipView: NSView {
     override var isFlipped: Bool { flipsNow }
 }
 
+// MARK: 28x — NSProgressIndicator: indeterminate animates, determinate doesn't
+do {
+    let backend = InMemoryNativeControlBackend()
+    NSApplication.shared.nativeBackend = backend
+
+    // Determinate bar: startAnimation is a no-op (AppKit).
+    let bar = NSProgressIndicator(frame: NSMakeRect(0, 0, 232, 18))
+    bar.isIndeterminate = false
+    bar.startAnimation(nil)
+    check(backend.indeterminateProgress.contains(bar.handle.rawValue) == false, "a determinate bar is not indeterminate")
+    check(backend.animatingProgress.contains(bar.handle.rawValue) == false, "startAnimation on a determinate bar does nothing")
+
+    // Indeterminate activity indicator: startAnimation animates it.
+    let activity = NSProgressIndicator(frame: NSMakeRect(0, 0, 160, 18))
+    activity.isIndeterminate = true
+    check(backend.indeterminateProgress.contains(activity.handle.rawValue), "isIndeterminate reaches the backend")
+    activity.startAnimation(nil)
+    check(backend.animatingProgress.contains(activity.handle.rawValue), "startAnimation animates the indeterminate bar")
+    activity.stopAnimation(nil)
+    check(backend.animatingProgress.contains(activity.handle.rawValue) == false, "stopAnimation stops it")
+}
+
 // MARK: 28z — Timer routes to the platform loop, not Foundation's dead RunLoop
 do {
     let backend = InMemoryNativeControlBackend()

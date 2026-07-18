@@ -39,8 +39,22 @@ open class NSView: NSResponder {
     /// (e.g. `NSStackView`) override it.
     open func layout() {}
 
-    /// The view's bounds — its own coordinate space, origin at (0, 0).
-    open var bounds: NSRect { NSMakeRect(0, 0, frame.width, frame.height) }
+    /// The size the native side last laid this view out at. Some containers
+    /// size their children natively rather than through `frame` — a split
+    /// view's panes (AppKit sets pane frames during layout; GtkPaned allocates
+    /// widgets directly). Recorded at draw time so `bounds` is truthful.
+    var nativeLayoutSize: NSSize = .zero
+
+    /// The view's bounds — its own coordinate space, origin at (0, 0). Falls
+    /// back to the native allocation when the frame is zero (natively-sized
+    /// children, e.g. split-view panes), so `draw(_:)` code that fills
+    /// `bounds` — the demo's colored panes — sees the real size.
+    open var bounds: NSRect {
+        if frame.size == .zero, nativeLayoutSize != .zero {
+            return NSMakeRect(0, 0, nativeLayoutSize.width, nativeLayoutSize.height)
+        }
+        return NSMakeRect(0, 0, frame.width, frame.height)
+    }
 
     /// Whether the view is hidden.
     public var isHidden: Bool = false {
@@ -112,6 +126,7 @@ open class NSView: NSResponder {
         super.init()
         backend.setDrawHandler(for: handle) { [weak self] native, width, height in
             guard let self else { return }
+            self.nativeLayoutSize = NSMakeSize(width, height)
             NSGraphicsContext.setCurrent(NSGraphicsContext(native: native))
             self.draw(NSMakeRect(0, 0, width, height))
             NSGraphicsContext.setCurrent(nil)

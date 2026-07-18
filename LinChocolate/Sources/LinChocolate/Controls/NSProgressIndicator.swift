@@ -21,14 +21,20 @@ open class NSProgressIndicator: NSView {
     /// Bar vs spinner (accepted for parity; native control picks its look).
     public var style: NSProgressIndicatorStyle = .bar
 
-    /// Indeterminate (barber-pole / spinner) vs determinate.
-    public var isIndeterminate: Bool = false
+    /// Indeterminate (barber-pole) vs determinate.
+    public var isIndeterminate: Bool = false {
+        didSet { backend.setProgressIndeterminate(isIndeterminate, for: handle) }
+    }
     public var usesThreadedAnimation: Bool = true
     public var isDisplayedWhenStopped: Bool = true
 
-    /// Starts/stops indeterminate animation (accepted for parity).
-    public func startAnimation(_ sender: Any?) {}
-    public func stopAnimation(_ sender: Any?) {}
+    /// Starts/stops the indeterminate animation (AppKit's start/stopAnimation).
+    public func startAnimation(_ sender: Any?) {
+        backend.setProgressAnimating(true, for: handle)
+    }
+    public func stopAnimation(_ sender: Any?) {
+        backend.setProgressAnimating(false, for: handle)
+    }
     public func incrementBy(_ delta: Double) { doubleValue += delta }
     public func sizeToFit() {}
 
