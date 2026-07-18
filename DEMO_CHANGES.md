@@ -177,6 +177,41 @@ Eastern **Standard** Time.
 
 ---
 
+## 2026-07-18 — Faster activity bar; the clip view actually clips and scrolls (framework work; demo untouched)
+
+Two follow-ups: *"make the progress animation faster"* and *"on the table and media page fix
+the clip view so it clips."*
+
+### Faster barber-pole
+
+The indeterminate bar's pulse timer went 100 ms → **40 ms** (~25 fps) with a larger pulse
+step (0.12), so the block sweeps briskly like AppKit's.
+
+### The clip view clips and scrolls
+
+The demo builds a **standalone** `NSClipView(frame: 220×110)` whose `documentView` is
+**420×220** — four coloured quadrant panes — and the Home/Center/Corner buttons scroll it.
+On Linux the document was added as a subview but nothing clipped it (the whole 420×220 spilled
+across the page, the panes and their labels overlapping neighbouring controls), and
+`scroll(to:)` no-oped for a standalone clip view. Fixed:
+
+- **Clipping:** a new `clipsToBounds` on `NSView` (Apple's property) maps to
+  `gtk_widget_set_overflow(..., GTK_OVERFLOW_HIDDEN)`; `NSClipView` sets it. The document is
+  now masked to the viewport.
+- **Scrolling:** standalone `scroll(to:)` offsets the document (`frame.origin = -offset`),
+  clamped to `[0, documentSize − viewportSize]`; `documentVisibleRect` reports the offset.
+- **Orientation:** `NSClipView` is now **flipped** (`isFlipped = true`), as AppKit's is —
+  without it the oversized document was bottom-anchored, so "Home" showed the document's
+  *bottom* (the green "down" pane) instead of the top-left "0,0".
+
+**Verified live:** Home shows the blue "0,0" pane (top-left, yellow neighbour peeking),
+Center shows all four panes meeting at the junction, Corner shows the pink "far corner" pane
+— each correctly clipped to the 220×110 box. Contract test pins home/corner/negative
+clamping; geometry audit **0 violations on all 11 pages**; all contract tests pass.
+
+**MUST FIX (WinChocolate):** `NSView.clipsToBounds`; a standalone `NSClipView` must clip its
+oversized document and scroll it (flipped), not spill it across the window.
+
 ## 2026-07-17 — Values page: the activity bar animates, and the rating stars are the right grey (framework work; demo untouched)
 
 Bobby, on the Mac Values tab: *"the progress bar … second from the progress label should

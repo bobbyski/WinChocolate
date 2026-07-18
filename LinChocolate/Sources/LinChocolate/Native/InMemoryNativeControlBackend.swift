@@ -630,6 +630,10 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     public func addSubview(_ child: NativeHandle, to parent: NativeHandle) {
         subviews[parent.rawValue, default: []].append(child.rawValue)
     }
+    public private(set) var clippedViews: Set<UInt> = []
+    public func setClipsToBounds(_ clips: Bool, for handle: NativeHandle) {
+        if clips { clippedViews.insert(handle.rawValue) } else { clippedViews.remove(handle.rawValue) }
+    }
     public func setViewFlipped(_ flipped: Bool, for handle: NativeHandle) {
         flippedViews[handle.rawValue] = flipped
     }

@@ -64,6 +64,13 @@ open class NSView: NSResponder {
     /// The tooltip shown on hover.
     public var toolTip: String?
 
+    /// Whether subviews are clipped to this view's bounds (AppKit's
+    /// `clipsToBounds`). A clip view sets it so its oversized document doesn't
+    /// spill past the viewport.
+    public var clipsToBounds: Bool = false {
+        didSet { backend.setClipsToBounds(clipsToBounds, for: handle) }
+    }
+
     /// The key-view loop links (AppKit's focus chain). Stored for API parity;
     /// native focus traversal is a later item.
     public weak var nextKeyView: NSView?

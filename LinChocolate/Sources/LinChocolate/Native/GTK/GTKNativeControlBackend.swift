@@ -1254,14 +1254,16 @@ public final class GTKNativeControlBackend: NativeControlBackend {
         // determinate bar is a no-op.
         guard animating, indeterminateProgress.contains(raw) else { stopProgressPulse(raw); return }
         guard progressPulseSources[raw] == nil, let w = widgets[raw] else { return }
+        gtk_progress_bar_set_pulse_step(w, 0.12)
         gtk_progress_bar_pulse(w)
         // GtkProgressBar's "pulse" moves a block back and forth — the GTK
-        // analog of AppKit's barber-pole indeterminate bar. Drive it ~10×/s.
+        // analog of AppKit's barber-pole indeterminate bar. ~25×/s reads as a
+        // brisk barber-pole (AppKit's is fast).
         let box = ActionBox { [weak self] in
             guard let self, let w = self.widgets[raw] else { return }
             gtk_progress_bar_pulse(w)
         }
-        let id = g_timeout_add(guint(100), { userData in
+        let id = g_timeout_add(guint(40), { userData in
             guard let userData else { return gboolean(0) }
             Unmanaged<ActionBox>.fromOpaque(userData).takeUnretainedValue().action()
             return gboolean(1)   // keep pulsing
@@ -2253,6 +2255,11 @@ public final class GTKNativeControlBackend: NativeControlBackend {
         guard let paned = widget(splitView) else { return }
         gtk_paned_set_position(paned, gint(position))
     }
+    public func setClipsToBounds(_ clips: Bool, for handle: NativeHandle) {
+        guard let w = widget(handle) else { return }
+        gtk_widget_set_overflow(asWidget(w), clips ? GTK_OVERFLOW_HIDDEN : GTK_OVERFLOW_VISIBLE)
+    }
+
     public func setViewFlipped(_ flipped: Bool, for handle: NativeHandle) {
         let was = flippedViews.contains(handle.rawValue)
         if flipped { flippedViews.insert(handle.rawValue) } else { flippedViews.remove(handle.rawValue) }

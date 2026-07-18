@@ -236,6 +236,9 @@ public protocol NativeControlBackend: AnyObject {
     /// Records whether `handle` uses a top-left (flipped) coordinate system for
     /// positioning its children, so subview placement flips Y appropriately.
     func setViewFlipped(_ flipped: Bool, for handle: NativeHandle)
+    /// Clips a view's children to its bounds (AppKit's `clipsToBounds`) — a
+    /// clip view's document is larger than the viewport and must not overflow.
+    func setClipsToBounds(_ clips: Bool, for handle: NativeHandle)
     func installToolbar(_ items: [NativeToolbarItemSpec], displayMode: NativeToolbarDisplayMode, on window: NativeHandle)
     /// Shows the toolbar customization panel: a duplicate of the live bar as
     /// the drag surface, the palette of allowed items, and the default set.

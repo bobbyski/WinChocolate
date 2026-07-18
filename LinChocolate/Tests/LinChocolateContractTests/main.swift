@@ -1145,6 +1145,35 @@ final class DynamicFlipView: NSView {
     override var isFlipped: Bool { flipsNow }
 }
 
+// MARK: 28w — NSClipView (standalone): clips its document and scrolls
+do {
+    let backend = InMemoryNativeControlBackend()
+    NSApplication.shared.nativeBackend = backend
+    NSView.defaultIsFlipped = true
+    defer { NSView.defaultIsFlipped = true }
+
+    let clip = NSClipView(frame: NSMakeRect(0, 0, 220, 110))
+    check(backend.clippedViews.contains(clip.handle.rawValue), "a standalone clip view clips its bounds")
+
+    let document = NSView(frame: NSMakeRect(0, 0, 420, 220))
+    clip.documentView = document
+    check(clip.documentView === document, "the document view is hosted")
+
+    // Home: origin (0,0), document at the top-left.
+    clip.scroll(to: NSMakePoint(0, 0))
+    check(clip.documentVisibleRect.origin == NSMakePoint(0, 0), "home is origin 0,0")
+    check(document.frame.origin == NSMakePoint(0, 0), "the document sits at the viewport origin")
+
+    // Corner: clamped to (documentSize - viewportSize) = (200, 110).
+    clip.scroll(to: NSMakePoint(9999, 9999))
+    check(clip.documentVisibleRect.origin == NSMakePoint(200, 110), "corner clamps to the document extent")
+    check(document.frame.origin == NSMakePoint(-200, -110), "the document is offset so the far corner shows")
+
+    // A negative request clamps to home.
+    clip.scroll(to: NSMakePoint(-50, -50))
+    check(clip.documentVisibleRect.origin == NSMakePoint(0, 0), "negative offsets clamp to home")
+}
+
 // MARK: 28x — NSProgressIndicator: indeterminate animates, determinate doesn't
 do {
     let backend = InMemoryNativeControlBackend()
