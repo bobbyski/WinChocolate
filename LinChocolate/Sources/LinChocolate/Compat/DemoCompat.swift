@@ -8,8 +8,15 @@ import Foundation
 public extension String {
     /// Draws the string at a point. No-op until Cairo/Pango text rendering
     /// lands (custom-drawn text labels won't show yet, but the app runs).
-    func draw(at point: NSPoint, withAttributes attrs: [NSAttributedString.Key: Any]?) {}
-    func draw(in rect: NSRect, withAttributes attrs: [NSAttributedString.Key: Any]?) {}
+    func draw(at point: NSPoint, withAttributes attrs: [NSAttributedString.Key: Any]?) {
+        guard let context = NSGraphicsContext.current?.native else { return }
+        let font = (attrs?[.font] as? NSFont)?.spec
+        let color = (attrs?[.foregroundColor] as? NSColor) ?? .black
+        context.drawText(self, at: point, font: font, color: color)
+    }
+    func draw(in rect: NSRect, withAttributes attrs: [NSAttributedString.Key: Any]?) {
+        draw(at: rect.origin, withAttributes: attrs)
+    }
     /// A rough size estimate (monospace-ish) so layout math compiles.
     func size(withAttributes attrs: [NSAttributedString.Key: Any]?) -> NSSize {
         NSMakeSize(CGFloat(count) * 7, 15)
@@ -123,8 +130,17 @@ public extension NSImageView {
 }
 
 public extension NSImage {
-    func draw(in rect: NSRect) {}
-    func draw(at point: NSPoint, from: NSRect, operation: Int, fraction: CGFloat) {}
+    /// Draws the (file-backed) image scaled to fill `rect`, through the current
+    /// graphics context — AppKit's `NSImage.draw(in:)`. The demo's Drawing page
+    /// paints its artwork this way.
+    func draw(in rect: NSRect) {
+        guard let path, let context = NSGraphicsContext.current?.native else { return }
+        context.drawImage(atPath: path, inRect: rect)
+    }
+    func draw(at point: NSPoint, from: NSRect, operation: Int, fraction: CGFloat) {
+        // `from` carries the source rect; fall back to it for the draw size.
+        draw(in: NSMakeRect(point.x, point.y, from.width, from.height))
+    }
 }
 
 public extension NSMenu {
@@ -257,8 +273,18 @@ public extension NSGraphicsContext {
 }
 
 public extension NSBezierPath {
-    func addClip() { }
-    func setClip() { }
+    /// Intersects the graphics context's clip region with this path (AppKit's
+    /// `addClip()`). Scoped by `NSGraphicsContext.save/restoreGraphicsState()`,
+    /// as the demo's oval-clipped stripes do. Was a no-op, so the stripes filled
+    /// their whole rectangle instead of being confined to the oval.
+    func addClip() {
+        guard let context = NSGraphicsContext.current?.native else { return }
+        replay(into: context)
+        context.clipToCurrentPath()
+    }
+    /// AppKit's `setClip()` replaces the clip; here the enclosing
+    /// save/restore already gives a fresh region, so it behaves like addClip.
+    func setClip() { addClip() }
 }
 
 public extension NSAlert {

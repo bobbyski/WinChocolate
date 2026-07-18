@@ -177,6 +177,54 @@ Eastern **Standard** Time.
 
 ---
 
+## 2026-07-18 — Drawing page: the addClip stripes are now clipped to the oval (framework work; demo untouched)
+
+Bobby: *"the addClip stripes image isn't clipped."* The "addClip stripes" swatch fills eight
+vertical bands and confines them to an oval via `NSBezierPath.addClip()` inside
+`saveGraphicsState()`/`restoreGraphicsState()`. On Linux the bands filled their whole
+rectangle — **`NSBezierPath.addClip()` was a no-op stub**, so no clip was ever set.
+
+Wired it: `addClip()` replays the path into the current graphics context and calls
+`clipToCurrentPath()` (`cairo_clip`); the save/restore around it already scope the region
+(they map to `cairo_save`/`cairo_restore`). `setClip()` routes the same way. Verified live —
+the red/yellow stripes are now confined to the oval with its brown outline, matching the
+Mac. Contract tests pass; geometry audit **0 violations on all 11 pages**.
+
+**MUST FIX (WinChocolate):** `NSBezierPath.addClip()`/`setClip()` must intersect the
+context clip with the path (were no-ops).
+
+## 2026-07-18 — Drawing page: the Paths canvas was upside down and missing its text/images (framework work; demo untouched)
+
+Bobby: *"the paths image is upside down and missing objects."* The Drawing page's `Paths:`
+canvas is a custom `DemoShapesView.draw(_:)` — star, wave, rounded card, red ellipse, plus
+"WinChocolate" text and two images. On Linux it rendered **Y-inverted** (the red ellipse
+that belongs at the bottom sat at the top) and was **missing the text and both images**.
+
+Three framework gaps, all fixed:
+
+1. **Upside down.** `DemoShapesView.isFlipped` is `true` (top-left coords), but the view
+   reaches the hierarchy through `NSScrollView.documentView` — a path that called
+   `setContentView` and **never pushed the view's flip**. So the backend treated it as
+   unflipped and applied its bottom-left Y-flip transform to the Cairo draw pass, inverting
+   everything. The setter now pushes `setViewFlipped(documentView.isFlipped, …)`.
+2. **Missing text.** `String.draw(at:withAttributes:)` was a no-op stub. It now draws
+   through the current graphics context — a new `drawText` seam using Cairo's font API,
+   offset by the font ascent so AppKit's top-left `at:` point lands right.
+3. **Missing images.** `NSImage.draw(in:)` was a no-op stub. A new `drawImage` seam loads
+   the file with `gdk_pixbuf_new_from_file_at_scale` (fills the rect) and paints it through
+   Cairo. The demo's phoenix artwork renders — and the `.ico` even decodes (the blue circle
+   in the yellow square).
+
+**Verified live** (Drawing page): the canvas now matches the Mac — red "WinChocolate" text
+top-left, phoenix + icon top-right, yellow star centre-left, blue wave, green card
+lower-right, and the red ellipse correctly at the **bottom**. Contract test pins the
+documentView-flip push; geometry audit **0 violations on all 11 pages**; all contract tests
+pass.
+
+**MUST FIX (WinChocolate):** `NSScrollView.documentView` must push the document's flip;
+`String.draw(at:withAttributes:)` and `NSImage.draw(in:)` must render through the current
+graphics context (they were no-ops).
+
 ## 2026-07-18 — Faster activity bar; the clip view actually clips and scrolls (framework work; demo untouched)
 
 Two follow-ups: *"make the progress animation faster"* and *"on the table and media page fix

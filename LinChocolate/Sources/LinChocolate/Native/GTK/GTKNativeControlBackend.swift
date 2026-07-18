@@ -2853,6 +2853,36 @@ final class CairoGraphicsContext: NativeGraphicsContext {
     func restoreState() { cairo_restore(cr) }
     func clipToCurrentPath() { cairo_clip(cr) }
 
+    func drawText(_ text: String, at point: NSPoint, font: NativeFontSpec?, color: NSColor) {
+        cairo_save(cr)
+        cairo_select_font_face(cr, font?.family == nil ? "Sans" : font!.family!,
+                               (font?.italic ?? false) ? CAIRO_FONT_SLANT_ITALIC : CAIRO_FONT_SLANT_NORMAL,
+                               (font?.bold ?? false) ? CAIRO_FONT_WEIGHT_BOLD : CAIRO_FONT_WEIGHT_NORMAL)
+        cairo_set_font_size(cr, font?.size ?? 13)
+        cairo_set_source_rgba(cr, Double(color.redComponent), Double(color.greenComponent),
+                              Double(color.blueComponent), Double(color.alphaComponent))
+        // AppKit's draw(at:) places the text's TOP-left at the point; cairo's
+        // baseline sits at the pen, so drop by the font ascent.
+        var extents = cairo_font_extents_t()
+        cairo_font_extents(cr, &extents)
+        cairo_move_to(cr, Double(point.x), Double(point.y) + extents.ascent)
+        cairo_show_text(cr, text)
+        cairo_new_path(cr)   // show_text leaves the text path pending
+        cairo_restore(cr)
+    }
+
+    func drawImage(atPath path: String, inRect rect: NSRect) {
+        guard rect.width > 0, rect.height > 0,
+              let pixbuf = gdk_pixbuf_new_from_file_at_scale(
+                path, Int32(rect.width), Int32(rect.height), gboolean(0), nil) else { return }
+        cairo_save(cr)
+        gdk_cairo_set_source_pixbuf(cr, pixbuf, Double(rect.minX), Double(rect.minY))
+        cairo_rectangle(cr, Double(rect.minX), Double(rect.minY), Double(rect.width), Double(rect.height))
+        cairo_fill(cr)
+        cairo_restore(cr)
+        g_object_unref(UnsafeMutableRawPointer(pixbuf))
+    }
+
     /// Applies the stops to a cairo pattern and fills `rect` with it.
     private func fill(rect: NSRect, pattern: OpaquePointer, stops: [NativeGradientStop]) {
         for stop in stops {

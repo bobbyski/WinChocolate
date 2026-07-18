@@ -1145,6 +1145,22 @@ final class DynamicFlipView: NSView {
     override var isFlipped: Bool { flipsNow }
 }
 
+// MARK: 28v — A documentView's flip reaches the backend (upside-down custom draw)
+do {
+    let backend = InMemoryNativeControlBackend()
+    NSApplication.shared.nativeBackend = backend
+    NSView.defaultIsFlipped = true
+    defer { NSView.defaultIsFlipped = true }
+    // A flipped custom view placed as a scroll view's documentView must have its
+    // flip pushed, or its draw(_:) renders inverted (the Drawing page's shapes
+    // canvas drew upside down because this path skipped setViewFlipped).
+    final class Flipped: NSView { override var isFlipped: Bool { true } }
+    let scroll = NSScrollView(frame: NSMakeRect(0, 0, 420, 280))
+    let doc = Flipped(frame: NSMakeRect(0, 0, 420, 280))
+    scroll.documentView = doc
+    check(backend.flippedViews[doc.handle.rawValue] == true, "a documentView's flip reaches the backend")
+}
+
 // MARK: 28w — NSClipView (standalone): clips its document and scrolls
 do {
     let backend = InMemoryNativeControlBackend()

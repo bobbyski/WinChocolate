@@ -10,6 +10,11 @@ public final class NSScrollView: NSView {
     public var documentView: NSView? {
         didSet {
             guard let documentView else { return }
+            // Push the document's flip, or its custom draw(_:) renders inverted:
+            // this is how the flip reaches the backend for a documentView (it
+            // never goes through addSubview). Without it a flipped custom view —
+            // the Drawing page's shapes canvas — drew upside down.
+            backend.setViewFlipped(documentView.isFlipped, for: documentView.handle)
             backend.setContentView(documentView.handle, for: handle)
         }
     }

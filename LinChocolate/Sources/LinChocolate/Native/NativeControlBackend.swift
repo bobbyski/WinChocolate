@@ -82,6 +82,10 @@ public protocol NativeGraphicsContext: AnyObject {
     func fillLinearGradient(_ stops: [NativeGradientStop], inRect rect: NSRect, angleDegrees: Double)
     /// Fills `rect` with a radial gradient centered in it.
     func fillRadialGradient(_ stops: [NativeGradientStop], inRect rect: NSRect)
+    /// Draws `text` with its TOP-LEFT at `point` (AppKit's `String.draw(at:)`).
+    func drawText(_ text: String, at point: NSPoint, font: NativeFontSpec?, color: NSColor)
+    /// Draws the image at `path` scaled to fill `rect` (AppKit's `NSImage.draw(in:)`).
+    func drawImage(atPath path: String, inRect rect: NSRect)
 }
 
 /// One styled run of text (carries `NSAttributedString` content across the seam).

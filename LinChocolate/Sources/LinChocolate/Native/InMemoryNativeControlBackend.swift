@@ -33,6 +33,12 @@ public final class RecordingGraphicsContext: NativeGraphicsContext {
     public func fillRadialGradient(_ stops: [NativeGradientStop], inRect rect: NSRect) {
         ops.append("radialGradient[\(stops.map { rgb($0.color) }.joined(separator: ";"))]")
     }
+    public func drawText(_ text: String, at point: NSPoint, font: NativeFontSpec?, color: NSColor) {
+        ops.append("text(\(text))@\(Int(point.x)),\(Int(point.y))")
+    }
+    public func drawImage(atPath path: String, inRect rect: NSRect) {
+        ops.append("image(\((path as NSString).lastPathComponent))@\(Int(rect.minX)),\(Int(rect.minY))")
+    }
 }
 
 /// A backend that records state in memory instead of touching a display.
