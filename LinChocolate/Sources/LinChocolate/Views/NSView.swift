@@ -138,6 +138,25 @@ open class NSView: NSResponder {
             self.draw(NSMakeRect(0, 0, width, height))
             NSGraphicsContext.setCurrent(nil)
         }
+        // Pointer events reach the responder methods a subclass overrides
+        // (hover box, drag handle, custom canvases). The base impls are no-ops,
+        // so this is harmless for plain container views.
+        backend.setMouseHandler(for: handle) { [weak self] event in
+            guard let self else { return }
+            let nsEvent = NSEvent()
+            switch event {
+            case .entered(let x, let y):
+                nsEvent.locationInWindow = NSMakePoint(x, y)
+                self.updateTrackingAreas()
+                self.mouseEntered(with: nsEvent)
+            case .exited:
+                self.mouseExited(with: nsEvent)
+            case .down(let x, let y, let clickCount, let rightButton):
+                nsEvent.locationInWindow = NSMakePoint(x, y)
+                nsEvent.clickCount = clickCount
+                if rightButton { self.rightMouseDown(with: nsEvent) } else { self.mouseDown(with: nsEvent) }
+            }
+        }
     }
 
     /// Draws the view's custom content. Override in subclasses; the default
@@ -274,8 +293,13 @@ open class NSView: NSResponder {
             guard let self else { return false }
             let info = DraggingInfo(pasteboard: .transient(string: string),
                                     location: NSMakePoint(x, y))
-            if let entered = self.onDraggingEntered, entered(info) == .none { return false }
-            return self.onPerformDragOperation?(info) ?? false
+            // Honor whichever form the view uses: the `on…` closures or the
+            // overridable `draggingEntered`/`performDragOperation` methods
+            // (the demo's DemoDropWell overrides the methods).
+            let op = self.onDraggingEntered?(info) ?? self.draggingEntered(info)
+            if op == NSDragOperation.none { return false }
+            if let closure = self.onPerformDragOperation { return closure(info) }
+            return self.performDragOperation(info)
         }
     }
 
@@ -284,8 +308,13 @@ open class NSView: NSResponder {
     /// pragmatic Linux shape of AppKit's `NSDraggingSource` /
     /// `beginDraggingSession` — GTK initiates the drag from the widget itself.
     public func registerDraggingSource(_ provider: @escaping () -> String?) {
+        // GtkDragSource is a controller; installing it once is enough. Repeated
+        // arming (each mouseDown re-calls beginDraggingSession) must not stack.
+        guard !hasDraggingSource else { return }
+        hasDraggingSource = true
         backend.registerDragSource(for: handle, provider: provider)
     }
+    private var hasDraggingSource = false
 
     // MARK: - Responder / event surface (NSResponder)
     //

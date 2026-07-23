@@ -28,7 +28,11 @@ public final class GTKNativeControlBackend: NativeControlBackend {
     private var childrenByParent: [UInt: [UInt]] = [:]   // parent -> children, in add order
     private var ranges: [UInt: (min: Double, max: Double)] = [:]   // slider/progress
     private var indeterminateProgress: Set<UInt> = []
+    private var progressSpinners: Set<UInt> = []
     private var progressPulseSources: [UInt: guint] = [:]
+    private var spinnerPhase: [UInt: Int] = [:]         // spinner -> rotation step
+    private var spinnerSources: [UInt: guint] = [:]     // spinner -> animation timeout
+    private var spinnerAnimating: Set<UInt> = []
     private var stepperValues: [UInt: Double] = [:]     // stepper -> current value
     private var stepperSteps: [UInt: Double] = [:]      // stepper -> increment
     private var valueChangeActions: [UInt: (Double) -> Void] = [:]
@@ -176,6 +180,19 @@ public final class GTKNativeControlBackend: NativeControlBackend {
         gtk_css_provider_load_from_data(provider, css, gssize(css.utf8.count))
         // 590 < the toolbar/app provider (600) so per-widget rules still win.
         gtk_style_context_add_provider_for_display(display, OpaquePointer(provider), 590)
+
+        // The GtkColorChooserDialog the well opens packs its palette, editor and
+        // action buttons flush against the window border. Inset them so the
+        // controls have breathing room, like AppKit's colour panel. This must
+        // sit ABOVE the theme (600) — the Adwaita rules that zero these margins
+        // would otherwise win — so it rides at USER priority (800).
+        let colorCSS = """
+            colorchooser { padding: 16px 16px 8px 16px; }
+            box.dialog-action-area { margin: 0 16px 14px 0; }
+            """
+        let colorProvider = gtk_css_provider_new()!
+        gtk_css_provider_load_from_data(colorProvider, colorCSS, gssize(colorCSS.utf8.count))
+        gtk_style_context_add_provider_for_display(display, OpaquePointer(colorProvider), 800)
     }
 
     /// Display-wide CSS for the Apple-look toolbar (the deliberate Apple
@@ -1248,8 +1265,59 @@ public final class GTKNativeControlBackend: NativeControlBackend {
         else { indeterminateProgress.remove(handle.rawValue); stopProgressPulse(handle.rawValue) }
     }
 
+    public func setProgressSpinning(_ spinning: Bool, for handle: NativeHandle) {
+        let raw = handle.rawValue
+        guard spinning != progressSpinners.contains(raw), let old = widgets[raw] else { return }
+        let frame = frames[raw] ?? .zero
+        // Style is set before the indicator is added to a page, so the widget
+        // has no parent yet; a straight swap is safe (like the date picker).
+        if gtk_widget_get_parent(asWidget(old)) != nil { gtk_widget_unparent(asWidget(old)) }
+        let new: UnsafeMutablePointer<GtkWidget>
+        if spinning {
+            // A custom Cairo drawing area, NOT GtkSpinner: GtkSpinner draws
+            // NOTHING when stopped, but AppKit's spinning indicator is always
+            // visible (the spokes just stop rotating). We draw the spokes
+            // ourselves and rotate them via a timeout only while animating.
+            let area = gtk_drawing_area_new()!
+            spinnerPhase[raw] = 0
+            let drawBox = SpinnerDrawBox(backend: self, raw: raw)
+            gtk_drawing_area_set_draw_func(
+                UnsafeMutablePointer<GtkDrawingArea>(OpaquePointer(area)),
+                gtkSpinnerDrawFunc,
+                Unmanaged.passRetained(drawBox).toOpaque(), boxDestroyNotify
+            )
+            new = area
+            progressSpinners.insert(raw)
+        } else {
+            stopSpinnerAnimation(raw)
+            new = gtk_progress_bar_new()!
+            progressSpinners.remove(raw)
+        }
+        gtk_widget_set_size_request(new, Int32(frame.width), Int32(frame.height))
+        widgets[raw] = OpaquePointer(new)
+        g_object_ref_sink(UnsafeMutableRawPointer(old))
+        g_object_unref(UnsafeMutableRawPointer(old))
+    }
+
     public func setProgressAnimating(_ animating: Bool, for handle: NativeHandle) {
         let raw = handle.rawValue
+        if progressSpinners.contains(raw) {
+            if animating {
+                spinnerAnimating.insert(raw)
+                guard spinnerSources[raw] == nil else { return }
+                // ~12.5 fps advances the bright spoke → a full turn every ~1s.
+                let box = SpinnerDrawBox(backend: self, raw: raw)
+                let id = g_timeout_add(guint(80), { userData in
+                    guard let userData else { return gboolean(0) }
+                    let box = Unmanaged<SpinnerDrawBox>.fromOpaque(userData).takeUnretainedValue()
+                    return gboolean(box.backend?.tickSpinner(box.raw) == true ? 1 : 0)
+                }, Unmanaged.passRetained(box).toOpaque())
+                spinnerSources[raw] = id
+            } else {
+                stopSpinnerAnimation(raw)
+            }
+            return
+        }
         // Only an indeterminate bar animates — AppKit's `startAnimation` on a
         // determinate bar is a no-op.
         guard animating, indeterminateProgress.contains(raw) else { stopProgressPulse(raw); return }
@@ -1519,6 +1587,47 @@ public final class GTKNativeControlBackend: NativeControlBackend {
     }
 
     /// Draws the rating's stars: filled up to the value, outlined beyond it.
+    /// Advances the spinner's bright spoke and redraws. Returns whether the
+    /// timeout should keep firing (`G_SOURCE_CONTINUE`).
+    fileprivate func tickSpinner(_ raw: UInt) -> Bool {
+        guard spinnerAnimating.contains(raw), let w = widgets[raw] else { return false }
+        spinnerPhase[raw] = (spinnerPhase[raw] ?? 0) + 1
+        gtk_widget_queue_draw(asWidget(w))
+        return true
+    }
+
+    /// Stops the rotation timeout; the spokes stay drawn at their current phase
+    /// (AppKit's spinner stays visible when stopped — it just holds still).
+    private func stopSpinnerAnimation(_ raw: UInt) {
+        spinnerAnimating.remove(raw)
+        if let id = spinnerSources.removeValue(forKey: raw) { g_source_remove(id) }
+    }
+
+    /// Draws an AppKit-style spinning indicator: spokes radiating from the
+    /// centre, the one at the current phase brightest and the rest fading
+    /// behind it. Always drawn (visible whether or not it is animating).
+    fileprivate func drawSpinner(_ raw: UInt, cr: OpaquePointer, width: Double, height: Double) {
+        guard width > 0, height > 0 else { return }
+        let spokes = 12
+        let cx = width / 2, cy = height / 2
+        let radius = Swift.min(width, height) / 2
+        let inner = radius * 0.42
+        let outer = radius * 0.92
+        let phase = ((spinnerPhase[raw] ?? 0) % spokes + spokes) % spokes
+        cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND)
+        cairo_set_line_width(cr, Swift.max(1.5, radius * 0.22))
+        for i in 0..<spokes {
+            // Distance behind the bright head, 0 (brightest) … spokes-1 (faintest).
+            let behind = Double((phase - i + spokes) % spokes)
+            let alpha = 0.15 + 0.85 * (1 - behind / Double(spokes))
+            let angle = -Double.pi / 2 + Double(i) / Double(spokes) * 2 * Double.pi
+            cairo_set_source_rgba(cr, 0.45, 0.45, 0.45, alpha)
+            cairo_move_to(cr, cx + inner * cos(angle), cy + inner * sin(angle))
+            cairo_line_to(cr, cx + outer * cos(angle), cy + outer * sin(angle))
+            cairo_stroke(cr)
+        }
+    }
+
     fileprivate func drawStars(_ raw: UInt, cr: OpaquePointer, width: Double, height: Double) {
         let (lo, hi) = ranges[raw] ?? (0, 5)
         let stars = Int((hi - lo).rounded())
@@ -2380,6 +2489,40 @@ public final class GTKNativeControlBackend: NativeControlBackend {
         gtk_widget_add_controller(asWidget(w), click)
     }
 
+    public func setMouseHandler(for handle: NativeHandle, _ handler: @escaping (NativeMouseEvent) -> Void) {
+        guard let w = widget(handle) else { return }
+        let widget = asWidget(w)
+
+        // Enter/leave for hover tracking.
+        let motion = gtk_event_controller_motion_new()
+        let enterBox = MouseBox(handler)
+        g_signal_connect_data(
+            UnsafeMutableRawPointer(motion), "enter",
+            unsafeBitCast(gtkMotionEnterTrampoline, to: GCallback.self),
+            Unmanaged.passRetained(enterBox).toOpaque(), boxRelease, GConnectFlags(rawValue: 0)
+        )
+        let leaveBox = MouseBox(handler)
+        g_signal_connect_data(
+            UnsafeMutableRawPointer(motion), "leave",
+            unsafeBitCast(gtkMotionLeaveTrampoline, to: GCallback.self),
+            Unmanaged.passRetained(leaveBox).toOpaque(), boxRelease, GConnectFlags(rawValue: 0)
+        )
+        gtk_widget_add_controller(widget, motion)
+
+        // Left + right press → mouseDown / rightMouseDown.
+        for button in [guint(1), guint(3)] {
+            let click = gtk_gesture_click_new()
+            gtk_gesture_single_set_button(click, button)
+            let clickBox = MouseClickBox(handler: handler, rightButton: button == 3)
+            g_signal_connect_data(
+                UnsafeMutableRawPointer(click), "pressed",
+                unsafeBitCast(gtkMousePressTrampoline, to: GCallback.self),
+                Unmanaged.passRetained(clickBox).toOpaque(), boxRelease, GConnectFlags(rawValue: 0)
+            )
+            gtk_widget_add_controller(widget, click)
+        }
+    }
+
     public func setDrawHandler(for handle: NativeHandle, handler: @escaping (NativeGraphicsContext, Double, Double) -> Void) {
         guard let area = viewDrawAreas[handle.rawValue] else { return }
         drawHandlers[handle.rawValue] = handler
@@ -3100,6 +3243,37 @@ private let gtkFlowChildSelectTrampoline: @convention(c) (UnsafeMutableRawPointe
     gtk_flow_box_select_child(box.flow, UnsafeMutablePointer<GtkFlowBoxChild>(box.child))
 }
 
+/// Carries a custom view's mouse-event handler.
+private final class MouseBox {
+    let handler: (NativeMouseEvent) -> Void
+    init(_ handler: @escaping (NativeMouseEvent) -> Void) { self.handler = handler }
+}
+private final class MouseClickBox {
+    let handler: (NativeMouseEvent) -> Void
+    let rightButton: Bool
+    init(handler: @escaping (NativeMouseEvent) -> Void, rightButton: Bool) {
+        self.handler = handler
+        self.rightButton = rightButton
+    }
+}
+
+/// `GtkEventControllerMotion::enter` — pointer entered the view.
+private let gtkMotionEnterTrampoline: @convention(c) (UnsafeMutableRawPointer?, Double, Double, gpointer?) -> Void = { _, x, y, userData in
+    guard let userData else { return }
+    Unmanaged<MouseBox>.fromOpaque(userData).takeUnretainedValue().handler(.entered(x: x, y: y))
+}
+/// `GtkEventControllerMotion::leave` — pointer left the view.
+private let gtkMotionLeaveTrampoline: @convention(c) (UnsafeMutableRawPointer?, gpointer?) -> Void = { _, userData in
+    guard let userData else { return }
+    Unmanaged<MouseBox>.fromOpaque(userData).takeUnretainedValue().handler(.exited)
+}
+/// `GtkGestureClick::pressed` on a custom view — n_press is the click count.
+private let gtkMousePressTrampoline: @convention(c) (UnsafeMutableRawPointer?, gint, Double, Double, gpointer?) -> Void = { _, nPress, x, y, userData in
+    guard let userData else { return }
+    let box = Unmanaged<MouseClickBox>.fromOpaque(userData).takeUnretainedValue()
+    box.handler(.down(x: x, y: y, clickCount: Int(nPress), rightButton: box.rightButton))
+}
+
 /// Carries a view's click action to its gesture handler.
 private final class ClickBox {
     let action: (Double, Double) -> Void
@@ -3134,6 +3308,23 @@ private let gtkStarDrawFunc: @convention(c) (UnsafeMutablePointer<GtkDrawingArea
     guard let cr, let userData else { return }
     let box = Unmanaged<LevelClickBox>.fromOpaque(userData).takeUnretainedValue()
     box.backend?.drawStars(box.raw, cr: cr, width: Double(width), height: Double(height))
+}
+
+/// Carries a spinner's backend + handle to its draw func and rotation timeout.
+private final class SpinnerDrawBox {
+    weak var backend: GTKNativeControlBackend?
+    let raw: UInt
+    init(backend: GTKNativeControlBackend, raw: UInt) {
+        self.backend = backend
+        self.raw = raw
+    }
+}
+
+/// `GtkDrawingArea` draw func for a spinning progress indicator.
+private let gtkSpinnerDrawFunc: @convention(c) (UnsafeMutablePointer<GtkDrawingArea>?, OpaquePointer?, Int32, Int32, gpointer?) -> Void = { _, cr, width, height, userData in
+    guard let cr, let userData else { return }
+    let box = Unmanaged<SpinnerDrawBox>.fromOpaque(userData).takeUnretainedValue()
+    box.backend?.drawSpinner(box.raw, cr: cr, width: Double(width), height: Double(height))
 }
 
 /// `GtkGestureClick::pressed` on a rating indicator.

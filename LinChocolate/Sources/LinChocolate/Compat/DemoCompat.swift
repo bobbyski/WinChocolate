@@ -296,8 +296,14 @@ public extension NSAlert {
 }
 
 public extension NSView {
+    /// AppKit starts the drag imperatively here; GTK drives drags from a
+    /// `GtkDragSource` controller on the widget. We arm that controller with the
+    /// item's string payload so a native press-drag from this view carries it.
     func beginDraggingSession(with items: [NSDraggingItem], event: NSEvent, source: NSDraggingSource) -> NSDraggingSession {
-        NSDraggingSession()
+        if let payload = items.first?.payloadString {
+            registerDraggingSource { payload }
+        }
+        return NSDraggingSession()
     }
 }
 

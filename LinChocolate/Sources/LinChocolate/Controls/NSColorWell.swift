@@ -25,11 +25,12 @@ open class NSColorWell: NSControl {
         set { onColorChange = newValue }
     }
 
-    /// Creates a color well showing `color`.
+    /// AppKit's frame-only initializer: a color well defaulted to blue.
     public required convenience init(frame: NSRect) {
         self.init(color: .blue, frame: frame)
     }
 
+    /// Creates a color well showing `color`.
     public init(color: NSColor = .blue, frame: NSRect) {
         self.backingColor = color
         let backend = NSApplication.shared.nativeBackend

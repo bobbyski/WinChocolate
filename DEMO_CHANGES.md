@@ -177,6 +177,127 @@ Eastern **Standard** Time.
 
 ---
 
+## 2026-07-18 — Spinner is always visible and truly rotates; the colour-picker dialog gets margins (framework work; demo untouched)
+
+Bobby: *"the spinner shows and hides on start but doesn't move. It should always be
+visible but should animate on start and stops on stop.  The color picker has no margins so
+the controll are pressed against the edge of the window."* Two follow-ups from the New in 3.x
+work.
+
+**1. The spinner: GtkSpinner was the wrong peer.** The first pass swapped the progress bar
+for a `GtkSpinner`. But `GtkSpinner` **draws nothing when stopped** — so `stopAnimation`
+made it vanish, and under this cairo/Xvfb setup its frame-clock rotation didn't read as
+motion. AppKit's spinning indicator is the opposite: **always visible**, the spokes simply
+stop turning when idle.
+
+Replaced it with a **custom Cairo drawing area** (the same approach as the rating stars):
+`drawSpinner` paints twelve rounded spokes radiating from the centre, the spoke at the
+current phase brightest and the rest fading behind it — so the ring is always on screen.
+`startAnimation` starts an ~80 ms `g_timeout` that advances the phase and
+`gtk_widget_queue_draw`s; `stopAnimation` removes the timeout, leaving the spokes drawn where
+they stopped. Verified live on page 4: the spokes are visible at rest, the bright head
+rotates once per ~second while running, and they hold still (still visible) on Stop.
+
+**2. The colour-picker dialog packed its palette against the window border.** Clicking the
+`NSColorWell` opens GTK's `GtkColorChooserDialog`, whose palette, editor and action buttons
+sat flush to the edges. Adding margins turned out to hinge on two non-obvious GTK facts,
+both nailed down with a throwaway C probe (`gtk_widget_compute_point` for absolute
+positions — `gtk_widget_get_allocation` is **parent-relative**, which made a working rule
+look like a no-op):
+
+- The chooser's CSS node is `colorchooser` (confirmed: a `min-width` rule visibly widened
+  it), so the selector was right all along.
+- Our compact-control CSS provider rides at priority **590, below the Adwaita theme (600)**.
+  The colour-dialog rules therefore need their **own provider above the theme** — they now
+  load at USER priority (**800**).
+
+The fix insets the chooser and its action row: `colorchooser { padding: 16px 16px 8px 16px }`
+and `box.dialog-action-area { margin: 0 16px 14px 0 }`. The probe confirmed a 20 px pad
+shifts the first swatch from absolute (10,10) to (30,30); the live dialog now shows clear
+breathing room around the palette and buttons.
+
+**Files touched (framework only)**
+
+- `Native/GTK/GTKNativeControlBackend.swift` — `setProgressSpinning` builds a drawing area +
+  `drawSpinner`; `setProgressAnimating` runs/stops the rotation timeout (`tickSpinner`,
+  `stopSpinnerAnimation`); `SpinnerDrawBox` + `gtkSpinnerDrawFunc`; a second, priority-800
+  CSS provider for the colour-chooser dialog margins.
+
+**Verified**
+
+- Linux: built (0 errors); page 4 spinner always visible / rotates on Start / holds on Stop;
+  colour dialog palette + buttons inset from the window edge. Geometry audit **0 violations**
+  (pages 1 and 4); contract tests pass.
+
+**MUST FIX (WinChocolate):** the spinning `NSProgressIndicator` must stay visible when
+stopped and animate only while running (don't hide it); and the colour panel needs interior
+margins so its controls aren't flush to the window frame.
+
+## 2026-07-18 — New in 3.x: the page's custom interactive views come alive — spinner, hover, drag/drop (framework work; demo untouched)
+
+Bobby: *"almost the entire new in 3.x page is non responsive."* The page's *buttons*
+(Start/Stop, Minimize/Zoom, Print/Alert) already worked through `onAction`. What was dead
+was every **custom `NSView` subclass** that reacts to input directly — because LinChocolate
+had **no path from a native pointer event to the responder methods** those views override.
+Three distinct gaps, all framework:
+
+**1. The spinner never spun.** `NSProgressIndicator.style = .spinning` was an accepted-and-
+ignored property (the recurring no-op bug class): the control stayed a `GtkProgressBar`.
+Added a `NativeControlBackend.setProgressSpinning` seam; the GTK backend swaps the widget
+for a real `GtkSpinner` (`gtk_spinner_new`, ref-sunk into the widget slot) and
+`start/stopAnimation` drive `gtk_spinner_start`/`_stop`. `style` now has a `didSet` calling
+the seam. The C-arc rotates.
+
+**2. "Hover me" never highlighted.** `DemoHoverView` overrides `mouseEntered`/`mouseExited`
+(via `NSTrackingArea`) — both were `open func … {}` no-ops with no dispatch behind them.
+Added `NativeControlBackend.setMouseHandler` + a `NativeMouseEvent` enum
+(`.entered/.exited/.down`). The GTK backend attaches a `GtkEventControllerMotion`
+(enter/leave) and two `GtkGestureClick` (buttons 1 and 3); `NSView.init` installs one
+handler that constructs an `NSEvent` and calls `mouseEntered`/`mouseExited`/`mouseDown`/
+`rightMouseDown`. The base impls stay no-ops, so plain container views are unaffected. The
+box now turns accent-blue with "Hovering" on enter and reverts on exit.
+
+**3. Drag-and-drop was inert.** `DemoDragHandle` (an `NSDraggingSource`) calls
+`beginDraggingSession` in its `mouseDown`; `DemoDropWell` overrides `draggingEntered`/
+`performDragOperation`. Two mismatches: `beginDraggingSession` was a no-op returning an
+empty session, and `registerForDraggedTypes` routed only to the `on…` *closures*, never the
+overridable *methods* the well uses. Fixes: `NSDraggingItem` now retains its pasteboard
+writer so the `.string` payload can be read back; `beginDraggingSession` extracts that
+payload and **arms a native `GtkDragSource`** on the widget (idempotent — repeated
+mouseDowns don't stack controllers); and the drop handler now honors the method overrides
+(`draggingEntered` → `performDragOperation`) as well as the closures. A native press-drag
+from the handle to the well now lands the payload — the well shows
+`Dropped text: "WinChocolate drag payload"`.
+
+Because GTK drives drags from a controller (not imperatively like AppKit's
+`beginDraggingSession`), the source is armed on first interaction and the native
+press-drag carries it; the outcome is identical from the demo's point of view.
+
+**Files touched (framework only)**
+
+- `Native/NativeControlBackend.swift` — `setProgressSpinning`, `setMouseHandler`,
+  `enum NativeMouseEvent`.
+- `Native/GTK/GTKNativeControlBackend.swift` — spinner swap; motion + click controllers
+  and their trampolines; drag-source arming already present.
+- `Native/InMemoryNativeControlBackend.swift` — recording stubs (`spinningProgress`,
+  `simulateMouse`).
+- `Controls/NSProgressIndicator.swift` — `style` `didSet` → `setProgressSpinning`.
+- `Views/NSView.swift` — install the mouse handler in `init`; route
+  `registerForDraggedTypes` to the method overrides; guard `registerDraggingSource`.
+- `Compat/AppKitCompat.swift` — `NSDraggingItem` retains its writer, exposes `payloadString`.
+- `Compat/DemoCompat.swift` — `beginDraggingSession` arms the drag source from the payload.
+
+**Verified**
+
+- Linux: built (0 errors); ran page 4 under Xvfb — spinner rotates, "Hover me" highlights on
+  enter / reverts on exit, and a synthetic handle→well drag lands the payload. Geometry audit
+  **0 violations**; contract tests pass.
+
+**MUST FIX (WinChocolate):** the same three seams — `setProgressSpinning` (real spinner
+control), pointer-event dispatch to `mouseEntered`/`mouseExited`/`mouseDown`/`rightMouseDown`
+via a `NativeMouseEvent` path, and `beginDraggingSession` actually starting a Win32 drag +
+`registerForDraggedTypes` honoring the overridden `draggingEntered`/`performDragOperation`.
+
 ## 2026-07-18 — Drawing page: the addClip stripes are now clipped to the oval (framework work; demo untouched)
 
 Bobby: *"the addClip stripes image isn't clipped."* The "addClip stripes" swatch fills eight

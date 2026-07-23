@@ -24,10 +24,20 @@ open class NSButton: NSControl {
     public var onAction: ((NSButton) -> Void)?
 
     // Look/behavior flags accepted for API parity (GTK buttons style natively).
+
+    /// AppKit bezel style. Stored for API parity; GTK renders its own button chrome.
     public var bezelStyle: NSButtonBezelStyle = .rounded
+
+    /// Whether the button draws a border. Stored for API parity; GTK renders its own button chrome.
     public var isBordered: Bool = true
+
+    /// Position of the button's image relative to its title. Stored for API parity.
     public var imagePosition: Int = 0
+
+    /// Optional image drawn on the button. Stored for API parity.
     public var image: NSImage?
+
+    /// Key equivalent that triggers the button. Stored for API parity.
     public var keyEquivalent: String = ""
 
     private var backingIsOn = false
@@ -54,12 +64,14 @@ open class NSButton: NSControl {
         self.action = action
     }
 
+    /// Checkbox variant of the title + target/action convenience, sized later.
     public convenience init(checkboxWithTitle title: String, target: AnyObject?, action: Selector?) {
         self.init(checkboxWithTitle: title, frame: .zero)
         self.target = target
         self.action = action
     }
 
+    /// Radio variant of the title + target/action convenience, sized later.
     public convenience init(radioButtonWithTitle title: String, target: AnyObject?, action: Selector?) {
         self.init(radioWithTitle: title, frame: .zero)
         self.target = target

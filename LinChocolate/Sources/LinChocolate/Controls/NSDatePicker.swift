@@ -120,11 +120,12 @@ open class NSDatePicker: NSControl {
         }
     }
 
-    /// Creates a date picker showing `date`.
+    /// AppKit's frame-only initializer: a date picker showing the current date.
     public required convenience init(frame: NSRect) {
         self.init(date: Date(), frame: frame)
     }
 
+    /// Creates a date picker showing `date`.
     public init(date: Date = Date(), frame: NSRect) {
         self.backingDate = date
         let backend = NSApplication.shared.nativeBackend

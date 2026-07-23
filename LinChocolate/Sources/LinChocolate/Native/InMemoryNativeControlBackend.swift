@@ -386,6 +386,18 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
         if indeterminate { indeterminateProgress.insert(handle.rawValue) }
         else { indeterminateProgress.remove(handle.rawValue); animatingProgress.remove(handle.rawValue) }
     }
+    public private(set) var spinningProgress: Set<UInt> = []
+    public func setProgressSpinning(_ spinning: Bool, for handle: NativeHandle) {
+        if spinning { spinningProgress.insert(handle.rawValue) } else { spinningProgress.remove(handle.rawValue) }
+    }
+    private var mouseHandlers: [UInt: (NativeMouseEvent) -> Void] = [:]
+    public func setMouseHandler(for handle: NativeHandle, _ handler: @escaping (NativeMouseEvent) -> Void) {
+        mouseHandlers[handle.rawValue] = handler
+    }
+    /// Test hook: deliver a pointer event to a view.
+    public func simulateMouse(_ event: NativeMouseEvent, for handle: NativeHandle) {
+        mouseHandlers[handle.rawValue]?(event)
+    }
     public func setProgressAnimating(_ animating: Bool, for handle: NativeHandle) {
         if animating && indeterminateProgress.contains(handle.rawValue) { animatingProgress.insert(handle.rawValue) }
         else { animatingProgress.remove(handle.rawValue) }

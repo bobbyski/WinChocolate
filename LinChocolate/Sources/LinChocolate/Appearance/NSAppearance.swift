@@ -10,16 +10,24 @@ public final class NSAppearance: Equatable, Sendable {
 
     /// The named appearances LinChocolate maps onto GTK's light/dark themes.
     public struct Name: RawRepresentable, Equatable, Sendable {
+        /// The AppKit-style raw name (e.g. `"NSAppearanceNameAqua"`).
         public let rawValue: String
+        /// Wraps an arbitrary raw name; unrecognised values are treated as light.
         public init(rawValue: String) { self.rawValue = rawValue }
+        /// The standard light appearance.
         public static let aqua = Name(rawValue: "NSAppearanceNameAqua")
+        /// The standard dark appearance.
         public static let darkAqua = Name(rawValue: "NSAppearanceNameDarkAqua")
+        /// The vibrant light variant (mapped onto the same GTK light theme as `aqua`).
         public static let vibrantLight = Name(rawValue: "NSAppearanceNameVibrantLight")
+        /// The vibrant dark variant (mapped onto the same GTK dark theme as `darkAqua`).
         public static let vibrantDark = Name(rawValue: "NSAppearanceNameVibrantDark")
     }
 
+    /// The appearance's canonical name.
     public let name: Name
 
+    /// Creates an appearance for the given named theme.
     public init(named name: Name) {
         self.name = name
     }
@@ -29,7 +37,9 @@ public final class NSAppearance: Equatable, Sendable {
         name == .darkAqua || name == .vibrantDark
     }
 
+    /// Shared instance of the light appearance.
     public static let aqua = NSAppearance(named: .aqua)
+    /// Shared instance of the dark appearance.
     public static let darkAqua = NSAppearance(named: .darkAqua)
 
     /// The best-matching name among `appearances` (AppKit's matching hook —
@@ -52,6 +62,7 @@ public final class NSAppearance: Equatable, Sendable {
         NSApplication.shared.effectiveAppearance
     }
 
+    /// Two appearances are equal when they share the same `name`.
     public static func == (lhs: NSAppearance, rhs: NSAppearance) -> Bool {
         lhs.name == rhs.name
     }

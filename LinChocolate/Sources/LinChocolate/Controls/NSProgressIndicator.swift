@@ -18,8 +18,10 @@ open class NSProgressIndicator: NSView {
         }
     }
 
-    /// Bar vs spinner (accepted for parity; native control picks its look).
-    public var style: NSProgressIndicatorStyle = .bar
+    /// Bar vs spinner (AppKit's `style`); the spinner is a rotating indicator.
+    public var style: NSProgressIndicatorStyle = .bar {
+        didSet { backend.setProgressSpinning(style == .spinning, for: handle) }
+    }
 
     /// Indeterminate (barber-pole) vs determinate.
     public var isIndeterminate: Bool = false {

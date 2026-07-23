@@ -30,6 +30,7 @@ open class NSSecureTextField: NSControl {
         self.init(string: "", frame: frame)
     }
 
+    /// Creates a masked text field pre-populated with `string` at `frame`.
     public init(string: String, frame: NSRect) {
         self.backingValue = string
         let backend = NSApplication.shared.nativeBackend

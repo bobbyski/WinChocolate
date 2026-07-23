@@ -59,6 +59,14 @@ public struct NativeGradientStop: Equatable {
 /// Platform drawing surface handed to a view's draw handler. Path-based:
 /// build a path with the primitive ops, then fill or stroke it (both consume
 /// the path). Backed by Cairo on GTK and by an op recorder in tests.
+/// A pointer event delivered to a custom view (positions in the view's own
+/// top-left coordinates).
+public enum NativeMouseEvent {
+    case entered(x: Double, y: Double)
+    case exited
+    case down(x: Double, y: Double, clickCount: Int, rightButton: Bool)
+}
+
 public protocol NativeGraphicsContext: AnyObject {
     func setFillColor(_ color: NSColor)
     func setStrokeColor(_ color: NSColor)
@@ -321,6 +329,8 @@ public protocol NativeControlBackend: AnyObject {
     func setProgressIndeterminate(_ indeterminate: Bool, for handle: NativeHandle)
     /// Starts/stops an indeterminate bar's animation (AppKit's start/stopAnimation).
     func setProgressAnimating(_ animating: Bool, for handle: NativeHandle)
+    /// Spinner (a rotating GtkSpinner) vs bar (AppKit's `NSProgressIndicator.style`).
+    func setProgressSpinning(_ spinning: Bool, for handle: NativeHandle)
     /// Creates a pop-up (dropdown) button.
     func createPopUpButton(items: [String], selectedIndex: Int, frame: NSRect) -> NativeHandle
     /// Creates a segmented control (`setSelectedIndex` selects a segment;
@@ -468,6 +478,10 @@ public protocol NativeControlBackend: AnyObject {
     /// widget has no built-in action (image views; custom views use the draw
     /// area's gestures).
     func setClickAction(for handle: NativeHandle, action: @escaping (Double, Double) -> Void)
+    /// Routes a custom view's pointer events to its responder methods
+    /// (`mouseEntered`/`mouseExited`/`mouseDown`/`rightMouseDown`). The demo's
+    /// hover box, drag handle, and custom canvases rely on these.
+    func setMouseHandler(for handle: NativeHandle, _ handler: @escaping (NativeMouseEvent) -> Void)
     /// Requests a redraw of a view with a draw handler.
     func setNeedsDisplay(_ handle: NativeHandle)
     /// Sets a checkbox/radio's on/off state.
