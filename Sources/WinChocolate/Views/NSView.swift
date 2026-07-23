@@ -61,6 +61,14 @@ open class NSView: NSResponder {
 
             autoresizeSubviews(from: oldValue.size, to: frame.size)
 
+            // AppKit runs layout after a frame-size change; container views
+            // (scroll/split/browser) re-tile their children then. Fire an
+            // internal hook so those subclasses re-lay out when their own frame
+            // is resized by a layout system, not only at init/add.
+            if frame.size != oldValue.size {
+                winLayoutAfterFrameSizeChange()
+            }
+
             if postsFrameChangedNotifications {
                 NotificationCenter.default.post(name: NSView.frameDidChangeNotification, object: self)
             }
@@ -285,6 +293,12 @@ open class NSView: NSResponder {
 
     /// Lays out the view's subviews. Subclasses override to position children.
     open func layout() {}
+
+    /// Framework-internal hook fired from `frame`'s observer when the view's
+    /// *size* changes. Container views (`NSScrollView`, `NSSplitView`, …)
+    /// override it to re-tile/re-layout their children on resize — AppKit does
+    /// the equivalent by running `layout()`. Not public API (no consumer surface).
+    func winLayoutAfterFrameSizeChange() {}
 
     /// Called after the view's effective appearance changes — a live system
     /// dark/light switch, or an `appearance` override taking effect. The base

@@ -1,6 +1,11 @@
 /// Foundation's standard time interval type.
 public typealias TimeInterval = Double
 
+/// Foundation's untyped array. Swift bridges `NSArray` to `[Any]`, so callers
+/// that spell the Cocoa type (e.g. `NSNib.instantiate`'s out-parameter) get the
+/// same value type on every target. (Same approach as `NSString`/`NSURL`.)
+public typealias NSArray = [Any]
+
 /// Foundation's sentinel for a missing location or index.
 public let NSNotFound: Int = Int.max
 

@@ -1,5 +1,17 @@
+/// The border a scroll view or box draws, matching AppKit's `NSBorderType`.
+public enum NSBorderType: UInt, Sendable {
+    case noBorder = 0
+    case lineBorder = 1
+    case bezelBorder = 2
+    case grooveBorder = 3
+}
+
 /// A scrolling container for a document view.
 open class NSScrollView: NSView {
+    /// The border drawn around the scroll view. Programmatically created AppKit
+    /// scroll views default to `.noBorder`; the native peer matches (see
+    /// `createScrollView`). `NSTextView.scrollableTextView()` sets `.bezelBorder`.
+    open var borderType: NSBorderType = .noBorder
     /// The clip view that hosts the document view.
     open var contentView: NSClipView {
         didSet {
@@ -145,6 +157,13 @@ open class NSScrollView: NSView {
             }
         }
         winHeaderStripHeight = view != nil ? max(0, height) : 0
+        tile()
+    }
+
+    /// Re-tiles when the scroll view is resized by a layout system — a scroll
+    /// view framed at `.zero` and sized later (the common case) must re-fit its
+    /// clip and update the native scroller range, exactly as AppKit does.
+    override func winLayoutAfterFrameSizeChange() {
         tile()
     }
 

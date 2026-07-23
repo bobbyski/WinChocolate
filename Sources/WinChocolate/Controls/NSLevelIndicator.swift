@@ -22,10 +22,17 @@ open class NSLevelIndicator: NSControl {
         }
     }
 
-    /// The control's natural size (9.2): a standard-height indicator with
-    /// flexible width so constraints/frame decide how wide it runs.
+    /// The control's natural size. A capacity bar is stretchy (flexible width);
+    /// the discrete styles (rating stars, discrete segments, relevancy bars)
+    /// have a natural width — units × a per-slot width — exactly as AppKit gives
+    /// star/tick indicators, so a layout system doesn't collapse them to zero.
     open override var intrinsicContentSize: NSSize {
-        NSSize(width: NSView.noIntrinsicMetric, height: 18)
+        switch levelIndicatorStyle {
+        case .rating, .relevancy, .discreteCapacity:
+            return NSSize(width: CGFloat(itemCount) * 18, height: 18)
+        case .continuousCapacity:
+            return NSSize(width: NSView.noIntrinsicMetric, height: 18)
+        }
     }
 
     /// Maximum represented value.
