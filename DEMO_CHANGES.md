@@ -177,6 +177,55 @@ Eastern **Standard** Time.
 
 ---
 
+## 2026-07-18 — Tables/Media: clicking a column header now actually sorts the rows (framework work; demo untouched)
+
+Bobby: *"the table sort fails (shows the arrow but doesn't sort the rows)."* On the
+Tables/Media page the header showed its sort arrow but the rows never reordered.
+
+**The demo runs the sort inside the table's action.** `tableView.onAction` checks
+`tableColumnSummary(table)` — which returns non-nil only when a **header** was clicked
+(`clickedRow < 0 && clickedColumn >= 0`) — then reads `table.sortDescriptors.first`, calls
+`tableDataSource.sort(using:)`, and `reloadData()`s. That is the whole sort. Two framework
+gaps kept it from ever running:
+
+1. **`clickedColumn` was hard-coded to `-1`** (and `clickedRow` returned `selectedRow`), so
+   `tableColumnSummary` could never see a header click — its guard failed every time and the
+   action fell through to the plain-status branch.
+2. **The header click never fired the table's action.** LinChocolate's `NSTableView` carries
+   an `onAction` **member** that shadows the `NSControl.onAction` convenience the demo binds
+   to on macOS — and nothing ever invoked it. The header handler (`setSortChangeAction`) only
+   updated `sortDescriptors` and called `sortDescriptorsDidChange`; it never fired the action
+   that does the sort.
+
+On AppKit a sortable-header click **is** a table action: it fires target/action with
+`clickedColumn` set and `clickedRow == -1`. The fix makes the GTK header-click handler do
+the same: surface the click context (`_headerSortColumn`, which drives both `clickedColumn`
+and a `clickedRow` of -1 for the duration), set `sortDescriptors`, then fire `onAction` **and**
+`sendAction()` (covering both the member binding the demo uses and a plain target/action
+binding), and finally call `sortDescriptorsDidChange`. The demo's action then runs unchanged.
+
+The rest of the chain was already sound: the GTK column sorter is a deliberate no-op (it
+draws the arrow and emits `changed`; the row model is count-only and binds cells by position
+through the Swift provider), and `reloadData()` splices the whole string list so every cell
+re-binds — so once the model is re-sorted, the reorder shows immediately.
+
+**Files touched (framework only)**
+
+- `Views/NSTableView.swift` — real `clickedColumn`/`clickedRow` backed by `_headerSortColumn`;
+  the `setSortChangeAction` handler now fires the table action (`onAction` + `sendAction`)
+  with the click context set.
+
+**Verified**
+
+- Linux: built (0 errors); on page 2, clicking **Name** sorts ascending (status "Table
+  column: Name, sorted ascending", ▲ indicator, rows NSAlert…NSColor), clicking again sorts
+  descending (▼, rows NSWindow…NSTableColumn). Geometry audit **0 violations**; contract
+  tests pass.
+
+**MUST FIX (WinChocolate):** a sortable-header click must report `clickedColumn`/`clickedRow
+== -1` and fire the table's target/action (not only `sortDescriptorsDidChange`), or a demo
+that sorts in its action never runs.
+
 ## 2026-07-18 — Spinner is always visible and truly rotates; the colour-picker dialog gets margins (framework work; demo untouched)
 
 Bobby: *"the spinner shows and hides on start but doesn't move. It should always be

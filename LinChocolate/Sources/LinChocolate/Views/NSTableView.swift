@@ -119,8 +119,13 @@ open class NSTableView: NSControl {
     public var doubleAction: Selector?
     public var nativeHandle: NativeHandle? { handle }
     public var numberOfColumns: Int { tableColumns.count }
-    public var clickedRow: Int { selectedRow }
-    public var clickedColumn: Int { -1 }
+    // While a header-sort action is dispatching, AppKit reports the clicked
+    // header column and a clickedRow of -1 (no row was hit); outside that, the
+    // last-clicked row is the selected one. The demo keys its sort off exactly
+    // this pair (clickedRow < 0 && clickedColumn >= 0), so both must be truthful.
+    private var _headerSortColumn: Int = -1
+    public var clickedRow: Int { _headerSortColumn >= 0 ? -1 : selectedRow }
+    public var clickedColumn: Int { _headerSortColumn }
     /// WinChocolate-named action aliases (accepted for parity).
     public var onAction: ((NSTableView) -> Void)?
     public var onDoubleAction: ((NSTableView) -> Void)? {
@@ -186,7 +191,17 @@ open class NSTableView: NSControl {
             let old = self.sortDescriptors
             let key = self.tableColumns[columnIndex].sortDescriptorPrototype?.key
             self.sortDescriptors = [NSSortDescriptor(key: key, ascending: ascending)]
+            // A header click IS a table action on AppKit: it fires the target/
+            // action with clickedColumn set and clickedRow == -1. The demo's
+            // action reads that pair to run the model sort, so surface the click
+            // context, then fire the action AND the delegate the same way Apple
+            // does. (`onAction` is the member the demo binds to here; `sendAction`
+            // covers a plain target/action binding.)
+            self._headerSortColumn = columnIndex
+            self.onAction?(self)
+            self.sendAction()
             self.dataSource?.tableView(self, sortDescriptorsDidChange: old)
+            self._headerSortColumn = -1
         }
         backend.setRowActivateAction(for: handle) { [weak self] row in
             guard let self else { return }
