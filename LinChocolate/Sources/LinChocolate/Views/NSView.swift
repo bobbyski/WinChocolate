@@ -156,6 +156,12 @@ open class NSView: NSResponder {
                 nsEvent.locationInWindow = NSMakePoint(x, y)
                 nsEvent.clickCount = clickCount
                 if rightButton { self.rightMouseDown(with: nsEvent) } else { self.mouseDown(with: nsEvent) }
+            case .scroll(let deltaX, let deltaY):
+                nsEvent.scrollingDeltaX = deltaX
+                nsEvent.scrollingDeltaY = deltaY
+                nsEvent.deltaX = deltaX
+                nsEvent.deltaY = deltaY
+                self.scrollWheel(with: nsEvent)
             }
         }
     }

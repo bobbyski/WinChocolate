@@ -16,6 +16,12 @@ public final class NSScrollView: NSView {
             // the Drawing page's shapes canvas — drew upside down.
             backend.setViewFlipped(documentView.isFlipped, for: documentView.handle)
             backend.setContentView(documentView.handle, for: handle)
+            // If a caller set `magnification` before installing the document,
+            // re-push it now — the setter would have had no `documentView` to
+            // route to yet.
+            if _magnification != 1 {
+                backend.setViewMagnification(Double(_magnification), for: documentView.handle)
+            }
         }
     }
 
@@ -40,13 +46,24 @@ public final class NSScrollView: NSView {
     /// Fired when the user (or `scroll(to:)`) changes the scroll offset.
     public var onScroll: ((NSPoint) -> Void)?
 
-    /// Zoom magnification (accepted for API parity; not yet applied natively).
-    public var magnification: CGFloat = 1
+    /// Zoom magnification applied to the document view. Setting this scales the
+    /// document view's drawing and grows its allocated size so the scrollers
+    /// span the enlarged extent — AppKit's `NSScrollView.magnification`.
+    public var magnification: CGFloat {
+        get { _magnification }
+        set {
+            _magnification = min(max(newValue, minMagnification), maxMagnification)
+            if let documentView {
+                backend.setViewMagnification(Double(_magnification), for: documentView.handle)
+            }
+        }
+    }
+    private var _magnification: CGFloat = 1
     /// Whether magnification is permitted (accepted for API parity).
     public var allowsMagnification: Bool = false
-    /// The minimum magnification (accepted for API parity).
+    /// The minimum magnification.
     public var minMagnification: CGFloat = 0.25
-    /// The maximum magnification (accepted for API parity).
+    /// The maximum magnification.
     public var maxMagnification: CGFloat = 4
     /// Whether a vertical ruler is shown (accepted for API parity).
     public var hasVerticalRuler: Bool = false

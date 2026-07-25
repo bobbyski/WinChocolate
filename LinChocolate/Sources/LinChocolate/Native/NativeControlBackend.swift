@@ -78,6 +78,9 @@ public enum NativeMouseEvent {
     case exited
     /// A mouse button was pressed at `(x, y)`.
     case down(x: Double, y: Double, clickCount: Int, rightButton: Bool)
+    /// The scroll wheel / trackpad moved by `(deltaX, deltaY)`, already in
+    /// AppKit's sign convention (positive dy = scroll up).
+    case scroll(deltaX: Double, deltaY: Double)
 }
 
 /// Platform drawing surface handed to a view's draw handler. Path-based:
@@ -506,6 +509,10 @@ public protocol NativeControlBackend: AnyObject {
     func scrollVisibleSize(for handle: NativeHandle) -> (width: Double, height: Double)
     /// Registers the action fired when the scroll offset changes; passes `(x, y)`.
     func setScrollChangeAction(for handle: NativeHandle, action: @escaping (Double, Double) -> Void)
+    /// Scales the view's custom drawing by `magnification` and grows the
+    /// widget's requested size by the same factor so a hosting scroll view
+    /// reports the enlarged scrollable extent (AppKit's `NSScrollView.magnification`).
+    func setViewMagnification(_ magnification: Double, for handle: NativeHandle)
     /// Creates a two-pane split container. `vertical` follows AppKit: a
     /// vertical *divider*, panes side by side.
     func createSplitView(vertical: Bool, frame: NSRect) -> NativeHandle

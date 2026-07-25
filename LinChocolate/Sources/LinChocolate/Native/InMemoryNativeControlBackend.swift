@@ -786,6 +786,16 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
         scrollActions[handle.rawValue] = action
     }
 
+    /// The magnification factor recorded per view (default 1).
+    public private(set) var viewMagnifications: [UInt: Double] = [:]
+
+    /// Records the view's magnification factor (a real backend would scale the
+    /// document view's drawing and requested size; the in-memory backend just
+    /// stores the value for tests).
+    public func setViewMagnification(_ magnification: Double, for handle: NativeHandle) {
+        viewMagnifications[handle.rawValue] = magnification
+    }
+
     /// Test hook: simulates the user scrolling to `(x, y)` (clamped), firing the
     /// scroll-change action.
     public func simulateScroll(to point: NSPoint, on handle: NativeHandle) {

@@ -68,6 +68,7 @@ public final class GTKNativeControlBackend: NativeControlBackend {
     private var windowToolbars: [UInt: OpaquePointer] = [:]  // window -> toolbar GtkBox
     private var windowToolbarViews: [UInt: [OpaquePointer]] = [:] // window -> embedded view widgets (survive rebuild)
     private var flippedViews: Set<UInt> = []  // parents that position children top-left
+    private var viewMagnifications: [UInt: Double] = [:]   // view -> NSScrollView magnification factor
     private var graphicalDatePickers: Set<UInt> = []  // date pickers shown as a GtkCalendar
     private var radiosByParent: [UInt: [UInt]] = [:]   // radio buttons grouped per superview
     // GTK 4.10 deprecated per-widget CSS providers (gtk_widget_get_style_context /
@@ -2533,6 +2534,25 @@ public final class GTKNativeControlBackend: NativeControlBackend {
     /// Whether `view` draws in a top-left (flipped) coordinate space.
     func isViewFlipped(_ view: UInt) -> Bool { flippedViews.contains(view) }
 
+    /// The magnification applied to `view`'s custom drawing (1 = no zoom).
+    func viewMagnification(_ view: UInt) -> Double { viewMagnifications[view] ?? 1 }
+
+    /// Scales a document view's drawing and enlarges its requested size so a
+    /// hosting `GtkScrolledWindow` reports the enlarged scrollable extent —
+    /// the backing for `NSScrollView.magnification`.
+    public func setViewMagnification(_ magnification: Double, for handle: NativeHandle) {
+        // The natural (unscaled) size is what the view was created at.
+        guard let overlay = widget(handle), let natural = frames[handle.rawValue] else { return }
+        let scale = magnification > 0 ? magnification : 1
+        viewMagnifications[handle.rawValue] = scale
+        gtk_widget_set_size_request(asWidget(overlay),
+                                    Int32((natural.width  * CGFloat(scale)).rounded()),
+                                    Int32((natural.height * CGFloat(scale)).rounded()))
+        if let area = viewDrawAreas[handle.rawValue] {
+            gtk_widget_queue_draw(asWidget(area))
+        }
+    }
+
     /// The exact rect `childFrame` occupies inside `parentRaw`, in GTK's
     /// top-left space. The one place a child's geometry is decided — see
     /// `CoordinateSpace.place`.
@@ -2661,6 +2681,16 @@ public final class GTKNativeControlBackend: NativeControlBackend {
             )
             gtk_widget_add_controller(widget, click)
         }
+
+        // Scroll wheel / trackpad → scrollWheel(with:).
+        let scroll = gtk_event_controller_scroll_new(GTK_EVENT_CONTROLLER_SCROLL_BOTH_AXES)
+        let scrollBox = MouseBox(handler)
+        g_signal_connect_data(
+            UnsafeMutableRawPointer(scroll), "scroll",
+            unsafeBitCast(gtkScrollTrampoline, to: GCallback.self),
+            Unmanaged.passRetained(scrollBox).toOpaque(), boxRelease, GConnectFlags(rawValue: 0)
+        )
+        gtk_widget_add_controller(widget, scroll)
     }
 
     /// Installs a Cairo draw function on the view's `GtkDrawingArea` that adapts to `NativeGraphicsContext`.
@@ -3217,12 +3247,18 @@ private let gtkDrawFunc: @convention(c) (UnsafeMutablePointer<GtkDrawingArea>?, 
     // GTK's native space directly; an unflipped AppKit view (bottom-left, +Y up)
     // needs the axis flip.
     let flipped = box.backend?.isViewFlipped(box.view) ?? false
+    // `NSScrollView.magnification` grew this view's allocation by `zoom`; we
+    // apply the same factor to Cairo so the Swift draw code still authors in
+    // its natural coordinate space.
+    let zoom = box.backend?.viewMagnification(box.view) ?? 1
     let context = CairoGraphicsContext(cr: cr, flipped: flipped)
     if !flipped {
         cairo_translate(cr, 0, Double(height))
         cairo_scale(cr, 1, -1)
     }
-    box.backend?.dispatchDraw(view: box.view, context: context, width: Double(width), height: Double(height))
+    if zoom != 1 { cairo_scale(cr, zoom, zoom) }
+    box.backend?.dispatchDraw(view: box.view, context: context,
+                              width: Double(width) / zoom, height: Double(height) / zoom)
     cairo_restore(cr)
 }
 
@@ -3423,6 +3459,18 @@ private let gtkMousePressTrampoline: @convention(c) (UnsafeMutableRawPointer?, g
     guard let userData else { return }
     let box = Unmanaged<MouseClickBox>.fromOpaque(userData).takeUnretainedValue()
     box.handler(.down(x: x, y: y, clickCount: Int(nPress), rightButton: box.rightButton))
+}
+/// `GtkEventControllerScroll::scroll` — dy>0 means scroll down in GTK, which is
+/// AppKit's negative `scrollingDeltaY`, so flip the sign. Returns FALSE (event
+/// NOT consumed): this controller sits on EVERY custom view, including the
+/// document views inside NSScrollViews, so consuming here would kill scroll-view
+/// panning app-wide. A view that reacts to the wheel (the demo's canvas) still
+/// gets its callback; letting the event propagate just also lets an enclosing
+/// scroller scroll, which is AppKit's behavior for a non-overriding view.
+private let gtkScrollTrampoline: @convention(c) (UnsafeMutableRawPointer?, Double, Double, gpointer?) -> gboolean = { _, dx, dy, userData in
+    guard let userData else { return gboolean(0) }
+    Unmanaged<MouseBox>.fromOpaque(userData).takeUnretainedValue().handler(.scroll(deltaX: -dx, deltaY: -dy))
+    return gboolean(0)
 }
 
 /// Carries a view's click action to its gesture handler.

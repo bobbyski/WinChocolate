@@ -177,6 +177,47 @@ Eastern **Standard** Time.
 
 ---
 
+## 2026-07-18 — Drawing page: the scroll wheel resizes the canvas circle again (framework work; demo untouched)
+
+Bobby: *"The scroll wheel zoom doesn't work on the drawing tab."* The Drawing page's Canvas
+is labelled "Click: fill color · Right-click: outline · **Scroll: size** · Double-click: reset";
+`DemoCanvasView.scrollWheel(with:)` grows/shrinks the circle by `event.scrollingDeltaY`. Nothing
+happened on scroll.
+
+**Root cause: scroll-wheel events were never dispatched to custom views.** The earlier "New in
+3.x" work added a pointer path to custom `NSView`s — `setMouseHandler` + a `NativeMouseEvent`
+enum — but that enum only carried `.entered` / `.exited` / `.down`. There was no scroll case and
+no scroll controller, so `NSView.scrollWheel(with:)` (an `open` no-op) could never be reached.
+
+Wired the wheel through the same seam: a `NativeMouseEvent.scroll(deltaX:deltaY:)` case; the GTK
+backend now also attaches a `GtkEventControllerScroll` (both axes) whose handler feeds the deltas
+in; and `NSView.init` turns that into an `NSEvent` (`scrollingDeltaX/Y` + `deltaX/Y`) and calls
+`scrollWheel(with:)`. GTK's `dy > 0` means "scroll down", which is AppKit's **negative**
+`scrollingDeltaY`, so the sign is flipped — scroll up grows the circle, as on the Mac.
+
+**The subtle part — do NOT consume the event.** This controller sits on *every* custom `NSView`,
+including the document views inside `NSScrollView`s. Returning `TRUE` (handled) from the scroll
+callback would have killed scroll-view panning app-wide. It returns `FALSE`: the reacting view
+(the canvas) still gets its callback, and the event keeps propagating so an enclosing scroller
+still scrolls — which is exactly AppKit's behavior for a view that doesn't consume the wheel.
+
+**Files touched (framework only)**
+
+- `Native/NativeControlBackend.swift` — `NativeMouseEvent.scroll(deltaX:deltaY:)`.
+- `Native/GTK/GTKNativeControlBackend.swift` — `GtkEventControllerScroll` in `setMouseHandler`,
+  plus `gtkScrollTrampoline` (sign-flipped, returns FALSE).
+- `Views/NSView.swift` — dispatch `.scroll` to `scrollWheel(with:)`.
+
+**Verified**
+
+- Linux: built (0 errors/warnings); on page 3 the circle grows on scroll-up and shrinks on
+  scroll-down (status "Canvas radius (scroll)"); on page 9 the Scroll-Stress scroll view still
+  pans normally (Row 1 → Rows 9-16), so the non-consuming controller did not regress scrolling.
+  Geometry audit 0 violations (pages 3, 9); contract tests pass.
+
+**MUST FIX (WinChocolate):** custom views need scroll-wheel delivery to `scrollWheel(with:)`
+too — and the deliverer must not swallow the event, or every scroll view stops scrolling.
+
 ## 2026-07-18 — The Linux build is warning-clean (framework work + 3 authorized demo fixes)
 
 Bobby: *"Please clear all the warnings from the build."* A clean Linux build reported **441
