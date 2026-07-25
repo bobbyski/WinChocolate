@@ -452,7 +452,8 @@ for (i, entry) in materials.enumerated() {
     appearancePage.addSubview(panel)
 }
 
-themeToggle.onAction = { seg in
+themeToggle.onAction = { control in
+    guard let seg = control as? NSSegmentedControl else { return }
     NSApplication.shared.appearance = seg.selectedSegment == 1 ? .darkAqua : .aqua
 }
 themeToggle.selectedSegment = 0
@@ -535,7 +536,8 @@ formsPage.addSubview(demoMatrix)
 
 let matrixEcho = NSTextField(labelWithString: "Matrix selected: —", frame: NSMakeRect(24, r12.next(24), 460, 22))
 formsPage.addSubview(matrixEcho)
-demoMatrix.onAction = { m in
+demoMatrix.onAction = { control in
+    guard let m = control as? NSMatrix else { return }
     matrixEcho.stringValue = "Matrix selected: row \(m.selectedRow + 1), column \(m.selectedColumn + 1)"
 }
 
@@ -614,7 +616,7 @@ dateFormatter.dateStyle = .medium
 datePicker.onDateChange = { dateResult.stringValue = "Picked: \(dateFormatter.string(from: $0.dateValue))" }
 
 notes.onTextChange = { notesEdit.stringValue = "Last edit: \($0.string.count) chars" }
-tags.onTokensChange = { tagsResult.stringValue = "\($0.objectValue.count) tags" }
+tags.onTokensChange = { tagsResult.stringValue = "\($0.tokens.count) tags" }
 grid.onSelectionChange = { g in
     let index = g.selectedIndex
     gridResult.stringValue = index >= 0 && index < gridData.items.count
@@ -626,7 +628,8 @@ table.onSelectionChange = { t in
         ? "Selected: \(tableData.rows[row].name) — \(tableData.rows[row].status)"
         : "Selected: —"
 }
-segmented.onAction = { seg in
+segmented.onAction = { control in
+    guard let seg = control as? NSSegmentedControl else { return }
     alignResult.stringValue = "Align: \(seg.label(forSegment: seg.selectedSegment) ?? "—")"
 }
 segmented.selectedSegment = 0

@@ -4,7 +4,9 @@ import Foundation
 /// through `onValueChange`; `doubleValue` reflects the current position.
 open class NSSlider: NSControl {
 
+    /// The minimum value of the slider's range.
     public var minValue: Double
+    /// The maximum value of the slider's range.
     public var maxValue: Double
 
     private var backingValue: Double
@@ -38,6 +40,7 @@ open class NSSlider: NSControl {
         self.init(value: 0, minValue: 0, maxValue: 100, frame: frame)
     }
 
+    /// Creates a slider over `[minValue, maxValue]` starting at `value`.
     public init(value: Double, minValue: Double, maxValue: Double, frame: NSRect) {
         self.minValue = minValue
         self.maxValue = maxValue

@@ -96,7 +96,7 @@ final class DemoContentView: NSView {
     }
 
     override func mouseDown(with event: NSEvent) {
-        nonisolated(unsafe) let handler = onBlankAreaMouseDown
+        let handler = onBlankAreaMouseDown
         nonisolated(unsafe) let sent = event
         MainActor.assumeIsolated {
             handler?(sent)
@@ -105,7 +105,7 @@ final class DemoContentView: NSView {
     }
 
     override func mouseUp(with event: NSEvent) {
-        nonisolated(unsafe) let handler = onBlankAreaMouseUp
+        let handler = onBlankAreaMouseUp
         nonisolated(unsafe) let sent = event
         MainActor.assumeIsolated {
             handler?(sent)
@@ -114,7 +114,7 @@ final class DemoContentView: NSView {
     }
 
     override func mouseMoved(with event: NSEvent) {
-        nonisolated(unsafe) let handler = onMouseMoved
+        let handler = onMouseMoved
         nonisolated(unsafe) let sent = event
         MainActor.assumeIsolated {
             handler?(sent)
@@ -123,7 +123,7 @@ final class DemoContentView: NSView {
     }
 
     override func keyDown(with event: NSEvent) {
-        nonisolated(unsafe) let handler = onKeyDown
+        let handler = onKeyDown
         nonisolated(unsafe) let sent = event
         MainActor.assumeIsolated {
             handler?(sent)
@@ -132,7 +132,7 @@ final class DemoContentView: NSView {
     }
 
     override func keyUp(with event: NSEvent) {
-        nonisolated(unsafe) let handler = onKeyUp
+        let handler = onKeyUp
         nonisolated(unsafe) let sent = event
         MainActor.assumeIsolated {
             handler?(sent)
@@ -159,14 +159,14 @@ final class DemoFieldDelegate: NSObject, NSTextFieldDelegate {
     var onChange: (@MainActor (NSTextField) -> Void)?
 
     func controlTextDidBeginEditing(_ obj: Notification) {
-        nonisolated(unsafe) let handler = onBegin
+        let handler = onBegin
         MainActor.assumeIsolated {
             handler?()
         }
     }
 
     func controlTextDidEndEditing(_ obj: Notification) {
-        nonisolated(unsafe) let handler = onEnd
+        let handler = onEnd
         MainActor.assumeIsolated {
             handler?()
         }
@@ -174,7 +174,7 @@ final class DemoFieldDelegate: NSObject, NSTextFieldDelegate {
 
     func controlTextDidChange(_ obj: Notification) {
         if let field = obj.object as? NSTextField {
-            nonisolated(unsafe) let handler = onChange
+            let handler = onChange
             nonisolated(unsafe) let sent = field
             MainActor.assumeIsolated {
                 handler?(sent)
@@ -188,7 +188,7 @@ final class DemoAlertHelpDelegate: NSObject, NSAlertDelegate {
     var onHelp: (@MainActor () -> Void)?
 
     func alertShowHelp(_ alert: NSAlert) -> Bool {
-        nonisolated(unsafe) let handler = onHelp
+        let handler = onHelp
         MainActor.assumeIsolated {
             handler?()
         }
@@ -203,7 +203,7 @@ final class DemoFontChangeResponder: NSResponder, NSFontChanging {
     var handler: (@MainActor (NSFont) -> Void)?
 
     func changeFont(_ sender: NSFontManager?) {
-        nonisolated(unsafe) let stored = handler
+        let stored = handler
         nonisolated(unsafe) let font = (sender ?? NSFontManager.shared).convert(NSFont.systemFont(ofSize: 13))
         MainActor.assumeIsolated {
             stored?(font)
@@ -278,14 +278,14 @@ final class DemoCanvasView: NSView {
             fillColorIndex = 0
             strokeColorIndex = 1
             radius = 36
-            nonisolated(unsafe) let handler = onEvent
+            let handler = onEvent
             let message = "Canvas reset (double-click)"
             MainActor.assumeIsolated {
                 handler?(message)
             }
         } else {
             fillColorIndex = (fillColorIndex + 1) % Self.palette.count
-            nonisolated(unsafe) let handler = onEvent
+            let handler = onEvent
             let message = "Canvas fill color (click)"
             MainActor.assumeIsolated {
                 handler?(message)
@@ -296,7 +296,7 @@ final class DemoCanvasView: NSView {
 
     override func rightMouseDown(with event: NSEvent) {
         strokeColorIndex = (strokeColorIndex + 1) % Self.palette.count
-        nonisolated(unsafe) let handler = onEvent
+        let handler = onEvent
         let message = "Canvas stroke color (right-click)"
         MainActor.assumeIsolated {
             handler?(message)
@@ -306,7 +306,7 @@ final class DemoCanvasView: NSView {
 
     override func scrollWheel(with event: NSEvent) {
         radius = min(max(radius + event.scrollingDeltaY * 4, 16), 110)
-        nonisolated(unsafe) let handler = onEvent
+        let handler = onEvent
         let message = "Canvas radius (scroll)"
         MainActor.assumeIsolated {
             handler?(message)
@@ -766,7 +766,7 @@ final class DemoClickableImageView: NSImageView {
     var onClick: (@MainActor () -> Void)?
 
     override func mouseDown(with event: NSEvent) {
-        nonisolated(unsafe) let handler = onClick
+        let handler = onClick
         MainActor.assumeIsolated {
             handler?()
         }
@@ -817,7 +817,7 @@ final class DemoHoverView: NSView {
     override func mouseEntered(with event: NSEvent) {
         hovering = true
         needsDisplay = true
-        nonisolated(unsafe) let handler = onEvent
+        let handler = onEvent
         let message = "Hover entered (mouseEntered)"
         MainActor.assumeIsolated {
             handler?(message)
@@ -827,7 +827,7 @@ final class DemoHoverView: NSView {
     override func mouseExited(with event: NSEvent) {
         hovering = false
         needsDisplay = true
-        nonisolated(unsafe) let handler = onEvent
+        let handler = onEvent
         let message = "Hover exited (mouseExited)"
         MainActor.assumeIsolated {
             handler?(message)
@@ -868,7 +868,7 @@ final class DemoDragHandle: NSView, NSDraggingSource {
         pasteboardItem.setString(draggedText, forType: .string)
         let item = NSDraggingItem(pasteboardWriter: pasteboardItem)
         item.draggingFrame = bounds
-        nonisolated(unsafe) let handler = onEvent
+        let handler = onEvent
         let message = "Drag started: \"\(draggedText)\""
         MainActor.assumeIsolated {
             handler?(message)
@@ -883,7 +883,7 @@ final class DemoDragHandle: NSView, NSDraggingSource {
     // The drag outcome arrives through AppKit's real source callback; an
     // empty operation means the drag canceled.
     func draggingSession(_ session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) {
-        nonisolated(unsafe) let handler = onEvent
+        let handler = onEvent
         let message = operation.isEmpty ? "Drag canceled" : "Drag dropped on a target"
         MainActor.assumeIsolated {
             handler?(message)
@@ -941,7 +941,7 @@ final class DemoDropWell: NSView {
             lastDrop = "Dropped (unknown content)"
         }
         needsDisplay = true
-        nonisolated(unsafe) let handler = onEvent
+        let handler = onEvent
         let message = lastDrop
         MainActor.assumeIsolated {
             handler?(message)
@@ -1089,7 +1089,7 @@ final class DemoViewTableDataSource: NSObject, NSTableViewDataSource {
         tableView.reloadData()
         tableView.selectRowIndexes(IndexSet(dest..<(dest + sortedRows.count)), byExtendingSelection: false)
 
-        nonisolated(unsafe) let handler = onReorder
+        let handler = onReorder
         MainActor.assumeIsolated {
             handler?(sortedRows.count, dest)
         }
@@ -1131,7 +1131,7 @@ final class DemoViewTableDelegate: NSObject, NSTableViewDelegate {
                     return
                 }
                 self.source.notes[row] = edited.stringValue
-                nonisolated(unsafe) let handler = onEvent
+                let handler = onEvent
                 let message = "Note \(row) → \(edited.stringValue)"
                 MainActor.assumeIsolated {
                     handler?(message)
@@ -1145,7 +1145,7 @@ final class DemoViewTableDelegate: NSObject, NSTableViewDelegate {
                 return
             }
             self.source.done[row].toggle()
-            nonisolated(unsafe) let handler = onEvent
+            let handler = onEvent
             let message = "Row \(row) → \(self.source.done[row] ? "done" : "not done")"
             MainActor.assumeIsolated {
                 handler?(message)
@@ -1250,7 +1250,7 @@ final class DemoSplitDelegate: NSObject, NSSplitViewDelegate {
     var onResize: (@MainActor () -> Void)?
 
     func splitViewDidResizeSubviews(_ notification: Notification) {
-        nonisolated(unsafe) let handler = onResize
+        let handler = onResize
         MainActor.assumeIsolated {
             handler?()
         }
@@ -1429,7 +1429,7 @@ final class DemoOutlineDataSource: NSObject, NSOutlineViewDataSource {
             return false
         }
         moveItem(moved, under: parent, to: index)
-        nonisolated(unsafe) let handler = onReorder
+        let handler = onReorder
         MainActor.assumeIsolated {
             handler?(moved, index)
         }
@@ -2052,7 +2052,7 @@ func printableCharacterText(for event: NSEvent) -> String {
 }
 
 func keyText(for event: NSEvent) -> String {
-    let code = event.keyCode ?? 0
+    let code = event.keyCode
     let name = keyName(for: code).map { " \($0)" } ?? ""
     return "\(code)\(name)\(printableCharacterText(for: event))\(modifierText(for: event))"
 }
@@ -4030,9 +4030,8 @@ final class DemoDocumentController: NSDocumentController {
 _ = DemoDocumentController()
 let newNoteItem = NSMenuItem(title: "New Note Document", action: nil, keyEquivalent: "n")
 newNoteItem.onAction = { _ in
-    let document = NSDocumentController.shared.newDocument(nil)
+    NSDocumentController.shared.newDocument(nil)
     statusLabel.stringValue = "New note document (\(NSDocumentController.shared.documents.count) open)"
-    _ = document
 }
 appMenu.insertItem(newNoteItem, at: 0)
 

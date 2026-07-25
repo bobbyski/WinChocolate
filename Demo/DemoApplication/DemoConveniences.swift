@@ -188,7 +188,7 @@ final class DemoActionTarget: NSResponder {
     // actor here is a statement of fact, not a workaround.
     override func moveUp(_ sender: Any?) {
         nonisolated(unsafe) let sent = sender
-        nonisolated(unsafe) let handler = handlers["moveUp:"]
+        let handler = handlers["moveUp:"]
         MainActor.assumeIsolated {
             handler?(sent)
         }
@@ -196,7 +196,7 @@ final class DemoActionTarget: NSResponder {
 
     override func moveDown(_ sender: Any?) {
         nonisolated(unsafe) let sent = sender
-        nonisolated(unsafe) let handler = handlers["moveDown:"]
+        let handler = handlers["moveDown:"]
         MainActor.assumeIsolated {
             handler?(sent)
         }
@@ -301,7 +301,7 @@ final class DemoTextChangeDelegate: NSObject, NSTextFieldDelegate {
         // Delegate callbacks arrive on the UI thread on both platforms.
         if let field = obj.object as? NSTextField {
             nonisolated(unsafe) let sender = field
-            nonisolated(unsafe) let handler = self.handler
+            let handler = self.handler
             MainActor.assumeIsolated {
                 handler(sender)
             }
@@ -361,7 +361,7 @@ final class DemoTextViewChangeDelegate: NSObject, NSTextViewDelegate {
     func textDidChange(_ notification: Notification) {
         if let view = notification.object as? NSTextView {
             nonisolated(unsafe) let sender = view
-            nonisolated(unsafe) let handler = self.handler
+            let handler = self.handler
             MainActor.assumeIsolated {
                 handler(sender)
             }
@@ -404,7 +404,7 @@ final class DemoTableSelectionDelegate: NSObject, NSTableViewDelegate {
     func tableViewSelectionDidChange(_ notification: Notification) {
         if let table = notification.object as? NSTableView {
             nonisolated(unsafe) let sender = table
-            nonisolated(unsafe) let handler = self.handler
+            let handler = self.handler
             MainActor.assumeIsolated {
                 handler(sender)
             }
@@ -425,7 +425,7 @@ final class DemoOutlineSelectionDelegate: NSObject, NSOutlineViewDelegate {
     func outlineViewSelectionDidChange(_ notification: Notification) {
         if let outline = notification.object as? NSOutlineView {
             nonisolated(unsafe) let sender = outline
-            nonisolated(unsafe) let handler = self.handler
+            let handler = self.handler
             MainActor.assumeIsolated {
                 handler(sender)
             }
@@ -490,7 +490,7 @@ final class DemoCollectionSelectionDelegate: NSObject, NSCollectionViewDelegate 
 
     func collectionView(_ collectionView: NSCollectionView, didSelectItemsAt indexPaths: Set<IndexPath>) {
         nonisolated(unsafe) let sender = collectionView
-        nonisolated(unsafe) let handler = self.handler
+        let handler = self.handler
         MainActor.assumeIsolated {
             handler(sender)
         }

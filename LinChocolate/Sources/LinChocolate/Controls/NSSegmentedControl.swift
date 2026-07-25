@@ -23,15 +23,23 @@ open class NSSegmentedControl: NSControl {
     }
 
     /// Called when the user selects a segment.
-    public var onAction: ((NSSegmentedControl) -> Void)?
+    public var onAction: ((NSControl) -> Void)?
 
     /// Segment style (accepted for API parity; GTK styles natively).
     public var segmentStyle: NSSegmentedControlStyle = .automatic
     /// Segment tracking (Apple's `NSSegmentedControl.SwitchTracking`).
     public enum SwitchTracking: Sendable {
-        case selectOne, selectAny, momentary, momentaryAccelerator
+        /// Only one segment may be selected at a time.
+        case selectOne
+        /// Any number of segments may be selected.
+        case selectAny
+        /// Segments highlight only while pressed.
+        case momentary
+        /// Momentary tracking that fires accelerated actions on hold.
+        case momentaryAccelerator
     }
 
+    /// The segment tracking mode.
     public var trackingMode: SwitchTracking = .selectOne
 
     /// Apple's content convenience: labels + tracking + target/action.
@@ -48,6 +56,7 @@ open class NSSegmentedControl: NSControl {
         self.init(labels: [], frame: frame)
     }
 
+    /// Creates a segmented control with one segment per label.
     public init(labels: [String], frame: NSRect) {
         self.segmentLabels = labels
         let backend = NSApplication.shared.nativeBackend

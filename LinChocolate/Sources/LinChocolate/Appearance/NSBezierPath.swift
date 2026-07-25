@@ -59,8 +59,11 @@ public final class NSBezierPath {
         appendRoundedRect(rect, xRadius: xRadius, yRadius: yRadius)
     }
 
+    /// Starts a new subpath at `point`.
     public func move(to point: NSPoint) { elements.append(.move(point)) }
+    /// Adds a straight line segment from the current point to `point`.
     public func line(to point: NSPoint) { elements.append(.line(point)) }
+    /// Adds a cubic Bézier curve from the current point to `point`.
     public func curve(to point: NSPoint, controlPoint1: NSPoint, controlPoint2: NSPoint) {
         elements.append(.curve(to: point, c1: controlPoint1, c2: controlPoint2))
     }
@@ -85,6 +88,7 @@ public final class NSBezierPath {
         curve(to: NSMakePoint(x0 + rx, y0), controlPoint1: NSMakePoint(x0, y0 + ry - ry * k), controlPoint2: NSMakePoint(x0 + rx - rx * k, y0))
         close()
     }
+    /// Closes the current subpath with a line back to its starting point.
     public func close() { elements.append(.close) }
 
     /// The bounding box of the path's points (approximate for arcs: their

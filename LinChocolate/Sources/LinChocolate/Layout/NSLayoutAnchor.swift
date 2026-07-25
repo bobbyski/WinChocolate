@@ -22,6 +22,7 @@ public class NSLayoutAnchor {
 
 /// Horizontal-axis anchor (leading/trailing/left/right/centerX).
 public final class NSLayoutXAxisAnchor: NSLayoutAnchor {
+    /// A constraint equating this anchor to another, plus an optional constant.
     public func constraint(equalTo other: NSLayoutXAxisAnchor, constant: CGFloat = 0) -> NSLayoutConstraint {
         makeConstraint(to: other, multiplier: 1, constant: constant)
     }
@@ -29,6 +30,7 @@ public final class NSLayoutXAxisAnchor: NSLayoutAnchor {
 
 /// Vertical-axis anchor (top/bottom/centerY).
 public final class NSLayoutYAxisAnchor: NSLayoutAnchor {
+    /// A constraint equating this anchor to another, plus an optional constant.
     public func constraint(equalTo other: NSLayoutYAxisAnchor, constant: CGFloat = 0) -> NSLayoutConstraint {
         makeConstraint(to: other, multiplier: 1, constant: constant)
     }
@@ -36,9 +38,12 @@ public final class NSLayoutYAxisAnchor: NSLayoutAnchor {
 
 /// Size anchor (width/height), which also supports constants and multipliers.
 public final class NSLayoutDimension: NSLayoutAnchor {
+    /// A constraint pinning this dimension to a fixed constant.
     public func constraint(equalToConstant c: CGFloat) -> NSLayoutConstraint {
         makeConstraint(to: nil, multiplier: 1, constant: c)
     }
+    /// A constraint equating this dimension to another, scaled by `multiplier`
+    /// and offset by `constant`.
     public func constraint(equalTo other: NSLayoutDimension, multiplier: CGFloat = 1, constant: CGFloat = 0) -> NSLayoutConstraint {
         makeConstraint(to: other, multiplier: multiplier, constant: constant)
     }

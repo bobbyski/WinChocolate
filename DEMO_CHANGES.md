@@ -177,6 +177,130 @@ Eastern **Standard** Time.
 
 ---
 
+## 2026-07-18 — The Linux build is warning-clean (framework work + 3 authorized demo fixes)
+
+Bobby: *"Please clear all the warnings from the build."* A clean Linux build reported **441
+warning lines / 89 unique sites**. It is now **0** (the only line left is SwiftPM's
+`prohibited flag(s): -pthread`, which is not ours — see the end). The macOS build dropped
+from 79 to 45 unique sites as a side effect.
+
+**Counting them honestly first.** The raw 441 is inflated: the `LinChocolate` module is
+recompiled once per dependent target, so each warning repeats ~5×. Deduplicating by
+`file:line:col` gave the real number, 89 — 26 in the framework, 63 in the demo.
+
+**1. Per-widget CSS providers (45 occurrences).** GTK 4.10 deprecated
+`gtk_widget_get_style_context` / `gtk_style_context_add_provider` / `…remove_provider`, which
+the backend used to attach background, material and font/colour CSS to individual widgets.
+Migrated to GTK4's replacement: every styled widget now carries a unique `lc-w<handle>` class
+and the rules for one priority live in a single **display-wide** provider that is rebuilt when
+any rule changes (`setScopedRule`). `.cls, .cls *` reproduces the old widget-scoped `*` reach.
+
+**2. `gtk_css_provider_load_from_data` → `…_from_string`** (8 sites; the old one is deprecated
+in 4.12).
+
+**3. Deliberately-deprecated GTK controls (7 sites) — a new C target.** `GtkComboBoxText` and
+`GtkColorButton` are deprecated but are still the only controls that fit (`GtkDropDown` has no
+entry to type into; `GtkColorDialogButton` is async-only while `NSColorWell` is synchronous).
+Swift has no per-call warning suppression, so these now go through **`Sources/CGTKCompat`**, a
+small C target whose `.c` file carries `#pragma GCC diagnostic ignored "-Wdeprecated-declarations"`.
+No build flags, nothing silenced globally — the suppression sits at the one place that makes
+the call, and the header documents why each control is still correct.
+
+**4. Framework API shapes that made portable code warn (≈28 sites).** The demo is written
+against **AppKit's real signatures**, so wherever LinChocolate's differed, correct demo code
+produced warnings — the demo was right and the framework was wrong:
+
+| LinChocolate had | AppKit has | Symptom in the demo |
+|---|---|---|
+| `onAction: ((NSComboBox) -> Void)?` etc. (16 classes) | sender is `NSControl` | `control as? NSComboBox` "always succeeds" |
+| `NSTokenField.objectValue: [String]` | `Any?` | `as? [String]` "always succeeds" |
+| `NSForm.cell(at:) -> NSFormCell?` | `NSCell?` | `as? NSFormCell` "does nothing" |
+| `NSWindow.firstResponder: NSView?` | `NSResponder?` | `as? NSView` "always succeeds" |
+| `NSPathControl: NSView` | `NSControl` | see below |
+
+The `onAction` bridges became write-only (`get { nil }`): a `((NSControl) -> Void)` may stand in
+for a `((NSComboBox) -> Void)` — parameters are contravariant — but not the reverse.
+
+**This surfaced a real bug.** `NSPathControl` was an `NSView`, so once its action was typed to
+`NSControl` the compiler reported `cast from 'NSControl' to unrelated type 'NSPathControl'
+always fails` — the demo's path-control handler could **never** have fired. Making
+`NSPathControl` an `NSControl` (as it is on Apple) fixes the control, not just the warning.
+
+**5. Three demo fixes (authorized by "clear all the warnings").** The last 32 Linux sites were
+all in the shared demo. Before touching it I built on macOS and compared: **all 32 are flagged
+by Apple's compiler too**, so they are genuine warts rather than Linux artifacts.
+
+- 32 × redundant `nonisolated(unsafe)` on already-`Sendable` constants. Removed **only the
+  intersection** of the Linux and macOS warning sets — macOS flags 7 more that Linux does not,
+  and those are left alone precisely because Linux not warning implies the attribute still does
+  work there.
+- `event.keyCode ?? 0` — `NSEvent.keyCode` is a non-optional `UInt16` on both platforms.
+- `let document = NSDocumentController.shared.newDocument(nil)` — `newDocument` returns `Void`,
+  so this named a `()`.
+
+**Left in place: `warning: prohibited flag(s): -pthread`.** This comes from
+`pkg-config --cflags gtk4`, which emits `-pthread`; SwiftPM drops the flag and warns. It is not
+our source, it is inert (glib links pthread through `Libs` anyway), and the only way to remove
+it would be to abandon `pkgConfig:` and hard-code machine-specific include paths — a worse
+build than one warning.
+
+**Files touched**
+
+- `Package.swift`, `Sources/CGTKCompat/{include/cgtkcompat.h,cgtkcompat.c}` — the new C target.
+- `Native/GTK/GTKNativeControlBackend.swift` — scoped providers, `load_from_string`, shim calls.
+- `Compat/{AppKitCompat,DemoCompat,ControlCompat}.swift`, `Controls/*`, `Views/*` — AppKit shapes.
+- `Views/NSToolbar.swift`, `Compat/GLibMainActorExecutor.swift` — unused binding / redundant attribute.
+- `Sources/LinChocolateDemo/main.swift`, `Tests/LinChocolateContractTests/main.swift` — updated to
+  downcast the action sender, like portable code.
+- `Demo/DemoApplication/{main,DemoConveniences}.swift` — the three fixes above.
+
+**Verified**
+
+- Linux clean build: **0 errors, 0 warning sites**. macOS clean build: 0 errors, 79 → 45 sites.
+- Contract tests pass; geometry audit **0 violations** on pages 0, 1, 2 and 4.
+- Interaction smoke test after the signature refactor: stepper 50 → 51, rating stars fill,
+  segmented reports "Segment selected: Three" — actions still dispatch.
+- A scare that was not a regression: after `rm -rf .build` the toolbar showed GTK fallback icons.
+  `run-linux.sh` stages `Demo/DemoApplication/Resources` next to the binary and a bare
+  `swift build` does not; re-staging restored the Tabler artwork.
+
+**MUST FIX (WinChocolate):** the API-shape rows in the table above apply to WinChocolate too —
+especially `NSPathControl` deriving from `NSControl`, since the same always-fails cast would
+make its action dead there as well.
+
+## 2026-07-18 — Tables/Media: "Scroll Selected" actually scrolls (framework work; demo untouched)
+
+Bobby: *"Scroll selection doesn't work."* The Tables/Media page's **Scroll Selected** button
+reads `tableView.selectedRow` and calls `tableView.scrollRowToVisible(selected)`. The status
+line updated, but the table never moved — because **`scrollRowToVisible(_:)` was an
+accepted-and-ignored no-op stub** in `DemoCompat` (`func scrollRowToVisible(_ row: Int) {}`),
+the same bug class as `addClip`, the level-indicator setters and `String.draw` before it.
+
+Wired it end to end: a new `NativeControlBackend.scrollTableRowToVisible(_:for:)` seam, a real
+`NSTableView.scrollRowToVisible(_:)` that calls it, and the stub deleted so nothing shadows the
+real method. The GTK backend uses `gtk_column_view_scroll_to(cv, row, nil, GTK_LIST_SCROLL_NONE,
+nil)` — **`GTK_LIST_SCROLL_NONE` matters**: the other flags (`FOCUS`, `SELECT`) would change the
+selection, and AppKit's `scrollRowToVisible` explicitly does not (the demo's comment says to
+scroll the existing selection "and do not disturb it"). The in-memory backend records the
+scrolls for tests.
+
+**Files touched (framework only)**
+
+- `Native/NativeControlBackend.swift` — `scrollTableRowToVisible(_:for:)` seam.
+- `Native/GTK/GTKNativeControlBackend.swift` — `gtk_column_view_scroll_to`, bounds-checked.
+- `Native/InMemoryNativeControlBackend.swift` — records `scrolledTableRows`.
+- `Views/NSTableView.swift` — real `scrollRowToVisible(_:)`.
+- `Compat/DemoCompat.swift` — deleted the no-op stub.
+
+**Verified**
+
+- Linux: built (0 errors); on page 2, scrolling the table down to NSDatePicker…NSImageView and
+  then clicking **Scroll Selected** jumps back to the highlighted NSApplication row, selection
+  intact, status "Scrolled to selected: row 1 - NSApplication - Running".
+
+**MUST FIX (WinChocolate):** `scrollRowToVisible(_:)` must really scroll (and must NOT alter
+the selection or focus).
+
 ## 2026-07-18 — Tables/Media: clicking a column header now actually sorts the rows (framework work; demo untouched)
 
 Bobby: *"the table sort fails (shows the arrow but doesn't sort the rows)."* On the

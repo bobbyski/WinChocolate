@@ -42,10 +42,15 @@ public final class NSScrollView: NSView {
 
     /// Zoom magnification (accepted for API parity; not yet applied natively).
     public var magnification: CGFloat = 1
+    /// Whether magnification is permitted (accepted for API parity).
     public var allowsMagnification: Bool = false
+    /// The minimum magnification (accepted for API parity).
     public var minMagnification: CGFloat = 0.25
+    /// The maximum magnification (accepted for API parity).
     public var maxMagnification: CGFloat = 4
+    /// Whether a vertical ruler is shown (accepted for API parity).
     public var hasVerticalRuler: Bool = false
+    /// Whether a horizontal ruler is shown (accepted for API parity).
     public var hasHorizontalRuler: Bool = false
 
     /// Creates an empty scroll view.

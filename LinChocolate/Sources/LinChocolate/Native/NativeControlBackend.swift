@@ -4,9 +4,13 @@ import Foundation
 public struct NativeFontSpec: Equatable {
     /// Font family, or nil for the platform default.
     public let family: String?
+    /// Font size in points.
     public let size: Double
+    /// Whether the font is drawn bold.
     public let bold: Bool
+    /// Whether the font is drawn italic.
     public let italic: Bool
+    /// Creates a font description with the given family, size, and traits.
     public init(family: String?, size: Double, bold: Bool = false, italic: Bool = false) {
         self.family = family
         self.size = size
@@ -15,25 +19,31 @@ public struct NativeFontSpec: Equatable {
     }
 }
 
-/// Platform-neutral description of one toolbar item carried across the seam.
 /// The concrete kind a button should take on (AppKit's button types collapse
 /// to these three native shapes).
 public enum NativeButtonKind: Sendable { case push, checkbox, radio }
 
+/// Platform-neutral description of one toolbar item carried across the seam.
 public struct NativeToolbarItemSpec {
     /// File-backed icon (PNG/BMP path) and whether to tint it as a template.
     public var imagePath: String?
+    /// Whether the file-backed image should be tinted as a template.
     public var imageIsTemplate: Bool = false
+    /// Stable identifier for this item (matches AppKit's `NSToolbarItem.identifier`).
     public let identifier: String
+    /// User-visible label displayed under the icon.
     public let label: String
     /// GTK icon-theme name for the item's image, or nil for a text-only item.
     public let iconName: String?
+    /// Whether the item is a flexible space that expands between other items.
     public let isFlexibleSpace: Bool
     /// A custom control to embed for this item (AppKit's `NSToolbarItem.view`),
     /// e.g. the page-selector pop-up or a search field. When set, the toolbar
     /// hosts this widget instead of a plain button.
     public let viewHandle: NativeHandle?
+    /// Handler invoked when the toolbar item is clicked.
     public let action: (() -> Void)?
+    /// Creates a toolbar item spec.
     public init(imagePath: String? = nil, imageIsTemplate: Bool = false, identifier: String, label: String, iconName: String? = nil, isFlexibleSpace: Bool = false, viewHandle: NativeHandle? = nil, action: (() -> Void)? = nil) {
         self.imagePath = imagePath
         self.imageIsTemplate = imageIsTemplate
@@ -48,40 +58,57 @@ public struct NativeToolbarItemSpec {
 
 /// One color stop of a gradient (location in 0...1).
 public struct NativeGradientStop: Equatable {
+    /// The stop's color.
     public let color: NSColor
+    /// Normalized position of the stop along the gradient (0...1).
     public let location: CGFloat
+    /// Creates a gradient stop at `location` with the given `color`.
     public init(color: NSColor, location: CGFloat) {
         self.color = color
         self.location = location
     }
 }
 
-/// Platform drawing surface handed to a view's draw handler. Path-based:
-/// build a path with the primitive ops, then fill or stroke it (both consume
-/// the path). Backed by Cairo on GTK and by an op recorder in tests.
 /// A pointer event delivered to a custom view (positions in the view's own
 /// top-left coordinates).
 public enum NativeMouseEvent {
+    /// The pointer entered the view at `(x, y)`.
     case entered(x: Double, y: Double)
+    /// The pointer exited the view.
     case exited
+    /// A mouse button was pressed at `(x, y)`.
     case down(x: Double, y: Double, clickCount: Int, rightButton: Bool)
 }
 
+/// Platform drawing surface handed to a view's draw handler. Path-based:
+/// build a path with the primitive ops, then fill or stroke it (both consume
+/// the path). Backed by Cairo on GTK and by an op recorder in tests.
 public protocol NativeGraphicsContext: AnyObject {
+    /// Sets the fill color used by subsequent `fillPath` calls.
     func setFillColor(_ color: NSColor)
+    /// Sets the stroke color used by subsequent `strokePath` calls.
     func setStrokeColor(_ color: NSColor)
+    /// Sets the line width in points used by subsequent `strokePath` calls.
     func setLineWidth(_ width: Double)
+    /// Begins a new empty path.
     func beginPath()
+    /// Moves the current path point to `(x, y)` without adding a segment.
     func move(toX x: Double, y: Double)
+    /// Appends a straight line segment from the current point to `(x, y)`.
     func line(toX x: Double, y: Double)
+    /// Appends a cubic Bezier curve from the current point to `(x, y)` with control points `(c1x, c1y)` and `(c2x, c2y)`.
     func curve(toX x: Double, y: Double, c1x: Double, c1y: Double, c2x: Double, c2y: Double)
     /// Appends an arc to the current path (angles in radians, AppKit space).
     func addArc(centerX: Double, centerY: Double, radius: Double, startAngleRadians: Double, endAngleRadians: Double, clockwise: Bool)
+    /// Closes the current subpath with a straight line back to its start.
     func closePath()
+    /// Fills the current path with the fill color (consumes the path).
     func fillPath()
+    /// Strokes the current path with the stroke color and line width (consumes the path).
     func strokePath()
-    /// Saves / restores the drawing state (clip, source) for scoped clipping.
+    /// Saves the drawing state (clip, source) so it can be restored later.
     func saveState()
+    /// Restores the drawing state saved by the matching `saveState`.
     func restoreState()
     /// Intersects the clip region with the current path (consumes the path).
     func clipToCurrentPath()
@@ -98,9 +125,13 @@ public protocol NativeGraphicsContext: AnyObject {
 
 /// One styled run of text (carries `NSAttributedString` content across the seam).
 public struct NativeTextRun: Equatable {
+    /// The run's text.
     public let text: String
+    /// Foreground color, or nil to use the control's default.
     public let color: NSColor?
+    /// Font spec, or nil to use the control's default.
     public let font: NativeFontSpec?
+    /// Creates a styled text run.
     public init(text: String, color: NSColor? = nil, font: NativeFontSpec? = nil) {
         self.text = text
         self.color = color
@@ -108,13 +139,16 @@ public struct NativeTextRun: Equatable {
     }
 }
 
-/// One row of the toolbar customization palette.
 /// AppKit's `NSLevelIndicator.Style` raw values, so the backend can name them
 /// instead of matching bare integers. Apple's values, read from real AppKit.
 public enum NativeLevelIndicatorStyle {
+    /// Relevancy style (`NSLevelIndicator.Style.relevancy`).
     public static let relevancy = 0
+    /// Continuous capacity bar (`NSLevelIndicator.Style.continuousCapacity`).
     public static let continuousCapacity = 1
+    /// Discrete capacity segments (`NSLevelIndicator.Style.discreteCapacity`).
     public static let discreteCapacity = 2
+    /// Rating stars (`NSLevelIndicator.Style.rating`).
     public static let rating = 3
 }
 
@@ -127,10 +161,15 @@ public enum NativeToolbarDisplayMode: Sendable {
 /// the current toolbar — the drag-and-drop surface), the palette of allowed
 /// items, the default set, and the current display mode.
 public struct NativeToolbarCustomizationSession {
+    /// The live strip mirroring the toolbar; the drag-and-drop editing surface.
     public var strip: [NativeToolbarItemSpec]
+    /// The palette of items the user may drag into the strip.
     public var palette: [NativeToolbarPaletteItem]
+    /// The default item set used by the "reset" affordance.
     public var defaultSet: [NativeToolbarPaletteItem]
+    /// Current display mode as a `NativeToolbarDisplayMode` raw ordinal.
     public var displayModeIndex: Int
+    /// Creates a customization session snapshot.
     public init(strip: [NativeToolbarItemSpec], palette: [NativeToolbarPaletteItem],
                 defaultSet: [NativeToolbarPaletteItem], displayModeIndex: Int) {
         self.strip = strip
@@ -144,12 +183,19 @@ public struct NativeToolbarCustomizationSession {
 /// toggle list: drag a palette item in (insert), drag a strip item out
 /// (remove), drag within the strip (move), drag the default set in (reset).
 public struct NativeToolbarCustomizationHandlers {
+    /// Called when a palette item is dragged into the strip at `(identifier, index)`.
     public let onInsert: (String, Int) -> Void
+    /// Called when a strip item is dragged to a new position `(from, to)`.
     public let onMove: (Int, Int) -> Void
+    /// Called when a strip item is dragged out to be removed.
     public let onRemove: (Int) -> Void
+    /// Called when the user drags the default-set tile into the strip.
     public let onResetToDefault: () -> Void
+    /// Called when the user selects a different display mode ordinal.
     public let onDisplayMode: (Int) -> Void
+    /// Called when the customization panel is dismissed.
     public let onClose: () -> Void
+    /// Creates the handler bundle for a customization session.
     public init(onInsert: @escaping (String, Int) -> Void, onMove: @escaping (Int, Int) -> Void,
                 onRemove: @escaping (Int) -> Void, onResetToDefault: @escaping () -> Void,
                 onDisplayMode: @escaping (Int) -> Void, onClose: @escaping () -> Void) {
@@ -162,15 +208,22 @@ public struct NativeToolbarCustomizationHandlers {
     }
 }
 
+/// One row of the toolbar customization palette.
 public struct NativeToolbarPaletteItem {
+    /// Stable identifier matching the toolbar item's identifier.
     public let identifier: String
+    /// User-visible label displayed under the tile.
     public let label: String
+    /// Whether the item is currently in the toolbar (shown checked/dimmed).
     public let isInToolbar: Bool
     /// Tile artwork: a file-backed image (recolored when template) or a theme
     /// icon name, mirroring `NativeToolbarItemSpec`.
     public var imagePath: String?
+    /// Whether the file-backed image should be tinted as a template.
     public var imageIsTemplate: Bool = false
+    /// GTK icon-theme name for the tile, or nil for a text-only tile.
     public var iconName: String?
+    /// Creates a palette item.
     public init(identifier: String, label: String, isInToolbar: Bool) {
         self.identifier = identifier
         self.label = label
@@ -181,11 +234,15 @@ public struct NativeToolbarPaletteItem {
 /// Platform-neutral description of one menu-bar item, used to carry `NSMenu`
 /// structures across the backend seam without the seam knowing API types.
 public struct NativeMenuItemSpec {
+    /// The item's title.
     public let title: String
+    /// Whether the item is a separator line rather than an activatable entry.
     public let isSeparator: Bool
     /// GTK accelerator string for the key equivalent (e.g. "<Control>n"), or nil.
     public let accelerator: String?
+    /// Handler invoked when the item is selected.
     public let action: (() -> Void)?
+    /// Creates a menu item spec.
     public init(title: String, isSeparator: Bool = false, accelerator: String? = nil, action: (() -> Void)? = nil) {
         self.title = title
         self.isSeparator = isSeparator
@@ -196,8 +253,11 @@ public struct NativeMenuItemSpec {
 
 /// Platform-neutral description of one top-level menu (e.g. "File").
 public struct NativeMenuSpec {
+    /// The menu's title as shown in the menu bar.
     public let title: String
+    /// The menu's items in display order.
     public let items: [NativeMenuItemSpec]
+    /// Creates a menu spec.
     public init(title: String, items: [NativeMenuItemSpec]) {
         self.title = title
         self.items = items
@@ -216,12 +276,12 @@ public struct NativeMenuSpec {
 public protocol NativeControlBackend: AnyObject {
 
     // MARK: Application lifecycle
-    /// Runs the platform event loop until the application terminates.
     /// Schedules `block` after `interval` seconds (repeating if asked) on the
     /// platform's real main loop. Under GTK, Foundation's Timer can't be used:
     /// RunLoop.main is unpumped, and swift-corelibs' RunLoop fires a repeating
     /// timer only once. The Timer shadow routes here instead.
     func scheduleTimer(interval: Double, repeats: Bool, _ block: @escaping () -> Void)
+    /// Runs the platform event loop until the application terminates.
     func runApplication()
     /// Stops the event loop started by `runApplication()`.
     func terminateApplication()
@@ -244,13 +304,13 @@ public protocol NativeControlBackend: AnyObject {
     func registerWindowCloseAction(for handle: NativeHandle, action: @escaping () -> Void)
     /// Installs (or replaces) the menu bar shown at the top of `window`.
     func installMenuBar(_ menus: [NativeMenuSpec], on window: NativeHandle)
-    /// Installs (or replaces) the Apple-look toolbar under the menu bar.
     /// Records whether `handle` uses a top-left (flipped) coordinate system for
     /// positioning its children, so subview placement flips Y appropriately.
     func setViewFlipped(_ flipped: Bool, for handle: NativeHandle)
     /// Clips a view's children to its bounds (AppKit's `clipsToBounds`) — a
     /// clip view's document is larger than the viewport and must not overflow.
     func setClipsToBounds(_ clips: Bool, for handle: NativeHandle)
+    /// Installs (or replaces) the Apple-look toolbar under the menu bar.
     func installToolbar(_ items: [NativeToolbarItemSpec], displayMode: NativeToolbarDisplayMode, on window: NativeHandle)
     /// Shows the toolbar customization panel: a duplicate of the live bar as
     /// the drag surface, the palette of allowed items, and the default set.
@@ -350,6 +410,10 @@ public protocol NativeControlBackend: AnyObject {
     /// Registers the action fired when the user clicks a sortable header;
     /// passes the column index and whether the new order is ascending.
     func setSortChangeAction(for table: NativeHandle, action: @escaping (Int, Bool) -> Void)
+
+    /// Scrolls `row` into view without disturbing the selection
+    /// (AppKit's `NSTableView.scrollRowToVisible(_:)`).
+    func scrollTableRowToVisible(_ row: Int, for table: NativeHandle)
     /// Registers the action fired when a row is activated (double-click / Enter);
     /// passes the row index.
     func setRowActivateAction(for table: NativeHandle, action: @escaping (Int) -> Void)

@@ -3,7 +3,9 @@ import Foundation
 /// Minimal `NSButtonCell` — the prototype an `NSMatrix` clones for each cell.
 /// Only the title is used in this slice.
 public final class NSButtonCell {
+    /// The cell's title.
     public var title: String
+    /// Creates a button cell with the given title.
     public init(title: String) { self.title = title }
 
     /// Apple's cell initializer spelling.
@@ -18,9 +20,17 @@ open class NSMatrix: NSControl {
     /// The matrix tracking mode (accepted for API parity; all modes render as a
     /// clickable button grid in this slice).
     public enum Mode {
-        case trackModeMatrix, highlightModeMatrix, radioModeMatrix, listModeMatrix
+        /// Cells track independently.
+        case trackModeMatrix
+        /// Cells highlight while pressed.
+        case highlightModeMatrix
+        /// Radio-group tracking; only one cell may be selected.
+        case radioModeMatrix
+        /// List-selection tracking.
+        case listModeMatrix
     }
 
+    /// The matrix's tracking mode.
     public let mode: Mode
     private let rows: Int
     private let columns: Int
@@ -31,11 +41,13 @@ open class NSMatrix: NSControl {
     /// Spacing between cells. Setting it re-lays out the grid.
     public var intercellSpacing = NSMakeSize(4, 4) { didSet { layoutCells() } }
 
+    /// The row index of the selected cell (−1 when nothing is selected).
     public private(set) var selectedRow = -1
+    /// The column index of the selected cell (−1 when nothing is selected).
     public private(set) var selectedColumn = -1
 
     /// Fired when the user selects a cell.
-    public var onAction: ((NSMatrix) -> Void)?
+    public var onAction: ((NSControl) -> Void)?
 
     /// Creates an empty matrix, as AppKit's `init(frame:)` does — no rows, no
     /// columns, default tracking mode. Cells arrive via the designated
@@ -45,6 +57,8 @@ open class NSMatrix: NSControl {
                   numberOfRows: 0, numberOfColumns: 0)
     }
 
+    /// Creates a `numberOfRows` × `numberOfColumns` grid of button cells cloned
+    /// from `prototype`.
     public init(frame: NSRect, mode: Mode, prototype: NSButtonCell,
                 numberOfRows: Int, numberOfColumns: Int) {
         self.mode = mode

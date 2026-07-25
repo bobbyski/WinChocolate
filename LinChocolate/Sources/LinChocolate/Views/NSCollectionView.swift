@@ -4,7 +4,9 @@ import Foundation
 /// tiles: `representedObjectForItemAt` supplies each item's content (AppKit's
 /// full `NSCollectionViewItem` view-controller pipeline is a later parity item).
 public protocol NSCollectionViewDataSource: AnyObject {
+    /// The number of items in `section`.
     func collectionView(_ collectionView: NSCollectionView, numberOfItemsInSection section: Int) -> Int
+    /// The item content at a flat index (text-tile pipeline).
     func collectionView(_ collectionView: NSCollectionView, representedObjectForItemAt index: Int) -> Any?
     /// The number of sections. Optional (defaulted to 1), as on Apple.
     func numberOfSections(in collectionView: NSCollectionView) -> Int
@@ -22,15 +24,19 @@ public protocol NSCollectionViewDataSource: AnyObject {
 }
 
 public extension NSCollectionViewDataSource {
+    /// Default: bridges AppKit-shaped sources by building the item and pulling its text.
     func collectionView(_ collectionView: NSCollectionView, representedObjectForItemAt index: Int) -> Any? {
         // Bridge AppKit-shaped sources: build the item and pull its text.
         let item = self.collectionView(collectionView, itemForRepresentedObjectAt: IndexPath(item: index, section: 0))
         return item.textField?.stringValue ?? item.representedObject
     }
+    /// Default: one section.
     func numberOfSections(in collectionView: NSCollectionView) -> Int { 1 }
+    /// Default: an empty `NSCollectionViewItem`.
     func collectionView(_ collectionView: NSCollectionView, itemForRepresentedObjectAt indexPath: IndexPath) -> NSCollectionViewItem {
         NSCollectionViewItem()
     }
+    /// Default: a zero-frame placeholder view.
     func collectionView(_ collectionView: NSCollectionView, viewForSupplementaryElementOfKind kind: NSCollectionView.SupplementaryElementKind, at indexPath: IndexPath) -> NSView {
         NSView(frame: .zero)
     }
@@ -139,6 +145,7 @@ open class NSCollectionView: NSView {
     /// The collection delegate; selections arrive via
     /// `collectionView(_:didSelectItemsAt:)`, as on Apple.
     public weak var delegate: NSCollectionViewDelegate?
+    /// Selects the given items (accepted for API parity; not yet implemented).
     public func selectItems(at indexPaths: Set<IndexPath>, scrollPosition: Int) {}
 
     /// The materialized items, in index order — what Apple's collection keeps
@@ -206,9 +213,11 @@ open class NSCollectionView: NSView {
 
 /// AppKit's collection delegate (the selection slice the demo drives).
 public protocol NSCollectionViewDelegate: AnyObject {
+    /// Called after the user changes the selection.
     func collectionView(_ collectionView: NSCollectionView, didSelectItemsAt indexPaths: Set<IndexPath>)
 }
 
 public extension NSCollectionViewDelegate {
+    /// Default: no-op.
     func collectionView(_ collectionView: NSCollectionView, didSelectItemsAt indexPaths: Set<IndexPath>) {}
 }

@@ -12,16 +12,22 @@ public final class NSPasteboard {
 
     /// A uniform-type identifier for pasteboard content.
     public struct PasteboardType: RawRepresentable, Hashable, Sendable {
+        /// The type's raw UTI string.
         public let rawValue: String
+        /// Creates a pasteboard type from a UTI string.
         public init(rawValue: String) { self.rawValue = rawValue }
+        /// UTF-8 plain text.
         public static let string = PasteboardType(rawValue: "public.utf8-plain-text")
+        /// A URL of any kind.
         public static let URL = PasteboardType(rawValue: "public.url")
+        /// A file URL.
         public static let fileURL = PasteboardType(rawValue: "public.file-url")
     }
 
     /// The shared general pasteboard (system copy/paste).
     nonisolated(unsafe) public static let general = NSPasteboard(name: "Apple CFPasteboard general", pushesToSystem: true)
 
+    /// The board's name (AppKit-shaped identifier).
     public let name: String
     private let pushesToSystem: Bool
     private var contents: [PasteboardType: String] = [:]

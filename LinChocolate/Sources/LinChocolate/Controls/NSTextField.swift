@@ -26,8 +26,11 @@ open class NSTextField: NSControl {
 
     // Apple-look/behavior flags accepted for API parity; GTK renders labels vs
     // fields natively, so these are mostly presentational hints today.
+    /// Whether the field draws a plain border.
     public var isBordered: Bool = true
+    /// Whether the field draws the AppKit bezel.
     public var isBezeled: Bool = true
+    /// Whether the field paints its background color.
     public var drawsBackground: Bool = true
 
     /// The field's background fill (real AppKit API on NSTextField; NSView has
@@ -41,12 +44,19 @@ open class NSTextField: NSControl {
     public var isEditable: Bool = false {
         didSet { backend.setTextEditable(isEditable, for: handle) }
     }
+    /// Whether the field's text can be selected.
     public var isSelectable: Bool = true
+    /// Placeholder text shown when the field is empty.
     public var placeholderString: String?
+    /// The text alignment of the field.
     public var alignment: NSTextAlignment = .natural
+    /// Whether the field is restricted to a single line.
     public var usesSingleLineMode: Bool = true
+    /// The maximum number of lines the field displays; 0 = unlimited.
     public var maximumNumberOfLines: Int = 0
+    /// The field's delegate, notified of editing events.
     public weak var delegate: NSTextFieldDelegate?
+    /// A formatter that converts between `objectValue` and displayed text.
     public var formatter: Formatter?
     /// AppKit's `objectValue`; setting a value updates `stringValue`.
     public var objectValue: Any? {
@@ -118,5 +128,5 @@ open class NSTextField: NSControl {
 
     /// A closure fired when the field is submitted (Enter) — AppKit's control
     /// action for a text field.
-    public var onAction: ((NSTextField) -> Void)?
+    public var onAction: ((NSControl) -> Void)?
 }

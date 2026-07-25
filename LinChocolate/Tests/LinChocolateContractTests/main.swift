@@ -332,7 +332,7 @@ do {
     check(seg.selectedSegment == -1, "segmented starts with no selection")
 
     var picked = -1
-    seg.onAction = { picked = $0.selectedSegment }
+    seg.onAction = { picked = ($0 as? NSSegmentedControl)?.selectedSegment ?? -1 }
     backend.simulateSelection(seg.handle, 1)
     check(seg.selectedSegment == 1, "segmented selection syncs from native click")
     check(picked == 1, "segmented onAction fires with the index")
@@ -438,12 +438,12 @@ do {
 
     let field = NSTokenField(tokens: ["a", "b"], frame: NSMakeRect(0, 0, 300, 36))
     check(backend.tokensByHandle[field.handle.rawValue] == ["a", "b"], "initial tokens reach the backend")
-    check(field.objectValue == ["a", "b"], "objectValue reflects initial tokens")
+    check(field.tokens == ["a", "b"], "objectValue reflects initial tokens")
 
     var changed: [String]?
-    field.onTokensChange = { changed = $0.objectValue }
+    field.onTokensChange = { changed = $0.tokens }
     backend.simulateTokensChange(field.handle, ["a", "b", "c"])
-    check(field.objectValue == ["a", "b", "c"], "tokens sync from native add")
+    check(field.tokens == ["a", "b", "c"], "tokens sync from native add")
     check(changed == ["a", "b", "c"], "onTokensChange fires with new tokens")
 
     field.objectValue = ["x"]
@@ -912,7 +912,12 @@ do {
     check(matrix.selectedRow == 0 && matrix.selectedColumn == 1, "selectCell records the selection")
 
     var firedRC: (Int, Int)?
-    matrix.onAction = { m in firedRC = (m.selectedRow, m.selectedColumn) }
+    // AppKit hands the action its sender as an NSControl, so portable callers
+    // downcast — the same shape the shared demo uses.
+    matrix.onAction = { control in
+        guard let m = control as? NSMatrix else { return }
+        firedRC = (m.selectedRow, m.selectedColumn)
+    }
     // Clicking the bottom-right cell (row 1, col 1) selects it and fires onAction.
     let cells = matrix.subviews   // row-major: [ (0,0),(0,1),(1,0),(1,1) ]
     backend.simulateClick(cells[3].handle)

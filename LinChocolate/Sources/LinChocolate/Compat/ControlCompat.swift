@@ -10,10 +10,15 @@ public enum NSTextAlignment: Sendable {
 
 /// AppKit control state (`NSControl.StateValue` shape).
 public struct NSControlStateValue: Equatable, Sendable {
+    /// Raw integer matching AppKit's state values.
     public let rawValue: Int
+    /// Builds a state value from its raw integer.
     public init(rawValue: Int) { self.rawValue = rawValue }
+    /// The control is off / unchecked.
     public static let off = NSControlStateValue(rawValue: 0)
+    /// The control is on / checked.
     public static let on = NSControlStateValue(rawValue: 1)
+    /// The control is in a mixed / indeterminate state.
     public static let mixed = NSControlStateValue(rawValue: -1)
 }
 
@@ -56,8 +61,10 @@ public extension NSTextField {
 public extension NSComboBox {
     /// WinChocolate spells the change hook `onTextChanged`; alias to ours.
     /// (On Apple this arrives via NSTextField inheritance — hierarchy tracked.)
-    var onTextChanged: ((NSComboBox) -> Void)? {
-        get { onTextChange }
+    /// Write-only: a `((NSControl) -> Void)` stands in for a
+    /// `((NSComboBox) -> Void)`, not the reverse.
+    var onTextChanged: ((NSControl) -> Void)? {
+        get { nil }
         set { onTextChange = newValue }
     }
 }

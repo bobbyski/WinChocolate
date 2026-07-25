@@ -19,6 +19,7 @@ public final class NSSplitView: NSView {
         self.init(vertical: true, frame: frame)
     }
 
+    /// Creates a split view with the given divider orientation and frame.
     public init(vertical: Bool = true, frame: NSRect) {
         self.isVertical = vertical
         let backend = NSApplication.shared.nativeBackend

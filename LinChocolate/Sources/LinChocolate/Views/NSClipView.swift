@@ -28,6 +28,7 @@ public final class NSClipView: NSView {
         super.init(frame: .zero)
     }
 
+    /// Creates a standalone clip view (not bound to a scroll view).
     public required init(frame: NSRect) {
         self.owner = nil
         super.init(frame: frame)

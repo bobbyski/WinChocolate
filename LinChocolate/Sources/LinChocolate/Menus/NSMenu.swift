@@ -2,12 +2,19 @@ import Foundation
 
 /// AppKit-shaped keyboard modifier flags (subset), for menu key equivalents.
 public struct NSEventModifierFlags: OptionSet, Sendable {
+    /// The raw bit-mask value.
     public let rawValue: UInt
+    /// Creates a modifier set from raw bits.
     public init(rawValue: UInt) { self.rawValue = rawValue }
+    /// Caps Lock is engaged.
     public static let capsLock = NSEventModifierFlags(rawValue: 1 << 0)
+    /// The Shift key is held.
     public static let shift = NSEventModifierFlags(rawValue: 1 << 1)
+    /// The Control key is held.
     public static let control = NSEventModifierFlags(rawValue: 1 << 2)
+    /// The Option/Alt key is held.
     public static let option = NSEventModifierFlags(rawValue: 1 << 3)
+    /// The Command key is held (mapped to Control on Linux).
     public static let command = NSEventModifierFlags(rawValue: 1 << 4)
 }
 
@@ -44,11 +51,17 @@ public final class NSMenuItem: NSObject {
     /// AppKit's target/action pair; the item performs `action` on `target`
     /// when activated (alongside the closure hook).
     public var action: Selector?
+    /// The object to which `action` is sent.
     public weak var target: AnyObject?
+    /// Whether the item is enabled and selectable.
     public var isEnabled: Bool = true
+    /// An integer tag for identifying the item.
     public var tag: Int = 0
+    /// The item's on/off/mixed state (drawn as a check mark).
     public var state: NSControlStateValue = .off
+    /// A submenu attached to this item.
     public var submenu: NSMenu?
+    /// An optional image displayed alongside the title.
     public var image: NSImage?
 
     /// Creates a titled, actionable item.
@@ -92,6 +105,7 @@ public final class NSMenu {
     /// one level deep — each top-level item carries its submenu here.)
     var submenus: [ObjectIdentifier: NSMenu] = [:]
 
+    /// Creates a menu with the given title.
     public init(title: String = "") {
         self.title = title
     }

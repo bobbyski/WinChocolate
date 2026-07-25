@@ -3,7 +3,9 @@ import Foundation
 /// AppKit's modal response for the first alert button; subsequent buttons
 /// count up from here (1000, 1001, 1002…).
 public let NSAlertFirstButtonReturn = 1000
+/// AppKit's modal response for the second alert button.
 public let NSAlertSecondButtonReturn = 1001
+/// AppKit's modal response for the third alert button.
 public let NSAlertThirdButtonReturn = 1002
 
 /// AppKit-shaped modal alert. Configure `messageText`/`informativeText`, add
@@ -25,7 +27,15 @@ public final class NSAlert {
 
     /// AppKit-shaped alert severity (accepted for parity; the native dialog
     /// picks its own presentation).
-    public enum Style: Sendable { case warning, informational, critical }
+    public enum Style: Sendable {
+        /// A warning-level alert.
+        case warning
+        /// An informational alert.
+        case informational
+        /// A critical alert (highest severity).
+        case critical
+    }
+    /// The alert's severity style.
     public var alertStyle: Style = .warning
 
     /// Whether a Help button is shown (accepted for parity).
@@ -34,6 +44,7 @@ public final class NSAlert {
     /// Receives `alertShowHelp(_:)` when the help button is clicked.
     public weak var delegate: NSAlertDelegate?
 
+    /// Creates an empty alert. Configure text and buttons, then call `runModal()`.
     public init() {}
 
     /// Convenience initializer building an alert from an `Error`.

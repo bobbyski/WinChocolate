@@ -3,9 +3,13 @@ import Foundation
 /// AppKit-shaped outline (tree table) data source: children per item, item
 /// expandability, and per-cell values. `item == nil` means the root.
 public protocol NSOutlineViewDataSource: AnyObject {
+    /// The number of children of `item` (nil = root).
     func outlineView(_ outlineView: NSOutlineView, numberOfChildrenOfItem item: Any?) -> Int
+    /// The `index`-th child of `item` (nil = root).
     func outlineView(_ outlineView: NSOutlineView, child index: Int, ofItem item: Any?) -> Any
+    /// Whether `item` can be expanded.
     func outlineView(_ outlineView: NSOutlineView, isItemExpandable item: Any) -> Bool
+    /// The value for `tableColumn` in the row representing `item`.
     func outlineView(_ outlineView: NSOutlineView, objectValueFor tableColumn: NSTableColumn?, byItem item: Any?) -> Any?
 }
 
@@ -98,9 +102,11 @@ open class NSOutlineView: NSControl {
 
 /// AppKit's outline delegate (the slice the demo drives).
 public protocol NSOutlineViewDelegate: AnyObject {
+    /// Posted after the user changes the row selection.
     func outlineViewSelectionDidChange(_ notification: Notification)
 }
 
 public extension NSOutlineViewDelegate {
+    /// Default: no-op.
     func outlineViewSelectionDidChange(_ notification: Notification) {}
 }

@@ -11,17 +11,42 @@ open class NSImageView: NSControl {
 
     /// How the image scales within the view (AppKit's `NSImageScaling`).
     public enum ImageScaling: Sendable {
-        case scaleProportionallyDown, scaleAxesIndependently, scaleNone, scaleProportionallyUpOrDown
+        /// Scales the image down to fit, preserving aspect ratio; never enlarges.
+        case scaleProportionallyDown
+        /// Scales width and height independently to fill the view.
+        case scaleAxesIndependently
+        /// Does not scale the image.
+        case scaleNone
+        /// Scales the image up or down to fit, preserving aspect ratio.
+        case scaleProportionallyUpOrDown
     }
     /// How the image aligns (AppKit's `NSImageAlignment`).
     public enum ImageAlignment: Sendable {
-        case alignCenter, alignTop, alignTopLeft, alignTopRight, alignLeft, alignBottom
-        case alignBottomLeft, alignBottomRight, alignRight
+        /// Center the image in the view.
+        case alignCenter
+        /// Align to the top edge.
+        case alignTop
+        /// Align to the top-left corner.
+        case alignTopLeft
+        /// Align to the top-right corner.
+        case alignTopRight
+        /// Align to the left edge.
+        case alignLeft
+        /// Align to the bottom edge.
+        case alignBottom
+        /// Align to the bottom-left corner.
+        case alignBottomLeft
+        /// Align to the bottom-right corner.
+        case alignBottomRight
+        /// Align to the right edge.
+        case alignRight
     }
 
-    /// Tint + scaling + alignment (accepted for API parity).
+    /// Optional tint color applied to template images (accepted for API parity).
     public var contentTintColor: NSColor?
+    /// How the image scales within the view (accepted for API parity).
     public var imageScaling: NSImageScaling = .scaleProportionallyDown
+    /// How the image aligns within the view (accepted for API parity).
     public var imageAlignment: NSImageAlignment = .alignCenter
 
     /// Creates an empty image view.

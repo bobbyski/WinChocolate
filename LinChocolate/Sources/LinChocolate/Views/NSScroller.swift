@@ -14,7 +14,7 @@ open class NSScroller: NSControl {
     private let isVertical: Bool
 
     /// Fires when a standalone scroller's value changes.
-    public var onAction: ((NSScroller) -> Void)?
+    public var onAction: ((NSControl) -> Void)?
 
     init(scrollView: NSScrollView, vertical: Bool) {
         self.owner = scrollView
@@ -22,6 +22,7 @@ open class NSScroller: NSControl {
         super.init(frame: .zero)
     }
 
+    /// Creates a standalone scroller sized by `frame` (vertical when taller than wide).
     public required init(frame: NSRect) {
         self.owner = nil
         let vertical = frame.height > frame.width

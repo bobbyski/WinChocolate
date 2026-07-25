@@ -27,10 +27,19 @@ let package = Package(
             providers: [.apt(["libgtk-4-dev"])]
         ),
 
+        // C wrappers for GTK calls that are deprecated but deliberately used
+        // (GtkComboBoxText, GtkColorButton — see Sources/CGTKCompat/include).
+        // Routing them through C keeps the Swift build warning-clean.
+        .target(
+            name: "CGTKCompat",
+            dependencies: ["CGTK"],
+            path: "Sources/CGTKCompat"
+        ),
+
         // AppKit-shaped API + the platform backends (GTK, in-memory).
         .target(
             name: "LinChocolate",
-            dependencies: ["CGTK"],
+            dependencies: ["CGTK", "CGTKCompat"],
             path: "Sources/LinChocolate"
         ),
 

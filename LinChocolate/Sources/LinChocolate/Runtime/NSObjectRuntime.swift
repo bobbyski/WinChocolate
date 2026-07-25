@@ -15,6 +15,7 @@
 /// WinChocolate relies on with WinFoundation on Windows.
 open class NSObject {
 
+    /// The designated initializer.
     public init() {}
 
     /// Whether the receiver can handle `aSelector`. The base class knows no
@@ -31,6 +32,7 @@ open class NSObject {
         nil
     }
 
+    /// A textual description of the receiver, matching Foundation's `description`.
     open var description: String {
         "\(type(of: self))"
     }
@@ -80,6 +82,8 @@ open class NSResponder: NSObject {
         }
     }
 
+    /// Dispatches the standard key-binding selectors to their methods; falls
+    /// back to the superclass otherwise.
     @discardableResult
     open override func perform(_ aSelector: Selector, with object: Any? = nil) -> Any? {
         switch aSelector.name {

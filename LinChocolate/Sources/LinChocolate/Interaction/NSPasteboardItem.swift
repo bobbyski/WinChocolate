@@ -13,10 +13,12 @@ public protocol NSPasteboardWriting: AnyObject {
 
 /// Strings write themselves as `.string`, as on Apple.
 extension NSString: NSPasteboardWriting {
+    /// Strings write themselves under `.string`.
     public func writableTypes(for pasteboard: NSPasteboard) -> [NSPasteboard.PasteboardType] {
         [.string]
     }
 
+    /// Returns the string value for the `.string` type, otherwise nil.
     public func pasteboardPropertyList(forType type: NSPasteboard.PasteboardType) -> Any? {
         type == .string ? String(describing: self) : nil
     }
@@ -29,6 +31,7 @@ public final class NSPasteboardItem: NSPasteboardWriting {
 
     private var values: [NSPasteboard.PasteboardType: String] = [:]
 
+    /// Creates an empty pasteboard item; add values with `setString(_:forType:)`.
     public init() {}
 
     /// The types this item holds a value for.
@@ -48,10 +51,12 @@ public final class NSPasteboardItem: NSPasteboardWriting {
         return true
     }
 
+    /// The types the item can supply values for.
     public func writableTypes(for pasteboard: NSPasteboard) -> [NSPasteboard.PasteboardType] {
         types
     }
 
+    /// The item's stored value (a String) for `type`, or nil.
     public func pasteboardPropertyList(forType type: NSPasteboard.PasteboardType) -> Any? {
         values[type]
     }

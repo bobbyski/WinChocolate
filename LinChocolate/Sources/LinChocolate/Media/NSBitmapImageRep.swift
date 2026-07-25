@@ -14,25 +14,41 @@ public final class CGDataProvider {
 
 /// Apple's bitmap-format descriptor (the alpha-position slice).
 public struct CGBitmapInfo: OptionSet, Sendable {
+    /// The raw bit-flag value.
     public let rawValue: UInt32
+    /// Creates a bitmap-info value with the given raw flags.
     public init(rawValue: UInt32) { self.rawValue = rawValue }
 }
 
+/// Where alpha lives (and whether it is premultiplied) in a bitmap's pixels.
 public enum CGImageAlphaInfo: UInt32, Sendable {
+    /// No alpha channel.
     case none = 0
+    /// Alpha follows the color components and is premultiplied.
     case premultipliedLast = 1
+    /// Alpha precedes the color components and is premultiplied.
     case premultipliedFirst = 2
+    /// Alpha follows the color components; not premultiplied.
     case last = 3
+    /// Alpha precedes the color components; not premultiplied.
     case first = 4
+    /// No alpha; a trailing byte is present and ignored.
     case noneSkipLast = 5
+    /// No alpha; a leading byte is present and ignored.
     case noneSkipFirst = 6
 }
 
+/// Color-matching intent when rendering across color spaces.
 public enum CGColorRenderingIntent: Int32, Sendable {
+    /// The default rendering intent for the context.
     case defaultIntent = 0
+    /// Absolute colorimetric matching.
     case absoluteColorimetric = 1
+    /// Relative colorimetric matching.
     case relativeColorimetric = 2
+    /// Perceptual matching (preserves visual relationships).
     case perceptual = 3
+    /// Saturation matching (preserves vividness).
     case saturation = 4
 }
 
@@ -60,13 +76,19 @@ public extension CGImage {
 /// `colorAt(x:y:)`).
 public final class NSBitmapImageRep {
 
+    /// A key for the property dictionary passed to `representation(using:properties:)`.
     public struct PropertyKey: RawRepresentable, Hashable, Sendable {
+        /// The raw property-key string.
         public let rawValue: String
+        /// Creates a property key with the given raw string.
         public init(rawValue: String) { self.rawValue = rawValue }
     }
 
+    /// The image file formats the rep can encode to.
     public enum FileType: Sendable {
+        /// Windows Bitmap (uncompressed).
         case bmp
+        /// Portable Network Graphics. Not yet implemented; encoding returns `nil`.
         case png
     }
 
@@ -85,7 +107,9 @@ public final class NSBitmapImageRep {
         self.backing = decoded
     }
 
+    /// The bitmap's width in pixels.
     public var pixelsWide: Int { backing.width }
+    /// The bitmap's height in pixels.
     public var pixelsHigh: Int { backing.height }
 
     /// The rep as a `CGImage`.
@@ -119,7 +143,9 @@ public final class NSBitmapImageRep {
 /// The color-space identities `usingColorSpace(_:)` converts between. All of
 /// LinChocolate's colors are device RGB already, so conversion is identity.
 public final class NSColorSpace {
+    /// The device RGB color space.
     nonisolated(unsafe) public static let deviceRGB = NSColorSpace()
+    /// The sRGB color space.
     nonisolated(unsafe) public static let sRGB = NSColorSpace()
 }
 

@@ -30,7 +30,7 @@ open class NSComboBox: NSControl {
 
     /// Fired when the user commits a value (Return or picking an item).
     /// Wired off the same text-change signal for now.
-    public var onAction: ((NSComboBox) -> Void)?
+    public var onAction: ((NSControl) -> Void)?
 
     /// AppKit's frame-only initializer: an empty combo box.
     public required convenience init(frame: NSRect) {

@@ -11,18 +11,32 @@ open class NSWindow {
 
     /// Window style options. A subset of AppKit's, matching WinChocolate's shape.
     public struct StyleMask: OptionSet, Sendable {
+        /// The raw bit-mask value.
         public let rawValue: UInt
+        /// Creates a style mask from raw bits.
         public init(rawValue: UInt) { self.rawValue = rawValue }
 
+        /// The window has a title bar.
         public static let titled = StyleMask(rawValue: 1 << 0)
+        /// The window has a close control.
         public static let closable = StyleMask(rawValue: 1 << 1)
+        /// The window has a minimize control.
         public static let miniaturizable = StyleMask(rawValue: 1 << 2)
+        /// The window is resizable.
         public static let resizable = StyleMask(rawValue: 1 << 3)
+        /// A borderless window (no chrome).
         public static var borderless: StyleMask { [] }
     }
 
     /// AppKit backing-store compatibility placeholder (GTK manages buffering).
-    public enum BackingStoreType { case retained, nonretained, buffered }
+    public enum BackingStoreType {
+        /// AppKit's retained backing store.
+        case retained
+        /// AppKit's non-retained backing store.
+        case nonretained
+        /// AppKit's buffered backing store (the default).
+        case buffered
+    }
 
     /// Opaque backend handle for this window. Exposed for advanced/testing use.
     public let handle: NativeHandle
@@ -43,8 +57,11 @@ open class NSWindow {
 
     /// Delegate + content-size constraints + key-view root (accepted for parity).
     public weak var delegate: NSWindowDelegate?
+    /// The minimum size of the content area (accepted for parity).
     public var contentMinSize: NSSize = .zero
+    /// The maximum size of the content area (accepted for parity).
     public var contentMaxSize: NSSize = NSMakeSize(100000, 100000)
+    /// The view that becomes first responder when the window is shown.
     public weak var initialFirstResponder: NSView?
 
     /// Whether the window is on screen (AppKit's `isVisible`).

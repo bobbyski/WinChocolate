@@ -4,8 +4,11 @@ import Foundation
 /// `onValueChange`; `doubleValue` reflects the current value.
 open class NSStepper: NSControl {
 
+    /// The minimum value of the stepper's range.
     public var minValue: Double
+    /// The maximum value of the stepper's range.
     public var maxValue: Double
+    /// The amount added or subtracted per step.
     public var increment: Double
 
     private var backingValue: Double
@@ -24,8 +27,11 @@ open class NSStepper: NSControl {
     public var onValueChange: ((NSStepper) -> Void)?
 
     /// AppKit-shaped alias for `onValueChange`.
-    public var onAction: ((NSStepper) -> Void)? {
-        get { onValueChange }
+    public var onAction: ((NSControl) -> Void)? {
+        // Write-only: a ((NSControl) -> Void) may stand in for a ((NSStepper) -> Void)
+        // (parameters are contravariant), but not the reverse, so there is no
+        // getter. AppKit's action sender is the control, matching `NSControl`.
+        get { nil }
         set { onValueChange = newValue }
     }
 

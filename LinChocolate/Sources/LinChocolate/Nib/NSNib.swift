@@ -151,6 +151,7 @@ public struct NibConnection {
         case outlet
     }
 
+    /// Whether this connection is an outlet or an action.
     public let kind: Kind
     /// The selector name (actions) or property name (outlets).
     public let name: String

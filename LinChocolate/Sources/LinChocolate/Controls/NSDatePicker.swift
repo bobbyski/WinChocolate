@@ -88,8 +88,11 @@ open class NSDatePicker: NSControl {
     /// Called when the user picks a day or steps a field.
     public var onDateChange: ((NSDatePicker) -> Void)?
     /// WinChocolate/AppKit control-action alias.
-    public var onAction: ((NSDatePicker) -> Void)? {
-        get { onDateChange }
+    public var onAction: ((NSControl) -> Void)? {
+        // Write-only: a ((NSControl) -> Void) may stand in for a ((NSDatePicker) -> Void)
+        // (parameters are contravariant), but not the reverse, so there is no
+        // getter. AppKit's action sender is the control, matching `NSControl`.
+        get { nil }
         set { onDateChange = newValue }
     }
 

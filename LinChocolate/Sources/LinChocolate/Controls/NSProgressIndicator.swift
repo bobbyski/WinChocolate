@@ -4,7 +4,9 @@ import Foundation
 /// `doubleValue` within `[minValue, maxValue]` to fill the bar.
 open class NSProgressIndicator: NSView {
 
+    /// The minimum value of the progress range.
     public var minValue: Double
+    /// The maximum value of the progress range.
     public var maxValue: Double
 
     private var backingValue: Double
@@ -27,17 +29,22 @@ open class NSProgressIndicator: NSView {
     public var isIndeterminate: Bool = false {
         didSet { backend.setProgressIndeterminate(isIndeterminate, for: handle) }
     }
+    /// Whether the indeterminate animation runs on a background thread (accepted for API parity).
     public var usesThreadedAnimation: Bool = true
+    /// Whether the indicator is visible while stopped (accepted for API parity).
     public var isDisplayedWhenStopped: Bool = true
 
     /// Starts/stops the indeterminate animation (AppKit's start/stopAnimation).
     public func startAnimation(_ sender: Any?) {
         backend.setProgressAnimating(true, for: handle)
     }
+    /// Stops the indeterminate animation.
     public func stopAnimation(_ sender: Any?) {
         backend.setProgressAnimating(false, for: handle)
     }
+    /// Increments the current value by `delta`.
     public func incrementBy(_ delta: Double) { doubleValue += delta }
+    /// Resizes the indicator to fit its content. Not supported on the LinChocolate backend.
     public func sizeToFit() {}
 
     /// Creates a progress indicator over `[minValue, maxValue]` starting at `value`.

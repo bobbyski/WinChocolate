@@ -12,6 +12,7 @@ open class NSLevelIndicator: NSControl {
     public var minValue: Double {
         didSet { pushRange() }
     }
+    /// The maximum value. For `.rating` the span is the number of stars.
     public var maxValue: Double {
         didSet { pushRange() }
     }
@@ -48,7 +49,7 @@ open class NSLevelIndicator: NSControl {
     }
 
     /// Fired when the user sets an editable indicator's level.
-    public var onAction: ((NSLevelIndicator) -> Void)?
+    public var onAction: ((NSControl) -> Void)?
 
     private func pushRange() {
         backend.setLevelIndicatorRange(min: minValue, max: maxValue, for: handle)

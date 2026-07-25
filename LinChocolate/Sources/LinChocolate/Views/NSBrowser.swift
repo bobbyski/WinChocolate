@@ -2,8 +2,11 @@ import Foundation
 
 /// AppKit-shaped column browser delegate (item-based, like `NSOutlineView`).
 public protocol NSBrowserDelegate: AnyObject {
+    /// Returns the number of children of `item` (nil = root).
     func browser(_ browser: NSBrowser, numberOfChildrenOfItem item: Any?) -> Int
+    /// Returns the `index`-th child of `item` (nil = root).
     func browser(_ browser: NSBrowser, child index: Int, ofItem item: Any?) -> Any
+    /// Returns whether `item` is a leaf (has no children).
     func browser(_ browser: NSBrowser, isLeafItem item: Any?) -> Bool
 }
 
@@ -15,8 +18,11 @@ open class NSBrowser: NSControl {
 
     /// Who owns column widths (Apple's `NSBrowser.ColumnResizingType`).
     public enum ColumnResizingType: Int, Sendable {
+        /// Columns are never resized.
         case noColumnResizing = 0
+        /// The browser sizes its columns.
         case autoColumnResizing = 1
+        /// The user resizes columns.
         case userColumnResizing = 2
     }
 
@@ -40,6 +46,7 @@ open class NSBrowser: NSControl {
     /// The width of each column (set before `loadColumnZero()`).
     public var columnWidth: Double = 150
 
+    /// Supplies the tree contents. Assigning reloads if columns exist.
     public weak var delegate: NSBrowserDelegate? {
         didSet { if !columns.isEmpty { reloadAll() } }
     }

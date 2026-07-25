@@ -18,8 +18,11 @@ public final class NSTableColumn {
 
     /// Column width (accepted for API parity; GtkColumnView sizes columns).
     public var width: CGFloat = 100
+    /// The minimum column width (accepted for API parity).
     public var minWidth: CGFloat = 0
+    /// The maximum column width (accepted for API parity).
     public var maxWidth: CGFloat = 1000
+    /// Whether cells in this column are editable (accepted for API parity).
     public var isEditable: Bool = false
 
     /// If set, the column's header becomes clickable and clicking it delivers a
@@ -28,6 +31,7 @@ public final class NSTableColumn {
         didSet { if sortDescriptorPrototype != nil { table?.makeColumnSortable(columnIndex) } }
     }
 
+    /// Creates a column with the given identifier; its title defaults to the identifier.
     public init(identifier: NSUserInterfaceItemIdentifier) {
         self.identifier = identifier
         self.title = identifier.rawValue
@@ -37,12 +41,17 @@ public final class NSTableColumn {
 /// AppKit-shaped table data source: row count plus per-cell values, and an
 /// optional sort-change hook.
 public protocol NSTableViewDataSource: AnyObject {
+    /// The number of rows in `tableView`.
     func numberOfRows(in tableView: NSTableView) -> Int
+    /// The value shown for `tableColumn` at `row`.
     func tableView(_ tableView: NSTableView, objectValueFor tableColumn: NSTableColumn?, row: Int) -> Any?
     /// Drag-to-reorder, Apple's writer-per-row shape. All optional (defaulted).
+    /// The pasteboard writer for `row` when a drag begins.
     func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> NSPasteboardWriting?
+    /// Validates a drop; return the operation to allow, or `[]` to reject.
     func tableView(_ tableView: NSTableView, validateDrop info: NSDraggingInfo, proposedRow row: Int,
                    proposedDropOperation dropOperation: NSTableView.DropOperation) -> NSDragOperation
+    /// Accepts a validated drop; returns whether it was consumed.
     func tableView(_ tableView: NSTableView, acceptDrop info: NSDraggingInfo, row: Int,
                    dropOperation: NSTableView.DropOperation) -> Bool
     /// Called after the user clicks a sortable header and `sortDescriptors`
@@ -51,10 +60,14 @@ public protocol NSTableViewDataSource: AnyObject {
 }
 
 public extension NSTableViewDataSource {
+    /// Default: no-op.
     func tableView(_ tableView: NSTableView, sortDescriptorsDidChange oldDescriptors: [NSSortDescriptor]) {}
+    /// Default: not draggable.
     func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> NSPasteboardWriting? { nil }
+    /// Default: reject the drop.
     func tableView(_ tableView: NSTableView, validateDrop info: NSDraggingInfo, proposedRow row: Int,
                    proposedDropOperation dropOperation: NSTableView.DropOperation) -> NSDragOperation { [] }
+    /// Default: do not consume the drop.
     func tableView(_ tableView: NSTableView, acceptDrop info: NSDraggingInfo, row: Int,
                    dropOperation: NSTableView.DropOperation) -> Bool { false }
 }
@@ -67,7 +80,9 @@ open class NSTableView: NSControl {
     /// Where a drop lands relative to a row (Apple's shape): `.on` a row, or
     /// `.above` the gap before it (the reorder position).
     public enum DropOperation: Sendable {
+        /// Drop onto (replace/insert into) a row.
         case on
+        /// Drop into the gap above a row (reorder position).
         case above
     }
 
@@ -107,41 +122,57 @@ open class NSTableView: NSControl {
     public weak var delegate: NSTableViewDelegate?
 
     // Selection / column / grid options accepted for API parity.
+    /// Whether alternate rows use a contrasting background (accepted for API parity).
     public var usesAlternatingRowBackgroundColors: Bool = false
+    /// Whether more than one row may be selected (accepted for API parity).
     public var allowsMultipleSelection: Bool = false
+    /// Whether the selection may be empty (accepted for API parity).
     public var allowsEmptySelection: Bool = true
+    /// Whether columns can be selected (accepted for API parity).
     public var allowsColumnSelection: Bool = false
+    /// Whether the user may reorder columns (accepted for API parity).
     public var allowsColumnReordering: Bool = true
+    /// Whether the user may resize columns (accepted for API parity).
     public var allowsColumnResizing: Bool = true
+    /// The grid-line style (accepted for API parity).
     public var gridStyleMask: NSTableViewGridLineStyle = .gridNone
+    /// The row height in points.
     public var rowHeight: CGFloat = 24
     /// Sent to `target` on a double-click (Apple's `doubleAction`).
     public var doubleAction: Selector?
+    /// The backend handle for advanced or testing use.
     public var nativeHandle: NativeHandle? { handle }
+    /// The number of columns.
     public var numberOfColumns: Int { tableColumns.count }
     // While a header-sort action is dispatching, AppKit reports the clicked
     // header column and a clickedRow of -1 (no row was hit); outside that, the
     // last-clicked row is the selected one. The demo keys its sort off exactly
     // this pair (clickedRow < 0 && clickedColumn >= 0), so both must be truthful.
     private var _headerSortColumn: Int = -1
+    /// The last-clicked row, or −1 while a header-sort action is dispatching.
     public var clickedRow: Int { _headerSortColumn >= 0 ? -1 : selectedRow }
+    /// The clicked column during a header-sort action (−1 otherwise).
     public var clickedColumn: Int { _headerSortColumn }
     /// WinChocolate-named action aliases (accepted for parity).
-    public var onAction: ((NSTableView) -> Void)?
+    public var onAction: ((NSControl) -> Void)?
+    /// Called on double-click; mirrors `onDoubleClick` in a table-typed shape.
     public var onDoubleAction: ((NSTableView) -> Void)? {
         get { _onDoubleAction }
         set { _onDoubleAction = newValue; onDoubleClick = { [weak self] _ in if let self { newValue?(self) } } }
     }
     private var _onDoubleAction: ((NSTableView) -> Void)?
+    /// Alias of `onSelectionChange` for WinChocolate parity.
     public var onSelectionChanged: ((NSTableView) -> Void)? {
         get { onSelectionChange }
         set { onSelectionChange = newValue }
     }
     /// Windows-only reorder handler (accepted no-op here).
     public var winRowReorderHandler: (([Int], Int) -> Void)?
+    /// Returns the column with the given identifier, if any.
     public func tableColumn(withIdentifier id: NSUserInterfaceItemIdentifier) -> NSTableColumn? {
         tableColumns.first { $0.identifier == id }
     }
+    /// Selects columns by index set (accepted for API parity; not implemented).
     public func selectColumnIndexes(_ indexes: IndexSet, byExtendingSelection extend: Bool) {}
 
     /// The current row count (from the data source).
@@ -151,6 +182,7 @@ open class NSTableView: NSControl {
     public func selectRowIndexes(_ indexes: IndexSet, byExtendingSelection extend: Bool) {
         if let first = indexes.first { selectRow(at: first) }
     }
+    /// Returns the cell text at (`column`, `row`), or nil if out of range.
     public func value(atColumn column: Int, row: Int) -> String? {
         guard column < tableColumns.count else { return nil }
         let value = dataSource?.tableView(self, objectValueFor: tableColumns[column], row: row)
@@ -241,6 +273,11 @@ open class NSTableView: NSControl {
     public func reloadData() {
         let rows = dataSource?.numberOfRows(in: self) ?? 0
         backend.setTableRowCount(rows, for: handle)
+    }
+
+    /// Scrolls `row` into view, leaving the selection untouched.
+    public func scrollRowToVisible(_ row: Int) {
+        backend.scrollTableRowToVisible(row, for: handle)
     }
 
     /// Programmatically selects `row`.

@@ -126,6 +126,7 @@ open class NSView: NSResponder {
         self.init(frame: .zero)
     }
 
+    /// Creates a view with the given frame.
     public required init(frame: NSRect) {
         self.frame = frame
         self.backend = NSApplication.shared.nativeBackend
@@ -194,6 +195,7 @@ open class NSView: NSResponder {
     /// `NSView.defaultIsFlipped` to change it app-wide.
     open var isFlipped: Bool { NSView.defaultIsFlipped }
 
+    /// Adds `view` as a subview, placing it at its frame within this view.
     open func addSubview(_ view: NSView) {
         adoptSubview(view)
         backend.addSubview(view.handle, to: handle)
@@ -231,15 +233,25 @@ open class NSView: NSResponder {
     /// back to the current frame rather than this value in the current solver.
     open var intrinsicContentSize: NSSize { NSMakeSize(-1, -1) }
 
+    /// The leading-edge horizontal anchor.
     public var leadingAnchor: NSLayoutXAxisAnchor { NSLayoutXAxisAnchor(item: self, attribute: .leading) }
+    /// The trailing-edge horizontal anchor.
     public var trailingAnchor: NSLayoutXAxisAnchor { NSLayoutXAxisAnchor(item: self, attribute: .trailing) }
+    /// The left-edge horizontal anchor.
     public var leftAnchor: NSLayoutXAxisAnchor { NSLayoutXAxisAnchor(item: self, attribute: .left) }
+    /// The right-edge horizontal anchor.
     public var rightAnchor: NSLayoutXAxisAnchor { NSLayoutXAxisAnchor(item: self, attribute: .right) }
+    /// The horizontal center anchor.
     public var centerXAnchor: NSLayoutXAxisAnchor { NSLayoutXAxisAnchor(item: self, attribute: .centerX) }
+    /// The top-edge vertical anchor.
     public var topAnchor: NSLayoutYAxisAnchor { NSLayoutYAxisAnchor(item: self, attribute: .top) }
+    /// The bottom-edge vertical anchor.
     public var bottomAnchor: NSLayoutYAxisAnchor { NSLayoutYAxisAnchor(item: self, attribute: .bottom) }
+    /// The vertical center anchor.
     public var centerYAnchor: NSLayoutYAxisAnchor { NSLayoutYAxisAnchor(item: self, attribute: .centerY) }
+    /// The width dimension anchor.
     public var widthAnchor: NSLayoutDimension { NSLayoutDimension(item: self, attribute: .width) }
+    /// The height dimension anchor.
     public var heightAnchor: NSLayoutDimension { NSLayoutDimension(item: self, attribute: .height) }
 
     /// Adds and activates a constraint (AppKit stores it on the common ancestor;
@@ -322,35 +334,58 @@ open class NSView: NSResponder {
     // later. Native GTK controls handle their own input; actual delivery to
     // these is a later parity item — they exist so the same source builds.
 
+    /// Whether the view can become the first responder (default `false`).
     open override var acceptsFirstResponder: Bool { false }
+    /// Notifies the view that it became first responder; return `false` to reject.
     @discardableResult open func becomeFirstResponder() -> Bool { true }
+    /// Notifies the view that it is losing first-responder status; return `false` to keep it.
     @discardableResult open func resignFirstResponder() -> Bool { true }
 
+    /// Handles a left mouse-down (base: no-op).
     open func mouseDown(with event: NSEvent) {}
+    /// Handles a left mouse-up (base: no-op).
     open func mouseUp(with event: NSEvent) {}
+    /// Handles a mouse drag (base: no-op).
     open func mouseDragged(with event: NSEvent) {}
+    /// Handles mouse movement without a button pressed (base: no-op).
     open func mouseMoved(with event: NSEvent) {}
+    /// Handles a mouse-entered event (base: no-op).
     open func mouseEntered(with event: NSEvent) {}
+    /// Handles a mouse-exited event (base: no-op).
     open func mouseExited(with event: NSEvent) {}
+    /// Handles a right mouse-down (base: no-op).
     open func rightMouseDown(with event: NSEvent) {}
+    /// Handles a scroll-wheel event (base: no-op).
     open func scrollWheel(with event: NSEvent) {}
+    /// Handles a key-down event (base: no-op).
     open func keyDown(with event: NSEvent) {}
+    /// Handles a key-up event (base: no-op).
     open func keyUp(with event: NSEvent) {}
 
+    /// Reinstalls cursor rectangles (base: no-op).
     open func resetCursorRects() {}
+    /// Registers a cursor rectangle (accepted for API parity; not implemented).
     open func addCursorRect(_ rect: NSRect, cursor: NSCursor) {}
+    /// Rebuilds tracking areas (base: no-op).
     open func updateTrackingAreas() {}
+    /// The tracking areas installed on this view.
     public private(set) var trackingAreas: [NSTrackingArea] = []
+    /// Installs a tracking area.
     public func addTrackingArea(_ area: NSTrackingArea) { trackingAreas.append(area) }
+    /// Removes a previously installed tracking area.
     public func removeTrackingArea(_ area: NSTrackingArea) { trackingAreas.removeAll { $0 === area } }
 
     /// Point conversion (identity stub — LinChocolate views currently share the
     /// window's coordinate space).
     public func convert(_ point: NSPoint, from view: NSView?) -> NSPoint { point }
+    /// Identity stub converting `point` from this view's space to `view`'s space.
     public func convert(_ point: NSPoint, to view: NSView?) -> NSPoint { point }
 
     // Drag-destination method form (mirrors the `onDraggingEntered` closures).
+    /// Called when a drag enters this destination; return the operation to allow.
     open func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation { .copy }
+    /// Called when a drag leaves this destination without dropping.
     open func draggingExited(_ sender: NSDraggingInfo?) {}
+    /// Consumes a drop; return whether it was accepted.
     open func performDragOperation(_ sender: NSDraggingInfo) -> Bool { false }
 }

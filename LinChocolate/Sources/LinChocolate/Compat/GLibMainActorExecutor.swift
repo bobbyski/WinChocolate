@@ -27,7 +27,7 @@ import Glibc
 private nonisolated(unsafe) let processHandle = dlopen(nil, RTLD_NOW)
 
 private typealias DrainFn = @convention(c) (UnsafeMutableRawPointer?) -> Void
-private nonisolated(unsafe) let dispatchMainDrain: DrainFn? =
+private let dispatchMainDrain: DrainFn? =
     dlsym(processHandle, "_dispatch_main_queue_callback_4CF").map {
         unsafeBitCast($0, to: DrainFn.self)
     }

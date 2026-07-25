@@ -61,8 +61,11 @@ public typealias CFArray = [Any]
 
 /// Line-cap styles, matching Core Graphics' names.
 public enum CGLineCap: Sendable {
+    /// A line with a squared-off end, terminating at the endpoint.
     case butt
+    /// A line with a rounded end that extends past the endpoint by half the line width.
     case round
+    /// A line with a squared end that extends past the endpoint by half the line width.
     case square
 }
 

@@ -32,7 +32,7 @@ open class NSSearchField: NSControl {
 
     /// Fired when the user commits the search (Return / clears the field).
     /// Wired off the same text-change signal for now.
-    public var onAction: ((NSSearchField) -> Void)?
+    public var onAction: ((NSControl) -> Void)?
 
     /// AppKit's placeholder text (accepted for parity).
     public var placeholderString: String?

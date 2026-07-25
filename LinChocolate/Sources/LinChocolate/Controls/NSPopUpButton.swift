@@ -69,7 +69,9 @@ open class NSPopUpButton: NSControl {
     /// Whether the button is a pull-down menu (accepted for API parity).
     public var pullsDown: Bool = false
     private var itemTags: [Int: Int] = [:]
+    /// Associates an integer tag with the item at `index`.
     public func setTag(_ tag: Int, forItemAt index: Int) { itemTags[index] = tag }
+    /// The tag associated with the item at `index`, or 0 if none.
     public func tag(atIndex index: Int) -> Int { itemTags[index] ?? 0 }
     /// The tag of the selected item (AppKit's `selectedTag()` method form).
     public func selectedTag() -> Int { itemTags[indexOfSelectedItem] ?? 0 }

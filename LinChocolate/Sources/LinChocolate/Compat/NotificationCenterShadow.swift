@@ -23,6 +23,7 @@ public final class NotificationCenter {
         }
     }
 
+    /// The process-wide shared center used by framework posts.
     public static let `default` = NotificationCenter()
 
     private var observers: [Observer] = []
@@ -38,6 +39,7 @@ public final class NotificationCenter {
         return observer
     }
 
+    /// Unregisters a previously added observer token.
     public func removeObserver(_ observer: Any) {
         observers.removeAll { $0 === observer as AnyObject }
     }

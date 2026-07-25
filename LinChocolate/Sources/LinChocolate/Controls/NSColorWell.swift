@@ -20,8 +20,11 @@ open class NSColorWell: NSControl {
     /// Called when the user picks a color in the chooser.
     public var onColorChange: ((NSColorWell) -> Void)?
     /// Control-action alias (accepted for API parity).
-    public var onAction: ((NSColorWell) -> Void)? {
-        get { onColorChange }
+    public var onAction: ((NSControl) -> Void)? {
+        // Write-only: a ((NSControl) -> Void) may stand in for a ((NSColorWell) -> Void)
+        // (parameters are contravariant), but not the reverse, so there is no
+        // getter. AppKit's action sender is the control, matching `NSControl`.
+        get { nil }
         set { onColorChange = newValue }
     }
 

@@ -37,6 +37,7 @@ public final class NSToolbarItem: NSObject {
     /// Called when the user clicks the item.
     public var onAction: ((NSToolbarItem) -> Void)?
 
+    /// Creates a toolbar item with the given identifier.
     public init(itemIdentifier: String) {
         self.itemIdentifier = itemIdentifier
     }
@@ -59,8 +60,11 @@ public protocol NSToolbarDelegate: AnyObject {
 }
 
 public extension NSToolbarDelegate {
+    /// Default: empty allowed set.
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] { [] }
+    /// Default: empty default set.
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] { [] }
+    /// Default: nil (fall back to standard items).
     func toolbar(_ toolbar: NSToolbar, itemForItemIdentifier itemIdentifier: NSToolbarItem.Identifier,
                  willBeInsertedIntoToolbar flag: Bool) -> NSToolbarItem? { nil }
 }
@@ -86,7 +90,17 @@ public final class NSToolbar {
     public var allowsUserCustomization: Bool = false
 
     /// Display mode + config autosave (accepted for API parity).
-    public enum DisplayMode: Sendable { case `default`, iconAndLabel, iconOnly, labelOnly }
+    public enum DisplayMode: Sendable {
+        /// Use the platform default.
+        case `default`
+        /// Show icon and label together.
+        case iconAndLabel
+        /// Show icons only.
+        case iconOnly
+        /// Show labels only.
+        case labelOnly
+    }
+    /// The current display mode; changing it reinstalls the toolbar.
     public var displayMode: DisplayMode = .default {
         didSet { window?.reinstallToolbar() }
     }
@@ -99,10 +113,17 @@ public final class NSToolbar {
         case .labelOnly: return .labelOnly
         }
     }
+    /// Whether the toolbar configuration is autosaved (accepted for API parity).
     public var autosavesConfiguration: Bool = false
     /// WinChocolate's Apple-look toggle (metallic/unified) — accepted no-op.
     public var winAppleLook: WinAppleLook = .unified
-    public enum WinAppleLook: Sendable { case unified, metallic }
+    /// Apple-look variants (accepted for API parity).
+    public enum WinAppleLook: Sendable {
+        /// The unified titlebar+toolbar look.
+        case unified
+        /// The metallic look.
+        case metallic
+    }
 
     /// The customization delegate. Assigning it loads the default items.
     public weak var delegate: NSToolbarDelegate? {
@@ -121,6 +142,7 @@ public final class NSToolbar {
     /// The window this toolbar is installed on (set by `NSWindow.toolbar`).
     weak var window: NSWindow?
 
+    /// Creates an empty toolbar with the given identifier.
     public init(identifier: String) {
         self.identifier = identifier
     }
@@ -152,7 +174,7 @@ public final class NSToolbar {
     /// Opens the customization palette (a sheet of the allowed items). Requires
     /// `allowsUserCustomization`, a `delegate`, and an installed window.
     public func runCustomizationPalette(_ sender: Any?) {
-        guard allowsUserCustomization, let delegate, let window else { return }
+        guard allowsUserCustomization, delegate != nil, let window else { return }
         customizationPaletteIsRunning = true
         let handlers = NativeToolbarCustomizationHandlers(
             onInsert: { [weak self] identifier, index in

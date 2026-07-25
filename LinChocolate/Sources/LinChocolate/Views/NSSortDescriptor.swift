@@ -11,9 +11,12 @@ import Foundation
 /// Client code importing both modules should qualify it as
 /// `LinChocolate.NSSortDescriptor` to avoid ambiguity with Foundation's.
 public final class NSSortDescriptor: Equatable {
+    /// The sort key (a column identifier chosen by the data source).
     public let key: String?
+    /// The sort direction (`true` for ascending).
     public let ascending: Bool
 
+    /// Creates a sort descriptor with the given key and direction.
     public init(key: String?, ascending: Bool) {
         self.key = key
         self.ascending = ascending
@@ -24,6 +27,7 @@ public final class NSSortDescriptor: Equatable {
         NSSortDescriptor(key: key, ascending: !ascending)
     }
 
+    /// Two descriptors are equal when their key and direction match.
     public static func == (lhs: NSSortDescriptor, rhs: NSSortDescriptor) -> Bool {
         lhs.key == rhs.key && lhs.ascending == rhs.ascending
     }

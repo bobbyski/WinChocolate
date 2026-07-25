@@ -4,6 +4,7 @@ import Foundation
 /// field on the right. `stringValue` proxies the field's text.
 public final class NSFormCell {
     let titleLabel: NSTextField
+    /// The editable value field for this row.
     public let textField: NSTextField
 
     init(titleLabel: NSTextField, textField: NSTextField) {
@@ -88,7 +89,7 @@ open class NSForm: NSControl {
 
     /// Fired when a row's field is submitted (Enter) — AppKit's form action,
     /// carrying the form (read the edited value via `cell(at:)`).
-    public var onAction: ((NSForm) -> Void)?
+    public var onAction: ((NSControl) -> Void)?
 
     /// Adds a labelled row and returns its cell. Rows stack from the top.
     @discardableResult
@@ -117,8 +118,10 @@ open class NSForm: NSControl {
         return cell
     }
 
-    /// The row's cell (AppKit's `cell(at:)`).
-    public func cell(at index: Int) -> NSFormCell? {
+    /// The row's cell. AppKit types this `NSCell?` and callers downcast, so
+    /// the return type is opaque here too — otherwise every `as? NSFormCell`
+    /// in portable code becomes a redundant-cast warning.
+    public func cell(at index: Int) -> Any? {
         cells.indices.contains(index) ? cells[index] : nil
     }
 

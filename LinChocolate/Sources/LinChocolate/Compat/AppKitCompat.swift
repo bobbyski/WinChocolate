@@ -376,7 +376,7 @@ public final class NSPathComponentCell {
 }
 
 /// Column-navigation control placeholder (`NSBrowser` covers the real one).
-public final class NSPathControl: NSView {
+public final class NSPathControl: NSControl {
     /// The URL the control currently displays as a path.
     public var url: URL?
     /// The visual style used to render the path (raw for parity).
@@ -396,7 +396,7 @@ public final class NSPathControl: NSView {
     /// The path's segment cells, in display order.
     public var pathComponentCells: [NSPathComponentCell] = []
     /// Fired when the user clicks a component.
-    public var onAction: ((NSPathControl) -> Void)?
+    public var onAction: ((NSControl) -> Void)?
     /// Builds a path control initialized with a URL and frame.
     public convenience init(url: URL?, frame: NSRect) {
         self.init(frame: frame)
@@ -509,51 +509,82 @@ open class NSTableRowView: NSView {
 
 /// The shared color panel (stub — `NSColorWell` covers picking today).
 public final class NSColorPanel {
+    /// The process-wide shared color panel.
     nonisolated(unsafe) public static let shared = NSColorPanel()
+    /// The currently selected color.
     public var color: NSColor = .white
+    /// Whether the panel exposes an alpha slider.
     public var showsAlpha: Bool = false
     /// WinChocolate's color-change hook (accepted for parity).
     public var winColorDidChange: ((NSColor) -> Void)?
+    /// Brings the panel to front without making it key (no-op stub).
     public func orderFront(_ sender: Any?) {}
+    /// Brings the panel to front and makes it the key window (no-op stub).
     public func makeKeyAndOrderFront(_ sender: Any?) {}
+    /// Sets the target that receives color-change actions (no-op stub).
     public func setTarget(_ target: AnyObject?) {}
+    /// Sets the selector invoked on the target when color changes (no-op stub).
     public func setAction(_ action: Any?) {}
 }
 
 /// Font manager (stub).
 public final class NSFontManager {
+    /// The process-wide shared font manager.
     nonisolated(unsafe) public static let shared = NSFontManager()
+    /// Applies the manager's current attribute changes to `font` (identity in the stub).
     public func convert(_ font: NSFont) -> NSFont { font }
+    /// WinChocolate's font-change hook (accepted for parity).
     public var winFontDidChange: ((NSFont) -> Void)?
+    /// The object that receives `changeFont(_:)` when the font panel's selection changes.
     public var target: AnyObject?
+    /// Shows the shared font panel (no-op stub).
     public func orderFrontFontPanel(_ sender: Any?) {}
 }
 
 /// Window controller (stub).
 open class NSWindowController {
+    /// The window this controller manages.
     public var window: NSWindow?
+    /// Builds a controller for the given window.
     public init(window: NSWindow?) { self.window = window }
+    /// Builds a controller with no window yet.
     public init() {}
+    /// Shows the managed window and makes it key.
     open func showWindow(_ sender: Any?) { window?.makeKeyAndOrderFront(sender) }
 }
 
 /// Document architecture stubs (real support is Phase L13).
 open class NSDocument {
+    /// Creates an unsaved document.
     public init() {}
+    /// URL the document was loaded from / will be saved to.
     public var fileURL: URL?
+    /// Called during document opening to instantiate its window controllers.
     open func makeWindowControllers() {}
+    /// Attaches a window controller to the document.
     open func addWindowController(_ windowController: NSWindowController) {}
+    /// Serializes the document to `Data` for `typeName` (empty in the stub).
     open func data(ofType typeName: String) throws -> Data { Data() }
+    /// Deserializes the document from `data` for `typeName` (no-op stub).
     open func read(from data: Data, ofType typeName: String) throws {}
+    /// Records that the document's content has changed (no-op stub).
     open func updateChangeCount(_ change: NSDocumentChangeType) {}
+    /// Displays each of the document's windows.
     open func showWindows() {}
 }
+/// Document controller (stub — coordinates open/save/new).
 open class NSDocumentController {
+    /// The process-wide shared document controller.
     nonisolated(unsafe) public static let shared = NSDocumentController()
+    /// Creates a controller (`shared` is the usual instance).
     public init() {}
+    /// WinChocolate's registered document class.
     public var winDocumentClass: AnyObject.Type?
+    /// All currently open documents.
     public var documents: [NSDocument] = []
+    /// Action for the New menu item (no-op stub).
     open func newDocument(_ sender: Any?) {}
+    /// Action for the Open menu item (no-op stub).
     open func openDocument(_ sender: Any?) {}
 
     /// The `NSDocument` subclass for `typeName` (subclasses override).
@@ -562,15 +593,21 @@ open class NSDocumentController {
 
 /// Printing stub (real support is Phase L13).
 public final class NSPrintOperation {
+    /// The print operation currently running, if any.
     nonisolated(unsafe) public static var current: NSPrintOperation?
+    /// Creates an empty print operation.
     public init() {}
 
     /// Apple's initializer spelling; printing itself is Phase L13.
     public init(view: NSView) {}
 
+    /// Apple's factory spelling for building an operation for `view`.
     public static func printOperation(with view: NSView) -> NSPrintOperation { NSPrintOperation() }
+    /// Job title shown in the print dialog and queue.
     public var jobTitle: String = ""
+    /// Whether to show the print panel before running.
     public var showsPrintPanel: Bool = true
+    /// Runs the print operation (returns `false` in the stub).
     public func run() -> Bool { false }
 }
 
@@ -578,9 +615,13 @@ public final class NSPrintOperation {
 /// of `NSWindow`; the floating/hide-on-deactivate hints are accepted for API
 /// parity (native behavior is a later item).
 open class NSPanel: NSWindow {
+    /// Whether the panel floats above regular document windows.
     public var isFloatingPanel = false
+    /// Whether the panel hides when the app deactivates.
     public var hidesOnDeactivate = false
+    /// Whether the panel becomes key only when it needs to receive input.
     public var becomesKeyOnlyIfNeeded = false
+    /// Brings the panel forward regardless of activation state.
     public func orderFrontRegardless() { makeKeyAndOrderFront(nil) }
 }
 
@@ -588,27 +629,41 @@ open class NSPanel: NSWindow {
 /// demo makes so rich-text styling round-trips through the source; native
 /// attributed rendering is a later parity item.
 public final class NSTextStorage {
+    /// The plain-text backing string.
     public var string: String
+    /// Builds a storage initialized with `string`.
     public init(string: String = "") { self.string = string }
+    /// Length of the backing string in characters.
     public var length: Int { string.count }
+    /// Begins a batch of edits (no-op stub).
     public func beginEditing() {}
+    /// Ends a batch of edits (no-op stub).
     public func endEditing() {}
+    /// Adds an attribute to `range` (no-op stub).
     public func addAttribute(_ name: NSAttributedString.Key, value: Any, range: NSRange) {}
+    /// Adds multiple attributes to `range` (no-op stub).
     public func addAttributes(_ attrs: [NSAttributedString.Key: Any], range: NSRange) {}
+    /// Removes an attribute from `range` (no-op stub).
     public func removeAttribute(_ name: NSAttributedString.Key, range: NSRange) {}
+    /// Replaces all attributes in `range` (no-op stub).
     public func setAttributes(_ attrs: [NSAttributedString.Key: Any]?, range: NSRange) {}
+    /// Replaces characters in `range` with `str` (no-op stub).
     public func replaceCharacters(in range: NSRange, with str: String) {}
 }
 
 /// Text finder stub.
 public final class NSTextFinder {
+    /// AppKit's `NSTextFinder.Action` — a find/replace operation kind.
     public enum Action: Int, Sendable {
         case showFindInterface, nextMatch, previousMatch, replaceAll, replace
         case replaceAndFind, setSearchString, replaceAllInSelection, selectAll
         case selectAllInSelection, hideFindInterface, showReplaceInterface, hideReplaceInterface
     }
+    /// Creates an unwired text finder.
     public init() {}
+    /// The text view (or other object) this finder acts on.
     public weak var client: AnyObject?
+    /// Performs a find/replace action (no-op stub).
     public func performAction(_ op: NSTextFinder.Action) {}
 }
 
@@ -618,19 +673,23 @@ public final class NSTextFinder {
 
 /// AppKit's text-view delegate (the slice the demo drives).
 public protocol NSTextViewDelegate: AnyObject {
+    /// Fires after the text view's contents change.
     func textDidChange(_ notification: Notification)
 }
 
 public extension NSTextViewDelegate {
+    /// Default no-op change hook.
     func textDidChange(_ notification: Notification) {}
 }
 
 /// AppKit's alert delegate: the help-button hook.
 public protocol NSAlertDelegate: AnyObject {
+    /// Return `true` to suppress the default help behavior after handling it.
     func alertShowHelp(_ alert: NSAlert) -> Bool
 }
 
 public extension NSAlertDelegate {
+    /// Default: help was not handled.
     func alertShowHelp(_ alert: NSAlert) -> Bool { false }
 }
 
@@ -638,29 +697,40 @@ public extension NSAlertDelegate {
 /// manager's target receives `changeFont(_:)` when the panel's selection
 /// changes.
 public protocol NSFontChanging: AnyObject {
+    /// Called with the font manager whose selection changed.
     func changeFont(_ sender: NSFontManager?)
 }
 
 public extension NSFontChanging {
+    /// Default no-op font-change hook.
     func changeFont(_ sender: NSFontManager?) {}
 }
 
 // MARK: - Font descriptors (Apple's NSFontDescriptor, reduced)
 
+/// AppKit's `NSFontDescriptor` (reduced) — name, size, and symbolic traits.
 public final class NSFontDescriptor {
 
     /// Apple's trait mask (the two the demo styles with).
     public struct SymbolicTraits: OptionSet, Sendable {
+        /// Raw bitmask matching AppKit's values.
         public let rawValue: UInt32
+        /// Builds a trait mask from its raw bitmask.
         public init(rawValue: UInt32) { self.rawValue = rawValue }
+        /// Bold trait.
         public static let bold = SymbolicTraits(rawValue: 1 << 1)
+        /// Italic trait.
         public static let italic = SymbolicTraits(rawValue: 1 << 0)
     }
 
+    /// PostScript / family name of the described font.
     public let fontName: String
+    /// Point size of the described font.
     public let pointSize: CGFloat
+    /// Bold/italic traits requested for this descriptor.
     public let symbolicTraits: SymbolicTraits
 
+    /// Builds a descriptor for `name` at `size` with no traits.
     public init(name: String, size: CGFloat) {
         self.fontName = name
         self.pointSize = size
@@ -699,10 +769,12 @@ public extension NSFont {
 
 // MARK: - Image scaling/alignment (Apple's top-level enum names)
 
+/// AppKit's `NSImageScaling` — how an image fits inside its bounding view.
 public enum NSImageScaling: Sendable {
     case scaleProportionallyDown, scaleAxesIndependently, scaleNone, scaleProportionallyUpOrDown
 }
 
+/// AppKit's `NSImageAlignment` — where the image sits inside its bounding view.
 public enum NSImageAlignment: Sendable {
     case alignCenter, alignTop, alignTopLeft, alignTopRight, alignLeft
     case alignBottom, alignBottomLeft, alignBottomRight, alignRight

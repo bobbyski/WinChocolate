@@ -30,6 +30,7 @@ public final class NSBox: NSView {
         self.init(title: "", frame: frame)
     }
 
+    /// Creates a titled box with the given title and frame.
     public init(title: String, frame: NSRect) {
         self.backingTitle = title
         let backend = NSApplication.shared.nativeBackend

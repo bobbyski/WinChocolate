@@ -1,7 +1,9 @@
 import Foundation
 
 /// AppKit modal responses for panels.
+/// The user confirmed the panel (clicked Save/Open).
 public let NSModalResponseOK = 1
+/// The user cancelled the panel.
 public let NSModalResponseCancel = 0
 
 /// AppKit-shaped save panel (GtkFileDialog, save mode). Configure, call
@@ -10,6 +12,7 @@ public class NSSavePanel {
 
     /// Directory the panel starts in.
     public var directoryURL: URL?
+    /// The panel's title (accepted for parity).
     public var title: String = ""
 
     /// Suggested file name shown in the name field.
@@ -18,6 +21,7 @@ public class NSSavePanel {
     /// The chosen destination after `runModal` returns OK.
     public private(set) var url: URL?
 
+    /// Creates an unconfigured save panel.
     public init() {}
 
     func setResult(path: String?) {
@@ -42,8 +46,12 @@ public class NSSavePanel {
 /// dialog currently opens one file).
 public final class NSOpenPanel: NSSavePanel {
 
+    /// Whether files may be selected (accepted for parity).
     public var canChooseFiles = true
+    /// Whether directories may be selected (accepted for parity).
     public var canChooseDirectories = false
+    /// Whether multiple items may be selected (accepted for parity; the native
+    /// dialog currently opens one file).
     public var allowsMultipleSelection = false
 
     /// The chosen files after `runModal` returns OK.

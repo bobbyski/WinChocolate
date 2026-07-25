@@ -15,11 +15,12 @@ open class NSTokenField: NSControl {
 
     /// The tokens, in order (AppKit's `objectValue` array-of-strings shape).
     /// Setting it replaces the chips; the user's own edits flow back in.
-    public var objectValue: [String] {
+    public var objectValue: Any? {
         get { backingTokens }
         set {
-            backingTokens = newValue
-            backend.setTokens(newValue, for: handle)
+            let tokens = (newValue as? [String]) ?? []
+            backingTokens = tokens
+            backend.setTokens(tokens, for: handle)
         }
     }
 
@@ -27,11 +28,14 @@ open class NSTokenField: NSControl {
     public var onTokensChange: ((NSTokenField) -> Void)?
     /// Alias for the token list (`tokens`) + text-change hook, for demo parity.
     public var tokens: [String] {
-        get { objectValue }
+        get { backingTokens }
         set { objectValue = newValue }
     }
-    public var onTextChanged: ((NSTokenField) -> Void)? {
-        get { onTokensChange }
+    /// Write-only for the same reason as the `onAction` bridges: a
+    /// `((NSControl) -> Void)` stands in for a `((NSTokenField) -> Void)`, not
+    /// the reverse.
+    public var onTextChanged: ((NSControl) -> Void)? {
+        get { nil }
         set { onTokensChange = newValue }
     }
 
@@ -40,6 +44,7 @@ open class NSTokenField: NSControl {
         self.init(tokens: [], frame: frame)
     }
 
+    /// Creates a token field with initial `tokens`.
     public init(tokens: [String] = [], frame: NSRect) {
         self.backingTokens = tokens
         let backend = NSApplication.shared.nativeBackend

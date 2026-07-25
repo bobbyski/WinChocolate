@@ -13,6 +13,7 @@ public final class NSTabViewItem {
     /// The view displayed when this tab is selected.
     public var view: NSView?
 
+    /// Creates a tab item with an optional identifier.
     public init(identifier: Any? = nil) {
         self.identifier = identifier
     }
