@@ -571,7 +571,9 @@ open class NSOutlineView: NSTableView {
             marker = "  "
         }
 
-        return "\(indent)\(marker)\(value)"
+        // Interpolating `value` directly would render "Optional(…)"; describe the
+        // wrapped value so the first column shows the data source's own text.
+        return "\(indent)\(marker)\(value.map { String(describing: $0) } ?? "")"
     }
 
     private func key(for item: Any) -> String {

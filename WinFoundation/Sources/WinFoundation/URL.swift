@@ -524,3 +524,28 @@ public struct URL: Equatable, Hashable, Sendable, CustomStringConvertible {
         })
     }
 }
+
+// MARK: - Codable
+
+/// `URL` is `Codable` in Foundation, so it is here too — without it a type with
+/// a `URL` property cannot synthesize `Codable`. The value is carried as its
+/// absolute string, which is the form `JSONEncoder`/`JSONDecoder` also write and
+/// read when they intercept `URL`, so the two paths agree.
+extension URL: Codable {
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let text = try container.decode(String.self)
+        guard let url = URL(string: text) else {
+            throw DecodingError.dataCorrupted(DecodingError.Context(
+                codingPath: container.codingPath,
+                debugDescription: "Invalid URL string."
+            ))
+        }
+        self = url
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(absoluteString)
+    }
+}

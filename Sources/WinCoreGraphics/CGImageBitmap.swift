@@ -67,7 +67,10 @@ public struct CGBitmapInfo: OptionSet, Sendable {
     }
 
     public static let alphaInfoMask = CGBitmapInfo(rawValue: 0x1F)
-    public static let byteOrderDefault = CGBitmapInfo(rawValue: 0)
+    /// CoreGraphics' `byteOrderDefault` really is the zero bit pattern (host
+    /// byte order); spelled as the explicit empty set so it reads as intended
+    /// rather than as an accidentally-empty option set.
+    public static let byteOrderDefault = CGBitmapInfo([])
 }
 
 /// Rendering intent — CoreGraphics' `CGColorRenderingIntent`.

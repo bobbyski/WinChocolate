@@ -341,3 +341,30 @@ private func WinFoundationWriteFile(
 @discardableResult
 private func WinFoundationCloseHandle(_ object: UnsafeMutableRawPointer?) -> Int32
 #endif
+
+// MARK: - Codable
+
+/// `Data` is `Codable` in Foundation, so it is here too — without it a type
+/// with a `Data` property cannot synthesize `Codable` at all. Foundation encodes
+/// the bytes as an unkeyed container; `JSONEncoder`/`JSONDecoder` intercept
+/// `Data` ahead of this to apply their base64 strategy, exactly as Apple's do.
+extension Data: Codable {
+    public init(from decoder: Decoder) throws {
+        var container = try decoder.unkeyedContainer()
+        var bytes: [UInt8] = []
+        if let count = container.count {
+            bytes.reserveCapacity(count)
+        }
+        while !container.isAtEnd {
+            bytes.append(try container.decode(UInt8.self))
+        }
+        self.init(bytes)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.unkeyedContainer()
+        for byte in self {
+            try container.encode(byte)
+        }
+    }
+}

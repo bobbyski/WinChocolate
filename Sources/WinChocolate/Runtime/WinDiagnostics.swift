@@ -15,7 +15,7 @@ private func WinDiagGetEnvironmentVariableW(
 /// surface; exists so interactive event chains (clicks → panels → actions)
 /// can be verified on the real backend from a script.
 enum WinDiagnostics {
-    nonisolated(unsafe) private static let path: String? = {
+    private static let path: String? = {
         #if os(Windows)
         let name = Array("WINCHOCOLATE_DIAG".utf16) + [0]
         var buffer = [UInt16](repeating: 0, count: 1024)

@@ -162,12 +162,12 @@ open class NSSegmentedControl: NSControl {
 
     /// Moves the selection with the arrow keys in selection tracking modes.
     open override func keyDown(with event: NSEvent) {
-        guard trackingMode != .momentary, let keyCode = event.keyCode else {
+        guard trackingMode != .momentary else {
             super.keyDown(with: event)
             return
         }
 
-        switch keyCode {
+        switch event.keyCode {
         case 0x25: // Left arrow
             moveSelection(by: -1)
         case 0x27: // Right arrow
