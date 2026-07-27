@@ -86,6 +86,62 @@ open class NSOutlineView: NSControl {
         backend.setOutlineRootCount(roots, for: handle)
     }
 
+    /// The item shown at visible row `row` (AppKit's `item(atRow:)`).
+    public func item(atRow row: Int) -> Any? {
+        guard let path = backend.outlineItemPath(atRow: row, for: handle) else { return nil }
+        return item(atPath: path)
+    }
+
+    /// The visible row showing `item`, or −1 if it isn't visible (AppKit's
+    /// `row(forItem:)`). Items compare by their string form (the demo's items
+    /// are strings, matching AppKit's identity-by-value use here).
+    public func row(forItem item: Any?) -> Int {
+        guard let item else { return -1 }
+        let key = String(describing: item)
+        let count = backend.outlineVisibleRowCount(for: handle)
+        for row in 0..<count where self.item(atRow: row).map({ String(describing: $0) }) == key {
+            return row
+        }
+        return -1
+    }
+
+    /// Whether `item` can be expanded (defers to the data source).
+    public func isExpandable(_ item: Any) -> Bool {
+        dataSource?.outlineView(self, isItemExpandable: item) ?? false
+    }
+
+    /// Whether `item`'s row is currently expanded (AppKit's `isItemExpanded`).
+    public func isItemExpanded(_ item: Any) -> Bool {
+        let row = row(forItem: item)
+        return row >= 0 && backend.outlineIsRowExpanded(atRow: row, for: handle)
+    }
+
+    /// Expands `item`'s row (AppKit's `expandItem(_:)`).
+    public func expandItem(_ item: Any?) {
+        let row = row(forItem: item)
+        if row >= 0 { backend.setOutlineRowExpanded(true, atRow: row, for: handle) }
+    }
+
+    /// Collapses `item`'s row (AppKit's `collapseItem(_:)`).
+    public func collapseItem(_ item: Any?) {
+        let row = row(forItem: item)
+        if row >= 0 { backend.setOutlineRowExpanded(false, atRow: row, for: handle) }
+    }
+
+    /// The indentation level of `item` (0 = root), AppKit's `level(forItem:)`.
+    public func level(forItem item: Any?) -> Int {
+        let row = row(forItem: item)
+        return row >= 0 ? max(0, backend.outlineRowDepth(atRow: row, for: handle) - 1) : 0
+    }
+
+    /// Selects the given rows (single-selection: the first index).
+    public func selectRowIndexes(_ indexes: IndexSet, byExtendingSelection extend: Bool) {
+        if let first = indexes.first {
+            selectedRow = first
+            backend.selectOutlineRow(first, for: handle)
+        }
+    }
+
     /// Resolves an index path ("0.2") to a data-source item.
     private func item(atPath path: String) -> Any? {
         guard let dataSource else { return nil }

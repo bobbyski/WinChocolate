@@ -301,6 +301,13 @@ public protocol NativeControlBackend: AnyObject {
     /// window survives, so `showWindow` can re-present it — what a reusable
     /// panel needs.
     func hideWindow(_ handle: NativeHandle)
+
+    /// Toggles the window between maximized and normal (AppKit's `zoom(_:)`).
+    func toggleZoomWindow(_ handle: NativeHandle)
+    /// Whether the window is maximized (AppKit's `isZoomed`).
+    func isWindowZoomed(_ handle: NativeHandle) -> Bool
+    /// Minimizes the window to the taskbar/dock (AppKit's `miniaturize(_:)`).
+    func miniaturizeWindow(_ handle: NativeHandle)
     /// Updates a window's title-bar text.
     func setWindowTitle(_ title: String, for handle: NativeHandle)
     /// Registers the action to run when the window is closed by the user.
@@ -405,7 +412,10 @@ public protocol NativeControlBackend: AnyObject {
     /// `setSelectedIndex`/`setSelectionChangeAction` (row index).
     func createTableView(frame: NSRect) -> NativeHandle
     /// Appends a titled column to a table.
-    func addTableColumn(title: String, to table: NativeHandle)
+    func addTableColumn(title: String, editable: Bool, to table: NativeHandle)
+
+    /// Called when an editable cell commits a new value: (row, column, text).
+    func setTableCellCommitAction(for handle: NativeHandle, _ handler: @escaping (Int, Int, String) -> Void)
     /// Updates an existing column's header title.
     func setTableColumnTitle(_ title: String, columnIndex: Int, for table: NativeHandle)
     /// Makes a column's header clickable to sort (reports via `setSortChangeAction`).
@@ -431,6 +441,19 @@ public protocol NativeControlBackend: AnyObject {
     func addOutlineColumn(title: String, to outline: NativeHandle)
     /// Sets the number of root items and re-binds (= reload).
     func setOutlineRootCount(_ count: Int, for outline: NativeHandle)
+
+    /// Number of currently-visible outline rows (expanded tree, flattened).
+    func outlineVisibleRowCount(for outline: NativeHandle) -> Int
+    /// The index-path key ("0.2") at a visible outline row, or nil if out of range.
+    func outlineItemPath(atRow row: Int, for outline: NativeHandle) -> String?
+    /// The tree depth of a visible row (0 = root).
+    func outlineRowDepth(atRow row: Int, for outline: NativeHandle) -> Int
+    /// Whether a visible row is expanded.
+    func outlineIsRowExpanded(atRow row: Int, for outline: NativeHandle) -> Bool
+    /// Expands or collapses a visible row.
+    func setOutlineRowExpanded(_ expanded: Bool, atRow row: Int, for outline: NativeHandle)
+    /// Selects a visible outline row (−1 clears the selection).
+    func selectOutlineRow(_ row: Int, for outline: NativeHandle)
     /// Supplies tree shape and cell text by item path.
     func setOutlineProviders(
         for outline: NativeHandle,
@@ -456,7 +479,16 @@ public protocol NativeControlBackend: AnyObject {
     /// Registers the action fired when the user adds or removes a token.
     func setTokensChangeAction(for handle: NativeHandle, action: @escaping ([String]) -> Void)
     /// Shows the image file at `path` in an image view (nil clears it).
+    /// Prints the custom-drawn view via the platform print flow, rendering it
+    /// through its draw handler. Returns whether the job completed (AppKit's
+    /// `NSPrintOperation.run()`).
+    func runPrintOperation(view: NativeHandle, jobTitle: String, parent: NativeHandle?) -> Bool
+
     func setImagePath(_ path: String?, for handle: NativeHandle)
+
+    /// Applies AppKit's template tint to an image view: recolor the (alpha-masked)
+    /// artwork to `color`. `nil` clears the tint and shows the image as loaded.
+    func setImageTint(_ color: NSColor?, isTemplate: Bool, for handle: NativeHandle)
     /// Creates a stepper (numeric up/down) over `[minValue, maxValue]`.
     func createStepper(value: Double, minValue: Double, maxValue: Double, stepSize: Double, frame: NSRect) -> NativeHandle
     /// Creates a determinate level indicator over `[minValue, maxValue]`.

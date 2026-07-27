@@ -77,6 +77,9 @@ run_args=(
     --rm -it
     -e "DISPLAY=${HOST_IP}:0"
     -e "GSK_RENDERER=${GSK_RENDERER:-cairo}"
+    # Diagnostics / feature flags forwarded from the host env when set.
+    -e "LINCHOCOLATE_ZOOM_DEBUG=${LINCHOCOLATE_ZOOM_DEBUG:-}"
+    -e "LINCHOCOLATE_GEOMETRY_AUDIT=${LINCHOCOLATE_GEOMETRY_AUDIT:-}"
     -v "$REPO":/work -w /work/LinChocolate
     "$IMAGE"
 )

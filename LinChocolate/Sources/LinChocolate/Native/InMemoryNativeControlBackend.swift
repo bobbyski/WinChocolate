@@ -255,6 +255,14 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
         hiddenWindows.insert(handle.rawValue)
         visibleWindows.remove(handle.rawValue)
     }
+    public private(set) var zoomedWindows: Set<UInt> = []
+    public private(set) var miniaturizedWindows: Set<UInt> = []
+    public func toggleZoomWindow(_ handle: NativeHandle) {
+        if zoomedWindows.contains(handle.rawValue) { zoomedWindows.remove(handle.rawValue) }
+        else { zoomedWindows.insert(handle.rawValue) }
+    }
+    public func isWindowZoomed(_ handle: NativeHandle) -> Bool { zoomedWindows.contains(handle.rawValue) }
+    public func miniaturizeWindow(_ handle: NativeHandle) { miniaturizedWindows.insert(handle.rawValue) }
 
     /// Records the close action for a window.
     public func registerWindowCloseAction(for handle: NativeHandle, action: @escaping () -> Void) {
@@ -594,7 +602,7 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
         return h
     }
     /// Appends a titled column to a table.
-    public func addTableColumn(title: String, to table: NativeHandle) {
+    public func addTableColumn(title: String, editable: Bool, to table: NativeHandle) {
         tableColumns[table.rawValue, default: []].append(title)
     }
     /// Renames the column at `columnIndex`.
@@ -610,6 +618,14 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     /// Rows scrolled into view, newest last (test hook).
     public private(set) var scrolledTableRows: [(table: UInt, row: Int)] = []
     /// Records a scroll-to-row request.
+    private var cellCommitActions: [UInt: (Int, Int, String) -> Void] = [:]
+    public func setTableCellCommitAction(for handle: NativeHandle, _ handler: @escaping (Int, Int, String) -> Void) {
+        cellCommitActions[handle.rawValue] = handler
+    }
+    /// Test hook: simulate committing an edited cell value.
+    public func simulateCellEdit(_ text: String, row: Int, column: Int, for handle: NativeHandle) {
+        cellCommitActions[handle.rawValue]?(row, column, text)
+    }
     public func scrollTableRowToVisible(_ row: Int, for table: NativeHandle) {
         scrolledTableRows.append((table: table.rawValue, row: row))
     }
@@ -653,6 +669,15 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
         outlineColumns[outline.rawValue, default: []].append(title)
     }
     /// Records the number of root items in an outline view.
+    public private(set) var selectedOutlineRows: [UInt: Int] = [:]
+    public func outlineVisibleRowCount(for outline: NativeHandle) -> Int { outlineRootCounts[outline.rawValue] ?? 0 }
+    public func outlineItemPath(atRow row: Int, for outline: NativeHandle) -> String? {
+        row >= 0 && row < (outlineRootCounts[outline.rawValue] ?? 0) ? "\(row)" : nil
+    }
+    public func outlineRowDepth(atRow row: Int, for outline: NativeHandle) -> Int { 0 }
+    public func outlineIsRowExpanded(atRow row: Int, for outline: NativeHandle) -> Bool { false }
+    public func setOutlineRowExpanded(_ expanded: Bool, atRow row: Int, for outline: NativeHandle) {}
+    public func selectOutlineRow(_ row: Int, for outline: NativeHandle) { selectedOutlineRows[outline.rawValue] = row }
     public func setOutlineRootCount(_ count: Int, for outline: NativeHandle) {
         outlineRootCounts[outline.rawValue] = count
     }
@@ -731,8 +756,17 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
         tokensChangeActions[handle.rawValue]?(tokens)
     }
     /// Records (or clears) the image path shown by an image view.
+    public private(set) var printedViews: [UInt] = []
+    public func runPrintOperation(view: NativeHandle, jobTitle: String, parent: NativeHandle?) -> Bool {
+        printedViews.append(view.rawValue)
+        return true
+    }
     public func setImagePath(_ path: String?, for handle: NativeHandle) {
         if let path { imagePaths[handle.rawValue] = path } else { imagePaths[handle.rawValue] = nil }
+    }
+    public private(set) var imageTints: [UInt: NSColor] = [:]
+    public func setImageTint(_ color: NSColor?, isTemplate: Bool, for handle: NativeHandle) {
+        if let color, isTemplate { imageTints[handle.rawValue] = color } else { imageTints[handle.rawValue] = nil }
     }
     /// Allocates a titled group-box handle.
     public func createBox(title: String, frame: NSRect) -> NativeHandle {

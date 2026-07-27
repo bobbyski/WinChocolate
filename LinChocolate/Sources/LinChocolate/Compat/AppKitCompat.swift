@@ -591,24 +591,37 @@ open class NSDocumentController {
     open func documentClass(forType typeName: String) -> AnyClass? { nil }
 }
 
-/// Printing stub (real support is Phase L13).
+/// Prints a custom-drawn view through the platform print flow (GtkPrintOperation
+/// on Linux). Renders the view's `draw(_:)` onto the print page.
 public final class NSPrintOperation {
     /// The print operation currently running, if any.
     nonisolated(unsafe) public static var current: NSPrintOperation?
+    /// The view being printed.
+    private weak var view: NSView?
+
     /// Creates an empty print operation.
     public init() {}
 
-    /// Apple's initializer spelling; printing itself is Phase L13.
-    public init(view: NSView) {}
+    /// Builds an operation that prints `view`.
+    public init(view: NSView) { self.view = view }
 
     /// Apple's factory spelling for building an operation for `view`.
-    public static func printOperation(with view: NSView) -> NSPrintOperation { NSPrintOperation() }
+    public static func printOperation(with view: NSView) -> NSPrintOperation { NSPrintOperation(view: view) }
     /// Job title shown in the print dialog and queue.
     public var jobTitle: String = ""
     /// Whether to show the print panel before running.
     public var showsPrintPanel: Bool = true
-    /// Runs the print operation (returns `false` in the stub).
-    public func run() -> Bool { false }
+    /// Runs the print operation, rendering the view. Returns whether the job
+    /// completed (the user printed) vs. was canceled — AppKit's `run()`.
+    @discardableResult
+    public func run() -> Bool {
+        guard let view else { return false }
+        NSPrintOperation.current = self
+        defer { NSPrintOperation.current = nil }
+        return view.backend.runPrintOperation(
+            view: view.handle, jobTitle: jobTitle.isEmpty ? "Print" : jobTitle,
+            parent: NSApplication.shared.windows.first?.handle)
+    }
 }
 
 /// AppKit-shaped `NSPanel` — an auxiliary window (utility/inspector). Subclass

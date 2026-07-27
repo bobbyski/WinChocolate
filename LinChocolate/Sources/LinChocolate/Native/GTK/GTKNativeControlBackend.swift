@@ -535,6 +535,96 @@ public final class GTKNativeControlBackend: NativeControlBackend {
         gtk_widget_set_visible(asWidget(w), gboolean(0))
     }
 
+    public func toggleZoomWindow(_ handle: NativeHandle) {
+        // Track intent ourselves. AppKit's `zoom(_:)` is synchronous — `isZoomed`
+        // reads true the instant it returns — but GTK's `is_maximized` reflects
+        // the compositor's *acknowledged* surface state, which lands a frame or
+        // two later (and never, with no window manager). Mirroring the request
+        // keeps `isZoomed` truthful immediately, as the demo reads it.
+        let nowZoomed = !zoomedWindows.contains(handle.rawValue)
+        guard let content = windowContents[handle.rawValue], let w = widget(handle) else { return }
+        let cw = asWidget(content)
+        let win = asWindow(w)
+        if nowZoomed {
+            zoomedWindows.insert(handle.rawValue)
+            // Zoom on Linux follows the desktop convention (fill the screen), NOT
+            // AppKit's fit-to-content. We do NOT call `gtk_window_maximize`: the
+            // diagnostic proved that under quartz-wm (XQuartz) it locks the window
+            // size and the surface never grows — the content stayed 1120 in a
+            // maximized frame (the black void). Instead we grow the CONTENT to the
+            // monitor size, which makes GTK issue a normal client resize; a WM that
+            // honors client resizes (mutter/kwin, and — un-maximized — quartz-wm)
+            // grows the surface, and the content's expand/fill makes it cover the
+            // window. Children stay frame-placed.
+            let (mw, mh) = monitorWorkArea()
+            // Remember the window's current size so un-zoom restores it.
+            preZoomContentSize[handle.rawValue] = (Int32(gtk_widget_get_width(UnsafeMutablePointer<GtkWidget>(OpaquePointer(win)))),
+                                                   Int32(gtk_widget_get_height(UnsafeMutablePointer<GtkWidget>(OpaquePointer(win)))))
+            // The content must FILL whatever the window becomes; it must not be
+            // floored by a size_request (a floor also blocks later shrinking, and
+            // an over-large floor makes a WM refuse the resize outright).
+            gtk_widget_set_hexpand(cw, gboolean(1)); gtk_widget_set_vexpand(cw, gboolean(1))
+            gtk_widget_set_halign(cw, GTK_ALIGN_FILL); gtk_widget_set_valign(cw, GTK_ALIGN_FILL)
+            // GTK4 has no `gtk_window_resize`; set_default_size resizes a mapped
+            // window. Sizes are LOGICAL pixels — the monitor geometry comes back in
+            // device pixels on a scaled/retina display (3200x1767 on the reporter's
+            // Mac), and asking for a window larger than the screen is exactly what
+            // quartz-wm refused.
+            gtk_window_set_default_size(win, mw, mh)
+            gtk_widget_queue_resize(cw)
+            logZoom("request", handle: handle, content: cw, window: win, req: (mw, mh))
+        } else {
+            zoomedWindows.remove(handle.rawValue)
+            if let (rw, rh) = preZoomContentSize[handle.rawValue], rw > 0, rh > 0 {
+                gtk_window_set_default_size(win, rw, rh)
+                preZoomContentSize[handle.rawValue] = nil
+            }
+        }
+    }
+    /// Env-gated (`LINCHOCOLATE_ZOOM_DEBUG`) diagnostics: logs the requested size
+    /// now, and the content's *actual* allocation a moment later. Lets us see, on
+    /// a setup we can't reproduce, whether the monitor query or the resize is the
+    /// problem.
+    private func logZoom(_ phase: String, handle: NativeHandle, content: UnsafeMutablePointer<GtkWidget>,
+                         window: UnsafeMutablePointer<GtkWindow>, req: (Int32, Int32)) {
+        guard ProcessInfo.processInfo.environment["LINCHOCOLATE_ZOOM_DEBUG"] != nil else { return }
+        FileHandle.standardError.write("ZOOM \(phase): monitor req=\(req.0)x\(req.1)\n".data(using: .utf8)!)
+        let box = ActionBox {
+            let cw = gtk_widget_get_width(content), ch = gtk_widget_get_height(content)
+            let ww = gtk_widget_get_width(UnsafeMutablePointer<GtkWidget>(OpaquePointer(window)))
+            let wh = gtk_widget_get_height(UnsafeMutablePointer<GtkWidget>(OpaquePointer(window)))
+            FileHandle.standardError.write("ZOOM alloc: content=\(cw)x\(ch) window=\(ww)x\(wh)\n".data(using: .utf8)!)
+        }
+        g_timeout_add(guint(700), { ud in
+            Unmanaged<ActionBox>.fromOpaque(ud!).takeUnretainedValue().action(); return gboolean(0)
+        }, Unmanaged.passRetained(box).toOpaque())
+    }
+    /// The geometry of the primary monitor, for sizing a zoomed window. Falls
+    /// back to a generous default when no monitor is enumerable (headless / some
+    /// XQuartz setups) so zoom still grows the content.
+    private func monitorWorkArea() -> (Int32, Int32) {
+        let fallback: (Int32, Int32) = (1680, 1040)
+        guard let display = gdk_display_get_default() else { return fallback }
+        let monitors = gdk_display_get_monitors(display)
+        guard let raw = g_list_model_get_item(monitors, 0) else { return fallback }
+        var geo = GdkRectangle()
+        gdk_monitor_get_geometry(OpaquePointer(raw), &geo)
+        // GdkMonitor reports DEVICE pixels; windows are sized in logical pixels.
+        // On a retina Mac that is a 2x difference — asking for the device size
+        // makes the window bigger than the screen, which a WM may refuse outright.
+        let scale = Swift.max(1, gdk_monitor_get_scale_factor(OpaquePointer(raw)))
+        g_object_unref(raw)
+        guard geo.width > 0, geo.height > 0 else { return fallback }
+        return (geo.width / scale, geo.height / scale)
+    }
+    public func isWindowZoomed(_ handle: NativeHandle) -> Bool {
+        zoomedWindows.contains(handle.rawValue)
+    }
+    public func miniaturizeWindow(_ handle: NativeHandle) {
+        guard let w = widget(handle) else { return }
+        gtk_window_minimize(asWindow(w))
+    }
+
     /// Updates the window's title-bar text.
     public func setWindowTitle(_ title: String, for handle: NativeHandle) {
         guard let w = widget(handle) else { return }
@@ -2046,16 +2136,18 @@ public final class GTKNativeControlBackend: NativeControlBackend {
         return h
     }
     /// Appends a titled `GtkColumnViewColumn` with a signal-driven cell factory.
-    public func addTableColumn(title: String, to table: NativeHandle) {
+    public func addTableColumn(title: String, editable: Bool, to table: NativeHandle) {
         guard let cv = tableColumnViews[table.rawValue] else { return }
         let columnIndex = tableColumnCounts[table.rawValue, default: 0]
+        if editable { editableTableColumns[table.rawValue, default: []].insert(columnIndex) }
         let factory = gtk_signal_list_item_factory_new()!
+        let setupBox = TableColumnBox(backend: self, table: table.rawValue, column: columnIndex, editable: editable)
         g_signal_connect_data(
             UnsafeMutableRawPointer(factory), "setup",
             unsafeBitCast(gtkTableCellSetupTrampoline, to: GCallback.self),
-            nil, nil, GConnectFlags(rawValue: 0)
+            Unmanaged.passRetained(setupBox).toOpaque(), boxRelease, GConnectFlags(rawValue: 0)
         )
-        let box = TableColumnBox(backend: self, table: table.rawValue, column: columnIndex)
+        let box = TableColumnBox(backend: self, table: table.rawValue, column: columnIndex, editable: editable)
         g_signal_connect_data(
             UnsafeMutableRawPointer(factory), "bind",
             unsafeBitCast(gtkTableCellBindTrampoline, to: GCallback.self),
@@ -2139,6 +2231,13 @@ public final class GTKNativeControlBackend: NativeControlBackend {
         tableRowCounts[table.rawValue] = count
     }
     /// Records the cell-text provider used by the column bind trampoline.
+    public func setTableCellCommitAction(for handle: NativeHandle, _ handler: @escaping (Int, Int, String) -> Void) {
+        tableCommitActions[handle.rawValue] = handler
+    }
+    /// Called from the editable-cell commit trampoline.
+    func reportCellEdit(table: UInt, row: Int, column: Int, text: String) {
+        tableCommitActions[table]?(row, column, text)
+    }
     public func setTableCellProvider(for table: NativeHandle, provider: @escaping (Int, Int) -> String) {
         tableProviders[table.rawValue] = provider
     }
@@ -2299,6 +2398,44 @@ public final class GTKNativeControlBackend: NativeControlBackend {
         for s in additions where s != nil { free(UnsafeMutableRawPointer(mutating: s)) }
         outlineRootCounts[outline.rawValue] = count
     }
+    /// The `GtkTreeListRow` at a visible outline position, or nil. The outline's
+    /// selection model (a `GtkSingleSelection` over the tree list model) is a
+    /// GListModel of the flattened, expanded rows.
+    private func outlineTreeRow(atRow row: Int, for outline: NativeHandle) -> OpaquePointer? {
+        guard row >= 0, let selection = tableSelections[outline.rawValue] else { return nil }
+        guard row < Int(g_list_model_get_n_items(selection)) else { return nil }
+        return g_list_model_get_item(selection, guint(row)).map { OpaquePointer($0) }  // caller unrefs
+    }
+    public func outlineVisibleRowCount(for outline: NativeHandle) -> Int {
+        guard let selection = tableSelections[outline.rawValue] else { return 0 }
+        return Int(g_list_model_get_n_items(selection))
+    }
+    public func outlineItemPath(atRow row: Int, for outline: NativeHandle) -> String? {
+        guard let treeRow = outlineTreeRow(atRow: row, for: outline) else { return nil }
+        defer { g_object_unref(UnsafeMutableRawPointer(treeRow)) }
+        guard let item = gtk_tree_list_row_get_item(treeRow) else { return nil }
+        defer { g_object_unref(item) }
+        return String(cString: gtk_string_object_get_string(OpaquePointer(item)))
+    }
+    public func outlineRowDepth(atRow row: Int, for outline: NativeHandle) -> Int {
+        guard let treeRow = outlineTreeRow(atRow: row, for: outline) else { return 0 }
+        defer { g_object_unref(UnsafeMutableRawPointer(treeRow)) }
+        return Int(gtk_tree_list_row_get_depth(treeRow))
+    }
+    public func outlineIsRowExpanded(atRow row: Int, for outline: NativeHandle) -> Bool {
+        guard let treeRow = outlineTreeRow(atRow: row, for: outline) else { return false }
+        defer { g_object_unref(UnsafeMutableRawPointer(treeRow)) }
+        return gtk_tree_list_row_get_expanded(treeRow) != 0
+    }
+    public func setOutlineRowExpanded(_ expanded: Bool, atRow row: Int, for outline: NativeHandle) {
+        guard let treeRow = outlineTreeRow(atRow: row, for: outline) else { return }
+        defer { g_object_unref(UnsafeMutableRawPointer(treeRow)) }
+        gtk_tree_list_row_set_expanded(treeRow, gboolean(expanded ? 1 : 0))
+    }
+    public func selectOutlineRow(_ row: Int, for outline: NativeHandle) {
+        guard let selection = tableSelections[outline.rawValue] else { return }
+        gtk_single_selection_set_selected(selection, row < 0 ? guint.max : guint(row))
+    }
     /// Records the child-count and cell-text providers used by the tree model and bind trampolines.
     public func setOutlineProviders(
         for outline: NativeHandle,
@@ -2396,10 +2533,60 @@ public final class GTKNativeControlBackend: NativeControlBackend {
         gtk_widget_set_size_request(picture, Int32(frame.width), Int32(frame.height))
         return allocate(picture, .imageView, frame: frame)
     }
+    private var editableTableColumns: [UInt: Set<Int>] = [:]   // table -> editable column indices
+    private var tableCommitActions: [UInt: (Int, Int, String) -> Void] = [:]
+    private var imageViewPaths: [UInt: String] = [:]
+    private var imageViewTints: [UInt: (UInt8, UInt8, UInt8)] = [:]
+    /// Windows the app has requested zoomed; mirrors AppKit's synchronous `isZoomed`.
+    private var zoomedWindows: Set<UInt> = []
+    /// A zoomed window's pre-zoom content size, to restore on unzoom.
+    private var preZoomContentSize: [UInt: (Int32, Int32)] = [:]
     /// Loads (or clears with nil) the picture from a file path.
     public func setImagePath(_ path: String?, for handle: NativeHandle) {
+        imageViewPaths[handle.rawValue] = path
+        renderImageView(handle)
+    }
+    public func setImageTint(_ color: NSColor?, isTemplate: Bool, for handle: NativeHandle) {
+        if let color, isTemplate {
+            imageViewTints[handle.rawValue] = (UInt8(color.redComponent * 255),
+                                               UInt8(color.greenComponent * 255),
+                                               UInt8(color.blueComponent * 255))
+        } else {
+            imageViewTints[handle.rawValue] = nil
+        }
+        renderImageView(handle)
+    }
+    /// (Re)paints an image view from its stored path, recoloring the artwork to
+    /// the tint when one is set (AppKit template semantics: keep alpha, replace RGB).
+    private func renderImageView(_ handle: NativeHandle) {
         guard let w = widget(handle) else { return }
-        gtk_picture_set_filename(w, path)   // GtkPicture is opaque; nil clears
+        guard let path = imageViewPaths[handle.rawValue] else {
+            gtk_picture_set_filename(w, nil)
+            return
+        }
+        guard let tint = imageViewTints[handle.rawValue],
+              let pixbuf = gdk_pixbuf_new_from_file(path, nil),
+              gdk_pixbuf_get_has_alpha(pixbuf) != 0, gdk_pixbuf_get_n_channels(pixbuf) == 4 else {
+            gtk_picture_set_filename(w, path)
+            return
+        }
+        recolorPixbuf(pixbuf, to: tint)
+        if let texture = gdk_texture_new_for_pixbuf(pixbuf) {
+            gtk_picture_set_paintable(w, texture)
+        }
+    }
+    /// Replaces every pixel's RGB with `rgb`, keeping alpha (template recolor).
+    private func recolorPixbuf(_ pixbuf: OpaquePointer, to rgb: (UInt8, UInt8, UInt8)) {
+        let width = Int(gdk_pixbuf_get_width(pixbuf))
+        let height = Int(gdk_pixbuf_get_height(pixbuf))
+        let stride = Int(gdk_pixbuf_get_rowstride(pixbuf))
+        guard let pixels = gdk_pixbuf_get_pixels(pixbuf) else { return }
+        for y in 0..<height {
+            for x in 0..<width {
+                let p = pixels + y * stride + x * 4
+                p[0] = rgb.0; p[1] = rgb.1; p[2] = rgb.2
+            }
+        }
     }
     /// Creates a titled `GtkFrame` as the box container.
     public func createBox(title: String, frame: NSRect) -> NativeHandle {
@@ -2703,6 +2890,42 @@ public final class GTKNativeControlBackend: NativeControlBackend {
             gtkDrawFunc,
             Unmanaged.passRetained(box).toOpaque(), boxDestroyNotify
         )
+    }
+    public func runPrintOperation(view: NativeHandle, jobTitle: String, parent: NativeHandle?) -> Bool {
+        guard drawHandlers[view.rawValue] != nil else { return false }
+        let op = gtk_print_operation_new()!
+        gtk_print_operation_set_n_pages(op, 1)
+        gtk_print_operation_set_job_name(op, jobTitle)
+        let frame = frames[view.rawValue] ?? NSMakeRect(0, 0, 320, 180)
+        let box = PrintBox(backend: self, view: view.rawValue,
+                           width: Double(frame.width), height: Double(frame.height))
+        g_signal_connect_data(
+            UnsafeMutableRawPointer(op), "draw-page",
+            unsafeBitCast(gtkPrintDrawPageTrampoline, to: GCallback.self),
+            Unmanaged.passRetained(box).toOpaque(), boxRelease, GConnectFlags(rawValue: 0)
+        )
+        // A headless/automation escape hatch: export to PDF instead of showing
+        // the (modal, display-bound) print dialog. Keeps CI and the geometry
+        // audit from blocking on a dialog while still exercising the render path.
+        let result: GtkPrintOperationResult
+        if let exportPath = ProcessInfo.processInfo.environment["LINCHOCOLATE_PRINT_EXPORT"] {
+            gtk_print_operation_set_export_filename(op, exportPath)
+            result = gtk_print_operation_run(op, GTK_PRINT_OPERATION_ACTION_EXPORT, nil, nil)
+        } else {
+            let parentWindow = parent.flatMap { widget($0) }.map { asWindow($0) }
+            result = gtk_print_operation_run(op, GTK_PRINT_OPERATION_ACTION_PRINT_DIALOG, parentWindow, nil)
+        }
+        g_object_unref(UnsafeMutableRawPointer(op))
+        return result == GTK_PRINT_OPERATION_RESULT_APPLY
+    }
+    /// Renders the print page: wraps the print context's Cairo in a graphics
+    /// context and runs the view's draw handler at its natural size, top-left.
+    func drawPrintPage(view: UInt, printContext: OpaquePointer, width: Double, height: Double) {
+        guard let cr = gtk_print_context_get_cairo_context(printContext) else { return }
+        // The demo's print view is flipped (top-left origin), matching Cairo's
+        // native space, so no axis flip — same as the on-screen flipped path.
+        let context = CairoGraphicsContext(cr: cr, flipped: true)
+        dispatchDraw(view: view, context: context, width: width, height: height)
     }
     /// Queues a redraw of the view's `GtkDrawingArea`.
     public func setNeedsDisplay(_ handle: NativeHandle) {
@@ -3378,10 +3601,12 @@ private final class TableColumnBox {
     weak var backend: GTKNativeControlBackend?
     let table: UInt
     let column: Int
-    init(backend: GTKNativeControlBackend, table: UInt, column: Int) {
+    let editable: Bool
+    init(backend: GTKNativeControlBackend, table: UInt, column: Int, editable: Bool = false) {
         self.backend = backend
         self.table = table
         self.column = column
+        self.editable = editable
     }
 }
 
@@ -3507,6 +3732,25 @@ private let gtkStarDrawFunc: @convention(c) (UnsafeMutablePointer<GtkDrawingArea
     guard let cr, let userData else { return }
     let box = Unmanaged<LevelClickBox>.fromOpaque(userData).takeUnretainedValue()
     box.backend?.drawStars(box.raw, cr: cr, width: Double(width), height: Double(height))
+}
+
+/// Carries a print job's backend + view handle + natural size to the draw-page handler.
+private final class PrintBox {
+    weak var backend: GTKNativeControlBackend?
+    let view: UInt
+    let width: Double
+    let height: Double
+    init(backend: GTKNativeControlBackend, view: UInt, width: Double, height: Double) {
+        self.backend = backend; self.view = view; self.width = width; self.height = height
+    }
+}
+
+/// `GtkPrintOperation::draw-page` — `void (*)(GtkPrintOperation*, GtkPrintContext*, gint, gpointer)`.
+private let gtkPrintDrawPageTrampoline: @convention(c) (UnsafeMutableRawPointer?, UnsafeMutableRawPointer?, gint, gpointer?) -> Void = { _, printContext, _, userData in
+    guard let printContext, let userData else { return }
+    let box = Unmanaged<PrintBox>.fromOpaque(userData).takeUnretainedValue()
+    box.backend?.drawPrintPage(view: box.view, printContext: OpaquePointer(printContext),
+                               width: box.width, height: box.height)
 }
 
 /// Carries a spinner's backend + handle to its draw func and rotation timeout.
@@ -3736,13 +3980,32 @@ private let gtkOutlineCellBindTrampoline: @convention(c) (UnsafeMutableRawPointe
 }
 
 /// Factory `setup` — gives each cell a left-aligned label.
-private let gtkTableCellSetupTrampoline: @convention(c) (UnsafeMutableRawPointer?, UnsafeMutableRawPointer?, gpointer?) -> Void = { _, item, _ in
+private let gtkTableCellSetupTrampoline: @convention(c) (UnsafeMutableRawPointer?, UnsafeMutableRawPointer?, gpointer?) -> Void = { _, item, userData in
     guard let item else { return }
-    let label = gtk_label_new("")!
-    gtk_label_set_xalign(OpaquePointer(label), 0)
-    gtk_widget_set_margin_start(label, 8)
-    gtk_widget_set_margin_end(label, 8)
-    gtk_list_item_set_child(OpaquePointer(item), label)
+    let box = userData.map { Unmanaged<TableColumnBox>.fromOpaque($0).takeUnretainedValue() }
+    if box?.editable == true {
+        // A GtkEditableLabel shows text and enters edit mode on double-click —
+        // exactly AppKit's editable cell. On commit (Enter / focus-out) the
+        // "editing" property drops to false; that is when we push the value back.
+        let editable = gtk_editable_label_new("")!
+        gtk_widget_set_margin_start(editable, 8)
+        gtk_widget_set_margin_end(editable, 8)
+        if let box {
+            let commit = TableColumnBox(backend: box.backend!, table: box.table, column: box.column, editable: true)
+            g_signal_connect_data(
+                UnsafeMutableRawPointer(editable), "notify::editing",
+                unsafeBitCast(gtkCellEditingChangedTrampoline, to: GCallback.self),
+                Unmanaged.passRetained(commit).toOpaque(), boxRelease, GConnectFlags(rawValue: 0)
+            )
+        }
+        gtk_list_item_set_child(OpaquePointer(item), editable)
+    } else {
+        let label = gtk_label_new("")!
+        gtk_label_set_xalign(OpaquePointer(label), 0)
+        gtk_widget_set_margin_start(label, 8)
+        gtk_widget_set_margin_end(label, 8)
+        gtk_list_item_set_child(OpaquePointer(item), label)
+    }
 }
 
 /// Factory `bind` — fills the cell's label from the table's cell provider.
@@ -3752,7 +4015,28 @@ private let gtkTableCellBindTrampoline: @convention(c) (UnsafeMutableRawPointer?
     let row = Int(gtk_list_item_get_position(OpaquePointer(item)))
     guard let child = gtk_list_item_get_child(OpaquePointer(item)) else { return }
     let text = box.backend?.tableCellText(table: box.table, row: row, column: box.column) ?? ""
-    gtk_label_set_text(OpaquePointer(child), text)
+    if box.editable {
+        // Stamp the current row on the reused widget so the commit handler knows
+        // which model row it maps to (row+1 so a valid row is never a null pointer).
+        g_object_set_data(UnsafeMutableRawPointer(child).assumingMemoryBound(to: GObject.self),
+                          "lc-row", UnsafeMutableRawPointer(bitPattern: row + 1))
+        gtk_editable_set_text(OpaquePointer(child), text)
+    } else {
+        gtk_label_set_text(OpaquePointer(child), text)
+    }
+}
+/// `GtkEditableLabel::notify::editing` — on leaving edit mode, push the new text
+/// back to the data source (AppKit's `setObjectValue`).
+private let gtkCellEditingChangedTrampoline: @convention(c) (UnsafeMutableRawPointer?, UnsafeMutableRawPointer?, gpointer?) -> Void = { label, _, userData in
+    guard let label, let userData else { return }
+    let box = Unmanaged<TableColumnBox>.fromOpaque(userData).takeUnretainedValue()
+    // Only fire once, when editing FINISHES (property went to false).
+    guard gtk_editable_label_get_editing(OpaquePointer(label)) == 0 else { return }
+    let text = String(cString: gtk_editable_get_text(OpaquePointer(label)))
+    let rowData = g_object_get_data(label.assumingMemoryBound(to: GObject.self), "lc-row")
+    let row = rowData.map { Int(bitPattern: $0) - 1 } ?? -1
+    guard row >= 0 else { return }
+    box.backend?.reportCellEdit(table: box.table, row: row, column: box.column, text: text)
 }
 
 /// `GtkSingleSelection::notify::selected` — passes the selected row (−1 if none).

@@ -177,6 +177,238 @@ Eastern **Standard** Time.
 
 ---
 
+## 2026-07-18 — Window resize: the content view now fills the window (framework work; demo untouched)
+
+Bobby: *"it is all resizes that are failing, and notice the toolbar and menu DO resize"* — and
+that observation is what cracked it. Several rounds had been spent on `zoom` as if the window
+were refusing to grow. It was not: the window grows fine (hence the toolbar and menu widening).
+**Every** resize failed the same way, because the failure was in drawing, not sizing.
+
+**Root cause: `NSView.bounds` reported the frame, not the allocation.**
+
+```swift
+if frame.size == .zero, nativeLayoutSize != .zero { …use the allocation… }
+return NSMakeRect(0, 0, frame.width, frame.height)      // ← always this, in practice
+```
+
+The window's content view is created at 1120x760 and expands with the window, so its widget is
+allocated the full window — but `bounds` kept answering 1120x760. The demo's
+`DemoContentView.draw(_:)` fills `NSBezierPath(rect: bounds)`, so it painted a 1120x760 rectangle
+into a much larger widget and everything beyond stayed unpainted — the black L-shaped void, which
+looked exactly like "the content didn't resize". On AppKit this cannot happen: the window resizes
+its `contentView`, so its bounds grow with it.
+
+**Fix.** `bounds` now prefers the recorded native allocation whenever it is known, which is the
+truthful answer to "how much space do I occupy" and matches AppKit's content view growing with the
+window. Frame-placed children are allocated exactly their frame by `LinChocolateFixedLayout`, so
+this changes nothing for them (geometry audit still 0 violations on every page).
+
+**Also fixed while here: zoom asked for device pixels.** `GdkMonitor` reports geometry in DEVICE
+pixels (`3200x1767` on the reporter's retina Mac) while windows are sized in LOGICAL pixels, so
+zoom was asking for a window far larger than the screen — which quartz-wm refused outright,
+producing the earlier "window never grew" reading. It now divides by
+`gdk_monitor_get_scale_factor`, and resizes via `gtk_window_set_default_size` (GTK4 has no
+`gtk_window_resize`) instead of flooring the content with a `size_request` (a floor also blocks
+later shrinking).
+
+**A correction to the previous entry.** It concluded "quartz-wm won't resize GTK windows — an
+XQuartz limitation". That was wrong: the window resizes fine, the content just wasn't painting the
+new size, and the zoom request had been over-large in device pixels. Diagnosing display bugs from
+one instrumented number without the user's "the toolbar DOES resize" observation sent this down a
+false trail for three rounds.
+
+**Files touched (framework only)**
+
+- `Views/NSView.swift` — `bounds` prefers the native allocation.
+- `Native/GTK/GTKNativeControlBackend.swift` — monitor geometry → logical pixels; zoom resizes the
+  window rather than flooring the content.
+
+**Verified**
+
+- Linux/Xvfb: resizing the window to 1560x1160 now fills — background, toolbar and content all
+  span the window, no void (previously the content stopped at 1120x760). Whole package builds 0
+  warnings; contract tests pass; geometry audit **0 violations on pages 0,1,2,3,4,7**.
+
+**MUST FIX (WinChocolate):** `NSView.bounds` must report the real allocated size, or a content view
+that grows with the window paints only its original rect.
+## 2026-07-18 — New in 3.x: Zoom actually fills, Print renders, and a Note cell edits on double-click (framework work; demo untouched)
+
+Bobby: *"maximize is not resizing the content. Double click on table still fails. Print
+Sample… fails (all on new to 3.x)."*
+
+**1. Zoom left a black void — round two.** The prior fix sized the content to the monitor AND
+called `gtk_window_maximize`. On XQuartz the `maximize` is the saboteur: quartz-wm frames the
+window fullscreen but never resizes GTK's surface, and while it is in that maximized state GTK
+won't honor the content's larger size request either. Removed the `gtk_window_maximize`/
+`unmaximize` calls entirely — zoom now ONLY sizes the content to the monitor geometry (with a
+generous fallback when no monitor enumerates), which makes GTK request the window resize itself,
+something every WM honors. The content's background then fills the window. Verified under Xvfb:
+Zoom fills the whole window; un-zoom restores.
+
+**2. Print Sample was a total stub.** `NSPrintOperation.init(view:)` discarded the view and
+`run()` returned `false`, so the demo always said "Print canceled". Implemented real printing via
+`GtkPrintOperation`: `run()` renders the view through its own draw handler onto the print page
+(wrapping the `GtkPrintContext`'s Cairo in the same `CairoGraphicsContext` the screen uses), and
+returns whether the job completed. A `LINCHOCOLATE_PRINT_EXPORT=<path>` escape hatch exports to
+PDF instead of opening the (modal, display-bound) dialog, so it is testable headless. Verified:
+the exported PDF contains the sample — the colour bars, the caption, and "WinChocolate Print
+Sample" — and the demo reports "Printed sample".
+
+**3. Double-click a Note to edit finally works.** The New-in-3.x `viewTable` marks its Note
+column `isEditable = true` and the data source implements `setObjectValue` — AppKit's cell-based
+editing recipe — but LinChocolate ignored both: `isEditable` was accepted-and-unused and
+`setObjectValue` was not even in the data-source protocol, so a double-click did nothing.
+Implemented it: editable columns now build a **`GtkEditableLabel`** cell (shows text, enters edit
+mode on double-click — exactly AppKit's editable cell). On commit (Enter / focus-out, detected
+via `notify::editing` → `get_editing == false`) the new text flows back through a
+`setTableCellCommitAction` seam to the data source's `setObjectValue`, and the cell re-reads.
+The row a reused cell maps to is stamped on the widget at bind time. Verified: double-clicking the
+first Note, typing "EDITED", and pressing Enter changes the cell from "high" to "EDITED".
+
+Note on the status line: the demo's "Note N → …" message was wired to the *view-based* field it
+vends; LinChocolate drives the cell (`objectValue`/`setObjectValue`) path, so the edit updates
+the model and the cell but not that particular status string. The edit itself is correct.
+
+**Files touched (framework only)**
+
+- `Native/NativeControlBackend.swift` — `runPrintOperation`, `addTableColumn(…editable:…)`,
+  `setTableCellCommitAction`.
+- `Native/GTK/GTKNativeControlBackend.swift` — zoom sizes content (no `gtk_window_maximize`);
+  `GtkPrintOperation` render (`PrintBox`, draw-page trampoline); editable-cell `GtkEditableLabel`
+  factory + commit trampoline.
+- `Native/InMemoryNativeControlBackend.swift` — records print / commit for tests.
+- `Compat/AppKitCompat.swift` — real `NSPrintOperation.run()`.
+- `Views/NSTableView.swift` — `setObjectValue` in the data-source protocol (+default); pass
+  `isEditable`; install the commit action.
+
+**Verified**
+
+- Linux: built (0 errors/warnings); Zoom fills the window; Print exports the rendered sample and
+  reports "Printed sample"; double-click edits the Note cell. Geometry audit 0 violations (pages
+  2, 4); contract tests pass.
+
+**MUST FIX (WinChocolate):** `zoom` must grow the content (not rely on a maximize the WM may drop);
+`NSPrintOperation.run()` must render the view and print; and an `isEditable` column with a
+`setObjectValue` data source must edit on double-click.
+
+## 2026-07-18 — Zoom fills the content; the outline view responds to clicks (framework work; demo untouched)
+
+Bobby: *"maximize is not resizing the content. Also click on the outline view are slow to
+respond."* Two follow-ups to the previous Zoom/Minimize work.
+
+**1. Zoom left a black void around the content.** The earlier fix called `gtk_window_maximize`,
+but that is unreliable off a full window manager — under XQuartz's quartz-wm it resizes the X
+frame while GTK's surface stays its natural size, so the content sat at 1120×760 in a fullscreen
+frame with black around it. Fixed by driving the size from OUR side: on zoom, the window's
+**content view** gets a size request of the monitor's geometry, so GTK grows the window itself
+and the content's background fills it (AppKit's content-view-fills-window behavior; the
+frame-placed controls stay top-left). `gtk_window_maximize` is still called for real WMs, and
+the pre-zoom size is restored on un-zoom. This is verifiable headless (no WM needed): under Xvfb,
+clicking Zoom now fills the whole 1400×1000 window instead of leaving the void.
+
+**2. The outline view was inert on click — every programmatic method was a no-op stub.**
+`item(atRow:)` returned nil, `row(forItem:)` returned −1, and `expandItem`/`collapseItem`/
+`isItemExpanded`/`level(forItem:)`/`selectRowIndexes` did nothing. So clicking a row highlighted
+it natively but the demo could not tell *which* item was hit ("Outline selected: **none**") and
+the click-to-expand action toggled nothing — it read as an unresponsive tree.
+
+Implemented the real API against the `GtkTreeListModel`. Its selection model is a `GListModel`
+of the flattened, expanded rows; each visible position is a `GtkTreeListRow` exposing
+`get_item` (the path key), `get_depth`, `get_expanded`/`set_expanded`. New backend seams
+(`outlineItemPath(atRow:)`, `outlineRowDepth`, `outlineIsRowExpanded`, `setOutlineRowExpanded`,
+`selectOutlineRow`, `outlineVisibleRowCount`) let `NSOutlineView` resolve a row → item, an item →
+row, expand/collapse, report level, and select. The demo's two channels stay independent —
+`onAction` (→ `onSelectionChange`, the expand/collapse handler) and `onOutlineSelectionChanged`
+(→ the `delegate`, the status handler) — so a click now selects, expands the clicked group, and
+reports the item. Verified: clicking "Controls" selects it, expands it (NSButton/NSTextField/
+NSMatrix appear), and the status reads "Outline selected: Controls".
+
+The click latency itself was a red herring — instrumenting the non-composited capture-phase
+popover-dismiss walk showed it visits 2388 widgets in ~1.25 ms, imperceptible. The
+"slowness" was the inert stubs producing no visible result.
+
+**Files touched (framework only)**
+
+- `Native/NativeControlBackend.swift` — six outline seams.
+- `Native/GTK/GTKNativeControlBackend.swift` — GtkTreeListRow-backed outline queries;
+  content-view sizing on zoom (`monitorWorkArea`, `preZoomContentSize`).
+- `Native/InMemoryNativeControlBackend.swift` — records the outline seams for tests.
+- `Views/NSOutlineView.swift` — real `item(atRow:)`, `row(forItem:)`, `isExpandable`,
+  `isItemExpanded`, `expandItem`, `collapseItem`, `level(forItem:)`, `selectRowIndexes`.
+- `Compat/DemoCompat.swift` — deleted the outline no-op stubs.
+
+**Verified**
+
+- Linux: built (0 errors/warnings); Zoom fills the window under Xvfb; outline click selects +
+  expands + reports the item. Geometry audit 0 violations (pages 2, 4); contract tests pass.
+
+**MUST FIX (WinChocolate):** `zoom` must grow the content, not just the frame; and the outline's
+`item(atRow:)`/`row(forItem:)`/`expandItem`/`collapseItem`/`isItemExpanded`/`level(forItem:)`/
+`selectRowIndexes` must be real, or the tree is inert on click.
+
+## 2026-07-18 — New in 3.x: Zoom/Minimize, and the template-tint swatch, all work (framework work; demo untouched)
+
+Bobby: *"On the New in 3.x Zoom and minimize doesn't work, nor does color well — it changes but
+the square next to it doesn't. Tables don't accept double click or drag."* Four reports; three
+were accepted-and-ignored no-op stubs, the fourth is a genuine larger gap.
+
+**1. Zoom.** `NSWindow.zoom(_:)` and `isZoomed` were no-op stubs (`func zoom(_:) {}`,
+`var isZoomed { false }`). Wired real ones: a `toggleZoomWindow` / `isWindowZoomed` /
+`miniaturizeWindow` seam; GTK calls `gtk_window_maximize` / `_unmaximize`. **`isZoomed` tracks
+the request, not GTK's surface state** — AppKit's `zoom(_:)` is synchronous (the demo reads
+`isZoomed` on the very next line), but GTK's `gtk_window_is_maximized` only flips once the
+compositor acknowledges (a frame later, or never with no window manager). Mirroring the request
+keeps `isZoomed` truthful immediately. Verified: clicking **Zoom** now reports "Window zoomed".
+
+**2. Minimize.** `NSWindow.miniaturize(_:)` was a no-op stub; now calls `gtk_window_minimize`.
+Verified the button no longer does nothing and doesn't crash (its visible effect needs a window
+manager, absent under Xvfb).
+
+**3. The template-tint swatch didn't follow the colour well.** `NSImageView.contentTintColor`
+was "accepted for API parity" — a dead stored property — so changing the well's colour never
+re-tinted the glyph. AppKit recolours a **template** image (alpha kept, RGB replaced) to
+`contentTintColor`; the toolbar already did exactly this for its Tabler icons, so the recolor
+loop was generalised from "theme foreground" to "any colour" and a `setImageTint` seam added.
+`NSImageView` now re-tints whenever `image` or `contentTintColor` changes. Verified: picking green
+in the well turns the glyph square green ("Template tint changed").
+
+**4. The view-based table's double-click-to-edit and drag-reorder — NOT fixed (larger feature).**
+Double-click itself *works*: on the standard Tables/Media table, double-clicking a row fires the
+`doubleAction` ("Table double action: row 2 - NSWindow"), because GtkColumnView emits `activate`
+on double-click and LinChocolate routes it. What does **not** work is specific to the New-in-3.x
+`viewTable`, which is **view-based** (its delegate vends real `NSTextField`/`NSButton` cells):
+
+- *Double-click a Note to edit* needs the GTK table to **host per-cell editable widgets**.
+  LinChocolate's table renders each cell as text through a `String` provider, so there is no
+  editable field to activate.
+- *Drag a row to reorder* needs **GtkColumnView row drag-and-drop** wired to the data source's
+  `pasteboardWriterForRow` / `validateDrop` / `acceptDrop`.
+
+Both are architectural additions (view-based cell hosting; row DnD), not quick wires, and a
+half-working version would violate the no-shims rule. Flagged as the next focused table task
+rather than faked.
+
+**Files touched (framework only)**
+
+- `Native/NativeControlBackend.swift` — `toggleZoomWindow`/`isWindowZoomed`/`miniaturizeWindow`
+  and `setImageTint` seams.
+- `Native/GTK/GTKNativeControlBackend.swift` — GTK window max/min + request-tracked zoom state;
+  image-view path/tint storage, `renderImageView`, generalised `recolorPixbuf`.
+- `Native/InMemoryNativeControlBackend.swift` — records zoom/miniaturize/tint for tests.
+- `Windows/NSWindow.swift` — real `zoom`/`isZoomed`/`miniaturize`.
+- `Media/NSImageView.swift` — `contentTintColor` re-tints; `applyTint` on image/tint change.
+- `Compat/DemoCompat.swift` — deleted the `zoom`/`miniaturize`/`isZoomed` stubs.
+
+**Verified**
+
+- Linux: built (0 errors/warnings); page 4 Zoom → "Window zoomed", Minimize safe, colour-well
+  pick re-tints the glyph; page 2 double-click fires the double action. Geometry audit 0
+  violations (pages 2, 4); contract tests pass.
+
+**MUST FIX (WinChocolate):** `zoom`/`isZoomed`/`miniaturize` must act (and `isZoomed` must read
+true synchronously after `zoom`); `NSImageView.contentTintColor` must recolour a template image;
+and the view-based table needs editable-cell hosting + row drag reorder.
+
 ## 2026-07-18 — Drawing page: the scroll wheel resizes the canvas circle again (framework work; demo untouched)
 
 Bobby: *"The scroll wheel zoom doesn't work on the drawing tab."* The Drawing page's Canvas

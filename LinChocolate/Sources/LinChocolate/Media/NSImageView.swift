@@ -6,7 +6,10 @@ open class NSImageView: NSControl {
 
     /// The displayed image (nil clears the view).
     public var image: NSImage? {
-        didSet { backend.setImagePath(image.flatMap { $0.path }, for: handle) }
+        didSet {
+            backend.setImagePath(image.flatMap { $0.path }, for: handle)
+            applyTint()
+        }
     }
 
     /// How the image scales within the view (AppKit's `NSImageScaling`).
@@ -42,8 +45,16 @@ open class NSImageView: NSControl {
         case alignRight
     }
 
-    /// Optional tint color applied to template images (accepted for API parity).
-    public var contentTintColor: NSColor?
+    /// Tint applied to a template image (AppKit's `contentTintColor`): the
+    /// artwork is recolored to this while keeping its alpha mask.
+    public var contentTintColor: NSColor? {
+        didSet { applyTint() }
+    }
+
+    /// Pushes the current tint to the backend when the image is a template.
+    private func applyTint() {
+        backend.setImageTint(contentTintColor, isTemplate: image?.isTemplate ?? false, for: handle)
+    }
     /// How the image scales within the view (accepted for API parity).
     public var imageScaling: NSImageScaling = .scaleProportionallyDown
     /// How the image aligns within the view (accepted for API parity).

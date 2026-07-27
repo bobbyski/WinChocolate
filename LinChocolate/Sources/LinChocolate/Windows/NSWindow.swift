@@ -122,6 +122,22 @@ open class NSWindow {
         }
     }
 
+    /// Toggles the window between zoomed (maximized) and its normal frame,
+    /// as AppKit's zoom button does.
+    public func zoom(_ sender: Any?) {
+        backend.toggleZoomWindow(handle)
+    }
+
+    /// Whether the window is currently zoomed (maximized).
+    public var isZoomed: Bool {
+        backend.isWindowZoomed(handle)
+    }
+
+    /// Minimizes the window (AppKit's `miniaturize(_:)`).
+    public func miniaturize(_ sender: Any?) {
+        backend.miniaturizeWindow(handle)
+    }
+
     /// Resizes the window's content area.
     public func setContentSize(_ size: NSSize) {
         backend.setFrame(NSMakeRect(0, 0, size.width, size.height), for: handle)

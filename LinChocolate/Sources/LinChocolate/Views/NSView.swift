@@ -50,7 +50,17 @@ open class NSView: NSResponder {
     /// children, e.g. split-view panes), so `draw(_:)` code that fills
     /// `bounds` — the demo's colored panes — sees the real size.
     open var bounds: NSRect {
-        if frame.size == .zero, nativeLayoutSize != .zero {
+        // The native allocation is the truth about how much space this view
+        // actually occupies, so it wins whenever we know it. This matters for any
+        // view the container GROWS beyond its frame — above all the window's
+        // content view, which expands with the window exactly as AppKit's does
+        // (AppKit resizes contentView to fill the window, so its bounds grow).
+        // Reporting the frame there made `draw(_:)` paint only the original
+        // 1120x760 while the widget was allocated the full window: the rest went
+        // unpainted — the "toolbar resizes but the content doesn't" symptom.
+        // Frame-placed children are allocated exactly their frame by
+        // LinChocolateFixedLayout, so this is a no-op for them.
+        if nativeLayoutSize != .zero {
             return NSMakeRect(0, 0, nativeLayoutSize.width, nativeLayoutSize.height)
         }
         return NSMakeRect(0, 0, frame.width, frame.height)

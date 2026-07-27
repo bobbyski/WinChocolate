@@ -5,3 +5,4 @@ demo.stderr.txt
 demo.stdout.txt
 .freebirdStudio
 *.orig
+.freebird/
