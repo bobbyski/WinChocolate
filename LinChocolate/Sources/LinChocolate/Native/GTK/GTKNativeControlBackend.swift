@@ -175,6 +175,24 @@ public final class GTKNativeControlBackend: NativeControlBackend {
                 min-width: 0; min-height: 0; padding: 0;
             }
             .linchocolate-stepper button image { -gtk-icon-size: 10px; }
+            /* NSTokenField chips: AppKit draws each token as a rounded, tinted
+               pill with its text sitting directly on the tint. The label must stay
+               transparent — anything opaque behind the text hides the pill. */
+            button.linchocolate-token-chip {
+                border-radius: 999px;
+                padding: 1px 9px;
+                min-height: 0;
+                background-image: none;
+                background-color: alpha(@theme_selected_bg_color, 0.22);
+                border: 1px solid alpha(@theme_selected_bg_color, 0.45);
+            }
+            button.linchocolate-token-chip:hover {
+                background-color: alpha(@theme_selected_bg_color, 0.34);
+            }
+            button.linchocolate-token-chip label {
+                background: none;
+                background-color: transparent;
+            }
             /* Non-editable NSTextFields render as plain labels (no field chrome). */
             entry.linchocolate-label {
                 background: none; background-color: transparent;
@@ -1337,11 +1355,17 @@ public final class GTKNativeControlBackend: NativeControlBackend {
             setScopedRule(nil, id: "bg", priority: 800, for: handle)
             return
         }
-        // `.cls, .cls *` reproduces the old widget-scoped `*` reach (the widget
-        // and its descendants). 800 > the app-wide providers, so this wins.
+        // The widget ONLY — deliberately not `.cls *`. A background does not
+        // inherit in CSS, and the per-widget provider this replaced styled just
+        // the widget's own node. Painting every descendant put an opaque slab of
+        // the field colour behind each child's text — visible as the token chips'
+        // labels masking their pill. 800 > the app-wide providers, so this wins.
         let cls = scopeClass(handle.rawValue)
+        // `text` subnodes are included because GtkEntry/GtkTextView paint their
+        // editable surface there, so a field's background must reach it. `label`
+        // is deliberately NOT included — that is what masked the token pills.
         let rule = String(
-            format: ".%@, .%@ * { background-color: rgba(%d,%d,%d,%.3f); }", cls, cls,
+            format: ".%@, .%@ text { background-color: rgba(%d,%d,%d,%.3f); }", cls, cls,
             Int(color.redComponent * 255), Int(color.greenComponent * 255),
             Int(color.blueComponent * 255), Double(color.alphaComponent)
         )
@@ -2515,6 +2539,7 @@ public final class GTKNativeControlBackend: NativeControlBackend {
         var previous: OpaquePointer? = nil
         for (index, token) in (tokenValues[handle.rawValue] ?? []).enumerated() {
             let chip = gtk_button_new_with_label("\(token) ✕")!
+            gtk_widget_add_css_class(chip, "linchocolate-token-chip")
             let remove = ActionBox { [weak self] in self?.removeToken(handle, at: index) }
             g_signal_connect_data(
                 UnsafeMutableRawPointer(chip), "clicked",

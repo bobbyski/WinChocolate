@@ -177,6 +177,45 @@ Eastern **Standard** Time.
 
 ---
 
+## 2026-07-18 — Controls page: token pills show their tint through the text (framework work; demo untouched)
+
+Bobby: *"on the control window the token pills text should be on transparent background so pill
+colour shines through."*
+
+**Two things were wrong, and the first was a regression I introduced.** The CSS-provider migration
+(the warning-clearing pass) rewrote `setBackgroundColor` to emit `.cls, .cls *`. That `*` arm paints
+the field's background onto **every descendant**, so each token chip's `label` got an opaque slab of
+the token field's colour drawn on top of the chip — the text sat in a rectangle that hid the pill.
+The per-widget provider it replaced did not do this: `gtk_style_context_add_provider` attaches to
+that one widget's style context, so the old `*` matched only the widget's own node. CSS backgrounds
+do not inherit, so blanket-applying one was wrong in the first place.
+
+The rule is now `.cls, .cls text` — the widget itself plus `text` subnodes, because GtkEntry and
+GtkTextView paint their editable surface on a `text` node and a field's background must reach it.
+`label` is deliberately excluded; that is exactly what masked the pills.
+
+**Second: the chips were never styled as pills.** They were plain `GtkButton`s wearing the theme's
+button look. AppKit draws a token as a rounded, tinted pill with its text directly on the tint, so
+the chips now carry a `linchocolate-token-chip` class: fully rounded (`border-radius: 999px`), a
+translucent accent fill with a matching border, a hover state — and an explicitly **transparent
+label**, so nothing can mask the tint again.
+
+**Files touched (framework only)**
+
+- `Native/GTK/GTKNativeControlBackend.swift` — background rule scoped to the widget + `text`
+  subnodes; `linchocolate-token-chip` class on chips and its pill CSS.
+
+**Verified**
+
+- Linux: pills render rounded and tinted with the text on the tint, in **both light and dark**, and
+  with the field focused (the focus background colour was the case that made the bleed obvious).
+  Every other field background still applies — Type here, Password, Notes (`NSTextView`), Price,
+  the Form fields, and the coloured status/focus labels. Whole package builds 0 warnings; contract
+  tests pass; geometry audit 0 violations (pages 0, 1, 2).
+
+**MUST FIX (WinChocolate):** a control's background must not be painted behind its children's text,
+and token pills should draw their tint with transparent label text.
+
 ## 2026-07-18 — Window resize: the content view now fills the window (framework work; demo untouched)
 
 Bobby: *"it is all resizes that are failing, and notice the toolbar and menu DO resize"* — and
