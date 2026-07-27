@@ -2,7 +2,7 @@
 ///
 /// Native keyboard and mouse messages enter WinChocolate at the backend layer
 /// and are translated into `NSEvent` instances before reaching views.
-public struct NSEvent: Equatable, Sendable {
+public struct NSEvent: Equatable {
     /// Supported event categories.
     public enum EventType: Equatable, Sendable {
         /// A left mouse button press.
@@ -51,8 +51,9 @@ public struct NSEvent: Equatable, Sendable {
     /// The event location in window coordinates.
     public var locationInWindow: NSPoint
 
-    /// Native key code for keyboard events, when available.
-    public var keyCode: UInt16?
+    /// Native key code for keyboard events. Matching AppKit, this is a plain
+    /// `UInt16` that reads `0` for events that carry no key code.
+    public var keyCode: UInt16
 
     /// Characters represented by a keyboard event, when available.
     public var characters: String?
@@ -102,7 +103,7 @@ public struct NSEvent: Equatable, Sendable {
     public init(
         type: EventType,
         locationInWindow: NSPoint,
-        keyCode: UInt16? = nil,
+        keyCode: UInt16 = 0,
         characters: String? = nil,
         modifierFlags: ModifierFlags = [],
         clickCount: Int = 1,

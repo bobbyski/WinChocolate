@@ -42,9 +42,9 @@ final class RunLoopDemoActionTarget: NSObject {
         guard aSelector.name == "fire:" else {
             return super.perform(aSelector, with: object)
         }
-        // Actions arrive on the UI thread; the unsafe copy hops the @MainActor
-        // handler across the nonisolated override, as DemoConveniences does.
-        nonisolated(unsafe) let block = handler
+        // Actions arrive on the UI thread, so assuming the main actor here is a
+        // statement of fact (as DemoConveniences does).
+        let block = handler
         MainActor.assumeIsolated { block?() }
         return nil
     }

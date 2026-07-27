@@ -884,7 +884,7 @@ extension NSTableView {
             winDraggingRows = IndexSet(integer: row)
             winDropIndex = -1
             winPendingCollapseRow = -1
-        } else if winMainActor { winEffectiveDataSource?.tableView(self, pasteboardWriterForRow: row) } != nil {
+        } else if winMainActor({ winEffectiveDataSource?.tableView(self, pasteboardWriterForRow: row) }) != nil {
             winExternalDragRow = row
         }
 

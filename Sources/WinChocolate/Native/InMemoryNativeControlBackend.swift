@@ -195,7 +195,11 @@ public final class RecordingDrawingContext: NativeDrawingContext {
 /// Win32 backend owns real HWND creation for application runs.
 public final class InMemoryNativeControlBackend: NativeControlBackend {
     /// A recorded native object request.
-    public struct Record: Equatable, Sendable {
+    // Not `Sendable`: these records carry AppKit values (`NSFont`, `NSColor`)
+    // which are not Sendable on Apple either. The backend is single-threaded
+    // (everything runs on the UI/test thread), so nothing needs to cross an
+    // isolation boundary.
+    public struct Record: Equatable {
         /// The kind of native object requested.
         public var kind: String
 
@@ -394,7 +398,7 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     }
 
     /// One recorded rich-text range formatting request.
-    public struct TextRangeFormat: Equatable, Sendable {
+    public struct TextRangeFormat: Equatable {
         /// The applied font, when any.
         public var font: NSFont?
 

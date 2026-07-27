@@ -222,11 +222,10 @@ private final class _JSONEncoder: Encoder {
         case .base64:
             return .string(data.base64EncodedString())
         case .deferredToData:
-            // WinFoundation's `Data` isn't `Encodable` (Apple's is), so the
-            // array-of-bytes form Foundation's `.deferredToData` produces is
-            // written explicitly from the bytes.
+            // `Data`'s own `encode(to:)` writes the unkeyed array-of-bytes form,
+            // matching Foundation's `.deferredToData`.
             let nested = _JSONEncoder(options: options, codingPath: path)
-            try Array(data).encode(to: nested)
+            try data.encode(to: nested)
             return nested.storage.value ?? .null
         case .custom(let encode):
             let nested = _JSONEncoder(options: options, codingPath: path)

@@ -530,12 +530,7 @@ open class NSTableView: NSControl {
 
     /// Tables handle standard navigation keys as part of their component behavior.
     open override func keyDown(with event: NSEvent) {
-        guard let keyCode = event.keyCode else {
-            super.keyDown(with: event)
-            return
-        }
-
-        switch keyCode {
+        switch event.keyCode {
         case TableKeyCode.tab:
             moveFocusWithTab(event)
         case TableKeyCode.upArrow:

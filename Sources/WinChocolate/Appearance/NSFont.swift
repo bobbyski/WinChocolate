@@ -4,7 +4,7 @@
 /// it into native font handles or modern text styling. Weight raw values are the
 /// Windows `LOGFONT` weights (100-900), so the backend feeds `weight.rawValue`
 /// straight into `CreateFontW`; the italic trait maps to the font's italic flag.
-public struct NSFont: Equatable, Sendable {
+public struct NSFont: Equatable {
     /// The requested font family name.
     public let fontName: String
 
