@@ -343,10 +343,26 @@ public final class GTKNativeControlBackend: NativeControlBackend {
         mainLoop = loop
         g_main_loop_run(loop)
     }
-    /// Quits the running `GMainLoop`, if any.
+    /// Quits every running `GMainLoop` — the app's, plus any nested loop a
+    /// modal is spinning. Quitting only the outer loop leaves a modal's loop
+    /// running and the app never exits, which is what made Quit look dead after
+    /// an alert was dismissed by closing its window.
     public func terminateApplication() {
+        for loop in nestedLoops.reversed() { g_main_loop_quit(loop) }
+        nestedLoops.removeAll()
         guard let loop = mainLoop else { return }
         g_main_loop_quit(loop)
+    }
+
+    /// Nested modal loops, innermost last.
+    private var nestedLoops: [OpaquePointer] = []
+    /// Records a modal's loop so `terminateApplication` can end it.
+    func pushNestedLoop(_ loop: OpaquePointer?) {
+        if let loop { nestedLoops.append(loop) }
+    }
+    /// Drops the innermost modal loop once it has finished.
+    func popNestedLoop() {
+        if !nestedLoops.isEmpty { nestedLoops.removeLast() }
     }
 
     /// Schedules `block` on GTK's main loop via `g_timeout_add`.
@@ -808,8 +824,22 @@ public final class GTKNativeControlBackend: NativeControlBackend {
         gtk_box_append(asBox(OpaquePointer(vbox)), buttonRow)
 
         gtk_window_set_child(asWindow(OpaquePointer(alert)), vbox)
+        // Closing the alert's window is a dismissal too. Without this the nested
+        // loop below runs forever: the app keeps processing events and looks
+        // fine, but `terminate` quits the OUTER loop and so Quit silently does
+        // nothing. (Alerts are deliberately non-modal on non-composited displays,
+        // which gives them a real close button — easy to hit.) Report the last
+        // button, AppKit's cancel-ish answer for a dismissed alert.
+        let closeBox = AlertButtonBox(index: Swift.max(0, buttons.count - 1), state: state)
+        g_signal_connect_data(
+            UnsafeMutableRawPointer(alert), "close-request",
+            unsafeBitCast(gtkAlertCloseTrampoline, to: GCallback.self),
+            Unmanaged.passRetained(closeBox).toOpaque(), boxRelease, GConnectFlags(rawValue: 0)
+        )
         gtk_window_present(asWindow(OpaquePointer(alert)))
-        g_main_loop_run(loop)   // blocks until a button quits the nested loop
+        pushNestedLoop(loop)
+        g_main_loop_run(loop)   // blocks until a button (or the close box) quits it
+        popNestedLoop()
 
         gtk_window_destroy(asWindow(OpaquePointer(alert)))
         return state.response
@@ -1247,7 +1277,9 @@ public final class GTKNativeControlBackend: NativeControlBackend {
                 unsafeBitCast(fileDialogFinishedCallback, to: GAsyncReadyCallback.self),
                 Unmanaged.passRetained(state).toOpaque())
         }
+        pushNestedLoop(loop)
         g_main_loop_run(loop)   // blocks until the completion callback quits it
+        popNestedLoop()
         g_object_unref(UnsafeMutableRawPointer(dialog))
         return state.path
     }
@@ -3746,6 +3778,23 @@ private final class AlertState {
     var response = 0
     init(loop: OpaquePointer?) { self.loop = loop }
 }
+/// `GtkWindow::close-request` on an alert — treat closing as a dismissal so the
+/// nested loop ends and `runAlert` returns.
+///
+/// Returns TRUE (handled), which STOPS GTK's default close. That matters:
+/// `runAlert` destroys the alert itself once its loop ends, so letting GTK also
+/// destroy it here means the window is destroyed twice — an X error that takes
+/// the whole app down.
+private let gtkAlertCloseTrampoline: @convention(c) (UnsafeMutableRawPointer?, gpointer?) -> gboolean = { _, userData in
+    guard let userData else { return gboolean(0) }
+    let box = Unmanaged<AlertButtonBox>.fromOpaque(userData).takeUnretainedValue()
+    box.state.response = box.index
+    if let loop = box.state.loop, g_main_loop_is_running(loop) != 0 {
+        g_main_loop_quit(loop)
+    }
+    return gboolean(1)
+}
+
 private final class AlertButtonBox {
     let index: Int
     let state: AlertState

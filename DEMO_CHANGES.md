@@ -177,6 +177,58 @@ Eastern **Standard** Time.
 
 ---
 
+## 2026-07-18 — Quit works after a modal is dismissed by closing its window (framework work; demo untouched)
+
+Bobby: *"nib screen works but leaves the app unstable (quit no longer works)."*
+
+**Root cause: a nested main loop that nothing ever ended.** `runAlert` builds AppKit's synchronous
+`runModal` out of a GtkWindow plus a nested `GMainLoop`, and only the alert's BUTTONS quit that
+loop. Dismiss the alert any other way — closing its window — and the loop runs forever. The app
+still pumps events and looks perfectly healthy, which is why this reads as "unstable" rather than
+"hung": the one thing that stops working is Quit, because `terminateApplication` quit the OUTER
+loop while execution is parked inside the nested one. The nib page reaches this through
+**Show Outlet Values**, and alerts are deliberately **non-modal on non-composited displays**
+(XQuartz) — so they have a real close button, making it easy to hit.
+
+**Two fixes, and the A/B shows they are independent.**
+
+1. `terminateApplication` now quits **every** live loop — a stack of nested modal loops, innermost
+   first, then the app's. With the close handler disabled this alone restores Quit, which is what
+   pins it as the cause.
+2. A `close-request` handler ends the alert's own loop, so `runAlert` RETURNS and the app leaves
+   modal state properly. Without it, everything after `alert.runModal()` in the caller never runs
+   even though Quit works — the demo's status line never updates, and the app stays parked in a
+   modal it no longer shows.
+
+The handler returns **TRUE** (handled), which stops GTK's default close. That detail is load
+bearing: `runAlert` destroys the alert itself once its loop ends, so letting GTK destroy it too
+tore the window down twice — an X error that killed the app. Returning TRUE keeps `runAlert` the
+sole owner.
+
+**A testing note worth recording.** Verifying this needs a *faithful* window close. `xdotool
+windowclose` falls back to `XDestroyWindow` when no window manager is present (Xvfb), which yanks
+the drawable out from under GTK and aborts with `BadDrawable` — a harness artifact that looks
+exactly like an app crash and sent this investigation down a false path twice. A real WM sends a
+`WM_DELETE_WINDOW` ClientMessage; a five-line X client that sends one is what produced a trustworthy
+result. Two earlier "still broken" readings were also bad tests: the alert covers the top-left of
+the screen, so the scripted menu clicks were landing on the alert instead of the menu.
+
+**Files touched (framework only)**
+
+- `Native/GTK/GTKNativeControlBackend.swift` — nested-loop stack (`pushNestedLoop`/`popNestedLoop`),
+  `terminateApplication` quits all of them, alert `close-request` handler
+  (`gtkAlertCloseTrampoline`), file dialog joins the same bookkeeping.
+
+**Verified**
+
+- Linux, sending a real `WM_DELETE_WINDOW` to the alert: the app stays alive with **0 X errors**,
+  the alert dismisses, execution resumes (Increment still works — count went to 1), and **Quit
+  exits**. Dismissing with OK still works. Whole package builds 0 warnings; contract tests pass;
+  geometry audit 0 violations (pages 0, 5, 7, 10).
+
+**MUST FIX (WinChocolate):** a modal dismissed by closing its window must end its modal session,
+and terminate must tear down nested modal loops, or Quit silently stops working.
+
 ## 2026-07-18 — Window resize reaches the app: `windowDidResize` fires and Auto Layout reflows (framework work; demo untouched)
 
 Bobby: *"the resize isn't working so can't test it. Not working = view resizes but controls
