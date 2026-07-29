@@ -251,6 +251,14 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     /// Hidden (ordered-out) windows, for tests.
     public private(set) var hiddenWindows: Set<UInt> = []
     /// Records the window as hidden and no longer visible.
+    private var windowResizeActions: [UInt: (Double, Double) -> Void] = [:]
+    public func setWindowResizeAction(for handle: NativeHandle, _ handler: @escaping (Double, Double) -> Void) {
+        windowResizeActions[handle.rawValue] = handler
+    }
+    /// Test hook: simulate the window being resized.
+    public func simulateWindowResize(_ width: Double, _ height: Double, for handle: NativeHandle) {
+        windowResizeActions[handle.rawValue]?(width, height)
+    }
     public func hideWindow(_ handle: NativeHandle) {
         hiddenWindows.insert(handle.rawValue)
         visibleWindows.remove(handle.rawValue)

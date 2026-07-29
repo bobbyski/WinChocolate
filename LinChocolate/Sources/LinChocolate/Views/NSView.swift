@@ -14,6 +14,10 @@ open class NSView: NSResponder {
     /// origin). Setting it repositions/resizes the native control.
     public var frame: NSRect {
         didSet {
+            // A frame the NATIVE side just told us about must not be pushed back
+            // as a size request: a request is a floor, so echoing the window's
+            // current size would stop the user shrinking it again.
+            if suppressFrameSync { return }
             // `isFlipped` is per-view and overridable, so a subclass may compute
             // it rather than return a constant. Re-read both flips that decide
             // this frame's placement (our parent's, for our own Y; and ours, for
@@ -23,6 +27,17 @@ open class NSView: NSResponder {
             backend.setFrame(frame, for: handle)
             layout()
         }
+    }
+
+    private var suppressFrameSync = false
+
+    /// Records a frame the native layout produced, without echoing it back to
+    /// the backend. Used when the window resizes its content view.
+    func adoptNativeFrame(_ newFrame: NSRect) {
+        suppressFrameSync = true
+        frame = newFrame
+        suppressFrameSync = false
+        layout()
     }
 
     /// Pushes this view's flip, and its parent's, to the backend. Cheap, and it

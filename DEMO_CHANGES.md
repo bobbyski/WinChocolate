@@ -177,6 +177,55 @@ Eastern **Standard** Time.
 
 ---
 
+## 2026-07-18 — Window resize reaches the app: `windowDidResize` fires and Auto Layout reflows (framework work; demo untouched)
+
+Bobby: *"the resize isn't working so can't test it. Not working = view resizes but controls
+don't move."* With the window now growing correctly, the Auto Layout page still sat static.
+
+**Two gaps, both in the framework.**
+
+1. **`NSWindowDelegate` was an empty marker protocol** — `public protocol NSWindowDelegate:
+   AnyObject {}` — so `windowDidResize(_:)` was never declared, never dispatched, and the demo's
+   reflow (which hangs off exactly that notification) could not run. It is a real requirement now,
+   defaulted to a no-op, and `NSWindow` posts it on every resize.
+2. **The content view's frame never changed.** An earlier fix made `bounds` report the true
+   allocation, which is why the background started filling the window — but `frame` still read
+   1120 wide, and the demo reflows from `contentView.frame.size.width`. `NSWindow` now resizes its
+   content view to the window on every resize, as AppKit does.
+
+**Finding the resize signal took two attempts, and the first was wrong.** `notify::default-width`
+/`default-height` on the `GtkWindow` looked right (it is the property apps bind to persist their
+size) but does **not** fire for a resize driven by the window manager — verified by resizing and
+watching nothing happen. What does fire, reliably, is the content view's **draw pass**: a resize
+re-runs it with the new width and height (that is what repaints the background at the new size).
+The backend now compares the size there and, when it really changed, fires the window's resize
+handler from a `g_idle_add` callback — so layout never runs inside a draw.
+
+**The frame is adopted, not echoed.** A frame the native side reports must not be pushed back as a
+`gtk_widget_set_size_request`: a size request is a FLOOR, so echoing the current size would leave
+the window unable to shrink again. `NSView.adoptNativeFrame` records it silently and runs `layout()`.
+
+**Files touched (framework only)**
+
+- `Compat/AppKitCompat.swift` — `NSWindowDelegate.windowDidResize(_:)` (with a default).
+- `Native/NativeControlBackend.swift` — `setWindowResizeAction` seam.
+- `Native/GTK/GTKNativeControlBackend.swift` — resize detection from the content draw pass
+  (`noteContentDraw`, `contentViewOwners`, `lastContentSizes`).
+- `Native/InMemoryNativeControlBackend.swift` — records the handler + a `simulateWindowResize` hook.
+- `Views/NSView.swift` — `adoptNativeFrame` (silent frame update + `layout()`).
+- `Windows/NSWindow.swift` — installs the hook, resizes `contentView`, posts `windowDidResize`.
+
+**Verified**
+
+- Linux: on the Auto Layout page, growing the window to 1560 reflows everything — the four
+  constraint boxes span the new width, the green "middle fills the gap" box stretches to 1443, the
+  stack-view boxes widen and the grid form moves right — and **shrinking back to 1180 reflows down
+  again**, so no size-request floor is left behind. Whole package builds 0 warnings; contract tests
+  pass; geometry audit 0 violations (pages 0, 5, 7, 9).
+
+**MUST FIX (WinChocolate):** `windowDidResize` must be dispatched to the window delegate, and the
+content view's frame must track the window, or constraint-driven pages never reflow.
+
 ## 2026-07-18 — Horizontal collections match AppKit; the selected segment reads as selected (framework work; demo untouched)
 
 Bobby, with a Linux/macOS screenshot pair side by side: *"your highlight colour looks like the

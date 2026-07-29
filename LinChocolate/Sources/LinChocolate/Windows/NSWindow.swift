@@ -79,6 +79,7 @@ open class NSWindow {
         }
         NSApplication.shared.windows.append(self)
         NSApplication.shared.installMainMenuIfNeeded(on: self)
+        observeResize()
     }
 
     /// Shows the window and orders it to the front.
@@ -119,6 +120,18 @@ open class NSWindow {
         close()
         if !NSApplication.shared.windows.contains(where: { $0.isVisible }) {
             NSApplication.shared.terminate(nil)
+        }
+    }
+
+    /// Installs the native resize hook: AppKit resizes the content view to the
+    /// window and posts `windowDidResize`, and layout code (the demo's Auto
+    /// Layout page) hangs off exactly that.
+    private func observeResize() {
+        backend.setWindowResizeAction(for: handle) { [weak self] width, height in
+            guard let self else { return }
+            self.contentView?.adoptNativeFrame(NSMakeRect(0, 0, width, height))
+            self.delegate?.windowDidResize(
+                Notification(name: Notification.Name("NSWindowDidResizeNotification"), object: self))
         }
     }
 

@@ -95,8 +95,18 @@ public func NSRectFill(_ rect: NSRect) {
 // the types. The framework does not yet dispatch to these delegates (a later
 // parity item); the demo's own methods still compile as ordinary members.
 
-/// AppKit's `NSWindowDelegate` marker (empty until dispatch lands).
-public protocol NSWindowDelegate: AnyObject {}
+/// AppKit's `NSWindowDelegate` — the slice the demo drives.
+public protocol NSWindowDelegate: AnyObject {
+    /// Posted after the window's size changed. Apple types the parameter
+    /// `Notification` (the Swift value type); matching that exactly is what
+    /// makes the method a real witness on Darwin.
+    func windowDidResize(_ notification: Notification)
+}
+
+public extension NSWindowDelegate {
+    /// Default: no-op.
+    func windowDidResize(_ notification: Notification) {}
+}
 /// AppKit's `NSTableViewDelegate` — the slice the demo drives.
 @MainActor
 public protocol NSTableViewDelegate: AnyObject {

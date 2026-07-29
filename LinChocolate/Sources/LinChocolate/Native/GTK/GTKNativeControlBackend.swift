@@ -100,7 +100,10 @@ public final class GTKNativeControlBackend: NativeControlBackend {
     private var collectionStacks: [UInt: OpaquePointer] = [:]         // collection -> vertical GtkBox
     private var collectionSectionSpecs: [UInt: [NativeCollectionSection]] = [:]
     private var collectionSectionFlows: [UInt: [(flow: OpaquePointer, base: Int)]] = [:]
-    private var collectionFlowGeometry: [UInt: (interitem: Double, line: Double, horizontal: Bool)] = [:]   // collection -> GtkFlowBox
+    private var collectionFlowGeometry: [UInt: (interitem: Double, line: Double, horizontal: Bool)] = [:]
+    private var windowResizeActions: [UInt: (Double, Double) -> Void] = [:]
+    private var contentViewOwners: [UInt: UInt] = [:]     // content view -> its window
+    private var lastContentSizes: [UInt: NSSize] = [:]   // collection -> GtkFlowBox
     private var collectionSelectionActions: [UInt: (Int) -> Void] = [:]
     private var suppressCollectionSelection: Set<UInt> = []
     private var clickActionBoxes: [UInt: Bool] = [:]
@@ -482,6 +485,7 @@ public final class GTKNativeControlBackend: NativeControlBackend {
             }
             gtk_box_append(asBox(box), asWidget(v))
             windowContents[window.rawValue] = v
+            contentViewOwners[view.rawValue] = window.rawValue
         }
     }
     /// Presents the window (`gtk_window_present`).
@@ -570,6 +574,29 @@ public final class GTKNativeControlBackend: NativeControlBackend {
     }
 
     /// Hides the window without destroying it (AppKit's `orderOut`).
+    public func setWindowResizeAction(for handle: NativeHandle, _ handler: @escaping (Double, Double) -> Void) {
+        // GTK4 has no public size-allocate signal, and a window's
+        // default-width/height do NOT change for a resize driven by the WM — so
+        // neither is usable here. The content view's DRAW pass is: it re-runs
+        // with the new width/height on every resize (that is what repaints the
+        // background at the new size). `noteContentDraw` compares sizes there and
+        // fires this handler when it actually changed.
+        windowResizeActions[handle.rawValue] = handler
+    }
+    /// Called from the content view's draw pass. Fires the window's resize
+    /// handler when the size really changed, from an idle callback so layout
+    /// never runs inside a draw.
+    func noteContentDraw(view raw: UInt, width: Double, height: Double) {
+        guard let window = contentViewOwners[raw], let handler = windowResizeActions[window] else { return }
+        guard lastContentSizes[window] != NSMakeSize(width, height) else { return }
+        lastContentSizes[window] = NSMakeSize(width, height)
+        let box = ActionBox { handler(width, height) }
+        g_idle_add({ userData in
+            guard let userData else { return gboolean(0) }
+            Unmanaged<ActionBox>.fromOpaque(userData).takeUnretainedValue().action()
+            return gboolean(0)   // one shot
+        }, Unmanaged.passRetained(box).toOpaque())
+    }
     public func hideWindow(_ handle: NativeHandle) {
         guard let w = widget(handle) else { return }
         gtk_widget_set_visible(asWidget(w), gboolean(0))
@@ -3082,6 +3109,7 @@ public final class GTKNativeControlBackend: NativeControlBackend {
     /// Dispatches a draw pass to the Swift handler (called by the draw func).
     func dispatchDraw(view: UInt, context: NativeGraphicsContext, width: Double, height: Double) {
         drawHandlers[view]?(context, width, height)
+        noteContentDraw(view: view, width: width, height: height)
     }
     /// Sets the widget's sensitivity (`gtk_widget_set_sensitive`).
     public func setEnabled(_ isEnabled: Bool, for handle: NativeHandle) {

@@ -319,6 +319,11 @@ public protocol NativeControlBackend: AnyObject {
     /// panel needs.
     func hideWindow(_ handle: NativeHandle)
 
+    /// Reports the window's new content size whenever the user (or the WM)
+    /// resizes it, so the frameworkcan resize its content view and post
+    /// `windowDidResize`.
+    func setWindowResizeAction(for handle: NativeHandle, _ handler: @escaping (Double, Double) -> Void)
+
     /// Toggles the window between maximized and normal (AppKit's `zoom(_:)`).
     func toggleZoomWindow(_ handle: NativeHandle)
     /// Whether the window is maximized (AppKit's `isZoomed`).
