@@ -71,6 +71,23 @@ public struct NativeGradientStop: Equatable {
 
 /// A pointer event delivered to a custom view (positions in the view's own
 /// top-left coordinates).
+/// One section of a collection view: an optional header band, `itemCount`
+/// items (addressed by their FLAT index across all sections), and an optional
+/// footer band.
+public struct NativeCollectionSection {
+    /// The section's header view, or nil for no header band.
+    public var header: NativeHandle?
+    /// The section's footer view, or nil for no footer band.
+    public var footer: NativeHandle?
+    /// How many items this section holds.
+    public var itemCount: Int
+    public init(header: NativeHandle? = nil, footer: NativeHandle? = nil, itemCount: Int) {
+        self.header = header
+        self.footer = footer
+        self.itemCount = itemCount
+    }
+}
+
 public enum NativeMouseEvent {
     /// The pointer entered the view at `(x, y)`.
     case entered(x: Double, y: Double)
@@ -465,6 +482,16 @@ public protocol NativeControlBackend: AnyObject {
     func createCollectionView(frame: NSRect) -> NativeHandle
     /// Sets the number of items and re-binds visible tiles (= reload).
     func setCollectionItemCount(_ count: Int, for collection: NativeHandle)
+
+    /// Lays the collection out as sections, each an optional header band, its
+    /// items, and an optional footer band (AppKit's sectioned flow layout).
+    /// Item view/text providers stay flat-indexed across all sections.
+    func setCollectionSections(_ sections: [NativeCollectionSection], for collection: NativeHandle)
+
+    /// Flow-layout geometry: gaps between items and lines, and whether items
+    /// flow in columns (horizontal scroll) instead of rows.
+    func setCollectionFlow(interitemSpacing: Double, lineSpacing: Double, horizontal: Bool,
+                           for collection: NativeHandle)
     /// Supplies tile text on demand by item index.
     func setCollectionItemProvider(for collection: NativeHandle, provider: @escaping (Int) -> String)
     /// The native widget for a collection item, or nil to fall back to the
@@ -593,6 +620,11 @@ public protocol NativeControlBackend: AnyObject {
     func setDoubleValue(_ value: Double, for handle: NativeHandle)
     /// Sets a pop-up button's selected item index.
     func setSelectedIndex(_ index: Int, for handle: NativeHandle)
+    /// Draws `count` evenly spaced tick marks along a slider, optionally
+    /// snapping the value to them (AppKit's `numberOfTickMarks` /
+    /// `allowsTickMarkValuesOnly`). A count below 2 clears the marks.
+    func setSliderTickMarks(count: Int, snapsToTicks: Bool, for handle: NativeHandle)
+
     /// Orients a slider vertically or horizontally (AppKit's `isVertical`).
     func setSliderVertical(_ vertical: Bool, for handle: NativeHandle)
     /// Switches a date picker between the graphical calendar and the compact

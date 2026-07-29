@@ -96,7 +96,11 @@ public final class GTKNativeControlBackend: NativeControlBackend {
     private var collectionItemCounts: [UInt: Int] = [:]
     private var collectionProviders: [UInt: (Int) -> String] = [:]
     private var collectionViewProviders: [UInt: (Int) -> NativeHandle?] = [:]
-    private var collectionFlows: [UInt: OpaquePointer] = [:]   // collection -> GtkFlowBox
+    private var collectionFlows: [UInt: OpaquePointer] = [:]          // legacy single-flow lookup
+    private var collectionStacks: [UInt: OpaquePointer] = [:]         // collection -> vertical GtkBox
+    private var collectionSectionSpecs: [UInt: [NativeCollectionSection]] = [:]
+    private var collectionSectionFlows: [UInt: [(flow: OpaquePointer, base: Int)]] = [:]
+    private var collectionFlowGeometry: [UInt: (interitem: Double, line: Double, horizontal: Bool)] = [:]   // collection -> GtkFlowBox
     private var collectionSelectionActions: [UInt: (Int) -> Void] = [:]
     private var suppressCollectionSelection: Set<UInt> = []
     private var clickActionBoxes: [UInt: Bool] = [:]
@@ -175,6 +179,24 @@ public final class GTKNativeControlBackend: NativeControlBackend {
                 min-width: 0; min-height: 0; padding: 0;
             }
             .linchocolate-stepper button image { -gtk-icon-size: 10px; }
+            /* NSSegmentedControl: GTK's :checked toggle is a barely-darker grey
+               that reads as unselected next to AppKit's tinted segment. Give the
+               selected segment the accent fill and matching text, as AppKit does. */
+            .linchocolate-segmented > button:checked,
+            .linchocolate-segmented > button:checked:hover {
+                background-image: none;
+                background-color: @theme_selected_bg_color;
+                color: @theme_selected_fg_color;
+            }
+            .linchocolate-segmented > button:checked label { color: inherit; }
+            /* NSSlider: AppKit draws the same track in both orientations. GTK's
+               vertical trough came out thinner and square-ended than the
+               horizontal one, so pin both to a rounded 4px groove with a real
+               round knob. */
+            scale > trough { min-height: 4px; min-width: 4px; border-radius: 999px; }
+            scale > trough > highlight { border-radius: 999px; }
+            scale > trough > slider { min-height: 16px; min-width: 16px; }
+            scale marks { color: alpha(currentColor, 0.55); }
             /* NSTokenField chips: AppKit draws each token as a rounded, tinted
                pill with its text sitting directly on the tint. The label must stay
                transparent — anything opaque behind the text hides the pill. */
@@ -2127,6 +2149,7 @@ public final class GTKNativeControlBackend: NativeControlBackend {
         // native GTK idiom for a segmented switcher ("linked" style class).
         let box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0)!
         gtk_widget_add_css_class(box, "linked")
+        gtk_widget_add_css_class(box, "linchocolate-segmented")
         gtk_widget_set_size_request(box, Int32(frame.width), Int32(frame.height))
         let h = allocate(box, .segmented, frame: frame)
 
@@ -2275,30 +2298,38 @@ public final class GTKNativeControlBackend: NativeControlBackend {
         // hosts each NSCollectionViewItem's view (the demo's items are push
         // buttons), so a text-tile grid was never going to look like the Mac.
         // The flow box wraps children by width, like NSCollectionViewFlowLayout.
-        let flow = gtk_flow_box_new()!
-        gtk_flow_box_set_selection_mode(OpaquePointer(flow), GTK_SELECTION_SINGLE)
-        gtk_flow_box_set_homogeneous(OpaquePointer(flow), gboolean(0))
-        gtk_flow_box_set_column_spacing(OpaquePointer(flow), 8)
-        gtk_flow_box_set_row_spacing(OpaquePointer(flow), 8)
-        gtk_flow_box_set_max_children_per_line(OpaquePointer(flow), 8)
-        gtk_widget_add_css_class(flow, "linchocolate-collection")
+        // A vertical GtkBox of section blocks; each block is an optional header
+        // band, a GtkFlowBox of that section's items, and an optional footer
+        // band. One flow box per section is what gives AppKit's sectioned flow
+        // layout its full-width bands — a single flow box cannot break a line
+        // for a header.
+        let stack = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0)!
+        gtk_widget_add_css_class(stack, "linchocolate-collection")
         let scroller = gtk_scrolled_window_new()!
-        gtk_scrolled_window_set_child(OpaquePointer(scroller), flow)
+        gtk_scrolled_window_set_child(OpaquePointer(scroller), stack)
         gtk_widget_set_size_request(scroller, Int32(frame.width), Int32(frame.height))
         let h = allocate(scroller, .collection, frame: frame)
-        collectionFlows[h.rawValue] = OpaquePointer(flow)
-        let box = CollectionBox(backend: self, collection: h.rawValue)
-        g_signal_connect_data(
-            UnsafeMutableRawPointer(flow), "selected-children-changed",
-            unsafeBitCast(gtkFlowSelectionTrampoline, to: GCallback.self),
-            Unmanaged.passRetained(box).toOpaque(), boxRelease, GConnectFlags(rawValue: 0)
-        )
+        collectionStacks[h.rawValue] = OpaquePointer(stack)
         return h
     }
-    /// Sets the item count and rebuilds the flow-box's children (= reload).
+    /// Sets the item count and rebuilds (= reload). A collection with no
+    /// declared sections is one unsectioned run of items.
     public func setCollectionItemCount(_ count: Int, for collection: NativeHandle) {
         let raw = collection.rawValue
         collectionItemCounts[raw] = count
+        collectionSectionSpecs[raw] = [NativeCollectionSection(itemCount: count)]
+        rebuildCollectionChildren(raw)
+    }
+    public func setCollectionFlow(interitemSpacing: Double, lineSpacing: Double, horizontal: Bool,
+                                  for collection: NativeHandle) {
+        // Stored only — `setCollectionSections` does the rebuild, so a reload
+        // rebuilds once rather than twice.
+        collectionFlowGeometry[collection.rawValue] = (interitemSpacing, lineSpacing, horizontal)
+    }
+    public func setCollectionSections(_ sections: [NativeCollectionSection], for collection: NativeHandle) {
+        let raw = collection.rawValue
+        collectionSectionSpecs[raw] = sections
+        collectionItemCounts[raw] = sections.reduce(0) { $0 + $1.itemCount }
         rebuildCollectionChildren(raw)
     }
     /// Records the text provider used when no item-view provider supplies a widget.
@@ -2313,13 +2344,96 @@ public final class GTKNativeControlBackend: NativeControlBackend {
     /// (Re)fills the flow box: each item contributes its real widget when the
     /// view provider has one, else a text label from the text provider.
     private func rebuildCollectionChildren(_ raw: UInt) {
-        guard let flow = collectionFlows[raw] else { return }
+        guard let stack = collectionStacks[raw] else { return }
         suppressCollectionSelection.insert(raw)
-        while let child = gtk_flow_box_get_child_at_index(flow, 0) {
-            gtk_flow_box_remove(flow, asWidget(OpaquePointer(child)))
+        // Tear the previous blocks down WITHOUT destroying anything we merely
+        // host. Item and band widgets belong to their Swift views; a GTK widget
+        // whose last reference is its parent dies the moment it is unparented,
+        // so removing a section's flow box took its buttons with it and the next
+        // rebuild had nothing left to re-host (the items vanished on reload).
+        // Hold a reference across the move and drop it once re-parented.
+        var rescued: [UnsafeMutableRawPointer] = []
+        let previousFlows = collectionSectionFlows[raw] ?? []
+        while let child = gtk_widget_get_first_child(asWidget(stack)) {
+            if let entry = previousFlows.first(where: { asWidget($0.flow) == child }) {
+                // A section flow box: rescue each hosted item, then drop the box.
+                while let flowChild = gtk_widget_get_first_child(asWidget(entry.flow)) {
+                    if let hosted = gtk_widget_get_first_child(flowChild) {
+                        g_object_ref(UnsafeMutableRawPointer(hosted))
+                        rescued.append(UnsafeMutableRawPointer(hosted))
+                        gtk_flow_box_remove(entry.flow, hosted)
+                    } else {
+                        gtk_flow_box_remove(entry.flow, flowChild)
+                    }
+                }
+            } else {
+                // A header/footer band.
+                g_object_ref(UnsafeMutableRawPointer(child))
+                rescued.append(UnsafeMutableRawPointer(child))
+            }
+            gtk_box_remove(asBox(stack), child)
         }
-        let count = collectionItemCounts[raw] ?? 0
-        for index in 0..<count {
+        defer { for widget in rescued { g_object_unref(widget) } }
+        collectionSectionFlows[raw] = []
+        collectionFlows[raw] = nil
+        // AppKit's `.horizontal` scroll direction lays the SECTIONS out left to
+        // right, each one's items flowing top-to-bottom in columns. `.vertical`
+        // stacks the sections. Match that by re-orienting the section stack.
+        let horizontal = collectionFlowGeometry[raw]?.horizontal ?? false
+        gtk_orientable_set_orientation(stack, horizontal ? GTK_ORIENTATION_HORIZONTAL
+                                                         : GTK_ORIENTATION_VERTICAL)
+        let sections = collectionSectionSpecs[raw] ?? [NativeCollectionSection(itemCount: collectionItemCounts[raw] ?? 0)]
+        var base = 0
+        for section in sections {
+            if let header = section.header, let hw = widgets[header.rawValue] {
+                hostBand(asWidget(hw), in: stack)
+            }
+            let flow = makeCollectionFlow(raw: raw, base: base)
+            gtk_box_append(asBox(stack), asWidget(flow))
+            collectionSectionFlows[raw, default: []].append((flow: flow, base: base))
+            if collectionFlows[raw] == nil { collectionFlows[raw] = flow }
+            fillCollectionFlow(flow, raw: raw, base: base, count: section.itemCount)
+            base += section.itemCount
+            if let footer = section.footer, let fw = widgets[footer.rawValue] {
+                hostBand(asWidget(fw), in: stack)
+            }
+        }
+        suppressCollectionSelection.remove(raw)
+    }
+    /// Appends a full-width header/footer band, re-parenting it safely.
+    private func hostBand(_ band: UnsafeMutablePointer<GtkWidget>, in stack: OpaquePointer) {
+        g_object_ref(UnsafeMutableRawPointer(band))
+        if gtk_widget_get_parent(band) != nil { gtk_widget_unparent(band) }
+        gtk_widget_set_hexpand(band, gboolean(1))
+        gtk_widget_set_halign(band, GTK_ALIGN_FILL)
+        gtk_box_append(asBox(stack), band)
+        g_object_unref(UnsafeMutableRawPointer(band))
+    }
+    /// One section's GtkFlowBox, wired to report selection in FLAT indices.
+    private func makeCollectionFlow(raw: UInt, base: Int) -> OpaquePointer {
+        let flow = gtk_flow_box_new()!
+        gtk_flow_box_set_selection_mode(OpaquePointer(flow), GTK_SELECTION_SINGLE)
+        gtk_flow_box_set_homogeneous(OpaquePointer(flow), gboolean(0))
+        let geometry = collectionFlowGeometry[raw] ?? (interitem: 8, line: 8, horizontal: false)
+        gtk_flow_box_set_column_spacing(OpaquePointer(flow), guint(Swift.max(0, geometry.interitem)))
+        gtk_flow_box_set_row_spacing(OpaquePointer(flow), guint(Swift.max(0, geometry.line)))
+        gtk_flow_box_set_max_children_per_line(OpaquePointer(flow), 64)
+        // AppKit's `.vertical` scroll direction means items flow in ROWS, which
+        // is GtkFlowBox's horizontal orientation (and vice versa).
+        gtk_orientable_set_orientation(OpaquePointer(flow),
+                                       geometry.horizontal ? GTK_ORIENTATION_VERTICAL : GTK_ORIENTATION_HORIZONTAL)
+        let box = CollectionBox(backend: self, collection: raw, base: base)
+        g_signal_connect_data(
+            UnsafeMutableRawPointer(flow), "selected-children-changed",
+            unsafeBitCast(gtkFlowSelectionTrampoline, to: GCallback.self),
+            Unmanaged.passRetained(box).toOpaque(), boxRelease, GConnectFlags(rawValue: 0)
+        )
+        return OpaquePointer(flow)
+    }
+    /// Fills one section's flow box with items `base ..< base+count`.
+    private func fillCollectionFlow(_ flow: OpaquePointer, raw: UInt, base: Int, count: Int) {
+        for offset in 0..<count {
+            let index = base + offset
             let content: UnsafeMutablePointer<GtkWidget>
             if let handle = collectionViewProviders[raw]?(index), let widget = widgets[handle.rawValue] {
                 // Hold a reference across the move (the toolbar lesson: an
@@ -2349,19 +2463,27 @@ public final class GTKNativeControlBackend: NativeControlBackend {
                 gtk_widget_add_controller(asWidget(OpaquePointer(child)), click)
             }
         }
-        suppressCollectionSelection.remove(raw)
     }
 
     /// Reports a flow-box selection as an item index.
-    fileprivate func reportCollectionSelection(_ raw: UInt) {
-        guard !suppressCollectionSelection.contains(raw), let flow = collectionFlows[raw] else { return }
+    fileprivate func reportCollectionSelection(_ raw: UInt, base: Int) {
+        guard !suppressCollectionSelection.contains(raw) else { return }
+        guard let entry = collectionSectionFlows[raw]?.first(where: { $0.base == base }) else { return }
         var index = -1
-        if let selected = gtk_flow_box_get_selected_children(flow) {
+        if let selected = gtk_flow_box_get_selected_children(entry.flow) {
             if let first = selected.pointee.data {
-                index = Int(gtk_flow_box_child_get_index(first.assumingMemoryBound(to: GtkFlowBoxChild.self)))
+                index = base + Int(gtk_flow_box_child_get_index(first.assumingMemoryBound(to: GtkFlowBoxChild.self)))
             }
             g_list_free(selected)
         }
+        guard index >= 0 else { return }   // a deselect from another section's flow
+        // Selection is single across the whole collection, as on AppKit: clear
+        // every other section's flow box so two sections never look selected.
+        suppressCollectionSelection.insert(raw)
+        for other in collectionSectionFlows[raw] ?? [] where other.base != base {
+            gtk_flow_box_unselect_all(other.flow)
+        }
+        suppressCollectionSelection.remove(raw)
         collectionSelectionActions[raw]?(index)
     }
     /// Creates a tree table (`GtkColumnView` over a `GtkTreeListModel`) in a scrolled window.
@@ -3099,6 +3221,32 @@ public final class GTKNativeControlBackend: NativeControlBackend {
         }
     }
     /// Reorients a `GtkScale` slider (AppKit's vertical minimum is at the bottom, so the range is inverted).
+    private var sliderSnapTicks: [UInt: Int] = [:]   // slider -> tick count it snaps to
+    private var suppressSliderReport: Set<UInt> = []
+    public func setSliderTickMarks(count: Int, snapsToTicks: Bool, for handle: NativeHandle) {
+        guard let w = widget(handle), kinds[handle.rawValue] == .slider else { return }
+        let scale = UnsafeMutablePointer<GtkScale>(w)
+        gtk_scale_clear_marks(scale)
+        sliderSnapTicks[handle.rawValue] = nil
+        guard count >= 2, let (lo, hi) = ranges[handle.rawValue], hi > lo else { return }
+        // GtkScale draws a mark per position, the direct analog of AppKit's
+        // evenly spaced tick marks. Position BOTTOM is GTK's "trailing side",
+        // which is the right of a vertical scale and below a horizontal one —
+        // where AppKit puts them by default.
+        for index in 0..<count {
+            let value = lo + (hi - lo) * Double(index) / Double(count - 1)
+            gtk_scale_add_mark(scale, value, GTK_POS_BOTTOM, nil)
+        }
+        if snapsToTicks { sliderSnapTicks[handle.rawValue] = count }
+    }
+    /// Rounds a slider's value to its nearest tick, for
+    /// `allowsTickMarkValuesOnly`. Returns the snapped value.
+    func snapSliderValue(_ raw: UInt, _ value: Double) -> Double {
+        guard let count = sliderSnapTicks[raw], count >= 2,
+              let (lo, hi) = ranges[raw], hi > lo else { return value }
+        let step = (hi - lo) / Double(count - 1)
+        return lo + (step * ((value - lo) / step).rounded())
+    }
     public func setSliderVertical(_ vertical: Bool, for handle: NativeHandle) {
         guard let w = widget(handle), kinds[handle.rawValue] == .slider else { return }
         gtk_orientable_set_orientation(
@@ -3221,12 +3369,38 @@ public final class GTKNativeControlBackend: NativeControlBackend {
             valueChangeActions[handle.rawValue] = action
             return
         }
+        if kinds[handle.rawValue] == .slider {
+            // A slider may snap to its tick marks, which means rewriting the
+            // value before reporting it — that needs the backend and handle, so
+            // it gets its own box and trampoline.
+            let sliderBox = SliderValueBox(backend: self, raw: handle.rawValue, action: action)
+            g_signal_connect_data(
+                UnsafeMutableRawPointer(w), "value-changed",
+                unsafeBitCast(gtkSliderValueChangedTrampoline, to: GCallback.self),
+                Unmanaged.passRetained(sliderBox).toOpaque(), boxRelease, GConnectFlags(rawValue: 0)
+            )
+            return
+        }
         let trampoline = gtkValueChangedTrampoline
         g_signal_connect_data(
             UnsafeMutableRawPointer(w), "value-changed",
             unsafeBitCast(trampoline, to: GCallback.self),
             Unmanaged.passRetained(box).toOpaque(), boxRelease, GConnectFlags(rawValue: 0)
         )
+    }
+    /// Reports a slider's new value, snapping it to the tick marks first when
+    /// `allowsTickMarkValuesOnly` is set (AppKit snaps the knob itself, so the
+    /// control is moved too — guarded against the re-entrant value-changed).
+    fileprivate func reportSliderValue(_ raw: UInt, action: (Double) -> Void) {
+        guard !suppressSliderReport.contains(raw), let w = widgets[raw] else { return }
+        let value = gtk_range_get_value(asRange(w))
+        let snapped = snapSliderValue(raw, value)
+        if snapped != value {
+            suppressSliderReport.insert(raw)
+            gtk_range_set_value(asRange(w), snapped)
+            suppressSliderReport.remove(raw)
+        }
+        action(snapped)
     }
     /// Wires selection-change signals for pop-ups, tabs, tables, outlines, segments, and collections.
     public func setSelectionChangeAction(for handle: NativeHandle, action: @escaping (Int) -> Void) {
@@ -3739,7 +3913,7 @@ private let gtkViewClickTrampoline: @convention(c) (UnsafeMutableRawPointer?, gi
 private let gtkFlowSelectionTrampoline: @convention(c) (UnsafeMutableRawPointer?, gpointer?) -> Void = { _, userData in
     guard let userData else { return }
     let box = Unmanaged<CollectionBox>.fromOpaque(userData).takeUnretainedValue()
-    box.backend?.reportCollectionSelection(box.collection)
+    box.backend?.reportCollectionSelection(box.collection, base: box.base)
 }
 
 /// Carries an editable level indicator's backend + handle to its click gesture.
@@ -3757,6 +3931,25 @@ private let gtkStarDrawFunc: @convention(c) (UnsafeMutablePointer<GtkDrawingArea
     guard let cr, let userData else { return }
     let box = Unmanaged<LevelClickBox>.fromOpaque(userData).takeUnretainedValue()
     box.backend?.drawStars(box.raw, cr: cr, width: Double(width), height: Double(height))
+}
+
+/// Carries a slider's backend + handle + action, for tick snapping on change.
+private final class SliderValueBox {
+    weak var backend: GTKNativeControlBackend?
+    let raw: UInt
+    let action: (Double) -> Void
+    init(backend: GTKNativeControlBackend, raw: UInt, action: @escaping (Double) -> Void) {
+        self.backend = backend
+        self.raw = raw
+        self.action = action
+    }
+}
+
+/// `GtkRange::value-changed` on a slider — snaps to ticks, then reports.
+private let gtkSliderValueChangedTrampoline: @convention(c) (UnsafeMutableRawPointer?, gpointer?) -> Void = { _, userData in
+    guard let userData else { return }
+    let box = Unmanaged<SliderValueBox>.fromOpaque(userData).takeUnretainedValue()
+    box.backend?.reportSliderValue(box.raw, action: box.action)
 }
 
 /// Carries a print job's backend + view handle + natural size to the draw-page handler.
@@ -3944,9 +4137,12 @@ private final class OutlineColumnBox {
 private final class CollectionBox {
     weak var backend: GTKNativeControlBackend?
     let collection: UInt
-    init(backend: GTKNativeControlBackend, collection: UInt) {
+    /// Flat index of this section's first item, for mapping selection back.
+    let base: Int
+    init(backend: GTKNativeControlBackend, collection: UInt, base: Int = 0) {
         self.backend = backend
         self.collection = collection
+        self.base = base
     }
 }
 

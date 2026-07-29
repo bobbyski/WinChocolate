@@ -494,7 +494,18 @@ open class NSCollectionViewFlowLayout: NSCollectionViewLayout {
     public var sectionInset = NSEdgeInsets()
 }
 /// Marker protocol for delegates that customize flow-layout metrics.
-public protocol NSCollectionViewDelegateFlowLayout: NSCollectionViewDelegate {}
+public protocol NSCollectionViewDelegateFlowLayout: NSCollectionViewDelegate {
+    /// Per-item size override (AppKit's flow-layout delegate hook). Returning
+    /// `.zero` — the default — means "use the layout's `itemSize`".
+    func collectionView(_ collectionView: NSCollectionView, layout collectionViewLayout: NSCollectionViewLayout,
+                        sizeForItemAt indexPath: IndexPath) -> NSSize
+}
+
+public extension NSCollectionViewDelegateFlowLayout {
+    /// Default: defer to the layout's uniform `itemSize`.
+    func collectionView(_ collectionView: NSCollectionView, layout collectionViewLayout: NSCollectionViewLayout,
+                        sizeForItemAt indexPath: IndexPath) -> NSSize { .zero }
+}
 
 /// A table row background view (stub).
 open class NSTableRowView: NSView {

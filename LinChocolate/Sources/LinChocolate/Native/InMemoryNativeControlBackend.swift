@@ -706,6 +706,16 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
         return h
     }
     /// Records the collection's item count.
+    public private(set) var collectionSections: [UInt: [NativeCollectionSection]] = [:]
+    public func setCollectionSections(_ sections: [NativeCollectionSection], for collection: NativeHandle) {
+        collectionSections[collection.rawValue] = sections
+        collectionItemCounts[collection.rawValue] = sections.reduce(0) { $0 + $1.itemCount }
+    }
+    public private(set) var collectionFlowSpecs: [UInt: (Double, Double, Bool)] = [:]
+    public func setCollectionFlow(interitemSpacing: Double, lineSpacing: Double, horizontal: Bool,
+                                  for collection: NativeHandle) {
+        collectionFlowSpecs[collection.rawValue] = (interitemSpacing, lineSpacing, horizontal)
+    }
     public func setCollectionItemCount(_ count: Int, for collection: NativeHandle) {
         collectionItemCounts[collection.rawValue] = count
     }
@@ -862,6 +872,10 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
         flippedViews[handle.rawValue] = flipped
     }
     /// Records whether a slider is vertically oriented.
+    public private(set) var sliderTicks: [UInt: (count: Int, snaps: Bool)] = [:]
+    public func setSliderTickMarks(count: Int, snapsToTicks: Bool, for handle: NativeHandle) {
+        sliderTicks[handle.rawValue] = (count, snapsToTicks)
+    }
     public func setSliderVertical(_ vertical: Bool, for handle: NativeHandle) {
         sliderVerticals[handle.rawValue] = vertical
     }

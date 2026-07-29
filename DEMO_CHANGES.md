@@ -177,6 +177,173 @@ Eastern **Standard** Time.
 
 ---
 
+## 2026-07-18 — Horizontal collections match AppKit; the selected segment reads as selected (framework work; demo untouched)
+
+Bobby, with a Linux/macOS screenshot pair side by side: *"your highlight colour looks like the
+unhighlighted. But the look doesn't match AppKit in horizontal mode."* The comparison shot made
+both faults obvious and gave an exact target to match.
+
+**1. The selected segment was invisible.** GTK's `:checked` toggle is a barely-darker grey — next
+to AppKit's tinted segment it reads as *not* selected. Segmented controls now carry a
+`linchocolate-segmented` class whose checked segment takes `@theme_selected_bg_color` with the
+matching foreground, so Medium / Normal / Horizontal / Uniform-size stand out exactly as they do on
+the Mac.
+
+**2. Horizontal scroll direction laid out nothing like AppKit.** The Mac lays the **sections side by
+side**, each one's items flowing top-to-bottom in columns, and shows **no bands**. LinChocolate
+stacked full-width bands with each section as one long row. Two independent causes:
+
+- *Section direction.* The section stack was always vertical. It now re-orients with the scroll
+  direction: horizontal scroll ⇒ sections left-to-right (each section's flow box already packs its
+  items into columns), vertical ⇒ sections stacked.
+- *The bands.* Whether a band exists was keyed off `headerReferenceSize.height`. AppKit uses the
+  dimension that matches the scroll direction — height for a vertically scrolling collection
+  (full-width bands above/below), **width** for a horizontally scrolling one (full-height bands
+  beside). The demo's `NSMakeSize(0, 24)` therefore means "bands vertically, none horizontally",
+  and reading the height in both modes is why bands appeared where the Mac shows none.
+
+Column-for-column the two now agree: NSView/NSImageView/NSTextField/NSButton then
+NSSlider/NSStepper, NSComboBox…NSColorWell then NSSegmentedControl…NSTokenField, NSTableView…
+NSScrollView then NSSplitView/NSTabView/NSBox.
+
+**Files touched (framework only)**
+
+- `Native/GTK/GTKNativeControlBackend.swift` — `linchocolate-segmented` class + checked-segment CSS;
+  section stack re-orients with the scroll direction.
+- `Views/NSCollectionView.swift` — band existence reads the reference-size dimension that matches
+  the scroll direction.
+
+**Verified**
+
+- Linux (dark, to match the reporter's screenshot): horizontal mode reproduces the Mac's column
+  grouping and order exactly, with no bands; switching back to Vertical restores the stacked
+  sections with their header/footer bands; selected segments are accent-filled. Whole package builds
+  0 warnings; contract tests pass; geometry audit 0 violations (pages 1, 5).
+
+**MUST FIX (WinChocolate):** a selected segment must be visibly tinted, and a horizontally scrolling
+collection must run its sections across the view with the header/footer extent read from the width.
+
+## 2026-07-18 — Values page: the vertical slider gets a real track and its tick marks (framework work; demo untouched)
+
+Bobby: *"the vertical appears to be broken compared to the other versions."* Side by side with the
+horizontal slider the difference was plain: the horizontal one had a 4 px rounded track with a round
+knob, while the vertical one was a ~2 px square-ended hairline — and neither showed the tick marks
+the demo asks for.
+
+**Two causes.**
+
+1. **The track.** GTK's Adwaita gives a vertical scale's trough a different (thinner, square-ended)
+   metric than a horizontal one, so the same control read as two different widgets. AppKit draws
+   the same track in both orientations, so both are now pinned to a rounded 4 px groove with a
+   16 px knob: `scale > trough { min-height: 4px; min-width: 4px; border-radius: 999px }`.
+
+2. **The tick marks never existed.** `numberOfTickMarks`, `allowsTickMarkValuesOnly` and
+   `tickMarkPosition` were accepted-and-ignored stubs in `DemoCompat`
+   (`var numberOfTickMarks: Int { get { 0 } set {} }`), so the demo's six ticks — a headline part of
+   the "3.1 depth" showcase — silently did nothing. They are real properties on `NSSlider` now,
+   backed by a `setSliderTickMarks` seam that calls `gtk_scale_add_mark` for each evenly spaced
+   value. GTK draws a *pointed* knob once a scale has marks, which is what AppKit does for a ticked
+   slider too, so the fidelity improves in both directions.
+
+**`allowsTickMarkValuesOnly` snaps for real.** AppKit moves the knob to the nearest tick, so the
+control itself has to be rewritten, not just the reported value. Sliders now take their own
+value-changed path that snaps the range (guarded against the re-entrant `value-changed` the write
+provokes) and reports the snapped number. The horizontal slider, which does not set the flag, still
+reports continuous values.
+
+**Files touched (framework only)**
+
+- `Native/NativeControlBackend.swift` — `setSliderTickMarks(count:snapsToTicks:for:)`.
+- `Native/GTK/GTKNativeControlBackend.swift` — marks via `gtk_scale_add_mark`, snapping value-changed
+  path (`SliderValueBox`, `reportSliderValue`, `snapSliderValue`), scale-track CSS.
+- `Native/InMemoryNativeControlBackend.swift` — records tick settings.
+- `Controls/NSSlider.swift` — real `numberOfTickMarks` / `allowsTickMarkValuesOnly` /
+  `tickMarkPosition`.
+- `Compat/DemoCompat.swift` — deleted the three no-op stubs.
+
+**Verified**
+
+- Linux: the vertical slider now has the same rounded 4 px track as the horizontal one, draws its
+  six ticks, and **snaps** — clicking off-tick near the top lands exactly on the top tick with the
+  fill following. The horizontal slider draws its ticks too and still reports continuous values
+  (moved to 86). Whole package builds 0 warnings; contract tests pass; geometry audit 0 violations
+  (pages 0, 1, 5, 10).
+
+**Note on the other reading of the report:** the Lists page's Vertical/Horizontal collection
+segment was checked at the same time and behaves correctly — Horizontal lays each section out as a
+single scrolling row, Vertical restores the wrapped rows.
+
+**MUST FIX (WinChocolate):** `numberOfTickMarks` must draw ticks, `allowsTickMarkValuesOnly` must
+snap the knob, and a vertical slider must render the same track as a horizontal one.
+
+## 2026-07-18 — Lists page: the collection renders as a real sectioned collection (framework work; demo untouched)
+
+Bobby: *"on lists 5.x page the collections are not rendering as collections."* The page showed a
+single row of six buttons — the first section's items — with no section bands at all.
+
+**Root cause: `NSCollectionView` only ever knew about section 0.** `reloadData()` was
+
+```swift
+let count = dataSource?.collectionView(self, numberOfItemsInSection: 0) ?? 0   // ← section 0 only
+```
+
+so the other two sections (Controls, Containers — 15 more items) were never asked for, and
+`viewForSupplementaryElementOfKind` was never called at all, so the headers and footers the demo
+vends could not appear. The backend matched that flat model: one `GtkFlowBox` holding every item.
+
+**Now it is sectioned end to end.**
+
+- `reloadData()` walks every section, materializes its items flat (in section order), and asks the
+  data source for a header/footer per section. Whether a band exists is decided the way AppKit
+  decides it — from the layout's `headerReferenceSize`/`footerReferenceSize` height, so a
+  collection without bands never sprouts any.
+- A new `setCollectionSections` seam describes the layout as sections. The GTK backend builds a
+  vertical box of section blocks: header band, a `GtkFlowBox` of that section's items, footer band.
+  One flow box per section is what makes full-width bands possible — a single flow box cannot break
+  a line for a header.
+- Selection stays single across the whole collection: each section's flow reports a FLAT index
+  (its base + the child index) and the other sections' flows are cleared, so two sections never
+  look selected. `selectionIndexPaths` / `didSelectItemsAt` map that flat index back to a real
+  `IndexPath(section:item:)`.
+
+**Finished the layout controls while here.** `NSCollectionViewDelegateFlowLayout` was an empty
+marker protocol, so the demo's `sizeForItemAt` was dead code and the Small/Medium/Large, spacing
+and direction segments did nothing. The hook is now declared (defaulting to `.zero` = "use the
+layout's `itemSize`"), items are sized from it on every reload, and a `setCollectionFlow` seam
+carries `minimumInteritemSpacing` / `minimumLineSpacing` / `scrollDirection` to the flow boxes
+(AppKit's `.vertical` scroll = items flow in rows = GtkFlowBox's *horizontal* orientation).
+
+**A bug this shook out: reloading emptied the collection.** Removing a section's flow box from the
+stack unparents the item widgets inside it — and a GTK widget whose last reference is its parent
+dies on unparent. The buttons (owned by their Swift `NSCollectionViewItem` views) were being
+destroyed, so the rebuild had nothing to re-host and the items vanished, leaving bare bands. The
+teardown now takes a reference on every hosted item and band before removing them, and drops it
+once they are re-parented.
+
+**Files touched (framework only)**
+
+- `Views/NSCollectionView.swift` — multi-section `reloadData` with supplementary bands, flat↔
+  `IndexPath` mapping, per-item sizing.
+- `Native/NativeControlBackend.swift` — `NativeCollectionSection`, `setCollectionSections`,
+  `setCollectionFlow`.
+- `Native/GTK/GTKNativeControlBackend.swift` — vertical stack of section blocks, per-section flow
+  boxes with flat-index selection, reference-safe teardown, flow geometry.
+- `Native/InMemoryNativeControlBackend.swift` — records sections and flow geometry.
+- `Compat/AppKitCompat.swift` — `sizeForItemAt` on `NSCollectionViewDelegateFlowLayout`.
+
+**Verified**
+
+- Linux: the Lists collection renders **Views / Controls / Containers**, each with its header band,
+  its items as real buttons (wrapping within the section), and its "— N classes —" footer.
+  Small/Large resize the items, "Size by label" gives each item its own width, and four rapid
+  reloads leave the sections intact with **0 GTK criticals** and no crash. The Tables/Media
+  collection (unsectioned) is unchanged. Whole package builds 0 warnings; contract tests pass;
+  geometry audit 0 violations (pages 2, 5).
+
+**MUST FIX (WinChocolate):** a collection must render every section with its supplementary
+header/footer views, honour the flow layout's item size and spacing, and must not destroy hosted
+item views when it rebuilds.
+
 ## 2026-07-18 — Controls page: token pills show their tint through the text (framework work; demo untouched)
 
 Bobby: *"on the control window the token pills text should be on transparent background so pill

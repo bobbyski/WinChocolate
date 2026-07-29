@@ -126,12 +126,6 @@ public extension String {
 public extension NSSlider {
     /// The slider's current value truncated to `Int`.
     var intValue: Int { Int(doubleValue) }
-    /// Number of tick marks along the slider (stub — accepted for parity).
-    var numberOfTickMarks: Int { get { 0 } set {} }
-    /// Whether the slider snaps to tick-mark values (stub).
-    var allowsTickMarkValuesOnly: Bool { get { false } set {} }
-    /// Which side of the slider draws tick marks (stub).
-    var tickMarkPosition: Int { get { 0 } set {} }
     /// AppKit-shaped action hook; write-only alias for `onValueChange`.
     var onAction: ((NSControl) -> Void)? { get { nil } set { onValueChange = newValue } }
 }
