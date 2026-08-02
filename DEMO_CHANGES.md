@@ -177,6 +177,472 @@ Eastern **Standard** Time.
 
 ---
 
+## 2026-07-18 — FIXED: windows appear immediately — GTK's frame-sync wait dropped where no compositor exists
+
+The reporter tested the hypothesis in the control spike and confirmed it: *"significantly better —
+apply it to the real code."*
+
+**The mechanism.** GTK asks the window manager to acknowledge every newly mapped surface through a
+sync counter (`_NET_WM_SYNC_REQUEST`) and holds the window's first frame until that acknowledgement
+arrives. quartz-wm advertises the protocol and never completes the handshake, so GTK waited out its
+internal timeout — **~2 s for every window after the first**, measured at 2063 ms and 2045 ms across
+two different code paths, which is the fingerprint of a timeout rather than of latency. That wait is
+the whole defect: the delay before the window appears, and (with the window mapped but unpainted
+throughout) the blank flash the reporter had been reporting since the beginning.
+
+**The fix.** `lc_strip_wm_sync_request` removes the protocol from the window's `WM_PROTOCOLS`
+between realize and map, so GTK has nothing to wait for and paints immediately.
+
+**Scoped, not blanket.** The handshake earns its keep on a composited desktop — it is what keeps
+resizing tear-free — so it is dropped only where `gdk_display_is_composited()` is false, i.e. where
+there is no compositor to stay in step with and the wait buys nothing. Real Linux desktops
+(mutter/kwin) keep it. `LINCHOCOLATE_KEEP_WM_SYNC=1` restores it anywhere, for bisecting.
+
+Together with the previous entry's background-pixel change, a window on a non-composited display now
+appears at once, and in the app's own colour rather than a white flash if anything does delay it.
+
+**Files touched (framework only)**
+
+- `Sources/CGTKCompat/{include/cgtkcompat.h,cgtkcompat.c}` — `lc_strip_wm_sync_request`
+  (no-op off X11).
+- `Native/GTK/GTKNativeControlBackend.swift` — strip the protocol in `showWindow` when the display
+  is not composited; `LINCHOCOLATE_KEEP_WM_SYNC` opt-out.
+- `run-linux.sh` — forwards `LINCHOCOLATE_KEEP_WM_SYNC`.
+
+**Verified**
+
+- Reporter, on XQuartz: *significantly better*.
+- Linux/Xvfb: main window 1120×843, panel 280×140, panel close-and-reopen, alert open and dismiss —
+  all intact with **0 X errors**. Clean whole-package build with 0 warnings; contract tests pass;
+  geometry audit **0 violations on pages 0, 1, 2, 4, 5, 7, 9, 10** in dark mode.
+
+**How it was found** — worth keeping, because reasoning failed repeatedly here and measurement did
+not: a paint tracer (`LINCHOCOLATE_PAINT_TRACE=1`) that logged window lifecycle, frame-clock cycles,
+GdkSurface sizes and our own invalidations; then a control program with none of our code in it
+(`Tools/window-timing-spike.c`, `./run-linux.sh --spike`) which reproduced the stall and let the fix
+be tested outside the framework before being applied to it.
+
+**MUST FIX (WinChocolate):** the Win32 equivalent is any presentation handshake the framework waits
+on that the environment never completes — measure the gap between show and first paint before
+assuming it is inherent.
+
+## 2026-07-18 — The flash is an UNPAINTED window, and its colour is ours to choose (framework work; demo untouched)
+
+Two corrections and a fix, all from the reporter's data.
+
+**Correction 1 — the flashing is not my layout wait.** The previous entry blamed the pump loop I had
+added. The reporter then ran the pure-GTK4 spike again and *did* see the redraws:
+
+```
+SPIKE [main]   FIRST FRAME    96.1 ms after map
+SPIKE [panel]  FIRST FRAME  1922.9 ms after map      ← and this one visibly flashed
+```
+
+The spike contains none of our code and never pumps the loop, so the pump was not the cause.
+(Removing it was still right — it achieved nothing — but the entry above overstated it. This is what
+came of building a causal story on a single "didn't see any redraws" observation instead of asking
+for a second look.)
+
+**Correction 2 — why the earlier spike run looked clean:** *"is white on white so have to pay
+attention."* The spike is light-themed, so its unpainted window (white) against white content is
+nearly invisible. The demo is run with `--dark`, so the identical unpainted window flashes **white
+against a dark app**. Same defect, wildly different visibility.
+
+**That is the actual mechanism, and it is fixable even though the delay is not.** Between mapping a
+window and its first rendered frame, the X server fills the window with its *background pixel*. On
+this display that gap is 1–2 s for a second window (GTK waits on a frame-sync handshake quartz-wm
+never completes — measured identically at 2063 ms and 2045 ms across two different code paths, the
+signature of a timeout rather than latency). We cannot shorten the wait. We can decide what is on
+screen during it.
+
+`lc_set_window_background_rgb` (in the CGTKCompat C target, where the X11 call belongs) sets the X
+window's background pixel to the app's own window background, right after realize and before the
+map. The wait remains; the white flash does not.
+
+**Files touched (framework only)**
+
+- `Sources/CGTKCompat/{include/cgtkcompat.h,cgtkcompat.c}` — `lc_set_window_background_rgb`
+  (no-op off X11).
+- `Package.swift` — CGTKCompat links X11.
+- `Native/GTK/GTKNativeControlBackend.swift` — set the background pixel in `showWindow`.
+- `Tools/window-timing-spike.c` — `SPIKE_NO_SYNC=1` strips `_NET_WM_SYNC_REQUEST` before map, to
+  test whether that handshake is what stalls the first frame.
+
+**Verified**
+
+- Linux: renders correctly in light and dark with the panel open; clean whole-package build with 0
+  warnings; contract tests pass; geometry audit 0 violations (pages 0, 5, 7, 10 in dark mode).
+- The remaining 1–2 s wait for a second window is GTK's/the window manager's, demonstrated by a
+  control program with no framework code in it.
+
+**MUST FIX (WinChocolate):** a window's pre-first-frame fill must match the app's background, or a
+slow display shows a bright flash before the content arrives.
+
+## 2026-07-18 — RESOLVED: the flashing was my layout wait; the slowness is GTK/quartz-wm
+
+The control spike settled both halves of this, and the answer is not the one I had been assuming.
+
+**The spike on the reporter's display — pure GTK4 C, no framework code at all:**
+
+```
+SPIKE  [main]   FIRST FRAME   106.2 ms after map
+SPIKE  [panel]  FIRST FRAME  1131.3 ms after map      ← second window
+```
+
+A ~1.1 s wait for a second window's first frame, in a 40-line C program. So the multi-second
+latency belongs to **GTK4 + quartz-wm** (the frame-sync handshake the WM never completes), and the
+matching ~2 s figures in the demo were never the framework's to fix.
+
+**But the reporter added the decisive detail: the spike "didn't see any noticeable redraws".**
+It waits just as long and does not flash. Latency and flashing are two different problems, and the
+flashing was ours — specifically **mine**.
+
+**Root cause of the flashing: the "wait until laid out" loop I added.** It pumped
+`g_main_context_iteration` after `present`, while the window was mapped but not yet laid out.
+GTK lays out on the frame clock, so every pumped iteration let GTK render and push a **blank** frame
+to the display. That is exactly "a number of repainting blank screens before it opens the real one"
+— I built the artifact I was chasing. The spike never pumps: it returns to the main loop and paints
+once, when ready, which is why it is silent despite the same latency.
+
+The loop is gone. `showWindow` now realizes, sizes and presents, and lets GTK paint when it is
+ready — the same shape as the control program.
+
+**Correcting the record.** Two earlier entries in this log explained the blank frames as "GTK maps
+before laying out, so we wait for layout before returning". The observation was right; the remedy
+was wrong and actively harmful. Waiting does not make GTK lay out sooner — it only gives GTK
+opportunities to paint an unfinished window.
+
+**Files touched (framework only)**
+
+- `Native/GTK/GTKNativeControlBackend.swift` — removed the layout-wait pump from `showWindow`
+  (with the reasoning recorded at the call site so it is not reinvented).
+
+**Verified**
+
+- Linux: panel opens 280×140, paints once, close/reopen/quit clean. Clean whole-package build with
+  0 warnings; contract tests pass; geometry audit 0 violations (pages 0, 1, 5, 7, 10).
+
+**MUST FIX (WinChocolate):** never pump the event loop between showing a window and its first
+frame — it renders the window blank. Show it and let the toolkit paint when ready.
+
+## 2026-07-18 — TOOLING: a pure-GTK4 control spike, and the ~2-second signature
+
+With the re-present bug fixed the reporter's panel still took the same time to appear, and the
+trace finally showed the shape of it:
+
+```
+first open   map 6311.5ms → clock:layout 8374.6ms   = 2063 ms
+re-present   map 13894.6  → clock:layout 15939.9    = 2045 ms
+```
+
+**Two opens, 18 ms apart in duration.** That is not queueing or network jitter — a variable cost
+does not land twice on the same number. It is a fixed **~2 second timeout**: something waits for a
+response that never comes and then proceeds anyway. The main window does not pay it (9–120 ms), so
+it is specific to showing a *second* window on that display. The known candidate is GTK's X11
+frame-sync handshake (`_NET_WM_SYNC_REQUEST`): GDK waits for the window manager to acknowledge the
+newly mapped surface before painting, and quartz-wm does not complete it.
+
+**`Tools/window-timing-spike.c` — the control experiment.** Pure GTK4 in C: no LinChocolate, no
+Swift, none of our code. It opens a main window (1120×760 content), waits 4 s, opens a 280×140
+second window — the shape of the demo's inspector panel — and times each from `present` to its
+first rendered frame. Run with `./run-linux.sh --spike`.
+
+Baseline here (Xvfb): main **4.5 ms**, panel **0.9 ms** after map.
+
+The spike is the discriminator this investigation needed several rounds ago:
+
+- spike panel ≈ 2 s on the reporter's display ⇒ the latency is GTK's or the window manager's, and
+  no framework change removes it;
+- spike panel fast while the demo is slow ⇒ the fault is ours, and the difference between two
+  programs this small is a very short list of calls.
+
+**Files touched**
+
+- `Tools/window-timing-spike.c` — new control experiment (no framework code).
+- `run-linux.sh` — `--spike` builds and runs it with the same display setup as the demo.
+
+## 2026-07-18 — Paint tracer round 2: it found a real bug (re-showing a window redid its whole setup)
+
+The tracer earned its keep immediately. Reporter: *"Running twice, the second time is slower."*
+The trace showed why, and it was mine.
+
+**Bug 1 — re-presenting a window redid first-show setup.** The demo's inspector panel is cached and
+re-ordered front on every press, and `showWindow` ran its whole first-show path each time:
+`gtk_widget_realize`, a measure, **`gtk_window_set_default_size` on an already-mapped window** (a
+resize request, i.e. another window-manager round trip) and the layout wait — plus it re-installed
+the trace handlers, which is why every panel event started logging twice after the second open. The
+reporter's measurements: first open **2.1 s**, second open **3.5 s**. `showWindow` now does that
+work once per window; a re-present is a bare `gtk_window_present`, one trace line.
+
+**Bug 2 — the layout wait could freeze the app.** The wait added earlier was bounded by iteration
+count. The trace measured **~93 ms per iteration** on the reporter's display (each one blocking on
+an X round trip), so ten iterations became a one-second freeze: the app stopped responding, then
+everything appeared at once — worse than the window filling in. It is now bounded by **time**
+(50 ms), so it keeps the benefit where layout is fast (locally: `laid-out(8i/7ms)`) and degrades to
+"show it now" where it is not (reporter: `laid-out(1i/74ms)`). `LINCHOCOLATE_NO_LAYOUT_WAIT=1`
+disables it entirely for A/B testing.
+
+**What the tracer now measures.** Alongside window lifecycle and frame-clock cycles it logs
+`[invalidate]` (every redraw *we* request) and `[timer]` (every periodic block we drive), which
+separates "the app is causing repaints" from "the display server is". Idle for 8 s on page 0 here:
+7 timer ticks, 31 invalidations (all during startup), **1 content draw, 2 frame cycles**. The
+reporter's machine, same idle app: **~90 frame cycles in 20 s with 5 content draws** — the frames
+are not ours. With no compositor, every overlap or cursor crossing damages the window and X sends
+an expose, so the panel's first frame queues behind that traffic; its first layout lands
+consistently ~120 ms after a main-window draw.
+
+**Files touched (framework only)**
+
+- `Native/GTK/GTKNativeControlBackend.swift` — `presentedWindows` guard so first-show setup runs
+  once; time-bounded layout wait + `LINCHOCOLATE_NO_LAYOUT_WAIT`; tracer logs invalidations and
+  timer ticks.
+- `run-linux.sh` — forwards `LINCHOCOLATE_NO_LAYOUT_WAIT`.
+
+**Verified**
+
+- Re-presenting the panel is now a single `re-present` line — no re-realize, no resize request, no
+  duplicated handlers; close-and-reopen still returns a 280×140 panel. Clean whole-package build
+  with 0 warnings; contract tests pass; geometry audit 0 violations (pages 0, 5, 7, 10); the tracer
+  emits **0 lines** unless asked.
+
+**MUST FIX (WinChocolate):** showing an already-visible window must only raise it — re-running
+first-show sizing costs a window-manager round trip and makes each successive open slower.
+
+## 2026-07-18 — TOOLING: a paint tracer, because the panel flash needed evidence not theory
+
+Bobby: *"No more guessing — add tooling to find where the repaints are coming from, concentrate on
+the panel as that is the most visible offender."* Fair. Several rounds had been spent reasoning
+about a symptom that only appears on the reporter's display path.
+
+**`LINCHOCOLATE_PAINT_TRACE=1`** instruments the whole window presentation lifecycle. Every line
+carries elapsed ms, the GTK allocation, the content view's allocation, **the GdkSurface size** and
+the frame-clock counter, and flags any size change:
+
+```
+LCPAINT  5012.9ms [WinChocolate Panel] pre-present  win=0x0     content=0x0     surface=1x1
+LCPAINT  5013.8ms [WinChocolate Panel] map          win=0x0     content=0x0     surface=1x1
+LCPAINT  5020.6ms [WinChocolate Panel] clock:layout win=280x140 content=280x140 surface=280x140  ← SIZE CHANGED
+LCPAINT  5020.6ms [WinChocolate Panel] draw#1@280x140 …                                    frame=0
+LCPAINT  5021.0ms [WinChocolate Panel] clock:after-paint …                                 frame=0
+```
+
+It hooks the widget's `map`/`unmap`/`realize`/`unrealize` **and the GdkFrameClock's `layout` and
+`after-paint`** — the frame clock being the authority on what GTK actually renders. Reading it:
+
+- **repeated frames at a stable size** ⇒ damage/expose churn (something is invalidating);
+- **frames whose size keeps changing** ⇒ re-layout (geometry settling after the window is up);
+- **one frame arriving long after `map`** ⇒ paint latency, i.e. the transport, not the code.
+
+Including the **surface** size next to the allocation is what makes the trace trustworthy: GTK's
+allocation is only computed on the frame clock, so it reads `0x0` before the first cycle even when
+the real window is correctly sized. Only the surface tells you what the X server has.
+
+**What it shows here:** the panel maps with a **1×1 GdkSurface**, and the surface, allocation and
+first paint all arrive together on frame 0, ~7 ms later — 2 frames total. GTK4 creates a toplevel
+surface at 1×1 and sizes it during the first frame cycle by design; `gtk_window_set_default_size`
+before `realize` does not pre-empt it (tried, kept anyway as it is more correct). So on this
+machine there is no repaint storm to remove — which is exactly why the reporter's own trace is now
+the thing that matters.
+
+**Also in this pass:** `showWindow` measures the window and sets its default size before realizing,
+and still waits (bounded) for the content to be laid out before returning.
+
+**Files touched (framework only)**
+
+- `Native/GTK/GTKNativeControlBackend.swift` — `tracePaint`, `installPaintTrace`, `PaintTraceBox`,
+  `gtkPaintTraceTrampoline`; measure + default size before realize.
+- `run-linux.sh` — forwards `LINCHOCOLATE_PAINT_TRACE`.
+
+**Verified**
+
+- Clean whole-package build with 0 warnings; contract tests pass; geometry audit 0 violations
+  (pages 0, 5, 7, 10). The tracer is **off unless asked**: a plain run emits 0 `LCPAINT` lines.
+
+## 2026-07-18 — Root cause of the window "blank repaints": we mapped windows before they were laid out (framework work; demo untouched)
+
+Bobby, after several rounds on this: *"the panel window still flashes."* The reporter's own runs
+supplied the decisive evidence.
+
+**The clue was two identical runs disagreeing.** With `LINCHOCOLATE_GEOMETRY_AUDIT=1` the panel
+audited **0 violations**; the very next run reported its two text fields at **4×2, positioned
+(−2,−1)** instead of 120×24. Same binary, different answer — a race, not a layout bug. Something was
+being observed *before it had been laid out*.
+
+**Measured cause.** A probe immediately after `gtk_window_present()` returns:
+
+```
+PROBE after present: content=0x0        ← main window
+PROBE after present: content=0x0        ← panel
+```
+
+The content view has **no size at all** when the window is already mapped. GTK4 lays a window out on
+the frame clock *after* mapping it, so every window we showed went on screen with its contents
+having no geometry, and the real frame arrived one or more frames later. On a local display that is
+a single invisible frame. Over the reporter's remote, software-rendered X connection
+(`glx: failed to create drisw screen`, `DISPLAY=…:0` over TCP) it is exactly the "number of
+repainting blank screens before it opens the real one" — and the 4×2 audit reading was that same
+un-laid-out window, caught by a diagnostic that happened to look during the gap.
+
+**Fix: don't map a window that has no geometry yet.** `showWindow` now realizes the window (so the
+surface exists and GTK can measure it), presents it, and then pumps the main context until the
+content view actually has a width — bounded at 100 iterations so a window whose content never gains
+a size can never hang the app. It takes 6–8 iterations in practice. Afterwards:
+
+```
+PROBE after present: content=1120x760    ← main window
+PROBE after present: content=280x140     ← panel
+```
+
+The first frame a user sees is a finished one.
+
+**Also fixed: a regression of mine that turned diagnostics on for everybody.** `run-linux.sh` had
+started forwarding `-e "VAR=${VAR:-}"`, which *defines* the variable as empty inside the container;
+the framework tested "is it set", so a plain launch was running the geometry audit (and would have
+run the zoom debug). It now forwards only variables actually set on the host, and every diagnostic
+requires a non-empty value. This is why the reporter saw audit output they never asked for.
+
+**Files touched (framework only)**
+
+- `Native/GTK/GTKNativeControlBackend.swift` — `showWindow` realizes, presents, then waits for the
+  content to be laid out; diagnostics require non-empty env values.
+- `run-linux.sh` — forwards only env vars that are set (and now also `GDK_DEBUG`, `GSK_DEBUG`,
+  `GTK_DEBUG`, `LINCHOCOLATE_PRINT_EXPORT`, `LINCHOCOLATE_NO_PANEL_PARENT`).
+- `Compat/AppKitCompat.swift` — `LINCHOCOLATE_NO_PANEL_PARENT` escape hatch for bisecting
+  display-server behaviour that cannot be reproduced locally.
+
+**Verified**
+
+- Linux: content is laid out (1120×760 / 280×140) before either window is on screen; three geometry
+  audits in one session report **0 violations** each (the 4×2 reading is gone); panel opens at
+  280×140, closes with a real `WM_DELETE_WINDOW` without taking the app down, reopens, and Quit
+  exits — **0 X errors**. Clean whole-package build with 0 warnings; contract tests pass; geometry
+  audit 0 violations on pages 0, 1, 2, 5, 7, 10.
+
+**MUST FIX (WinChocolate):** show a window only once its content has been laid out; presenting first
+and laying out afterwards is invisible locally but reads as repeated blank repaints on a slow or
+remote display.
+
+## 2026-07-18 — The panel is now a real auxiliary window (transient parent + styleMask honoured)
+
+Bobby: *"the panel window still flashes."* — after the menu-bar fix removed its extra 25pt.
+
+**What I can and cannot measure.** Instrumenting present/draw shows the panel now maps at exactly
+280×140 and its content view draws **once**. So there is no repaint churn left on the Linux side
+that I can observe; the remaining flashing is in territory Xvfb cannot reproduce (no window
+manager), and the reporter's display path — X11 over TCP, software rendering — is where the cost
+lands. Rather than change things blind, this pass closes the two panel gaps that are *wrong on
+their own terms* and are the plausible source of extra WM mapping work:
+
+1. **The panel had no parent.** AppKit panels are auxiliary windows belonging to the app's window.
+   LinChocolate created them as unrelated new toplevels, so a window manager placed and decorated
+   the panel from scratch. `NSPanel` now sets itself transient for the app's main window
+   (`gtk_window_set_transient_for`, with `destroy_with_parent` off so the panel keeps AppKit's
+   independent lifetime). A transient utility window is placed and decorated in one pass.
+2. **`styleMask` was accepted and ignored.** `createWindow` took the mask and never looked at it, so
+   `.titled`/`.closable` did nothing: an untitled window was still decorated and a non-closable one
+   still offered a close button. It now maps to `gtk_window_set_decorated` /
+   `gtk_window_set_deletable`, which also tells the WM the truth up front instead of letting it
+   decorate and then be corrected.
+
+**Files touched (framework only)**
+
+- `Native/NativeControlBackend.swift` — `setWindowParent(_:for:)` seam.
+- `Native/GTK/GTKNativeControlBackend.swift` — transient-for/destroy-with-parent; `styleMask` →
+  decorated/deletable in `createWindow`.
+- `Native/InMemoryNativeControlBackend.swift` — records window parents.
+- `Compat/AppKitCompat.swift` — `NSPanel.init` attaches to the app's main window.
+
+**Verified**
+
+- Linux: panel still opens at 280×140 with content flush to the top; closing it with a real
+  `WM_DELETE_WINDOW` leaves the app alive; reopening gives 280×140; Quit exits; **0 X errors**.
+  Whole package builds 0 warnings; contract tests pass; geometry audit 0 violations (pages 0, 7, 10).
+- **Not verified: whether the flash is gone on XQuartz.** It cannot be reproduced here, and I would
+  rather say so than claim a fix I have not seen work.
+
+**MUST FIX (WinChocolate):** a panel must be created as an owned/auxiliary window of the main window,
+and `styleMask` must drive the frame style rather than being accepted and ignored.
+
+## 2026-07-18 — The panel was carrying a menu bar it should never have (framework work; demo untouched)
+
+Bobby: *"the main window seems better but the panel (press the panel button) still does it."* — the
+same map-then-repaint flash, on the inspector panel.
+
+**Measured cause: the panel was 25pt taller than it asked to be.** The panel's `contentRect` is
+280×140, but the window came up **280×165**. The extra 25 is a **menu bar**:
+`NSWindow.init` calls `installMainMenuIfNeeded(on:)` for *every* window, panels included. So the
+panel mapped at its content height and then had to grow to fit a menu strip — exactly the
+map-then-repaint cycle fixed for the main window in the previous entry, arriving by a different
+route. (It was also plainly wrong: the floating inspector had an empty menu strip across its top.)
+
+Apple has **one** menu bar for the whole application and an auxiliary/floating panel never carries
+it. GTK has no global menu bar, which is why LinChocolate hosts it inside the window — but that
+hosting belongs to the app's windows, not to panels. `installMainMenuIfNeeded` now skips
+`NSPanel`s.
+
+The panel is now exactly **280×140**, its content sits flush at the top, and there is no second
+sizing pass when it opens.
+
+**Files touched (framework only)**
+
+- `Application/NSApplication.swift` — `installMainMenuIfNeeded` skips panels.
+
+**Verified**
+
+- Linux: panel opens at 280×140 (was 280×165) with no menu strip and content flush to the top;
+  closing it with a real `WM_DELETE_WINDOW` leaves the app alive, reopening gives 280×140 again,
+  and Quit still exits — **0 X errors**. Whole package builds 0 warnings; contract tests pass;
+  geometry audit 0 violations (pages 0, 7, 10).
+
+**MUST FIX (WinChocolate):** the app menu must not be installed into `NSPanel`s — it makes the panel
+taller than its `contentRect` and forces a second sizing pass on open.
+
+## 2026-07-18 — Window startup: removed the two paint cycles we control (framework work; demo untouched)
+
+Bobby: *"whenever a window is created you can see a number of repainting blank screens before it
+opens the real one — see if you can determine why and how to fix it."*
+
+**What the measurement says.** I instrumented the startup path rather than guessing: at launch the
+app does **1** `gtk_window_present`, **1** toolbar install, and **1** content-view draw pass, and
+every widget is built before the window is presented. So LinChocolate is not presenting early or
+repainting in a loop — on Xvfb the window goes from nothing to fully painted in a single frame.
+
+**The dominant cause is the display path, not the code.** The reporter runs the Linux build over
+**X11 on TCP** (`DISPLAY=192.168.1.133:0`) with **no GL** — the launch log says it plainly:
+`glx: failed to create drisw screen`, so GTK falls back to software (cairo) rendering and every
+frame is pushed over the network. At that latency the normal map-and-paint sequence of a 1120×843
+window is slow enough to *watch*, which is what reads as "several blank repaints". Nothing in the
+framework can make a remote software-rendered frame arrive at once.
+
+**Two cycles WE contributed are gone, though — both only visible under a real window manager**
+(which is why Xvfb never showed them):
+
+1. **Mapping at the wrong size.** `createWindow` called `gtk_window_set_default_size` with AppKit's
+   **content** rect, but the GTK window also holds the menu bar and toolbar, so that default is too
+   short (760 vs the real 843). The window maps at the short size and then has to grow to its
+   natural size — under a WM that second sizing is a visible map-then-repaint. The call is gone:
+   the content view carries its own size request, so GTK's natural size is already content + chrome,
+   which is exactly the window AppKit's `contentRect` describes, reached in one step. Verified the
+   window still comes up at exactly 1120×843.
+2. **A spurious `windowDidResize` during the first map.** The resize detection added earlier treated
+   the first content size (0 → 1120×760) as a resize, running a layout pass mid-map. AppKit does not
+   post `windowDidResize` for the initial layout; the first size is now recorded as the baseline and
+   notifies nobody.
+
+**Files touched (framework only)**
+
+- `Native/GTK/GTKNativeControlBackend.swift` — no content-sized `set_default_size` in
+  `createWindow`; `noteContentDraw` treats the first size as a baseline.
+
+**Verified**
+
+- Linux: window still opens at 1120×843; resizing still reflows the Auto Layout page (green box
+  stretches to a 1560-wide window), so the baseline change did not break the resize path. Whole
+  package builds 0 warnings; contract tests pass; geometry audit 0 violations (pages 0, 4, 7, 10).
+
+**If the flashing persists on XQuartz**, the remaining levers are environmental rather than
+framework: an X server with working GL/DRI3, or running over a local display rather than TCP.
+
 ## 2026-07-18 — Quit works after a modal is dismissed by closing its window (framework work; demo untouched)
 
 Bobby: *"nib screen works but leaves the app unstable (quit no longer works)."*
