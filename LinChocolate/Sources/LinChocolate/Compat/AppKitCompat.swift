@@ -649,6 +649,23 @@ public final class NSPrintOperation {
 /// of `NSWindow`; the floating/hide-on-deactivate hints are accepted for API
 /// parity (native behavior is a later item).
 open class NSPanel: NSWindow {
+
+    /// Creates a panel and attaches it to the app's main window. AppKit panels
+    /// are auxiliary windows belonging to the application's window; telling the
+    /// window manager that up front lets it place and decorate the panel in one
+    /// pass, instead of mapping it as an unrelated new toplevel.
+    public override init(contentRect: NSRect, styleMask: StyleMask,
+                         backing: BackingStoreType, defer flag: Bool) {
+        super.init(contentRect: contentRect, styleMask: styleMask, backing: backing, defer: flag)
+        // Escape hatch for bisecting display-server problems we cannot reproduce
+        // locally: `LINCHOCOLATE_NO_PANEL_PARENT=1` skips the parenting so a
+        // reporter can A/B it in two runs instead of rebuilding.
+        guard (ProcessInfo.processInfo.environment["LINCHOCOLATE_NO_PANEL_PARENT"] ?? "").isEmpty else { return }
+        if let parent = NSApplication.shared.windows.first(where: { !($0 is NSPanel) && $0 !== self }) {
+            backend.setWindowParent(parent.handle, for: handle)
+        }
+    }
+
     /// Whether the panel floats above regular document windows.
     public var isFloatingPanel = false
     /// Whether the panel hides when the app deactivates.

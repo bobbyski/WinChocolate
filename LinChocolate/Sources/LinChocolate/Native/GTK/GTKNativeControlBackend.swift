@@ -103,7 +103,22 @@ public final class GTKNativeControlBackend: NativeControlBackend {
     private var collectionFlowGeometry: [UInt: (interitem: Double, line: Double, horizontal: Bool)] = [:]
     private var windowResizeActions: [UInt: (Double, Double) -> Void] = [:]
     private var contentViewOwners: [UInt: UInt] = [:]     // content view -> its window
-    private var lastContentSizes: [UInt: NSSize] = [:]   // collection -> GtkFlowBox
+    private var lastContentSizes: [UInt: NSSize] = [:]
+    /// Windows that have already been through first-show setup.
+    private var presentedWindows: Set<UInt> = []
+    // ── Paint tracing (LINCHOCOLATE_PAINT_TRACE=1) ────────────────────────────
+    // Answers "where do the repaints come from" with evidence instead of
+    // theory: every window lifecycle step and every frame-clock cycle is logged
+    // with a timestamp, the window's size and its content's allocation, so a
+    // repaint storm shows up as either repeated frames at a STABLE size (damage
+    // /expose) or frames whose size KEEPS CHANGING (re-layout).
+    private lazy var paintTrace: Bool =
+        !(ProcessInfo.processInfo.environment["LINCHOCOLATE_PAINT_TRACE"] ?? "").isEmpty
+    private let paintTraceStart = g_get_monotonic_time()
+    private var paintTraceFrames: [UInt: Int] = [:]
+    private var paintTraceLastSize: [UInt: (Int32, Int32)] = [:]
+    private var paintTraceMapped: [UInt: gint64] = [:]
+    private var paintTraceReported: Set<UInt> = []   // collection -> GtkFlowBox
     private var collectionSelectionActions: [UInt: (Int) -> Void] = [:]
     private var suppressCollectionSelection: Set<UInt> = []
     private var clickActionBoxes: [UInt: Bool] = [:]
@@ -367,6 +382,19 @@ public final class GTKNativeControlBackend: NativeControlBackend {
 
     /// Schedules `block` on GTK's main loop via `g_timeout_add`.
     public func scheduleTimer(interval: Double, repeats: Bool, _ block: @escaping () -> Void) {
+        var block = block
+        if paintTrace {
+            let original = block
+            let every = interval
+            let start = paintTraceStart
+            block = {
+                let ms = Double(g_get_monotonic_time() - start) / 1000.0
+                FileHandle.standardError.write(
+                    String(format: "LCPAINT %8.1fms [timer] every=%.2fs\n", ms, every)
+                        .data(using: .utf8)!)
+                original()
+            }
+        }
         // Foundation's Timer lands on RunLoop.main, which is (a) never pumped
         // under g_main_loop_run and (b) broken for repeating timers on
         // swift-corelibs-foundation 6.0.3 anyway (RunLoop.run fires a repeating
@@ -454,7 +482,20 @@ public final class GTKNativeControlBackend: NativeControlBackend {
         let h = allocate(win, .window, frame: frame)
         let p = widget(h)!
         gtk_window_set_title(asWindow(p), title)
-        gtk_window_set_default_size(asWindow(p), Int32(frame.width), Int32(frame.height))
+        // Honour the style mask instead of accepting and ignoring it: a window
+        // with no title bar must not be decorated, and one that cannot be closed
+        // must not offer a close button. Telling the WM this up front avoids it
+        // decorating the window and then being corrected.
+        gtk_window_set_decorated(asWindow(p), gboolean(styleMask.contains(.titled) ? 1 : 0))
+        gtk_window_set_deletable(asWindow(p), gboolean(styleMask.contains(.closable) ? 1 : 0))
+        // Deliberately NO `gtk_window_set_default_size` here. `frame` is AppKit's
+        // CONTENT rect, while the GTK window also holds the menu bar and toolbar,
+        // so a default size of the content alone is too short: the window maps at
+        // that size and then has to grow to its natural size, and under a real
+        // window manager that second sizing is a visible map-then-repaint. The
+        // content view carries its own size request, so GTK's natural size is
+        // already content + chrome — exactly the window AppKit's contentRect
+        // describes — and it gets there in one step.
         // The window's real child is a vertical box: [menu bar?][content view].
         // This keeps a slot for `installMenuBar` above the AppKit content view.
         let box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0)!
@@ -504,11 +545,166 @@ public final class GTKNativeControlBackend: NativeControlBackend {
             contentViewOwners[view.rawValue] = window.rawValue
         }
     }
+    /// Emits one paint-trace line for `raw`: elapsed ms, the window's own size,
+    /// its content view's allocation, and the GTK frame counter.
+    fileprivate func tracePaint(_ raw: UInt, _ event: String) {
+        guard paintTrace, let w = widgets[raw] else { return }
+        let ms = Double(g_get_monotonic_time() - paintTraceStart) / 1000.0
+        let widget = asWidget(w)
+        let ww = gtk_widget_get_width(widget), wh = gtk_widget_get_height(widget)
+        var content = "content=none"
+        if let c = windowContents[raw] {
+            content = "content=\(gtk_widget_get_width(asWidget(c)))x\(gtk_widget_get_height(asWidget(c)))"
+        }
+        var frame = ""
+        if let clock = gtk_widget_get_frame_clock(widget) {
+            frame = " frame=\(gdk_frame_clock_get_frame_counter(clock))"
+        }
+        // The GdkSurface is what the X server actually shows. GTK's allocation
+        // (win=) is only computed on the frame clock, so it reads 0 before the
+        // first cycle even when the real window is already the right size — the
+        // two together separate "bookkeeping not filled in yet" from "the window
+        // on screen is genuinely the wrong size".
+        var surface = " surface=none"
+        if let native = gtk_widget_get_native(widget), let s = gtk_native_get_surface(native) {
+            surface = " surface=\(gdk_surface_get_width(s))x\(gdk_surface_get_height(s))"
+        }
+        // Flag the two signatures that matter: a size change (re-layout) versus a
+        // repeat at the same size (damage/expose).
+        var note = ""
+        if let last = paintTraceLastSize[raw], last != (ww, wh) {
+            note = "  ← SIZE CHANGED \(last.0)x\(last.1) → \(ww)x\(wh)"
+        }
+        paintTraceLastSize[raw] = (ww, wh)
+        let title = gtk_window_get_title(asWindow(w)).map { String(cString: $0) } ?? "?"
+        // The number this whole investigation turns on: how long the window sat
+        // on screen before anything was painted into it. Reported once, in
+        // plain sight, so nobody has to subtract timestamps by hand.
+        if event == "map" { paintTraceMapped[raw] = g_get_monotonic_time() }
+        if event.hasPrefix("draw#1"), !paintTraceReported.contains(raw),
+           let mapped = paintTraceMapped[raw] {
+            paintTraceReported.insert(raw)
+            let delay = Double(g_get_monotonic_time() - mapped) / 1000.0
+            FileHandle.standardError.write(
+                String(format: "LCPAINT ======== [%@] FIRST FRAME %.1f ms after map ========\n",
+                       title as NSString, delay).data(using: .utf8)!)
+        }
+        FileHandle.standardError.write(
+            String(format: "LCPAINT %8.1fms [%@] %-12@ win=%dx%d %@%@%@\n",
+                   ms, title as NSString, event as NSString, Int(ww), Int(wh),
+                   (content + surface) as NSString, frame as NSString, note as NSString).data(using: .utf8)!)
+    }
+
+    /// Hooks the window's lifecycle and its frame clock so every paint cycle is
+    /// visible. Installed once, at first present, when tracing is on.
+    private func installPaintTrace(_ handle: NativeHandle) {
+        guard paintTrace, let w = widget(handle) else { return }
+        let widget = asWidget(w)
+        for signal in ["map", "unmap", "realize", "unrealize"] {
+            let box = PaintTraceBox(backend: self, raw: handle.rawValue, event: signal)
+            g_signal_connect_data(
+                UnsafeMutableRawPointer(widget), signal,
+                unsafeBitCast(gtkPaintTraceTrampoline, to: GCallback.self),
+                Unmanaged.passRetained(box).toOpaque(), boxRelease, GConnectFlags(rawValue: 0)
+            )
+        }
+        // The frame clock is the authority on repaints: one cycle per frame GTK
+        // actually renders.
+        guard let clock = gtk_widget_get_frame_clock(widget) else { return }
+        for signal in ["layout", "after-paint"] {
+            let box = PaintTraceBox(backend: self, raw: handle.rawValue, event: "clock:" + signal)
+            g_signal_connect_data(
+                UnsafeMutableRawPointer(clock), signal,
+                unsafeBitCast(gtkPaintTraceTrampoline, to: GCallback.self),
+                Unmanaged.passRetained(box).toOpaque(), boxRelease, GConnectFlags(rawValue: 0)
+            )
+        }
+    }
+
     /// Presents the window (`gtk_window_present`).
     public func showWindow(_ handle: NativeHandle) {
         guard let w = widget(handle) else { return }
+        // Realize before mapping so the surface exists and GTK can measure the
+        // window, then map it.
+        // Re-presenting an ALREADY-SHOWN window (the demo's inspector panel is
+        // cached and re-ordered front on every press) must only raise it. Doing
+        // the first-show work again re-sized a mapped window — a resize request
+        // costs a window-manager round trip, which is why a second open measured
+        // SLOWER than the first (2.1s then 3.5s on the reporter's display) — and
+        // re-installed the trace handlers, so every later event logged twice.
+        guard !presentedWindows.contains(handle.rawValue) else {
+            tracePaint(handle.rawValue, "re-present")
+            gtk_window_present(asWindow(w))
+            return
+        }
+        presentedWindows.insert(handle.rawValue)
+
+        // Size the window BEFORE realizing it. `gtk_widget_realize` creates the
+        // GdkSurface, and with no size set that surface is created 1x1: the trace
+        // showed `map surface=1x1` followed by a jump to the real size on the
+        // first frame-clock cycle, i.e. the window is mapped tiny and then
+        // resized — a visible flash, and the origin of the "blank repaints".
+        //
+        // Measure rather than reusing AppKit's contentRect: the window also
+        // carries the menu bar and toolbar, and an earlier attempt that set the
+        // content size mapped the window too short and then had to grow it.
+        // Measuring gets content + chrome right in one step, for a panel (no
+        // chrome) as much as for the main window.
+        var minW: gint = 0, natW: gint = 0, minH: gint = 0, natH: gint = 0
+        gtk_widget_measure(asWidget(w), GTK_ORIENTATION_HORIZONTAL, -1, &minW, &natW, nil, nil)
+        gtk_widget_measure(asWidget(w), GTK_ORIENTATION_VERTICAL, natW, &minH, &natH, nil, nil)
+        if natW > 0, natH > 0 {
+            gtk_window_set_default_size(asWindow(w), natW, natH)
+        }
+        tracePaint(handle.rawValue, "pre-realize")
+        gtk_widget_realize(asWidget(w))
+        // Paint the X background to match the app BEFORE the window is mapped.
+        // Between map and the first frame the X server fills the window with
+        // this pixel, and that gap is seconds on a window manager that never
+        // finishes GTK's frame-sync handshake. Left at the default it flashes
+        // white against a dark app — the reported "blank screens". Matched to the
+        // window background, the same wait is invisible. (Verified as the visible
+        // symptom by Tools/window-timing-spike.c, whose light theme made the very
+        // same flash near-invisible: white on white.)
+        let background = NSColor.windowBackgroundColor
+        lc_set_window_background_rgb(asWidget(w),
+                                     Double(background.redComponent),
+                                     Double(background.greenComponent),
+                                     Double(background.blueComponent))
+        // Drop GTK's frame-sync handshake where there is no compositor to sync
+        // WITH. GTK holds a newly mapped window's first frame until the window
+        // manager acknowledges it through a sync counter; quartz-wm advertises
+        // the protocol and never answers, so GTK waited out its timeout — a
+        // measured ~2 s for every window after the first, identical to the
+        // millisecond across two different code paths. On a composited desktop
+        // the handshake earns its keep (it is what keeps resizing tear-free), so
+        // this is deliberately scoped to displays with no compositor, where the
+        // wait buys nothing. `LINCHOCOLATE_KEEP_WM_SYNC=1` restores it.
+        let keepSync = !(ProcessInfo.processInfo.environment["LINCHOCOLATE_KEEP_WM_SYNC"] ?? "").isEmpty
+        if nonComposited, !keepSync {
+            lc_strip_wm_sync_request(asWidget(w))
+        }
+        installPaintTrace(handle)
+        tracePaint(handle.rawValue, "pre-present")
         gtk_window_present(asWindow(w))
-        if ProcessInfo.processInfo.environment["LINCHOCOLATE_GEOMETRY_AUDIT"] != nil {
+        tracePaint(handle.rawValue, "post-present")
+        // NOTE: there is deliberately NO "wait until laid out" loop here.
+        //
+        // An earlier version pumped the main context after `present` so the
+        // content would have a size before returning. It was wrong, and it was
+        // the cause of the reported flashing rather than a fix for it: GTK lays
+        // a window out on the frame clock, so every pumped iteration while the
+        // window is mapped-but-unlaid-out lets GTK render and push a BLANK frame
+        // to the display — "several repainting blank screens before the real
+        // one". A pure-GTK4 control program (Tools/window-timing-spike.c) waits
+        // just as long for its first frame on the same display (1131 ms for a
+        // second window) and shows no flashing at all, precisely because it
+        // never pumps: it returns to the main loop and paints once, when ready.
+        //
+        // The multi-second wait for a second window's first frame is GTK's/the
+        // window manager's (quartz-wm does not complete the frame-sync
+        // handshake). We cannot shorten it — but we must not make it visible.
+        if !(ProcessInfo.processInfo.environment["LINCHOCOLATE_GEOMETRY_AUDIT"] ?? "").isEmpty {
             let box = ActionBox { [weak self] in self?.auditGeometry() }
             g_timeout_add_seconds(2, { userData in
                 guard let userData else { return gboolean(0) }
@@ -605,13 +801,28 @@ public final class GTKNativeControlBackend: NativeControlBackend {
     func noteContentDraw(view raw: UInt, width: Double, height: Double) {
         guard let window = contentViewOwners[raw], let handler = windowResizeActions[window] else { return }
         guard lastContentSizes[window] != NSMakeSize(width, height) else { return }
+        let isFirstSize = lastContentSizes[window] == nil
         lastContentSizes[window] = NSMakeSize(width, height)
+        // The first size is the window's initial layout, not a resize: AppKit
+        // does not post `windowDidResize` for it. Recording it as the baseline
+        // (and not notifying) also spares a layout pass during the first map.
+        guard !isFirstSize else { return }
         let box = ActionBox { handler(width, height) }
         g_idle_add({ userData in
             guard let userData else { return gboolean(0) }
             Unmanaged<ActionBox>.fromOpaque(userData).takeUnretainedValue().action()
             return gboolean(0)   // one shot
         }, Unmanaged.passRetained(box).toOpaque())
+    }
+    public func setWindowParent(_ parent: NativeHandle, for handle: NativeHandle) {
+        guard let w = widget(handle), let p = widget(parent) else { return }
+        // A transient window is placed and decorated by the WM as a utility
+        // window of its parent, in one pass. Without this a panel maps as an
+        // unrelated new toplevel and goes through full placement/decoration
+        // negotiation — extra visible mapping work on a remote/slow display.
+        gtk_window_set_transient_for(asWindow(w), asWindow(p))
+        // AppKit keeps the panel alive independently of the parent's lifetime.
+        gtk_window_set_destroy_with_parent(asWindow(w), gboolean(0))
     }
     public func hideWindow(_ handle: NativeHandle) {
         guard let w = widget(handle) else { return }
@@ -670,7 +881,7 @@ public final class GTKNativeControlBackend: NativeControlBackend {
     /// problem.
     private func logZoom(_ phase: String, handle: NativeHandle, content: UnsafeMutablePointer<GtkWidget>,
                          window: UnsafeMutablePointer<GtkWindow>, req: (Int32, Int32)) {
-        guard ProcessInfo.processInfo.environment["LINCHOCOLATE_ZOOM_DEBUG"] != nil else { return }
+        guard !(ProcessInfo.processInfo.environment["LINCHOCOLATE_ZOOM_DEBUG"] ?? "").isEmpty else { return }
         FileHandle.standardError.write("ZOOM \(phase): monitor req=\(req.0)x\(req.1)\n".data(using: .utf8)!)
         let box = ActionBox {
             let cw = gtk_widget_get_width(content), ch = gtk_widget_get_height(content)
@@ -3114,7 +3325,7 @@ public final class GTKNativeControlBackend: NativeControlBackend {
         // the (modal, display-bound) print dialog. Keeps CI and the geometry
         // audit from blocking on a dialog while still exercising the render path.
         let result: GtkPrintOperationResult
-        if let exportPath = ProcessInfo.processInfo.environment["LINCHOCOLATE_PRINT_EXPORT"] {
+        if let exportPath = ProcessInfo.processInfo.environment["LINCHOCOLATE_PRINT_EXPORT"], !exportPath.isEmpty {
             gtk_print_operation_set_export_filename(op, exportPath)
             result = gtk_print_operation_run(op, GTK_PRINT_OPERATION_ACTION_EXPORT, nil, nil)
         } else {
@@ -3136,10 +3347,20 @@ public final class GTKNativeControlBackend: NativeControlBackend {
     /// Queues a redraw of the view's `GtkDrawingArea`.
     public func setNeedsDisplay(_ handle: NativeHandle) {
         guard let area = viewDrawAreas[handle.rawValue] else { return }
+        if paintTrace {
+            let ms = Double(g_get_monotonic_time() - paintTraceStart) / 1000.0
+            FileHandle.standardError.write(
+                String(format: "LCPAINT %8.1fms [invalidate] view=%d\n", ms, Int(handle.rawValue))
+                    .data(using: .utf8)!)
+        }
         gtk_widget_queue_draw(asWidget(area))
     }
     /// Dispatches a draw pass to the Swift handler (called by the draw func).
     func dispatchDraw(view: UInt, context: NativeGraphicsContext, width: Double, height: Double) {
+        if paintTrace, let window = contentViewOwners[view] {
+            paintTraceFrames[window, default: 0] += 1
+            tracePaint(window, "draw#\(paintTraceFrames[window] ?? 0)@\(Int(width))x\(Int(height))")
+        }
         drawHandlers[view]?(context, width, height)
         noteContentDraw(view: view, width: width, height: height)
     }
@@ -4578,4 +4799,23 @@ func linChocolateFixedLayoutType() -> GType {
         gtk_layout_manager_get_type(), "LinChocolateFixedLayout", &info, GTypeFlags(rawValue: 0)
     )
     return lcLayoutTypeStorage
+}
+
+/// Carries a paint-trace subscription: which window, and which event fired.
+private final class PaintTraceBox {
+    weak var backend: GTKNativeControlBackend?
+    let raw: UInt
+    let event: String
+    init(backend: GTKNativeControlBackend, raw: UInt, event: String) {
+        self.backend = backend
+        self.raw = raw
+        self.event = event
+    }
+}
+
+/// Any traced signal — widget lifecycle or frame-clock cycle.
+private let gtkPaintTraceTrampoline: @convention(c) (UnsafeMutableRawPointer?, gpointer?) -> Void = { _, userData in
+    guard let userData else { return }
+    let box = Unmanaged<PaintTraceBox>.fromOpaque(userData).takeUnretainedValue()
+    box.backend?.tracePaint(box.raw, box.event)
 }

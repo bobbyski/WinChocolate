@@ -259,6 +259,10 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     public func simulateWindowResize(_ width: Double, _ height: Double, for handle: NativeHandle) {
         windowResizeActions[handle.rawValue]?(width, height)
     }
+    public private(set) var windowParents: [UInt: UInt] = [:]
+    public func setWindowParent(_ parent: NativeHandle, for handle: NativeHandle) {
+        windowParents[handle.rawValue] = parent.rawValue
+    }
     public func hideWindow(_ handle: NativeHandle) {
         hiddenWindows.insert(handle.rawValue)
         visibleWindows.remove(handle.rawValue)

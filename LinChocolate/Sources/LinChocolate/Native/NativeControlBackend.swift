@@ -319,6 +319,11 @@ public protocol NativeControlBackend: AnyObject {
     /// panel needs.
     func hideWindow(_ handle: NativeHandle)
 
+    /// Makes `handle` an auxiliary window of `parent` (AppKit's panel/parent
+    /// relationship): the window manager then places and decorates it as a
+    /// utility window belonging to that parent.
+    func setWindowParent(_ parent: NativeHandle, for handle: NativeHandle)
+
     /// Reports the window's new content size whenever the user (or the WM)
     /// resizes it, so the frameworkcan resize its content view and post
     /// `windowDidResize`.

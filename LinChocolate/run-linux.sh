@@ -77,9 +77,21 @@ run_args=(
     --rm -it
     -e "DISPLAY=${HOST_IP}:0"
     -e "GSK_RENDERER=${GSK_RENDERER:-cairo}"
-    # Diagnostics / feature flags forwarded from the host env when set.
-    -e "LINCHOCOLATE_ZOOM_DEBUG=${LINCHOCOLATE_ZOOM_DEBUG:-}"
-    -e "LINCHOCOLATE_GEOMETRY_AUDIT=${LINCHOCOLATE_GEOMETRY_AUDIT:-}"
+)
+
+# Diagnostics / feature flags: forward ONLY the ones actually set on the host.
+# `-e VAR=` would *define* the variable as empty inside the container, and a
+# feature that tests "is this set" then reads as enabled on every run — which is
+# exactly how a plain launch started printing the geometry audit.
+for var in LINCHOCOLATE_ZOOM_DEBUG LINCHOCOLATE_GEOMETRY_AUDIT LINCHOCOLATE_PRINT_EXPORT \
+           LINCHOCOLATE_NO_PANEL_PARENT LINCHOCOLATE_PAINT_TRACE LINCHOCOLATE_NO_LAYOUT_WAIT \
+           SPIKE_NO_SYNC LINCHOCOLATE_KEEP_WM_SYNC GDK_DEBUG GSK_DEBUG GTK_DEBUG; do
+    if [[ -n "${!var:-}" ]]; then
+        run_args+=(-e "$var=${!var}")
+    fi
+done
+
+run_args+=(
     -v "$REPO":/work -w /work/LinChocolate
     "$IMAGE"
 )
@@ -87,6 +99,19 @@ run_args=(
 echo "• XQuartz listening, access authorized, DISPLAY=${HOST_IP}:0"
 if [[ "${1:-}" == "--shell" ]]; then
     exec docker run "${run_args[@]}" bash
+fi
+
+# --spike: the CONTROL EXPERIMENT. Compiles and runs Tools/window-timing-spike.c,
+# a pure GTK4 C program with no LinChocolate in it, which opens a main window and
+# then a small second window and times each from present to its first frame. If
+# the spike is as slow as the demo on a given display, the latency is GTK's or
+# the window manager's, not the framework's.
+if [[ "${1:-}" == "--spike" ]]; then
+    exec docker run "${run_args[@]}" bash -c '
+        set -e
+        clang Tools/window-timing-spike.c $(pkg-config --cflags --libs gtk4) -lX11 -o /tmp/spike
+        exec /tmp/spike
+    '
 fi
 
 TARGET="${1:-GTKHelloSpike}"

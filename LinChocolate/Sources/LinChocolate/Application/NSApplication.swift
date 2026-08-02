@@ -77,6 +77,13 @@ public final class NSApplication {
     /// Installs the current main menu on a newly created window.
     func installMainMenuIfNeeded(on window: NSWindow) {
         guard let mainMenu else { return }
+        // NOT on panels. Apple has one menu bar for the whole app, and an
+        // auxiliary/floating panel never carries it. GTK has no global menu bar,
+        // so LinChocolate hosts it inside the window — but putting it in a panel
+        // too gave the inspector a stray empty menu strip AND made the panel 25pt
+        // taller than its contentRect, so it mapped at the content height and
+        // then grew: a visible map-then-repaint every time the panel opened.
+        guard !(window is NSPanel) else { return }
         nativeBackend.installMenuBar(mainMenu.menuBarSpecs(), on: window.handle)
     }
 

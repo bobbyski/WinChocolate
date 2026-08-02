@@ -33,7 +33,8 @@ let package = Package(
         .target(
             name: "CGTKCompat",
             dependencies: ["CGTK"],
-            path: "Sources/CGTKCompat"
+            path: "Sources/CGTKCompat",
+            linkerSettings: [.linkedLibrary("X11")]
         ),
 
         // AppKit-shaped API + the platform backends (GTK, in-memory).
