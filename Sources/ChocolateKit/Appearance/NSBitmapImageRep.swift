@@ -1,5 +1,3 @@
-import WinFoundation
-
 /// A bitmap image representation — AppKit's `NSBitmapImageRep`, which *is*
 /// Apple's BMP codec (`representation(using: .bmp)` / `init(data:)`) and pixel
 /// accessor (`colorAt(x:y:)`).

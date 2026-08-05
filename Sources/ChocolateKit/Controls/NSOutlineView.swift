@@ -295,7 +295,7 @@ open class NSOutlineView: NSTableView {
         if restored.isEmpty {
             deselectAll(nil)
         } else {
-            selectRowIndexes(restored, byExtendingSelection: false)
+            selectRows(restored, byExtendingSelection: false)
         }
     }
 

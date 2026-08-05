@@ -1,5 +1,3 @@
-import WinFoundation
-
 #if os(Windows)
 @_silgen_name("GetEnvironmentVariableW")
 private func WinDiagGetEnvironmentVariableW(

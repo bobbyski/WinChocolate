@@ -1,5 +1,3 @@
-import WinFoundation
-
 /// The framework's stock glyph artwork: a curated subset of
 /// [Tabler Icons](https://tabler.io/icons) (MIT License, © Paweł Kuna),
 /// embedded as SVG path data and stroked at render time — replacing the

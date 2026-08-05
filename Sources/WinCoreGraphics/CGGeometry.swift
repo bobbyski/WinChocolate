@@ -3,8 +3,23 @@
 /// WinCoreGraphics owns the CG-named types — exactly Apple's layering, where
 /// `NSRect` *is* `CGRect` — and WinChocolate re-exports the module with
 /// `NSPoint`/`NSSize`/`NSRect` typealiases, so both spellings compile
-/// unchanged. The module is dependency-free so non-UI code (and other
-/// libraries) can use the types without pulling in the AppKit layer.
+/// unchanged.
+///
+/// *Owns them where nothing else does.* This file is the CoreGraphics half of
+/// conditional C1, the Foundation seam (Docs/UnifiedChocolatePlan.md):
+///
+///   Windows  →  ours, because this toolchain has no real Foundation at all.
+///   Linux    →  corelibs-foundation's, which already defines CGFloat, CGPoint,
+///               CGSize, and CGRect (with midX/insetBy/union/NSMakeRect…).
+///   macOS    →  CoreGraphics', re-exported by Foundation.
+///
+/// Declaring our own alongside theirs is not additive — it makes every single
+/// reference in the shared core "ambiguous for type lookup", which is exactly
+/// what the first Linux build of the merged core hit: 13,626 errors for
+/// `CGFloat` alone. So on Linux and macOS we take the platform's types instead,
+/// and keep only the pieces the platform genuinely lacks (below).
+#if USE_WIN_FOUNDATION
+@_exported import WinFoundation
 
 /// A floating-point scalar used by the geometry types.
 public typealias CGFloat = Double
@@ -160,6 +175,20 @@ public struct CGRect: Equatable, Sendable {
     }
 }
 
+#else
+// Linux and macOS: take the platform's CGFloat/CGPoint/CGSize/CGRect. This is
+// re-exported, so importing WinCoreGraphics still brings the geometry types
+// into scope for every consumer, exactly as the Windows branch does.
+@_exported import Foundation
+#endif
+
+// ---------------------------------------------------------------------------
+// Always ours where the platform has no CoreGraphics. Apple's Foundation
+// re-exports the real CGVector and CGAffineTransform, but corelibs-foundation
+// on Linux ships neither (verified against the 6.3.2 toolchain), so this pair
+// is not covered by the branch above.
+#if !canImport(CoreGraphics)
+
 /// A two-dimensional vector (a delta), matching CoreGraphics' `CGVector`.
 public struct CGVector: Equatable, Sendable {
     public var dx: CGFloat
@@ -287,6 +316,7 @@ extension CGSize {
     }
 }
 
+#if USE_WIN_FOUNDATION
 // C math via the CRT, keeping the module dependency-free (real Foundation is
 // unavailable on this toolchain; the same approach WinFoundation uses).
 @_silgen_name("cos")
@@ -294,3 +324,14 @@ private func _win_cos(_ value: Double) -> Double
 
 @_silgen_name("sin")
 private func _win_sin(_ value: Double) -> Double
+#else
+// Linux: `@_silgen_name("cos")` cannot be used here. Once Foundation is in
+// scope the name binds to a function that already has SIL, and the compiler
+// aborts deserializing it ("While deserializing SIL function \"cos\"", signal
+// 6) rather than diagnosing the clash. Foundation's own cos/sin are the same
+// libm entry points anyway.
+private func _win_cos(_ value: Double) -> Double { cos(value) }
+private func _win_sin(_ value: Double) -> Double { sin(value) }
+#endif
+
+#endif  // !canImport(CoreGraphics)

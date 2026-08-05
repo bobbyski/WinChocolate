@@ -157,7 +157,12 @@ final class NSToolbarCompositeItemView: NSView {
         fatalError("NSToolbarCompositeItemView requires init(item:title:imageName:…)")
     }
 
-    private var winAppearanceObserver: NSObjectProtocol?
+    // The opaque token `NotificationCenter.addObserver(forName:…)` hands back. Typed
+    // `Any?` rather than AppKit's `NSObjectProtocol?` because the core shadows
+    // that protocol (see Runtime/FoundationBridge.swift) while the token comes
+    // from whichever Foundation is underneath. `removeObserver(_:)` takes `Any`
+    // on both, and the property is private, so no API surface changes.
+    private var winAppearanceObserver: Any?
 
     deinit {
         if let winAppearanceObserver {

@@ -1,5 +1,3 @@
-import WinFoundation
-
 /// A minimal SVG path-data (`d` attribute) parser producing an `NSBezierPath`.
 ///
 /// Framework-internal: covers the command grammar Tabler outline icons use —

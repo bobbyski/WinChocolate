@@ -1,5 +1,3 @@
-import WinFoundation
-
 // CoreGraphics bitmap-construction surface, matching Apple's module layering:
 // `CGColorSpace`, `CGDataProvider`, `CGBitmapInfo`, `CGImageAlphaInfo`,
 // `CGColorRenderingIntent`, and `CGImage`'s designated initializer are all

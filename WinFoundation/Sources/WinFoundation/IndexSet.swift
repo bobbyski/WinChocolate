@@ -1,6 +1,6 @@
 /// A small sorted integer-index set compatible with common Foundation `IndexSet`
 /// usage.
-public struct IndexSet: Equatable, Hashable, Sendable, Sequence {
+public struct IndexSet: Equatable, Hashable, Sendable, Sequence, ExpressibleByArrayLiteral {
     private var storage: Set<Int>
 
     /// Creates an empty index set.
@@ -14,6 +14,14 @@ public struct IndexSet: Equatable, Hashable, Sendable, Sequence {
     }
 
     /// Creates a set from any sequence of indexes (e.g. a `Set<Int>` or array).
+    /// Creates an index set from a literal list of indexes.
+    ///
+    /// Apple's `IndexSet` inherits this from `SetAlgebra`, so `[0, 2]` is a
+    /// valid `IndexSet` there and call sites are written that way.
+    public init(arrayLiteral elements: Int...) {
+        self.init(elements)
+    }
+
     public init<S: Sequence>(_ indexes: S) where S.Element == Int {
         self.storage = Set(indexes)
     }

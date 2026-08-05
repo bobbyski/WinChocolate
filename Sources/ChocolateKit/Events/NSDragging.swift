@@ -1,5 +1,3 @@
-import WinFoundation
-
 /// Drag operations a source permits and a destination performs.
 public struct NSDragOperation: OptionSet, Sendable {
     /// The raw option bits (AppKit-compatible values).

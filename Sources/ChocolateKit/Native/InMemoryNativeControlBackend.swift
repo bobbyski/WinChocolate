@@ -194,6 +194,11 @@ public final class RecordingDrawingContext: NativeDrawingContext {
 /// system. It keeps framework behavior deterministic in unit tests while the
 /// Win32 backend owns real HWND creation for application runs.
 public final class InMemoryNativeControlBackend: NativeControlBackend {
+    /// The kind of a native object — see `NativeControlKind`, which this names
+    /// for the backends and tests that grew up spelling it
+    /// `InMemoryNativeControlBackend.Kind`.
+    public typealias Kind = NativeControlKind
+
     /// A recorded native object request.
     // Not `Sendable`: these records carry AppKit values (`NSFont`, `NSColor`)
     // which are not Sendable on Apple either. The backend is single-threaded

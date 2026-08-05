@@ -1,5 +1,3 @@
-import WinFoundation
-
 /// A constraint-to-frame solver: it computes the frames of a container's
 /// direct subviews from the Auto Layout constraints installed on the container.
 ///

@@ -1,5 +1,3 @@
-import WinFoundation
-
 extension NSAttributedString {
     /// Document attribute keys used by RTF conversion, kept for AppKit API
     /// compatibility; this slice does not consume them.

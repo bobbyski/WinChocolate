@@ -101,7 +101,12 @@ open class NSVisualEffectView: NSView {
     }
 
     /// Token for the live appearance-change observer, removed on deinit.
-    private var winAppearanceObserver: NSObjectProtocol?
+    // The opaque token `NotificationCenter.addObserver(forName:…)` hands back. Typed
+    // `Any?` rather than AppKit's `NSObjectProtocol?` because the core shadows
+    // that protocol (see Runtime/FoundationBridge.swift) while the token comes
+    // from whichever Foundation is underneath. `removeObserver(_:)` takes `Any`
+    // on both, and the property is private, so no API surface changes.
+    private var winAppearanceObserver: Any?
 
     /// Creates a visual effect view.
     public required init(frame frameRect: NSRect) {

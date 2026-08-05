@@ -1,5 +1,3 @@
-import WinFoundation
-
 /// The system pasteboard.
 ///
 /// This slice keeps AppKit's `NSPasteboard` surface — the `general`

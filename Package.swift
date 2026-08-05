@@ -58,12 +58,20 @@ let package = Package(
         .target(
             name: "WinCoreGraphics",
             dependencies: [
-                // CoreFoundation sits below CoreGraphics on Apple; here that is
-                // WinFoundation, which supplies `Data`/`CFData` for
+                // CoreFoundation sits below CoreGraphics on Apple; on Windows
+                // that is WinFoundation, which supplies `Data`/`CFData` for
                 // `CGDataProvider` and the bitmap `CGImage` initializer.
-                .product(name: "WinFoundation", package: "WinFoundation")
+                // Windows-only, for the same reason as the core's dependency
+                // below: on Linux real Foundation already defines `Data`, and
+                // both being visible makes every use ambiguous.
+                .product(name: "WinFoundation", package: "WinFoundation",
+                         condition: .when(platforms: [.windows]))
             ],
             swiftSettings: [
+                // Conditional C1 (the Foundation seam) reaches down here too:
+                // on Windows this module owns CGFloat/CGPoint/CGSize/CGRect,
+                // and everywhere else it defers to the platform's own.
+                .define("USE_WIN_FOUNDATION", .when(platforms: [.windows])),
                 .swiftLanguageVersion(.v5)
             ]
         ),
@@ -75,7 +83,12 @@ let package = Package(
             name: "ChocolateKit",
             dependencies: [
                 "WinCoreGraphics",
-                .product(name: "WinFoundation", package: "WinFoundation"),
+                // Windows-only. On Linux and macOS real Foundation is present
+                // and preferred (see Runtime/FoundationBridge.swift), and a
+                // WinFoundation visible *alongside* it makes every `Data`,
+                // `URL`, and `NSRange` in the core ambiguous for type lookup.
+                .product(name: "WinFoundation", package: "WinFoundation",
+                         condition: .when(platforms: [.windows])),
                 // Linux-only: the GTK backend's C interop. Conditional so the
                 // Windows build never resolves `pkg-config gtk4`.
                 .target(name: "CGTK", condition: .when(platforms: [.linux])),

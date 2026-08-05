@@ -1,5 +1,3 @@
-import WinFoundation
-
 /// Text underline styles matching AppKit names.
 public struct NSUnderlineStyle: OptionSet, Sendable {
     /// Raw option value.

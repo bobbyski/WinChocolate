@@ -255,7 +255,7 @@ open class NSTableView: NSControl {
 
     /// Selects rows by an `IndexSet`, matching AppKit's signature.
     open func selectRowIndexes(_ indexes: IndexSet, byExtendingSelection extend: Bool) {
-        selectRowIndexes(Set(indexes), byExtendingSelection: extend)
+        selectRows(Set(indexes), byExtendingSelection: extend)
     }
 
     /// Reloads specific rows/columns by `IndexSet`, matching AppKit's
@@ -625,8 +625,15 @@ open class NSTableView: NSControl {
         return tableColumns[columnIndex]
     }
 
-    /// Selects one row.
-    open func selectRowIndexes(_ indexes: Set<Int>, byExtendingSelection extend: Bool) {
+    /// Selects rows by a plain `Set`, the shared implementation behind AppKit's
+    /// `selectRowIndexes(_:byExtendingSelection:)`.
+    ///
+    /// Deliberately *not* an overload of the AppKit name: Apple declares only
+    /// the `IndexSet` form, and once real Foundation is underneath — where
+    /// `IndexSet` is `ExpressibleByArrayLiteral`, as Apple's is — a second
+    /// overload taking `Set<Int>` makes every `selectRowIndexes([row], …)`
+    /// call site ambiguous.
+    func selectRows(_ indexes: Set<Int>, byExtendingSelection extend: Bool) {
         let validIndexes = indexes.filter { rowValues.indices.contains($0) }
         guard !validIndexes.isEmpty else {
             if allowsEmptySelection {

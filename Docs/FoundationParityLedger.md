@@ -87,6 +87,31 @@ confirmed on the first Linux build:
 - **`ProcessInfo.processInfo.environment`** and argument handling under a real
   Foundation.
 
+## Settled by the first Linux build, 2026-08-05
+
+The build found a different class of divergence than the list above anticipated:
+not behavior that differs, but **surface WinFoundation has that real Foundation
+does not**. The core calls it, so on Linux it simply wasn't there. All five are
+levelled in `ChocolateKit/Runtime/FoundationBridge.swift` — inside conditional
+C1, so the core above it still sees one Foundation.
+
+| Member | Why it isn't in real Foundation | How it's supplied |
+|---|---|---|
+| `Data.array` | A WinFoundation convenience for its `[UInt8]` backing | `[UInt8](self)` |
+| `IndexPath.init(item:section:)`, `.item`, `.section` | Apple ships these **in Foundation**, but gated to Apple platforms; corelibs has only the general `indexes` form | `IndexPath(indexes: [section, item])`, `self[1]`, `self[0]` |
+| `Locale.shortDatePattern` / `.timePattern` / `.shortTimePattern` | WinFoundation reads them from the Windows locale tables | The same ICU data the rest of Foundation uses, via `DateFormatter`. The pattern *syntax* therefore matches the formatter that consumes it on each platform (Unicode `a` for the meridiem where Windows writes `tt`) |
+| `RunLoopPlatformPump` | Windows fuses run loop and message pump; real Foundation has no such seam | Protocol declared in the bridge. `RunLoop.installPlatformPump` **traps** rather than accepting-and-ignoring: reaching it means a backend claimed a pump this loop cannot drive, which would silently cost the app every timer. `NSApplication.run` only calls it when `makeRunLoopPump()` returns non-nil, and the GTK backend returns nil — GLib owns the loop |
+| `NSObjectProtocol` | Real Foundation's is the **Objective-C runtime's** protocol: `self()`, `isProxy()`, `superclass`, `isKind(of:)`, `perform(_:)` returning `Unmanaged<AnyObject>!` | The core already brings its own Swift-native `NSObject`, which shadows Foundation's inside the module. The root class and its protocol have to shadow *together* — answering the ObjC requirements on a Swift-native root would mean inventing semantics that aren't there. The bridge declares the same three members (`isEqual`, `hash`, `description`) WinFoundation does |
+
+**One gap ran the other way.** `WinFoundation.IndexSet` was missing
+`ExpressibleByArrayLiteral`, which Apple's `IndexSet` inherits from `SetAlgebra`.
+Windows never noticed, because `NSTableView` carried a non-Apple
+`selectRowIndexes(_ indexes: Set<Int>, …)` overload that array literals bound to
+instead. On real Foundation both overloads matched `[row]` and every call site
+became ambiguous. Fixed on both sides: `IndexSet` now takes array literals, and
+the `Set<Int>` overload is renamed `selectRows(_:byExtendingSelection:)` and made
+internal, leaving only Apple's signature public.
+
 ---
 
 *Recorded by the plan's Phase 2. Divergences fixed here are pinned by contract

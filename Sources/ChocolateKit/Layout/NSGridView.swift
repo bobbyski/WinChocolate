@@ -1,5 +1,3 @@
-import WinFoundation
-
 /// A cell in an `NSGridView`, hosting one content view.
 public final class NSGridCell {
     /// How a content view is positioned within its grid cell, matching AppKit's

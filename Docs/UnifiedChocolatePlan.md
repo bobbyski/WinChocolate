@@ -310,6 +310,58 @@ the protocol requirement it means to satisfy — that surfaces only when Linux
 compiles. Treat the first Linux build as the real gate, with the Foundation
 ledger's §Open list as the second thing to check.
 
+### The first Linux build, 2026-08-05 — the gate above, run
+
+That caveat was the right one, and it fired. Reproduce with:
+
+```bash
+docker run --rm -v "$PWD":/work -w /work linchocolate-dev swift build --product WinChocolateContractTests
+```
+
+**Opening state: 26,349 errors.** Not 26,349 problems — four structural ones.
+
+| # | Cause | Errors | Fix |
+|---|-------|-------:|-----|
+| 1 | `WinCoreGraphics` re-declares `CGFloat`/`CGPoint`/`CGSize`/`CGRect`, which corelibs-foundation **already defines on Linux**. Every use in the core became "ambiguous for type lookup" | ~15,900 (13,626 for `CGFloat` alone) | C1 extended into `WinCoreGraphics`: it owns the geometry types only under `USE_WIN_FOUNDATION`, and defers to the platform's otherwise. `CGVector`/`CGAffineTransform` stay ours — corelibs ships neither |
+| 2 | `ChocolateKit` depended on `WinFoundation` **unconditionally**, so `Data`, `URL`, `NSRange`, and `ObjCBool` were visible twice | ~1,100 | Dependency is now `.when(platforms: [.windows])` on both `ChocolateKit` and `WinCoreGraphics`, matching what `FoundationBridge.swift` always said it did |
+| 3 | 10 shared-core files bypassed the C1 seam with a direct `import WinFoundation` | — | Deleted. Verified empirically that `@_exported import` **does** reach every file of the module, which is what makes the single seam sufficient. Only `Native/Win32/Win32RunLoopPump.swift` keeps its import, inside `#if os(Windows)` |
+| 4 | The GTK backend was written against `NativeControlBackend`'s **Linux** vocabulary — 14 types (`NativeMouseEvent`, `NativeToolbarItemSpec`, `NativeGraphicsContext`, …) that the merge's Win32-side files never carried | ~2,000 | Added to the core as `Native/NativeControlBackendTypes.swift`. Platform-neutral by construction, so no conditional |
+
+**Result: 26,349 → 1.** The one remaining error is §3.2's re-fronting, below.
+
+**The core itself now compiles against real corelibs-foundation.** Dropping only the
+`CGTK`/`CGTKCompat` dependency (which parks the GTK backend behind its own
+`#if canImport(CGTK)`) builds `ChocolateKit` clean — 147 files, then the
+`WinChocolate` façade on top. That is the milestone Phase 3 was really waiting on:
+**every AppKit class in the shared core is platform-portable in fact, not just in
+principle.**
+
+**Correction to the measurement table above.** "Requirements with **no** default
+(mandatory): **0** — every one is defaulted" is wrong, and it is the reason the
+re-fronting looked already-done. Counted in the file as it stands:
+
+| | |
+|---|---:|
+| Protocol requirements (`NativeControlBackend.swift`, lines 368–1015) | **181** |
+| Concrete defaults (the extension, lines 316–367) | **9** |
+| Requirements the GTK backend satisfies neither itself nor by default | **156** |
+
+Of those 156, only 28 are same-name signature drift (e.g. the core's
+`createWindow(title:frame:styleMask:usesMainMenu:)` versus GTK's
+`createWindow(title:frame:styleMask:)`); **126 have no same-named GTK method at
+all**. So the original §3.2 reading — "the GTK backend must be re-fronted onto the
+core's protocol, not merely widened" — was the correct one, and the 2026-08-05
+follow-up that retracted it should itself be treated as retracted.
+
+**This does not mean writing 156 new GTK methods.** The pool of ~104 GTK-only
+members is where most of the behavior already lives, under a different name and
+shape (`setClickAction` vs `registerMouseDownAction`). The job is largely
+re-fronting existing code, as the `setWindowParent` worked example shows. What is
+*not* acceptable is closing the gap by giving all 156 requirements no-op defaults:
+that compiles, and produces an application where every one of those controls
+silently does nothing — the accepted-and-ignored stub that this project has spent
+Phase 18 removing.
+
 ---
 
 ## Phase 4 — Retire The Duplicates ⏳ 0%
