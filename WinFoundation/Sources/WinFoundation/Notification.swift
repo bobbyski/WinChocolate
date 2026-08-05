@@ -53,12 +53,90 @@ public protocol NSObjectProtocol: AnyObject {
     var description: String { get }
 }
 
-/// Minimal operation queue stand-in. The current NotificationCenter shim invokes observers synchronously.
+/// A Foundation-compatible operation queue with block execution support.
+/// NotificationCenter observers remain synchronous, matching the shim's
+/// documented delivery behavior; scheduler clients use `addOperation(_:)`.
 public final class OperationQueue: @unchecked Sendable {
-    public static let main = OperationQueue()
+    public static let main = OperationQueue(isMain: true)
 
-    public init() {}
+    private let isMain: Bool
+
+    private init(isMain: Bool) {
+        self.isMain = isMain
+    }
+
+    public init() {
+        self.isMain = false
+    }
+
+    /// Adds a block for asynchronous execution on the receiver.
+    public func addOperation(_ block: @escaping () -> Void) {
+        if isMain {
+            RunLoop.main.perform(block)
+            return
+        }
+
+        #if os(Windows)
+        let context = Unmanaged.passRetained(
+            WinFoundationOperationBlock(block)
+        ).toOpaque()
+        guard let thread = WinFoundationCreateThread(
+            nil,
+            0,
+            WinFoundationOperationThreadStart,
+            context,
+            0,
+            nil
+        ) else {
+            Unmanaged<WinFoundationOperationBlock>.fromOpaque(context).release()
+            block()
+            return
+        }
+        _ = WinFoundationOperationCloseHandle(thread)
+        #else
+        block()
+        #endif
+    }
 }
+
+#if os(Windows)
+private final class WinFoundationOperationBlock {
+    let block: () -> Void
+
+    init(_ block: @escaping () -> Void) {
+        self.block = block
+    }
+}
+
+private typealias WinFoundationThreadStart =
+    @convention(c) (UnsafeMutableRawPointer?) -> UInt32
+
+private func WinFoundationOperationThreadStart(
+    _ context: UnsafeMutableRawPointer?
+) -> UInt32 {
+    guard let context else { return 0 }
+    let box = Unmanaged<WinFoundationOperationBlock>
+        .fromOpaque(context)
+        .takeRetainedValue()
+    box.block()
+    return 0
+}
+
+@_silgen_name("CreateThread")
+private func WinFoundationCreateThread(
+    _ attributes: UnsafeMutableRawPointer?,
+    _ stackSize: UInt,
+    _ startAddress: WinFoundationThreadStart?,
+    _ parameter: UnsafeMutableRawPointer?,
+    _ creationFlags: UInt32,
+    _ threadID: UnsafeMutablePointer<UInt32>?
+) -> UnsafeMutableRawPointer?
+
+@_silgen_name("CloseHandle")
+private func WinFoundationOperationCloseHandle(
+    _ object: UnsafeMutableRawPointer?
+) -> Int32
+#endif
 
 /// A small synchronous NotificationCenter subset.
 public final class NotificationCenter: @unchecked Sendable {
