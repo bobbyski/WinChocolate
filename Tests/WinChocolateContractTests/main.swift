@@ -4226,6 +4226,34 @@ func testSplitViewArrangesSubviewsAndDividerPosition() {
 }
 
 @MainActor
+func testSplitViewResizeKeepsPaneProportions() {
+    // AppKit's `adjustSubviews` scales the panes it finds; it does not re-divide
+    // them evenly. A divider the app positioned must survive a resize instead of
+    // snapping back to the middle.
+    let splitView = NSSplitView(frame: NSMakeRect(0, 0, 240, 100))
+    let first = NSView(frame: NSZeroRect)
+    let second = NSView(frame: NSZeroRect)
+    splitView.addSubview(first)
+    splitView.addSubview(second)
+    splitView.setPosition(70, ofDividerAt: 0)
+    expect(first.frame.size.width == 70, "Split divider did not take the requested position.")
+
+    let thickness = splitView.dividerThickness
+    let oldAvailable = 240 - thickness
+    splitView.frame = NSMakeRect(0, 0, 360, 100)
+
+    let expectedFirst = 70 * (360 - thickness) / oldAvailable
+    expect(abs(first.frame.size.width - expectedFirst) < 0.5,
+           "Resize should scale the first pane proportionally (expected ~\(expectedFirst), got \(first.frame.size.width)).")
+    expect(first.frame.size.width < 150,
+           "Resize must not snap the divider back to the middle (got \(first.frame.size.width)).")
+    expect(abs((first.frame.size.width + thickness + second.frame.size.width) - 360) < 0.5,
+           "Panes plus divider should fill the resized split view.")
+    expect(abs(second.frame.origin.x - (first.frame.size.width + thickness)) < 0.5,
+           "Second pane should start just past the divider.")
+}
+
+@MainActor
 func testSubviewResponderChainTargetsSuperview() {
     let parent = NSView(frame: NSMakeRect(0, 0, 100, 100))
     let child = NSView(frame: NSMakeRect(0, 0, 20, 20))
@@ -11192,6 +11220,7 @@ testTableViewNativeSelectionNotifiesDelegateAndAction()
 testTableViewActionCanReadSelectedRowValue()
 testTableViewClickedRowAndColumnFollowSelection()
 testSplitViewArrangesSubviewsAndDividerPosition()
+testSplitViewResizeKeepsPaneProportions()
 testSubviewResponderChainTargetsSuperview()
 testResponderForwardsUnhandledEvents()
 testWindowIsContentViewNextResponder()

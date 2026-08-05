@@ -205,5 +205,5 @@ public final class Bundle: Equatable, Hashable, Sendable {
 private func WinFoundationGetModuleFileNameW(_ module: UnsafeRawPointer?, _ filename: UnsafeMutablePointer<UInt16>?, _ size: UInt32) -> UInt32
 
 @_silgen_name("GetFileAttributesW")
-private func WinFoundationGetFileAttributesW(_ filename: UnsafePointer<UInt16>) -> UInt32
+private func WinFoundationGetFileAttributesW(_ filename: UnsafePointer<UInt16>?) -> UInt32
 #endif

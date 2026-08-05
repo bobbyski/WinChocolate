@@ -131,10 +131,15 @@ open class NSSplitView: NSView {
     /// split framed after its panes are added (the common case) must re-fill
     /// them, exactly as AppKit does.
     override func winLayoutAfterFrameSizeChange() {
-        adjustSubviews()
+        winResizePanesProportionally()
     }
 
     /// Recalculates child pane frames to evenly fill the split view.
+    ///
+    /// This is the *redistributing* pass, run when the pane set or orientation
+    /// changes. A plain resize does not come through here — it scales the panes
+    /// it finds (see `winResizePanesProportionally`), so a positioned divider
+    /// survives the resize.
     open func adjustSubviews() {
         guard !subviews.isEmpty else {
             return
@@ -157,6 +162,45 @@ open class NSSplitView: NSView {
                 subview.frame = NSMakeRect(0, y, bounds.size.width, paneHeight)
                 y += paneHeight + dividerThickness
             }
+        }
+
+        needsDisplay = true
+        updateCursorRegions()
+    }
+
+    /// Rescales the panes to fill a resized split view, keeping each pane's
+    /// share of the space — AppKit's resize behavior.
+    ///
+    /// The panes still carry their pre-resize frames when this runs, so their
+    /// current extents give the proportions to preserve. Panes with no size yet
+    /// (a split framed before its panes were laid out) fall back to an even
+    /// division.
+    private func winResizePanesProportionally() {
+        guard !subviews.isEmpty else {
+            return
+        }
+
+        let count = CGFloat(subviews.count)
+        let totalDividerThickness = dividerThickness * max(0, count - 1)
+        let available = max(0, (isVertical ? bounds.size.width : bounds.size.height) - totalDividerThickness)
+        let currentExtents = subviews.map { isVertical ? $0.frame.size.width : $0.frame.size.height }
+        let currentTotal = currentExtents.reduce(0, +)
+
+        guard currentTotal > 0 else {
+            adjustSubviews()
+            return
+        }
+
+        let scale = available / currentTotal
+        var offset: CGFloat = 0
+        for (index, subview) in subviews.enumerated() {
+            let extent = max(0, currentExtents[index] * scale)
+            if isVertical {
+                subview.frame = NSMakeRect(offset, 0, extent, bounds.size.height)
+            } else {
+                subview.frame = NSMakeRect(0, offset, bounds.size.width, extent)
+            }
+            offset += extent + dividerThickness
         }
 
         needsDisplay = true

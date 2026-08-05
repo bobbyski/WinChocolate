@@ -34,6 +34,12 @@ public final class Timer: @unchecked Sendable {
     /// Context Foundation callers sometimes read back; nil for block timers.
     public var userInfo: Any? { nil }
 
+    /// The amount of time after the scheduled fire date that the timer may
+    /// fire. WinFoundation's run loop currently fires at the first servicing
+    /// opportunity at or after `fireDate`; retaining this value preserves
+    /// Foundation's API and lets scheduling clients communicate their intent.
+    public var tolerance: TimeInterval = 0
+
     let repeats: Bool
     private let block: (Timer) -> Void
     /// The loop that owns this timer, set when it is added.

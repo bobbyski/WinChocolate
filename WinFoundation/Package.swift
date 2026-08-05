@@ -19,9 +19,19 @@ let package = Package(
     targets: [
         .target(
             name: "WinFoundation",
+            swiftSettings: [
+                // The current ARM64 Windows Swift 6 development toolchain
+                // asserts in TransferNonSendable during optimized builds of
+                // FileManager. WinFoundation is a compatibility shim whose
+                // public surface predates strict concurrency, so build it in
+                // Swift 5 language mode while Swift 6 clients continue to
+                // validate the exposed API.
+                .swiftLanguageVersion(.v5)
+            ],
             linkerSettings: [
                 .linkedLibrary("Ole32"),
-                .linkedLibrary("Shell32")
+                .linkedLibrary("Shell32"),
+                .linkedLibrary("Winhttp")
             ]
         )
     ]

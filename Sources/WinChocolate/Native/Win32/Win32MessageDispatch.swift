@@ -220,12 +220,21 @@ extension Win32NativeControlBackend {
             action(NSEvent(type: .leftMouseDown, locationInWindow: mouseLocation(from: lParam, in: hwnd), modifierFlags: currentModifierFlags()))
             return 0
         case wmLButtonUp:
-            guard let hwnd, let action = mouseUpActions[nativeHandle(from: hwnd).rawValue] else {
+            guard let hwnd else {
+                return nil
+            }
+
+            // Release the capture taken on button-down FIRST and unconditionally.
+            // Doing it only after a registered handler was found leaked the
+            // capture for any window without a mouse-up action: the mouse stayed
+            // captured after the button came up, so every later click and drag
+            // went to that window and the app looked hung.
+            _ = winReleaseCapture()
+            guard let action = mouseUpActions[nativeHandle(from: hwnd).rawValue] else {
                 return nil
             }
 
             action(NSEvent(type: .leftMouseUp, locationInWindow: mouseLocation(from: lParam, in: hwnd), modifierFlags: currentModifierFlags()))
-            _ = winReleaseCapture()
             return 0
         case wmLButtonDblClk:
             // CS_DBLCLKS turns the second press of a double-click into this
