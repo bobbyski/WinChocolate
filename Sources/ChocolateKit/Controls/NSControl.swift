@@ -36,6 +36,13 @@ open class NSControl: NSView {
     /// Generic object value used by controls that expose value-like state.
     open var objectValue: Any?
 
+    // AppKit also declares `stringValue`, `intValue`, `integerValue`,
+    // `doubleValue`, and `floatValue` here, forwarding to the cell. They are
+    // *not* declared here yet — see `Docs/AppKitFaithfulnessIssues.md`,
+    // "NSControl value accessors", for the two design constraints that make
+    // hoisting them from the individual controls a real piece of work rather
+    // than a rename.
+
     /// A formatter that converts between `objectValue` and the displayed text.
     ///
     /// Controls that support formatting (currently `NSTextField`) render

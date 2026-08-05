@@ -29,7 +29,10 @@ Related plans: `Docs/ProjectPlan.md` (WinChocolate), `Docs/LinChocolatePlan.md`
    the full contract suite staying green.
 3. **Linux gains the finished behavior.** Linux inherits ~29k lines of completed
    AppKit work (drawn tables, toolbars, sheets, nib loading, accessibility)
-   rather than reimplementing it.
+   rather than reimplementing it. **This is the goal, not a status.** Today's
+   Linux build is the pre-merge `LinChocolate` (which does pass its demo tests on
+   the user's docker machine); nothing in the merged tree has run there yet, and
+   the first obligation of Phase 3 is to not regress that baseline.
 4. **The public promise is unchanged.** Product names, import switch, and
    downstream APIs survive the merge intact.
 
@@ -177,7 +180,9 @@ not. Windows keeps compiling from the same code, at a new path.
 
 **Gate:** ✅ **Met on Windows 2026-07-26** — `swift build` clean, full contract
 suite passed, demo launches with its usual 642 controls, all through the
-`WinChocolate` façade. Linux is unverified by construction (§Verification model).
+`WinChocolate` façade. **The Linux side of this gate has not been run** — the
+docker machine's passing demo tests are the *pre-merge* `LinChocolate`, not this
+tree (§Verification model).
 
 **Two items were deliberately deferred, with reasons:**
 
@@ -211,8 +216,35 @@ from identical sources. This is the largest correctness risk in the plan.
 **Gate:** `ChocolateKit` compiles on Linux (real Foundation) and Windows
 (WinFoundation) from one source; contract suite green on both. *Windows half is
 green. The Linux half is by construction, not by observation* — it cannot be run
-here, so it is a Phase 3 entry criterion, and the ledger's §Open list is what to
-check first when Linux does build.
+**on this VM**, so it is a Phase 3 entry criterion, and the ledger's §Open list is
+what to check first when Linux does build.
+
+**Linux is verifiable — just not here, and not yet for this tree.** Read from the
+source 2026-08-05, so this is not a matter of anyone's recollection:
+
+| Evidence | What it shows |
+|---|---|
+| `LinChocolate/docker-compose.yml` mounts `.` (= `LinChocolate/`); `run-linux.sh` mounts the repo root but sets `-w /work/LinChocolate` | The container builds **`LinChocolate/Package.swift`**, not the root merged manifest |
+| `LinChocolate/Package.swift` contains **zero** references to `ChocolateKit`; its `LinChocolate` target builds `Sources/LinChocolate` (74 files, its own AppKit layer) | The Linux build is the **pre-merge** implementation |
+| `Sources/RealDemo/*.swift` are symlinks to `../../../Demo/DemoApplication/{main,DemoConveniences,DemoNibConveniences}.swift`, and `RealDemo` depends on `LinChocolate` | The **frozen, shared demo builds against LinChocolate** — that is the imports-only proof, on Linux |
+
+So, precisely:
+
+- ✅ **The frozen demo runs on Linux** — against pre-merge `LinChocolate`, via the
+  `RealDemo` product. This is a stronger result than "LinChocolate has its own
+  demo": it is *the same source file* the Windows demo compiles, which is the
+  whole promise. It is also a real, known-good **baseline to regress against**.
+- ❌ It says **nothing about the merged `ChocolateKit` tree.** Nothing in this
+  merge has ever been built there — the manifest the container uses cannot even
+  see `ChocolateKit`. Do not cite it as evidence the shared core compiles on Linux.
+- The loop is still batched off-box, so "make Linux compile-clean by
+  construction" (§Verification model) stands unchanged.
+
+**Phase 4 has to retire `LinChocolate/Package.swift`, or the docker loop keeps
+testing the old implementation.** Until that manifest points at `ChocolateKit`
+(or is deleted in favour of the root one), a green docker run proves nothing
+about the merge — the most likely way to end up believing Linux is fine when it
+has not been exercised at all.
 
 **Why this came in ~90k against a 250–500k estimate.** The estimate assumed the
 core leaned on the divergent aliases and would need rewriting. Measuring instead
@@ -251,8 +283,8 @@ re-fronted onto the core protocol: 132 members." Measuring instead of assuming:
 | Does the GTK backend conform to the core protocol? | **Yes, already** — `GTKNativeControlBackend: NativeControlBackend`, declared at line 22 |
 | Protocol requirements | 178 |
 | Requirements with **no** default (mandatory) | **0** — every one is defaulted |
-| Requirements GTK implements itself | 48 |
-| Requirements falling through to defaults | 130 |
+| Requirements GTK implements itself | 48 → **49** (see below) |
+| Requirements falling through to defaults | 130 → **129** |
 | Core files outside `Native/Win32/` using Win32 types | **0** (three matches were comments) |
 | Unguarded Win32 files that would break a Linux compile | **1**, `Win32Tooltips.swift` — now guarded |
 
@@ -261,6 +293,16 @@ would stop the module from *compiling*, and the one file that would have
 broken it is fixed. Phase 3 is therefore not "re-front a backend" but **"fill in
 130 gracefully-degrading defaults, in priority order"** — the same shape as the
 Windows control work, and individually verifiable.
+
+**Worked example of the remaining shape (`setWindowParent`, 2026-08-05).** A Windows
+MUST FIX — panels were not owned windows — turned out to be a gap the GTK backend had
+*already solved* (`gtk_window_set_transient_for`), but as a plain method rather than a
+protocol member, so the shared core could not call it. Promoting it to a
+`NativeControlBackend` requirement with a default no-op fixed Windows *and* converted one
+of the 129 into a genuinely shared member, with GTK's existing code satisfying it
+unchanged. **Expect more of Phase 3 to look like this than the raw count suggests:** some
+of the 129 are not "write new GTK code" but "the code exists on one side, lift it to the
+seam." The 104 GTK-only members are the pool to check against before writing anything new.
 
 **What it does not change.** This is still static analysis, not a Linux build.
 Name-level comparison cannot catch a signature mismatch between a GTK method and
@@ -276,6 +318,7 @@ Deletions are nearly free; the cost here is test consolidation and docs.
 
 | # | File | Status | Notes |
 |---|------|--------|-------|
+| 4.0 | `LinChocolate/Package.swift` | ⏳ Pending | **Do this first, and it is not a deletion — it is the switch that makes the docker loop test the merge at all.** Today that manifest builds `Sources/LinChocolate` and never mentions `ChocolateKit`, and `run-linux.sh`/`docker-compose.yml` both work from `LinChocolate/`, so a green docker run currently says nothing about the merged tree. Point `RealDemo` at the `LinChocolate` façade over `ChocolateKit` (or retire the manifest for the root one) *before* 4.1, so the deletions below are verified rather than hoped. **Blocked on Decision #2 (repo shape)** — SwiftPM target paths cannot escape the package root, so `LinChocolate/Package.swift` can only reach `ChocolateKit` via `.package(path: "..")` plus a new `LinChocolate` *product* in the root manifest. That is the single-root-vs-nested question, not an implementation detail, so it is the user's call and not to be made in passing |
 | 4.1 | `LinChocolate/Sources/LinChocolate/{Controls,Views,Windows,Layout,…}` | ⏳ Pending | Delete the parallel AppKit layer (~9.7k lines) |
 | 4.2 | `LinChocolate/Sources/LinChocolate/Compat/**` | ⏳ Pending | Delete `AppKitCompat`/`ConcurrencyCompat`/`ControlCompat`/`DemoCompat`/`EnumCompat` (~1.7k lines) — Rule One bans these |
 | 4.3 | `Tests/WinChocolateContractTests/main.swift` | ⏳ Pending | Fold `LinChocolate/Tests` into the shared suite |
@@ -335,10 +378,17 @@ code. Two consequences for sequencing:
 
 ## Verification model (settled 2026-07-26)
 
-**There is no local Linux loop.** WSL does not work under Parallels on this VM,
-so every Linux build and run happens off-box, by the user, when a phase is ready
-to hand over. This is a structural constraint, not a Phase 0 unknown, and it
-reshapes how the work is done:
+**There is no local Linux loop *on this VM*.** WSL does not work under Parallels
+here, so every Linux build and run happens off-box, by the user, when a phase is
+ready to hand over. This is a structural constraint, not a Phase 0 unknown, and it
+reshapes how the work is done.
+
+**Off-box, Linux does work — for the pre-merge tree.** The user has a Linux docker
+machine where `LinChocolate`'s demo tests pass (confirmed 2026-08-05, *"that was
+before these changes"*). That is the hand-off target and a known-good baseline to
+regress against, so the Linux column below is a *round-trip*, not a *gap*. It is
+**not** evidence about the merged `ChocolateKit` tree, which has never been run
+there. It does not shorten the cycle either, so everything below stands.
 
 | Layer | Verified where | Cost of a cycle |
 |---|---|---|
@@ -372,7 +422,7 @@ reshapes how the work is done:
 | Conditional `systemLibrary` won't resolve on Windows | Medium | High — blocks single manifest | Decide in Phase 0; fallback = two manifests over one source dir |
 | WinFoundation ≠ Foundation semantics | **High** | High — silent behavior drift | Parity ledger (2.1) + a contract test per fix |
 | GTK backend can't satisfy richer AppKit semantics | Medium | Medium — Linux features degrade | No-op defaults (1.6); prioritized backlog; never block the build |
-| Linux regressions vs today's LinChocolate | Medium | Medium | Keep the old tree on a branch until Phase 4's gate passes |
+| Linux regressions vs today's LinChocolate | Medium | Medium | Keep the old tree on a branch until Phase 4's gate passes. **The regression check is concrete:** pre-merge `LinChocolate` passes its demo tests on the user's Linux docker machine, so "same tests, same machine, merged tree" is a real before/after — not a judgement call |
 | Merge churn breaks Windows | Low | **Critical** | Windows path never changes; every phase gated on the Windows suite |
 | Concurrency model mismatch (GLib executor vs Win pump) | Medium | Medium | Isolate as C4 behind one hook; contract-test timer/run-loop behavior on both |
 | **No local Linux loop** (WSL fails under Parallels on this VM) | **Certain** | **High** — no tight iterate-on-Linux cycle | Compile-clean by construction (§Verification model); batch Linux runs into few hand-offs; lean on the headless in-memory backend |
@@ -388,8 +438,12 @@ reshapes how the work is done:
 3. **Policy change** — the standing rule is *"don't fix LinChocolate; note it in
    DEMO_CHANGES.md."* This plan necessarily edits LinChocolate; that rule must be
    lifted for this work.
-4. **Linux verification** — is `run-linux.sh` / `run-wsl.bat` / Docker a working
-   loop today? Phases 2–4 are unverifiable without it (Phase 0.4).
+4. ~~**Linux verification** — is `run-linux.sh` / `run-wsl.bat` / Docker a working
+   loop today?~~ **Answered 2026-08-05: Docker is.** The user's Linux docker
+   machine builds and passes `LinChocolate`'s demo tests — *pre-merge*. `run-wsl`
+   is a dead end on this VM (§Verification model). What remains open is not
+   *whether* Linux can be verified but *when* the merged tree gets its first run
+   there; until it does, no claim about `ChocolateKit` on Linux is evidence-backed.
 
 ---
 

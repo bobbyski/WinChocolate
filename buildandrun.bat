@@ -78,18 +78,18 @@ if errorlevel 1 (
     exit /b 1
 )
 
-rem The main demo loads bitmaps/icons from a Resources folder beside the exe;
-rem the run-loop demo has no resources, so this staging is main-demo only.
+rem The main demo loads artwork and DemoNibPanel.xib from a Resources folder
+rem beside the exe; the run-loop demo has no resources, so this is main-demo only.
+rem
+rem Copy the WHOLE folder, not a list of extensions. This used to enumerate
+rem *.bmp and *.png, and when the nib panel added a .xib the staging silently
+rem stopped covering it — the build stayed clean and the panel failed with
+rem "not found" at run time. LinChocolate's run-linux.sh has always copied
+rem Resources/* wholesale, which is why Linux never hit this. Same rule here now,
+rem so adding a resource type can never reintroduce it.
 if /I "%APP_NAME%"=="WinChocolateDemo" (
     if not exist "%RUN_DIR%\Resources" mkdir "%RUN_DIR%\Resources"
-    copy /y "%SCRIPT_DIR%Demo\DemoApplication\Resources\*.bmp" "%RUN_DIR%\Resources\" >nul
-    if errorlevel 1 (
-        echo.
-        echo Demo resource staging failed.
-        popd >nul
-        exit /b 1
-    )
-    copy /y "%SCRIPT_DIR%Demo\DemoApplication\Resources\*.png" "%RUN_DIR%\Resources\" >nul
+    copy /y "%SCRIPT_DIR%Demo\DemoApplication\Resources\*" "%RUN_DIR%\Resources\" >nul
     if errorlevel 1 (
         echo.
         echo Demo resource staging failed.

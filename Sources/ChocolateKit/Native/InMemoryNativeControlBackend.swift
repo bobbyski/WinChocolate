@@ -521,6 +521,15 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
         records[handle]?.hidesOnDeactivate = hidesOnDeactivate
     }
 
+    /// Records the owning window of an auxiliary window (AppKit's panel-to-owner
+    /// relationship), so tests can assert a panel was actually paired.
+    public func setWindowParent(_ parent: NativeHandle, for handle: NativeHandle) {
+        windowParents[handle] = parent
+    }
+
+    /// The recorded owner of each auxiliary window.
+    public private(set) var windowParents: [NativeHandle: NativeHandle] = [:]
+
     /// Returns a fixed font family list for deterministic tests.
     public func fontFamilyNames() -> [String] {
         ["Arial", "Consolas", "Courier New", "Georgia", "Segoe UI", "Tahoma", "Times New Roman", "Verdana"]

@@ -780,3 +780,194 @@ platforms, same AppKit behaviour.
   convention onto Windows' own locale data would be the wrong trade.
 - **`NSDatePicker.calendar`** is not implemented: WinFoundation has no `Calendar` type, and
   inventing one to back a property nothing uses would be worse than the honest gap.
+
+---
+
+## Windows re-sync — Round 6 (2026-08-05): class hierarchy + panel ownership
+
+Driven by the **MUST FIX (WinChocolate)** items in `DEMO_CHANGES.md` — divergences proven on
+Linux that Windows had to satisfy too. All 33 were audited against the Win32 implementation;
+most were already met. These two were not.
+
+### `NSPathControl` derived from the wrong superclass
+
+AppKit: `NSPathControl: NSControl`. WinChocolate had `NSPathControl: NSTextField`.
+
+This is more than a cosmetic inheritance difference, because the framework **tests for that
+exact type to make decisions**:
+
+| Site | Test | Effect on a path control |
+|------|------|--------------------------|
+| `NSPanel.swift:54` | `view as? NSTextField, field.isEditable` | matched the cast (`isEditable` was false, so no behaviour change) |
+| `NSToolbar.swift:963` | `(view as? NSTextField)?.isEditable` | matched |
+| `NSToolbar.swift:977` | `view as? NSTextField, !isEditable` → strips border/background | **matched, and applied text-field flattening to a path control** |
+| `NSToolbar.swift:992` | `view is NSTextField \|\| view is NSPopUpButton` | **matched, and forced a transparent background** |
+
+On macOS none of those match, so a toolbar path control was styled differently on the two
+platforms. The peer was never a text field anyway — `createNativePeer` makes a plain view and
+the breadcrumb is child buttons — so the flattening those branches applied was inert; the
+divergence was in what the *framework believed about the type*.
+
+**Fixed:** re-parented to `NSControl`. `stringValue`, `backgroundColor`, and `isEditable` are
+now declared on `NSPathControl` itself, because **AppKit declares them there** — inheriting
+them from `NSTextField` is exactly why the wrong superclass went unnoticed. `isSelectable`
+was dropped: AppKit's `NSPathControl` has no such property.
+
+**Not done, tracked:** AppKit's `NSControl` also has `stringValue`/`intValue`/`doubleValue`
+(forwarding to the cell); WinChocolate's does not — each control declares its own. Hoisting
+them would touch 8+ classes whose accessors read from different native peers, so it is a
+separate piece of work rather than a rider on this one.
+
+### A panel was not an owned window
+
+`DEMO_CHANGES.md` MUST FIX: *"a panel must be created as an owned/auxiliary window of the main
+window."* Win32 `createWindow` passed `nil` for `hWndParent`, so every panel was an unrelated
+top-level: it could fall behind the window it serves, did not minimize with it, and appeared in
+the taskbar. AppKit panels do none of those things.
+
+**Fixed at the seam, not in one backend.** The GTK backend already had a
+`setWindowParent(_:for:)` (LinChocolate's fix for the same bug, via
+`gtk_window_set_transient_for`) — but as a plain method, not a protocol member, so the shared
+core could not call it. It is now a `NativeControlBackend` requirement with a default no-op:
+
+- **Win32** — `GWLP_HWNDPARENT`, which for a non-`WS_CHILD` window sets the *owner*, so the
+  panel stays top-level while gaining owned behaviour.
+- **GTK** — the existing transient-for implementation now satisfies a protocol requirement.
+- **In-memory** — records the pairing, which is what makes it testable.
+
+`NSPanel.realizeNativePeer()` pairs on **first realize only** — re-pairing an already-owned
+window is a window-manager round trip for no change, which is the same class of waste as the
+re-show bug in the Linux notes.
+
+### Verified
+
+- Contract tests: `testControlClassHierarchyMatchesAppKit()`,
+  `testPanelIsRealizedAsAnOwnedWindow()`. The latter fails without the `NSPanel` call, so it
+  pins the behaviour rather than merely describing it.
+- Full suite green; demo launches and runs.
+
+### Also found while auditing
+
+`buildandrun.bat` staged `*.bmp` and `*.png` but **not `*.xib`** — so `DemoNibPanel.xib` was
+never copied beside the exe and the nib panel failed with "not found" at runtime despite a
+clean build. This had been fixed before and was lost in the merge. Restored, with a comment
+saying why the line exists so it survives the next one.
+
+### Audited and already correct
+
+The other window-presentation MUST FIXes were checked against the Win32 code and hold:
+`realizeNativePeer()` is idempotent (a re-show cannot re-run first-show sizing); the window
+class carries the app background brush (no bright pre-first-frame flash); `layoutToolbarAndContent()`
+runs *before* `showWindow`; `UpdateWindow` forces the first frame without pumping the queue;
+`NSPanel.usesMainMenu` is `false`; and `styleMask` drives the frame style
+(`.utilityWindow` → `WS_EX_TOOLWINDOW`, `.nonactivatingPanel` → `WS_EX_NOACTIVATE`).
+
+### A title-bar close did not end the modal session (backend-dependent correctness)
+
+`DEMO_CHANGES.md` MUST FIX: *"a modal dismissed by closing its window must end its modal
+session … or Quit silently stops working."*
+
+`NSApplication.windowWillClose(_:)` already existed and did the right thing, but only
+`NSWindow.close()` — the *programmatic* route — called it. A title-bar close arrives through
+the backend's destroy callback (`nativeWindowDidClose()`), which did not. The comment on
+`close()` even claimed to cover the title-bar case; it did not.
+
+**On Windows this was not visible**, because the Win32 modal loop guards on
+`winIsWindow(modalHwnd)` and so unwinds by itself once the window is destroyed. That is a
+property of one backend's loop, not of the framework — and GTK's loop has no equivalent guard,
+which is why the bug was reported from Linux. Relying on it would have meant the shared core
+was only correct on Win32.
+
+**Fixed:** `nativeWindowDidClose()` now calls the hook too, and `NSApplication` makes it
+idempotent (an `ObjectIdentifier` set cleared in `runModal`'s `defer`). Without that guard the
+second stop would land on the *enclosing* session once the inner one had unwound — a worse bug
+than the one being fixed.
+
+**Not pinned by a test, deliberately.** The in-memory backend's `runModal` returns immediately
+rather than running a nested loop, so it cannot model "the loop unwinds when the window is
+destroyed"; any test written against it would assert the mock, not the behaviour. A real test
+needs a backend that runs an actual nested loop — a Phase 3 item once GTK is up. The full
+suite is green, which establishes no regression, not that the new path is exercised.
+
+### NSControl value accessors — attempted, reverted, and why (tracked, not done)
+
+AppKit declares `stringValue`, `intValue` (`Int32`), `integerValue` (`Int`),
+`doubleValue`, and `floatValue` on **`NSControl`**, forwarding to the cell.
+WinChocolate declares them only on the individual controls, so this — legal AppKit,
+compiling on macOS — fails here:
+
+```swift
+func describe(_ control: NSControl) -> String { control.stringValue }
+```
+
+This was attempted on 2026-08-05 and **reverted**. It is a real gap, but two design
+constraints make it a proper piece of work rather than a hoist. Both were found by doing it,
+and both are recorded here so the next attempt does not rediscover them:
+
+**1. `stringValue` cannot be backed by `objectValue`.** The obvious implementation — project
+`stringValue` through `objectValue` — collapses two pieces of state AppKit deliberately keeps
+apart. `NSTextField` has *displayed text* and *model object*, with `formatter` converting
+between them; that is the entire point of `NSTextField.formatter`. Backing one with the other
+means setting the text overwrites the formatter's object. Observed as a live test failure
+(`intrinsicContentSize` stopped tracking the text). `NSControl` needs its **own** storage.
+
+**2. The existing accessors are stored properties with `didSet`, and several assign to
+themselves inside it** — `doubleValue = clamped(doubleValue)` in `NSSlider`, `NSScroller`,
+`NSProgressIndicator`, `NSLevelIndicator`. For a *stored* property that self-assignment does
+not re-enter the observer. Turn the same declaration into an `override` with `didSet` and it
+does: the setter is called again, `didSet` runs again, and it recurses until the stack is
+gone. Observed as the whole contract-test binary dying with no output and no exit code.
+
+**What a correct attempt looks like.** Give `NSControl` private storage for the string and
+double values (not `objectValue`); make `intValue`/`integerValue`/`floatValue` derive from
+`doubleValue` so a control that owns its value in a native peer overrides `doubleValue` alone;
+and convert each subclass's `didSet` observer into a **full `get`/`set` override** with its
+own storage, so the clamp happens on `newValue` rather than by self-assignment. That is ~6
+control classes rewritten, not renamed — worth doing deliberately, with the live demo
+exercised afterwards, because slider/stepper/scroller clamping is exactly the behaviour a
+contract test can pass while the control feels wrong in the hand.
+
+**Related divergences found while measuring, also not fixed:**
+
+- `NSLevelIndicator.intValue` is `Int`; AppKit's `NSControl.intValue` is `Int32` (`Int` is
+  `integerValue`).
+- `NSProgressIndicator` derives from `NSControl`; **AppKit's derives from `NSView`** and
+  declares `doubleValue` on itself. Same class of bug as `NSPathControl` above, so
+  `view is NSControl` answers differently on the two platforms.
+
+### `NSProgressIndicator` superclass — attempted, reverted, **crashes at runtime**
+
+AppKit: `NSProgressIndicator: NSView`. WinChocolate: `NSProgressIndicator: NSControl`. Same
+class of divergence as `NSPathControl` above — `view is NSControl` answers differently here
+than on macOS, and it carries a `target`/`action` pair AppKit has no equivalent for.
+
+Attempted 2026-08-05 and **reverted**. The re-parent looked safe on every check available
+short of running it:
+
+- Only `NSControl` member used was `objectValue` (two self-mirroring writes, removable).
+- No `target`/`action`/`isEnabled`/`sendAction` usage anywhere in framework, demo, or tests.
+- The frozen demo is AppKit-correct, so it *cannot* depend on the control-ness — and indeed
+  the whole tree, demo included, **compiled clean**.
+- The **full contract suite passed**.
+
+Then the demo **crashed on launch**: exit `0xC0000005` (access violation) ~1.2 s in, during
+startup, with no Swift trap message and nothing on stderr — so it is native (Win32/UIA), not a
+force-unwrap or bounds trap.
+
+Ruled out, so the next attempt need not re-test them:
+
+- **Not the lost `registerAction`.** `NSControl.realizeNativePeer` registers an action handler
+  for every peer; re-adding a no-op one to `NSProgressIndicator` did **not** stop the crash.
+- **Not an `unowned` reference** — the framework has none.
+- **Not `NSControl`-typed storage** — the only matches are `NSControl.StateValue` enum uses.
+
+Remaining suspects, in order: the **Win32 UIA / `WM_GETOBJECT` bridge** (`NSControl` overrides
+`winIsIntrinsicAccessibilityElement` → `true` and `winIntrinsicAccessibilityEnabled`, so the
+a11y tree's shape changes when a realized peer stops being an accessibility element), then the
+key-view/focus walk (`NSControl` overrides `acceptsFirstResponder`).
+
+**The lesson is the reusable part.** A class-hierarchy change can compile clean, satisfy the
+whole contract suite, and still kill the process — because the suite runs on the in-memory
+backend and never touches the UIA bridge. **Any re-parent must be smoke-run against the live
+demo before it is believed.** That is how this was caught; nothing else in the pipeline would
+have.

@@ -351,6 +351,10 @@ extension NativeControlBackend {
     public func setScrollerAppearance(overlay: Bool, knobStyle: NativeScrollerKnobStyle, for handle: NativeHandle) {
     }
 
+    /// Default: a backend with no window-ownership concept ignores the pairing.
+    /// The panel still works; it just does not float with its owner.
+    public func setWindowParent(_ parent: NativeHandle, for handle: NativeHandle) {}
+
     /// Default: a backend without a windowing concept ignores full-screen.
     public func setWindowFullScreen(_ fullScreen: Bool, for handle: NativeHandle) {
     }
@@ -464,6 +468,16 @@ public protocol NativeControlBackend: AnyObject {
     /// Updates whether a native top-level window hides while the application
     /// is inactive and reappears when it activates again.
     func setHidesOnDeactivate(_ hidesOnDeactivate: Bool, for handle: NativeHandle)
+
+    /// Makes a top-level window an *owned* (auxiliary) window of `parent` —
+    /// AppKit's relationship between an `NSPanel` and the window it serves.
+    ///
+    /// An owned window floats above its owner, minimizes and restores with it,
+    /// and stays out of the taskbar/window list. Without it a panel is an
+    /// unrelated top-level: it can fall behind its own document window, and on
+    /// a slow or remote display the window manager negotiates its placement and
+    /// decoration from scratch, which reads as an extra visible mapping step.
+    func setWindowParent(_ parent: NativeHandle, for handle: NativeHandle)
 
     /// Returns the installed font family names sorted for display.
     func fontFamilyNames() -> [String]

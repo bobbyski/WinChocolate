@@ -1810,6 +1810,9 @@ let vkRControl: Int32 = 0xa3
 let vkLMenu: Int32 = 0xa4
 let vkRMenu: Int32 = 0xa5
 let gwlpWndProc: Int32 = -4
+/// For a window that is not `WS_CHILD` this sets the window's *owner*, not its
+/// parent — which is how Win32 spells AppKit's panel-to-owner relationship.
+let gwlpHwndParent: Int32 = -8
 let gwChild: UINT = 5
 let gwHwndNext: UINT = 2
 let wmSettingChange: UINT = 0x001A

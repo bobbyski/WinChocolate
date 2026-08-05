@@ -2,6 +2,11 @@
 ///
 /// This first slice supports the determinate bar style used by many AppKit
 /// apps. The native Windows backend maps it to a progress bar control.
+///
+/// **Known divergence:** AppKit's `NSProgressIndicator` derives from `NSView`,
+/// not `NSControl` — see `Docs/AppKitFaithfulnessIssues.md`, "NSProgressIndicator
+/// superclass". Re-parenting it compiles and passes the contract suite but
+/// **crashes the running demo**, so it is tracked rather than done.
 open class NSProgressIndicator: NSControl {
     /// The control's natural size (9.2): a fixed square for the spinning style,
     /// and a standard-height bar with flexible width otherwise.

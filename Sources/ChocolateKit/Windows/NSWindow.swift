@@ -817,6 +817,11 @@ open class NSWindow: NSResponder {
     }
 
     private func nativeWindowDidClose() {
+        // The title-bar close arrives here, not through `close()`, so the modal
+        // session has to be ended on this path too. `NSApplication` makes the
+        // call idempotent, so a programmatic `close()` that also triggers this
+        // callback cannot stop the session twice.
+        NSApplication.shared.windowWillClose(self)
         toolbarHostView?.destroyNativePeer()
         toolbarHostView = nil
         nativeHandle = nil

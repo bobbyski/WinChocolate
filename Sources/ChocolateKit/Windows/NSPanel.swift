@@ -86,10 +86,31 @@ open class NSPanel: NSWindow {
     open override func realizeNativePeer() -> NativeHandle {
         let wasRealized = nativeHandle != nil
         let handle = super.realizeNativePeer()
-        if !wasRealized && hidesOnDeactivate {
-            nativeBackend.setHidesOnDeactivate(true, for: handle)
+        if !wasRealized {
+            if hidesOnDeactivate {
+                nativeBackend.setHidesOnDeactivate(true, for: handle)
+            }
+            // A panel is an auxiliary window of the window it serves: it floats
+            // above its owner, minimizes with it, and stays out of the taskbar.
+            // Pair it on first realize only — re-pairing an already-owned window
+            // costs a window-manager round trip for no change.
+            if let owner = panelOwnerWindow(), let ownerHandle = owner.nativeHandle {
+                nativeBackend.setWindowParent(ownerHandle, for: handle)
+            }
         }
         return handle
+    }
+
+    /// The window this panel is auxiliary to: the window it is a sheet of when
+    /// it has one, otherwise the application's main window. Returns `nil` when
+    /// there is no realized candidate — a panel shown before any main window
+    /// exists simply stays unowned, which is the pre-pairing behaviour.
+    private func panelOwnerWindow() -> NSWindow? {
+        let candidate = sheetParent ?? NSApplication.shared.mainWindow
+        guard let candidate, candidate !== self, candidate.nativeHandle != nil else {
+            return nil
+        }
+        return candidate
     }
 
     /// Orders the panel front even when the app is not active.

@@ -156,18 +156,35 @@ public final class NSApplication: NSObject {
         modalWindows.append(window)
         defer {
             modalWindows.removeLast()
+            stoppingModalWindows.remove(ObjectIdentifier(window))
         }
         return ModalResponse(rawValue: nativeBackend.runModal(for: handle))
     }
 
+    /// Windows whose modal session has already been asked to stop, so the two
+    /// close routes (`close()` and the backend's destroy callback) cannot stop
+    /// the same session twice — the second stop would land on the *enclosing*
+    /// session once this one has unwound.
+    private var stoppingModalWindows: Set<ObjectIdentifier> = []
+
     /// Ends the active modal session when its window is closing.
     ///
-    /// Title-bar closes reach the window directly; without this, the nested
-    /// modal loop would keep running with no window to dismiss it.
+    /// Both close routes call this: `close()` for a programmatic close, and the
+    /// backend's destroy callback for a title-bar close. It matters that the
+    /// *core* does this rather than the backend: the Win32 modal loop happens to
+    /// also guard on `IsWindow`, so it unwinds on its own, but GTK's does not —
+    /// which is where this bug was first seen. Ending the session here makes the
+    /// behaviour the same on every backend instead of a Win32 accident.
     internal func windowWillClose(_ window: NSWindow) {
-        if modalWindows.last === window {
-            stopModal(withCode: .cancel)
+        guard modalWindows.last === window else {
+            return
         }
+
+        let identifier = ObjectIdentifier(window)
+        guard stoppingModalWindows.insert(identifier).inserted else {
+            return
+        }
+        stopModal(withCode: .cancel)
     }
 
     /// Stops the current modal event loop with `.stop`.

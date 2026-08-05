@@ -134,6 +134,20 @@ extension Win32NativeControlBackend {
     }
 
     /// Updates whether a native window hides while the application is inactive.
+    /// Makes `handle` an owned window of `parent` (AppKit's panel-to-owner
+    /// relationship). Win32 expresses ownership as the window's `GWLP_HWNDPARENT`
+    /// — for a non-`WS_CHILD` window that sets the *owner*, not a parent, so the
+    /// panel stays a top-level window while gaining the owned behaviour:
+    /// always above its owner, minimizing and restoring with it, and absent from
+    /// the taskbar.
+    public func setWindowParent(_ parent: NativeHandle, for handle: NativeHandle) {
+        guard let panelHwnd = hwnd(from: handle), let ownerHwnd = hwnd(from: parent), panelHwnd != ownerHwnd else {
+            return
+        }
+
+        _ = winSetWindowLongPtrW(panelHwnd, gwlpHwndParent, Int(bitPattern: ownerHwnd))
+    }
+
     public func setHidesOnDeactivate(_ hidesOnDeactivate: Bool, for handle: NativeHandle) {
         if hidesOnDeactivate {
             hidesOnDeactivateHandles.insert(handle.rawValue)

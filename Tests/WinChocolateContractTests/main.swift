@@ -13969,6 +13969,79 @@ final class ParityPercentFormatter: NumberFormatter {
     }
 }
 
+@MainActor
+func testPanelIsRealizedAsAnOwnedWindow() {
+    // AppKit: a panel is auxiliary to the window it serves — it floats above
+    // its owner, minimizes with it, and stays out of the taskbar. Win32 spells
+    // that as the panel's GWLP_HWNDPARENT (which sets the *owner* for a
+    // non-WS_CHILD window); GTK spells it as gtk_window_set_transient_for. The
+    // shared core just pairs them through the backend seam.
+    let backend = InMemoryNativeControlBackend()
+    let previousBackend = NSApplication.shared.nativeBackend
+    NSApplication.shared.nativeBackend = backend
+    defer {
+        NSApplication.shared.nativeBackend = previousBackend
+        clearApplicationWindows()
+    }
+
+    let main = NSWindow(contentRect: NSMakeRect(0, 0, 480, 320),
+                        styleMask: [.titled, .closable, .resizable],
+                        backing: .buffered, defer: false)
+    main.makeKeyAndOrderFront(nil)
+
+    let panel = NSPanel(contentRect: NSMakeRect(0, 0, 240, 160),
+                        styleMask: [.titled, .closable, .utilityWindow],
+                        backing: .buffered, defer: false)
+    let panelHandle = panel.realizeNativePeer()
+
+    expect(backend.windowParents[panelHandle] == main.nativeHandle,
+           "A panel should be realized as an owned window of the main window.")
+
+    // A plain window is NOT owned — only panels are auxiliary.
+    let plain = NSWindow(contentRect: NSMakeRect(0, 0, 200, 200),
+                         styleMask: [.titled], backing: .buffered, defer: false)
+    let plainHandle = plain.realizeNativePeer()
+    expect(backend.windowParents[plainHandle] == nil,
+           "A plain NSWindow must not be given an owner.")
+}
+
+testPanelIsRealizedAsAnOwnedWindow()
+
+func testControlClassHierarchyMatchesAppKit() {
+    // AppKit: NSPathControl derives from NSControl, NOT NSTextField. It used to
+    // derive from NSTextField here, which made `view as? NSTextField` match a
+    // path control on Windows but not on macOS — and the framework itself tests
+    // exactly that in NSPanel and NSToolbar to decide chrome and focus
+    // behavior, so a path control was being handled as a text field.
+    let pathControl = NSPathControl(frame: NSMakeRect(0, 0, 200, 24))
+    expect(pathControl is NSControl, "NSPathControl must be an NSControl, as on AppKit.")
+    expect(!(pathControl is NSTextField), "NSPathControl must NOT be an NSTextField — AppKit's is not.")
+
+    // The properties that used to arrive via NSTextField are declared on
+    // NSPathControl itself, because AppKit declares them there.
+    pathControl.stringValue = "C:\\Demo"
+    pathControl.isEditable = false
+    pathControl.backgroundColor = .windowBackgroundColor
+    expect(pathControl.stringValue == "C:\\Demo", "NSPathControl should carry its own stringValue.")
+    expect(pathControl.backgroundColor != nil, "NSPathControl.backgroundColor is real AppKit API.")
+
+    // NOTE: NSProgressIndicator is deliberately NOT asserted here. AppKit's
+    // derives from NSView, ours from NSControl — a known divergence that is
+    // tracked, not fixed, because re-parenting it compiles and passes this very
+    // suite while crashing the running demo. Asserting the AppKit shape would
+    // just make the suite red against a deliberate state; see
+    // Docs/AppKitFaithfulnessIssues.md, "NSProgressIndicator superclass".
+
+    // The URL initializer still populates the breadcrumb through the new path.
+    // "C:\A\B" is three components on Windows — the drive plus two directories.
+    let urlControl = NSPathControl(url: URL(fileURLWithPath: "C:\\A\\B"), frame: NSMakeRect(0, 0, 200, 24))
+    expect(urlControl.pathComponentCells.map(\.title) == ["C:", "A", "B"],
+           "NSPathControl(url:) should build one cell per component. Got \(urlControl.pathComponentCells.map(\.title)).")
+    expect(urlControl.stringValue.contains("A"), "NSPathControl(url:) should show the path.")
+}
+
+testControlClassHierarchyMatchesAppKit()
+
 func testFoundationTypesMatchApplesShapes() {
     // DateFormatter must BE a Formatter: `NSControl.formatter` is typed
     // `Formatter?` on Apple, so `field.formatter = DateFormatter()` compiles on

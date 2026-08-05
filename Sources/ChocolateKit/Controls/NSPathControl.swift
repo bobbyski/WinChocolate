@@ -1,8 +1,18 @@
 /// A path-display control.
 ///
-/// `NSPathControl` is AppKit-shaped API over a simple text-field peer for now.
-/// Rich breadcrumb segments and menus can be layered on this model later.
-open class NSPathControl: NSTextField {
+/// Derives from `NSControl`, as AppKit's does. It previously derived from
+/// `NSTextField`, which made `view as? NSTextField` match a path control here
+/// but not on macOS — and the framework itself relies on exactly that test to
+/// decide toolbar and panel behavior (`NSPanel`, `NSToolbar`), so a path
+/// control was being treated as a text field. The peer was never a text field
+/// anyway: `createNativePeer` makes a plain view and the breadcrumb is built
+/// from child buttons. (DEMO_CHANGES.md MUST FIX, 18.x faithfulness.)
+///
+/// `backgroundColor` and `isEditable` are declared here because AppKit declares
+/// them on `NSPathControl` itself — they came from `NSTextField` before, which
+/// is why the wrong superclass went unnoticed. `stringValue` is declared here
+/// too, pending the NSControl value-accessor work.
+open class NSPathControl: NSControl {
     /// Path control display style.
     public enum Style: Sendable {
         /// Standard path style.
@@ -46,6 +56,25 @@ open class NSPathControl: NSTextField {
         winClickedPathComponentCell?.url
     }
 
+    /// The displayed path text. On AppKit this comes from `NSControl`, reading
+    /// through the cell; here `NSControl` has no value accessors yet (see
+    /// `Docs/AppKitFaithfulnessIssues.md`, "NSControl value accessors"), so the
+    /// control owns it — which is also the honest place for it while the peer is
+    /// a plain view hosting breadcrumb buttons rather than a text peer.
+    open var stringValue: String = ""
+
+    /// The control's background fill. Real AppKit API on `NSPathControl`.
+    open var backgroundColor: NSColor? {
+        get { winBackgroundColor }
+        set { winBackgroundColor = newValue }
+    }
+
+    /// Whether the path can be edited by the user. Real AppKit API on
+    /// `NSPathControl`; the drag-and-drop editing path is not wired yet, so
+    /// this is currently stored state that the breadcrumb honours by staying
+    /// read-only.
+    open var isEditable: Bool = false
+
     private var componentButtons: [NSButton] = []
 
     /// Path controls compose their breadcrumb segments in a container view so
@@ -57,8 +86,6 @@ open class NSPathControl: NSTextField {
     /// Creates a path control with a frame.
     public required init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
-        isEditable = false
-        isSelectable = true
     }
 
     /// Creates a path control with a zero frame, matching AppKit's shape.
@@ -69,9 +96,8 @@ open class NSPathControl: NSTextField {
     /// Creates a path control with a URL.
     init(url: URL?, frame frameRect: NSRect) {
         self.url = url
-        super.init(string: url?.path ?? "", frame: frameRect)
-        isEditable = false
-        isSelectable = true
+        super.init(frame: frameRect)
+        stringValue = url?.path ?? ""
         rebuildPathComponentCells()
     }
 
