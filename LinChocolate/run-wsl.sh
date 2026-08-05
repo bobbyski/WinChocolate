@@ -21,7 +21,21 @@ if [[ "${1:-}" == "--shell" ]]; then
     exec "${SHELL:-/bin/bash}"
 fi
 
-DISPLAY_BACKEND="wayland"
+# Default backend: WSLg/Wayland only exists on WSL2. On WSL1 (which is all you
+# get when the host cannot expose nested virtualization — e.g. Windows running
+# under Parallels, where WSL2 wants a hypervisor/firmware change that is not
+# available), there is no compositor at all, and GTK waits forever on it. That
+# silent wait is what "run-wsl.bat hangs" looked like.
+#
+# So pick the backend from what the kernel can actually provide, and let --x11 /
+# --wayland override. X11 needs an X server reachable from WSL: on WSL1 the
+# network stack is shared with Windows, so a Windows X server (VcXsrv/X410/GWSL)
+# on :0 answers at 127.0.0.1:6000.
+if uname -r | grep -qi "microsoft-standard"; then
+    DISPLAY_BACKEND="wayland"   # WSL2: WSLg is present
+else
+    DISPLAY_BACKEND="x11"       # WSL1: no WSLg — X11 is the only path
+fi
 USE_WSL_COPY=0
 while [[ "${1:-}" == --* ]]; do
     case "${1:-}" in
@@ -170,8 +184,22 @@ export CXX="${CXX:-/usr/bin/clang++}"
 BUILD_LOG="${LINCHOCOLATE_BUILD_LOG:-/tmp/linchocolate-${TARGET}-build.log}"
 echo "Building $TARGET..."
 echo "Build log: $BUILD_LOG"
-if ! swift build --product "$TARGET" -v >"$BUILD_LOG" 2>&1; then
-    echo "error: swift build failed. Last 80 log lines:" >&2
+
+# Stream progress to the console as well as the log. The previous version sent
+# everything to the log file, so a long build (minutes, especially building from
+# /mnt/c on WSL1) printed nothing and was indistinguishable from a hang. SwiftPM's
+# default output is the "[n/m] Compiling …" progress we want; set
+# LINCHOCOLATE_BUILD_VERBOSE=1 for the old -v firehose.
+BUILD_ARGS=(build --product "$TARGET")
+if [[ "${LINCHOCOLATE_BUILD_VERBOSE:-0}" == "1" ]]; then
+    BUILD_ARGS+=(-v)
+fi
+set +e
+swift "${BUILD_ARGS[@]}" 2>&1 | tee "$BUILD_LOG"
+BUILD_STATUS=${PIPESTATUS[0]}
+set -e
+if [[ "$BUILD_STATUS" != "0" ]]; then
+    echo "error: swift build failed (exit $BUILD_STATUS). Last 80 log lines:" >&2
     tail -80 "$BUILD_LOG" >&2 || true
     exit 1
 fi

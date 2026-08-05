@@ -38,10 +38,10 @@ Related plans: `Docs/ProjectPlan.md` (WinChocolate), `Docs/LinChocolatePlan.md`
 ## Dashboard
 
 ```text
-Overall Progress                              ░░░░░░░░░░░░░░░░░░░░░░░░░░    0%  (0 / 28 items)
+Overall Progress                              ████████░░░░░░░░░░░░░░░░░░   32%  (9 / 28 items)
 
-Phase 0 · Packaging Spike                     ░░░░░░░░░░░░░░░░░░░░░░░░░░    0%  ⏳ Pending   (~40–70k tokens)
-Phase 1 · Shared Core In Place                ░░░░░░░░░░░░░░░░░░░░░░░░░░    0%  ⏳ Pending   (~120–200k tokens)
+Phase 0 · Packaging Spike                     ██████████████████████████  100%  ✅ Complete  (~40–70k tokens)
+Phase 1 · Shared Core In Place                █████████████████████░░░░░   83%  🔄 In Progress (1.3, 1.6 open)
 Phase 2 · Foundation Parity                   ░░░░░░░░░░░░░░░░░░░░░░░░░░    0%  ⏳ Pending   (~250–500k tokens)
 Phase 3 · Linux Bring-Up On Shared Core       ░░░░░░░░░░░░░░░░░░░░░░░░░░    0%  ⏳ Pending   (~400k–1M tokens)
 Phase 4 · Retire The Duplicates               ░░░░░░░░░░░░░░░░░░░░░░░░░░    0%  ⏳ Pending   (~60–120k tokens)
@@ -64,16 +64,34 @@ this a merge rather than a rewrite.
 | Total | **42,891** lines / 142 files | **16,492** lines / 77 files |
 | Backend (`Native/`) | 13,547 (Win32) | 6,719 (GTK) |
 | AppKit layer (everything else) | **~29,344** | ~9,773 |
-| Backend protocol | `NativeControlBackend`, **189** members | same name, **168** members |
+| Backend protocol | `NativeControlBackend`, **178** members | same name, **150** members |
 | Foundation | `WinFoundation` (own package) | real `Foundation` |
 | Platform leaks **outside** `Native/` | **0 files** | **1 file** (`GLibMainActorExecutor`) |
 | Backend guard already present | 24/25 files `#if os(Windows)` | `#if canImport(CGTK)` |
 
 Three facts decide the design:
 
-1. **The seam already exists and already matches.** Both declare
-   `public protocol NativeControlBackend: AnyObject`, and Lin's is a strict
-   *subset* (168 ⊂ 189). No abstraction has to be invented.
+1. **The seam already exists in the same shape** — both declare
+   `public protocol NativeControlBackend: AnyObject`, at the same layer, with the
+   same ownership split. No abstraction has to be invented.
+
+   ⚠️ **Corrected 2026-07-26 (measured, Phase 1).** An earlier draft of this
+   plan claimed Lin's protocol was a strict subset of Win's (“168 ⊂ 189”). That
+   was inferred from member *counts* without comparing member *names*, and it is
+   **wrong**. Comparing the actual member sets:
+
+   | | count |
+   |---|---|
+   | Members in **both** | **46** |
+   | In the shared core only (GTK must gain) | **132** |
+   | In the GTK protocol only (no counterpart in the core) | **104** |
+
+   They are two *different* protocols that share a name and 46 members. The
+   designs differ in kind, not just coverage: the core registers callbacks
+   (`registerMouseDownAction`, `registerTableEditAction`), while GTK's sets
+   closures per widget (`setClickAction`, `setDrawHandler`, `setContentView`).
+   The consequence is in §3.2 and Phase 3 — the GTK backend must be **re-fronted
+   onto the core's protocol**, not merely widened.
 2. **The seam is honest.** Zero Win32 references leak above `Native/`; exactly
    one GTK reference does. The AppKit layer is genuinely platform-free already.
 3. **Win's layer is a superset.** Every shared-name file is larger on the Windows
@@ -115,39 +133,54 @@ The façade targets are ~5 lines each. They exist purely so `import WinChocolate
 
 ---
 
-## Phase 0 — Packaging Spike ⏳ 0%
+## Phase 0 — Packaging Spike ✅ 100%
 
 Prove the one packaging unknown before moving any code: can a single manifest
 carry a GTK `systemLibrary` that only resolves on Linux? Decide here, not later.
 
 | # | File | Status | Notes |
 |---|------|--------|-------|
-| 0.1 | `Package.swift` | ⏳ Pending | Single root manifest; `ChocolateKit` target over today's WinChocolate sources |
-| 0.2 | `Package.swift` | ⏳ Pending | `CGTK`/`CGTKCompat` depended on via `.when(platforms: [.linux])` — mechanism already used here for `WinChocolate` |
-| 0.3 | — (verification) | ⏳ Pending | **Gate:** Windows builds + full contract suite green |
-| 0.4 | `LinChocolate/run-linux.sh` | ⏳ Pending | **Settled 2026-07-26: there is no local Linux loop.** WSL does not work under Parallels on this VM, so Linux is verified off-box by the user when a phase is ready. Confirm `run-linux.sh` is the command to hand over, and that the manifest change (0.2) does not break it |
+| 0.1 | `Package.swift` | ✅ Done | Single root manifest; `ChocolateKit` target over today's WinChocolate sources |
+| 0.2 | `Package.swift` | ✅ Done | `CGTK`/`CGTKCompat` depended on via `.when(platforms: [.linux])` — mechanism already used here for `WinChocolate` |
+| 0.3 | — (verification) | ✅ Done | **Gate:** Windows builds + full contract suite green |
+| 0.4 | `LinChocolate/run-linux.sh` | ✅ Done | **Settled 2026-07-26: there is no local Linux loop.** WSL does not work under Parallels on this VM, so Linux is verified off-box by the user when a phase is ready. Confirm `run-linux.sh` is the command to hand over, and that the manifest change (0.2) does not break it |
 
 **Exit:** if conditional `systemLibrary` resolution fails on Windows, fall back
 to two manifests sharing one source directory — and record that decision here.
 
 ---
 
-## Phase 1 — Shared Core In Place ⏳ 0%
+## Phase 1 — Shared Core In Place 🔄 83%
 
 Move, don't rewrite. `git mv` of 29k lines is nearly free; re-typing any of it is
 not. Windows keeps compiling from the same code, at a new path.
 
 | # | File | Status | Notes |
 |---|------|--------|-------|
-| 1.1 | `Sources/ChocolateKit/**` | ⏳ Pending | `git mv` from `Sources/WinChocolate/**` — pure move, zero code edits |
-| 1.2 | `Sources/WinChocolate/WinChocolate.swift` | ⏳ Pending | Façade: `@_exported import ChocolateKit`, Windows only |
-| 1.3 | `Sources/LinChocolate/LinChocolate.swift` | ⏳ Pending | Façade: `@_exported import ChocolateKit`, Linux only |
-| 1.4 | `ChocolateKit/Runtime/FoundationBridge.swift` | ⏳ Pending | C1 switch: `WinFoundation` on Windows, real `Foundation` elsewhere |
-| 1.5 | `ChocolateKit/Native/GTK/**` | ⏳ Pending | Copy GTK backend in, already `#if canImport(CGTK)` guarded |
-| 1.6 | `ChocolateKit/Native/NativeControlBackend.swift` | ⏳ Pending | Default **no-op** protocol extension for the ~21 members GTK lacks, so Linux always compiles |
+| 1.1 | `Sources/ChocolateKit/**` | ✅ Done | `git mv` from `Sources/WinChocolate/**` — pure move, zero code edits |
+| 1.2 | `Sources/WinChocolate/WinChocolate.swift` | ✅ Done | Façade: `@_exported import ChocolateKit`, Windows only |
+| 1.3 | `Sources/LinChocolate/LinChocolate.swift` | ⏸️ Deferred | Façade: `@_exported import ChocolateKit`, Linux only |
+| 1.4 | `ChocolateKit/Runtime/FoundationBridge.swift` | ✅ Done | C1 switch: `WinFoundation` on Windows, real `Foundation` elsewhere |
+| 1.5 | `ChocolateKit/Native/GTK/**` | ✅ Done | Copy GTK backend in, already `#if canImport(CGTK)` guarded |
+| 1.6 | `ChocolateKit/Native/NativeControlBackend.swift` | ⏸️ Deferred to Phase 3 | Default **no-op** protocol extension so a partially-ported backend always compiles. **Measured: 132 members** (not the ~21 first estimated — see the correction in §Feasibility). With no local Linux compiler this is what keeps Linux buildable through Phase 3 |
 
-**Gate:** Windows green (build + contract tests + demo runs). Linux: core and
-GTK backend compile; nothing runs yet.
+**Gate:** ✅ **Met on Windows 2026-07-26** — `swift build` clean, full contract
+suite passed, demo launches with its usual 642 controls, all through the
+`WinChocolate` façade. Linux is unverified by construction (§Verification model).
+
+**Two items were deliberately deferred, with reasons:**
+
+- **1.3 (LinChocolate façade)** — a `LinChocolate` module that is importable on
+  Windows would make the shared demo's `#if canImport(LinChocolate)` branch win
+  on the *wrong* platform, because that branch is tested first. The façade must
+  therefore be Linux-only, which is only meaningful once Linux actually builds.
+  Added in Phase 3.
+- **1.6 (no-op defaults)** — its purpose is to keep a partially-ported GTK
+  backend compiling. That has no effect yet: the GTK backend does not conform to
+  the core's protocol *at all* (46 of 178 members), so nothing is unblocked by
+  adding defaults now. Meanwhile defaults have a real cost on Windows: they would
+  let `Win32NativeControlBackend` silently lose a method without a compile error.
+  Moved into Phase 3, where it lands together with the re-fronting it serves.
 
 ---
 

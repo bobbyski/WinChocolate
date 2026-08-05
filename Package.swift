@@ -25,6 +25,30 @@ let package = Package(
         .package(path: "WinFoundation")
     ],
     targets: [
+        // --- GTK interop (Linux only) -------------------------------------
+        //
+        // Unified Chocolate, Phase 0 (see Docs/UnifiedChocolatePlan.md): the
+        // GTK targets live in the root manifest so one package can build the
+        // Win32 and GTK backends from one shared core. They are only ever
+        // *depended on* under `.when(platforms: [.linux])`, so `pkg-config
+        // gtk4` — which cannot resolve on Windows — is never consulted here.
+        .systemLibrary(
+            name: "CGTK",
+            path: "LinChocolate/Sources/CGTK",
+            pkgConfig: "gtk4",
+            providers: [.apt(["libgtk-4-dev"])]
+        ),
+        // C wrappers for deliberately-used deprecated GTK calls, so the Swift
+        // side stays warning-clean.
+        .target(
+            name: "CGTKCompat",
+            dependencies: ["CGTK"],
+            path: "LinChocolate/Sources/CGTKCompat",
+            linkerSettings: [
+                .linkedLibrary("X11", .when(platforms: [.linux]))
+            ]
+        ),
+
         // CoreGraphics-shaped value types (plan Phase 13): pure geometry +
         // bitmap types with no platform dependencies. WinChocolate re-exports
         // it, so `CGRect`/`CGImage`-shaped source compiles unchanged; the
@@ -43,11 +67,19 @@ let package = Package(
                 .swiftLanguageVersion(.v5)
             ]
         ),
+        // The shared AppKit core. One surface, every platform; the Win32 and
+        // GTK backends live behind the NativeControlBackend seam inside it.
+        // `WinChocolate` (below) is a façade over this, so the public import
+        // spelling is unchanged.
         .target(
-            name: "WinChocolate",
+            name: "ChocolateKit",
             dependencies: [
                 "WinCoreGraphics",
-                .product(name: "WinFoundation", package: "WinFoundation")
+                .product(name: "WinFoundation", package: "WinFoundation"),
+                // Linux-only: the GTK backend's C interop. Conditional so the
+                // Windows build never resolves `pkg-config gtk4`.
+                .target(name: "CGTK", condition: .when(platforms: [.linux])),
+                .target(name: "CGTKCompat", condition: .when(platforms: [.linux]))
             ],
             swiftSettings: [
                 .define("USE_WIN_FOUNDATION", .when(platforms: [.windows])),
@@ -72,6 +104,21 @@ let package = Package(
                 .linkedLibrary("Advapi32", .when(platforms: [.windows])),
                 .linkedLibrary("Dwmapi", .when(platforms: [.windows])),
                 .linkedLibrary("UxTheme", .when(platforms: [.windows]))
+            ]
+        ),
+        // The Windows façade: `@_exported import ChocolateKit` and nothing else,
+        // so `import WinChocolate` / `canImport(WinChocolate)` keep working.
+        //
+        // (The matching `LinChocolate` façade is added when Linux comes up in
+        // Phase 3. It must be Linux-only: a LinChocolate module that is
+        // importable on Windows would make the shared demo's
+        // `#if canImport(LinChocolate)` branch win on the wrong platform.)
+        .target(
+            name: "WinChocolate",
+            dependencies: ["ChocolateKit"],
+            path: "Sources/WinChocolate",
+            swiftSettings: [
+                .swiftLanguageVersion(.v5)
             ]
         ),
         .executableTarget(
