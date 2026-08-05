@@ -29,6 +29,27 @@ open class NSSlider: NSControl {
         didSet { backend.setSliderVertical(isVertical, for: handle) }
     }
 
+    /// Number of evenly spaced tick marks drawn along the track (AppKit's
+    /// `numberOfTickMarks`); fewer than 2 draws none.
+    public var numberOfTickMarks: Int = 0 {
+        didSet { pushTickMarks() }
+    }
+
+    /// Whether the value snaps to the tick marks (AppKit's
+    /// `allowsTickMarkValuesOnly`).
+    public var allowsTickMarkValuesOnly: Bool = false {
+        didSet { pushTickMarks() }
+    }
+
+    /// Which side the ticks sit on (accepted for API parity; GTK places them on
+    /// the trailing side, where AppKit's default also puts them).
+    public var tickMarkPosition: Int = 0
+
+    private func pushTickMarks() {
+        backend.setSliderTickMarks(count: numberOfTickMarks,
+                                   snapsToTicks: allowsTickMarkValuesOnly, for: handle)
+    }
+
     /// Creates a slider over `[minValue, maxValue]` starting at `value`.
     /// AppKit's target/action form (no frame); gets a default size.
     public convenience init(value: Double, minValue: Double, maxValue: Double, target: AnyObject?, action: String?) {

@@ -96,7 +96,29 @@ public final class GTKNativeControlBackend: NativeControlBackend {
     private var collectionItemCounts: [UInt: Int] = [:]
     private var collectionProviders: [UInt: (Int) -> String] = [:]
     private var collectionViewProviders: [UInt: (Int) -> NativeHandle?] = [:]
-    private var collectionFlows: [UInt: OpaquePointer] = [:]   // collection -> GtkFlowBox
+    private var collectionFlows: [UInt: OpaquePointer] = [:]          // legacy single-flow lookup
+    private var collectionStacks: [UInt: OpaquePointer] = [:]         // collection -> vertical GtkBox
+    private var collectionSectionSpecs: [UInt: [NativeCollectionSection]] = [:]
+    private var collectionSectionFlows: [UInt: [(flow: OpaquePointer, base: Int)]] = [:]
+    private var collectionFlowGeometry: [UInt: (interitem: Double, line: Double, horizontal: Bool)] = [:]
+    private var windowResizeActions: [UInt: (Double, Double) -> Void] = [:]
+    private var contentViewOwners: [UInt: UInt] = [:]     // content view -> its window
+    private var lastContentSizes: [UInt: NSSize] = [:]
+    /// Windows that have already been through first-show setup.
+    private var presentedWindows: Set<UInt> = []
+    // ── Paint tracing (LINCHOCOLATE_PAINT_TRACE=1) ────────────────────────────
+    // Answers "where do the repaints come from" with evidence instead of
+    // theory: every window lifecycle step and every frame-clock cycle is logged
+    // with a timestamp, the window's size and its content's allocation, so a
+    // repaint storm shows up as either repeated frames at a STABLE size (damage
+    // /expose) or frames whose size KEEPS CHANGING (re-layout).
+    private lazy var paintTrace: Bool =
+        !(ProcessInfo.processInfo.environment["LINCHOCOLATE_PAINT_TRACE"] ?? "").isEmpty
+    private let paintTraceStart = g_get_monotonic_time()
+    private var paintTraceFrames: [UInt: Int] = [:]
+    private var paintTraceLastSize: [UInt: (Int32, Int32)] = [:]
+    private var paintTraceMapped: [UInt: gint64] = [:]
+    private var paintTraceReported: Set<UInt> = []   // collection -> GtkFlowBox
     private var collectionSelectionActions: [UInt: (Int) -> Void] = [:]
     private var suppressCollectionSelection: Set<UInt> = []
     private var clickActionBoxes: [UInt: Bool] = [:]
@@ -175,6 +197,42 @@ public final class GTKNativeControlBackend: NativeControlBackend {
                 min-width: 0; min-height: 0; padding: 0;
             }
             .linchocolate-stepper button image { -gtk-icon-size: 10px; }
+            /* NSSegmentedControl: GTK's :checked toggle is a barely-darker grey
+               that reads as unselected next to AppKit's tinted segment. Give the
+               selected segment the accent fill and matching text, as AppKit does. */
+            .linchocolate-segmented > button:checked,
+            .linchocolate-segmented > button:checked:hover {
+                background-image: none;
+                background-color: @theme_selected_bg_color;
+                color: @theme_selected_fg_color;
+            }
+            .linchocolate-segmented > button:checked label { color: inherit; }
+            /* NSSlider: AppKit draws the same track in both orientations. GTK's
+               vertical trough came out thinner and square-ended than the
+               horizontal one, so pin both to a rounded 4px groove with a real
+               round knob. */
+            scale > trough { min-height: 4px; min-width: 4px; border-radius: 999px; }
+            scale > trough > highlight { border-radius: 999px; }
+            scale > trough > slider { min-height: 16px; min-width: 16px; }
+            scale marks { color: alpha(currentColor, 0.55); }
+            /* NSTokenField chips: AppKit draws each token as a rounded, tinted
+               pill with its text sitting directly on the tint. The label must stay
+               transparent — anything opaque behind the text hides the pill. */
+            button.linchocolate-token-chip {
+                border-radius: 999px;
+                padding: 1px 9px;
+                min-height: 0;
+                background-image: none;
+                background-color: alpha(@theme_selected_bg_color, 0.22);
+                border: 1px solid alpha(@theme_selected_bg_color, 0.45);
+            }
+            button.linchocolate-token-chip:hover {
+                background-color: alpha(@theme_selected_bg_color, 0.34);
+            }
+            button.linchocolate-token-chip label {
+                background: none;
+                background-color: transparent;
+            }
             /* Non-editable NSTextFields render as plain labels (no field chrome). */
             entry.linchocolate-label {
                 background: none; background-color: transparent;
@@ -300,14 +358,43 @@ public final class GTKNativeControlBackend: NativeControlBackend {
         mainLoop = loop
         g_main_loop_run(loop)
     }
-    /// Quits the running `GMainLoop`, if any.
+    /// Quits every running `GMainLoop` — the app's, plus any nested loop a
+    /// modal is spinning. Quitting only the outer loop leaves a modal's loop
+    /// running and the app never exits, which is what made Quit look dead after
+    /// an alert was dismissed by closing its window.
     public func terminateApplication() {
+        for loop in nestedLoops.reversed() { g_main_loop_quit(loop) }
+        nestedLoops.removeAll()
         guard let loop = mainLoop else { return }
         g_main_loop_quit(loop)
     }
 
+    /// Nested modal loops, innermost last.
+    private var nestedLoops: [OpaquePointer] = []
+    /// Records a modal's loop so `terminateApplication` can end it.
+    func pushNestedLoop(_ loop: OpaquePointer?) {
+        if let loop { nestedLoops.append(loop) }
+    }
+    /// Drops the innermost modal loop once it has finished.
+    func popNestedLoop() {
+        if !nestedLoops.isEmpty { nestedLoops.removeLast() }
+    }
+
     /// Schedules `block` on GTK's main loop via `g_timeout_add`.
     public func scheduleTimer(interval: Double, repeats: Bool, _ block: @escaping () -> Void) {
+        var block = block
+        if paintTrace {
+            let original = block
+            let every = interval
+            let start = paintTraceStart
+            block = {
+                let ms = Double(g_get_monotonic_time() - start) / 1000.0
+                FileHandle.standardError.write(
+                    String(format: "LCPAINT %8.1fms [timer] every=%.2fs\n", ms, every)
+                        .data(using: .utf8)!)
+                original()
+            }
+        }
         // Foundation's Timer lands on RunLoop.main, which is (a) never pumped
         // under g_main_loop_run and (b) broken for repeating timers on
         // swift-corelibs-foundation 6.0.3 anyway (RunLoop.run fires a repeating
@@ -395,7 +482,20 @@ public final class GTKNativeControlBackend: NativeControlBackend {
         let h = allocate(win, .window, frame: frame)
         let p = widget(h)!
         gtk_window_set_title(asWindow(p), title)
-        gtk_window_set_default_size(asWindow(p), Int32(frame.width), Int32(frame.height))
+        // Honour the style mask instead of accepting and ignoring it: a window
+        // with no title bar must not be decorated, and one that cannot be closed
+        // must not offer a close button. Telling the WM this up front avoids it
+        // decorating the window and then being corrected.
+        gtk_window_set_decorated(asWindow(p), gboolean(styleMask.contains(.titled) ? 1 : 0))
+        gtk_window_set_deletable(asWindow(p), gboolean(styleMask.contains(.closable) ? 1 : 0))
+        // Deliberately NO `gtk_window_set_default_size` here. `frame` is AppKit's
+        // CONTENT rect, while the GTK window also holds the menu bar and toolbar,
+        // so a default size of the content alone is too short: the window maps at
+        // that size and then has to grow to its natural size, and under a real
+        // window manager that second sizing is a visible map-then-repaint. The
+        // content view carries its own size request, so GTK's natural size is
+        // already content + chrome — exactly the window AppKit's contentRect
+        // describes — and it gets there in one step.
         // The window's real child is a vertical box: [menu bar?][content view].
         // This keeps a slot for `installMenuBar` above the AppKit content view.
         let box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0)!
@@ -442,13 +542,169 @@ public final class GTKNativeControlBackend: NativeControlBackend {
             }
             gtk_box_append(asBox(box), asWidget(v))
             windowContents[window.rawValue] = v
+            contentViewOwners[view.rawValue] = window.rawValue
         }
     }
+    /// Emits one paint-trace line for `raw`: elapsed ms, the window's own size,
+    /// its content view's allocation, and the GTK frame counter.
+    fileprivate func tracePaint(_ raw: UInt, _ event: String) {
+        guard paintTrace, let w = widgets[raw] else { return }
+        let ms = Double(g_get_monotonic_time() - paintTraceStart) / 1000.0
+        let widget = asWidget(w)
+        let ww = gtk_widget_get_width(widget), wh = gtk_widget_get_height(widget)
+        var content = "content=none"
+        if let c = windowContents[raw] {
+            content = "content=\(gtk_widget_get_width(asWidget(c)))x\(gtk_widget_get_height(asWidget(c)))"
+        }
+        var frame = ""
+        if let clock = gtk_widget_get_frame_clock(widget) {
+            frame = " frame=\(gdk_frame_clock_get_frame_counter(clock))"
+        }
+        // The GdkSurface is what the X server actually shows. GTK's allocation
+        // (win=) is only computed on the frame clock, so it reads 0 before the
+        // first cycle even when the real window is already the right size — the
+        // two together separate "bookkeeping not filled in yet" from "the window
+        // on screen is genuinely the wrong size".
+        var surface = " surface=none"
+        if let native = gtk_widget_get_native(widget), let s = gtk_native_get_surface(native) {
+            surface = " surface=\(gdk_surface_get_width(s))x\(gdk_surface_get_height(s))"
+        }
+        // Flag the two signatures that matter: a size change (re-layout) versus a
+        // repeat at the same size (damage/expose).
+        var note = ""
+        if let last = paintTraceLastSize[raw], last != (ww, wh) {
+            note = "  ← SIZE CHANGED \(last.0)x\(last.1) → \(ww)x\(wh)"
+        }
+        paintTraceLastSize[raw] = (ww, wh)
+        let title = gtk_window_get_title(asWindow(w)).map { String(cString: $0) } ?? "?"
+        // The number this whole investigation turns on: how long the window sat
+        // on screen before anything was painted into it. Reported once, in
+        // plain sight, so nobody has to subtract timestamps by hand.
+        if event == "map" { paintTraceMapped[raw] = g_get_monotonic_time() }
+        if event.hasPrefix("draw#1"), !paintTraceReported.contains(raw),
+           let mapped = paintTraceMapped[raw] {
+            paintTraceReported.insert(raw)
+            let delay = Double(g_get_monotonic_time() - mapped) / 1000.0
+            FileHandle.standardError.write(
+                String(format: "LCPAINT ======== [%@] FIRST FRAME %.1f ms after map ========\n",
+                       title as NSString, delay).data(using: .utf8)!)
+        }
+        FileHandle.standardError.write(
+            String(format: "LCPAINT %8.1fms [%@] %-12@ win=%dx%d %@%@%@\n",
+                   ms, title as NSString, event as NSString, Int(ww), Int(wh),
+                   (content + surface) as NSString, frame as NSString, note as NSString).data(using: .utf8)!)
+    }
+
+    /// Hooks the window's lifecycle and its frame clock so every paint cycle is
+    /// visible. Installed once, at first present, when tracing is on.
+    private func installPaintTrace(_ handle: NativeHandle) {
+        guard paintTrace, let w = widget(handle) else { return }
+        let widget = asWidget(w)
+        for signal in ["map", "unmap", "realize", "unrealize"] {
+            let box = PaintTraceBox(backend: self, raw: handle.rawValue, event: signal)
+            g_signal_connect_data(
+                UnsafeMutableRawPointer(widget), signal,
+                unsafeBitCast(gtkPaintTraceTrampoline, to: GCallback.self),
+                Unmanaged.passRetained(box).toOpaque(), boxRelease, GConnectFlags(rawValue: 0)
+            )
+        }
+        // The frame clock is the authority on repaints: one cycle per frame GTK
+        // actually renders.
+        guard let clock = gtk_widget_get_frame_clock(widget) else { return }
+        for signal in ["layout", "after-paint"] {
+            let box = PaintTraceBox(backend: self, raw: handle.rawValue, event: "clock:" + signal)
+            g_signal_connect_data(
+                UnsafeMutableRawPointer(clock), signal,
+                unsafeBitCast(gtkPaintTraceTrampoline, to: GCallback.self),
+                Unmanaged.passRetained(box).toOpaque(), boxRelease, GConnectFlags(rawValue: 0)
+            )
+        }
+    }
+
     /// Presents the window (`gtk_window_present`).
     public func showWindow(_ handle: NativeHandle) {
         guard let w = widget(handle) else { return }
+        // Realize before mapping so the surface exists and GTK can measure the
+        // window, then map it.
+        // Re-presenting an ALREADY-SHOWN window (the demo's inspector panel is
+        // cached and re-ordered front on every press) must only raise it. Doing
+        // the first-show work again re-sized a mapped window — a resize request
+        // costs a window-manager round trip, which is why a second open measured
+        // SLOWER than the first (2.1s then 3.5s on the reporter's display) — and
+        // re-installed the trace handlers, so every later event logged twice.
+        guard !presentedWindows.contains(handle.rawValue) else {
+            tracePaint(handle.rawValue, "re-present")
+            gtk_window_present(asWindow(w))
+            return
+        }
+        presentedWindows.insert(handle.rawValue)
+
+        // Size the window BEFORE realizing it. `gtk_widget_realize` creates the
+        // GdkSurface, and with no size set that surface is created 1x1: the trace
+        // showed `map surface=1x1` followed by a jump to the real size on the
+        // first frame-clock cycle, i.e. the window is mapped tiny and then
+        // resized — a visible flash, and the origin of the "blank repaints".
+        //
+        // Measure rather than reusing AppKit's contentRect: the window also
+        // carries the menu bar and toolbar, and an earlier attempt that set the
+        // content size mapped the window too short and then had to grow it.
+        // Measuring gets content + chrome right in one step, for a panel (no
+        // chrome) as much as for the main window.
+        var minW: gint = 0, natW: gint = 0, minH: gint = 0, natH: gint = 0
+        gtk_widget_measure(asWidget(w), GTK_ORIENTATION_HORIZONTAL, -1, &minW, &natW, nil, nil)
+        gtk_widget_measure(asWidget(w), GTK_ORIENTATION_VERTICAL, natW, &minH, &natH, nil, nil)
+        if natW > 0, natH > 0 {
+            gtk_window_set_default_size(asWindow(w), natW, natH)
+        }
+        tracePaint(handle.rawValue, "pre-realize")
+        gtk_widget_realize(asWidget(w))
+        // Paint the X background to match the app BEFORE the window is mapped.
+        // Between map and the first frame the X server fills the window with
+        // this pixel, and that gap is seconds on a window manager that never
+        // finishes GTK's frame-sync handshake. Left at the default it flashes
+        // white against a dark app — the reported "blank screens". Matched to the
+        // window background, the same wait is invisible. (Verified as the visible
+        // symptom by Tools/window-timing-spike.c, whose light theme made the very
+        // same flash near-invisible: white on white.)
+        let background = NSColor.windowBackgroundColor
+        lc_set_window_background_rgb(asWidget(w),
+                                     Double(background.redComponent),
+                                     Double(background.greenComponent),
+                                     Double(background.blueComponent))
+        // Drop GTK's frame-sync handshake where there is no compositor to sync
+        // WITH. GTK holds a newly mapped window's first frame until the window
+        // manager acknowledges it through a sync counter; quartz-wm advertises
+        // the protocol and never answers, so GTK waited out its timeout — a
+        // measured ~2 s for every window after the first, identical to the
+        // millisecond across two different code paths. On a composited desktop
+        // the handshake earns its keep (it is what keeps resizing tear-free), so
+        // this is deliberately scoped to displays with no compositor, where the
+        // wait buys nothing. `LINCHOCOLATE_KEEP_WM_SYNC=1` restores it.
+        let keepSync = !(ProcessInfo.processInfo.environment["LINCHOCOLATE_KEEP_WM_SYNC"] ?? "").isEmpty
+        if nonComposited, !keepSync {
+            lc_strip_wm_sync_request(asWidget(w))
+        }
+        installPaintTrace(handle)
+        tracePaint(handle.rawValue, "pre-present")
         gtk_window_present(asWindow(w))
-        if ProcessInfo.processInfo.environment["LINCHOCOLATE_GEOMETRY_AUDIT"] != nil {
+        tracePaint(handle.rawValue, "post-present")
+        // NOTE: there is deliberately NO "wait until laid out" loop here.
+        //
+        // An earlier version pumped the main context after `present` so the
+        // content would have a size before returning. It was wrong, and it was
+        // the cause of the reported flashing rather than a fix for it: GTK lays
+        // a window out on the frame clock, so every pumped iteration while the
+        // window is mapped-but-unlaid-out lets GTK render and push a BLANK frame
+        // to the display — "several repainting blank screens before the real
+        // one". A pure-GTK4 control program (Tools/window-timing-spike.c) waits
+        // just as long for its first frame on the same display (1131 ms for a
+        // second window) and shows no flashing at all, precisely because it
+        // never pumps: it returns to the main loop and paints once, when ready.
+        //
+        // The multi-second wait for a second window's first frame is GTK's/the
+        // window manager's (quartz-wm does not complete the frame-sync
+        // handshake). We cannot shorten it — but we must not make it visible.
+        if !(ProcessInfo.processInfo.environment["LINCHOCOLATE_GEOMETRY_AUDIT"] ?? "").isEmpty {
             let box = ActionBox { [weak self] in self?.auditGeometry() }
             g_timeout_add_seconds(2, { userData in
                 guard let userData else { return gboolean(0) }
@@ -530,9 +786,137 @@ public final class GTKNativeControlBackend: NativeControlBackend {
     }
 
     /// Hides the window without destroying it (AppKit's `orderOut`).
+    public func setWindowResizeAction(for handle: NativeHandle, _ handler: @escaping (Double, Double) -> Void) {
+        // GTK4 has no public size-allocate signal, and a window's
+        // default-width/height do NOT change for a resize driven by the WM — so
+        // neither is usable here. The content view's DRAW pass is: it re-runs
+        // with the new width/height on every resize (that is what repaints the
+        // background at the new size). `noteContentDraw` compares sizes there and
+        // fires this handler when it actually changed.
+        windowResizeActions[handle.rawValue] = handler
+    }
+    /// Called from the content view's draw pass. Fires the window's resize
+    /// handler when the size really changed, from an idle callback so layout
+    /// never runs inside a draw.
+    func noteContentDraw(view raw: UInt, width: Double, height: Double) {
+        guard let window = contentViewOwners[raw], let handler = windowResizeActions[window] else { return }
+        guard lastContentSizes[window] != NSMakeSize(width, height) else { return }
+        let isFirstSize = lastContentSizes[window] == nil
+        lastContentSizes[window] = NSMakeSize(width, height)
+        // The first size is the window's initial layout, not a resize: AppKit
+        // does not post `windowDidResize` for it. Recording it as the baseline
+        // (and not notifying) also spares a layout pass during the first map.
+        guard !isFirstSize else { return }
+        let box = ActionBox { handler(width, height) }
+        g_idle_add({ userData in
+            guard let userData else { return gboolean(0) }
+            Unmanaged<ActionBox>.fromOpaque(userData).takeUnretainedValue().action()
+            return gboolean(0)   // one shot
+        }, Unmanaged.passRetained(box).toOpaque())
+    }
+    public func setWindowParent(_ parent: NativeHandle, for handle: NativeHandle) {
+        guard let w = widget(handle), let p = widget(parent) else { return }
+        // A transient window is placed and decorated by the WM as a utility
+        // window of its parent, in one pass. Without this a panel maps as an
+        // unrelated new toplevel and goes through full placement/decoration
+        // negotiation — extra visible mapping work on a remote/slow display.
+        gtk_window_set_transient_for(asWindow(w), asWindow(p))
+        // AppKit keeps the panel alive independently of the parent's lifetime.
+        gtk_window_set_destroy_with_parent(asWindow(w), gboolean(0))
+    }
     public func hideWindow(_ handle: NativeHandle) {
         guard let w = widget(handle) else { return }
         gtk_widget_set_visible(asWidget(w), gboolean(0))
+    }
+
+    public func toggleZoomWindow(_ handle: NativeHandle) {
+        // Track intent ourselves. AppKit's `zoom(_:)` is synchronous — `isZoomed`
+        // reads true the instant it returns — but GTK's `is_maximized` reflects
+        // the compositor's *acknowledged* surface state, which lands a frame or
+        // two later (and never, with no window manager). Mirroring the request
+        // keeps `isZoomed` truthful immediately, as the demo reads it.
+        let nowZoomed = !zoomedWindows.contains(handle.rawValue)
+        guard let content = windowContents[handle.rawValue], let w = widget(handle) else { return }
+        let cw = asWidget(content)
+        let win = asWindow(w)
+        if nowZoomed {
+            zoomedWindows.insert(handle.rawValue)
+            // Zoom on Linux follows the desktop convention (fill the screen), NOT
+            // AppKit's fit-to-content. We do NOT call `gtk_window_maximize`: the
+            // diagnostic proved that under quartz-wm (XQuartz) it locks the window
+            // size and the surface never grows — the content stayed 1120 in a
+            // maximized frame (the black void). Instead we grow the CONTENT to the
+            // monitor size, which makes GTK issue a normal client resize; a WM that
+            // honors client resizes (mutter/kwin, and — un-maximized — quartz-wm)
+            // grows the surface, and the content's expand/fill makes it cover the
+            // window. Children stay frame-placed.
+            let (mw, mh) = monitorWorkArea()
+            // Remember the window's current size so un-zoom restores it.
+            preZoomContentSize[handle.rawValue] = (Int32(gtk_widget_get_width(UnsafeMutablePointer<GtkWidget>(OpaquePointer(win)))),
+                                                   Int32(gtk_widget_get_height(UnsafeMutablePointer<GtkWidget>(OpaquePointer(win)))))
+            // The content must FILL whatever the window becomes; it must not be
+            // floored by a size_request (a floor also blocks later shrinking, and
+            // an over-large floor makes a WM refuse the resize outright).
+            gtk_widget_set_hexpand(cw, gboolean(1)); gtk_widget_set_vexpand(cw, gboolean(1))
+            gtk_widget_set_halign(cw, GTK_ALIGN_FILL); gtk_widget_set_valign(cw, GTK_ALIGN_FILL)
+            // GTK4 has no `gtk_window_resize`; set_default_size resizes a mapped
+            // window. Sizes are LOGICAL pixels — the monitor geometry comes back in
+            // device pixels on a scaled/retina display (3200x1767 on the reporter's
+            // Mac), and asking for a window larger than the screen is exactly what
+            // quartz-wm refused.
+            gtk_window_set_default_size(win, mw, mh)
+            gtk_widget_queue_resize(cw)
+            logZoom("request", handle: handle, content: cw, window: win, req: (mw, mh))
+        } else {
+            zoomedWindows.remove(handle.rawValue)
+            if let (rw, rh) = preZoomContentSize[handle.rawValue], rw > 0, rh > 0 {
+                gtk_window_set_default_size(win, rw, rh)
+                preZoomContentSize[handle.rawValue] = nil
+            }
+        }
+    }
+    /// Env-gated (`LINCHOCOLATE_ZOOM_DEBUG`) diagnostics: logs the requested size
+    /// now, and the content's *actual* allocation a moment later. Lets us see, on
+    /// a setup we can't reproduce, whether the monitor query or the resize is the
+    /// problem.
+    private func logZoom(_ phase: String, handle: NativeHandle, content: UnsafeMutablePointer<GtkWidget>,
+                         window: UnsafeMutablePointer<GtkWindow>, req: (Int32, Int32)) {
+        guard !(ProcessInfo.processInfo.environment["LINCHOCOLATE_ZOOM_DEBUG"] ?? "").isEmpty else { return }
+        FileHandle.standardError.write("ZOOM \(phase): monitor req=\(req.0)x\(req.1)\n".data(using: .utf8)!)
+        let box = ActionBox {
+            let cw = gtk_widget_get_width(content), ch = gtk_widget_get_height(content)
+            let ww = gtk_widget_get_width(UnsafeMutablePointer<GtkWidget>(OpaquePointer(window)))
+            let wh = gtk_widget_get_height(UnsafeMutablePointer<GtkWidget>(OpaquePointer(window)))
+            FileHandle.standardError.write("ZOOM alloc: content=\(cw)x\(ch) window=\(ww)x\(wh)\n".data(using: .utf8)!)
+        }
+        g_timeout_add(guint(700), { ud in
+            Unmanaged<ActionBox>.fromOpaque(ud!).takeUnretainedValue().action(); return gboolean(0)
+        }, Unmanaged.passRetained(box).toOpaque())
+    }
+    /// The geometry of the primary monitor, for sizing a zoomed window. Falls
+    /// back to a generous default when no monitor is enumerable (headless / some
+    /// XQuartz setups) so zoom still grows the content.
+    private func monitorWorkArea() -> (Int32, Int32) {
+        let fallback: (Int32, Int32) = (1680, 1040)
+        guard let display = gdk_display_get_default() else { return fallback }
+        let monitors = gdk_display_get_monitors(display)
+        guard let raw = g_list_model_get_item(monitors, 0) else { return fallback }
+        var geo = GdkRectangle()
+        gdk_monitor_get_geometry(OpaquePointer(raw), &geo)
+        // GdkMonitor reports DEVICE pixels; windows are sized in logical pixels.
+        // On a retina Mac that is a 2x difference — asking for the device size
+        // makes the window bigger than the screen, which a WM may refuse outright.
+        let scale = Swift.max(1, gdk_monitor_get_scale_factor(OpaquePointer(raw)))
+        g_object_unref(raw)
+        guard geo.width > 0, geo.height > 0 else { return fallback }
+        return (geo.width / scale, geo.height / scale)
+    }
+    public func isWindowZoomed(_ handle: NativeHandle) -> Bool {
+        zoomedWindows.contains(handle.rawValue)
+    }
+    public func miniaturizeWindow(_ handle: NativeHandle) {
+        guard let w = widget(handle) else { return }
+        gtk_window_minimize(asWindow(w))
     }
 
     /// Updates the window's title-bar text.
@@ -651,8 +1035,22 @@ public final class GTKNativeControlBackend: NativeControlBackend {
         gtk_box_append(asBox(OpaquePointer(vbox)), buttonRow)
 
         gtk_window_set_child(asWindow(OpaquePointer(alert)), vbox)
+        // Closing the alert's window is a dismissal too. Without this the nested
+        // loop below runs forever: the app keeps processing events and looks
+        // fine, but `terminate` quits the OUTER loop and so Quit silently does
+        // nothing. (Alerts are deliberately non-modal on non-composited displays,
+        // which gives them a real close button — easy to hit.) Report the last
+        // button, AppKit's cancel-ish answer for a dismissed alert.
+        let closeBox = AlertButtonBox(index: Swift.max(0, buttons.count - 1), state: state)
+        g_signal_connect_data(
+            UnsafeMutableRawPointer(alert), "close-request",
+            unsafeBitCast(gtkAlertCloseTrampoline, to: GCallback.self),
+            Unmanaged.passRetained(closeBox).toOpaque(), boxRelease, GConnectFlags(rawValue: 0)
+        )
         gtk_window_present(asWindow(OpaquePointer(alert)))
-        g_main_loop_run(loop)   // blocks until a button quits the nested loop
+        pushNestedLoop(loop)
+        g_main_loop_run(loop)   // blocks until a button (or the close box) quits it
+        popNestedLoop()
 
         gtk_window_destroy(asWindow(OpaquePointer(alert)))
         return state.response
@@ -1090,7 +1488,9 @@ public final class GTKNativeControlBackend: NativeControlBackend {
                 unsafeBitCast(fileDialogFinishedCallback, to: GAsyncReadyCallback.self),
                 Unmanaged.passRetained(state).toOpaque())
         }
+        pushNestedLoop(loop)
         g_main_loop_run(loop)   // blocks until the completion callback quits it
+        popNestedLoop()
         g_object_unref(UnsafeMutableRawPointer(dialog))
         return state.path
     }
@@ -1247,11 +1647,17 @@ public final class GTKNativeControlBackend: NativeControlBackend {
             setScopedRule(nil, id: "bg", priority: 800, for: handle)
             return
         }
-        // `.cls, .cls *` reproduces the old widget-scoped `*` reach (the widget
-        // and its descendants). 800 > the app-wide providers, so this wins.
+        // The widget ONLY — deliberately not `.cls *`. A background does not
+        // inherit in CSS, and the per-widget provider this replaced styled just
+        // the widget's own node. Painting every descendant put an opaque slab of
+        // the field colour behind each child's text — visible as the token chips'
+        // labels masking their pill. 800 > the app-wide providers, so this wins.
         let cls = scopeClass(handle.rawValue)
+        // `text` subnodes are included because GtkEntry/GtkTextView paint their
+        // editable surface there, so a field's background must reach it. `label`
+        // is deliberately NOT included — that is what masked the token pills.
         let rule = String(
-            format: ".%@, .%@ * { background-color: rgba(%d,%d,%d,%.3f); }", cls, cls,
+            format: ".%@, .%@ text { background-color: rgba(%d,%d,%d,%.3f); }", cls, cls,
             Int(color.redComponent * 255), Int(color.greenComponent * 255),
             Int(color.blueComponent * 255), Double(color.alphaComponent)
         )
@@ -2013,6 +2419,7 @@ public final class GTKNativeControlBackend: NativeControlBackend {
         // native GTK idiom for a segmented switcher ("linked" style class).
         let box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0)!
         gtk_widget_add_css_class(box, "linked")
+        gtk_widget_add_css_class(box, "linchocolate-segmented")
         gtk_widget_set_size_request(box, Int32(frame.width), Int32(frame.height))
         let h = allocate(box, .segmented, frame: frame)
 
@@ -2046,16 +2453,18 @@ public final class GTKNativeControlBackend: NativeControlBackend {
         return h
     }
     /// Appends a titled `GtkColumnViewColumn` with a signal-driven cell factory.
-    public func addTableColumn(title: String, to table: NativeHandle) {
+    public func addTableColumn(title: String, editable: Bool, to table: NativeHandle) {
         guard let cv = tableColumnViews[table.rawValue] else { return }
         let columnIndex = tableColumnCounts[table.rawValue, default: 0]
+        if editable { editableTableColumns[table.rawValue, default: []].insert(columnIndex) }
         let factory = gtk_signal_list_item_factory_new()!
+        let setupBox = TableColumnBox(backend: self, table: table.rawValue, column: columnIndex, editable: editable)
         g_signal_connect_data(
             UnsafeMutableRawPointer(factory), "setup",
             unsafeBitCast(gtkTableCellSetupTrampoline, to: GCallback.self),
-            nil, nil, GConnectFlags(rawValue: 0)
+            Unmanaged.passRetained(setupBox).toOpaque(), boxRelease, GConnectFlags(rawValue: 0)
         )
-        let box = TableColumnBox(backend: self, table: table.rawValue, column: columnIndex)
+        let box = TableColumnBox(backend: self, table: table.rawValue, column: columnIndex, editable: editable)
         g_signal_connect_data(
             UnsafeMutableRawPointer(factory), "bind",
             unsafeBitCast(gtkTableCellBindTrampoline, to: GCallback.self),
@@ -2139,6 +2548,13 @@ public final class GTKNativeControlBackend: NativeControlBackend {
         tableRowCounts[table.rawValue] = count
     }
     /// Records the cell-text provider used by the column bind trampoline.
+    public func setTableCellCommitAction(for handle: NativeHandle, _ handler: @escaping (Int, Int, String) -> Void) {
+        tableCommitActions[handle.rawValue] = handler
+    }
+    /// Called from the editable-cell commit trampoline.
+    func reportCellEdit(table: UInt, row: Int, column: Int, text: String) {
+        tableCommitActions[table]?(row, column, text)
+    }
     public func setTableCellProvider(for table: NativeHandle, provider: @escaping (Int, Int) -> String) {
         tableProviders[table.rawValue] = provider
     }
@@ -2152,30 +2568,38 @@ public final class GTKNativeControlBackend: NativeControlBackend {
         // hosts each NSCollectionViewItem's view (the demo's items are push
         // buttons), so a text-tile grid was never going to look like the Mac.
         // The flow box wraps children by width, like NSCollectionViewFlowLayout.
-        let flow = gtk_flow_box_new()!
-        gtk_flow_box_set_selection_mode(OpaquePointer(flow), GTK_SELECTION_SINGLE)
-        gtk_flow_box_set_homogeneous(OpaquePointer(flow), gboolean(0))
-        gtk_flow_box_set_column_spacing(OpaquePointer(flow), 8)
-        gtk_flow_box_set_row_spacing(OpaquePointer(flow), 8)
-        gtk_flow_box_set_max_children_per_line(OpaquePointer(flow), 8)
-        gtk_widget_add_css_class(flow, "linchocolate-collection")
+        // A vertical GtkBox of section blocks; each block is an optional header
+        // band, a GtkFlowBox of that section's items, and an optional footer
+        // band. One flow box per section is what gives AppKit's sectioned flow
+        // layout its full-width bands — a single flow box cannot break a line
+        // for a header.
+        let stack = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0)!
+        gtk_widget_add_css_class(stack, "linchocolate-collection")
         let scroller = gtk_scrolled_window_new()!
-        gtk_scrolled_window_set_child(OpaquePointer(scroller), flow)
+        gtk_scrolled_window_set_child(OpaquePointer(scroller), stack)
         gtk_widget_set_size_request(scroller, Int32(frame.width), Int32(frame.height))
         let h = allocate(scroller, .collection, frame: frame)
-        collectionFlows[h.rawValue] = OpaquePointer(flow)
-        let box = CollectionBox(backend: self, collection: h.rawValue)
-        g_signal_connect_data(
-            UnsafeMutableRawPointer(flow), "selected-children-changed",
-            unsafeBitCast(gtkFlowSelectionTrampoline, to: GCallback.self),
-            Unmanaged.passRetained(box).toOpaque(), boxRelease, GConnectFlags(rawValue: 0)
-        )
+        collectionStacks[h.rawValue] = OpaquePointer(stack)
         return h
     }
-    /// Sets the item count and rebuilds the flow-box's children (= reload).
+    /// Sets the item count and rebuilds (= reload). A collection with no
+    /// declared sections is one unsectioned run of items.
     public func setCollectionItemCount(_ count: Int, for collection: NativeHandle) {
         let raw = collection.rawValue
         collectionItemCounts[raw] = count
+        collectionSectionSpecs[raw] = [NativeCollectionSection(itemCount: count)]
+        rebuildCollectionChildren(raw)
+    }
+    public func setCollectionFlow(interitemSpacing: Double, lineSpacing: Double, horizontal: Bool,
+                                  for collection: NativeHandle) {
+        // Stored only — `setCollectionSections` does the rebuild, so a reload
+        // rebuilds once rather than twice.
+        collectionFlowGeometry[collection.rawValue] = (interitemSpacing, lineSpacing, horizontal)
+    }
+    public func setCollectionSections(_ sections: [NativeCollectionSection], for collection: NativeHandle) {
+        let raw = collection.rawValue
+        collectionSectionSpecs[raw] = sections
+        collectionItemCounts[raw] = sections.reduce(0) { $0 + $1.itemCount }
         rebuildCollectionChildren(raw)
     }
     /// Records the text provider used when no item-view provider supplies a widget.
@@ -2190,13 +2614,96 @@ public final class GTKNativeControlBackend: NativeControlBackend {
     /// (Re)fills the flow box: each item contributes its real widget when the
     /// view provider has one, else a text label from the text provider.
     private func rebuildCollectionChildren(_ raw: UInt) {
-        guard let flow = collectionFlows[raw] else { return }
+        guard let stack = collectionStacks[raw] else { return }
         suppressCollectionSelection.insert(raw)
-        while let child = gtk_flow_box_get_child_at_index(flow, 0) {
-            gtk_flow_box_remove(flow, asWidget(OpaquePointer(child)))
+        // Tear the previous blocks down WITHOUT destroying anything we merely
+        // host. Item and band widgets belong to their Swift views; a GTK widget
+        // whose last reference is its parent dies the moment it is unparented,
+        // so removing a section's flow box took its buttons with it and the next
+        // rebuild had nothing left to re-host (the items vanished on reload).
+        // Hold a reference across the move and drop it once re-parented.
+        var rescued: [UnsafeMutableRawPointer] = []
+        let previousFlows = collectionSectionFlows[raw] ?? []
+        while let child = gtk_widget_get_first_child(asWidget(stack)) {
+            if let entry = previousFlows.first(where: { asWidget($0.flow) == child }) {
+                // A section flow box: rescue each hosted item, then drop the box.
+                while let flowChild = gtk_widget_get_first_child(asWidget(entry.flow)) {
+                    if let hosted = gtk_widget_get_first_child(flowChild) {
+                        g_object_ref(UnsafeMutableRawPointer(hosted))
+                        rescued.append(UnsafeMutableRawPointer(hosted))
+                        gtk_flow_box_remove(entry.flow, hosted)
+                    } else {
+                        gtk_flow_box_remove(entry.flow, flowChild)
+                    }
+                }
+            } else {
+                // A header/footer band.
+                g_object_ref(UnsafeMutableRawPointer(child))
+                rescued.append(UnsafeMutableRawPointer(child))
+            }
+            gtk_box_remove(asBox(stack), child)
         }
-        let count = collectionItemCounts[raw] ?? 0
-        for index in 0..<count {
+        defer { for widget in rescued { g_object_unref(widget) } }
+        collectionSectionFlows[raw] = []
+        collectionFlows[raw] = nil
+        // AppKit's `.horizontal` scroll direction lays the SECTIONS out left to
+        // right, each one's items flowing top-to-bottom in columns. `.vertical`
+        // stacks the sections. Match that by re-orienting the section stack.
+        let horizontal = collectionFlowGeometry[raw]?.horizontal ?? false
+        gtk_orientable_set_orientation(stack, horizontal ? GTK_ORIENTATION_HORIZONTAL
+                                                         : GTK_ORIENTATION_VERTICAL)
+        let sections = collectionSectionSpecs[raw] ?? [NativeCollectionSection(itemCount: collectionItemCounts[raw] ?? 0)]
+        var base = 0
+        for section in sections {
+            if let header = section.header, let hw = widgets[header.rawValue] {
+                hostBand(asWidget(hw), in: stack)
+            }
+            let flow = makeCollectionFlow(raw: raw, base: base)
+            gtk_box_append(asBox(stack), asWidget(flow))
+            collectionSectionFlows[raw, default: []].append((flow: flow, base: base))
+            if collectionFlows[raw] == nil { collectionFlows[raw] = flow }
+            fillCollectionFlow(flow, raw: raw, base: base, count: section.itemCount)
+            base += section.itemCount
+            if let footer = section.footer, let fw = widgets[footer.rawValue] {
+                hostBand(asWidget(fw), in: stack)
+            }
+        }
+        suppressCollectionSelection.remove(raw)
+    }
+    /// Appends a full-width header/footer band, re-parenting it safely.
+    private func hostBand(_ band: UnsafeMutablePointer<GtkWidget>, in stack: OpaquePointer) {
+        g_object_ref(UnsafeMutableRawPointer(band))
+        if gtk_widget_get_parent(band) != nil { gtk_widget_unparent(band) }
+        gtk_widget_set_hexpand(band, gboolean(1))
+        gtk_widget_set_halign(band, GTK_ALIGN_FILL)
+        gtk_box_append(asBox(stack), band)
+        g_object_unref(UnsafeMutableRawPointer(band))
+    }
+    /// One section's GtkFlowBox, wired to report selection in FLAT indices.
+    private func makeCollectionFlow(raw: UInt, base: Int) -> OpaquePointer {
+        let flow = gtk_flow_box_new()!
+        gtk_flow_box_set_selection_mode(OpaquePointer(flow), GTK_SELECTION_SINGLE)
+        gtk_flow_box_set_homogeneous(OpaquePointer(flow), gboolean(0))
+        let geometry = collectionFlowGeometry[raw] ?? (interitem: 8, line: 8, horizontal: false)
+        gtk_flow_box_set_column_spacing(OpaquePointer(flow), guint(Swift.max(0, geometry.interitem)))
+        gtk_flow_box_set_row_spacing(OpaquePointer(flow), guint(Swift.max(0, geometry.line)))
+        gtk_flow_box_set_max_children_per_line(OpaquePointer(flow), 64)
+        // AppKit's `.vertical` scroll direction means items flow in ROWS, which
+        // is GtkFlowBox's horizontal orientation (and vice versa).
+        gtk_orientable_set_orientation(OpaquePointer(flow),
+                                       geometry.horizontal ? GTK_ORIENTATION_VERTICAL : GTK_ORIENTATION_HORIZONTAL)
+        let box = CollectionBox(backend: self, collection: raw, base: base)
+        g_signal_connect_data(
+            UnsafeMutableRawPointer(flow), "selected-children-changed",
+            unsafeBitCast(gtkFlowSelectionTrampoline, to: GCallback.self),
+            Unmanaged.passRetained(box).toOpaque(), boxRelease, GConnectFlags(rawValue: 0)
+        )
+        return OpaquePointer(flow)
+    }
+    /// Fills one section's flow box with items `base ..< base+count`.
+    private func fillCollectionFlow(_ flow: OpaquePointer, raw: UInt, base: Int, count: Int) {
+        for offset in 0..<count {
+            let index = base + offset
             let content: UnsafeMutablePointer<GtkWidget>
             if let handle = collectionViewProviders[raw]?(index), let widget = widgets[handle.rawValue] {
                 // Hold a reference across the move (the toolbar lesson: an
@@ -2226,19 +2733,27 @@ public final class GTKNativeControlBackend: NativeControlBackend {
                 gtk_widget_add_controller(asWidget(OpaquePointer(child)), click)
             }
         }
-        suppressCollectionSelection.remove(raw)
     }
 
     /// Reports a flow-box selection as an item index.
-    fileprivate func reportCollectionSelection(_ raw: UInt) {
-        guard !suppressCollectionSelection.contains(raw), let flow = collectionFlows[raw] else { return }
+    fileprivate func reportCollectionSelection(_ raw: UInt, base: Int) {
+        guard !suppressCollectionSelection.contains(raw) else { return }
+        guard let entry = collectionSectionFlows[raw]?.first(where: { $0.base == base }) else { return }
         var index = -1
-        if let selected = gtk_flow_box_get_selected_children(flow) {
+        if let selected = gtk_flow_box_get_selected_children(entry.flow) {
             if let first = selected.pointee.data {
-                index = Int(gtk_flow_box_child_get_index(first.assumingMemoryBound(to: GtkFlowBoxChild.self)))
+                index = base + Int(gtk_flow_box_child_get_index(first.assumingMemoryBound(to: GtkFlowBoxChild.self)))
             }
             g_list_free(selected)
         }
+        guard index >= 0 else { return }   // a deselect from another section's flow
+        // Selection is single across the whole collection, as on AppKit: clear
+        // every other section's flow box so two sections never look selected.
+        suppressCollectionSelection.insert(raw)
+        for other in collectionSectionFlows[raw] ?? [] where other.base != base {
+            gtk_flow_box_unselect_all(other.flow)
+        }
+        suppressCollectionSelection.remove(raw)
         collectionSelectionActions[raw]?(index)
     }
     /// Creates a tree table (`GtkColumnView` over a `GtkTreeListModel`) in a scrolled window.
@@ -2298,6 +2813,44 @@ public final class GTKNativeControlBackend: NativeControlBackend {
         }
         for s in additions where s != nil { free(UnsafeMutableRawPointer(mutating: s)) }
         outlineRootCounts[outline.rawValue] = count
+    }
+    /// The `GtkTreeListRow` at a visible outline position, or nil. The outline's
+    /// selection model (a `GtkSingleSelection` over the tree list model) is a
+    /// GListModel of the flattened, expanded rows.
+    private func outlineTreeRow(atRow row: Int, for outline: NativeHandle) -> OpaquePointer? {
+        guard row >= 0, let selection = tableSelections[outline.rawValue] else { return nil }
+        guard row < Int(g_list_model_get_n_items(selection)) else { return nil }
+        return g_list_model_get_item(selection, guint(row)).map { OpaquePointer($0) }  // caller unrefs
+    }
+    public func outlineVisibleRowCount(for outline: NativeHandle) -> Int {
+        guard let selection = tableSelections[outline.rawValue] else { return 0 }
+        return Int(g_list_model_get_n_items(selection))
+    }
+    public func outlineItemPath(atRow row: Int, for outline: NativeHandle) -> String? {
+        guard let treeRow = outlineTreeRow(atRow: row, for: outline) else { return nil }
+        defer { g_object_unref(UnsafeMutableRawPointer(treeRow)) }
+        guard let item = gtk_tree_list_row_get_item(treeRow) else { return nil }
+        defer { g_object_unref(item) }
+        return String(cString: gtk_string_object_get_string(OpaquePointer(item)))
+    }
+    public func outlineRowDepth(atRow row: Int, for outline: NativeHandle) -> Int {
+        guard let treeRow = outlineTreeRow(atRow: row, for: outline) else { return 0 }
+        defer { g_object_unref(UnsafeMutableRawPointer(treeRow)) }
+        return Int(gtk_tree_list_row_get_depth(treeRow))
+    }
+    public func outlineIsRowExpanded(atRow row: Int, for outline: NativeHandle) -> Bool {
+        guard let treeRow = outlineTreeRow(atRow: row, for: outline) else { return false }
+        defer { g_object_unref(UnsafeMutableRawPointer(treeRow)) }
+        return gtk_tree_list_row_get_expanded(treeRow) != 0
+    }
+    public func setOutlineRowExpanded(_ expanded: Bool, atRow row: Int, for outline: NativeHandle) {
+        guard let treeRow = outlineTreeRow(atRow: row, for: outline) else { return }
+        defer { g_object_unref(UnsafeMutableRawPointer(treeRow)) }
+        gtk_tree_list_row_set_expanded(treeRow, gboolean(expanded ? 1 : 0))
+    }
+    public func selectOutlineRow(_ row: Int, for outline: NativeHandle) {
+        guard let selection = tableSelections[outline.rawValue] else { return }
+        gtk_single_selection_set_selected(selection, row < 0 ? guint.max : guint(row))
     }
     /// Records the child-count and cell-text providers used by the tree model and bind trampolines.
     public func setOutlineProviders(
@@ -2378,6 +2931,7 @@ public final class GTKNativeControlBackend: NativeControlBackend {
         var previous: OpaquePointer? = nil
         for (index, token) in (tokenValues[handle.rawValue] ?? []).enumerated() {
             let chip = gtk_button_new_with_label("\(token) ✕")!
+            gtk_widget_add_css_class(chip, "linchocolate-token-chip")
             let remove = ActionBox { [weak self] in self?.removeToken(handle, at: index) }
             g_signal_connect_data(
                 UnsafeMutableRawPointer(chip), "clicked",
@@ -2396,10 +2950,60 @@ public final class GTKNativeControlBackend: NativeControlBackend {
         gtk_widget_set_size_request(picture, Int32(frame.width), Int32(frame.height))
         return allocate(picture, .imageView, frame: frame)
     }
+    private var editableTableColumns: [UInt: Set<Int>] = [:]   // table -> editable column indices
+    private var tableCommitActions: [UInt: (Int, Int, String) -> Void] = [:]
+    private var imageViewPaths: [UInt: String] = [:]
+    private var imageViewTints: [UInt: (UInt8, UInt8, UInt8)] = [:]
+    /// Windows the app has requested zoomed; mirrors AppKit's synchronous `isZoomed`.
+    private var zoomedWindows: Set<UInt> = []
+    /// A zoomed window's pre-zoom content size, to restore on unzoom.
+    private var preZoomContentSize: [UInt: (Int32, Int32)] = [:]
     /// Loads (or clears with nil) the picture from a file path.
     public func setImagePath(_ path: String?, for handle: NativeHandle) {
+        imageViewPaths[handle.rawValue] = path
+        renderImageView(handle)
+    }
+    public func setImageTint(_ color: NSColor?, isTemplate: Bool, for handle: NativeHandle) {
+        if let color, isTemplate {
+            imageViewTints[handle.rawValue] = (UInt8(color.redComponent * 255),
+                                               UInt8(color.greenComponent * 255),
+                                               UInt8(color.blueComponent * 255))
+        } else {
+            imageViewTints[handle.rawValue] = nil
+        }
+        renderImageView(handle)
+    }
+    /// (Re)paints an image view from its stored path, recoloring the artwork to
+    /// the tint when one is set (AppKit template semantics: keep alpha, replace RGB).
+    private func renderImageView(_ handle: NativeHandle) {
         guard let w = widget(handle) else { return }
-        gtk_picture_set_filename(w, path)   // GtkPicture is opaque; nil clears
+        guard let path = imageViewPaths[handle.rawValue] else {
+            gtk_picture_set_filename(w, nil)
+            return
+        }
+        guard let tint = imageViewTints[handle.rawValue],
+              let pixbuf = gdk_pixbuf_new_from_file(path, nil),
+              gdk_pixbuf_get_has_alpha(pixbuf) != 0, gdk_pixbuf_get_n_channels(pixbuf) == 4 else {
+            gtk_picture_set_filename(w, path)
+            return
+        }
+        recolorPixbuf(pixbuf, to: tint)
+        if let texture = gdk_texture_new_for_pixbuf(pixbuf) {
+            gtk_picture_set_paintable(w, texture)
+        }
+    }
+    /// Replaces every pixel's RGB with `rgb`, keeping alpha (template recolor).
+    private func recolorPixbuf(_ pixbuf: OpaquePointer, to rgb: (UInt8, UInt8, UInt8)) {
+        let width = Int(gdk_pixbuf_get_width(pixbuf))
+        let height = Int(gdk_pixbuf_get_height(pixbuf))
+        let stride = Int(gdk_pixbuf_get_rowstride(pixbuf))
+        guard let pixels = gdk_pixbuf_get_pixels(pixbuf) else { return }
+        for y in 0..<height {
+            for x in 0..<width {
+                let p = pixels + y * stride + x * 4
+                p[0] = rgb.0; p[1] = rgb.1; p[2] = rgb.2
+            }
+        }
     }
     /// Creates a titled `GtkFrame` as the box container.
     public func createBox(title: String, frame: NSRect) -> NativeHandle {
@@ -2704,14 +3308,61 @@ public final class GTKNativeControlBackend: NativeControlBackend {
             Unmanaged.passRetained(box).toOpaque(), boxDestroyNotify
         )
     }
+    public func runPrintOperation(view: NativeHandle, jobTitle: String, parent: NativeHandle?) -> Bool {
+        guard drawHandlers[view.rawValue] != nil else { return false }
+        let op = gtk_print_operation_new()!
+        gtk_print_operation_set_n_pages(op, 1)
+        gtk_print_operation_set_job_name(op, jobTitle)
+        let frame = frames[view.rawValue] ?? NSMakeRect(0, 0, 320, 180)
+        let box = PrintBox(backend: self, view: view.rawValue,
+                           width: Double(frame.width), height: Double(frame.height))
+        g_signal_connect_data(
+            UnsafeMutableRawPointer(op), "draw-page",
+            unsafeBitCast(gtkPrintDrawPageTrampoline, to: GCallback.self),
+            Unmanaged.passRetained(box).toOpaque(), boxRelease, GConnectFlags(rawValue: 0)
+        )
+        // A headless/automation escape hatch: export to PDF instead of showing
+        // the (modal, display-bound) print dialog. Keeps CI and the geometry
+        // audit from blocking on a dialog while still exercising the render path.
+        let result: GtkPrintOperationResult
+        if let exportPath = ProcessInfo.processInfo.environment["LINCHOCOLATE_PRINT_EXPORT"], !exportPath.isEmpty {
+            gtk_print_operation_set_export_filename(op, exportPath)
+            result = gtk_print_operation_run(op, GTK_PRINT_OPERATION_ACTION_EXPORT, nil, nil)
+        } else {
+            let parentWindow = parent.flatMap { widget($0) }.map { asWindow($0) }
+            result = gtk_print_operation_run(op, GTK_PRINT_OPERATION_ACTION_PRINT_DIALOG, parentWindow, nil)
+        }
+        g_object_unref(UnsafeMutableRawPointer(op))
+        return result == GTK_PRINT_OPERATION_RESULT_APPLY
+    }
+    /// Renders the print page: wraps the print context's Cairo in a graphics
+    /// context and runs the view's draw handler at its natural size, top-left.
+    func drawPrintPage(view: UInt, printContext: OpaquePointer, width: Double, height: Double) {
+        guard let cr = gtk_print_context_get_cairo_context(printContext) else { return }
+        // The demo's print view is flipped (top-left origin), matching Cairo's
+        // native space, so no axis flip — same as the on-screen flipped path.
+        let context = CairoGraphicsContext(cr: cr, flipped: true)
+        dispatchDraw(view: view, context: context, width: width, height: height)
+    }
     /// Queues a redraw of the view's `GtkDrawingArea`.
     public func setNeedsDisplay(_ handle: NativeHandle) {
         guard let area = viewDrawAreas[handle.rawValue] else { return }
+        if paintTrace {
+            let ms = Double(g_get_monotonic_time() - paintTraceStart) / 1000.0
+            FileHandle.standardError.write(
+                String(format: "LCPAINT %8.1fms [invalidate] view=%d\n", ms, Int(handle.rawValue))
+                    .data(using: .utf8)!)
+        }
         gtk_widget_queue_draw(asWidget(area))
     }
     /// Dispatches a draw pass to the Swift handler (called by the draw func).
     func dispatchDraw(view: UInt, context: NativeGraphicsContext, width: Double, height: Double) {
+        if paintTrace, let window = contentViewOwners[view] {
+            paintTraceFrames[window, default: 0] += 1
+            tracePaint(window, "draw#\(paintTraceFrames[window] ?? 0)@\(Int(width))x\(Int(height))")
+        }
         drawHandlers[view]?(context, width, height)
+        noteContentDraw(view: view, width: width, height: height)
     }
     /// Sets the widget's sensitivity (`gtk_widget_set_sensitive`).
     public func setEnabled(_ isEnabled: Bool, for handle: NativeHandle) {
@@ -2851,6 +3502,32 @@ public final class GTKNativeControlBackend: NativeControlBackend {
         }
     }
     /// Reorients a `GtkScale` slider (AppKit's vertical minimum is at the bottom, so the range is inverted).
+    private var sliderSnapTicks: [UInt: Int] = [:]   // slider -> tick count it snaps to
+    private var suppressSliderReport: Set<UInt> = []
+    public func setSliderTickMarks(count: Int, snapsToTicks: Bool, for handle: NativeHandle) {
+        guard let w = widget(handle), kinds[handle.rawValue] == .slider else { return }
+        let scale = UnsafeMutablePointer<GtkScale>(w)
+        gtk_scale_clear_marks(scale)
+        sliderSnapTicks[handle.rawValue] = nil
+        guard count >= 2, let (lo, hi) = ranges[handle.rawValue], hi > lo else { return }
+        // GtkScale draws a mark per position, the direct analog of AppKit's
+        // evenly spaced tick marks. Position BOTTOM is GTK's "trailing side",
+        // which is the right of a vertical scale and below a horizontal one —
+        // where AppKit puts them by default.
+        for index in 0..<count {
+            let value = lo + (hi - lo) * Double(index) / Double(count - 1)
+            gtk_scale_add_mark(scale, value, GTK_POS_BOTTOM, nil)
+        }
+        if snapsToTicks { sliderSnapTicks[handle.rawValue] = count }
+    }
+    /// Rounds a slider's value to its nearest tick, for
+    /// `allowsTickMarkValuesOnly`. Returns the snapped value.
+    func snapSliderValue(_ raw: UInt, _ value: Double) -> Double {
+        guard let count = sliderSnapTicks[raw], count >= 2,
+              let (lo, hi) = ranges[raw], hi > lo else { return value }
+        let step = (hi - lo) / Double(count - 1)
+        return lo + (step * ((value - lo) / step).rounded())
+    }
     public func setSliderVertical(_ vertical: Bool, for handle: NativeHandle) {
         guard let w = widget(handle), kinds[handle.rawValue] == .slider else { return }
         gtk_orientable_set_orientation(
@@ -2973,12 +3650,38 @@ public final class GTKNativeControlBackend: NativeControlBackend {
             valueChangeActions[handle.rawValue] = action
             return
         }
+        if kinds[handle.rawValue] == .slider {
+            // A slider may snap to its tick marks, which means rewriting the
+            // value before reporting it — that needs the backend and handle, so
+            // it gets its own box and trampoline.
+            let sliderBox = SliderValueBox(backend: self, raw: handle.rawValue, action: action)
+            g_signal_connect_data(
+                UnsafeMutableRawPointer(w), "value-changed",
+                unsafeBitCast(gtkSliderValueChangedTrampoline, to: GCallback.self),
+                Unmanaged.passRetained(sliderBox).toOpaque(), boxRelease, GConnectFlags(rawValue: 0)
+            )
+            return
+        }
         let trampoline = gtkValueChangedTrampoline
         g_signal_connect_data(
             UnsafeMutableRawPointer(w), "value-changed",
             unsafeBitCast(trampoline, to: GCallback.self),
             Unmanaged.passRetained(box).toOpaque(), boxRelease, GConnectFlags(rawValue: 0)
         )
+    }
+    /// Reports a slider's new value, snapping it to the tick marks first when
+    /// `allowsTickMarkValuesOnly` is set (AppKit snaps the knob itself, so the
+    /// control is moved too — guarded against the re-entrant value-changed).
+    fileprivate func reportSliderValue(_ raw: UInt, action: (Double) -> Void) {
+        guard !suppressSliderReport.contains(raw), let w = widgets[raw] else { return }
+        let value = gtk_range_get_value(asRange(w))
+        let snapped = snapSliderValue(raw, value)
+        if snapped != value {
+            suppressSliderReport.insert(raw)
+            gtk_range_set_value(asRange(w), snapped)
+            suppressSliderReport.remove(raw)
+        }
+        action(snapped)
     }
     /// Wires selection-change signals for pop-ups, tabs, tables, outlines, segments, and collections.
     public func setSelectionChangeAction(for handle: NativeHandle, action: @escaping (Int) -> Void) {
@@ -3296,6 +3999,23 @@ private final class AlertState {
     var response = 0
     init(loop: OpaquePointer?) { self.loop = loop }
 }
+/// `GtkWindow::close-request` on an alert — treat closing as a dismissal so the
+/// nested loop ends and `runAlert` returns.
+///
+/// Returns TRUE (handled), which STOPS GTK's default close. That matters:
+/// `runAlert` destroys the alert itself once its loop ends, so letting GTK also
+/// destroy it here means the window is destroyed twice — an X error that takes
+/// the whole app down.
+private let gtkAlertCloseTrampoline: @convention(c) (UnsafeMutableRawPointer?, gpointer?) -> gboolean = { _, userData in
+    guard let userData else { return gboolean(0) }
+    let box = Unmanaged<AlertButtonBox>.fromOpaque(userData).takeUnretainedValue()
+    box.state.response = box.index
+    if let loop = box.state.loop, g_main_loop_is_running(loop) != 0 {
+        g_main_loop_quit(loop)
+    }
+    return gboolean(1)
+}
+
 private final class AlertButtonBox {
     let index: Int
     let state: AlertState
@@ -3378,10 +4098,12 @@ private final class TableColumnBox {
     weak var backend: GTKNativeControlBackend?
     let table: UInt
     let column: Int
-    init(backend: GTKNativeControlBackend, table: UInt, column: Int) {
+    let editable: Bool
+    init(backend: GTKNativeControlBackend, table: UInt, column: Int, editable: Bool = false) {
         self.backend = backend
         self.table = table
         self.column = column
+        self.editable = editable
     }
 }
 
@@ -3489,7 +4211,7 @@ private let gtkViewClickTrampoline: @convention(c) (UnsafeMutableRawPointer?, gi
 private let gtkFlowSelectionTrampoline: @convention(c) (UnsafeMutableRawPointer?, gpointer?) -> Void = { _, userData in
     guard let userData else { return }
     let box = Unmanaged<CollectionBox>.fromOpaque(userData).takeUnretainedValue()
-    box.backend?.reportCollectionSelection(box.collection)
+    box.backend?.reportCollectionSelection(box.collection, base: box.base)
 }
 
 /// Carries an editable level indicator's backend + handle to its click gesture.
@@ -3507,6 +4229,44 @@ private let gtkStarDrawFunc: @convention(c) (UnsafeMutablePointer<GtkDrawingArea
     guard let cr, let userData else { return }
     let box = Unmanaged<LevelClickBox>.fromOpaque(userData).takeUnretainedValue()
     box.backend?.drawStars(box.raw, cr: cr, width: Double(width), height: Double(height))
+}
+
+/// Carries a slider's backend + handle + action, for tick snapping on change.
+private final class SliderValueBox {
+    weak var backend: GTKNativeControlBackend?
+    let raw: UInt
+    let action: (Double) -> Void
+    init(backend: GTKNativeControlBackend, raw: UInt, action: @escaping (Double) -> Void) {
+        self.backend = backend
+        self.raw = raw
+        self.action = action
+    }
+}
+
+/// `GtkRange::value-changed` on a slider — snaps to ticks, then reports.
+private let gtkSliderValueChangedTrampoline: @convention(c) (UnsafeMutableRawPointer?, gpointer?) -> Void = { _, userData in
+    guard let userData else { return }
+    let box = Unmanaged<SliderValueBox>.fromOpaque(userData).takeUnretainedValue()
+    box.backend?.reportSliderValue(box.raw, action: box.action)
+}
+
+/// Carries a print job's backend + view handle + natural size to the draw-page handler.
+private final class PrintBox {
+    weak var backend: GTKNativeControlBackend?
+    let view: UInt
+    let width: Double
+    let height: Double
+    init(backend: GTKNativeControlBackend, view: UInt, width: Double, height: Double) {
+        self.backend = backend; self.view = view; self.width = width; self.height = height
+    }
+}
+
+/// `GtkPrintOperation::draw-page` — `void (*)(GtkPrintOperation*, GtkPrintContext*, gint, gpointer)`.
+private let gtkPrintDrawPageTrampoline: @convention(c) (UnsafeMutableRawPointer?, UnsafeMutableRawPointer?, gint, gpointer?) -> Void = { _, printContext, _, userData in
+    guard let printContext, let userData else { return }
+    let box = Unmanaged<PrintBox>.fromOpaque(userData).takeUnretainedValue()
+    box.backend?.drawPrintPage(view: box.view, printContext: OpaquePointer(printContext),
+                               width: box.width, height: box.height)
 }
 
 /// Carries a spinner's backend + handle to its draw func and rotation timeout.
@@ -3675,9 +4435,12 @@ private final class OutlineColumnBox {
 private final class CollectionBox {
     weak var backend: GTKNativeControlBackend?
     let collection: UInt
-    init(backend: GTKNativeControlBackend, collection: UInt) {
+    /// Flat index of this section's first item, for mapping selection back.
+    let base: Int
+    init(backend: GTKNativeControlBackend, collection: UInt, base: Int = 0) {
         self.backend = backend
         self.collection = collection
+        self.base = base
     }
 }
 
@@ -3736,13 +4499,32 @@ private let gtkOutlineCellBindTrampoline: @convention(c) (UnsafeMutableRawPointe
 }
 
 /// Factory `setup` — gives each cell a left-aligned label.
-private let gtkTableCellSetupTrampoline: @convention(c) (UnsafeMutableRawPointer?, UnsafeMutableRawPointer?, gpointer?) -> Void = { _, item, _ in
+private let gtkTableCellSetupTrampoline: @convention(c) (UnsafeMutableRawPointer?, UnsafeMutableRawPointer?, gpointer?) -> Void = { _, item, userData in
     guard let item else { return }
-    let label = gtk_label_new("")!
-    gtk_label_set_xalign(OpaquePointer(label), 0)
-    gtk_widget_set_margin_start(label, 8)
-    gtk_widget_set_margin_end(label, 8)
-    gtk_list_item_set_child(OpaquePointer(item), label)
+    let box = userData.map { Unmanaged<TableColumnBox>.fromOpaque($0).takeUnretainedValue() }
+    if box?.editable == true {
+        // A GtkEditableLabel shows text and enters edit mode on double-click —
+        // exactly AppKit's editable cell. On commit (Enter / focus-out) the
+        // "editing" property drops to false; that is when we push the value back.
+        let editable = gtk_editable_label_new("")!
+        gtk_widget_set_margin_start(editable, 8)
+        gtk_widget_set_margin_end(editable, 8)
+        if let box {
+            let commit = TableColumnBox(backend: box.backend!, table: box.table, column: box.column, editable: true)
+            g_signal_connect_data(
+                UnsafeMutableRawPointer(editable), "notify::editing",
+                unsafeBitCast(gtkCellEditingChangedTrampoline, to: GCallback.self),
+                Unmanaged.passRetained(commit).toOpaque(), boxRelease, GConnectFlags(rawValue: 0)
+            )
+        }
+        gtk_list_item_set_child(OpaquePointer(item), editable)
+    } else {
+        let label = gtk_label_new("")!
+        gtk_label_set_xalign(OpaquePointer(label), 0)
+        gtk_widget_set_margin_start(label, 8)
+        gtk_widget_set_margin_end(label, 8)
+        gtk_list_item_set_child(OpaquePointer(item), label)
+    }
 }
 
 /// Factory `bind` — fills the cell's label from the table's cell provider.
@@ -3752,7 +4534,28 @@ private let gtkTableCellBindTrampoline: @convention(c) (UnsafeMutableRawPointer?
     let row = Int(gtk_list_item_get_position(OpaquePointer(item)))
     guard let child = gtk_list_item_get_child(OpaquePointer(item)) else { return }
     let text = box.backend?.tableCellText(table: box.table, row: row, column: box.column) ?? ""
-    gtk_label_set_text(OpaquePointer(child), text)
+    if box.editable {
+        // Stamp the current row on the reused widget so the commit handler knows
+        // which model row it maps to (row+1 so a valid row is never a null pointer).
+        g_object_set_data(UnsafeMutableRawPointer(child).assumingMemoryBound(to: GObject.self),
+                          "lc-row", UnsafeMutableRawPointer(bitPattern: row + 1))
+        gtk_editable_set_text(OpaquePointer(child), text)
+    } else {
+        gtk_label_set_text(OpaquePointer(child), text)
+    }
+}
+/// `GtkEditableLabel::notify::editing` — on leaving edit mode, push the new text
+/// back to the data source (AppKit's `setObjectValue`).
+private let gtkCellEditingChangedTrampoline: @convention(c) (UnsafeMutableRawPointer?, UnsafeMutableRawPointer?, gpointer?) -> Void = { label, _, userData in
+    guard let label, let userData else { return }
+    let box = Unmanaged<TableColumnBox>.fromOpaque(userData).takeUnretainedValue()
+    // Only fire once, when editing FINISHES (property went to false).
+    guard gtk_editable_label_get_editing(OpaquePointer(label)) == 0 else { return }
+    let text = String(cString: gtk_editable_get_text(OpaquePointer(label)))
+    let rowData = g_object_get_data(label.assumingMemoryBound(to: GObject.self), "lc-row")
+    let row = rowData.map { Int(bitPattern: $0) - 1 } ?? -1
+    guard row >= 0 else { return }
+    box.backend?.reportCellEdit(table: box.table, row: row, column: box.column, text: text)
 }
 
 /// `GtkSingleSelection::notify::selected` — passes the selected row (−1 if none).
@@ -3996,4 +4799,23 @@ func linChocolateFixedLayoutType() -> GType {
         gtk_layout_manager_get_type(), "LinChocolateFixedLayout", &info, GTypeFlags(rawValue: 0)
     )
     return lcLayoutTypeStorage
+}
+
+/// Carries a paint-trace subscription: which window, and which event fired.
+private final class PaintTraceBox {
+    weak var backend: GTKNativeControlBackend?
+    let raw: UInt
+    let event: String
+    init(backend: GTKNativeControlBackend, raw: UInt, event: String) {
+        self.backend = backend
+        self.raw = raw
+        self.event = event
+    }
+}
+
+/// Any traced signal — widget lifecycle or frame-clock cycle.
+private let gtkPaintTraceTrampoline: @convention(c) (UnsafeMutableRawPointer?, gpointer?) -> Void = { _, userData in
+    guard let userData else { return }
+    let box = Unmanaged<PaintTraceBox>.fromOpaque(userData).takeUnretainedValue()
+    box.backend?.tracePaint(box.raw, box.event)
 }

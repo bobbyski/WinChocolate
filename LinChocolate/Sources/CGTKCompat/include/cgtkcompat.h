@@ -72,4 +72,28 @@ void       lc_color_chooser_set_rgba(GtkWidget *chooser, const GdkRGBA *rgba);
  */
 void       lc_color_chooser_get_rgba(GtkWidget *chooser, GdkRGBA *rgba);
 
+/* Paints the X window's BACKGROUND PIXEL, i.e. what the X server fills the
+ * window with before (and between) the app's own frames.
+ *
+ * This is what a user sees during the gap between a window being mapped and its
+ * first rendered frame. On a display where that gap is long (a window manager
+ * that never completes GTK's frame-sync handshake makes it seconds), the default
+ * white fill flashes hard against a dark app. Matching it to the app's own
+ * background makes the wait invisible instead. No-op off X11. */
+void lc_set_window_background_rgb(GtkWidget *window, double red, double green, double blue);
+
+/* Removes _NET_WM_SYNC_REQUEST from the window's WM_PROTOCOLS.
+ *
+ * GTK asks the window manager to acknowledge each newly mapped surface through
+ * a sync counter and holds the first frame until that acknowledgement arrives.
+ * A window manager that advertises the protocol but never completes the
+ * handshake (quartz-wm) leaves GTK waiting out its timeout — measured at ~2 s,
+ * twice, to the millisecond, for every window after the first.
+ *
+ * The handshake exists to keep an app in step with a COMPOSITOR. Call this only
+ * where there is no compositor to be in step with; there the wait buys nothing
+ * and costs seconds. Must be called after realize (the surface must exist) and
+ * before the window is mapped. No-op off X11. */
+void lc_strip_wm_sync_request(GtkWidget *window);
+
 #endif /* CGTKCOMPAT_H */

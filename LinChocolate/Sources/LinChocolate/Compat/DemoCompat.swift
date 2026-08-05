@@ -126,12 +126,6 @@ public extension String {
 public extension NSSlider {
     /// The slider's current value truncated to `Int`.
     var intValue: Int { Int(doubleValue) }
-    /// Number of tick marks along the slider (stub — accepted for parity).
-    var numberOfTickMarks: Int { get { 0 } set {} }
-    /// Whether the slider snaps to tick-mark values (stub).
-    var allowsTickMarkValuesOnly: Bool { get { false } set {} }
-    /// Which side of the slider draws tick marks (stub).
-    var tickMarkPosition: Int { get { 0 } set {} }
     /// AppKit-shaped action hook; write-only alias for `onValueChange`.
     var onAction: ((NSControl) -> Void)? { get { nil } set { onValueChange = newValue } }
 }
@@ -315,8 +309,6 @@ public extension NSOutlineView {
     func toggleItem(_ item: Any) {
         if isItemExpanded(item) { collapseItem(item) } else { expandItem(item) }
     }
-    /// Whether `item` is currently expanded (stub — always `false`).
-    func isItemExpanded(_ item: Any) -> Bool { false }
 }
 
 // Backend conveniences the shared demo calls. Default no-op / delegation so
@@ -452,20 +444,10 @@ public extension NSOutlineView {
     var onAction: ((NSControl) -> Void)? { get { nil } set { onSelectionChange = newValue } }
     /// WinChocolate's outline drag-and-drop reorder callback (stub).
     var winOutlineReorderHandler: ((Any, Any?, Int) -> Void)? { get { nil } set {} }
-    /// Selects the given rows (stub).
-    func selectRowIndexes(_ indexes: IndexSet, byExtendingSelection extend: Bool) {}
-    /// The item shown at `row` (stub returns `nil`).
-    func item(atRow row: Int) -> Any? { nil }
-    /// The row displaying `item` (stub returns `-1`).
-    func row(forItem item: Any?) -> Int { -1 }
     /// Whether `item` can be expanded, delegated to the data source.
     func isItemExpandable(_ item: Any) -> Bool {
         dataSource?.outlineView(self, isItemExpandable: item) ?? false
     }
-    /// Alias for `isItemExpandable`.
-    func isExpandable(_ item: Any) -> Bool { isItemExpandable(item) }
-    /// Indentation level for `item` (stub returns 0).
-    func level(forItem item: Any?) -> Int { 0 }
 }
 
 public extension NSCollectionView {
@@ -491,13 +473,6 @@ public extension NSSecureTextField {
         get { onTextChange }
         set { onTextChange = newValue }
     }
-}
-
-// MARK: - Window zoom state
-
-public extension NSWindow {
-    /// Whether the window is currently zoomed (stub returns `false`).
-    var isZoomed: Bool { false }
 }
 
 // MARK: - IndexPath (collection-view conveniences)
@@ -548,10 +523,6 @@ public extension NSWindow {
     func makeKeyAndOrderFront() { makeKeyAndOrderFront(nil) }
     /// Brings the window forward without changing key status.
     func orderFront(_ sender: Any?) { makeKeyAndOrderFront(sender) }
-    /// Toggles zoom (no-op stub — GTK-managed).
-    func zoom(_ sender: Any?) {}
-    /// Minimizes the window (no-op stub — GTK-managed).
-    func miniaturize(_ sender: Any?) {}
     /// Toggles toolbar visibility (no-op stub).
     func toggleToolbarShown(_ sender: Any?) {}
     /// Advances the key view loop (no-op stub).
@@ -571,14 +542,10 @@ public extension NSWindow {
 // MARK: - Outline / table / collection conveniences
 
 public extension NSOutlineView {
-    /// Expands `item` in the outline (no-op stub).
-    func expandItem(_ item: Any?) {}
-    /// Expands `item`, optionally including all its descendants (no-op stub).
-    func expandItem(_ item: Any?, expandChildren: Bool) {}
-    /// Collapses `item` in the outline (no-op stub).
-    func collapseItem(_ item: Any?) {}
-    /// Whether `item` is currently expanded (stub returns `false`).
-    func isItemExpanded(_ item: Any?) -> Bool { false }
-    /// Reloads the row for `item` (stub reloads everything).
+    /// Expands `item`, optionally including all its descendants. The
+    /// deep-expand flag is honored a level at a time by the demo, so the base
+    /// single-level `expandItem` suffices here.
+    func expandItem(_ item: Any?, expandChildren: Bool) { expandItem(item) }
+    /// Reloads the row for `item` (reloads everything — the model is path-keyed).
     func reloadItem(_ item: Any?) { reloadData() }
 }

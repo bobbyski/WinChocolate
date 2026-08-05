@@ -57,11 +57,16 @@ public protocol NSTableViewDataSource: AnyObject {
     /// Called after the user clicks a sortable header and `sortDescriptors`
     /// updates; the data source re-sorts its model and reloads. Default: no-op.
     func tableView(_ tableView: NSTableView, sortDescriptorsDidChange oldDescriptors: [NSSortDescriptor])
+    /// Stores a value edited in an editable cell (AppKit's cell-based editing).
+    /// Default: no-op.
+    func tableView(_ tableView: NSTableView, setObjectValue object: Any?, for tableColumn: NSTableColumn?, row: Int)
 }
 
 public extension NSTableViewDataSource {
     /// Default: no-op.
     func tableView(_ tableView: NSTableView, sortDescriptorsDidChange oldDescriptors: [NSSortDescriptor]) {}
+    /// Default: no-op (non-editable data sources ignore edits).
+    func tableView(_ tableView: NSTableView, setObjectValue object: Any?, for tableColumn: NSTableColumn?, row: Int) {}
     /// Default: not draggable.
     func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> NSPasteboardWriting? { nil }
     /// Default: reject the drop.
@@ -208,6 +213,14 @@ open class NSTableView: NSControl {
             let value = dataSource.tableView(self, objectValueFor: self.tableColumns[columnIndex], row: row)
             return value.map { String(describing: $0) } ?? ""
         }
+        // An editable cell committed a new value → AppKit's cell-based editing
+        // path: hand it to the data source, then refresh so the cell re-reads.
+        backend.setTableCellCommitAction(for: handle) { [weak self] row, columnIndex, text in
+            guard let self, let dataSource = self.dataSource,
+                  columnIndex < self.tableColumns.count else { return }
+            dataSource.tableView(self, setObjectValue: text,
+                                 for: self.tableColumns[columnIndex], row: row)
+        }
         backend.setSelectionChangeAction(for: handle) { [weak self] row in
             guard let self else { return }
             self.selectedRow = row             // sync silently
@@ -251,7 +264,7 @@ open class NSTableView: NSControl {
         column.table = self
         column.columnIndex = index
         tableColumns.append(column)
-        backend.addTableColumn(title: column.title, to: handle)
+        backend.addTableColumn(title: column.title, editable: column.isEditable, to: handle)
         if column.sortDescriptorPrototype != nil {
             backend.setColumnSortable(index, for: handle)
         }

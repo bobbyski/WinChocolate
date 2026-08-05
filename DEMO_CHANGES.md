@@ -177,6 +177,1011 @@ Eastern **Standard** Time.
 
 ---
 
+## 2026-07-18 — FIXED: windows appear immediately — GTK's frame-sync wait dropped where no compositor exists
+
+The reporter tested the hypothesis in the control spike and confirmed it: *"significantly better —
+apply it to the real code."*
+
+**The mechanism.** GTK asks the window manager to acknowledge every newly mapped surface through a
+sync counter (`_NET_WM_SYNC_REQUEST`) and holds the window's first frame until that acknowledgement
+arrives. quartz-wm advertises the protocol and never completes the handshake, so GTK waited out its
+internal timeout — **~2 s for every window after the first**, measured at 2063 ms and 2045 ms across
+two different code paths, which is the fingerprint of a timeout rather than of latency. That wait is
+the whole defect: the delay before the window appears, and (with the window mapped but unpainted
+throughout) the blank flash the reporter had been reporting since the beginning.
+
+**The fix.** `lc_strip_wm_sync_request` removes the protocol from the window's `WM_PROTOCOLS`
+between realize and map, so GTK has nothing to wait for and paints immediately.
+
+**Scoped, not blanket.** The handshake earns its keep on a composited desktop — it is what keeps
+resizing tear-free — so it is dropped only where `gdk_display_is_composited()` is false, i.e. where
+there is no compositor to stay in step with and the wait buys nothing. Real Linux desktops
+(mutter/kwin) keep it. `LINCHOCOLATE_KEEP_WM_SYNC=1` restores it anywhere, for bisecting.
+
+Together with the previous entry's background-pixel change, a window on a non-composited display now
+appears at once, and in the app's own colour rather than a white flash if anything does delay it.
+
+**Files touched (framework only)**
+
+- `Sources/CGTKCompat/{include/cgtkcompat.h,cgtkcompat.c}` — `lc_strip_wm_sync_request`
+  (no-op off X11).
+- `Native/GTK/GTKNativeControlBackend.swift` — strip the protocol in `showWindow` when the display
+  is not composited; `LINCHOCOLATE_KEEP_WM_SYNC` opt-out.
+- `run-linux.sh` — forwards `LINCHOCOLATE_KEEP_WM_SYNC`.
+
+**Verified**
+
+- Reporter, on XQuartz: *significantly better*.
+- Linux/Xvfb: main window 1120×843, panel 280×140, panel close-and-reopen, alert open and dismiss —
+  all intact with **0 X errors**. Clean whole-package build with 0 warnings; contract tests pass;
+  geometry audit **0 violations on pages 0, 1, 2, 4, 5, 7, 9, 10** in dark mode.
+
+**How it was found** — worth keeping, because reasoning failed repeatedly here and measurement did
+not: a paint tracer (`LINCHOCOLATE_PAINT_TRACE=1`) that logged window lifecycle, frame-clock cycles,
+GdkSurface sizes and our own invalidations; then a control program with none of our code in it
+(`Tools/window-timing-spike.c`, `./run-linux.sh --spike`) which reproduced the stall and let the fix
+be tested outside the framework before being applied to it.
+
+**MUST FIX (WinChocolate):** the Win32 equivalent is any presentation handshake the framework waits
+on that the environment never completes — measure the gap between show and first paint before
+assuming it is inherent.
+
+## 2026-07-18 — The flash is an UNPAINTED window, and its colour is ours to choose (framework work; demo untouched)
+
+Two corrections and a fix, all from the reporter's data.
+
+**Correction 1 — the flashing is not my layout wait.** The previous entry blamed the pump loop I had
+added. The reporter then ran the pure-GTK4 spike again and *did* see the redraws:
+
+```
+SPIKE [main]   FIRST FRAME    96.1 ms after map
+SPIKE [panel]  FIRST FRAME  1922.9 ms after map      ← and this one visibly flashed
+```
+
+The spike contains none of our code and never pumps the loop, so the pump was not the cause.
+(Removing it was still right — it achieved nothing — but the entry above overstated it. This is what
+came of building a causal story on a single "didn't see any redraws" observation instead of asking
+for a second look.)
+
+**Correction 2 — why the earlier spike run looked clean:** *"is white on white so have to pay
+attention."* The spike is light-themed, so its unpainted window (white) against white content is
+nearly invisible. The demo is run with `--dark`, so the identical unpainted window flashes **white
+against a dark app**. Same defect, wildly different visibility.
+
+**That is the actual mechanism, and it is fixable even though the delay is not.** Between mapping a
+window and its first rendered frame, the X server fills the window with its *background pixel*. On
+this display that gap is 1–2 s for a second window (GTK waits on a frame-sync handshake quartz-wm
+never completes — measured identically at 2063 ms and 2045 ms across two different code paths, the
+signature of a timeout rather than latency). We cannot shorten the wait. We can decide what is on
+screen during it.
+
+`lc_set_window_background_rgb` (in the CGTKCompat C target, where the X11 call belongs) sets the X
+window's background pixel to the app's own window background, right after realize and before the
+map. The wait remains; the white flash does not.
+
+**Files touched (framework only)**
+
+- `Sources/CGTKCompat/{include/cgtkcompat.h,cgtkcompat.c}` — `lc_set_window_background_rgb`
+  (no-op off X11).
+- `Package.swift` — CGTKCompat links X11.
+- `Native/GTK/GTKNativeControlBackend.swift` — set the background pixel in `showWindow`.
+- `Tools/window-timing-spike.c` — `SPIKE_NO_SYNC=1` strips `_NET_WM_SYNC_REQUEST` before map, to
+  test whether that handshake is what stalls the first frame.
+
+**Verified**
+
+- Linux: renders correctly in light and dark with the panel open; clean whole-package build with 0
+  warnings; contract tests pass; geometry audit 0 violations (pages 0, 5, 7, 10 in dark mode).
+- The remaining 1–2 s wait for a second window is GTK's/the window manager's, demonstrated by a
+  control program with no framework code in it.
+
+**MUST FIX (WinChocolate):** a window's pre-first-frame fill must match the app's background, or a
+slow display shows a bright flash before the content arrives.
+
+## 2026-07-18 — RESOLVED: the flashing was my layout wait; the slowness is GTK/quartz-wm
+
+The control spike settled both halves of this, and the answer is not the one I had been assuming.
+
+**The spike on the reporter's display — pure GTK4 C, no framework code at all:**
+
+```
+SPIKE  [main]   FIRST FRAME   106.2 ms after map
+SPIKE  [panel]  FIRST FRAME  1131.3 ms after map      ← second window
+```
+
+A ~1.1 s wait for a second window's first frame, in a 40-line C program. So the multi-second
+latency belongs to **GTK4 + quartz-wm** (the frame-sync handshake the WM never completes), and the
+matching ~2 s figures in the demo were never the framework's to fix.
+
+**But the reporter added the decisive detail: the spike "didn't see any noticeable redraws".**
+It waits just as long and does not flash. Latency and flashing are two different problems, and the
+flashing was ours — specifically **mine**.
+
+**Root cause of the flashing: the "wait until laid out" loop I added.** It pumped
+`g_main_context_iteration` after `present`, while the window was mapped but not yet laid out.
+GTK lays out on the frame clock, so every pumped iteration let GTK render and push a **blank** frame
+to the display. That is exactly "a number of repainting blank screens before it opens the real one"
+— I built the artifact I was chasing. The spike never pumps: it returns to the main loop and paints
+once, when ready, which is why it is silent despite the same latency.
+
+The loop is gone. `showWindow` now realizes, sizes and presents, and lets GTK paint when it is
+ready — the same shape as the control program.
+
+**Correcting the record.** Two earlier entries in this log explained the blank frames as "GTK maps
+before laying out, so we wait for layout before returning". The observation was right; the remedy
+was wrong and actively harmful. Waiting does not make GTK lay out sooner — it only gives GTK
+opportunities to paint an unfinished window.
+
+**Files touched (framework only)**
+
+- `Native/GTK/GTKNativeControlBackend.swift` — removed the layout-wait pump from `showWindow`
+  (with the reasoning recorded at the call site so it is not reinvented).
+
+**Verified**
+
+- Linux: panel opens 280×140, paints once, close/reopen/quit clean. Clean whole-package build with
+  0 warnings; contract tests pass; geometry audit 0 violations (pages 0, 1, 5, 7, 10).
+
+**MUST FIX (WinChocolate):** never pump the event loop between showing a window and its first
+frame — it renders the window blank. Show it and let the toolkit paint when ready.
+
+## 2026-07-18 — TOOLING: a pure-GTK4 control spike, and the ~2-second signature
+
+With the re-present bug fixed the reporter's panel still took the same time to appear, and the
+trace finally showed the shape of it:
+
+```
+first open   map 6311.5ms → clock:layout 8374.6ms   = 2063 ms
+re-present   map 13894.6  → clock:layout 15939.9    = 2045 ms
+```
+
+**Two opens, 18 ms apart in duration.** That is not queueing or network jitter — a variable cost
+does not land twice on the same number. It is a fixed **~2 second timeout**: something waits for a
+response that never comes and then proceeds anyway. The main window does not pay it (9–120 ms), so
+it is specific to showing a *second* window on that display. The known candidate is GTK's X11
+frame-sync handshake (`_NET_WM_SYNC_REQUEST`): GDK waits for the window manager to acknowledge the
+newly mapped surface before painting, and quartz-wm does not complete it.
+
+**`Tools/window-timing-spike.c` — the control experiment.** Pure GTK4 in C: no LinChocolate, no
+Swift, none of our code. It opens a main window (1120×760 content), waits 4 s, opens a 280×140
+second window — the shape of the demo's inspector panel — and times each from `present` to its
+first rendered frame. Run with `./run-linux.sh --spike`.
+
+Baseline here (Xvfb): main **4.5 ms**, panel **0.9 ms** after map.
+
+The spike is the discriminator this investigation needed several rounds ago:
+
+- spike panel ≈ 2 s on the reporter's display ⇒ the latency is GTK's or the window manager's, and
+  no framework change removes it;
+- spike panel fast while the demo is slow ⇒ the fault is ours, and the difference between two
+  programs this small is a very short list of calls.
+
+**Files touched**
+
+- `Tools/window-timing-spike.c` — new control experiment (no framework code).
+- `run-linux.sh` — `--spike` builds and runs it with the same display setup as the demo.
+
+## 2026-07-18 — Paint tracer round 2: it found a real bug (re-showing a window redid its whole setup)
+
+The tracer earned its keep immediately. Reporter: *"Running twice, the second time is slower."*
+The trace showed why, and it was mine.
+
+**Bug 1 — re-presenting a window redid first-show setup.** The demo's inspector panel is cached and
+re-ordered front on every press, and `showWindow` ran its whole first-show path each time:
+`gtk_widget_realize`, a measure, **`gtk_window_set_default_size` on an already-mapped window** (a
+resize request, i.e. another window-manager round trip) and the layout wait — plus it re-installed
+the trace handlers, which is why every panel event started logging twice after the second open. The
+reporter's measurements: first open **2.1 s**, second open **3.5 s**. `showWindow` now does that
+work once per window; a re-present is a bare `gtk_window_present`, one trace line.
+
+**Bug 2 — the layout wait could freeze the app.** The wait added earlier was bounded by iteration
+count. The trace measured **~93 ms per iteration** on the reporter's display (each one blocking on
+an X round trip), so ten iterations became a one-second freeze: the app stopped responding, then
+everything appeared at once — worse than the window filling in. It is now bounded by **time**
+(50 ms), so it keeps the benefit where layout is fast (locally: `laid-out(8i/7ms)`) and degrades to
+"show it now" where it is not (reporter: `laid-out(1i/74ms)`). `LINCHOCOLATE_NO_LAYOUT_WAIT=1`
+disables it entirely for A/B testing.
+
+**What the tracer now measures.** Alongside window lifecycle and frame-clock cycles it logs
+`[invalidate]` (every redraw *we* request) and `[timer]` (every periodic block we drive), which
+separates "the app is causing repaints" from "the display server is". Idle for 8 s on page 0 here:
+7 timer ticks, 31 invalidations (all during startup), **1 content draw, 2 frame cycles**. The
+reporter's machine, same idle app: **~90 frame cycles in 20 s with 5 content draws** — the frames
+are not ours. With no compositor, every overlap or cursor crossing damages the window and X sends
+an expose, so the panel's first frame queues behind that traffic; its first layout lands
+consistently ~120 ms after a main-window draw.
+
+**Files touched (framework only)**
+
+- `Native/GTK/GTKNativeControlBackend.swift` — `presentedWindows` guard so first-show setup runs
+  once; time-bounded layout wait + `LINCHOCOLATE_NO_LAYOUT_WAIT`; tracer logs invalidations and
+  timer ticks.
+- `run-linux.sh` — forwards `LINCHOCOLATE_NO_LAYOUT_WAIT`.
+
+**Verified**
+
+- Re-presenting the panel is now a single `re-present` line — no re-realize, no resize request, no
+  duplicated handlers; close-and-reopen still returns a 280×140 panel. Clean whole-package build
+  with 0 warnings; contract tests pass; geometry audit 0 violations (pages 0, 5, 7, 10); the tracer
+  emits **0 lines** unless asked.
+
+**MUST FIX (WinChocolate):** showing an already-visible window must only raise it — re-running
+first-show sizing costs a window-manager round trip and makes each successive open slower.
+
+## 2026-07-18 — TOOLING: a paint tracer, because the panel flash needed evidence not theory
+
+Bobby: *"No more guessing — add tooling to find where the repaints are coming from, concentrate on
+the panel as that is the most visible offender."* Fair. Several rounds had been spent reasoning
+about a symptom that only appears on the reporter's display path.
+
+**`LINCHOCOLATE_PAINT_TRACE=1`** instruments the whole window presentation lifecycle. Every line
+carries elapsed ms, the GTK allocation, the content view's allocation, **the GdkSurface size** and
+the frame-clock counter, and flags any size change:
+
+```
+LCPAINT  5012.9ms [WinChocolate Panel] pre-present  win=0x0     content=0x0     surface=1x1
+LCPAINT  5013.8ms [WinChocolate Panel] map          win=0x0     content=0x0     surface=1x1
+LCPAINT  5020.6ms [WinChocolate Panel] clock:layout win=280x140 content=280x140 surface=280x140  ← SIZE CHANGED
+LCPAINT  5020.6ms [WinChocolate Panel] draw#1@280x140 …                                    frame=0
+LCPAINT  5021.0ms [WinChocolate Panel] clock:after-paint …                                 frame=0
+```
+
+It hooks the widget's `map`/`unmap`/`realize`/`unrealize` **and the GdkFrameClock's `layout` and
+`after-paint`** — the frame clock being the authority on what GTK actually renders. Reading it:
+
+- **repeated frames at a stable size** ⇒ damage/expose churn (something is invalidating);
+- **frames whose size keeps changing** ⇒ re-layout (geometry settling after the window is up);
+- **one frame arriving long after `map`** ⇒ paint latency, i.e. the transport, not the code.
+
+Including the **surface** size next to the allocation is what makes the trace trustworthy: GTK's
+allocation is only computed on the frame clock, so it reads `0x0` before the first cycle even when
+the real window is correctly sized. Only the surface tells you what the X server has.
+
+**What it shows here:** the panel maps with a **1×1 GdkSurface**, and the surface, allocation and
+first paint all arrive together on frame 0, ~7 ms later — 2 frames total. GTK4 creates a toplevel
+surface at 1×1 and sizes it during the first frame cycle by design; `gtk_window_set_default_size`
+before `realize` does not pre-empt it (tried, kept anyway as it is more correct). So on this
+machine there is no repaint storm to remove — which is exactly why the reporter's own trace is now
+the thing that matters.
+
+**Also in this pass:** `showWindow` measures the window and sets its default size before realizing,
+and still waits (bounded) for the content to be laid out before returning.
+
+**Files touched (framework only)**
+
+- `Native/GTK/GTKNativeControlBackend.swift` — `tracePaint`, `installPaintTrace`, `PaintTraceBox`,
+  `gtkPaintTraceTrampoline`; measure + default size before realize.
+- `run-linux.sh` — forwards `LINCHOCOLATE_PAINT_TRACE`.
+
+**Verified**
+
+- Clean whole-package build with 0 warnings; contract tests pass; geometry audit 0 violations
+  (pages 0, 5, 7, 10). The tracer is **off unless asked**: a plain run emits 0 `LCPAINT` lines.
+
+## 2026-07-18 — Root cause of the window "blank repaints": we mapped windows before they were laid out (framework work; demo untouched)
+
+Bobby, after several rounds on this: *"the panel window still flashes."* The reporter's own runs
+supplied the decisive evidence.
+
+**The clue was two identical runs disagreeing.** With `LINCHOCOLATE_GEOMETRY_AUDIT=1` the panel
+audited **0 violations**; the very next run reported its two text fields at **4×2, positioned
+(−2,−1)** instead of 120×24. Same binary, different answer — a race, not a layout bug. Something was
+being observed *before it had been laid out*.
+
+**Measured cause.** A probe immediately after `gtk_window_present()` returns:
+
+```
+PROBE after present: content=0x0        ← main window
+PROBE after present: content=0x0        ← panel
+```
+
+The content view has **no size at all** when the window is already mapped. GTK4 lays a window out on
+the frame clock *after* mapping it, so every window we showed went on screen with its contents
+having no geometry, and the real frame arrived one or more frames later. On a local display that is
+a single invisible frame. Over the reporter's remote, software-rendered X connection
+(`glx: failed to create drisw screen`, `DISPLAY=…:0` over TCP) it is exactly the "number of
+repainting blank screens before it opens the real one" — and the 4×2 audit reading was that same
+un-laid-out window, caught by a diagnostic that happened to look during the gap.
+
+**Fix: don't map a window that has no geometry yet.** `showWindow` now realizes the window (so the
+surface exists and GTK can measure it), presents it, and then pumps the main context until the
+content view actually has a width — bounded at 100 iterations so a window whose content never gains
+a size can never hang the app. It takes 6–8 iterations in practice. Afterwards:
+
+```
+PROBE after present: content=1120x760    ← main window
+PROBE after present: content=280x140     ← panel
+```
+
+The first frame a user sees is a finished one.
+
+**Also fixed: a regression of mine that turned diagnostics on for everybody.** `run-linux.sh` had
+started forwarding `-e "VAR=${VAR:-}"`, which *defines* the variable as empty inside the container;
+the framework tested "is it set", so a plain launch was running the geometry audit (and would have
+run the zoom debug). It now forwards only variables actually set on the host, and every diagnostic
+requires a non-empty value. This is why the reporter saw audit output they never asked for.
+
+**Files touched (framework only)**
+
+- `Native/GTK/GTKNativeControlBackend.swift` — `showWindow` realizes, presents, then waits for the
+  content to be laid out; diagnostics require non-empty env values.
+- `run-linux.sh` — forwards only env vars that are set (and now also `GDK_DEBUG`, `GSK_DEBUG`,
+  `GTK_DEBUG`, `LINCHOCOLATE_PRINT_EXPORT`, `LINCHOCOLATE_NO_PANEL_PARENT`).
+- `Compat/AppKitCompat.swift` — `LINCHOCOLATE_NO_PANEL_PARENT` escape hatch for bisecting
+  display-server behaviour that cannot be reproduced locally.
+
+**Verified**
+
+- Linux: content is laid out (1120×760 / 280×140) before either window is on screen; three geometry
+  audits in one session report **0 violations** each (the 4×2 reading is gone); panel opens at
+  280×140, closes with a real `WM_DELETE_WINDOW` without taking the app down, reopens, and Quit
+  exits — **0 X errors**. Clean whole-package build with 0 warnings; contract tests pass; geometry
+  audit 0 violations on pages 0, 1, 2, 5, 7, 10.
+
+**MUST FIX (WinChocolate):** show a window only once its content has been laid out; presenting first
+and laying out afterwards is invisible locally but reads as repeated blank repaints on a slow or
+remote display.
+
+## 2026-07-18 — The panel is now a real auxiliary window (transient parent + styleMask honoured)
+
+Bobby: *"the panel window still flashes."* — after the menu-bar fix removed its extra 25pt.
+
+**What I can and cannot measure.** Instrumenting present/draw shows the panel now maps at exactly
+280×140 and its content view draws **once**. So there is no repaint churn left on the Linux side
+that I can observe; the remaining flashing is in territory Xvfb cannot reproduce (no window
+manager), and the reporter's display path — X11 over TCP, software rendering — is where the cost
+lands. Rather than change things blind, this pass closes the two panel gaps that are *wrong on
+their own terms* and are the plausible source of extra WM mapping work:
+
+1. **The panel had no parent.** AppKit panels are auxiliary windows belonging to the app's window.
+   LinChocolate created them as unrelated new toplevels, so a window manager placed and decorated
+   the panel from scratch. `NSPanel` now sets itself transient for the app's main window
+   (`gtk_window_set_transient_for`, with `destroy_with_parent` off so the panel keeps AppKit's
+   independent lifetime). A transient utility window is placed and decorated in one pass.
+2. **`styleMask` was accepted and ignored.** `createWindow` took the mask and never looked at it, so
+   `.titled`/`.closable` did nothing: an untitled window was still decorated and a non-closable one
+   still offered a close button. It now maps to `gtk_window_set_decorated` /
+   `gtk_window_set_deletable`, which also tells the WM the truth up front instead of letting it
+   decorate and then be corrected.
+
+**Files touched (framework only)**
+
+- `Native/NativeControlBackend.swift` — `setWindowParent(_:for:)` seam.
+- `Native/GTK/GTKNativeControlBackend.swift` — transient-for/destroy-with-parent; `styleMask` →
+  decorated/deletable in `createWindow`.
+- `Native/InMemoryNativeControlBackend.swift` — records window parents.
+- `Compat/AppKitCompat.swift` — `NSPanel.init` attaches to the app's main window.
+
+**Verified**
+
+- Linux: panel still opens at 280×140 with content flush to the top; closing it with a real
+  `WM_DELETE_WINDOW` leaves the app alive; reopening gives 280×140; Quit exits; **0 X errors**.
+  Whole package builds 0 warnings; contract tests pass; geometry audit 0 violations (pages 0, 7, 10).
+- **Not verified: whether the flash is gone on XQuartz.** It cannot be reproduced here, and I would
+  rather say so than claim a fix I have not seen work.
+
+**MUST FIX (WinChocolate):** a panel must be created as an owned/auxiliary window of the main window,
+and `styleMask` must drive the frame style rather than being accepted and ignored.
+
+## 2026-07-18 — The panel was carrying a menu bar it should never have (framework work; demo untouched)
+
+Bobby: *"the main window seems better but the panel (press the panel button) still does it."* — the
+same map-then-repaint flash, on the inspector panel.
+
+**Measured cause: the panel was 25pt taller than it asked to be.** The panel's `contentRect` is
+280×140, but the window came up **280×165**. The extra 25 is a **menu bar**:
+`NSWindow.init` calls `installMainMenuIfNeeded(on:)` for *every* window, panels included. So the
+panel mapped at its content height and then had to grow to fit a menu strip — exactly the
+map-then-repaint cycle fixed for the main window in the previous entry, arriving by a different
+route. (It was also plainly wrong: the floating inspector had an empty menu strip across its top.)
+
+Apple has **one** menu bar for the whole application and an auxiliary/floating panel never carries
+it. GTK has no global menu bar, which is why LinChocolate hosts it inside the window — but that
+hosting belongs to the app's windows, not to panels. `installMainMenuIfNeeded` now skips
+`NSPanel`s.
+
+The panel is now exactly **280×140**, its content sits flush at the top, and there is no second
+sizing pass when it opens.
+
+**Files touched (framework only)**
+
+- `Application/NSApplication.swift` — `installMainMenuIfNeeded` skips panels.
+
+**Verified**
+
+- Linux: panel opens at 280×140 (was 280×165) with no menu strip and content flush to the top;
+  closing it with a real `WM_DELETE_WINDOW` leaves the app alive, reopening gives 280×140 again,
+  and Quit still exits — **0 X errors**. Whole package builds 0 warnings; contract tests pass;
+  geometry audit 0 violations (pages 0, 7, 10).
+
+**MUST FIX (WinChocolate):** the app menu must not be installed into `NSPanel`s — it makes the panel
+taller than its `contentRect` and forces a second sizing pass on open.
+
+## 2026-07-18 — Window startup: removed the two paint cycles we control (framework work; demo untouched)
+
+Bobby: *"whenever a window is created you can see a number of repainting blank screens before it
+opens the real one — see if you can determine why and how to fix it."*
+
+**What the measurement says.** I instrumented the startup path rather than guessing: at launch the
+app does **1** `gtk_window_present`, **1** toolbar install, and **1** content-view draw pass, and
+every widget is built before the window is presented. So LinChocolate is not presenting early or
+repainting in a loop — on Xvfb the window goes from nothing to fully painted in a single frame.
+
+**The dominant cause is the display path, not the code.** The reporter runs the Linux build over
+**X11 on TCP** (`DISPLAY=192.168.1.133:0`) with **no GL** — the launch log says it plainly:
+`glx: failed to create drisw screen`, so GTK falls back to software (cairo) rendering and every
+frame is pushed over the network. At that latency the normal map-and-paint sequence of a 1120×843
+window is slow enough to *watch*, which is what reads as "several blank repaints". Nothing in the
+framework can make a remote software-rendered frame arrive at once.
+
+**Two cycles WE contributed are gone, though — both only visible under a real window manager**
+(which is why Xvfb never showed them):
+
+1. **Mapping at the wrong size.** `createWindow` called `gtk_window_set_default_size` with AppKit's
+   **content** rect, but the GTK window also holds the menu bar and toolbar, so that default is too
+   short (760 vs the real 843). The window maps at the short size and then has to grow to its
+   natural size — under a WM that second sizing is a visible map-then-repaint. The call is gone:
+   the content view carries its own size request, so GTK's natural size is already content + chrome,
+   which is exactly the window AppKit's `contentRect` describes, reached in one step. Verified the
+   window still comes up at exactly 1120×843.
+2. **A spurious `windowDidResize` during the first map.** The resize detection added earlier treated
+   the first content size (0 → 1120×760) as a resize, running a layout pass mid-map. AppKit does not
+   post `windowDidResize` for the initial layout; the first size is now recorded as the baseline and
+   notifies nobody.
+
+**Files touched (framework only)**
+
+- `Native/GTK/GTKNativeControlBackend.swift` — no content-sized `set_default_size` in
+  `createWindow`; `noteContentDraw` treats the first size as a baseline.
+
+**Verified**
+
+- Linux: window still opens at 1120×843; resizing still reflows the Auto Layout page (green box
+  stretches to a 1560-wide window), so the baseline change did not break the resize path. Whole
+  package builds 0 warnings; contract tests pass; geometry audit 0 violations (pages 0, 4, 7, 10).
+
+**If the flashing persists on XQuartz**, the remaining levers are environmental rather than
+framework: an X server with working GL/DRI3, or running over a local display rather than TCP.
+
+## 2026-07-18 — Quit works after a modal is dismissed by closing its window (framework work; demo untouched)
+
+Bobby: *"nib screen works but leaves the app unstable (quit no longer works)."*
+
+**Root cause: a nested main loop that nothing ever ended.** `runAlert` builds AppKit's synchronous
+`runModal` out of a GtkWindow plus a nested `GMainLoop`, and only the alert's BUTTONS quit that
+loop. Dismiss the alert any other way — closing its window — and the loop runs forever. The app
+still pumps events and looks perfectly healthy, which is why this reads as "unstable" rather than
+"hung": the one thing that stops working is Quit, because `terminateApplication` quit the OUTER
+loop while execution is parked inside the nested one. The nib page reaches this through
+**Show Outlet Values**, and alerts are deliberately **non-modal on non-composited displays**
+(XQuartz) — so they have a real close button, making it easy to hit.
+
+**Two fixes, and the A/B shows they are independent.**
+
+1. `terminateApplication` now quits **every** live loop — a stack of nested modal loops, innermost
+   first, then the app's. With the close handler disabled this alone restores Quit, which is what
+   pins it as the cause.
+2. A `close-request` handler ends the alert's own loop, so `runAlert` RETURNS and the app leaves
+   modal state properly. Without it, everything after `alert.runModal()` in the caller never runs
+   even though Quit works — the demo's status line never updates, and the app stays parked in a
+   modal it no longer shows.
+
+The handler returns **TRUE** (handled), which stops GTK's default close. That detail is load
+bearing: `runAlert` destroys the alert itself once its loop ends, so letting GTK destroy it too
+tore the window down twice — an X error that killed the app. Returning TRUE keeps `runAlert` the
+sole owner.
+
+**A testing note worth recording.** Verifying this needs a *faithful* window close. `xdotool
+windowclose` falls back to `XDestroyWindow` when no window manager is present (Xvfb), which yanks
+the drawable out from under GTK and aborts with `BadDrawable` — a harness artifact that looks
+exactly like an app crash and sent this investigation down a false path twice. A real WM sends a
+`WM_DELETE_WINDOW` ClientMessage; a five-line X client that sends one is what produced a trustworthy
+result. Two earlier "still broken" readings were also bad tests: the alert covers the top-left of
+the screen, so the scripted menu clicks were landing on the alert instead of the menu.
+
+**Files touched (framework only)**
+
+- `Native/GTK/GTKNativeControlBackend.swift` — nested-loop stack (`pushNestedLoop`/`popNestedLoop`),
+  `terminateApplication` quits all of them, alert `close-request` handler
+  (`gtkAlertCloseTrampoline`), file dialog joins the same bookkeeping.
+
+**Verified**
+
+- Linux, sending a real `WM_DELETE_WINDOW` to the alert: the app stays alive with **0 X errors**,
+  the alert dismisses, execution resumes (Increment still works — count went to 1), and **Quit
+  exits**. Dismissing with OK still works. Whole package builds 0 warnings; contract tests pass;
+  geometry audit 0 violations (pages 0, 5, 7, 10).
+
+**MUST FIX (WinChocolate):** a modal dismissed by closing its window must end its modal session,
+and terminate must tear down nested modal loops, or Quit silently stops working.
+
+## 2026-07-18 — Window resize reaches the app: `windowDidResize` fires and Auto Layout reflows (framework work; demo untouched)
+
+Bobby: *"the resize isn't working so can't test it. Not working = view resizes but controls
+don't move."* With the window now growing correctly, the Auto Layout page still sat static.
+
+**Two gaps, both in the framework.**
+
+1. **`NSWindowDelegate` was an empty marker protocol** — `public protocol NSWindowDelegate:
+   AnyObject {}` — so `windowDidResize(_:)` was never declared, never dispatched, and the demo's
+   reflow (which hangs off exactly that notification) could not run. It is a real requirement now,
+   defaulted to a no-op, and `NSWindow` posts it on every resize.
+2. **The content view's frame never changed.** An earlier fix made `bounds` report the true
+   allocation, which is why the background started filling the window — but `frame` still read
+   1120 wide, and the demo reflows from `contentView.frame.size.width`. `NSWindow` now resizes its
+   content view to the window on every resize, as AppKit does.
+
+**Finding the resize signal took two attempts, and the first was wrong.** `notify::default-width`
+/`default-height` on the `GtkWindow` looked right (it is the property apps bind to persist their
+size) but does **not** fire for a resize driven by the window manager — verified by resizing and
+watching nothing happen. What does fire, reliably, is the content view's **draw pass**: a resize
+re-runs it with the new width and height (that is what repaints the background at the new size).
+The backend now compares the size there and, when it really changed, fires the window's resize
+handler from a `g_idle_add` callback — so layout never runs inside a draw.
+
+**The frame is adopted, not echoed.** A frame the native side reports must not be pushed back as a
+`gtk_widget_set_size_request`: a size request is a FLOOR, so echoing the current size would leave
+the window unable to shrink again. `NSView.adoptNativeFrame` records it silently and runs `layout()`.
+
+**Files touched (framework only)**
+
+- `Compat/AppKitCompat.swift` — `NSWindowDelegate.windowDidResize(_:)` (with a default).
+- `Native/NativeControlBackend.swift` — `setWindowResizeAction` seam.
+- `Native/GTK/GTKNativeControlBackend.swift` — resize detection from the content draw pass
+  (`noteContentDraw`, `contentViewOwners`, `lastContentSizes`).
+- `Native/InMemoryNativeControlBackend.swift` — records the handler + a `simulateWindowResize` hook.
+- `Views/NSView.swift` — `adoptNativeFrame` (silent frame update + `layout()`).
+- `Windows/NSWindow.swift` — installs the hook, resizes `contentView`, posts `windowDidResize`.
+
+**Verified**
+
+- Linux: on the Auto Layout page, growing the window to 1560 reflows everything — the four
+  constraint boxes span the new width, the green "middle fills the gap" box stretches to 1443, the
+  stack-view boxes widen and the grid form moves right — and **shrinking back to 1180 reflows down
+  again**, so no size-request floor is left behind. Whole package builds 0 warnings; contract tests
+  pass; geometry audit 0 violations (pages 0, 5, 7, 9).
+
+**MUST FIX (WinChocolate):** `windowDidResize` must be dispatched to the window delegate, and the
+content view's frame must track the window, or constraint-driven pages never reflow.
+
+## 2026-07-18 — Horizontal collections match AppKit; the selected segment reads as selected (framework work; demo untouched)
+
+Bobby, with a Linux/macOS screenshot pair side by side: *"your highlight colour looks like the
+unhighlighted. But the look doesn't match AppKit in horizontal mode."* The comparison shot made
+both faults obvious and gave an exact target to match.
+
+**1. The selected segment was invisible.** GTK's `:checked` toggle is a barely-darker grey — next
+to AppKit's tinted segment it reads as *not* selected. Segmented controls now carry a
+`linchocolate-segmented` class whose checked segment takes `@theme_selected_bg_color` with the
+matching foreground, so Medium / Normal / Horizontal / Uniform-size stand out exactly as they do on
+the Mac.
+
+**2. Horizontal scroll direction laid out nothing like AppKit.** The Mac lays the **sections side by
+side**, each one's items flowing top-to-bottom in columns, and shows **no bands**. LinChocolate
+stacked full-width bands with each section as one long row. Two independent causes:
+
+- *Section direction.* The section stack was always vertical. It now re-orients with the scroll
+  direction: horizontal scroll ⇒ sections left-to-right (each section's flow box already packs its
+  items into columns), vertical ⇒ sections stacked.
+- *The bands.* Whether a band exists was keyed off `headerReferenceSize.height`. AppKit uses the
+  dimension that matches the scroll direction — height for a vertically scrolling collection
+  (full-width bands above/below), **width** for a horizontally scrolling one (full-height bands
+  beside). The demo's `NSMakeSize(0, 24)` therefore means "bands vertically, none horizontally",
+  and reading the height in both modes is why bands appeared where the Mac shows none.
+
+Column-for-column the two now agree: NSView/NSImageView/NSTextField/NSButton then
+NSSlider/NSStepper, NSComboBox…NSColorWell then NSSegmentedControl…NSTokenField, NSTableView…
+NSScrollView then NSSplitView/NSTabView/NSBox.
+
+**Files touched (framework only)**
+
+- `Native/GTK/GTKNativeControlBackend.swift` — `linchocolate-segmented` class + checked-segment CSS;
+  section stack re-orients with the scroll direction.
+- `Views/NSCollectionView.swift` — band existence reads the reference-size dimension that matches
+  the scroll direction.
+
+**Verified**
+
+- Linux (dark, to match the reporter's screenshot): horizontal mode reproduces the Mac's column
+  grouping and order exactly, with no bands; switching back to Vertical restores the stacked
+  sections with their header/footer bands; selected segments are accent-filled. Whole package builds
+  0 warnings; contract tests pass; geometry audit 0 violations (pages 1, 5).
+
+**MUST FIX (WinChocolate):** a selected segment must be visibly tinted, and a horizontally scrolling
+collection must run its sections across the view with the header/footer extent read from the width.
+
+## 2026-07-18 — Values page: the vertical slider gets a real track and its tick marks (framework work; demo untouched)
+
+Bobby: *"the vertical appears to be broken compared to the other versions."* Side by side with the
+horizontal slider the difference was plain: the horizontal one had a 4 px rounded track with a round
+knob, while the vertical one was a ~2 px square-ended hairline — and neither showed the tick marks
+the demo asks for.
+
+**Two causes.**
+
+1. **The track.** GTK's Adwaita gives a vertical scale's trough a different (thinner, square-ended)
+   metric than a horizontal one, so the same control read as two different widgets. AppKit draws
+   the same track in both orientations, so both are now pinned to a rounded 4 px groove with a
+   16 px knob: `scale > trough { min-height: 4px; min-width: 4px; border-radius: 999px }`.
+
+2. **The tick marks never existed.** `numberOfTickMarks`, `allowsTickMarkValuesOnly` and
+   `tickMarkPosition` were accepted-and-ignored stubs in `DemoCompat`
+   (`var numberOfTickMarks: Int { get { 0 } set {} }`), so the demo's six ticks — a headline part of
+   the "3.1 depth" showcase — silently did nothing. They are real properties on `NSSlider` now,
+   backed by a `setSliderTickMarks` seam that calls `gtk_scale_add_mark` for each evenly spaced
+   value. GTK draws a *pointed* knob once a scale has marks, which is what AppKit does for a ticked
+   slider too, so the fidelity improves in both directions.
+
+**`allowsTickMarkValuesOnly` snaps for real.** AppKit moves the knob to the nearest tick, so the
+control itself has to be rewritten, not just the reported value. Sliders now take their own
+value-changed path that snaps the range (guarded against the re-entrant `value-changed` the write
+provokes) and reports the snapped number. The horizontal slider, which does not set the flag, still
+reports continuous values.
+
+**Files touched (framework only)**
+
+- `Native/NativeControlBackend.swift` — `setSliderTickMarks(count:snapsToTicks:for:)`.
+- `Native/GTK/GTKNativeControlBackend.swift` — marks via `gtk_scale_add_mark`, snapping value-changed
+  path (`SliderValueBox`, `reportSliderValue`, `snapSliderValue`), scale-track CSS.
+- `Native/InMemoryNativeControlBackend.swift` — records tick settings.
+- `Controls/NSSlider.swift` — real `numberOfTickMarks` / `allowsTickMarkValuesOnly` /
+  `tickMarkPosition`.
+- `Compat/DemoCompat.swift` — deleted the three no-op stubs.
+
+**Verified**
+
+- Linux: the vertical slider now has the same rounded 4 px track as the horizontal one, draws its
+  six ticks, and **snaps** — clicking off-tick near the top lands exactly on the top tick with the
+  fill following. The horizontal slider draws its ticks too and still reports continuous values
+  (moved to 86). Whole package builds 0 warnings; contract tests pass; geometry audit 0 violations
+  (pages 0, 1, 5, 10).
+
+**Note on the other reading of the report:** the Lists page's Vertical/Horizontal collection
+segment was checked at the same time and behaves correctly — Horizontal lays each section out as a
+single scrolling row, Vertical restores the wrapped rows.
+
+**MUST FIX (WinChocolate):** `numberOfTickMarks` must draw ticks, `allowsTickMarkValuesOnly` must
+snap the knob, and a vertical slider must render the same track as a horizontal one.
+
+## 2026-07-18 — Lists page: the collection renders as a real sectioned collection (framework work; demo untouched)
+
+Bobby: *"on lists 5.x page the collections are not rendering as collections."* The page showed a
+single row of six buttons — the first section's items — with no section bands at all.
+
+**Root cause: `NSCollectionView` only ever knew about section 0.** `reloadData()` was
+
+```swift
+let count = dataSource?.collectionView(self, numberOfItemsInSection: 0) ?? 0   // ← section 0 only
+```
+
+so the other two sections (Controls, Containers — 15 more items) were never asked for, and
+`viewForSupplementaryElementOfKind` was never called at all, so the headers and footers the demo
+vends could not appear. The backend matched that flat model: one `GtkFlowBox` holding every item.
+
+**Now it is sectioned end to end.**
+
+- `reloadData()` walks every section, materializes its items flat (in section order), and asks the
+  data source for a header/footer per section. Whether a band exists is decided the way AppKit
+  decides it — from the layout's `headerReferenceSize`/`footerReferenceSize` height, so a
+  collection without bands never sprouts any.
+- A new `setCollectionSections` seam describes the layout as sections. The GTK backend builds a
+  vertical box of section blocks: header band, a `GtkFlowBox` of that section's items, footer band.
+  One flow box per section is what makes full-width bands possible — a single flow box cannot break
+  a line for a header.
+- Selection stays single across the whole collection: each section's flow reports a FLAT index
+  (its base + the child index) and the other sections' flows are cleared, so two sections never
+  look selected. `selectionIndexPaths` / `didSelectItemsAt` map that flat index back to a real
+  `IndexPath(section:item:)`.
+
+**Finished the layout controls while here.** `NSCollectionViewDelegateFlowLayout` was an empty
+marker protocol, so the demo's `sizeForItemAt` was dead code and the Small/Medium/Large, spacing
+and direction segments did nothing. The hook is now declared (defaulting to `.zero` = "use the
+layout's `itemSize`"), items are sized from it on every reload, and a `setCollectionFlow` seam
+carries `minimumInteritemSpacing` / `minimumLineSpacing` / `scrollDirection` to the flow boxes
+(AppKit's `.vertical` scroll = items flow in rows = GtkFlowBox's *horizontal* orientation).
+
+**A bug this shook out: reloading emptied the collection.** Removing a section's flow box from the
+stack unparents the item widgets inside it — and a GTK widget whose last reference is its parent
+dies on unparent. The buttons (owned by their Swift `NSCollectionViewItem` views) were being
+destroyed, so the rebuild had nothing to re-host and the items vanished, leaving bare bands. The
+teardown now takes a reference on every hosted item and band before removing them, and drops it
+once they are re-parented.
+
+**Files touched (framework only)**
+
+- `Views/NSCollectionView.swift` — multi-section `reloadData` with supplementary bands, flat↔
+  `IndexPath` mapping, per-item sizing.
+- `Native/NativeControlBackend.swift` — `NativeCollectionSection`, `setCollectionSections`,
+  `setCollectionFlow`.
+- `Native/GTK/GTKNativeControlBackend.swift` — vertical stack of section blocks, per-section flow
+  boxes with flat-index selection, reference-safe teardown, flow geometry.
+- `Native/InMemoryNativeControlBackend.swift` — records sections and flow geometry.
+- `Compat/AppKitCompat.swift` — `sizeForItemAt` on `NSCollectionViewDelegateFlowLayout`.
+
+**Verified**
+
+- Linux: the Lists collection renders **Views / Controls / Containers**, each with its header band,
+  its items as real buttons (wrapping within the section), and its "— N classes —" footer.
+  Small/Large resize the items, "Size by label" gives each item its own width, and four rapid
+  reloads leave the sections intact with **0 GTK criticals** and no crash. The Tables/Media
+  collection (unsectioned) is unchanged. Whole package builds 0 warnings; contract tests pass;
+  geometry audit 0 violations (pages 2, 5).
+
+**MUST FIX (WinChocolate):** a collection must render every section with its supplementary
+header/footer views, honour the flow layout's item size and spacing, and must not destroy hosted
+item views when it rebuilds.
+
+## 2026-07-18 — Controls page: token pills show their tint through the text (framework work; demo untouched)
+
+Bobby: *"on the control window the token pills text should be on transparent background so pill
+colour shines through."*
+
+**Two things were wrong, and the first was a regression I introduced.** The CSS-provider migration
+(the warning-clearing pass) rewrote `setBackgroundColor` to emit `.cls, .cls *`. That `*` arm paints
+the field's background onto **every descendant**, so each token chip's `label` got an opaque slab of
+the token field's colour drawn on top of the chip — the text sat in a rectangle that hid the pill.
+The per-widget provider it replaced did not do this: `gtk_style_context_add_provider` attaches to
+that one widget's style context, so the old `*` matched only the widget's own node. CSS backgrounds
+do not inherit, so blanket-applying one was wrong in the first place.
+
+The rule is now `.cls, .cls text` — the widget itself plus `text` subnodes, because GtkEntry and
+GtkTextView paint their editable surface on a `text` node and a field's background must reach it.
+`label` is deliberately excluded; that is exactly what masked the pills.
+
+**Second: the chips were never styled as pills.** They were plain `GtkButton`s wearing the theme's
+button look. AppKit draws a token as a rounded, tinted pill with its text directly on the tint, so
+the chips now carry a `linchocolate-token-chip` class: fully rounded (`border-radius: 999px`), a
+translucent accent fill with a matching border, a hover state — and an explicitly **transparent
+label**, so nothing can mask the tint again.
+
+**Files touched (framework only)**
+
+- `Native/GTK/GTKNativeControlBackend.swift` — background rule scoped to the widget + `text`
+  subnodes; `linchocolate-token-chip` class on chips and its pill CSS.
+
+**Verified**
+
+- Linux: pills render rounded and tinted with the text on the tint, in **both light and dark**, and
+  with the field focused (the focus background colour was the case that made the bleed obvious).
+  Every other field background still applies — Type here, Password, Notes (`NSTextView`), Price,
+  the Form fields, and the coloured status/focus labels. Whole package builds 0 warnings; contract
+  tests pass; geometry audit 0 violations (pages 0, 1, 2).
+
+**MUST FIX (WinChocolate):** a control's background must not be painted behind its children's text,
+and token pills should draw their tint with transparent label text.
+
+## 2026-07-18 — Window resize: the content view now fills the window (framework work; demo untouched)
+
+Bobby: *"it is all resizes that are failing, and notice the toolbar and menu DO resize"* — and
+that observation is what cracked it. Several rounds had been spent on `zoom` as if the window
+were refusing to grow. It was not: the window grows fine (hence the toolbar and menu widening).
+**Every** resize failed the same way, because the failure was in drawing, not sizing.
+
+**Root cause: `NSView.bounds` reported the frame, not the allocation.**
+
+```swift
+if frame.size == .zero, nativeLayoutSize != .zero { …use the allocation… }
+return NSMakeRect(0, 0, frame.width, frame.height)      // ← always this, in practice
+```
+
+The window's content view is created at 1120x760 and expands with the window, so its widget is
+allocated the full window — but `bounds` kept answering 1120x760. The demo's
+`DemoContentView.draw(_:)` fills `NSBezierPath(rect: bounds)`, so it painted a 1120x760 rectangle
+into a much larger widget and everything beyond stayed unpainted — the black L-shaped void, which
+looked exactly like "the content didn't resize". On AppKit this cannot happen: the window resizes
+its `contentView`, so its bounds grow with it.
+
+**Fix.** `bounds` now prefers the recorded native allocation whenever it is known, which is the
+truthful answer to "how much space do I occupy" and matches AppKit's content view growing with the
+window. Frame-placed children are allocated exactly their frame by `LinChocolateFixedLayout`, so
+this changes nothing for them (geometry audit still 0 violations on every page).
+
+**Also fixed while here: zoom asked for device pixels.** `GdkMonitor` reports geometry in DEVICE
+pixels (`3200x1767` on the reporter's retina Mac) while windows are sized in LOGICAL pixels, so
+zoom was asking for a window far larger than the screen — which quartz-wm refused outright,
+producing the earlier "window never grew" reading. It now divides by
+`gdk_monitor_get_scale_factor`, and resizes via `gtk_window_set_default_size` (GTK4 has no
+`gtk_window_resize`) instead of flooring the content with a `size_request` (a floor also blocks
+later shrinking).
+
+**A correction to the previous entry.** It concluded "quartz-wm won't resize GTK windows — an
+XQuartz limitation". That was wrong: the window resizes fine, the content just wasn't painting the
+new size, and the zoom request had been over-large in device pixels. Diagnosing display bugs from
+one instrumented number without the user's "the toolbar DOES resize" observation sent this down a
+false trail for three rounds.
+
+**Files touched (framework only)**
+
+- `Views/NSView.swift` — `bounds` prefers the native allocation.
+- `Native/GTK/GTKNativeControlBackend.swift` — monitor geometry → logical pixels; zoom resizes the
+  window rather than flooring the content.
+
+**Verified**
+
+- Linux/Xvfb: resizing the window to 1560x1160 now fills — background, toolbar and content all
+  span the window, no void (previously the content stopped at 1120x760). Whole package builds 0
+  warnings; contract tests pass; geometry audit **0 violations on pages 0,1,2,3,4,7**.
+
+**MUST FIX (WinChocolate):** `NSView.bounds` must report the real allocated size, or a content view
+that grows with the window paints only its original rect.
+## 2026-07-18 — New in 3.x: Zoom actually fills, Print renders, and a Note cell edits on double-click (framework work; demo untouched)
+
+Bobby: *"maximize is not resizing the content. Double click on table still fails. Print
+Sample… fails (all on new to 3.x)."*
+
+**1. Zoom left a black void — round two.** The prior fix sized the content to the monitor AND
+called `gtk_window_maximize`. On XQuartz the `maximize` is the saboteur: quartz-wm frames the
+window fullscreen but never resizes GTK's surface, and while it is in that maximized state GTK
+won't honor the content's larger size request either. Removed the `gtk_window_maximize`/
+`unmaximize` calls entirely — zoom now ONLY sizes the content to the monitor geometry (with a
+generous fallback when no monitor enumerates), which makes GTK request the window resize itself,
+something every WM honors. The content's background then fills the window. Verified under Xvfb:
+Zoom fills the whole window; un-zoom restores.
+
+**2. Print Sample was a total stub.** `NSPrintOperation.init(view:)` discarded the view and
+`run()` returned `false`, so the demo always said "Print canceled". Implemented real printing via
+`GtkPrintOperation`: `run()` renders the view through its own draw handler onto the print page
+(wrapping the `GtkPrintContext`'s Cairo in the same `CairoGraphicsContext` the screen uses), and
+returns whether the job completed. A `LINCHOCOLATE_PRINT_EXPORT=<path>` escape hatch exports to
+PDF instead of opening the (modal, display-bound) dialog, so it is testable headless. Verified:
+the exported PDF contains the sample — the colour bars, the caption, and "WinChocolate Print
+Sample" — and the demo reports "Printed sample".
+
+**3. Double-click a Note to edit finally works.** The New-in-3.x `viewTable` marks its Note
+column `isEditable = true` and the data source implements `setObjectValue` — AppKit's cell-based
+editing recipe — but LinChocolate ignored both: `isEditable` was accepted-and-unused and
+`setObjectValue` was not even in the data-source protocol, so a double-click did nothing.
+Implemented it: editable columns now build a **`GtkEditableLabel`** cell (shows text, enters edit
+mode on double-click — exactly AppKit's editable cell). On commit (Enter / focus-out, detected
+via `notify::editing` → `get_editing == false`) the new text flows back through a
+`setTableCellCommitAction` seam to the data source's `setObjectValue`, and the cell re-reads.
+The row a reused cell maps to is stamped on the widget at bind time. Verified: double-clicking the
+first Note, typing "EDITED", and pressing Enter changes the cell from "high" to "EDITED".
+
+Note on the status line: the demo's "Note N → …" message was wired to the *view-based* field it
+vends; LinChocolate drives the cell (`objectValue`/`setObjectValue`) path, so the edit updates
+the model and the cell but not that particular status string. The edit itself is correct.
+
+**Files touched (framework only)**
+
+- `Native/NativeControlBackend.swift` — `runPrintOperation`, `addTableColumn(…editable:…)`,
+  `setTableCellCommitAction`.
+- `Native/GTK/GTKNativeControlBackend.swift` — zoom sizes content (no `gtk_window_maximize`);
+  `GtkPrintOperation` render (`PrintBox`, draw-page trampoline); editable-cell `GtkEditableLabel`
+  factory + commit trampoline.
+- `Native/InMemoryNativeControlBackend.swift` — records print / commit for tests.
+- `Compat/AppKitCompat.swift` — real `NSPrintOperation.run()`.
+- `Views/NSTableView.swift` — `setObjectValue` in the data-source protocol (+default); pass
+  `isEditable`; install the commit action.
+
+**Verified**
+
+- Linux: built (0 errors/warnings); Zoom fills the window; Print exports the rendered sample and
+  reports "Printed sample"; double-click edits the Note cell. Geometry audit 0 violations (pages
+  2, 4); contract tests pass.
+
+**MUST FIX (WinChocolate):** `zoom` must grow the content (not rely on a maximize the WM may drop);
+`NSPrintOperation.run()` must render the view and print; and an `isEditable` column with a
+`setObjectValue` data source must edit on double-click.
+
+## 2026-07-18 — Zoom fills the content; the outline view responds to clicks (framework work; demo untouched)
+
+Bobby: *"maximize is not resizing the content. Also click on the outline view are slow to
+respond."* Two follow-ups to the previous Zoom/Minimize work.
+
+**1. Zoom left a black void around the content.** The earlier fix called `gtk_window_maximize`,
+but that is unreliable off a full window manager — under XQuartz's quartz-wm it resizes the X
+frame while GTK's surface stays its natural size, so the content sat at 1120×760 in a fullscreen
+frame with black around it. Fixed by driving the size from OUR side: on zoom, the window's
+**content view** gets a size request of the monitor's geometry, so GTK grows the window itself
+and the content's background fills it (AppKit's content-view-fills-window behavior; the
+frame-placed controls stay top-left). `gtk_window_maximize` is still called for real WMs, and
+the pre-zoom size is restored on un-zoom. This is verifiable headless (no WM needed): under Xvfb,
+clicking Zoom now fills the whole 1400×1000 window instead of leaving the void.
+
+**2. The outline view was inert on click — every programmatic method was a no-op stub.**
+`item(atRow:)` returned nil, `row(forItem:)` returned −1, and `expandItem`/`collapseItem`/
+`isItemExpanded`/`level(forItem:)`/`selectRowIndexes` did nothing. So clicking a row highlighted
+it natively but the demo could not tell *which* item was hit ("Outline selected: **none**") and
+the click-to-expand action toggled nothing — it read as an unresponsive tree.
+
+Implemented the real API against the `GtkTreeListModel`. Its selection model is a `GListModel`
+of the flattened, expanded rows; each visible position is a `GtkTreeListRow` exposing
+`get_item` (the path key), `get_depth`, `get_expanded`/`set_expanded`. New backend seams
+(`outlineItemPath(atRow:)`, `outlineRowDepth`, `outlineIsRowExpanded`, `setOutlineRowExpanded`,
+`selectOutlineRow`, `outlineVisibleRowCount`) let `NSOutlineView` resolve a row → item, an item →
+row, expand/collapse, report level, and select. The demo's two channels stay independent —
+`onAction` (→ `onSelectionChange`, the expand/collapse handler) and `onOutlineSelectionChanged`
+(→ the `delegate`, the status handler) — so a click now selects, expands the clicked group, and
+reports the item. Verified: clicking "Controls" selects it, expands it (NSButton/NSTextField/
+NSMatrix appear), and the status reads "Outline selected: Controls".
+
+The click latency itself was a red herring — instrumenting the non-composited capture-phase
+popover-dismiss walk showed it visits 2388 widgets in ~1.25 ms, imperceptible. The
+"slowness" was the inert stubs producing no visible result.
+
+**Files touched (framework only)**
+
+- `Native/NativeControlBackend.swift` — six outline seams.
+- `Native/GTK/GTKNativeControlBackend.swift` — GtkTreeListRow-backed outline queries;
+  content-view sizing on zoom (`monitorWorkArea`, `preZoomContentSize`).
+- `Native/InMemoryNativeControlBackend.swift` — records the outline seams for tests.
+- `Views/NSOutlineView.swift` — real `item(atRow:)`, `row(forItem:)`, `isExpandable`,
+  `isItemExpanded`, `expandItem`, `collapseItem`, `level(forItem:)`, `selectRowIndexes`.
+- `Compat/DemoCompat.swift` — deleted the outline no-op stubs.
+
+**Verified**
+
+- Linux: built (0 errors/warnings); Zoom fills the window under Xvfb; outline click selects +
+  expands + reports the item. Geometry audit 0 violations (pages 2, 4); contract tests pass.
+
+**MUST FIX (WinChocolate):** `zoom` must grow the content, not just the frame; and the outline's
+`item(atRow:)`/`row(forItem:)`/`expandItem`/`collapseItem`/`isItemExpanded`/`level(forItem:)`/
+`selectRowIndexes` must be real, or the tree is inert on click.
+
+## 2026-07-18 — New in 3.x: Zoom/Minimize, and the template-tint swatch, all work (framework work; demo untouched)
+
+Bobby: *"On the New in 3.x Zoom and minimize doesn't work, nor does color well — it changes but
+the square next to it doesn't. Tables don't accept double click or drag."* Four reports; three
+were accepted-and-ignored no-op stubs, the fourth is a genuine larger gap.
+
+**1. Zoom.** `NSWindow.zoom(_:)` and `isZoomed` were no-op stubs (`func zoom(_:) {}`,
+`var isZoomed { false }`). Wired real ones: a `toggleZoomWindow` / `isWindowZoomed` /
+`miniaturizeWindow` seam; GTK calls `gtk_window_maximize` / `_unmaximize`. **`isZoomed` tracks
+the request, not GTK's surface state** — AppKit's `zoom(_:)` is synchronous (the demo reads
+`isZoomed` on the very next line), but GTK's `gtk_window_is_maximized` only flips once the
+compositor acknowledges (a frame later, or never with no window manager). Mirroring the request
+keeps `isZoomed` truthful immediately. Verified: clicking **Zoom** now reports "Window zoomed".
+
+**2. Minimize.** `NSWindow.miniaturize(_:)` was a no-op stub; now calls `gtk_window_minimize`.
+Verified the button no longer does nothing and doesn't crash (its visible effect needs a window
+manager, absent under Xvfb).
+
+**3. The template-tint swatch didn't follow the colour well.** `NSImageView.contentTintColor`
+was "accepted for API parity" — a dead stored property — so changing the well's colour never
+re-tinted the glyph. AppKit recolours a **template** image (alpha kept, RGB replaced) to
+`contentTintColor`; the toolbar already did exactly this for its Tabler icons, so the recolor
+loop was generalised from "theme foreground" to "any colour" and a `setImageTint` seam added.
+`NSImageView` now re-tints whenever `image` or `contentTintColor` changes. Verified: picking green
+in the well turns the glyph square green ("Template tint changed").
+
+**4. The view-based table's double-click-to-edit and drag-reorder — NOT fixed (larger feature).**
+Double-click itself *works*: on the standard Tables/Media table, double-clicking a row fires the
+`doubleAction` ("Table double action: row 2 - NSWindow"), because GtkColumnView emits `activate`
+on double-click and LinChocolate routes it. What does **not** work is specific to the New-in-3.x
+`viewTable`, which is **view-based** (its delegate vends real `NSTextField`/`NSButton` cells):
+
+- *Double-click a Note to edit* needs the GTK table to **host per-cell editable widgets**.
+  LinChocolate's table renders each cell as text through a `String` provider, so there is no
+  editable field to activate.
+- *Drag a row to reorder* needs **GtkColumnView row drag-and-drop** wired to the data source's
+  `pasteboardWriterForRow` / `validateDrop` / `acceptDrop`.
+
+Both are architectural additions (view-based cell hosting; row DnD), not quick wires, and a
+half-working version would violate the no-shims rule. Flagged as the next focused table task
+rather than faked.
+
+**Files touched (framework only)**
+
+- `Native/NativeControlBackend.swift` — `toggleZoomWindow`/`isWindowZoomed`/`miniaturizeWindow`
+  and `setImageTint` seams.
+- `Native/GTK/GTKNativeControlBackend.swift` — GTK window max/min + request-tracked zoom state;
+  image-view path/tint storage, `renderImageView`, generalised `recolorPixbuf`.
+- `Native/InMemoryNativeControlBackend.swift` — records zoom/miniaturize/tint for tests.
+- `Windows/NSWindow.swift` — real `zoom`/`isZoomed`/`miniaturize`.
+- `Media/NSImageView.swift` — `contentTintColor` re-tints; `applyTint` on image/tint change.
+- `Compat/DemoCompat.swift` — deleted the `zoom`/`miniaturize`/`isZoomed` stubs.
+
+**Verified**
+
+- Linux: built (0 errors/warnings); page 4 Zoom → "Window zoomed", Minimize safe, colour-well
+  pick re-tints the glyph; page 2 double-click fires the double action. Geometry audit 0
+  violations (pages 2, 4); contract tests pass.
+
+**MUST FIX (WinChocolate):** `zoom`/`isZoomed`/`miniaturize` must act (and `isZoomed` must read
+true synchronously after `zoom`); `NSImageView.contentTintColor` must recolour a template image;
+and the view-based table needs editable-cell hosting + row drag reorder.
+
 ## 2026-07-18 — Drawing page: the scroll wheel resizes the canvas circle again (framework work; demo untouched)
 
 Bobby: *"The scroll wheel zoom doesn't work on the drawing tab."* The Drawing page's Canvas

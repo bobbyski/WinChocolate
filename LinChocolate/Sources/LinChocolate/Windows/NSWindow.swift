@@ -79,6 +79,7 @@ open class NSWindow {
         }
         NSApplication.shared.windows.append(self)
         NSApplication.shared.installMainMenuIfNeeded(on: self)
+        observeResize()
     }
 
     /// Shows the window and orders it to the front.
@@ -120,6 +121,34 @@ open class NSWindow {
         if !NSApplication.shared.windows.contains(where: { $0.isVisible }) {
             NSApplication.shared.terminate(nil)
         }
+    }
+
+    /// Installs the native resize hook: AppKit resizes the content view to the
+    /// window and posts `windowDidResize`, and layout code (the demo's Auto
+    /// Layout page) hangs off exactly that.
+    private func observeResize() {
+        backend.setWindowResizeAction(for: handle) { [weak self] width, height in
+            guard let self else { return }
+            self.contentView?.adoptNativeFrame(NSMakeRect(0, 0, width, height))
+            self.delegate?.windowDidResize(
+                Notification(name: Notification.Name("NSWindowDidResizeNotification"), object: self))
+        }
+    }
+
+    /// Toggles the window between zoomed (maximized) and its normal frame,
+    /// as AppKit's zoom button does.
+    public func zoom(_ sender: Any?) {
+        backend.toggleZoomWindow(handle)
+    }
+
+    /// Whether the window is currently zoomed (maximized).
+    public var isZoomed: Bool {
+        backend.isWindowZoomed(handle)
+    }
+
+    /// Minimizes the window (AppKit's `miniaturize(_:)`).
+    public func miniaturize(_ sender: Any?) {
+        backend.miniaturizeWindow(handle)
     }
 
     /// Resizes the window's content area.

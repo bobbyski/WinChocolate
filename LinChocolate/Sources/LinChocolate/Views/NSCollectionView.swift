@@ -154,7 +154,12 @@ open class NSCollectionView: NSView {
 
     /// The item at `indexPath` (AppKit's `item(at:)`), nil when out of range.
     public func item(at indexPath: IndexPath) -> NSCollectionViewItem? {
-        materializedItems.indices.contains(indexPath.item) ? materializedItems[indexPath.item] : nil
+        // Flatten section+item the same way `reloadData` materialized them.
+        var flat = indexPath.item
+        for section in 0..<min(indexPath.section, sectionItemCounts.count) {
+            flat += sectionItemCounts[section]
+        }
+        return materializedItems.indices.contains(flat) ? materializedItems[flat] : nil
     }
 
     /// The item at a flat index.
@@ -164,7 +169,7 @@ open class NSCollectionView: NSView {
 
     /// The selected item index paths (AppKit's shape; single selection).
     public var selectionIndexPaths: Set<IndexPath> {
-        get { backingSelection >= 0 ? [IndexPath(item: backingSelection, section: 0)] : [] }
+        get { backingSelection >= 0 ? [indexPath(forFlatIndex: backingSelection)] : [] }
         set { backingSelection = newValue.first?.item ?? -1 }
     }
 
@@ -193,7 +198,7 @@ open class NSCollectionView: NSView {
             if let item = self.item(at: index) { item.isSelected = true }
             self.onSelectionChange?(self)
             if index >= 0 {
-                self.delegate?.collectionView(self, didSelectItemsAt: [IndexPath(item: index, section: 0)])
+                self.delegate?.collectionView(self, didSelectItemsAt: [self.indexPath(forFlatIndex: index)])
             }
         }
     }
@@ -201,12 +206,99 @@ open class NSCollectionView: NSView {
     /// Re-queries the data source, materializing every item (they host real
     /// views), and re-renders.
     public func reloadData() {
-        let count = dataSource?.collectionView(self, numberOfItemsInSection: 0) ?? 0
-        materializedItems = (0..<count).map { index in
-            dataSource?.collectionView(self, itemForRepresentedObjectAt: IndexPath(item: index, section: 0))
-                ?? NSCollectionViewItem()
+        guard let dataSource else {
+            materializedItems = []
+            sectionItemCounts = []
+            backend.setCollectionItemCount(0, for: handle)
+            return
         }
-        backend.setCollectionItemCount(count, for: handle)
+        // AppKit decides whether a section HAS a header/footer from the layout's
+        // reference size — a zero height means "no band", and the data source is
+        // never asked. Honour that, or every collection would sprout bands.
+        let flow = collectionViewLayout as? NSCollectionViewFlowLayout
+        // Which dimension of the reference size matters depends on the scroll
+        // direction: a vertically scrolling collection puts full-width bands
+        // above/below its sections (their HEIGHT), while a horizontally
+        // scrolling one puts full-height bands beside them (their WIDTH). The
+        // demo's `NSMakeSize(0, 24)` therefore means "bands when scrolling
+        // vertically, none when scrolling horizontally" — which is exactly what
+        // AppKit renders.
+        let scrollsHorizontally = flow?.scrollDirection == .horizontal
+        let headerExtent = scrollsHorizontally
+            ? (flow?.headerReferenceSize.width ?? 0) : (flow?.headerReferenceSize.height ?? 0)
+        let footerExtent = scrollsHorizontally
+            ? (flow?.footerReferenceSize.width ?? 0) : (flow?.footerReferenceSize.height ?? 0)
+        let wantsHeader = headerExtent > 0
+        let wantsFooter = footerExtent > 0
+
+        let sectionCount = max(1, dataSource.numberOfSections(in: self))
+        materializedItems = []
+        sectionItemCounts = []
+        supplementaryViews = []
+        var specs: [NativeCollectionSection] = []
+
+        for section in 0..<sectionCount {
+            let count = dataSource.collectionView(self, numberOfItemsInSection: section)
+            let path = IndexPath(item: 0, section: section)
+            var header: NSView?
+            var footer: NSView?
+            if wantsHeader {
+                header = dataSource.collectionView(
+                    self, viewForSupplementaryElementOfKind: Self.elementKindSectionHeader, at: path)
+            }
+            if wantsFooter {
+                footer = dataSource.collectionView(
+                    self, viewForSupplementaryElementOfKind: Self.elementKindSectionFooter, at: path)
+            }
+            // Items are materialized FLAT, in section order — the backend's
+            // view/text providers address them by that flat index.
+            for item in 0..<count {
+                let path = IndexPath(item: item, section: section)
+                let collectionItem = dataSource.collectionView(self, itemForRepresentedObjectAt: path)
+                // AppKit sizes each item from the layout — uniform `itemSize`, or
+                // the flow delegate's per-item override. Without this the item's
+                // own construction size sticks and the layout controls do nothing.
+                if let flow {
+                    var size = (delegate as? NSCollectionViewDelegateFlowLayout)?
+                        .collectionView(self, layout: flow, sizeForItemAt: path) ?? .zero
+                    if size == .zero { size = flow.itemSize }
+                    if size != .zero {
+                        collectionItem.view.frame = NSMakeRect(0, 0, size.width, size.height)
+                    }
+                }
+                materializedItems.append(collectionItem)
+            }
+            sectionItemCounts.append(count)
+            // Hold the bands: they are plain Swift views whose native widgets the
+            // collection only hosts, so something must keep them alive.
+            if let header { supplementaryViews.append(header) }
+            if let footer { supplementaryViews.append(footer) }
+            specs.append(NativeCollectionSection(header: header?.handle,
+                                                 footer: footer?.handle,
+                                                 itemCount: count))
+        }
+        if let flow {
+            backend.setCollectionFlow(interitemSpacing: Double(flow.minimumInteritemSpacing),
+                                      lineSpacing: Double(flow.minimumLineSpacing),
+                                      horizontal: flow.scrollDirection == .horizontal,
+                                      for: handle)
+        }
+        backend.setCollectionSections(specs, for: handle)
+    }
+
+    /// Items per section, in order — maps a flat index to an `IndexPath`.
+    private var sectionItemCounts: [Int] = []
+    /// The section bands currently hosted (retained; the backend only hosts them).
+    private var supplementaryViews: [NSView] = []
+
+    /// Converts a flat item index into its `IndexPath` (AppKit's addressing).
+    func indexPath(forFlatIndex index: Int) -> IndexPath {
+        var remaining = index
+        for (section, count) in sectionItemCounts.enumerated() {
+            if remaining < count { return IndexPath(item: remaining, section: section) }
+            remaining -= count
+        }
+        return IndexPath(item: index, section: 0)
     }
 }
 

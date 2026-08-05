@@ -14,6 +14,10 @@ open class NSView: NSResponder {
     /// origin). Setting it repositions/resizes the native control.
     public var frame: NSRect {
         didSet {
+            // A frame the NATIVE side just told us about must not be pushed back
+            // as a size request: a request is a floor, so echoing the window's
+            // current size would stop the user shrinking it again.
+            if suppressFrameSync { return }
             // `isFlipped` is per-view and overridable, so a subclass may compute
             // it rather than return a constant. Re-read both flips that decide
             // this frame's placement (our parent's, for our own Y; and ours, for
@@ -23,6 +27,17 @@ open class NSView: NSResponder {
             backend.setFrame(frame, for: handle)
             layout()
         }
+    }
+
+    private var suppressFrameSync = false
+
+    /// Records a frame the native layout produced, without echoing it back to
+    /// the backend. Used when the window resizes its content view.
+    func adoptNativeFrame(_ newFrame: NSRect) {
+        suppressFrameSync = true
+        frame = newFrame
+        suppressFrameSync = false
+        layout()
     }
 
     /// Pushes this view's flip, and its parent's, to the backend. Cheap, and it
@@ -50,7 +65,17 @@ open class NSView: NSResponder {
     /// children, e.g. split-view panes), so `draw(_:)` code that fills
     /// `bounds` — the demo's colored panes — sees the real size.
     open var bounds: NSRect {
-        if frame.size == .zero, nativeLayoutSize != .zero {
+        // The native allocation is the truth about how much space this view
+        // actually occupies, so it wins whenever we know it. This matters for any
+        // view the container GROWS beyond its frame — above all the window's
+        // content view, which expands with the window exactly as AppKit's does
+        // (AppKit resizes contentView to fill the window, so its bounds grow).
+        // Reporting the frame there made `draw(_:)` paint only the original
+        // 1120x760 while the widget was allocated the full window: the rest went
+        // unpainted — the "toolbar resizes but the content doesn't" symptom.
+        // Frame-placed children are allocated exactly their frame by
+        // LinChocolateFixedLayout, so this is a no-op for them.
+        if nativeLayoutSize != .zero {
             return NSMakeRect(0, 0, nativeLayoutSize.width, nativeLayoutSize.height)
         }
         return NSMakeRect(0, 0, frame.width, frame.height)

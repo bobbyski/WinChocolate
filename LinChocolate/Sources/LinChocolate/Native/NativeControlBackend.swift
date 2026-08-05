@@ -71,6 +71,23 @@ public struct NativeGradientStop: Equatable {
 
 /// A pointer event delivered to a custom view (positions in the view's own
 /// top-left coordinates).
+/// One section of a collection view: an optional header band, `itemCount`
+/// items (addressed by their FLAT index across all sections), and an optional
+/// footer band.
+public struct NativeCollectionSection {
+    /// The section's header view, or nil for no header band.
+    public var header: NativeHandle?
+    /// The section's footer view, or nil for no footer band.
+    public var footer: NativeHandle?
+    /// How many items this section holds.
+    public var itemCount: Int
+    public init(header: NativeHandle? = nil, footer: NativeHandle? = nil, itemCount: Int) {
+        self.header = header
+        self.footer = footer
+        self.itemCount = itemCount
+    }
+}
+
 public enum NativeMouseEvent {
     /// The pointer entered the view at `(x, y)`.
     case entered(x: Double, y: Double)
@@ -301,6 +318,23 @@ public protocol NativeControlBackend: AnyObject {
     /// window survives, so `showWindow` can re-present it — what a reusable
     /// panel needs.
     func hideWindow(_ handle: NativeHandle)
+
+    /// Makes `handle` an auxiliary window of `parent` (AppKit's panel/parent
+    /// relationship): the window manager then places and decorates it as a
+    /// utility window belonging to that parent.
+    func setWindowParent(_ parent: NativeHandle, for handle: NativeHandle)
+
+    /// Reports the window's new content size whenever the user (or the WM)
+    /// resizes it, so the frameworkcan resize its content view and post
+    /// `windowDidResize`.
+    func setWindowResizeAction(for handle: NativeHandle, _ handler: @escaping (Double, Double) -> Void)
+
+    /// Toggles the window between maximized and normal (AppKit's `zoom(_:)`).
+    func toggleZoomWindow(_ handle: NativeHandle)
+    /// Whether the window is maximized (AppKit's `isZoomed`).
+    func isWindowZoomed(_ handle: NativeHandle) -> Bool
+    /// Minimizes the window to the taskbar/dock (AppKit's `miniaturize(_:)`).
+    func miniaturizeWindow(_ handle: NativeHandle)
     /// Updates a window's title-bar text.
     func setWindowTitle(_ title: String, for handle: NativeHandle)
     /// Registers the action to run when the window is closed by the user.
@@ -405,7 +439,10 @@ public protocol NativeControlBackend: AnyObject {
     /// `setSelectedIndex`/`setSelectionChangeAction` (row index).
     func createTableView(frame: NSRect) -> NativeHandle
     /// Appends a titled column to a table.
-    func addTableColumn(title: String, to table: NativeHandle)
+    func addTableColumn(title: String, editable: Bool, to table: NativeHandle)
+
+    /// Called when an editable cell commits a new value: (row, column, text).
+    func setTableCellCommitAction(for handle: NativeHandle, _ handler: @escaping (Int, Int, String) -> Void)
     /// Updates an existing column's header title.
     func setTableColumnTitle(_ title: String, columnIndex: Int, for table: NativeHandle)
     /// Makes a column's header clickable to sort (reports via `setSortChangeAction`).
@@ -431,6 +468,19 @@ public protocol NativeControlBackend: AnyObject {
     func addOutlineColumn(title: String, to outline: NativeHandle)
     /// Sets the number of root items and re-binds (= reload).
     func setOutlineRootCount(_ count: Int, for outline: NativeHandle)
+
+    /// Number of currently-visible outline rows (expanded tree, flattened).
+    func outlineVisibleRowCount(for outline: NativeHandle) -> Int
+    /// The index-path key ("0.2") at a visible outline row, or nil if out of range.
+    func outlineItemPath(atRow row: Int, for outline: NativeHandle) -> String?
+    /// The tree depth of a visible row (0 = root).
+    func outlineRowDepth(atRow row: Int, for outline: NativeHandle) -> Int
+    /// Whether a visible row is expanded.
+    func outlineIsRowExpanded(atRow row: Int, for outline: NativeHandle) -> Bool
+    /// Expands or collapses a visible row.
+    func setOutlineRowExpanded(_ expanded: Bool, atRow row: Int, for outline: NativeHandle)
+    /// Selects a visible outline row (−1 clears the selection).
+    func selectOutlineRow(_ row: Int, for outline: NativeHandle)
     /// Supplies tree shape and cell text by item path.
     func setOutlineProviders(
         for outline: NativeHandle,
@@ -442,6 +492,16 @@ public protocol NativeControlBackend: AnyObject {
     func createCollectionView(frame: NSRect) -> NativeHandle
     /// Sets the number of items and re-binds visible tiles (= reload).
     func setCollectionItemCount(_ count: Int, for collection: NativeHandle)
+
+    /// Lays the collection out as sections, each an optional header band, its
+    /// items, and an optional footer band (AppKit's sectioned flow layout).
+    /// Item view/text providers stay flat-indexed across all sections.
+    func setCollectionSections(_ sections: [NativeCollectionSection], for collection: NativeHandle)
+
+    /// Flow-layout geometry: gaps between items and lines, and whether items
+    /// flow in columns (horizontal scroll) instead of rows.
+    func setCollectionFlow(interitemSpacing: Double, lineSpacing: Double, horizontal: Bool,
+                           for collection: NativeHandle)
     /// Supplies tile text on demand by item index.
     func setCollectionItemProvider(for collection: NativeHandle, provider: @escaping (Int) -> String)
     /// The native widget for a collection item, or nil to fall back to the
@@ -456,7 +516,16 @@ public protocol NativeControlBackend: AnyObject {
     /// Registers the action fired when the user adds or removes a token.
     func setTokensChangeAction(for handle: NativeHandle, action: @escaping ([String]) -> Void)
     /// Shows the image file at `path` in an image view (nil clears it).
+    /// Prints the custom-drawn view via the platform print flow, rendering it
+    /// through its draw handler. Returns whether the job completed (AppKit's
+    /// `NSPrintOperation.run()`).
+    func runPrintOperation(view: NativeHandle, jobTitle: String, parent: NativeHandle?) -> Bool
+
     func setImagePath(_ path: String?, for handle: NativeHandle)
+
+    /// Applies AppKit's template tint to an image view: recolor the (alpha-masked)
+    /// artwork to `color`. `nil` clears the tint and shows the image as loaded.
+    func setImageTint(_ color: NSColor?, isTemplate: Bool, for handle: NativeHandle)
     /// Creates a stepper (numeric up/down) over `[minValue, maxValue]`.
     func createStepper(value: Double, minValue: Double, maxValue: Double, stepSize: Double, frame: NSRect) -> NativeHandle
     /// Creates a determinate level indicator over `[minValue, maxValue]`.
@@ -561,6 +630,11 @@ public protocol NativeControlBackend: AnyObject {
     func setDoubleValue(_ value: Double, for handle: NativeHandle)
     /// Sets a pop-up button's selected item index.
     func setSelectedIndex(_ index: Int, for handle: NativeHandle)
+    /// Draws `count` evenly spaced tick marks along a slider, optionally
+    /// snapping the value to them (AppKit's `numberOfTickMarks` /
+    /// `allowsTickMarkValuesOnly`). A count below 2 clears the marks.
+    func setSliderTickMarks(count: Int, snapsToTicks: Bool, for handle: NativeHandle)
+
     /// Orients a slider vertically or horizontally (AppKit's `isVertical`).
     func setSliderVertical(_ vertical: Bool, for handle: NativeHandle)
     /// Switches a date picker between the graphical calendar and the compact

@@ -95,8 +95,18 @@ public func NSRectFill(_ rect: NSRect) {
 // the types. The framework does not yet dispatch to these delegates (a later
 // parity item); the demo's own methods still compile as ordinary members.
 
-/// AppKit's `NSWindowDelegate` marker (empty until dispatch lands).
-public protocol NSWindowDelegate: AnyObject {}
+/// AppKit's `NSWindowDelegate` — the slice the demo drives.
+public protocol NSWindowDelegate: AnyObject {
+    /// Posted after the window's size changed. Apple types the parameter
+    /// `Notification` (the Swift value type); matching that exactly is what
+    /// makes the method a real witness on Darwin.
+    func windowDidResize(_ notification: Notification)
+}
+
+public extension NSWindowDelegate {
+    /// Default: no-op.
+    func windowDidResize(_ notification: Notification) {}
+}
 /// AppKit's `NSTableViewDelegate` — the slice the demo drives.
 @MainActor
 public protocol NSTableViewDelegate: AnyObject {
@@ -494,7 +504,18 @@ open class NSCollectionViewFlowLayout: NSCollectionViewLayout {
     public var sectionInset = NSEdgeInsets()
 }
 /// Marker protocol for delegates that customize flow-layout metrics.
-public protocol NSCollectionViewDelegateFlowLayout: NSCollectionViewDelegate {}
+public protocol NSCollectionViewDelegateFlowLayout: NSCollectionViewDelegate {
+    /// Per-item size override (AppKit's flow-layout delegate hook). Returning
+    /// `.zero` — the default — means "use the layout's `itemSize`".
+    func collectionView(_ collectionView: NSCollectionView, layout collectionViewLayout: NSCollectionViewLayout,
+                        sizeForItemAt indexPath: IndexPath) -> NSSize
+}
+
+public extension NSCollectionViewDelegateFlowLayout {
+    /// Default: defer to the layout's uniform `itemSize`.
+    func collectionView(_ collectionView: NSCollectionView, layout collectionViewLayout: NSCollectionViewLayout,
+                        sizeForItemAt indexPath: IndexPath) -> NSSize { .zero }
+}
 
 /// A table row background view (stub).
 open class NSTableRowView: NSView {
@@ -591,30 +612,60 @@ open class NSDocumentController {
     open func documentClass(forType typeName: String) -> AnyClass? { nil }
 }
 
-/// Printing stub (real support is Phase L13).
+/// Prints a custom-drawn view through the platform print flow (GtkPrintOperation
+/// on Linux). Renders the view's `draw(_:)` onto the print page.
 public final class NSPrintOperation {
     /// The print operation currently running, if any.
     nonisolated(unsafe) public static var current: NSPrintOperation?
+    /// The view being printed.
+    private weak var view: NSView?
+
     /// Creates an empty print operation.
     public init() {}
 
-    /// Apple's initializer spelling; printing itself is Phase L13.
-    public init(view: NSView) {}
+    /// Builds an operation that prints `view`.
+    public init(view: NSView) { self.view = view }
 
     /// Apple's factory spelling for building an operation for `view`.
-    public static func printOperation(with view: NSView) -> NSPrintOperation { NSPrintOperation() }
+    public static func printOperation(with view: NSView) -> NSPrintOperation { NSPrintOperation(view: view) }
     /// Job title shown in the print dialog and queue.
     public var jobTitle: String = ""
     /// Whether to show the print panel before running.
     public var showsPrintPanel: Bool = true
-    /// Runs the print operation (returns `false` in the stub).
-    public func run() -> Bool { false }
+    /// Runs the print operation, rendering the view. Returns whether the job
+    /// completed (the user printed) vs. was canceled — AppKit's `run()`.
+    @discardableResult
+    public func run() -> Bool {
+        guard let view else { return false }
+        NSPrintOperation.current = self
+        defer { NSPrintOperation.current = nil }
+        return view.backend.runPrintOperation(
+            view: view.handle, jobTitle: jobTitle.isEmpty ? "Print" : jobTitle,
+            parent: NSApplication.shared.windows.first?.handle)
+    }
 }
 
 /// AppKit-shaped `NSPanel` — an auxiliary window (utility/inspector). Subclass
 /// of `NSWindow`; the floating/hide-on-deactivate hints are accepted for API
 /// parity (native behavior is a later item).
 open class NSPanel: NSWindow {
+
+    /// Creates a panel and attaches it to the app's main window. AppKit panels
+    /// are auxiliary windows belonging to the application's window; telling the
+    /// window manager that up front lets it place and decorate the panel in one
+    /// pass, instead of mapping it as an unrelated new toplevel.
+    public override init(contentRect: NSRect, styleMask: StyleMask,
+                         backing: BackingStoreType, defer flag: Bool) {
+        super.init(contentRect: contentRect, styleMask: styleMask, backing: backing, defer: flag)
+        // Escape hatch for bisecting display-server problems we cannot reproduce
+        // locally: `LINCHOCOLATE_NO_PANEL_PARENT=1` skips the parenting so a
+        // reporter can A/B it in two runs instead of rebuilding.
+        guard (ProcessInfo.processInfo.environment["LINCHOCOLATE_NO_PANEL_PARENT"] ?? "").isEmpty else { return }
+        if let parent = NSApplication.shared.windows.first(where: { !($0 is NSPanel) && $0 !== self }) {
+            backend.setWindowParent(parent.handle, for: handle)
+        }
+    }
+
     /// Whether the panel floats above regular document windows.
     public var isFloatingPanel = false
     /// Whether the panel hides when the app deactivates.
