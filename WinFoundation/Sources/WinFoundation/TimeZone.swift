@@ -13,7 +13,7 @@
 /// accepts UTC/GMT and the current zone's own name only.
 public struct TimeZone: Equatable, Sendable {
     /// How a zone determines its offset.
-    private enum Kind: Equatable, Sendable {
+    private enum Kind: Hashable, Sendable {
         /// The system's current zone, with its DST rules.
         case current
         /// A constant offset from GMT.
@@ -357,3 +357,27 @@ private func WinFoundationSystemTimeToTzSpecificLocalTime(_ timeZone: UnsafeRawP
 @_silgen_name("GetTimeZoneInformationForYear")
 private func WinFoundationGetTimeZoneInformationForYear(_ year: UInt16, _ dynamicZone: UnsafeRawPointer?, _ zone: UnsafeMutableRawPointer?) -> Int32
 #endif
+
+// MARK: - Foundation parity conformances (plan Phase 2)
+
+/// `Hashable` and `Codable` because Foundation's `TimeZone` is both — same
+/// reasoning as `Locale`. Decoding an identifier this build cannot resolve falls
+/// back to the current zone rather than throwing: Foundation resolves against a
+/// full tz database, and the Windows zone set is narrower, so a document written
+/// on a Mac must still open here.
+extension TimeZone: Hashable, Codable {
+    private enum CodingKeys: String, CodingKey {
+        case identifier
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let identifier = try container.decode(String.self, forKey: .identifier)
+        self = TimeZone(identifier: identifier) ?? .current
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(identifier, forKey: .identifier)
+    }
+}

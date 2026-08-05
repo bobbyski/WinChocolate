@@ -105,8 +105,16 @@ public final class NSApplication: NSObject {
 
     /// Creates an application using the default backend for the current platform.
     public override convenience init() {
+        // Conditional C3 of the sanctioned platform switches: which native
+        // backend fronts the shared core. `canImport(CGTK)` is the same guard
+        // the GTK backend's own files carry, so the branch is live exactly
+        // where that backend compiles. Without the GTK arm, a Linux app fell
+        // through to the *headless test* backend and launched with no GUI at
+        // all — the framework was there, nothing selected it.
         #if os(Windows)
         self.init(nativeBackend: Win32NativeControlBackend())
+        #elseif canImport(CGTK)
+        self.init(nativeBackend: GTKNativeControlBackend())
         #else
         self.init(nativeBackend: InMemoryNativeControlBackend())
         #endif

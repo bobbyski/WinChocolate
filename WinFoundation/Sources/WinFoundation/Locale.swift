@@ -198,3 +198,27 @@ private func WinFoundationGetDateFormatEx(_ localeName: UnsafePointer<UInt16>?, 
 @_silgen_name("GetTimeFormatEx")
 private func WinFoundationGetTimeFormatEx(_ localeName: UnsafePointer<UInt16>?, _ flags: UInt32, _ time: UnsafePointer<WinSystemTime>?, _ format: UnsafePointer<UInt16>?, _ timeString: UnsafeMutablePointer<UInt16>?, _ count: Int32) -> Int32
 #endif
+
+// MARK: - Foundation parity conformances (plan Phase 2)
+
+/// `Hashable` and `Codable` because Foundation's `Locale` is both. Without them
+/// a settings struct holding a `Locale` cannot synthesize `Codable`, and a
+/// `Locale` cannot key a dictionary — neither of which an app should have to
+/// work around on Windows. The encoded form matches Foundation's: a keyed
+/// container carrying the identifier, so JSON written on one platform reads on
+/// the other.
+extension Locale: Hashable, Codable {
+    private enum CodingKeys: String, CodingKey {
+        case identifier
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(identifier: try container.decode(String.self, forKey: .identifier))
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(identifier, forKey: .identifier)
+    }
+}

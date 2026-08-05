@@ -54,12 +54,20 @@ open class NSNib: NSObject {
     /// Instantiates the nib's object graph, matching AppKit's shape: the
     /// top-level objects are appended to `topLevelObjects` and the owner
     /// stands in for File's Owner. Returns whether instantiation succeeded.
+    ///
+    /// Spelled with `NSArray?` because that is AppKit's exact signature. On
+    /// Windows `NSArray` is `[Any]`, so this is the same type it always was; on
+    /// Linux/macOS it is Foundation's class, which is what lets an app pass the
+    /// `var topLevel: NSArray?` it declares on Apple straight through here.
+    /// (Foundation parity, Phase 2 — the shared core spells Apple's types, not
+    /// the Windows stand-in's, so a signature match on one platform is a
+    /// signature match on all three.)
     @discardableResult
-    open func instantiate(withOwner owner: Any?, topLevelObjects: inout [Any]?) -> Bool {
+    open func instantiate(withOwner owner: Any?, topLevelObjects: inout NSArray?) -> Bool {
         guard let instance = winInstantiate(withOwner: owner) else {
             return false
         }
-        topLevelObjects = instance.topLevelObjects
+        topLevelObjects = instance.topLevelObjects as NSArray
         return true
     }
 
@@ -78,7 +86,7 @@ open class NSNib: NSObject {
 extension Bundle {
     /// Loads a nib by name from this bundle, matching AppKit's shape.
     @discardableResult
-    public func loadNibNamed(_ nibName: NSNib.Name, owner: Any?, topLevelObjects: inout [Any]?) -> Bool {
+    public func loadNibNamed(_ nibName: NSNib.Name, owner: Any?, topLevelObjects: inout NSArray?) -> Bool {
         guard let nib = NSNib(nibNamed: nibName, bundle: self) else {
             return false
         }

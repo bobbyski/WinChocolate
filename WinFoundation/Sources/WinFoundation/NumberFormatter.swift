@@ -8,7 +8,9 @@
 /// approach), configurable fraction digits, and grouping. Scientific/spell-out
 /// styles and the full option surface are future parity work; it is a drop-in
 /// for real Foundation once it builds.
-public final class NumberFormatter: Formatter {
+/// Left `open` because Foundation's is: subclassing a formatter to tweak one
+/// method is ordinary AppKit practice, and it must not need a source change here.
+open class NumberFormatter: Formatter {
     /// The presentation style presets, matching Foundation's raw values.
     public enum Style: Int, Sendable {
         case none = 0
@@ -130,7 +132,7 @@ public final class NumberFormatter: Formatter {
     }
 
     /// Formats any supported value for display via the base `Formatter` API.
-    public override func string(for obj: Any?) -> String? {
+    open override func string(for obj: Any?) -> String? {
         if let number = obj as? NSNumber {
             return string(from: number)
         }

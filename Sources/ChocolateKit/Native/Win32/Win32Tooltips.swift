@@ -1,3 +1,9 @@
+// Conditional C2 of the sanctioned platform switches: this whole file is the
+// Win32 tooltip host. It has no guard until now, but the `DWORD`/`HWND`
+// typealiases it uses live in Win32FFI.swift, which *is* `#if os(Windows)` —
+// so on Linux this file failed with "cannot find type" rather than being
+// excluded. Every other file in this directory carries the same guard.
+#if os(Windows)
 // Win32Tooltips.swift
 // Native tooltip bubbles via a shared tooltips_class32 host (plan 10.5).
 //
@@ -93,3 +99,5 @@ extension Win32NativeControlBackend {
         }
     }
 }
+
+#endif  // os(Windows)

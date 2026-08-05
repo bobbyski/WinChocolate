@@ -108,15 +108,22 @@ let package = Package(
         ),
         // The Windows façade: `@_exported import ChocolateKit` and nothing else,
         // so `import WinChocolate` / `canImport(WinChocolate)` keep working.
-        //
-        // (The matching `LinChocolate` façade is added when Linux comes up in
-        // Phase 3. It must be Linux-only: a LinChocolate module that is
-        // importable on Windows would make the shared demo's
-        // `#if canImport(LinChocolate)` branch win on the wrong platform.)
         .target(
             name: "WinChocolate",
             dependencies: ["ChocolateKit"],
             path: "Sources/WinChocolate",
+            swiftSettings: [
+                .swiftLanguageVersion(.v5)
+            ]
+        ),
+        // The matching Linux façade (plan 1.3). It is only ever *depended on*
+        // under `.when(platforms: [.linux])` — see the demo target below —
+        // because the shared demo tests `canImport(LinChocolate)` first, and a
+        // LinChocolate that resolved on Windows would capture the Windows build.
+        .target(
+            name: "LinChocolate",
+            dependencies: ["ChocolateKit"],
+            path: "Sources/LinChocolate",
             swiftSettings: [
                 .swiftLanguageVersion(.v5)
             ]
@@ -135,7 +142,8 @@ let package = Package(
             // against the real AppKit instead (plan Phase 16, the rendering
             // cross-check), so the framework dependency is Windows-only.
             dependencies: [
-                .target(name: "WinChocolate", condition: .when(platforms: [.windows]))
+                .target(name: "WinChocolate", condition: .when(platforms: [.windows])),
+                .target(name: "LinChocolate", condition: .when(platforms: [.linux]))
             ],
             path: "Demo/DemoApplication",
             exclude: ["Resources"],
@@ -151,7 +159,8 @@ let package = Package(
         .executableTarget(
             name: "RunLoopDemo",
             dependencies: [
-                .target(name: "WinChocolate", condition: .when(platforms: [.windows]))
+                .target(name: "WinChocolate", condition: .when(platforms: [.windows])),
+                .target(name: "LinChocolate", condition: .when(platforms: [.linux]))
             ],
             path: "Demo/RunLoopDemo",
             linkerSettings: [

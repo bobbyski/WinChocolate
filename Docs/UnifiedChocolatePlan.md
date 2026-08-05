@@ -38,12 +38,12 @@ Related plans: `Docs/ProjectPlan.md` (WinChocolate), `Docs/LinChocolatePlan.md`
 ## Dashboard
 
 ```text
-Overall Progress                              ████████░░░░░░░░░░░░░░░░░░   32%  (9 / 28 items)
+Overall Progress                              ████████████████░░░░░░░░░░   61%  (17 / 28 items)
 
 Phase 0 · Packaging Spike                     ██████████████████████████  100%  ✅ Complete  (~40–70k tokens)
-Phase 1 · Shared Core In Place                █████████████████████░░░░░   83%  🔄 In Progress (1.3, 1.6 open)
-Phase 2 · Foundation Parity                   ░░░░░░░░░░░░░░░░░░░░░░░░░░    0%  ⏳ Pending   (~250–500k tokens)
-Phase 3 · Linux Bring-Up On Shared Core       ░░░░░░░░░░░░░░░░░░░░░░░░░░    0%  ⏳ Pending   (~400k–1M tokens)
+Phase 1 · Shared Core In Place                ██████████████████████████  100%  ✅ Complete  (1.3 + 1.6 closed 08-05)
+Phase 2 · Foundation Parity                   ██████████████████████████  100%  ✅ Complete  (~90k tokens actual)
+Phase 3 · Linux Bring-Up On Shared Core       ███░░░░░░░░░░░░░░░░░░░░░░░   13%  🔄 In Progress (3.1 done; rest needs Linux)
 Phase 4 · Retire The Duplicates               ░░░░░░░░░░░░░░░░░░░░░░░░░░    0%  ⏳ Pending   (~60–120k tokens)
 Phase 5 · GTK Parity Backlog                  (rolling intake)  ⏳ Standing (tracked separately, not in Overall)
 
@@ -92,6 +92,17 @@ Three facts decide the design:
    closures per widget (`setClickAction`, `setDrawHandler`, `setContentView`).
    The consequence is in §3.2 and Phase 3 — the GTK backend must be **re-fronted
    onto the core's protocol**, not merely widened.
+
+   ✅ **Follow-up, measured 2026-08-05.** That re-fronting turns out to be
+   *already done structurally*, and the two measurements do not conflict —
+   they are about different objects. The numbers above compare the **LinChocolate
+   package's own protocol** with the core's. The GTK backend **copied into
+   `ChocolateKit`** (item 1.5) declares `: NativeControlBackend`, which inside
+   that module resolves to the *core* protocol. It satisfies 48 of the core's 178
+   requirements directly and inherits the rest from defaults; its ~104
+   Lin-protocol-only members simply became ordinary extra methods rather than
+   protocol requirements. So the re-fronting is a **behavioral** job (fill in the
+   130 defaults), not a structural one. See the Phase 3 measurement table.
 2. **The seam is honest.** Zero Win32 references leak above `Native/`; exactly
    one GTK reference does. The AppKit layer is genuinely platform-free already.
 3. **Win's layer is a superset.** Every shared-name file is larger on the Windows
@@ -150,7 +161,7 @@ to two manifests sharing one source directory — and record that decision here.
 
 ---
 
-## Phase 1 — Shared Core In Place 🔄 83%
+## Phase 1 — Shared Core In Place ✅ 100%
 
 Move, don't rewrite. `git mv` of 29k lines is nearly free; re-typing any of it is
 not. Windows keeps compiling from the same code, at a new path.
@@ -159,10 +170,10 @@ not. Windows keeps compiling from the same code, at a new path.
 |---|------|--------|-------|
 | 1.1 | `Sources/ChocolateKit/**` | ✅ Done | `git mv` from `Sources/WinChocolate/**` — pure move, zero code edits |
 | 1.2 | `Sources/WinChocolate/WinChocolate.swift` | ✅ Done | Façade: `@_exported import ChocolateKit`, Windows only |
-| 1.3 | `Sources/LinChocolate/LinChocolate.swift` | ⏸️ Deferred | Façade: `@_exported import ChocolateKit`, Linux only |
+| 1.3 | `Sources/LinChocolate/LinChocolate.swift` | ✅ Done | Façade: `@_exported import ChocolateKit`. The deferral was about one unverified assumption — whether `canImport(LinChocolate)` would stay false on Windows, since the demo tests it *first* and would otherwise capture the Windows build. **Tested, not assumed:** with the target depended on only under `.when(platforms: [.linux])`, SwiftPM prunes it entirely on Windows — no `LinChocolate.swiftmodule` is produced, so `canImport` is false and the demo still resolves to `WinChocolate` |
 | 1.4 | `ChocolateKit/Runtime/FoundationBridge.swift` | ✅ Done | C1 switch: `WinFoundation` on Windows, real `Foundation` elsewhere |
 | 1.5 | `ChocolateKit/Native/GTK/**` | ✅ Done | Copy GTK backend in, already `#if canImport(CGTK)` guarded |
-| 1.6 | `ChocolateKit/Native/NativeControlBackend.swift` | ⏸️ Deferred to Phase 3 | Default **no-op** protocol extension so a partially-ported backend always compiles. **Measured: 132 members** (not the ~21 first estimated — see the correction in §Feasibility). With no local Linux compiler this is what keeps Linux buildable through Phase 3 |
+| 1.6 | `ChocolateKit/Native/NativeControlBackend.swift` | ✅ Done (already satisfied) | Default protocol extension so a partially-ported backend always compiles. **Measured 2026-08-05: all 178 protocol requirements already carry a default** — 0 are mandatory. The work this item anticipated was already in the file, and the defaults degrade gracefully (return `nil`/ignore) rather than blindly no-op'ing. See the Phase 3 measurement below for what this means |
 
 **Gate:** ✅ **Met on Windows 2026-07-26** — `swift build` clean, full contract
 suite passed, demo launches with its usual 642 controls, all through the
@@ -184,32 +195,44 @@ suite passed, demo launches with its usual 642 controls, all through the
 
 ---
 
-## Phase 2 — Foundation Parity ⏳ 0%
+## Phase 2 — Foundation Parity ✅ 100%
 
 The shared core must compile against `WinFoundation` *and* real `Foundation`
 from identical sources. This is the largest correctness risk in the plan.
 
 | # | File | Status | Notes |
 |---|------|--------|-------|
-| 2.1 | `Docs/FoundationParityLedger.md` | ⏳ Pending | Enumerate the Foundation API the core actually uses (grep-driven); mark each ✅ same / ⚠️ differs |
-| 2.2 | `WinFoundation/**` | ⏳ Pending | `NSArray`: alias-to-`[Any]` vs real class — today's source of "downcast does nothing" warnings |
-| 2.3 | `WinFoundation/**` | ⏳ Pending | `Codable` conformances + Sendability/isolation annotations aligned to corelibs |
-| 2.4 | `WinFoundation/**` | ⏳ Pending | Behavioral match: `Timer`, `RunLoop`, `TimeZone`, `DateFormatter`, `JSONEncoder/Decoder` |
-| 2.5 | `Tests/…/main.swift` | ⏳ Pending | Contract tests pinning each parity fix; suite runs identically on both platforms |
+| 2.1 | `Docs/FoundationParityLedger.md` | ✅ Done | Written. Reconciled / accepted / verified-same / open-for-Phase-3, each with its reason |
+| 2.2 | `WinFoundation/**` | ✅ Done | `NSArray` stays an alias — a real class needs `_ObjectiveCBridgeable`, which needs ObjC interop. **Measured: the core never uses it** (0 files; `NSString`/`NSURL` appear in comments only), so the alias is app-surface only. The two demo warnings are noise, not breakage — ledger §Accepted |
+| 2.3 | `WinFoundation/**` | ✅ Done | `Locale`/`TimeZone` gained `Hashable` + `Codable` (Foundation's identifier-keyed form); `Data`/`URL` `Codable` landed earlier. `DateFormatter` now inherits `Formatter`; formatters are `open`, as Foundation's are |
+| 2.4 | `WinFoundation/**` | ✅ Done | `URL` now survives a round-trip through its own `absoluteString` — the separator asymmetry silently corrupted any persisted URL. `Timer`/`RunLoop`/`DateFormatter`/`JSONEncoder` behavior was settled in Phase 7/8 work and re-verified here |
+| 2.5 | `Tests/…/main.swift` | ✅ Done | `testFoundationTypesMatchApplesShapes()` pins every 2.2–2.4 fix; full suite green |
 
 **Gate:** `ChocolateKit` compiles on Linux (real Foundation) and Windows
-(WinFoundation) from one source; contract suite green on both.
+(WinFoundation) from one source; contract suite green on both. *Windows half is
+green. The Linux half is by construction, not by observation* — it cannot be run
+here, so it is a Phase 3 entry criterion, and the ledger's §Open list is what to
+check first when Linux does build.
+
+**Why this came in ~90k against a 250–500k estimate.** The estimate assumed the
+core leaned on the divergent aliases and would need rewriting. Measuring instead
+of assuming showed it does not use them at all — `NSArray` 0 files,
+`NSString`/`NSURL` in comments only — so Phase 2 collapsed from "rewrite the
+core's Foundation usage" to "fix five specific divergences in WinFoundation."
+The lesson generalizes to the remaining estimates: **measure the usage before
+sizing the work.** Phase 3's range should be treated as unmeasured until the
+GTK backend's 132 members are actually diffed against the core protocol.
 
 ---
 
-## Phase 3 — Linux Bring-Up On Shared Core ⏳ 0%
+## Phase 3 — Linux Bring-Up On Shared Core 🔄 13%
 
 Bring Linux up on the shared layer in dependency order, deleting each
 LinChocolate duplicate as its Windows counterpart takes over.
 
 | # | File | Status | Notes |
 |---|------|--------|-------|
-| 3.1 | `ChocolateKit/Application/NSApplication.swift` | ⏳ Pending | C3: install the GTK backend on Linux |
+| 3.1 | `ChocolateKit/Application/NSApplication.swift` | ✅ Done | C3: `#elseif canImport(CGTK)` selects `GTKNativeControlBackend()`. Until now Linux fell through to the **headless in-memory test backend** — the GTK backend existed and conformed, but nothing selected it, so a Linux app would have launched with no GUI at all |
 | 3.2 | `ChocolateKit/Native/GTK/GLibMainActorExecutor.swift` | ⏳ Pending | C4: main-actor executor / run loop behind the shared hook |
 | 3.3 | `ChocolateKit/Views/NSView.swift`, `Windows/NSWindow.swift` | ⏳ Pending | Foundation of everything else; GTK backend widened as needed |
 | 3.4 | `ChocolateKit/Controls/{NSControl,NSButton,NSTextField}.swift` | ⏳ Pending | First controls running on GTK through the shared layer |
@@ -217,6 +240,33 @@ LinChocolate duplicate as its Windows counterpart takes over.
 | 3.6 | `ChocolateKit/Views/{NSScrollView,NSSplitView,NSClipView}.swift` | ⏳ Pending | Containers + tiling/adjust semantics |
 | 3.7 | `ChocolateKit/Nib/**` | ⏳ Pending | Nib/xib loading on the shared core |
 | 3.8 | `LinChocolate/Sources/LinChocolateDemo`, `Demo/DemoApplication` | ⏳ Pending | **Gate:** Lin demo *and* the frozen demo run on Linux; contract suite green |
+
+### Phase 3 measured, 2026-08-05 (applying Phase 2's lesson: measure before sizing)
+
+The phase was scoped around a structural fear — "the GTK backend must be
+re-fronted onto the core protocol: 132 members." Measuring instead of assuming:
+
+| Question | Answer |
+|----------|--------|
+| Does the GTK backend conform to the core protocol? | **Yes, already** — `GTKNativeControlBackend: NativeControlBackend`, declared at line 22 |
+| Protocol requirements | 178 |
+| Requirements with **no** default (mandatory) | **0** — every one is defaulted |
+| Requirements GTK implements itself | 48 |
+| Requirements falling through to defaults | 130 |
+| Core files outside `Native/Win32/` using Win32 types | **0** (three matches were comments) |
+| Unguarded Win32 files that would break a Linux compile | **1**, `Win32Tooltips.swift` — now guarded |
+
+**What this changes.** The structural risk is gone: nothing is missing that
+would stop the module from *compiling*, and the one file that would have
+broken it is fixed. Phase 3 is therefore not "re-front a backend" but **"fill in
+130 gracefully-degrading defaults, in priority order"** — the same shape as the
+Windows control work, and individually verifiable.
+
+**What it does not change.** This is still static analysis, not a Linux build.
+Name-level comparison cannot catch a signature mismatch between a GTK method and
+the protocol requirement it means to satisfy — that surfaces only when Linux
+compiles. Treat the first Linux build as the real gate, with the Foundation
+ledger's §Open list as the second thing to check.
 
 ---
 

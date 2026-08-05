@@ -270,17 +270,28 @@ public struct URL: Equatable, Hashable, Sendable, CustomStringConvertible {
     }
 
     private static func normalizedFilePath(_ path: String, keepTrailingSeparator: Bool) -> String {
-        guard path.count > 1 else {
-            return path
+        // File-URL storage is the native path, which on Windows means
+        // backslashes — `pathFromFileURLString` already normalizes that way when
+        // parsing a "file://" string. Doing the same here is what makes a URL
+        // survive a round-trip through its own `absoluteString`: that property
+        // is lossy (it always emits "/"), so unless both entry points agree on
+        // one separator, `URL(string: u.absoluteString) != u` and any app that
+        // persists a URL — JSON, defaults, the pasteboard — silently reads back
+        // a value that compares unequal to the one it wrote.
+        let separated = replacingSeparators(in: path, with: "\\")
+        guard separated.count > 1 else {
+            return separated
         }
 
-        var result = path
+        var result = separated
         while result.count > 3 && hasTrailingSeparator(result) {
             result.removeLast()
         }
 
         if keepTrailingSeparator && !hasTrailingSeparator(result) {
-            result += result.contains("\\") ? "\\" : "/"
+            // Separators are normalized above, so the native one is the only
+            // one that can appear here.
+            result += "\\"
         }
 
         return result

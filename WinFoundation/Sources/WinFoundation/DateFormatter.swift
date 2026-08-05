@@ -7,7 +7,13 @@
 /// drop-in for real Foundation's `DateFormatter` once the Windows toolchain
 /// can build Foundation; until then it keeps date formatting out of the
 /// hand-rolled control code. Locales and time zones beyond UTC are future work.
-public final class DateFormatter {
+///
+/// Inherits `Formatter` because Foundation's does: `NSControl.formatter` is
+/// typed `Formatter?`, so `textField.formatter = DateFormatter()` — which
+/// compiles on macOS — has to compile here too. Left `open` for the same
+/// reason: Foundation's `DateFormatter` is subclassable, and an app that
+/// subclasses it must not need a source change to build on Windows.
+open class DateFormatter: Formatter {
     /// Named presentation styles for `dateStyle`/`timeStyle`.
     public enum Style: Int, Equatable, Sendable {
         case none = 0
@@ -38,7 +44,17 @@ public final class DateFormatter {
     public var timeZone: TimeZone = .current
 
     /// Creates a date formatter.
-    public init() {}
+    public override init() {
+        super.init()
+    }
+
+    /// Formats a `Date` for the control layer, matching Foundation's override.
+    /// Anything that is not a `Date` formats as `nil`, so a control holding a
+    /// mismatched `objectValue` shows nothing rather than garbage.
+    open override func string(for obj: Any?) -> String? {
+        guard let date = obj as? Date else { return nil }
+        return string(from: date)
+    }
 
     /// Returns the string representation of a date.
     ///
