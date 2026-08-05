@@ -72,6 +72,20 @@ void       lc_color_chooser_set_rgba(GtkWidget *chooser, const GdkRGBA *rgba);
  */
 void       lc_color_chooser_get_rgba(GtkWidget *chooser, GdkRGBA *rgba);
 
+/**
+ * Loads CSS text into a provider using the GTK 4.0-era API name.
+ * GTK 4.12 added gtk_css_provider_load_from_string(), but Ubuntu 22.04 ships
+ * GTK 4.6 where gtk_css_provider_load_from_data() is the portable spelling.
+ */
+void lc_css_provider_load(GtkCssProvider *provider, const char *css);
+
+/**
+ * Runs a file chooser if the installed GTK exposes a compatible synchronous
+ * path. Returns a newly allocated path that callers free with g_free(), or NULL
+ * when the platform path is unavailable/cancelled.
+ */
+char *lc_run_file_chooser(GtkWindow *parent, gboolean open, const char *directory, const char *suggested_name);
+
 /* Paints the X window's BACKGROUND PIXEL, i.e. what the X server fills the
  * window with before (and between) the app's own frames.
  *

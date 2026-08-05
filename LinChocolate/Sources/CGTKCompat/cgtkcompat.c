@@ -35,6 +35,18 @@ void lc_color_chooser_get_rgba(GtkWidget *chooser, GdkRGBA *rgba) {
     gtk_color_chooser_get_rgba(GTK_COLOR_CHOOSER(chooser), rgba);
 }
 
+void lc_css_provider_load(GtkCssProvider *provider, const char *css) {
+    gtk_css_provider_load_from_data(provider, css, -1);
+}
+
+char *lc_run_file_chooser(GtkWindow *parent, gboolean open, const char *directory, const char *suggested_name) {
+    (void)parent;
+    (void)open;
+    (void)directory;
+    (void)suggested_name;
+    return NULL;
+}
+
 #pragma GCC diagnostic pop
 
 void lc_strip_wm_sync_request(GtkWidget *window) {

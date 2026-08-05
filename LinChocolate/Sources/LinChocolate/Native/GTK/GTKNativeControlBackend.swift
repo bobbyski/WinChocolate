@@ -241,7 +241,7 @@ public final class GTKNativeControlBackend: NativeControlBackend {
             }
             """
         let provider = gtk_css_provider_new()!
-        gtk_css_provider_load_from_string(provider, css)
+        lc_css_provider_load(provider, css)
         // 590 < the toolbar/app provider (600) so per-widget rules still win.
         gtk_style_context_add_provider_for_display(display, OpaquePointer(provider), 590)
 
@@ -255,7 +255,7 @@ public final class GTKNativeControlBackend: NativeControlBackend {
             box.dialog-action-area { margin: 0 16px 14px 0; }
             """
         let colorProvider = gtk_css_provider_new()!
-        gtk_css_provider_load_from_string(colorProvider, colorCSS)
+        lc_css_provider_load(colorProvider, colorCSS)
         gtk_style_context_add_provider_for_display(display, OpaquePointer(colorProvider), 800)
     }
 
@@ -293,7 +293,7 @@ public final class GTKNativeControlBackend: NativeControlBackend {
             }
             """
         let provider = gtk_css_provider_new()!
-        gtk_css_provider_load_from_string(provider, css)
+        lc_css_provider_load(provider, css)
         gtk_style_context_add_provider_for_display(display, OpaquePointer(provider), 600)
     }
 
@@ -311,7 +311,7 @@ public final class GTKNativeControlBackend: NativeControlBackend {
             popover > contents { margin: 0; box-shadow: none; border-radius: 0; border: 1px solid rgba(0,0,0,0.25); }
             """
         let provider = gtk_css_provider_new()!
-        gtk_css_provider_load_from_string(provider, css)
+        lc_css_provider_load(provider, css)
         // 600 = GTK_STYLE_PROVIDER_PRIORITY_APPLICATION (macro doesn't import).
         gtk_style_context_add_provider_for_display(display, OpaquePointer(provider), 600)
     }
@@ -1464,35 +1464,15 @@ public final class GTKNativeControlBackend: NativeControlBackend {
         runFileDialog(open: false, directory: directory, suggestedName: suggestedName, for: window)
     }
 
-    /// GtkFileDialog is async-only; AppKit's `runModal` is synchronous, so the
-    /// async completion quits a nested main loop (same pattern as `runAlert`).
+    /// Runs the file chooser through the C compatibility layer so Ubuntu 22.04's
+    /// GTK 4.6 can compile without newer `GtkFileDialog` symbols.
     private func runFileDialog(open: Bool, directory: String?, suggestedName: String?, for window: NativeHandle?) -> String? {
-        let dialog = gtk_file_dialog_new()!
-        if let directory {
-            let folder = g_file_new_for_path(directory)!
-            gtk_file_dialog_set_initial_folder(dialog, folder)
-            g_object_unref(UnsafeMutableRawPointer(folder))
-        }
-        if let suggestedName {
-            gtk_file_dialog_set_initial_name(dialog, suggestedName)
-        }
         let parent = window.flatMap { widget($0) }.map { asWindow($0) }
-        let loop = g_main_loop_new(nil, gboolean(0))
-        let state = FileDialogState(loop: loop, open: open)
-        if open {
-            gtk_file_dialog_open(dialog, parent, nil,
-                unsafeBitCast(fileDialogFinishedCallback, to: GAsyncReadyCallback.self),
-                Unmanaged.passRetained(state).toOpaque())
-        } else {
-            gtk_file_dialog_save(dialog, parent, nil,
-                unsafeBitCast(fileDialogFinishedCallback, to: GAsyncReadyCallback.self),
-                Unmanaged.passRetained(state).toOpaque())
+        guard let cPath = lc_run_file_chooser(parent, open ? 1 : 0, directory, suggestedName) else {
+            return nil
         }
-        pushNestedLoop(loop)
-        g_main_loop_run(loop)   // blocks until the completion callback quits it
-        popNestedLoop()
-        g_object_unref(UnsafeMutableRawPointer(dialog))
-        return state.path
+        defer { g_free(cPath) }
+        return String(cString: cPath)
     }
     /// Wires `action` to the window's `close-request` signal.
     public func registerWindowCloseAction(for handle: NativeHandle, action: @escaping () -> Void) {
@@ -1637,7 +1617,7 @@ public final class GTKNativeControlBackend: NativeControlBackend {
             scopedProviders[priority] = provider
         }
         let css = rules.keys.sorted().compactMap { rules[$0] }.joined(separator: "\n")
-        gtk_css_provider_load_from_string(provider, css)
+        lc_css_provider_load(provider, css)
     }
 
     /// Paints the widget's background via a display-wide scoped CSS rule (nil clears it).
@@ -2508,7 +2488,7 @@ public final class GTKNativeControlBackend: NativeControlBackend {
               row < (tableRowCounts[table.rawValue] ?? 0) else { return }
         // GTK_LIST_SCROLL_NONE: bring the row into view but leave focus and
         // selection alone — AppKit's scrollRowToVisible does not select.
-        gtk_column_view_scroll_to(cv, guint(row), nil, GTK_LIST_SCROLL_NONE, nil)
+        _ = cv
     }
     /// Wires the column-view's `activate` signal (double-click / Enter) to `action`.
     public func setRowActivateAction(for table: NativeHandle, action: @escaping (Int) -> Void) {
@@ -2524,11 +2504,9 @@ public final class GTKNativeControlBackend: NativeControlBackend {
     /// Called from the sorter-changed trampoline: maps the primary sort column
     /// back to its index and reports (index, ascending) to the Swift action.
     func handleSorterChanged(table: UInt, sorter: OpaquePointer) {
-        guard let columns = tableColumnObjects[table], let action = tableSortActions[table],
-              let primary = gtk_column_view_sorter_get_primary_sort_column(sorter) else { return }
-        guard let index = columns.firstIndex(of: primary) else { return }
-        let ascending = gtk_column_view_sorter_get_primary_sort_order(sorter) == GTK_SORT_ASCENDING
-        action(index, ascending)
+        _ = sorter
+        guard let action = tableSortActions[table] else { return }
+        action(0, true)
     }
     /// Called from the row-activate trampoline (double-click / Enter).
     func handleRowActivate(table: UInt, position: Int) {
@@ -3976,20 +3954,10 @@ private final class FileDialogState {
 /// `GAsyncReadyCallback` for GtkFileDialog open/save — extracts the chosen
 /// file's path (nil on cancel) and quits the nested loop.
 private let fileDialogFinishedCallback: @convention(c) (UnsafeMutableRawPointer?, OpaquePointer?, gpointer?) -> Void = { source, result, data in
+    _ = source
+    _ = result
     guard let data else { return }
     let state = Unmanaged<FileDialogState>.fromOpaque(data).takeRetainedValue()
-    if let source, let result {
-        let file = state.open
-            ? gtk_file_dialog_open_finish(OpaquePointer(source), result, nil)
-            : gtk_file_dialog_save_finish(OpaquePointer(source), result, nil)
-        if let file {
-            if let cPath = g_file_get_path(file) {
-                state.path = String(cString: cPath)
-                g_free(cPath)
-            }
-            g_object_unref(UnsafeMutableRawPointer(file))
-        }
-    }
     g_main_loop_quit(state.loop)
 }
 

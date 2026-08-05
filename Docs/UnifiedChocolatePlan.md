@@ -1,0 +1,318 @@
+# Unified Chocolate — Build Plan
+
+## Summary
+
+WinChocolate (Win32) and LinChocolate (GTK4) are today two separate packages
+holding two parallel AppKit-shaped layers. This plan merges them onto **one
+shared core** — a single AppKit surface compiled for both platforms, with the
+platform differences expressed as compile-time conditionals behind the existing
+`NativeControlBackend` seam.
+
+Both must keep running throughout. Windows is the mature side and never moves:
+the shared core *is* today's WinChocolate layer, so the Windows build path is
+unchanged at every step, and Linux migrates onto it incrementally.
+
+`import WinChocolate` and `import LinChocolate` both keep working (thin façade
+targets), so the imports-only promise, the frozen demo's 3-way import switch,
+and every downstream consumer (ActiveUI, WinSwiftUI, WinSwiftData) are untouched
+by this refactor.
+
+Related plans: `Docs/ProjectPlan.md` (WinChocolate), `Docs/LinChocolatePlan.md`
+(Linux), `Docs/LinChocolateControlParity.md` (GTK control map).
+
+## Project Goals
+
+1. **One AppKit layer, two backends.** Every line that is not genuinely Win32 or
+   GTK work lives once, in `ChocolateKit`. A `#if` outside the four sanctioned
+   seams (§C1–C4) is a bug to be fixed by widening the backend protocol.
+2. **No regression on Windows.** Every phase is gated on the Windows build plus
+   the full contract suite staying green.
+3. **Linux gains the finished behavior.** Linux inherits ~29k lines of completed
+   AppKit work (drawn tables, toolbars, sheets, nib loading, accessibility)
+   rather than reimplementing it.
+4. **The public promise is unchanged.** Product names, import switch, and
+   downstream APIs survive the merge intact.
+
+---
+
+## Dashboard
+
+```text
+Overall Progress                              ░░░░░░░░░░░░░░░░░░░░░░░░░░    0%  (0 / 28 items)
+
+Phase 0 · Packaging Spike                     ░░░░░░░░░░░░░░░░░░░░░░░░░░    0%  ⏳ Pending   (~40–70k tokens)
+Phase 1 · Shared Core In Place                ░░░░░░░░░░░░░░░░░░░░░░░░░░    0%  ⏳ Pending   (~120–200k tokens)
+Phase 2 · Foundation Parity                   ░░░░░░░░░░░░░░░░░░░░░░░░░░    0%  ⏳ Pending   (~250–500k tokens)
+Phase 3 · Linux Bring-Up On Shared Core       ░░░░░░░░░░░░░░░░░░░░░░░░░░    0%  ⏳ Pending   (~400k–1M tokens)
+Phase 4 · Retire The Duplicates               ░░░░░░░░░░░░░░░░░░░░░░░░░░    0%  ⏳ Pending   (~60–120k tokens)
+Phase 5 · GTK Parity Backlog                  (rolling intake)  ⏳ Standing (tracked separately, not in Overall)
+
+Estimated total to Phase 4 (one source tree, both platforms running): ~0.9M–1.9M tokens
+```
+
+**Status key:** ✅ Done &nbsp;|&nbsp; 🔄 In Progress &nbsp;|&nbsp; ⏳ Pending &nbsp;|&nbsp; ⏸️ Deferred &nbsp;|&nbsp; 🚫 Blocked
+
+---
+
+## Feasibility evidence (measured 2026-07-26)
+
+The two frameworks were built to the *same architecture*, which is what makes
+this a merge rather than a rewrite.
+
+| | WinChocolate | LinChocolate |
+|---|---|---|
+| Total | **42,891** lines / 142 files | **16,492** lines / 77 files |
+| Backend (`Native/`) | 13,547 (Win32) | 6,719 (GTK) |
+| AppKit layer (everything else) | **~29,344** | ~9,773 |
+| Backend protocol | `NativeControlBackend`, **189** members | same name, **168** members |
+| Foundation | `WinFoundation` (own package) | real `Foundation` |
+| Platform leaks **outside** `Native/` | **0 files** | **1 file** (`GLibMainActorExecutor`) |
+| Backend guard already present | 24/25 files `#if os(Windows)` | `#if canImport(CGTK)` |
+
+Three facts decide the design:
+
+1. **The seam already exists and already matches.** Both declare
+   `public protocol NativeControlBackend: AnyObject`, and Lin's is a strict
+   *subset* (168 ⊂ 189). No abstraction has to be invented.
+2. **The seam is honest.** Zero Win32 references leak above `Native/`; exactly
+   one GTK reference does. The AppKit layer is genuinely platform-free already.
+3. **Win's layer is a superset.** Every shared-name file is larger on the Windows
+   side (`NSWindow` 1148 vs 173, `NSTableView` 1114 vs 301). The 60 shared-name
+   files are *independent implementations*, not drifted copies — so
+   reconciliation is "adopt Win's, delete Lin's", not a three-way merge.
+
+---
+
+## Target architecture
+
+```text
+ChocolateKit                    ← the shared core
+  |
+  |-- Appearance/ Application/ Controls/ Views/ Windows/ Layout/ Menus/ Nib/ …
+  |       `-- one AppKit surface, compiled for every platform
+  |
+  `-- Native/
+      |-- NativeControlBackend.swift          ← the seam (shared protocol)
+      |-- InMemoryNativeControlBackend.swift  ← shared, headless tests
+      |-- Win32/    #if os(Windows)
+      `-- GTK/      #if canImport(CGTK)
+
+WinChocolate   ← façade target, Windows only:  @_exported import ChocolateKit
+LinChocolate   ← façade target, Linux only:    @_exported import ChocolateKit
+```
+
+The façade targets are ~5 lines each. They exist purely so `import WinChocolate`
+/ `import LinChocolate` and `canImport(...)` keep resolving.
+
+### The four sanctioned conditionals
+
+| # | Concern | Switch | Where |
+|---|---|---|---|
+| C1 | Foundation flavor | `#if os(Windows)` → `WinFoundation`, else `Foundation` | `FoundationBridge.swift` |
+| C2 | Backend implementation | `#if os(Windows)` / `#if canImport(CGTK)` | `Native/Win32/`, `Native/GTK/` |
+| C3 | Backend installation | which backend `NSApplication` installs | one function |
+| C4 | Main-thread executor | Win32 pump vs `GLibMainActorExecutor` | one file behind a shared hook |
+
+---
+
+## Phase 0 — Packaging Spike ⏳ 0%
+
+Prove the one packaging unknown before moving any code: can a single manifest
+carry a GTK `systemLibrary` that only resolves on Linux? Decide here, not later.
+
+| # | File | Status | Notes |
+|---|------|--------|-------|
+| 0.1 | `Package.swift` | ⏳ Pending | Single root manifest; `ChocolateKit` target over today's WinChocolate sources |
+| 0.2 | `Package.swift` | ⏳ Pending | `CGTK`/`CGTKCompat` depended on via `.when(platforms: [.linux])` — mechanism already used here for `WinChocolate` |
+| 0.3 | — (verification) | ⏳ Pending | **Gate:** Windows builds + full contract suite green |
+| 0.4 | `LinChocolate/run-linux.sh` | ⏳ Pending | **Settled 2026-07-26: there is no local Linux loop.** WSL does not work under Parallels on this VM, so Linux is verified off-box by the user when a phase is ready. Confirm `run-linux.sh` is the command to hand over, and that the manifest change (0.2) does not break it |
+
+**Exit:** if conditional `systemLibrary` resolution fails on Windows, fall back
+to two manifests sharing one source directory — and record that decision here.
+
+---
+
+## Phase 1 — Shared Core In Place ⏳ 0%
+
+Move, don't rewrite. `git mv` of 29k lines is nearly free; re-typing any of it is
+not. Windows keeps compiling from the same code, at a new path.
+
+| # | File | Status | Notes |
+|---|------|--------|-------|
+| 1.1 | `Sources/ChocolateKit/**` | ⏳ Pending | `git mv` from `Sources/WinChocolate/**` — pure move, zero code edits |
+| 1.2 | `Sources/WinChocolate/WinChocolate.swift` | ⏳ Pending | Façade: `@_exported import ChocolateKit`, Windows only |
+| 1.3 | `Sources/LinChocolate/LinChocolate.swift` | ⏳ Pending | Façade: `@_exported import ChocolateKit`, Linux only |
+| 1.4 | `ChocolateKit/Runtime/FoundationBridge.swift` | ⏳ Pending | C1 switch: `WinFoundation` on Windows, real `Foundation` elsewhere |
+| 1.5 | `ChocolateKit/Native/GTK/**` | ⏳ Pending | Copy GTK backend in, already `#if canImport(CGTK)` guarded |
+| 1.6 | `ChocolateKit/Native/NativeControlBackend.swift` | ⏳ Pending | Default **no-op** protocol extension for the ~21 members GTK lacks, so Linux always compiles |
+
+**Gate:** Windows green (build + contract tests + demo runs). Linux: core and
+GTK backend compile; nothing runs yet.
+
+---
+
+## Phase 2 — Foundation Parity ⏳ 0%
+
+The shared core must compile against `WinFoundation` *and* real `Foundation`
+from identical sources. This is the largest correctness risk in the plan.
+
+| # | File | Status | Notes |
+|---|------|--------|-------|
+| 2.1 | `Docs/FoundationParityLedger.md` | ⏳ Pending | Enumerate the Foundation API the core actually uses (grep-driven); mark each ✅ same / ⚠️ differs |
+| 2.2 | `WinFoundation/**` | ⏳ Pending | `NSArray`: alias-to-`[Any]` vs real class — today's source of "downcast does nothing" warnings |
+| 2.3 | `WinFoundation/**` | ⏳ Pending | `Codable` conformances + Sendability/isolation annotations aligned to corelibs |
+| 2.4 | `WinFoundation/**` | ⏳ Pending | Behavioral match: `Timer`, `RunLoop`, `TimeZone`, `DateFormatter`, `JSONEncoder/Decoder` |
+| 2.5 | `Tests/…/main.swift` | ⏳ Pending | Contract tests pinning each parity fix; suite runs identically on both platforms |
+
+**Gate:** `ChocolateKit` compiles on Linux (real Foundation) and Windows
+(WinFoundation) from one source; contract suite green on both.
+
+---
+
+## Phase 3 — Linux Bring-Up On Shared Core ⏳ 0%
+
+Bring Linux up on the shared layer in dependency order, deleting each
+LinChocolate duplicate as its Windows counterpart takes over.
+
+| # | File | Status | Notes |
+|---|------|--------|-------|
+| 3.1 | `ChocolateKit/Application/NSApplication.swift` | ⏳ Pending | C3: install the GTK backend on Linux |
+| 3.2 | `ChocolateKit/Native/GTK/GLibMainActorExecutor.swift` | ⏳ Pending | C4: main-actor executor / run loop behind the shared hook |
+| 3.3 | `ChocolateKit/Views/NSView.swift`, `Windows/NSWindow.swift` | ⏳ Pending | Foundation of everything else; GTK backend widened as needed |
+| 3.4 | `ChocolateKit/Controls/{NSControl,NSButton,NSTextField}.swift` | ⏳ Pending | First controls running on GTK through the shared layer |
+| 3.5 | `ChocolateKit/Controls/**` | ⏳ Pending | Remaining controls, priority order from `LinChocolateControlParity.md` |
+| 3.6 | `ChocolateKit/Views/{NSScrollView,NSSplitView,NSClipView}.swift` | ⏳ Pending | Containers + tiling/adjust semantics |
+| 3.7 | `ChocolateKit/Nib/**` | ⏳ Pending | Nib/xib loading on the shared core |
+| 3.8 | `LinChocolate/Sources/LinChocolateDemo`, `Demo/DemoApplication` | ⏳ Pending | **Gate:** Lin demo *and* the frozen demo run on Linux; contract suite green |
+
+---
+
+## Phase 4 — Retire The Duplicates ⏳ 0%
+
+Deletions are nearly free; the cost here is test consolidation and docs.
+
+| # | File | Status | Notes |
+|---|------|--------|-------|
+| 4.1 | `LinChocolate/Sources/LinChocolate/{Controls,Views,Windows,Layout,…}` | ⏳ Pending | Delete the parallel AppKit layer (~9.7k lines) |
+| 4.2 | `LinChocolate/Sources/LinChocolate/Compat/**` | ⏳ Pending | Delete `AppKitCompat`/`ConcurrencyCompat`/`ControlCompat`/`DemoCompat`/`EnumCompat` (~1.7k lines) — Rule One bans these |
+| 4.3 | `Tests/WinChocolateContractTests/main.swift` | ⏳ Pending | Fold `LinChocolate/Tests` into the shared suite |
+| 4.4 | `Sources/ChocolateGraphics/**` | ⏳ Pending | Consolidate `WinCoreGraphics` + Lin's `CGImage`/`CGCompat` |
+| 4.5 | `Docs/Architecture.md`, `Docs/ProjectPlan.md`, `Docs/LinChocolatePlan.md` | ⏳ Pending | Architecture doc updated for the merged shape; plans cross-linked |
+
+**Gate:** one source tree; both platforms build, run, and pass.
+
+---
+
+## Phase 5 — GTK Parity Backlog ⏳ Standing
+
+Rolling intake, tracked separately (not counted in Overall), exactly like
+Phase 14 in `ProjectPlan.md`. Work the no-op list from §1.6 down by priority
+using `LinChocolateControlParity.md`; the frozen demo becomes the Linux
+acceptance test, as it already is on Windows.
+
+---
+
+## Cost (tokens)
+
+**~0.9M–1.9M tokens** to Phase 4, plus the open-ended Phase 5 backlog.
+
+### Unit costs this estimate is built from
+
+| Operation | Typical cost |
+|---|---|
+| Reading a 1,000-line Swift file | ~12k tokens (~12 tokens/line) |
+| One `Edit` (old + new string) | ~0.3–0.8k |
+| One filtered `swift build` result | ~0.2–2k (error-dependent) |
+| One contract-suite run | ~0.3k when green, far more when not |
+| `git mv` / `rm` of a whole directory | **~0.1k — moves are nearly free** |
+| One build→fix→rebuild iteration | ~3–10k |
+
+### Where the tokens go
+
+| Phase | Estimate | Dominant driver |
+|---|---|---|
+| 0 | 40–70k | manifest edits + build iterations |
+| 1 | 120–200k | reading both protocols (1,000 + 697 lines) to diff members; ~21 stubs. Moves are free |
+| 2 | 250–500k | **compile-error-driven iteration** against real Foundation |
+| 3 | 400k–1M | **iteration**: per control × build × run × fix, plus GTK widening |
+| 4 | 60–120k | deletions free; test consolidation is not |
+
+### The planning insight
+
+Cost is dominated by **build–fix iteration cycles**, not by reading or writing
+code. Two consequences for sequencing:
+
+- **Prefer mechanical moves to rewrites.** Phase 1 is cheap precisely because it
+  moves rather than edits.
+- **Cut iteration count, not file count.** Batch related fixes before each build,
+  and use the headless in-memory backend (no GTK/Win32 needed) to validate logic
+  without a platform build.
+
+---
+
+## Verification model (settled 2026-07-26)
+
+**There is no local Linux loop.** WSL does not work under Parallels on this VM,
+so every Linux build and run happens off-box, by the user, when a phase is ready
+to hand over. This is a structural constraint, not a Phase 0 unknown, and it
+reshapes how the work is done:
+
+| Layer | Verified where | Cost of a cycle |
+|---|---|---|
+| Windows build + demo | here, continuously | seconds |
+| Contract suite (in-memory backend, no GTK/Win32) | here, continuously | seconds |
+| **Linux compile** | off-box, batched | a user round-trip |
+| **GTK runtime behavior** | off-box, batched | a user round-trip |
+
+**Strategy that follows:**
+
+1. **Make Linux compile-clean by construction, not by iteration.** The no-op
+   default extension (1.6) exists precisely so the Linux build cannot fail on a
+   missing protocol member. Anything that would only be caught by a Linux
+   compiler must instead be caught by review + the shared contract suite.
+2. **Push everything provable onto the in-memory backend.** It needs neither GTK
+   nor Win32, so layout, geometry, selection, nib decoding, and Foundation
+   parity (Phase 2) are all verifiable *here*, on Windows, for both platforms.
+3. **Batch the hand-offs.** Aim for one Linux verification per phase, not per
+   control — each hand-off should arrive with a single command
+   (`LinChocolate/run-linux.sh`) and an explicit list of what to look at.
+4. **Expect Phase 3 to widen, not to fail.** Without local iteration, Phase 3's
+   estimate is dominated by hand-off latency rather than tokens; the token range
+   holds, but wall-clock depends entirely on how often Linux can be run.
+
+---
+
+## Risks
+
+| Risk | Likelihood | Impact | Mitigation |
+|---|---|---|---|
+| Conditional `systemLibrary` won't resolve on Windows | Medium | High — blocks single manifest | Decide in Phase 0; fallback = two manifests over one source dir |
+| WinFoundation ≠ Foundation semantics | **High** | High — silent behavior drift | Parity ledger (2.1) + a contract test per fix |
+| GTK backend can't satisfy richer AppKit semantics | Medium | Medium — Linux features degrade | No-op defaults (1.6); prioritized backlog; never block the build |
+| Linux regressions vs today's LinChocolate | Medium | Medium | Keep the old tree on a branch until Phase 4's gate passes |
+| Merge churn breaks Windows | Low | **Critical** | Windows path never changes; every phase gated on the Windows suite |
+| Concurrency model mismatch (GLib executor vs Win pump) | Medium | Medium | Isolate as C4 behind one hook; contract-test timer/run-loop behavior on both |
+| **No local Linux loop** (WSL fails under Parallels on this VM) | **Certain** | **High** — no tight iterate-on-Linux cycle | Compile-clean by construction (§Verification model); batch Linux runs into few hand-offs; lean on the headless in-memory backend |
+
+---
+
+## Decisions needed before starting
+
+1. **Core module name** — `ChocolateKit` proposed (façades keep the public
+   `WinChocolate`/`LinChocolate` names either way).
+2. **Repo shape** — single root package (proposed) vs keeping `LinChocolate/` as
+   a nested package pointing at shared sources.
+3. **Policy change** — the standing rule is *"don't fix LinChocolate; note it in
+   DEMO_CHANGES.md."* This plan necessarily edits LinChocolate; that rule must be
+   lifted for this work.
+4. **Linux verification** — is `run-linux.sh` / `run-wsl.bat` / Docker a working
+   loop today? Phases 2–4 are unverifiable without it (Phase 0.4).
+
+---
+
+## Human review
+
+Added to `NEEDS_HUMAN.md`: the GTK backend arrives as a **single 4,789-line
+file** (plus `InMemoryNativeControlBackend` at 1,216 and `AppKitCompat` at 832),
+well past the 500-line guideline. Splitting it is deferred until after Phase 3
+so the file stays diffable against LinChocolate's history during bring-up.

@@ -4,13 +4,18 @@
 # Wayland. This intentionally does not touch the Docker/XQuartz Mac harness.
 #
 # Usage:
-#   ./setup-wsl.sh
-#   ./setup-wsl.sh --skip-swift
+#   ./setup-wsl.sh                  # install deps + Swift in WSL only
+#   ./setup-wsl.sh --skip-swift     # install deps only
 #
 set -euo pipefail
 
 if ! grep -qi microsoft /proc/version 2>/dev/null; then
     echo "warning: this does not look like WSL; continuing anyway." >&2
+fi
+
+if ! uname -r | grep -qi "microsoft-standard"; then
+    echo "warning: this appears to be WSL1. WSLg/Wayland requires WSL2." >&2
+    echo "         From PowerShell, run: wsl --set-version Ubuntu 2" >&2
 fi
 
 if ! command -v apt-get >/dev/null 2>&1; then
@@ -48,28 +53,133 @@ sudo apt-get install -y \
     libxml2-dev \
     libx11-dev \
     pkg-config \
+    rsync \
     tar \
     zlib1g-dev
 
+add_line_once() {
+    local file="$1"
+    local marker="$2"
+    local line="$3"
+
+    touch "$file"
+    if ! grep -Fq "$marker" "$file" 2>/dev/null; then
+        {
+            echo ""
+            echo "$line"
+        } >> "$file"
+    fi
+}
+
+source_installed_swift() {
+    if [[ -f "${SWIFTLY_HOME_DIR:-$HOME/.local/share/swiftly}/env.sh" ]]; then
+        # shellcheck disable=SC1090
+        . "${SWIFTLY_HOME_DIR:-$HOME/.local/share/swiftly}/env.sh"
+    fi
+
+    if [[ -d "$HOME/.local/share/swift-toolchains/current/usr/bin" ]]; then
+        export PATH="$HOME/.local/share/swift-toolchains/current/usr/bin:$PATH"
+    fi
+}
+
+install_swift_with_swiftly() {
+    echo "Installing Swift with Swiftly..."
+    local workdir
+    local status
+    workdir="$(mktemp -d)"
+    (
+        cd "$workdir"
+        curl -fL -O "https://download.swift.org/swiftly/linux/swiftly-$(uname -m).tar.gz"
+        tar zxf "swiftly-$(uname -m).tar.gz"
+        ./swiftly init --quiet-shell-followup
+    )
+    status=$?
+    rm -rf "$workdir"
+    return "$status"
+}
+
+install_swift_tarball_fallback() {
+    local swift_version="6.3.2"
+    local ubuntu_version
+    local ubuntu_id
+    local arch
+    local platform
+    local filename
+    local url
+    local install_root="$HOME/.local/share/swift-toolchains"
+    local install_dir="$install_root/swift-$swift_version-RELEASE"
+
+    ubuntu_version="$(. /etc/os-release && printf "%s" "$VERSION_ID")"
+    ubuntu_id="${ubuntu_version/./}"
+    arch="$(uname -m)"
+
+    case "$arch" in
+        aarch64|arm64)
+            platform="ubuntu${ubuntu_id}-aarch64"
+            filename="swift-$swift_version-RELEASE-ubuntu${ubuntu_version}-aarch64.tar.gz"
+            ;;
+        x86_64)
+            platform="ubuntu${ubuntu_id}"
+            filename="swift-$swift_version-RELEASE-ubuntu${ubuntu_version}.tar.gz"
+            ;;
+        *)
+            echo "error: unsupported Swift fallback architecture: $arch" >&2
+            return 1
+            ;;
+    esac
+
+    case "$ubuntu_version" in
+        22.04|24.04)
+            ;;
+        *)
+            echo "error: Swift tarball fallback supports Ubuntu 22.04 or 24.04 WSL; found $ubuntu_version." >&2
+            return 1
+            ;;
+    esac
+
+    url="https://download.swift.org/swift-$swift_version-release/${platform}/swift-$swift_version-RELEASE/${filename}"
+    echo "Installing Swift $swift_version fallback tarball for Ubuntu $ubuntu_version/$arch..."
+
+    local workdir
+    local status
+    workdir="$(mktemp -d)"
+    (
+        cd "$workdir"
+        curl -fL -O "$url"
+        tar zxf "$filename"
+        mkdir -p "$install_root"
+        rm -rf "$install_dir"
+        extracted_dir="$(find . -maxdepth 1 -type d -name "swift-$swift_version-RELEASE-ubuntu${ubuntu_version}*" -print -quit)"
+        if [[ -z "$extracted_dir" ]]; then
+            echo "error: could not find extracted Swift toolchain directory." >&2
+            exit 1
+        fi
+        mv "$extracted_dir" "$install_dir"
+        ln -sfn "$install_dir" "$install_root/current"
+    )
+    status=$?
+    rm -rf "$workdir"
+    if [[ "$status" != "0" ]]; then
+        return "$status"
+    fi
+
+    export PATH="$install_root/current/usr/bin:$PATH"
+    add_line_once "$HOME/.bashrc" "swift-toolchains/current/usr/bin" \
+        'export PATH="$HOME/.local/share/swift-toolchains/current/usr/bin:$PATH"'
+}
+
 if [[ "$SKIP_SWIFT" == "0" ]]; then
+    source_installed_swift
     if command -v swift >/dev/null 2>&1; then
         echo "Swift is already installed:"
         swift --version
     else
-        echo "Installing Swift with Swiftly..."
-        workdir="$(mktemp -d)"
-        trap 'rm -rf "$workdir"' EXIT
-        (
-            cd "$workdir"
-            curl -L -O "https://download.swift.org/swiftly/linux/swiftly-$(uname -m).tar.gz"
-            tar zxf "swiftly-$(uname -m).tar.gz"
-            ./swiftly init --quiet-shell-followup
-        )
-    fi
-
-    if [[ -f "${SWIFTLY_HOME_DIR:-$HOME/.local/share/swiftly}/env.sh" ]]; then
-        # shellcheck disable=SC1090
-        . "${SWIFTLY_HOME_DIR:-$HOME/.local/share/swiftly}/env.sh"
+        if install_swift_with_swiftly; then
+            source_installed_swift
+        else
+            echo "warning: Swiftly failed; falling back to the official Swift tarball." >&2
+            install_swift_tarball_fallback
+        fi
     fi
 
     if [[ -f "$HOME/.local/share/swiftly/env.sh" ]] && ! grep -Fq ".local/share/swiftly/env.sh" "$HOME/.bashrc" 2>/dev/null; then
