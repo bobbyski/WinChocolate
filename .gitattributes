@@ -1,0 +1,30 @@
+# Line endings across a Windows <-> macOS/Linux handoff.
+#
+# This repo is edited on Windows and run on macOS/Linux (docker). A shell
+# script checked out with CRLF fails on the Unix side with a confusing
+# `\r: command not found` or `bad interpreter` — so pin the executable and
+# source text to LF regardless of the checking-out platform's autocrlf.
+#
+# Git already normalized these by default here; this makes it a guarantee
+# rather than a coincidence.
+
+* text=auto
+
+*.sh    text eol=lf
+*.swift text eol=lf
+*.c     text eol=lf
+*.h     text eol=lf
+*.yml   text eol=lf
+*.md    text eol=lf
+Dockerfile text eol=lf
+module.modulemap text eol=lf
+
+# Windows-only entry points stay CRLF — cmd.exe is happier and they never run
+# on the Unix side.
+*.bat   text eol=crlf
+*.ps1   text eol=crlf
+
+# Binary assets: never touch.
+*.png   binary
+*.bmp   binary
+*.ico   binary

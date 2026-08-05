@@ -31,6 +31,23 @@ for sub in LinChocolate Demo; do
 done
 echo "copied: $(du -sh "$DST_ROOT" 2>/dev/null | cut -f1)"
 
+# The Windows checkout materializes RealDemo's symlinks as one-line TEXT files
+# (git without core.symlinks), so the tar copy lands them as text and a
+# RealDemo build would try to compile a path string as Swift. Recreate them as
+# real links. Guarded hard: only files small enough to be a path, whose content
+# matches the expected ../..-into-Demo shape, are touched.
+for f in "$DST_ROOT/LinChocolate/Sources/RealDemo"/*.swift; do
+    [[ -L "$f" ]] && continue
+    [[ $(wc -c < "$f") -lt 200 ]] || continue
+    target=$(tr -d '\r\n' < "$f")
+    case "$target" in
+    ../*Demo/DemoApplication/*.swift)
+        rm "$f" && ln -s "$target" "$f"
+        echo "relinked: $(basename "$f") -> $target"
+        ;;
+    esac
+done
+
 echo
 echo "=== 2. build on native fs ==="
 cd "$DST_ROOT/LinChocolate" || exit 1
