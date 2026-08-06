@@ -628,6 +628,7 @@ public final class GTKNativeControlBackend: NativeControlBackend {
     /// Presents the window (`gtk_window_present`).
     public func showWindow(_ handle: NativeHandle) {
         guard let w = widget(handle) else { return }
+        installPendingMainMenu(on: handle)
         // Realize before mapping so the surface exists and GTK can measure the
         // window, then map it.
         // Re-presenting an ALREADY-SHOWN window (the demo's inspector panel is
@@ -3118,7 +3119,16 @@ public final class GTKNativeControlBackend: NativeControlBackend {
     }
 
     /// Whether `view` draws in a top-left (flipped) coordinate space.
-    func isViewFlipped(_ view: UInt) -> Bool { flippedViews.contains(view) }
+    func isViewFlipped(_ view: UInt) -> Bool {
+        // Read only by the draw trampoline, to decide whether Cairo needs the
+        // Y-axis flip that lets bottom-left AppKit drawing code work. The
+        // shared core always authors in top-left device coordinates (it grew up
+        // on GDI), so a view it draws needs no flip — with one, the pill shapes
+        // survived because a rounded rect is vertically symmetric, but every
+        // glyph came out mirrored. Layout's own notion of flipped-ness is
+        // `flippedViews`, which this deliberately does not disturb.
+        flippedViews.contains(view) || coreSeam.topLeftDrawing.contains(view)
+    }
 
     /// The magnification applied to `view`'s custom drawing (1 = no zoom).
     func viewMagnification(_ view: UInt) -> Double { viewMagnifications[view] ?? 1 }
@@ -3195,7 +3205,77 @@ public final class GTKNativeControlBackend: NativeControlBackend {
         case .textView:  gtk_text_buffer_set_text(gtk_text_view_get_buffer(asTextView(w)), text, -1)
         case .box:       gtk_frame_set_label(asFrame(w), text)
         case .window:    gtk_window_set_title(asWindow(w), text)
+        case .view:      setViewText(text, for: handle)
         default: break
+        }
+    }
+
+    /// Displays `text` on a plain view.
+    ///
+    /// A Win32 view is a static control, so the shared core sets text straight
+    /// on one and expects it to show — that is how a toolbar item's icon-and-
+    /// label tile renders (`NSToolbarCompositeItemView.updateNativeText`).
+    /// GTK's view is a GtkOverlay with a drawing area and a child area, and
+    /// neither displays text, so the toolbar came up as a row of blank tiles.
+    /// A centered label overlaid on the view is the missing piece.
+    private func setViewText(_ text: String, for handle: NativeHandle) {
+        let raw = handle.rawValue
+        guard let overlay = widgets[raw] else { return }
+
+        // Drop whatever this view showed before; the core re-sends the whole
+        // description on every change.
+        if let old = coreSeam.viewTextLabels[raw] {
+            gtk_widget_unparent(UnsafeMutablePointer<GtkWidget>(old))
+            coreSeam.viewTextLabels[raw] = nil
+        }
+
+        guard let content = viewTextContent(text) else { return }
+        gtk_widget_set_halign(content, GTK_ALIGN_CENTER)
+        gtk_widget_set_valign(content, GTK_ALIGN_CENTER)
+        gtk_overlay_add_overlay(overlay, content)
+        coreSeam.viewTextLabels[raw] = OpaquePointer(content)
+    }
+
+    /// Builds the widget a plain view's text asks for, or nil for nothing.
+    ///
+    /// A toolbar item tile does not send a label — it sends a tab-separated
+    /// description (`NSToolbarCompositeItemView.nativeText`) that the Win32
+    /// side decodes into an icon and a caption. Rendering it verbatim printed
+    /// the image's file path across the toolbar, so it is decoded here too.
+    private func viewTextContent(_ text: String) -> UnsafeMutablePointer<GtkWidget>? {
+        let fields = text.components(separatedBy: "\t")
+        guard fields.first == "__WinChocolateToolbarItem" else {
+            let plain = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            // `NSToolbarSeparatorView` marks itself with a bare "separator";
+            // it is a drawn bar, not a caption.
+            guard !plain.isEmpty, plain != "separator" else { return nil }
+            return gtk_label_new(plain)
+        }
+
+        let title = fields.count > 1 ? fields[1] : ""
+        let imageName = fields.count > 2 ? fields[2] : ""
+        let showItem = fields.count > 3 && fields[3] == "1"
+        let showLabel = fields.count > 4 && fields[4] == "1"
+        let labelBeside = fields.count > 5 && fields[5] == "beside"
+
+        let image: UnsafeMutablePointer<GtkWidget>? = (showItem && !imageName.isEmpty)
+            ? (FileManager.default.fileExists(atPath: imageName)
+                ? gtk_image_new_from_file(imageName)
+                : gtk_image_new_from_icon_name(imageName))
+            : nil
+        image.map { gtk_image_set_pixel_size(OpaquePointer($0), 18) }
+        let label: UnsafeMutablePointer<GtkWidget>? = (showLabel && !title.isEmpty)
+            ? gtk_label_new(title) : nil
+
+        switch (image, label) {
+        case let (image?, label?):
+            let box = gtk_box_new(labelBeside ? GTK_ORIENTATION_HORIZONTAL : GTK_ORIENTATION_VERTICAL, 2)!
+            gtk_box_append(asBox(OpaquePointer(box)), image)
+            gtk_box_append(asBox(OpaquePointer(box)), label)
+            return box
+        case let (image?, nil):  return image
+        case let (nil, label?):  return label
+        default:                 return nil
         }
     }
     /// Updates a control's frame, re-placing it inside its parent and re-placing its children.
@@ -4899,6 +4979,15 @@ final class CoreSeamState {
     var measuringLabel: OpaquePointer?
     /// Single-content parents (frames, scrolled windows) that already have one.
     var contentAssigned: Set<UInt> = []
+    /// Views whose draw handler came from the shared core, which authors in
+    /// top-left device coordinates and so must not get Cairo's axis flip.
+    var topLeftDrawing: Set<UInt> = []
+    /// Each window's direct children, in the order the core realized them.
+    var windowChildren: [UInt: [UInt]] = [:]
+    /// The menu bar the core handed over before any window existed.
+    var pendingMainMenu: [NativeMenuSpec]?
+    /// Labels added to plain views that the core asked to display text.
+    var viewTextLabels: [UInt: OpaquePointer] = [:]
 }
 
 extension GTKNativeControlBackend {
@@ -4914,12 +5003,15 @@ extension GTKNativeControlBackend {
         guard let parent else { return child }
         switch kinds[parent.rawValue] {
         case .window:
-            // A window reaches its content through `setContentView`, not
-            // `addSubview`. Sending it to `addSubview` is how the merged demo
-            // first came up empty: a window has no child area, so every control
-            // was dropped at the door. Windows do replace their content, so
-            // this is not once-only.
-            setContentView(child, for: parent)
+            // A window can take MORE than one direct child: `NSWindow.realizeNativePeer`
+            // realizes the toolbar host first and the content view second, both
+            // with the window as parent. `setContentView` holds a single slot,
+            // so sending both there let the content view evict the toolbar —
+            // which is why the merged demo had an empty band across the top.
+            //
+            // The window's GTK child is already the vertical box this wants:
+            // [toolbar][content], exactly AppKit's stack.
+            addWindowChild(child, to: parent)
         case .box, .scrollView:
             // GtkFrame and GtkScrolledWindow hold exactly ONE child, while the
             // AppKit views they stand in for hold several — an NSScrollView has
@@ -4936,6 +5028,38 @@ extension GTKNativeControlBackend {
             addSubview(child, to: parent)
         }
         return child
+    }
+
+    /// Stacks `child` in `window`'s vertical box, below anything already there.
+    ///
+    /// The last child added expands to fill — that is the content view, since
+    /// the toolbar host is realized first and wants only its own height. The
+    /// window's resize and paint bookkeeping follows the expanding child.
+    private func addWindowChild(_ child: NativeHandle, to window: NativeHandle) {
+        guard let box = windowBoxes[window.rawValue], let c = widget(child) else { return }
+        let frame = frames[child.rawValue] ?? .zero
+        gtk_widget_set_size_request(asWidget(c), Int32(frame.width), Int32(frame.height))
+
+        // Whatever expanded before now sits at its natural height, and stops
+        // standing in for the window's content size. `noteContentDraw` reports
+        // a window resize from whichever view owns that mapping, so leaving the
+        // toolbar host (1120x40) in it alongside the content view (1120x720)
+        // made the two alternately claim to BE the window: every draw pass
+        // looked like a resize, the core re-laid the toolbar out, and the item
+        // views were rebuilt forever — 618 subview adds in a 14-second run.
+        for previous in coreSeam.windowChildren[window.rawValue] ?? [] {
+            guard let w = widgets[previous] else { continue }
+            gtk_widget_set_vexpand(asWidget(w), gboolean(0))
+            contentViewOwners.removeValue(forKey: previous)
+        }
+        gtk_widget_set_vexpand(asWidget(c), gboolean(1))
+        gtk_widget_set_hexpand(asWidget(c), gboolean(1))
+        gtk_box_append(asBox(box), asWidget(c))
+
+        coreSeam.windowChildren[window.rawValue, default: []].append(child.rawValue)
+        parents[child.rawValue] = window.rawValue
+        windowContents[window.rawValue] = c
+        contentViewOwners[child.rawValue] = window.rawValue
     }
 
     // MARK: Creation
@@ -5042,10 +5166,15 @@ extension GTKNativeControlBackend {
     public func createDatePicker(date: Date, minDate: Date?, maxDate: Date?,
                                  style: NSDatePicker.Style, frame: NSRect,
                                  parent: NativeHandle?) -> NativeHandle {
-        let handle = attach(createDatePicker(date: date, frame: frame), to: parent)
+        // Style FIRST, parent second: `setDatePickerGraphical` swaps the widget
+        // for a calendar or a compact entry, and that swap is only safe while
+        // the widget has no parent. Attaching first left the old widget
+        // unparented and freed while the handle still pointed at it, so the
+        // next `setToolTip` walked into freed memory.
+        let handle = createDatePicker(date: date, frame: frame)
         setDatePickerGraphical(style == .clockAndCalendar, for: handle)
         setDateRange(min: minDate, max: maxDate, for: handle)
-        return handle
+        return attach(handle, to: parent)
     }
 
     /// Creates an image view. `description` is Win32's accessible name, which
@@ -5808,6 +5937,7 @@ extension GTKNativeControlBackend {
     /// GTK's immediate-mode Cairo one.
     public func registerDrawAction(for handle: NativeHandle,
                                    action: @escaping (NativeDrawingContext, NSRect) -> Void) {
+        coreSeam.topLeftDrawing.insert(handle.rawValue)
         setDrawHandler(for: handle) { context, width, height in
             action(GTKCoreDrawingContext(context),
                    NSRect(x: 0, y: 0, width: CGFloat(width), height: CGFloat(height)))
@@ -5865,7 +5995,20 @@ extension GTKNativeControlBackend {
                                                   action: { _ = item.performAction() })
                            })
         }
-        guard let window = firstWindowHandle() else { return }
+        // `NSApplication.mainMenu` is usually set during launch, before the
+        // first window is created — and GTK installs a menu bar ON a window.
+        // Hold it until there is one rather than dropping it.
+        guard let window = firstWindowHandle() else {
+            coreSeam.pendingMainMenu = specs
+            return
+        }
+        installMenuBar(specs, on: window)
+    }
+
+    /// Installs a menu bar that arrived before any window existed.
+    func installPendingMainMenu(on window: NativeHandle) {
+        guard let specs = coreSeam.pendingMainMenu else { return }
+        coreSeam.pendingMainMenu = nil
         installMenuBar(specs, on: window)
     }
 
