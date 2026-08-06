@@ -828,6 +828,9 @@ open class NSView: NSResponder {
         nativeHandle = handle
         realizedBackend = backend
         backend.setHidden(isHidden, for: handle)
+        // Before any child is placed: a backend that positions children from
+        // AppKit frames has to know which edge `origin.y` is measured from.
+        backend.setViewFlipped(isFlipped, for: handle)
         backend.setBackgroundColor(winBackgroundColor, for: handle)
         backend.setToolTip(toolTip, for: handle)
         // Replay an explicit accessibility label set before realization so the

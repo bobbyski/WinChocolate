@@ -1,5 +1,8 @@
-import Foundation
-
+// Foundation comes from the C1 seam (Runtime/FoundationBridge.swift), not
+// from a direct import: on Windows that would pull in a real Foundation the
+// toolchain cannot compile, and its geometry types would collide with
+// WinFoundation's. This file arrived from the LinChocolate tree, where a
+// plain `import Foundation` was correct.
 /// Converts between AppKit's and GTK's view coordinate spaces.
 ///
 /// ```text

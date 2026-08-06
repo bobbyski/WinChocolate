@@ -318,6 +318,16 @@ extension NativeControlBackend {
     /// bare message loop. The Win32 backend overrides this.
     public func makeRunLoopPump() -> RunLoopPlatformPump? { nil }
 
+    /// Default: the backend's own coordinate space already matches, so a view's
+    /// `isFlipped` needs no announcement.
+    ///
+    /// Win32 is this case — GDI is top-left, and the core does the AppKit
+    /// conversion before a frame ever reaches the backend. A backend that
+    /// positions children itself from AppKit frames (GTK) needs to be told,
+    /// because the same `origin.y` means "from the top" in a flipped view and
+    /// "from the bottom" in an unflipped one.
+    public func setViewFlipped(_ flipped: Bool, for handle: NativeHandle) {}
+
     /// Default: a backend that does not surface double-clicks ignores the
     /// registration (the drawn-cell table path dispatches its own).
     public func registerTableDoubleClickAction(for handle: NativeHandle, action: @escaping () -> Void) {}
@@ -532,6 +542,11 @@ public protocol NativeControlBackend: AnyObject {
 
     /// Creates a native view-like child.
     func createView(frame: NSRect, parent: NativeHandle?) -> NativeHandle
+
+    /// Tells the backend whether this view's children are positioned from its
+    /// top edge (`isFlipped`) or its bottom edge, so a backend that lays out
+    /// from AppKit frames converts `origin.y` the right way round.
+    func setViewFlipped(_ flipped: Bool, for handle: NativeHandle)
 
     /// Creates a native push button child.
     func createButton(title: String, frame: NSRect, parent: NativeHandle?, isBordered: Bool) -> NativeHandle

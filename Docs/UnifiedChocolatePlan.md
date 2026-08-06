@@ -353,6 +353,68 @@ all**. So the original §3.2 reading — "the GTK backend must be re-fronted ont
 core's protocol, not merely widened" — was the correct one, and the 2026-08-05
 follow-up that retracted it should itself be treated as retracted.
 
+### The merged demo runs, 2026-08-06
+
+The re-fronting is done and the frozen demo runs on the merged tree: all 11
+pages, **0 crashes and 0 GTK criticals**, with the menu bar, the toolbar
+(icons + labels), and Cairo drawing all working.
+
+```bash
+./run-linux.sh
+```
+
+The 156 requirements are answered by a `// MARK: - The core seam` extension at
+the end of `Native/GTK/GTKNativeControlBackend.swift`, which translates the
+core's vocabulary onto the GTK methods above it rather than rewriting them.
+Where GTK4 genuinely lacks a concept (window lowering, per-widget content
+scale) the method says so in its doc comment instead of quietly doing nothing.
+
+**Every bug the bring-up found was a seam mismatch, not a missing feature** —
+worth knowing, because it predicts what the rest of Phase 3 will look like:
+
+| Symptom | Cause |
+|---|---|
+| Window opened empty | The core creates its content view with `parent: window`; GTK reaches window content through `setContentView`, not `addSubview`, so every control was dropped at the door |
+| Crash on launch, ~200 criticals | AppKit puts target/action on `NSControl`, so the core registers one for *every* control; GTK's `registerAction` connected `clicked`, which only `GtkButton` has. GTK4's `GtkCheckButton` is no longer a `GtkButton` either — it needs `toggled` |
+| Crash in `setFrame` | `GtkFrame`/`GtkScrolledWindow` hold ONE child, but an `NSScrollView` has a document view *and* a header strip; the second evicted the first and GTK freed it |
+| Glyphs drawn mirrored | The draw trampoline flips Cairo's Y for "unflipped" views so bottom-left AppKit drawing works — but the shared core always authors top-left. Pills survived because a rounded rect is vertically symmetric |
+| Toolbar band empty | The window realizes the toolbar host *and* the content view, both with `parent: window` — one content slot, two children |
+| 618 subview adds in 14s | `noteContentDraw` reports a window resize from whichever view owns `contentViewOwners`; with both window children mapped, the toolbar (1120×40) and content (1120×720) alternately claimed to *be* the window, so every draw looked like a resize |
+| Blank toolbar tiles | The core sets text on a plain `.view` and expects it to display — a Win32 view is a static control. Worse, the payload is a tab-separated `__WinChocolateToolbarItem` description that has to be decoded into an icon and a caption |
+| `GTK_IS_BOX` critical | The core realizes an `NSLevelIndicator` as a *progress bar*, so the GTK level widget's content builder must not run against it |
+| **Every page laid out upside down** | `setViewFlipped` was a GTK-only method with **no counterpart in the core protocol**, so the merged core never announced `NSView.isFlipped`. `flippedViews` stayed empty and `placement` applied the bottom-left→top-left conversion to every parent, mirroring the whole window vertically. Now a protocol requirement with a no-op default (Win32 already converts before the frame reaches the backend), announced by `NSView.realizeNativePeer` before any child is placed |
+
+The last one is the shape to watch for in the rest of Phase 3: **a GTK method with
+no protocol counterpart is not dead code — it is a signal the core cannot send.**
+Every one of the ~104 GTK-only members is a candidate. Note also that layout and
+drawing needed *different* answers here: the core positions children per AppKit's
+`isFlipped`, but always *draws* top-left (it is GDI-shaped), which is why
+`isViewFlipped` serves the draw trampoline while `flippedViews` serves placement.
+
+Compare against the pre-merge tree when a layout looks wrong — it is the ground
+truth that turned "views are flipped" into an exact vertical mirror in one step:
+
+```bash
+cd LinChocolate && ./run-linux.sh RealDemo
+```
+
+**Windows stayed compiling, and this was checked rather than assumed.** With no
+Windows toolchain to hand, the core is built down its *Windows* Foundation
+branch on Linux — `USE_WIN_FOUNDATION` forced on, WinFoundation unconditional,
+GTK dropped — which exercises everything except the `#if os(Windows)` blocks:
+
+```bash
+swift build --product WinChocolate   # with the Windows-branch manifest
+```
+
+That caught a real break: `Geometry/CoordinateSpace.swift`, moved in from the
+LinChocolate tree, still carried a plain `import Foundation`. Correct where it
+came from; on Windows it would pull in a Foundation the toolchain cannot compile
+and collide with WinFoundation's geometry. 98 errors, all from that one file.
+With it removed the Win32-shaped core compiles with **0 compile errors** (the
+only failures left are Win32 link symbols, which Linux naturally cannot resolve).
+Worth keeping as the standing check on any change to the shared core.
+
 **This does not mean writing 156 new GTK methods.** The pool of ~104 GTK-only
 members is where most of the behavior already lives, under a different name and
 shape (`setClickAction` vs `registerMouseDownAction`). The job is largely

@@ -5432,8 +5432,18 @@ extension GTKNativeControlBackend {
     }
 
     /// Makes the level indicator editable within a range.
+    ///
+    /// The shared core realizes a level indicator as a PROGRESS BAR — see
+    /// `NSLevelIndicator.realizeNativePeer`, which sets a progress range and
+    /// value — so the GTK level widget's content builder must not run against
+    /// it. `setLevelIndicatorRange` rebuilds that content (stars, segments),
+    /// and against a `GtkProgressBar` it tripped `GTK_IS_BOX` on every launch.
+    /// Click-to-set editing belongs to the GTK level widget, so it applies only
+    /// when the peer really is one.
     public func setLevelIndicatorEditable(_ editable: Bool, minValue: Double, maxValue: Double,
                                           for handle: NativeHandle) {
+        ranges[handle.rawValue] = (minValue, maxValue)
+        guard kinds[handle.rawValue] == .level else { return }
         setLevelIndicatorRange(min: minValue, max: maxValue, for: handle)
         setLevelIndicatorEditable(editable, for: handle)
     }
