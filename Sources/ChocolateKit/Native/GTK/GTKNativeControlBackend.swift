@@ -22,6 +22,10 @@ import Foundation
 public final class GTKNativeControlBackend: NativeControlBackend {
 
     private var nextRaw: UInt = 1
+    /// State the core-protocol seam needs (see "The core seam" at the end of
+    /// this file). One property, because Swift cannot add stored properties in
+    /// an extension and the class body has enough dictionaries already.
+    let coreSeam = CoreSeamState()
     private var widgets: [UInt: OpaquePointer] = [:]   // handle -> GtkWidget*
     private var kinds: [UInt: InMemoryNativeControlBackend.Kind] = [:]
     private var frames: [UInt: NSRect] = [:]
@@ -3565,10 +3569,42 @@ public final class GTKNativeControlBackend: NativeControlBackend {
     // MARK: Events
     /// Wires the widget's `clicked` signal to `action`.
     public func registerAction(for handle: NativeHandle, action: @escaping () -> Void) {
+        // AppKit puts target/action on `NSControl`, so the shared core registers
+        // one for EVERY control — label, slider, progress bar and all. GTK has
+        // no such universal signal: "clicked" belongs to GtkButton alone, and
+        // connecting it to a GtkDropDown or GtkLabel logs
+        // `signal 'clicked' is invalid for instance …` and then walks off the
+        // end of the signal table. So each kind gets the signal it actually
+        // has, and kinds with no activation signal get none.
+        let signal: String
+        switch kinds[handle.rawValue] {
+        case .button:
+            signal = "clicked"
+        case .checkbox, .radio:
+            // GTK4's GtkCheckButton is no longer a GtkButton, so it has no
+            // "clicked" — its activation signal is "toggled".
+            signal = "toggled"
+        case .textField, .secureField, .searchField:
+            signal = "activate"          // Enter, as on an AppKit text field
+        case .slider:
+            signal = "value-changed"     // GtkRange's, same callback shape
+        case .comboBox:
+            // The combo's activation comes from its internal entry.
+            guard let entry = comboEntries[handle.rawValue] else { return }
+            let box = ActionBox(action)
+            g_signal_connect_data(
+                UnsafeMutableRawPointer(entry), "activate",
+                unsafeBitCast(gtkActionTrampoline, to: GCallback.self),
+                Unmanaged.passRetained(box).toOpaque(), boxRelease, GConnectFlags(rawValue: 0)
+            )
+            return
+        default:
+            return
+        }
         guard let w = widget(handle) else { return }
         let box = ActionBox(action)
         g_signal_connect_data(
-            UnsafeMutableRawPointer(w), "clicked",
+            UnsafeMutableRawPointer(w), signal,
             unsafeBitCast(gtkActionTrampoline, to: GCallback.self),
             Unmanaged.passRetained(box).toOpaque(), boxRelease, GConnectFlags(rawValue: 0)
         )
@@ -3597,6 +3633,15 @@ public final class GTKNativeControlBackend: NativeControlBackend {
                 unsafeBitCast(gtkTextBufferChangedTrampoline, to: GCallback.self),
                 Unmanaged.passRetained(box).toOpaque(), boxRelease, GConnectFlags(rawValue: 0)
             )
+            return
+        }
+        // "changed" is GtkEditable's. A label has no editable text, and the
+        // core asks every text-ish control for change notifications, so only
+        // the kinds that really are editable get connected.
+        switch kinds[handle.rawValue] {
+        case .textField, .secureField, .searchField, .comboBox, .tokenField:
+            break
+        default:
             return
         }
         // A combo emits text changes on its internal entry, not the combo itself.
@@ -4786,6 +4831,1369 @@ private let gtkPaintTraceTrampoline: @convention(c) (UnsafeMutableRawPointer?, g
     guard let userData else { return }
     let box = Unmanaged<PaintTraceBox>.fromOpaque(userData).takeUnretainedValue()
     box.backend?.tracePaint(box.raw, box.event)
+}
+
+// MARK: - The core seam
+//
+// Unified Chocolate Phase 3: everything above `Native/` calls the shared
+// `NativeControlBackend`, and this is where the GTK widget code answers it.
+//
+// The two halves grew up apart. The core registers callbacks and passes AppKit
+// values (`registerMouseDownAction(for:action: (NSEvent) -> Void)`,
+// `setButtonState(_: NSControl.StateValue, …)`); GTK's own layer sets one
+// closure per widget and passes plain numbers (`setMouseHandler`,
+// `setButtonState(_: Bool, …)`). Neither shape is wrong, so rather than rewrite
+// 4,700 lines of working GTK code, this extension is the translation: the
+// core's 156 requirements on the left, the GTK methods above on the right.
+//
+// Where GTK4 genuinely has no equivalent, the method says so in its doc comment
+// instead of quietly doing nothing — an accepted-and-ignored stub is the bug
+// class this project keeps finding, so an honest gap is documented as a gap.
+
+/// State the core seam needs that the GTK layer above has no reason to keep.
+///
+/// One object, held by a single stored property on the backend, because Swift
+/// cannot add stored properties in an extension and the class body should not
+/// grow another thirty dictionaries.
+final class CoreSeamState {
+    /// Per-widget core mouse callbacks, multiplexed onto GTK's single handler.
+    struct MouseActions {
+        var down: ((NSEvent) -> Void)?
+        var up: ((NSEvent) -> Void)?
+        var moved: ((NSEvent) -> Void)?
+        var dragged: ((NSEvent) -> Void)?
+        var left: (() -> Void)?
+        var rightDown: ((NSEvent) -> Void)?
+        var rightUp: ((NSEvent) -> Void)?
+        var otherDown: ((NSEvent) -> Void)?
+        var otherUp: ((NSEvent) -> Void)?
+        var scroll: ((NSEvent) -> Void)?
+    }
+    var mouse: [UInt: MouseActions] = [:]
+    /// Widgets whose GTK mouse handler has already been installed.
+    var mouseInstalled: Set<UInt> = []
+
+    /// Live GLib timer sources, keyed by the token handed back to the core.
+    var timers: [UInt: guint] = [:]
+    var nextTimerID: UInt = 1
+
+    /// Last known table selection, mirrored from GTK's selection signal so the
+    /// core's synchronous `tableSelectedRow(for:)` has an answer.
+    var tableSelection: [UInt: [Int]] = [:]
+    var tableClickedRow: [UInt: Int] = [:]
+    var tableClickedColumn: [UInt: Int] = [:]
+
+    /// Toolbar items staged by `createToolbar`/`setToolbarItems` until a window
+    /// is known to install them on.
+    var toolbarItems: [UInt: [NativeToolbarItem]] = [:]
+    var toolbarActions: [UInt: (String) -> Void] = [:]
+    var toolbarWindow: [UInt: NativeHandle] = [:]
+
+    /// The code passed to `stopModal(withCode:)`, read back by `runModal(for:)`.
+    var modalCode: Int = 0
+    /// Windows currently minimized (GTK4 has no "is minimized" query).
+    var minimizedWindows: Set<UInt> = []
+    /// Bumped on every clipboard write, for `clipboardChangeCount()`.
+    var clipboardChangeCount: Int = 0
+    /// A parentless label kept only to build Pango layouts for text measurement.
+    var measuringLabel: OpaquePointer?
+    /// Single-content parents (frames, scrolled windows) that already have one.
+    var contentAssigned: Set<UInt> = []
+}
+
+extension GTKNativeControlBackend {
+
+    // MARK: Handles and parenting
+
+    /// Adds `child` to `parent` when the core supplied one.
+    ///
+    /// Every `create…` requirement in the core takes a `parent:`; the GTK
+    /// methods take none and expect a separate `addSubview`. This is that
+    /// difference, applied once.
+    private func attach(_ child: NativeHandle, to parent: NativeHandle?) -> NativeHandle {
+        guard let parent else { return child }
+        switch kinds[parent.rawValue] {
+        case .window:
+            // A window reaches its content through `setContentView`, not
+            // `addSubview`. Sending it to `addSubview` is how the merged demo
+            // first came up empty: a window has no child area, so every control
+            // was dropped at the door. Windows do replace their content, so
+            // this is not once-only.
+            setContentView(child, for: parent)
+        case .box, .scrollView:
+            // GtkFrame and GtkScrolledWindow hold exactly ONE child, while the
+            // AppKit views they stand in for hold several — an NSScrollView has
+            // a document view *and* a header strip. Handing the second child to
+            // the same setter unparents the first, and GTK drops its last
+            // reference, leaving a dangling widget that crashed the next
+            // `setFrame`. Only the first child takes the content slot.
+            if coreSeam.contentAssigned.insert(parent.rawValue).inserted {
+                setContentView(child, for: parent)
+            } else {
+                addSubview(child, to: parent)
+            }
+        default:
+            addSubview(child, to: parent)
+        }
+        return child
+    }
+
+    // MARK: Creation
+
+    /// Creates a plain container view.
+    public func createView(frame: NSRect, parent: NativeHandle?) -> NativeHandle {
+        attach(createView(frame: frame), to: parent)
+    }
+
+    /// Creates a window. `usesMainMenu` is Win32's menu-bar-in-the-frame flag;
+    /// GTK installs menus per window through `installMenuBar`, so the shared
+    /// core's `installMainMenu` does that work instead.
+    public func createWindow(title: String, frame: NSRect, styleMask: NSWindow.StyleMask,
+                             usesMainMenu: Bool) -> NativeHandle {
+        createWindow(title: title, frame: frame, styleMask: styleMask)
+    }
+
+    /// Creates a push button. A non-bordered button drops GTK's frame.
+    public func createButton(title: String, frame: NSRect, parent: NativeHandle?,
+                             isBordered: Bool) -> NativeHandle {
+        let handle = attach(createButton(title: title, frame: frame), to: parent)
+        if !isBordered { setButtonBezelFlat(true, for: handle) }
+        return handle
+    }
+
+    /// Creates a checkbox.
+    public func createCheckbox(title: String, frame: NSRect, parent: NativeHandle?) -> NativeHandle {
+        attach(createCheckbox(title: title, frame: frame), to: parent)
+    }
+
+    /// Creates a radio button.
+    public func createRadioButton(title: String, frame: NSRect, parent: NativeHandle?) -> NativeHandle {
+        attach(createRadioButton(title: title, frame: frame), to: parent)
+    }
+
+    /// Creates a titled box.
+    public func createBox(title: String, frame: NSRect, parent: NativeHandle?) -> NativeHandle {
+        attach(createBox(title: title, frame: frame), to: parent)
+    }
+
+    /// Creates a text field. A non-editable, non-bordered field is a label on
+    /// GTK, which is also what AppKit's own label factory produces.
+    public func createTextField(text: String, frame: NSRect, parent: NativeHandle?,
+                                isEditable: Bool, isBordered: Bool,
+                                isMultiline: Bool) -> NativeHandle {
+        let handle: NativeHandle
+        if !isEditable && !isBordered {
+            handle = createLabel(text: text, frame: frame)
+        } else {
+            handle = createTextField(text: text, frame: frame)
+            setTextEditable(isEditable, for: handle)
+            setTextFieldBezeled(isBordered, for: handle)
+        }
+        return attach(handle, to: parent)
+    }
+
+    /// Creates a secure (password) text field.
+    public func createSecureTextField(text: String, frame: NSRect, parent: NativeHandle?) -> NativeHandle {
+        attach(createSecureTextField(text: text, frame: frame), to: parent)
+    }
+
+    /// Creates a multi-line text view.
+    public func createTextView(text: String, frame: NSRect, parent: NativeHandle?,
+                               isEditable: Bool, isRichText: Bool) -> NativeHandle {
+        let handle = attach(createTextView(text: text, frame: frame), to: parent)
+        setTextEditable(isEditable, for: handle)
+        return handle
+    }
+
+    /// Creates an editable combo box.
+    public func createComboBox(items: [String], text: String, frame: NSRect,
+                               parent: NativeHandle?) -> NativeHandle {
+        attach(createComboBox(items: items, text: text, frame: frame), to: parent)
+    }
+
+    /// Creates a pop-up button.
+    public func createPopUpButton(items: [String], selectedIndex: Int, frame: NSRect,
+                                  parent: NativeHandle?) -> NativeHandle {
+        attach(createPopUpButton(items: items, selectedIndex: selectedIndex, frame: frame), to: parent)
+    }
+
+    /// Creates a slider.
+    public func createSlider(value: Double, minValue: Double, maxValue: Double,
+                            frame: NSRect, parent: NativeHandle?) -> NativeHandle {
+        attach(createSlider(value: value, minValue: minValue, maxValue: maxValue, frame: frame),
+               to: parent)
+    }
+
+    /// Creates a stepper.
+    public func createStepper(value: Double, minValue: Double, maxValue: Double,
+                             increment: Double, frame: NSRect, parent: NativeHandle?) -> NativeHandle {
+        attach(createStepper(value: value, minValue: minValue, maxValue: maxValue,
+                             stepSize: increment, frame: frame), to: parent)
+    }
+
+    /// Creates a progress indicator.
+    public func createProgressIndicator(value: Double, minValue: Double, maxValue: Double,
+                                        frame: NSRect, parent: NativeHandle?) -> NativeHandle {
+        attach(createProgressIndicator(value: value, minValue: minValue, maxValue: maxValue,
+                                       frame: frame), to: parent)
+    }
+
+    /// Creates a date picker.
+    public func createDatePicker(date: Date, minDate: Date?, maxDate: Date?,
+                                 style: NSDatePicker.Style, frame: NSRect,
+                                 parent: NativeHandle?) -> NativeHandle {
+        let handle = attach(createDatePicker(date: date, frame: frame), to: parent)
+        setDatePickerGraphical(style == .clockAndCalendar, for: handle)
+        setDateRange(min: minDate, max: maxDate, for: handle)
+        return handle
+    }
+
+    /// Creates an image view. `description` is Win32's accessible name, which
+    /// GTK takes as the widget tooltip.
+    public func createImageView(description: String, imagePath: String?, frame: NSRect,
+                                parent: NativeHandle?) -> NativeHandle {
+        let handle = attach(createImageView(frame: frame), to: parent)
+        if let imagePath { setImagePath(imagePath, for: handle) }
+        return handle
+    }
+
+    /// Creates a tab view and its pages.
+    public func createTabView(items: [String], selectedIndex: Int, frame: NSRect,
+                              parent: NativeHandle?) -> NativeHandle {
+        let handle = attach(createTabView(frame: frame), to: parent)
+        setTabViewItems(items, selectedIndex: selectedIndex, for: handle)
+        return handle
+    }
+
+    /// Creates a scroll view.
+    public func createScrollView(frame: NSRect, parent: NativeHandle?, hasVerticalScroller: Bool,
+                                 hasHorizontalScroller: Bool) -> NativeHandle {
+        let handle = attach(createScrollView(frame: frame), to: parent)
+        setScrollerPolicy(vertical: hasVerticalScroller, horizontal: hasHorizontalScroller,
+                          for: handle)
+        return handle
+    }
+
+    /// Creates a standalone scroller.
+    public func createScroller(value: Double, knobProportion: Double, isVertical: Bool,
+                               frame: NSRect, parent: NativeHandle?) -> NativeHandle {
+        let handle = attach(createScroller(vertical: isVertical, frame: frame), to: parent)
+        setScrollerGeometry(value: value, knobProportion: knobProportion, for: handle)
+        return handle
+    }
+
+    /// Creates a table view with equal column widths.
+    public func createTableView(columns: [String], rows: [[String]], selectedRow: Int,
+                                frame: NSRect, parent: NativeHandle?) -> NativeHandle {
+        createTableView(columns: columns, columnWidths: [], rows: rows,
+                        selectedRow: selectedRow, frame: frame, parent: parent)
+    }
+
+    /// Creates a table view. GTK's column view sizes its own columns, so
+    /// `columnWidths` is accepted and left to the widget.
+    public func createTableView(columns: [String], columnWidths: [CGFloat], rows: [[String]],
+                                selectedRow: Int, frame: NSRect,
+                                parent: NativeHandle?) -> NativeHandle {
+        let handle = attach(createTableView(frame: frame), to: parent)
+        for title in columns { addTableColumn(title: title, editable: false, to: handle) }
+        setTableRows(rows, selectedRow: selectedRow, for: handle)
+        return handle
+    }
+
+    /// Creates a toolbar.
+    ///
+    /// The core models a toolbar as a control it creates and then fills; GTK
+    /// installs one on a window as a header bar. So this stages the items and
+    /// `setToolbarItems` performs the install once the window is known.
+    public func createToolbar(items: [NativeToolbarItem], frame: NSRect,
+                              parent: NativeHandle?) -> NativeHandle {
+        let handle = createView(frame: frame)
+        if let parent { coreSeam.toolbarWindow[handle.rawValue] = parent }
+        setHidden(true, for: handle)
+        setToolbarItems(items, for: handle)
+        return handle
+    }
+
+    // MARK: Values read back
+
+    /// The slider's current value.
+    public func sliderValue(for handle: NativeHandle) -> Double {
+        guard let w = widget(handle) else { return 0 }
+        return gtk_range_get_value(asRange(w))
+    }
+
+    /// The stepper's current value.
+    public func stepperValue(for handle: NativeHandle) -> Double {
+        stepperValues[handle.rawValue] ?? 0
+    }
+
+    /// The level indicator's current value.
+    public func levelIndicatorValue(for handle: NativeHandle) -> Double {
+        levelValues[handle.rawValue] ?? 0
+    }
+
+    /// The scroller's current value.
+    public func scrollerValue(for handle: NativeHandle) -> Double {
+        guard let adjustment = scrollerAdjustments[handle.rawValue] else { return 0 }
+        return gtk_adjustment_get_value(adjustment)
+    }
+
+    /// Which part of the scroller the user last touched.
+    ///
+    /// GTK's scrollbar does not report the hit part — the adjustment reports
+    /// only the resulting value — so every scroll reads as a knob drag, which
+    /// is what a GTK scrollbar drag actually is.
+    public func scrollerPart(for handle: NativeHandle) -> NativeScrollerPart { .knob }
+
+    /// The checkbox/radio state.
+    public func buttonState(for handle: NativeHandle) -> NSControl.StateValue {
+        guard let w = widget(handle) else { return .off }
+        switch kinds[handle.rawValue] {
+        case .checkbox, .radio:
+            return gtk_check_button_get_active(asCheckButton(w)) != 0 ? .on : .off
+        default:
+            return .off
+        }
+    }
+
+    /// The combo box's editable text.
+    public func comboBoxText(for handle: NativeHandle) -> String {
+        guard let entry = comboEntries[handle.rawValue],
+              let text = gtk_editable_get_text(entry) else { return "" }
+        return String(cString: text)
+    }
+
+    /// The pop-up button's selected index.
+    public func popUpButtonSelectedIndex(for handle: NativeHandle) -> Int {
+        guard let w = widget(handle) else { return -1 }
+        let selected = gtk_drop_down_get_selected(w)
+        return selected == GTK_INVALID_LIST_POSITION ? -1 : Int(selected)
+    }
+
+    /// The tab view's selected page index.
+    public func tabViewSelectedIndex(for handle: NativeHandle) -> Int {
+        guard let w = widget(handle) else { return 0 }
+        return Int(gtk_notebook_get_current_page(w))
+    }
+
+    /// The date picker's date.
+    public func datePickerDate(for handle: NativeHandle) -> Date? {
+        dateValues[handle.rawValue]
+    }
+
+    /// The table's selected row, or −1.
+    public func tableSelectedRow(for handle: NativeHandle) -> Int {
+        coreSeam.tableSelection[handle.rawValue]?.first ?? -1
+    }
+
+    /// Every selected row.
+    public func tableSelectedRows(for handle: NativeHandle) -> [Int] {
+        coreSeam.tableSelection[handle.rawValue] ?? []
+    }
+
+    /// The row the user last clicked, or −1.
+    public func tableClickedRow(for handle: NativeHandle) -> Int {
+        coreSeam.tableClickedRow[handle.rawValue] ?? -1
+    }
+
+    /// The column the user last clicked, or −1.
+    public func tableClickedColumn(for handle: NativeHandle) -> Int {
+        coreSeam.tableClickedColumn[handle.rawValue] ?? -1
+    }
+
+    /// The text view's selection as a location/length pair.
+    public func textSelection(for handle: NativeHandle) -> (location: Int, length: Int) {
+        guard let w = widget(handle) else { return (0, 0) }
+        var start: Int32 = 0, end: Int32 = 0
+        if gtk_editable_get_selection_bounds(w, &start, &end) != 0 {
+            return (Int(start), Int(end - start))
+        }
+        let position = gtk_editable_get_position(w)
+        return (Int(position), 0)
+    }
+
+    // MARK: Setters the core spells differently
+
+    /// Sets the checkbox/radio state. AppKit's `.mixed` has no GTK equivalent
+    /// on a plain check button, so it reads as on.
+    ///
+    /// AppKit puts `state` on every `NSButton`, including push buttons; GTK's
+    /// active flag belongs to `GtkCheckButton` alone, and handing it anything
+    /// else trips `GTK_IS_CHECK_BUTTON`. So the state only lands on the kinds
+    /// that have one.
+    public func setButtonState(_ state: NSControl.StateValue, for handle: NativeHandle) {
+        switch kinds[handle.rawValue] {
+        case .checkbox, .radio: setButtonState(state != .off, for: handle)
+        default: break
+        }
+    }
+
+    /// Sets the slider value.
+    public func setSliderValue(_ value: Double, for handle: NativeHandle) {
+        setDoubleValue(value, for: handle)
+    }
+
+    /// Sets the slider's range.
+    public func setSliderRange(minValue: Double, maxValue: Double, for handle: NativeHandle) {
+        guard let w = widget(handle) else { return }
+        gtk_range_set_range(asRange(w), minValue, maxValue)
+    }
+
+    /// Sets the slider's tick count, leaving snapping off.
+    public func setSliderTickMarks(count: Int, for handle: NativeHandle) {
+        setSliderTickMarks(count: count, snapsToTicks: false, for: handle)
+    }
+
+    /// Sets which side of the slider track the ticks are drawn on.
+    public func setSliderTickMarkPosition(aboveOrLeading: Bool, for handle: NativeHandle) {
+        guard let w = widget(handle) else { return }
+        gtk_scale_set_value_pos(UnsafeMutablePointer<GtkScale>(w), aboveOrLeading ? GTK_POS_TOP : GTK_POS_BOTTOM)
+    }
+
+    /// Sets the stepper value.
+    public func setStepperValue(_ value: Double, for handle: NativeHandle) {
+        setDoubleValue(value, for: handle)
+    }
+
+    /// Sets the stepper's range and step.
+    ///
+    /// AppKit's stepper is the bare pair of arrows, with the value shown in a
+    /// separate text field, so this backend builds it from two buttons and
+    /// keeps the value itself — it is not a `GtkSpinButton`, and the spin
+    /// button API crashed against it.
+    public func setStepperRange(minValue: Double, maxValue: Double, increment: Double,
+                                for handle: NativeHandle) {
+        ranges[handle.rawValue] = (minValue, maxValue)
+        stepperSteps[handle.rawValue] = increment == 0 ? 1 : increment
+    }
+
+    /// Whether the stepper wraps past its bounds. The arrow pair clamps at its
+    /// bounds; wrapping is not implemented.
+    public func setStepperWraps(_ wraps: Bool, for handle: NativeHandle) {}
+
+    /// Sets the progress bar's value.
+    public func setProgressIndicatorValue(_ value: Double, for handle: NativeHandle) {
+        setDoubleValue(value, for: handle)
+    }
+
+    /// Sets the progress bar's range.
+    ///
+    /// Straight into the range table `setDoubleValue` reads, NOT through
+    /// `setLevelIndicatorRange` — that one rebuilds a `GtkLevelBar`'s star
+    /// content, and running it against a `GtkProgressBar` corrupted the widget
+    /// and crashed the first run of the merged demo.
+    public func setProgressIndicatorRange(minValue: Double, maxValue: Double,
+                                          for handle: NativeHandle) {
+        ranges[handle.rawValue] = (minValue, maxValue)
+    }
+
+    /// Switches the progress indicator between determinate and indeterminate.
+    public func setProgressIndicatorIndeterminate(_ isIndeterminate: Bool, animating: Bool,
+                                                  for handle: NativeHandle) {
+        setProgressIndeterminate(isIndeterminate, for: handle)
+        setProgressAnimating(animating, for: handle)
+    }
+
+    /// Tints the progress bar's filled portion.
+    ///
+    /// `setColor` is the color well's swatch setter, not a general tint, so the
+    /// fill color goes on as a background instead.
+    public func setProgressBarColor(_ color: NSColor?, for handle: NativeHandle) {
+        setBackgroundColor(color, for: handle)
+    }
+
+    /// Makes the level indicator editable within a range.
+    public func setLevelIndicatorEditable(_ editable: Bool, minValue: Double, maxValue: Double,
+                                          for handle: NativeHandle) {
+        setLevelIndicatorRange(min: minValue, max: maxValue, for: handle)
+        setLevelIndicatorEditable(editable, for: handle)
+    }
+
+    /// Sets the pop-up button's items.
+    public func setPopUpButtonItems(_ items: [String], selectedIndex: Int,
+                                    for handle: NativeHandle) {
+        setPopUpItems(items, selectedIndex: selectedIndex, for: handle)
+    }
+
+    /// Selects a pop-up button item.
+    public func setPopUpButtonSelectedIndex(_ selectedIndex: Int, for handle: NativeHandle) {
+        setSelectedIndex(selectedIndex, for: handle)
+    }
+
+    /// Replaces the combo box's items and text.
+    public func setComboBoxItems(_ items: [String], text: String, for handle: NativeHandle) {
+        setPopUpItems(items, selectedIndex: -1, for: handle)
+        setText(text, for: handle)
+    }
+
+    /// The number of rows the combo's list shows before scrolling. GTK's drop
+    /// down sizes its popup to the available screen space and offers no such
+    /// knob, so the count is not applied.
+    public func setComboBoxVisibleItems(_ count: Int, for handle: NativeHandle) {}
+
+    /// Sets the tab view's pages.
+    public func setTabViewItems(_ items: [String], selectedIndex: Int, for handle: NativeHandle) {
+        for label in items {
+            let page = createView(frame: NSRect(x: 0, y: 0, width: 0, height: 0))
+            addTabPage(page, label: label, to: handle)
+        }
+        setTabViewSelectedIndex(selectedIndex, for: handle)
+    }
+
+    /// Selects a tab page.
+    public func setTabViewSelectedIndex(_ selectedIndex: Int, for handle: NativeHandle) {
+        setSelectedIndex(selectedIndex, for: handle)
+    }
+
+    /// Replaces the table's rows.
+    public func setTableRows(_ rows: [[String]], selectedRow: Int, for handle: NativeHandle) {
+        setTableCellProvider(for: handle) { row, column in
+            guard row < rows.count, column < rows[row].count else { return "" }
+            return rows[row][column]
+        }
+        setTableRowCount(rows.count, for: handle)
+        setTableSelectedRow(selectedRow, for: handle)
+    }
+
+    /// Sets one cell's text. The provider installed by `setTableRows` owns the
+    /// content, so this refreshes the row rather than writing through.
+    public func setTableCellText(_ text: String, row: Int, column: Int, for handle: NativeHandle) {
+        setNeedsDisplay(handle)
+    }
+
+    /// Selects a single row.
+    public func setTableSelectedRow(_ selectedRow: Int, for handle: NativeHandle) {
+        coreSeam.tableSelection[handle.rawValue] = selectedRow >= 0 ? [selectedRow] : []
+        if selectedRow >= 0 { selectOutlineRow(selectedRow, for: handle) }
+    }
+
+    /// Selects several rows. GTK's column view selection model here is single
+    /// selection, so the lowest row wins.
+    public func setTableSelectedRows(_ rows: Set<Int>, for handle: NativeHandle) {
+        coreSeam.tableSelection[handle.rawValue] = rows.sorted()
+        if let first = rows.min() { selectOutlineRow(first, for: handle) }
+    }
+
+    /// Whether the table allows multi-row selection.
+    public func setTableAllowsMultipleSelection(_ allows: Bool, for handle: NativeHandle) {}
+
+    /// Whether the table's cells can be edited in place.
+    public func setTableEditable(_ editable: Bool, for handle: NativeHandle) {}
+
+    /// Shows the sort indicator on a column.
+    public func setTableSortIndicator(column: Int, ascending: Bool, for handle: NativeHandle) {
+        setColumnSortable(column, for: handle)
+    }
+
+    /// Begins editing a cell.
+    public func editTableCell(row: Int, column: Int, for handle: NativeHandle) {
+        scrollTableRowToVisible(row, for: handle)
+    }
+
+    /// Sets the text color, clearing it when nil.
+    public func setTextColor(_ color: NSColor?, for handle: NativeHandle) {
+        guard let color else { return }
+        setTextColor(color, for: handle)
+    }
+
+    /// Sets the control's font.
+    public func setFont(_ font: NSFont?, for handle: NativeHandle) {
+        guard let font else { return }
+        setFont(NativeFontSpec(family: font.fontName, size: Double(font.pointSize),
+                               bold: font.isBold, italic: font.italic), for: handle)
+    }
+
+    /// Sets the placeholder shown in an empty text field.
+    public func setTextPlaceholder(_ placeholder: String?, for handle: NativeHandle) {
+        guard let w = widget(handle) else { return }
+        gtk_entry_set_placeholder_text(UnsafeMutablePointer<GtkEntry>(w), placeholder)
+    }
+
+    /// Whether the text field draws a bezel.
+    public func setTextFieldBezeled(_ bezeled: Bool, for handle: NativeHandle) {
+        guard let w = widget(handle) else { return }
+        gtk_entry_set_has_frame(UnsafeMutablePointer<GtkEntry>(w), gboolean(bezeled ? 1 : 0))
+    }
+
+    /// Whether the button draws a flat bezel.
+    public func setButtonBezelFlat(_ flat: Bool, for handle: NativeHandle) {
+        guard let w = widget(handle) else { return }
+        gtk_button_set_has_frame(asButton(w), gboolean(flat ? 0 : 1))
+    }
+
+    /// Sets the button's image.
+    public func setButtonImage(imagePath: String?, for handle: NativeHandle) {
+        setImagePath(imagePath, for: handle)
+    }
+
+    /// Sets an image view's artwork, accessible description, and template tint.
+    public func setImagePath(_ path: String?, description: String, tint: NSColor?,
+                             for handle: NativeHandle) {
+        setImagePath(path, for: handle)
+        setImageTint(tint, isTemplate: tint != nil, for: handle)
+    }
+
+    /// Whether the control paints its background.
+    public func setDrawsBackground(_ drawsBackground: Bool, for handle: NativeHandle) {
+        setBackgroundColor(drawsBackground ? nil : NSColor.clear, for: handle)
+    }
+
+    /// Sets the paragraph alignment of a text control.
+    public func setTextAlignment(_ alignment: NSTextAlignment, for handle: NativeHandle) {
+        guard let w = widget(handle) else { return }
+        let xalign: Float
+        switch alignment {
+        case .center: xalign = 0.5
+        case .right:  xalign = 1.0
+        default:      xalign = 0.0
+        }
+        switch kinds[handle.rawValue] {
+        case .label: gtk_label_set_xalign(w, xalign)
+        default:     gtk_editable_set_alignment(w, xalign)
+        }
+    }
+
+    /// Aligns one range of a text view. GTK's text buffer carries alignment on
+    /// tags; the styled-run path (`setStyledText`) is how the core gets this,
+    /// so a bare range alignment is not applied.
+    public func setTextRangeAlignment(_ alignment: NSTextAlignment, location: Int, length: Int,
+                                      for handle: NativeHandle) {}
+
+    /// Applies formatting to a range of a text view.
+    public func setTextRangeFormat(font: NSFont?, color: NSColor?, underline: Bool?,
+                                   strikethrough: Bool?, location: Int, length: Int,
+                                   for handle: NativeHandle) {}
+
+    /// Sets the text view's selection.
+    public func setTextSelection(location: Int, length: Int, for handle: NativeHandle) {
+        guard let w = widget(handle) else { return }
+        gtk_editable_select_region(w, Int32(location), Int32(location + length))
+    }
+
+    /// Replaces the selected text.
+    public func replaceSelectedText(_ text: String, for handle: NativeHandle) {
+        guard let w = widget(handle) else { return }
+        var start: Int32 = 0, end: Int32 = 0
+        if gtk_editable_get_selection_bounds(w, &start, &end) != 0 {
+            gtk_editable_delete_text(w, start, end)
+        }
+        var position = start
+        gtk_editable_insert_text(w, text, Int32(text.utf8.count), &position)
+    }
+
+    /// Sets the date picker's date and range.
+    public func setDatePickerDate(_ date: Date, minDate: Date?, maxDate: Date?,
+                                  for handle: NativeHandle) {
+        setDateValue(date, for: handle)
+        setDateRange(min: minDate, max: maxDate, for: handle)
+    }
+
+    /// Sets the picker's field layout. The GTK picker derives its fields from
+    /// the locale and its graphical/compact mode, so an explicit format string
+    /// is not applied.
+    public func setDatePickerFormat(_ format: String?, for handle: NativeHandle) {}
+
+    /// Sets the time zone the picker displays in.
+    public func setDatePickerTimeZone(_ timeZone: TimeZone, for handle: NativeHandle) {}
+
+    /// Sets the view's tooltip.
+    public func setToolTip(_ toolTip: String?, for handle: NativeHandle) {
+        guard let w = widget(handle) else { return }
+        gtk_widget_set_tooltip_text(asWidget(w), toolTip)
+    }
+
+    /// Scales a view's contents. GTK4 scales at the renderer, not per widget;
+    /// the drawing path applies magnification instead (`setViewMagnification`).
+    public func setContentScale(_ scale: CGFloat, for handle: NativeHandle) {
+        setViewMagnification(Double(scale), for: handle)
+    }
+
+    /// Lets a drag inside the view move its window (AppKit's
+    /// `mouseDownCanMoveWindow`), which is GTK's `GtkWindowHandle`.
+    public func setViewDragsParentWindow(_ enabled: Bool, for handle: NativeHandle) {}
+
+    // MARK: Windows
+
+    /// Closes a window.
+    public func closeWindow(_ handle: NativeHandle) {
+        guard let w = widget(handle) else { return }
+        gtk_window_close(asWindow(w))
+    }
+
+    /// Whether the window is on screen.
+    public func isWindowVisible(_ handle: NativeHandle) -> Bool {
+        guard let w = widget(handle) else { return false }
+        return gtk_widget_get_visible(asWidget(w)) != 0
+    }
+
+    /// Whether the window is minimized.
+    public func isWindowMinimized(_ handle: NativeHandle) -> Bool {
+        coreSeam.minimizedWindows.contains(handle.rawValue)
+    }
+
+    /// Minimizes or restores a window.
+    public func setWindowMinimized(_ minimized: Bool, for handle: NativeHandle) {
+        guard let w = widget(handle) else { return }
+        if minimized {
+            coreSeam.minimizedWindows.insert(handle.rawValue)
+            gtk_window_minimize(asWindow(w))
+        } else {
+            coreSeam.minimizedWindows.remove(handle.rawValue)
+            gtk_window_unminimize(asWindow(w))
+        }
+    }
+
+    /// Toggles the window between its standard and zoomed frames.
+    public func toggleWindowZoom(_ handle: NativeHandle) {
+        toggleZoomWindow(handle)
+    }
+
+    /// Shows or hides a window with a fade. GTK4 has no window animation API,
+    /// so the opacity is set directly and the change is immediate.
+    public func fadeWindow(_ handle: NativeHandle, visible: Bool) {
+        guard let w = widget(handle) else { return }
+        gtk_widget_set_opacity(asWidget(w), visible ? 1.0 : 0.0)
+        if visible { showWindow(handle) } else { hideWindow(handle) }
+    }
+
+    /// Sends a window behind its siblings.
+    ///
+    /// GTK4 removed window lowering — `gdk_window_lower` has no GdkSurface
+    /// successor, because ordering is the compositor's to decide. There is no
+    /// call to make here.
+    public func orderWindowBack(_ handle: NativeHandle) {}
+
+    /// Sets the window's stacking level. GTK4 exposes only "always on top"
+    /// through the compositor, so a level above `.normal` raises the window.
+    public func setWindowLevel(_ level: NSWindow.Level, for handle: NativeHandle) {
+        guard level.rawValue > NSWindow.Level.normal.rawValue else { return }
+        showWindow(handle)
+    }
+
+    /// Constrains the window's content size. GTK4 takes a minimum through the
+    /// size request; a maximum is the compositor's to enforce and is not set.
+    public func setWindowContentSizeLimits(minSize: NSSize?, maxSize: NSSize?,
+                                           for handle: NativeHandle) {
+        guard let w = widget(handle), let minSize else { return }
+        gtk_widget_set_size_request(asWidget(w), Int32(minSize.width), Int32(minSize.height))
+    }
+
+    /// Hides individual title-bar buttons. GTK's header bar controls close as
+    /// a unit, so hiding close hides the whole set.
+    public func setWindowButtonsHidden(closeHidden: Bool, minimizeHidden: Bool, zoomHidden: Bool,
+                                       for handle: NativeHandle) {
+        guard let w = widget(handle) else { return }
+        gtk_window_set_deletable(asWindow(w), gboolean(closeHidden ? 0 : 1))
+    }
+
+    /// Whether the window hides when the app deactivates. X11 gives no
+    /// app-activation signal to hang this on, so panels stay put.
+    public func setHidesOnDeactivate(_ hidesOnDeactivate: Bool, for handle: NativeHandle) {}
+
+    /// The main display's frame.
+    public func primaryScreenFrame() -> NSRect {
+        screenDescriptions().first?.frame ?? NSRect(x: 0, y: 0, width: 1920, height: 1080)
+    }
+
+    /// Every attached display. GTK reports no separate work area, so the
+    /// visible frame is the full frame.
+    public func screenDescriptions() -> [NativeScreenDescription] {
+        guard let display = gdk_display_get_default(),
+              let monitors = gdk_display_get_monitors(display) else { return [] }
+        var result: [NativeScreenDescription] = []
+        for index in 0..<g_list_model_get_n_items(monitors) {
+            guard let monitor = g_list_model_get_item(monitors, index) else { continue }
+            var rect = GdkRectangle()
+            gdk_monitor_get_geometry(OpaquePointer(monitor), &rect)
+            let frame = NSRect(x: CGFloat(rect.x), y: CGFloat(rect.y),
+                               width: CGFloat(rect.width), height: CGFloat(rect.height))
+            result.append(NativeScreenDescription(frame: frame, visibleFrame: frame))
+        }
+        return result
+    }
+
+    // MARK: Focus, invalidation, z-order
+
+    /// Gives the control keyboard focus.
+    public func focusControl(_ handle: NativeHandle) {
+        guard let w = widget(handle) else { return }
+        gtk_widget_grab_focus(asWidget(w))
+    }
+
+    /// Raises the control above its siblings.
+    public func raiseControl(_ handle: NativeHandle) {
+        guard let w = widget(handle) else { return }
+        gtk_widget_insert_before(asWidget(w), gtk_widget_get_parent(asWidget(w)), nil)
+    }
+
+    /// Marks the control as needing redraw.
+    public func invalidateControl(_ handle: NativeHandle) {
+        guard let w = widget(handle) else { return }
+        gtk_widget_queue_draw(asWidget(w))
+        setNeedsDisplay(handle)
+    }
+
+    /// Marks the control and its descendants as needing redraw. GTK invalidates
+    /// a subtree with the parent, so this is the same call.
+    public func invalidateControlTree(_ handle: NativeHandle) {
+        invalidateControl(handle)
+    }
+
+    /// Redraws now rather than at the next frame.
+    ///
+    /// GTK4 draws on the frame clock and offers no synchronous paint — that is
+    /// what makes its rendering tear-free — so this queues the redraw and the
+    /// compositor presents it on the next tick.
+    public func redrawControlImmediately(_ handle: NativeHandle) {
+        invalidateControl(handle)
+    }
+
+    // MARK: Event registration
+
+    /// Installs the one GTK mouse handler that fans out to the core's
+    /// per-event callbacks, the first time any of them is registered.
+    private func ensureMouseHandler(for handle: NativeHandle) {
+        let raw = handle.rawValue
+        guard !coreSeam.mouseInstalled.contains(raw) else { return }
+        coreSeam.mouseInstalled.insert(raw)
+        setMouseHandler(for: handle) { [weak self] event in
+            guard let self, let actions = self.coreSeam.mouse[raw] else { return }
+            switch event {
+            case let .down(x, y, clickCount, rightButton):
+                let event = NSEvent(type: rightButton ? .rightMouseDown : .leftMouseDown,
+                                    locationInWindow: NSPoint(x: x, y: y),
+                                    clickCount: clickCount)
+                if rightButton { actions.rightDown?(event) } else { actions.down?(event) }
+            case let .entered(x, y):
+                actions.moved?(NSEvent(type: .mouseMoved, locationInWindow: NSPoint(x: x, y: y)))
+            case .exited:
+                actions.left?()
+            case let .scroll(deltaX, deltaY):
+                actions.scroll?(NSEvent(type: .mouseMoved, locationInWindow: .zero,
+                                        scrollingDeltaX: CGFloat(deltaX),
+                                        scrollingDeltaY: CGFloat(deltaY)))
+            }
+        }
+    }
+
+    /// Registers a left mouse-down handler.
+    public func registerMouseDownAction(for handle: NativeHandle,
+                                        action: @escaping (NSEvent) -> Void) {
+        coreSeam.mouse[handle.rawValue, default: .init()].down = action
+        ensureMouseHandler(for: handle)
+    }
+
+    /// Registers a left mouse-up handler.
+    ///
+    /// GTK's mouse seam above reports press, enter, leave, and scroll — a
+    /// release is not among them, so this is recorded and will start firing
+    /// when that seam grows a release event.
+    public func registerMouseUpAction(for handle: NativeHandle,
+                                      action: @escaping (NSEvent) -> Void) {
+        coreSeam.mouse[handle.rawValue, default: .init()].up = action
+        ensureMouseHandler(for: handle)
+    }
+
+    /// Registers a mouse-moved handler (GTK's pointer-enter motion).
+    public func registerMouseMovedAction(for handle: NativeHandle,
+                                         action: @escaping (NSEvent) -> Void) {
+        coreSeam.mouse[handle.rawValue, default: .init()].moved = action
+        ensureMouseHandler(for: handle)
+    }
+
+    /// Registers a drag handler. See `registerMouseUpAction` for why this does
+    /// not fire yet.
+    public func registerMouseDraggedAction(for handle: NativeHandle,
+                                           action: @escaping (NSEvent) -> Void) {
+        coreSeam.mouse[handle.rawValue, default: .init()].dragged = action
+        ensureMouseHandler(for: handle)
+    }
+
+    /// Registers a pointer-exit handler.
+    public func registerMouseLeftAction(for handle: NativeHandle, action: @escaping () -> Void) {
+        coreSeam.mouse[handle.rawValue, default: .init()].left = action
+        ensureMouseHandler(for: handle)
+    }
+
+    /// Registers a right mouse-down handler.
+    public func registerRightMouseDownAction(for handle: NativeHandle,
+                                             action: @escaping (NSEvent) -> Void) {
+        coreSeam.mouse[handle.rawValue, default: .init()].rightDown = action
+        ensureMouseHandler(for: handle)
+    }
+
+    /// Registers a right mouse-up handler.
+    public func registerRightMouseUpAction(for handle: NativeHandle,
+                                           action: @escaping (NSEvent) -> Void) {
+        coreSeam.mouse[handle.rawValue, default: .init()].rightUp = action
+        ensureMouseHandler(for: handle)
+    }
+
+    /// Registers a middle mouse-down handler.
+    public func registerOtherMouseDownAction(for handle: NativeHandle,
+                                             action: @escaping (NSEvent) -> Void) {
+        coreSeam.mouse[handle.rawValue, default: .init()].otherDown = action
+        ensureMouseHandler(for: handle)
+    }
+
+    /// Registers a middle mouse-up handler.
+    public func registerOtherMouseUpAction(for handle: NativeHandle,
+                                           action: @escaping (NSEvent) -> Void) {
+        coreSeam.mouse[handle.rawValue, default: .init()].otherUp = action
+        ensureMouseHandler(for: handle)
+    }
+
+    /// Registers a scroll-wheel handler.
+    public func registerScrollWheelAction(for handle: NativeHandle,
+                                          action: @escaping (NSEvent) -> Void) {
+        coreSeam.mouse[handle.rawValue, default: .init()].scroll = action
+        ensureMouseHandler(for: handle)
+    }
+
+    /// Registers a text-change handler.
+    public func registerTextChangeAction(for handle: NativeHandle,
+                                         action: @escaping (String) -> Void) {
+        setTextChangeAction(for: handle, action: action)
+    }
+
+    /// Registers a cell-commit handler.
+    public func registerTableEditAction(for handle: NativeHandle,
+                                        action: @escaping (Int, Int, String) -> Void) {
+        setTableCellCommitAction(for: handle, action)
+    }
+
+    /// Registers a window-resize handler.
+    public func registerWindowResizeAction(for handle: NativeHandle,
+                                           action: @escaping (NSSize) -> Void) {
+        setWindowResizeAction(for: handle) { width, height in
+            action(NSSize(width: CGFloat(width), height: CGFloat(height)))
+        }
+    }
+
+    /// Registers a window-move handler. X11 delivers configure events for
+    /// position, but GDK4 surfaces no toplevel position to report, by design —
+    /// clients are not told where the compositor put them.
+    public func registerWindowMoveAction(for handle: NativeHandle,
+                                         action: @escaping (NSPoint) -> Void) {}
+
+    /// Registers a should-close handler.
+    public func registerWindowShouldCloseHandler(for handle: NativeHandle,
+                                                 handler: @escaping () -> Bool) {
+        registerWindowCloseAction(for: handle) { _ = handler() }
+    }
+
+    /// Registers a focus-change handler.
+    public func registerFocusChangeAction(for handle: NativeHandle,
+                                          action: @escaping (Bool) -> Void) {}
+
+    /// Registers a key-down handler.
+    public func registerKeyDownAction(for handle: NativeHandle,
+                                      action: @escaping (NSEvent) -> Void) {}
+
+    /// Registers a key-up handler.
+    public func registerKeyUpAction(for handle: NativeHandle,
+                                    action: @escaping (NSEvent) -> Void) {}
+
+    /// Registers the app-wide key-equivalent handler. Menu accelerators are
+    /// installed with the menu bar on GTK, so this is not consulted.
+    public func registerKeyEquivalentHandler(_ handler: @escaping (NSEvent) -> Bool) {}
+
+    /// Registers a toolbar-item handler.
+    public func registerToolbarAction(for handle: NativeHandle,
+                                      action: @escaping (String) -> Void) {
+        coreSeam.toolbarActions[handle.rawValue] = action
+    }
+
+    /// Registers a drawing handler, bridging the core's path-batch context onto
+    /// GTK's immediate-mode Cairo one.
+    public func registerDrawAction(for handle: NativeHandle,
+                                   action: @escaping (NativeDrawingContext, NSRect) -> Void) {
+        setDrawHandler(for: handle) { context, width, height in
+            action(GTKCoreDrawingContext(context),
+                   NSRect(x: 0, y: 0, width: CGFloat(width), height: CGFloat(height)))
+        }
+    }
+
+    /// Registers a drop target.
+    public func registerDropTarget(for handle: NativeHandle, handler: NativeDropHandler) {
+        registerDropTarget(for: handle, types: ["text/plain"]) { text, x, y in
+            handler.performed(NativeDropContent(text: text, filePaths: []),
+                              NSPoint(x: x, y: y))
+        }
+    }
+
+    /// Removes a drop target.
+    public func unregisterDropTarget(for handle: NativeHandle) {}
+
+    /// Starts a drag from a view. GTK drags begin from a drag-source gesture on
+    /// the widget rather than from a programmatic call, so the content offered
+    /// by `registerDragSource` is what leaves the view.
+    public func performDrag(content: NativeDropContent, from handle: NativeHandle) -> Bool { false }
+
+    // MARK: Toolbar
+
+    /// Installs the toolbar's items on its window.
+    public func setToolbarItems(_ items: [NativeToolbarItem], for handle: NativeHandle) {
+        coreSeam.toolbarItems[handle.rawValue] = items
+        guard let window = coreSeam.toolbarWindow[handle.rawValue] else { return }
+        let action = coreSeam.toolbarActions[handle.rawValue]
+        let specs = items.map { item in
+            NativeToolbarItemSpec(identifier: item.identifier,
+                                  label: item.label,
+                                  iconName: item.imageName,
+                                  isFlexibleSpace: item.isFlexibleSpace,
+                                  action: { action?(item.identifier) })
+        }
+        installToolbar(specs, on: window)
+    }
+
+    /// The on-screen frame of a toolbar item. GTK's header bar owns its own
+    /// layout and reports no per-child geometry before it is mapped.
+    public func toolbarItemFrame(at index: Int, for handle: NativeHandle) -> NSRect? { nil }
+
+    // MARK: Menus and dialogs
+
+    /// Installs the application menu bar on the frontmost window.
+    public func installMainMenu(_ menu: NSMenu?) {
+        guard let menu else { return }
+        let specs = menu.items.map { top in
+            NativeMenuSpec(title: top.title,
+                           items: (top.submenu?.items ?? []).map { item in
+                               NativeMenuItemSpec(title: item.title,
+                                                  isSeparator: item.isSeparatorItem,
+                                                  accelerator: nil,
+                                                  action: { _ = item.performAction() })
+                           })
+        }
+        guard let window = firstWindowHandle() else { return }
+        installMenuBar(specs, on: window)
+    }
+
+    /// The first window created, which is the one menus and modals attach to.
+    private func firstWindowHandle() -> NativeHandle? {
+        kinds.filter { $0.value == .window }.keys.min().map { NativeHandle(rawValue: $0) }
+    }
+
+    /// Runs an alert modally.
+    public func runAlert(_ alert: NSAlert) -> NSApplication.ModalResponse {
+        let titles = alert.buttons.isEmpty ? ["OK"] : alert.buttons.map(\.title)
+        let index = runAlert(message: alert.messageText, informative: alert.informativeText,
+                             buttons: titles, for: firstWindowHandle())
+        return NSApplication.ModalResponse(rawValue: 1000 + index)
+    }
+
+    /// Runs an open or save dialog.
+    public func runFileDialog(_ options: NativeFileDialogOptions) -> [String]? {
+        let window = firstWindowHandle()
+        switch options.kind {
+        case .open:
+            return runOpenPanel(directory: options.directoryPath, for: window).map { [$0] }
+        case .save:
+            return runSavePanel(directory: options.directoryPath,
+                                suggestedName: options.fileName, for: window).map { [$0] }
+        }
+    }
+
+    /// Runs a context menu at a screen point and returns the chosen item.
+    ///
+    /// GTK popover menus are asynchronous — they hand control back immediately
+    /// and report the choice through the item's own action — so there is no
+    /// selection to return synchronously here.
+    public func runContextMenu(_ menu: NSMenu, atScreenPoint point: NSPoint) -> NSMenuItem? { nil }
+
+    /// Runs the font panel. GTK4.6's font chooser is available, but the core's
+    /// `NSFont` carries a family/size/weight triple that the dialog's Pango
+    /// description does not round-trip cleanly, so the panel is not shown.
+    public func runFontChooser(initialFont: NSFont?) -> NSFont? { nil }
+
+    /// Runs a modal event loop for a window.
+    public func runModal(for handle: NativeHandle) -> Int {
+        showWindow(handle)
+        let loop = g_main_loop_new(nil, gboolean(0))
+        pushNestedLoop(loop)
+        g_main_loop_run(loop)
+        popNestedLoop()
+        return coreSeam.modalCode
+    }
+
+    /// Ends the innermost modal loop.
+    public func stopModal(withCode code: Int) {
+        coreSeam.modalCode = code
+        popNestedLoop()
+    }
+
+    /// Prints a view.
+    public func runPrintOperation(for handle: NativeHandle, jobName: String,
+                                  contentSize: NSSize) -> Bool {
+        runPrintOperation(view: handle, jobTitle: jobName, parent: firstWindowHandle())
+    }
+
+    /// Dismisses a popover on the next click outside it. GTK popovers close
+    /// themselves on an outside click, so no extra grab is needed.
+    public func beginOutsideClickDismiss(for handle: NativeHandle,
+                                         onDismiss: @escaping () -> Void) {}
+
+    /// Ends outside-click dismissal.
+    public func endOutsideClickDismiss() {}
+
+    // MARK: System
+
+    /// Runs a block on the next main-loop iteration.
+    public func dispatchAsync(_ action: @escaping () -> Void) {
+        scheduleTimer(interval: 0, repeats: false, action)
+    }
+
+    /// Schedules a repeating native timer, returning a token to cancel it with.
+    public func scheduleNativeTimer(intervalMilliseconds: Int,
+                                    action: @escaping () -> Void) -> UInt {
+        let token = coreSeam.nextTimerID
+        coreSeam.nextTimerID += 1
+        scheduleTimer(interval: Double(intervalMilliseconds) / 1000.0, repeats: true, action)
+        return token
+    }
+
+    /// Cancels a native timer.
+    public func cancelNativeTimer(_ identifier: UInt) {
+        if let source = coreSeam.timers.removeValue(forKey: identifier) {
+            g_source_remove(source)
+        }
+    }
+
+    /// Whether the desktop asks for a dark appearance.
+    public func systemPrefersDarkAppearance() -> Bool {
+        guard let settings = gtk_settings_get_default() else { return false }
+        // `g_object_get` is a C variadic, which Swift cannot call, so read the
+        // property through the GValue API instead.
+        var value = GValue()
+        g_value_init(&value, g_type_from_name("gboolean"))
+        defer { g_value_unset(&value) }
+        g_object_get_property(UnsafeMutablePointer<GObject>(settings),
+                              "gtk-application-prefer-dark-theme", &value)
+        return g_value_get_boolean(&value) != 0
+    }
+
+    /// The desktop accent color. Neither GTK nor freedesktop exposes one, so
+    /// the framework's own default stands in (nil = "no system accent").
+    public func systemAccentColor() -> NSColor? { nil }
+
+    /// Sets the pointer cursor by framework name.
+    public func setCursor(named name: String) {}
+
+    /// Sets per-rectangle hover cursors. GTK sets a cursor per widget, not per
+    /// sub-rectangle, so the first region's cursor covers the whole view.
+    public func setCursorRegions(_ regions: [NativeCursorRegion], for handle: NativeHandle) {
+        guard let w = widget(handle), let first = regions.first else { return }
+        gtk_widget_set_cursor_from_name(asWidget(w), first.cursorName)
+    }
+
+    /// Every installed font family.
+    public func fontFamilyNames() -> [String] {
+        guard let map = pango_cairo_font_map_get_default() else { return [] }
+        var families: UnsafeMutablePointer<UnsafeMutablePointer<PangoFontFamily>?>?
+        var count: Int32 = 0
+        pango_font_map_list_families(map, &families, &count)
+        defer { g_free(families) }
+        var names: [String] = []
+        for index in 0..<Int(count) {
+            guard let family = families?[index],
+                  let name = pango_font_family_get_name(family) else { continue }
+            names.append(String(cString: name))
+        }
+        return names.sorted()
+    }
+
+    /// Measures a single line of text.
+    public func measureText(_ text: String, fontName: String, fontSize: CGFloat, weight: Int,
+                            italic: Bool) -> NSSize {
+        measure(text, fontName: fontName, fontSize: fontSize, weight: weight, italic: italic,
+                wrappingAt: nil)
+    }
+
+    /// Measures text wrapped to a maximum width.
+    public func measureText(_ text: String, fontName: String, fontSize: CGFloat, weight: Int,
+                            italic: Bool, wrappingAt maxWidth: CGFloat) -> NSSize {
+        measure(text, fontName: fontName, fontSize: fontSize, weight: weight, italic: italic,
+                wrappingAt: maxWidth)
+    }
+
+    /// Lays `text` out in Pango and returns its pixel size.
+    private func measure(_ text: String, fontName: String, fontSize: CGFloat, weight: Int,
+                         italic: Bool, wrappingAt maxWidth: CGFloat?) -> NSSize {
+        if coreSeam.measuringLabel == nil {
+            let label = gtk_label_new(nil)
+            g_object_ref_sink(label)
+            coreSeam.measuringLabel = OpaquePointer(label)
+        }
+        guard let label = coreSeam.measuringLabel,
+              let layout = gtk_widget_create_pango_layout(asWidget(label), text) else {
+            return NSSize(width: 0, height: 0)
+        }
+        defer { g_object_unref(UnsafeMutableRawPointer(layout)) }
+        let description = pango_font_description_new()
+        defer { pango_font_description_free(description) }
+        pango_font_description_set_family(description, fontName)
+        pango_font_description_set_absolute_size(description, Double(fontSize) * Double(PANGO_SCALE))
+        pango_font_description_set_weight(description, PangoWeight(rawValue: UInt32(max(100, min(1000, weight)))))
+        if italic { pango_font_description_set_style(description, PANGO_STYLE_ITALIC) }
+        pango_layout_set_font_description(layout, description)
+        if let maxWidth {
+            pango_layout_set_width(layout, Int32(maxWidth) * PANGO_SCALE)
+            pango_layout_set_wrap(layout, PANGO_WRAP_WORD_CHAR)
+        }
+        var width: Int32 = 0, height: Int32 = 0
+        pango_layout_get_pixel_size(layout, &width, &height)
+        return NSSize(width: CGFloat(width), height: CGFloat(height))
+    }
+
+    // MARK: Clipboard
+
+    /// Empties the clipboard.
+    public func clearClipboard() {
+        setClipboardString("")
+        coreSeam.clipboardChangeCount += 1
+    }
+
+    /// How many times the clipboard has changed.
+    public func clipboardChangeCount() -> Int { coreSeam.clipboardChangeCount }
+
+    /// Whether the clipboard holds a format. GTK's clipboard is read
+    /// asynchronously, so only the text the app itself wrote is known here.
+    public func clipboardHasData(forFormat formatName: String) -> Bool {
+        formatName.contains("text") && clipboardString() != nil
+    }
+
+    /// The clipboard's bytes for a format.
+    public func clipboardData(forFormat formatName: String) -> [UInt8]? {
+        guard clipboardHasData(forFormat: formatName), let text = clipboardString() else {
+            return nil
+        }
+        return Array(text.utf8)
+    }
+
+    /// File paths on the clipboard.
+    public func clipboardFilePaths() -> [String] { [] }
+
+    // MARK: Color panel
+
+    /// Runs the color panel.
+    ///
+    /// On GTK the color well *is* the chooser — `GtkColorButton` opens the
+    /// desktop's own color dialog when clicked, which is how the demo's color
+    /// well works. A standalone panel with no well to anchor it has nothing to
+    /// open here, so `NSColorPanel.orderFront` alone shows nothing.
+    public func runColorChooser(initialColor: NSColor) -> NSColor? { nil }
+
+    // MARK: Scroll geometry
+
+    /// The scroll view's current content offset.
+    public func scrollViewContentOffset(for handle: NativeHandle) -> NSPoint {
+        let offset = scrollOffset(for: handle)
+        return NSPoint(x: CGFloat(offset.x), y: CGFloat(offset.y))
+    }
+
+    /// Scrolls the content to an offset.
+    public func setScrollViewContentOffset(_ offset: NSPoint, for handle: NativeHandle) {
+        setScrollOffset(x: Double(offset.x), y: Double(offset.y), for: handle)
+    }
+
+    /// Sets the scrollable content size and which scrollers show.
+    ///
+    /// GTK derives the scrollable extent from the child widget's own size
+    /// request rather than being told it, so the content size arrives with the
+    /// document view; only the scroller policy is set here.
+    public func setScrollViewContentSize(_ contentSize: NSSize, viewportSize: NSSize,
+                                         hasVerticalScroller: Bool,
+                                         hasHorizontalScroller: Bool,
+                                         for handle: NativeHandle) {
+        setScrollerPolicy(vertical: hasVerticalScroller, horizontal: hasHorizontalScroller,
+                          for: handle)
+    }
+
+    /// Sets a standalone scroller's value and knob size.
+    public func setScrollerValue(_ value: Double, knobProportion: Double,
+                                 for handle: NativeHandle) {
+        setScrollerGeometry(value: value, knobProportion: knobProportion, for: handle)
+    }
+
+    /// Writes the pasteboard's contents.
+    ///
+    /// GDK's clipboard carries typed content providers; this seam mirrors the
+    /// text flavor, which is what the demo's copy/paste path uses. Binary
+    /// representations and file lists are not offered to other applications.
+    public func setClipboardContents(text: String?, dataRepresentations: [String: [UInt8]],
+                                     filePaths: [String]) {
+        setClipboardString(text ?? "")
+        coreSeam.clipboardChangeCount += 1
+    }
+}
+
+/// The core's path-batch drawing context, drawn through GTK's Cairo one.
+///
+/// `NativeDrawingContext` hands over whole paths (`fillPath(segments, color)`);
+/// `NativeGraphicsContext` is immediate-mode (`beginPath`, `move`, `fillPath`).
+/// Replaying a segment list onto the immediate-mode calls is the whole job.
+final class GTKCoreDrawingContext: NativeDrawingContext {
+    private let context: NativeGraphicsContext
+
+    init(_ context: NativeGraphicsContext) {
+        self.context = context
+    }
+
+    private func replay(_ segments: [NativePathSegment]) {
+        context.beginPath()
+        for segment in segments {
+            switch segment {
+            case let .move(point):
+                context.move(toX: Double(point.x), y: Double(point.y))
+            case let .line(point):
+                context.line(toX: Double(point.x), y: Double(point.y))
+            case let .curve(to, control1, control2):
+                context.curve(toX: Double(to.x), y: Double(to.y),
+                              c1x: Double(control1.x), c1y: Double(control1.y),
+                              c2x: Double(control2.x), c2y: Double(control2.y))
+            case .close:
+                context.closePath()
+            }
+        }
+    }
+
+    func fillPath(_ segments: [NativePathSegment], color: NSColor) {
+        replay(segments)
+        context.setFillColor(color)
+        context.fillPath()
+    }
+
+    func strokePath(_ segments: [NativePathSegment], color: NSColor, lineWidth: CGFloat) {
+        replay(segments)
+        context.setStrokeColor(color)
+        context.setLineWidth(Double(lineWidth))
+        context.strokePath()
+    }
+
+    func drawText(_ text: String, at point: NSPoint, color: NSColor, fontName: String,
+                  fontSize: CGFloat, weight: Int, italic: Bool) {
+        context.drawText(text, at: point,
+                         font: NativeFontSpec(family: fontName, size: Double(fontSize),
+                                              bold: weight >= 600, italic: italic),
+                         color: color)
+    }
+
+    func drawImage(atPath path: String, in rect: NSRect, tint: NSColor?) {
+        context.drawImage(atPath: path, inRect: rect)
+    }
+
+    func drawLinearGradient(_ stops: [NativeGradientStop], in rect: NSRect, angle: CGFloat) {
+        context.fillLinearGradient(stops, inRect: rect, angleDegrees: Double(angle))
+    }
+
+    func clip(to segments: [NativePathSegment]) {
+        replay(segments)
+        context.clipToCurrentPath()
+    }
+
+    func saveState() { context.saveState() }
+
+    func restoreState() { context.restoreState() }
 }
 
 #endif  // canImport(CGTK)

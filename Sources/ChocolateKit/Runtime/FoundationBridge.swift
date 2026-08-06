@@ -81,6 +81,23 @@ extension Data {
     public var array: [UInt8] { [UInt8](self) }
 }
 
+extension NSString: NSPasteboardWriting {
+    /// `NSString` writes the string flavor, as on Apple.
+    ///
+    /// `Application/NSPasteboard.swift` conforms `String` and notes that
+    /// `NSString` is a typealias for it — true under WinFoundation, but real
+    /// Foundation's `NSString` is a separate class, so the demo's
+    /// `"…" as NSString` needs its own conformance here.
+    public func writableTypes(for pasteboard: NSPasteboard) -> [NSPasteboard.PasteboardType] {
+        [.string]
+    }
+
+    /// The string itself.
+    public func pasteboardPropertyList(forType type: NSPasteboard.PasteboardType) -> Any? {
+        self as String
+    }
+}
+
 extension IndexPath {
     /// Creates a two-element path addressing `item` within `section`.
     ///
