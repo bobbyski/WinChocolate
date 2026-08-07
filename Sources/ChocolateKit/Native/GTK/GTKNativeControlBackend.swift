@@ -3678,6 +3678,54 @@ public final class GTKNativeControlBackend: NativeControlBackend {
                 Unmanaged.passRetained(box).toOpaque(), boxRelease, GConnectFlags(rawValue: 0)
             )
             return
+
+        // The rest have no "activate"-shaped signal at all — their action IS a
+        // change of value or selection. The core has no separate registrar to
+        // reach those with (there is no `registerSelectionAction` in the
+        // protocol), so target/action is the ONLY channel it has, and every one
+        // of these must be routed or the control silently does nothing: the
+        // toolbar's page pop-up selects but never switches page, the segmented
+        // control never reports, the date picker never fires.
+        case .popUp, .segmented, .tabView:
+            setSelectionChangeAction(for: handle) { _ in action() }
+            return
+        case .table, .outline, .collection:
+            // Also mirror the row, so the core's synchronous
+            // `tableSelectedRow(for:)` reflects what the user just clicked.
+            setSelectionChangeAction(for: handle) { [weak self] row in
+                self?.coreSeam.tableSelection[handle.rawValue] = row >= 0 ? [row] : []
+                self?.coreSeam.tableClickedRow[handle.rawValue] = row
+                action()
+            }
+            return
+        case .datePicker:
+            setDateChangeAction(for: handle) { _ in action() }
+            return
+        case .stepper:
+            setValueChangeAction(for: handle) { _ in action() }
+            return
+        // No `.progress`: a GtkProgressBar reports nothing and has no
+        // "value-changed" — it is a readout, not a control. (The core also
+        // realizes a non-custom NSLevelIndicator as one, so a click-to-set
+        // level indicator has nothing to hang an action on here; the demo's
+        // editable rating indicator draws itself and arrives as a view.)
+        case .level:
+            setLevelChangeAction(for: handle) { _ in action() }
+            return
+        case .colorWell:
+            setColorChangeAction(for: handle) { _ in action() }
+            return
+        case .tokenField:
+            setTokensChangeAction(for: handle) { _ in action() }
+            return
+        case .scroller:
+            setScrollerAction(for: handle) { _ in action() }
+            return
+        case .label, .imageView, .view, .box:
+            // A plain view's action is a click on it (AppKit's image-view and
+            // custom-control pattern).
+            setClickAction(for: handle) { _, _ in action() }
+            return
         default:
             return
         }
@@ -4988,6 +5036,8 @@ final class CoreSeamState {
     var pendingMainMenu: [NativeMenuSpec]?
     /// Labels added to plain views that the core asked to display text.
     var viewTextLabels: [UInt: OpaquePointer] = [:]
+    /// Each date picker's field pattern, supplied by the core.
+    var datePickerFormats: [UInt: String] = [:]
 }
 
 extension GTKNativeControlBackend {
@@ -5332,7 +5382,7 @@ extension GTKNativeControlBackend {
 
     /// The text view's selection as a location/length pair.
     public func textSelection(for handle: NativeHandle) -> (location: Int, length: Int) {
-        guard let w = widget(handle) else { return (0, 0) }
+        guard isEditableKind(handle), let w = widget(handle) else { return (0, 0) }
         var start: Int32 = 0, end: Int32 = 0
         if gtk_editable_get_selection_bounds(w, &start, &end) != 0 {
             return (Int(start), Int(end - start))
@@ -5604,14 +5654,26 @@ extension GTKNativeControlBackend {
                                    for handle: NativeHandle) {}
 
     /// Sets the text view's selection.
+    ///
+    /// `GtkEditable` is the entry family only — a `GtkTextView` selects through
+    /// its buffer, and a label has no selection at all, so asking those tripped
+    /// `GTK_IS_EDITABLE`.
     public func setTextSelection(location: Int, length: Int, for handle: NativeHandle) {
-        guard let w = widget(handle) else { return }
+        guard isEditableKind(handle), let w = widget(handle) else { return }
         gtk_editable_select_region(w, Int32(location), Int32(location + length))
+    }
+
+    /// Whether this handle is one of the `GtkEditable` control kinds.
+    private func isEditableKind(_ handle: NativeHandle) -> Bool {
+        switch kinds[handle.rawValue] {
+        case .textField, .secureField, .searchField, .comboBox: return true
+        default: return false
+        }
     }
 
     /// Replaces the selected text.
     public func replaceSelectedText(_ text: String, for handle: NativeHandle) {
-        guard let w = widget(handle) else { return }
+        guard isEditableKind(handle), let w = widget(handle) else { return }
         var start: Int32 = 0, end: Int32 = 0
         if gtk_editable_get_selection_bounds(w, &start, &end) != 0 {
             gtk_editable_delete_text(w, start, end)
@@ -5625,12 +5687,29 @@ extension GTKNativeControlBackend {
                                   for handle: NativeHandle) {
         setDateValue(date, for: handle)
         setDateRange(min: minDate, max: maxDate, for: handle)
+        refreshDatePickerText(handle)
     }
 
-    /// Sets the picker's field layout. The GTK picker derives its fields from
-    /// the locale and its graphical/compact mode, so an explicit format string
-    /// is not applied.
-    public func setDatePickerFormat(_ format: String?, for handle: NativeHandle) {}
+    /// Sets the picker's field pattern.
+    ///
+    /// The compact picker is a text entry, and `setDateValue` deliberately does
+    /// not write into it — formatting needs the locale, calendar and element
+    /// flags, which are AppKit's to know. The core knows them and sends this
+    /// pattern; nothing was rendering it, so the control came up blank.
+    public func setDatePickerFormat(_ format: String?, for handle: NativeHandle) {
+        coreSeam.datePickerFormats[handle.rawValue] = format
+        refreshDatePickerText(handle)
+    }
+
+    /// Renders the current date through the current pattern into the entry.
+    private func refreshDatePickerText(_ handle: NativeHandle) {
+        let raw = handle.rawValue
+        guard let format = coreSeam.datePickerFormats[raw], !format.isEmpty,
+              let date = dateValues[raw] else { return }
+        let formatter = DateFormatter()
+        formatter.dateFormat = format
+        setDatePickerText(formatter.string(from: date), for: handle)
+    }
 
     /// Sets the time zone the picker displays in.
     public func setDatePickerTimeZone(_ timeZone: TimeZone, for handle: NativeHandle) {}
@@ -5789,6 +5868,28 @@ extension GTKNativeControlBackend {
 
     // MARK: Event registration
 
+    /// Converts a point in `handle`'s own GTK space (top-left) to the AppKit
+    /// `locationInWindow` the core expects (window space, bottom-left).
+    ///
+    /// The core hit-tests with it — `NSSegmentedControl.mouseDown` computes
+    /// `event.locationInWindow.x - frameInWindow().origin.x` to find the
+    /// segment. Handing it a view-local point made that difference negative, no
+    /// segment matched, and the control did nothing at all.
+    private func windowPoint(x: Double, y: Double, in handle: NativeHandle) -> NSPoint {
+        guard let w = widget(handle), let root = gtk_widget_get_root(asWidget(w)) else {
+            return NSPoint(x: CGFloat(x), y: CGFloat(y))
+        }
+        let rootWidget = UnsafeMutablePointer<GtkWidget>(root)
+        var local = graphene_point_t(x: Float(x), y: Float(y))
+        var inWindow = graphene_point_t(x: 0, y: 0)
+        guard gtk_widget_compute_point(asWidget(w), rootWidget, &local, &inWindow) != 0 else {
+            return NSPoint(x: CGFloat(x), y: CGFloat(y))
+        }
+        // AppKit measures the window from its BOTTOM-left.
+        let height = Double(gtk_widget_get_height(rootWidget))
+        return NSPoint(x: CGFloat(inWindow.x), y: CGFloat(height - Double(inWindow.y)))
+    }
+
     /// Installs the one GTK mouse handler that fans out to the core's
     /// per-event callbacks, the first time any of them is registered.
     private func ensureMouseHandler(for handle: NativeHandle) {
@@ -5800,11 +5901,12 @@ extension GTKNativeControlBackend {
             switch event {
             case let .down(x, y, clickCount, rightButton):
                 let event = NSEvent(type: rightButton ? .rightMouseDown : .leftMouseDown,
-                                    locationInWindow: NSPoint(x: x, y: y),
+                                    locationInWindow: self.windowPoint(x: x, y: y, in: handle),
                                     clickCount: clickCount)
                 if rightButton { actions.rightDown?(event) } else { actions.down?(event) }
             case let .entered(x, y):
-                actions.moved?(NSEvent(type: .mouseMoved, locationInWindow: NSPoint(x: x, y: y)))
+                actions.moved?(NSEvent(type: .mouseMoved,
+                                       locationInWindow: self.windowPoint(x: x, y: y, in: handle)))
             case .exited:
                 actions.left?()
             case let .scroll(deltaX, deltaY):
@@ -6097,11 +6199,48 @@ extension GTKNativeControlBackend {
     }
 
     /// Schedules a repeating native timer, returning a token to cancel it with.
+    ///
+    /// Scheduled directly on the GLib loop — NOT through `scheduleTimer`, which
+    /// hands back no source id. The first version went through it, so the token
+    /// mapped to nothing and `cancelNativeTimer` silently cancelled nothing.
+    /// With `NSLayoutPump` arming a 1ms one-shot `Timer` on every layout mark,
+    /// each mark minted an immortal 1ms repeating GLib timer: ~1,900 fires/s
+    /// sitting idle, another ~1,000/s after every click — the "everything takes
+    /// a second" sluggishness. The core's contract is repeat-until-cancelled
+    /// (`Timer.fire()` invalidates one-shots itself), so cancellation is the
+    /// whole mechanism and has to actually work.
     public func scheduleNativeTimer(intervalMilliseconds: Int,
                                     action: @escaping () -> Void) -> UInt {
         let token = coreSeam.nextTimerID
         coreSeam.nextTimerID += 1
-        scheduleTimer(interval: Double(intervalMilliseconds) / 1000.0, repeats: true, action)
+        var action = action
+        if paintTrace {
+            let original = action
+            let every = Double(intervalMilliseconds) / 1000.0
+            let start = paintTraceStart
+            action = {
+                let ms = Double(g_get_monotonic_time() - start) / 1000.0
+                FileHandle.standardError.write(
+                    String(format: "LCPAINT %8.1fms [timer] every=%.2fs\n", ms, every)
+                        .data(using: .utf8)!)
+                original()
+            }
+        }
+        let box = ActionBox(action)
+        let source = g_timeout_add_full(
+            G_PRIORITY_DEFAULT, guint(max(1, intervalMilliseconds)),
+            { userData in
+                guard let userData else { return gboolean(0) }
+                Unmanaged<ActionBox>.fromOpaque(userData).takeUnretainedValue().action()
+                return gboolean(1)   // repeat until cancelNativeTimer removes us
+            },
+            Unmanaged.passRetained(box).toOpaque(),
+            { userData in   // GDestroyNotify: source removed -> release the box
+                guard let userData else { return }
+                Unmanaged<ActionBox>.fromOpaque(userData).release()
+            }
+        )
+        coreSeam.timers[token] = source
         return token
     }
 
