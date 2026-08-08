@@ -261,7 +261,7 @@ open class NSTableView: NSControl {
     /// Reloads specific rows/columns by `IndexSet`, matching AppKit's
     /// signature.
     open func reloadData(forRowIndexes rowIndexes: IndexSet, columnIndexes: IndexSet) {
-        reloadData(forRowIndexes: Set(rowIndexes), columnIndexes: Set(columnIndexes))
+        reloadDataForRows(Set(rowIndexes), columns: Set(columnIndexes))
     }
 
     /// Space between table cells.
@@ -867,7 +867,7 @@ open class NSTableView: NSControl {
 
     /// Reloads only the given cells from the data source, updating each in
     /// place natively instead of rebuilding the whole table.
-    open func reloadData(forRowIndexes rowIndexes: Set<Int>, columnIndexes: Set<Int>) {
+    private func reloadDataForRows(_ rowIndexes: Set<Int>, columns columnIndexes: Set<Int>) {
         let columns = columnIndexes.isEmpty ? Set(tableColumns.indices) : columnIndexes
         for row in rowIndexes where rowValues.indices.contains(row) {
             for column in columns where tableColumns.indices.contains(column) {

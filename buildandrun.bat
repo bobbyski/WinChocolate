@@ -5,7 +5,17 @@ set "SCRIPT_DIR=%~dp0"
 pushd "%SCRIPT_DIR%" >nul
 
 if not defined SWIFT_EXE (
-    set "SWIFT_EXE=C:\Users\bobby\AppData\Local\Programs\Swift\Toolchains\0.0.0+Asserts\usr\bin\swift.exe"
+    where swift.exe >nul 2>&1
+    if not errorlevel 1 (
+        set "SWIFT_EXE=swift.exe"
+    ) else if exist "%LocalAppData%\Programs\Swift\Toolchains\0.0.0+Asserts\usr\bin\swift.exe" (
+        set "SWIFT_EXE=%LocalAppData%\Programs\Swift\Toolchains\0.0.0+Asserts\usr\bin\swift.exe"
+    ) else (
+        echo Swift was not found. Install the Windows Swift toolchain and open a new terminal.
+        echo See SETUP_WINDOWS.md for setup instructions.
+        popd >nul
+        exit /b 1
+    )
 )
 
 rem Which app to build and run. The first argument may select it; anything else
@@ -39,9 +49,6 @@ shift
 goto collect_args
 :collected_args
 
-set "BUILD_DIR=%SCRIPT_DIR%.build\aarch64-unknown-windows-msvc\debug"
-set "APP_EXE=%BUILD_DIR%\%APP_NAME%.exe"
-set "CONTRACT_TEST_EXE=%BUILD_DIR%\WinChocolateContractTests.exe"
 set "RUN_DIR=%SCRIPT_DIR%Run"
 
 echo Building WinChocolate (selected app: %APP_NAME%)...
@@ -52,6 +59,16 @@ if errorlevel 1 (
     popd >nul
     exit /b 1
 )
+
+for /f "usebackq delims=" %%I in (`"%SWIFT_EXE%" build --show-bin-path`) do set "BUILD_DIR=%%I"
+if not defined BUILD_DIR (
+    echo.
+    echo Could not determine the SwiftPM binary directory.
+    popd >nul
+    exit /b 1
+)
+set "APP_EXE=%BUILD_DIR%\%APP_NAME%.exe"
+set "CONTRACT_TEST_EXE=%BUILD_DIR%\WinChocolateContractTests.exe"
 
 echo.
 echo Running WinChocolate contract tests...
