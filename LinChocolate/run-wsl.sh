@@ -60,6 +60,26 @@ while [[ "${1:-}" == --* ]]; do
     esac
 done
 
+# Git checkouts made on Windows commonly materialize the RealDemo symlinks as
+# one-line files containing the link target. Swift then tries to compile those
+# path strings as source. Detect that checkout shape and automatically use the
+# existing native-WSL copy path, which replaces the placeholders with the real
+# shared demo sources. This also avoids slow SwiftPM I/O on /mnt/c.
+if [[ "$USE_WSL_COPY" == "0" ]]; then
+    for shared_source in Sources/RealDemo/main.swift \
+                         Sources/RealDemo/DemoConveniences.swift \
+                         Sources/RealDemo/DemoNibConveniences.swift; do
+        if [[ ! -L "$shared_source" ]] &&
+           [[ -f "$shared_source" ]] &&
+           [[ $(wc -c < "$shared_source") -lt 200 ]] &&
+           grep -Eq '^\.\./.*Demo/DemoApplication/.*\.swift[[:space:]]*$' "$shared_source"; then
+            USE_WSL_COPY=1
+            echo "Windows checkout placeholders detected; using a native WSL build copy."
+            break
+        fi
+    done
+fi
+
 diagnose_environment() {
     echo "LinChocolate WSL diagnostics"
     echo "  pwd: $PWD"

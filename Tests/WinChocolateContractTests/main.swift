@@ -7599,12 +7599,12 @@ func testWinFoundationCompatibilitySurface() {
     mutableData.removeAll(keepingCapacity: true)
     expect(mutableData.isEmpty, "WinFoundation Data removeAll failed.")
 
-    let packageDataURL = URL(fileURLWithPath: "C:\\AIResearch\\WinChocolate\\Code\\WinChocolate\\Package.swift")
+    let packageDataURL = URL(fileURLWithPath: "Package.swift")
     let packageData = try? Data(contentsOf: packageDataURL)
     expect(packageData?.count ?? 0 > 0, "WinFoundation Data(contentsOf:) failed to read a package file.")
     expect(String(decoding: packageData ?? Data(), as: UTF8.self).contains("WinChocolate"), "WinFoundation Data(contentsOf:) did not preserve file bytes.")
 
-    let writeDataURL = URL(fileURLWithPath: "C:\\AIResearch\\WinChocolate\\Code\\WinChocolate\\.build\\winfoundation-data-write.txt")
+    let writeDataURL = URL(fileURLWithPath: ".build\\winfoundation-data-write.txt")
     let writtenData = Data([87, 105, 110, 67, 104, 111, 99, 111, 108, 97, 116, 101])
     do {
         try writtenData.write(to: writeDataURL)
@@ -7672,11 +7672,11 @@ func testWinFoundationCompatibilitySurface() {
     let interval: TimeInterval = 2.5
     expect(Date(timeInterval: interval, since: early).timeIntervalSinceReferenceDate == 3.5, "WinFoundation TimeInterval alias failed.")
 
-    guard let packageBundle = Bundle(path: "C:\\AIResearch\\WinChocolate\\Code\\WinChocolate") else {
+    guard let packageBundle = Bundle(path: ".") else {
         fatalError("WinFoundation Bundle(path:) failed.")
     }
     expect(packageBundle.bundleURL.isFileURL, "WinFoundation Bundle bundleURL should be a file URL.")
-    expect(packageBundle.bundlePath.hasSuffix("Code\\WinChocolate"), "WinFoundation Bundle bundlePath failed.")
+    expect(!packageBundle.bundlePath.isEmpty, "WinFoundation Bundle bundlePath failed.")
     expect(packageBundle.path(forResource: "Package", ofType: "swift")?.hasSuffix("Package.swift") == true, "WinFoundation Bundle resource path lookup failed.")
     expect(packageBundle.url(forResource: "Package", withExtension: "swift")?.lastPathComponent == "Package.swift", "WinFoundation Bundle resource URL lookup failed.")
     expect(packageBundle.path(forResource: "Missing", ofType: "swift") == nil, "WinFoundation Bundle should return nil for missing resources.")
@@ -7718,7 +7718,7 @@ func testWinFoundationCompatibilitySurface() {
 func testImageViewStoresImageAndUsesNativePeer() {
     let backend = InMemoryNativeControlBackend()
     let imageView = NSImageView(frame: NSMakeRect(0, 0, 64, 64))
-    let packageURL = URL(fileURLWithPath: "C:\\AIResearch\\WinChocolate\\Code\\WinChocolate\\Package.swift")
+    let packageURL = URL(fileURLWithPath: "Package.swift")
     let urlImage = NSImage(contentsOf: packageURL)
     let dataImage = NSImage(data: Data([1, 2, 3, 4]))
     let symbolImage = NSImage(systemSymbolName: "folder", accessibilityDescription: "Open folder")

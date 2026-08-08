@@ -72,10 +72,22 @@ set "CONTRACT_TEST_EXE=%BUILD_DIR%\WinChocolateContractTests.exe"
 
 echo.
 echo Running WinChocolate contract tests...
-"%CONTRACT_TEST_EXE%"
-if errorlevel 1 (
+set "CONTRACT_TEST_LOG=%TEMP%\WinChocolateContractTests-%RANDOM%-%RANDOM%.log"
+"%CONTRACT_TEST_EXE%" >"%CONTRACT_TEST_LOG%" 2>&1
+set "CONTRACT_TEST_STATUS=%ERRORLEVEL%"
+type "%CONTRACT_TEST_LOG%"
+findstr /C:"WinChocolate contract tests passed." "%CONTRACT_TEST_LOG%" >nul
+set "CONTRACT_TEST_MARKER=%ERRORLEVEL%"
+del /q "%CONTRACT_TEST_LOG%" >nul 2>&1
+if not "%CONTRACT_TEST_STATUS%"=="0" (
     echo.
-    echo Contract tests failed.
+    echo Contract tests failed with exit code %CONTRACT_TEST_STATUS%.
+    popd >nul
+    exit /b 1
+)
+if not "%CONTRACT_TEST_MARKER%"=="0" (
+    echo.
+    echo Contract tests terminated without printing their success marker.
     popd >nul
     exit /b 1
 )
