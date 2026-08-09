@@ -41,6 +41,10 @@ public final class GTKNativeControlBackend: NativeControlBackend {
     private var stepperValues: [UInt: Double] = [:]     // stepper -> current value
     private var stepperSteps: [UInt: Double] = [:]      // stepper -> increment
     private var valueChangeActions: [UInt: (Double) -> Void] = [:]
+    /// The target/action bridge is registered by both `NSControl` and some
+    /// concrete subclasses while a peer is realized. GObject connections are
+    /// additive, so retain the current handler and replace it on re-registration.
+    private var actionSignalHandlers: [UInt: (widget: OpaquePointer, id: gulong)] = [:]
     private var comboEntries: [UInt: OpaquePointer] = [:]   // combo -> its GtkEntry child
     private var splitPaneCounts: [UInt: Int] = [:]           // paned -> panes added
     private var viewFixeds: [UInt: OpaquePointer] = [:]      // view -> child-hosting GtkFixed
@@ -3683,6 +3687,7 @@ public final class GTKNativeControlBackend: NativeControlBackend {
         presentedWindows.remove(raw)
         windowCloseActions[raw] = nil
         windowShouldCloseHandlers[raw] = nil
+        actionSignalHandlers[raw] = nil
         widgets[raw] = nil
         kinds[raw] = nil
         frames[raw] = nil
@@ -3714,12 +3719,16 @@ public final class GTKNativeControlBackend: NativeControlBackend {
         case .comboBox:
             // The combo's activation comes from its internal entry.
             guard let entry = comboEntries[handle.rawValue] else { return }
+            if let previous = actionSignalHandlers[handle.rawValue] {
+                g_signal_handler_disconnect(UnsafeMutableRawPointer(previous.widget), previous.id)
+            }
             let box = ActionBox(action)
-            g_signal_connect_data(
+            let handlerID = g_signal_connect_data(
                 UnsafeMutableRawPointer(entry), "activate",
                 unsafeBitCast(gtkActionTrampoline, to: GCallback.self),
                 Unmanaged.passRetained(box).toOpaque(), boxRelease, GConnectFlags(rawValue: 0)
             )
+            actionSignalHandlers[handle.rawValue] = (entry, handlerID)
             return
 
         // The rest have no "activate"-shaped signal at all — their action IS a
@@ -3773,12 +3782,16 @@ public final class GTKNativeControlBackend: NativeControlBackend {
             return
         }
         guard let w = widget(handle) else { return }
+        if let previous = actionSignalHandlers[handle.rawValue] {
+            g_signal_handler_disconnect(UnsafeMutableRawPointer(previous.widget), previous.id)
+        }
         let box = ActionBox(action)
-        g_signal_connect_data(
+        let handlerID = g_signal_connect_data(
             UnsafeMutableRawPointer(w), signal,
             unsafeBitCast(gtkActionTrampoline, to: GCallback.self),
             Unmanaged.passRetained(box).toOpaque(), boxRelease, GConnectFlags(rawValue: 0)
         )
+        actionSignalHandlers[handle.rawValue] = (w, handlerID)
     }
     /// Wires a `GtkEntry`'s `activate` signal (Enter pressed) to `action`.
     public func setSubmitAction(for handle: NativeHandle, action: @escaping () -> Void) {
