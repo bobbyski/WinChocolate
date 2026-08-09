@@ -650,6 +650,7 @@ open class NSWindow: NSResponder {
         nativeBackend.closeWindow(nativeHandle)
         toolbarHostView?.destroyNativePeer()
         toolbarHostView = nil
+        contentView?.destroyNativePeer()
         self.nativeHandle = nil
         NSApplication.shared.removeWindowsItem(self)
     }
@@ -824,6 +825,7 @@ open class NSWindow: NSResponder {
         NSApplication.shared.windowWillClose(self)
         toolbarHostView?.destroyNativePeer()
         toolbarHostView = nil
+        contentView?.destroyNativePeer()
         nativeHandle = nil
         NSApplication.shared.removeWindowsItem(self)
         delegate?.windowWillClose(Notification(name: Notification.Name("NSWindowWillCloseNotification"), object: self))

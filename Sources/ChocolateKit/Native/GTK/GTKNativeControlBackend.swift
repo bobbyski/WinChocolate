@@ -1310,7 +1310,8 @@ public final class GTKNativeControlBackend: NativeControlBackend {
             didClose: { [weak self] in
                 self?.customizationState = nil
                 handlers.onClose()
-            }
+            },
+            destroysSurface: true
         )
         g_signal_connect_data(
             UnsafeMutableRawPointer(panel), "close-request",
@@ -1489,6 +1490,7 @@ public final class GTKNativeControlBackend: NativeControlBackend {
     public func registerWindowCloseAction(for handle: NativeHandle, action: @escaping () -> Void) {
         guard let w = widget(handle) else { return }
         let raw = handle.rawValue
+        let isPrimary = primaryWindows.contains(raw)
         windowCloseActions[raw] = action
         let box = WindowCloseBox(
             shouldClose: { [weak self] in
@@ -1496,12 +1498,12 @@ public final class GTKNativeControlBackend: NativeControlBackend {
             },
             didClose: { [weak self] in
                 self?.windowCloseActions[raw]?()
-                if self?.primaryWindows.contains(raw) == true {
-                    self?.forgetDestroyedWindow(raw)
+                self?.forgetDestroyedWindow(raw)
+                if isPrimary {
                     self?.terminateApplication()
                 }
             },
-            destroysSurface: primaryWindows.contains(raw)
+            destroysSurface: true
         )
         g_signal_connect_data(
             UnsafeMutableRawPointer(w), "close-request",
@@ -4228,10 +4230,10 @@ private let gtkCloseRequestTrampoline: @convention(c) (UnsafeMutableRawPointer?,
     guard box.shouldClose() else { return gboolean(1) }
     if box.destroysSurface {
         gtk_window_destroy(UnsafeMutablePointer<GtkWindow>(OpaquePointer(window)))
+        box.didClose()
     } else {
         gtk_widget_set_visible(UnsafeMutablePointer<GtkWidget>(OpaquePointer(window)), gboolean(0))
     }
-    box.didClose()
     // TRUE: either the delegate vetoed the request or we hid the window and
     // notified the shared lifecycle. GTK must not destroy reusable children.
     return gboolean(1)
@@ -5789,12 +5791,11 @@ extension GTKNativeControlBackend {
     /// Closes a window.
     public func closeWindow(_ handle: NativeHandle) {
         guard let w = widget(handle) else { return }
-        if primaryWindows.contains(handle.rawValue) {
-            gtk_window_destroy(asWindow(w))
-            forgetDestroyedWindow(handle.rawValue)
+        let isPrimary = primaryWindows.contains(handle.rawValue)
+        gtk_window_destroy(asWindow(w))
+        forgetDestroyedWindow(handle.rawValue)
+        if isPrimary {
             terminateApplication()
-        } else {
-            gtk_widget_set_visible(asWidget(w), gboolean(0))
         }
     }
 
