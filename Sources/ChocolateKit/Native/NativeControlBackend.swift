@@ -318,6 +318,10 @@ extension NativeControlBackend {
     /// bare message loop. The Win32 backend overrides this.
     public func makeRunLoopPump() -> RunLoopPlatformPump? { nil }
 
+    /// Applies an explicit application appearance to native themed controls.
+    /// Backends whose controls are drawn by the framework need no extra work.
+    public func setAppearanceDark(_ dark: Bool) {}
+
     /// Default: the backend's own coordinate space already matches, so a view's
     /// `isFlipped` needs no announcement.
     ///
@@ -412,6 +416,9 @@ public protocol NativeControlBackend: AnyObject {
     /// Whether the user's system theme prefers a dark appearance (Windows
     /// "dark mode" for applications). Drives `NSAppearance` resolution.
     func systemPrefersDarkAppearance() -> Bool
+
+    /// Makes native widgets follow the application's effective appearance.
+    func setAppearanceDark(_ dark: Bool)
 
     /// The user's system accent color, or `nil` when unavailable. Drives
     /// `NSColor.controlAccentColor` and the selection tints (plan 8.3).

@@ -95,7 +95,11 @@ extension NSApplication {
     /// The application's appearance override; `nil` follows the system theme.
     public var appearance: NSAppearance? {
         get { winAppearanceOverride }
-        set { winAppearanceOverride = newValue }
+        set {
+            winAppearanceOverride = newValue
+            nativeBackend.setAppearanceDark(effectiveAppearance.winIsDark)
+            winPostEffectiveAppearanceDidChange()
+        }
     }
 
     /// The appearance the application resolves to: the override when set,
