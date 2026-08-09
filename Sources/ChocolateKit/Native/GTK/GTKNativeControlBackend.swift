@@ -977,7 +977,7 @@ public final class GTKNativeControlBackend: NativeControlBackend {
                 }
                 let gaction = g_simple_action_new(name, nil)!
                 if let action = item.action {
-                    let box = ActionBox(action)
+                    let box = MenuActionBox(root: asWidget(w), action: action)
                     g_signal_connect_data(
                         UnsafeMutableRawPointer(gaction), "activate",
                         unsafeBitCast(gtkMenuActivateTrampoline, to: GCallback.self),
@@ -3983,6 +3983,14 @@ private final class ActionBox {
     let action: () -> Void
     init(_ action: @escaping () -> Void) { self.action = action }
 }
+private final class MenuActionBox {
+    let root: UnsafeMutablePointer<GtkWidget>
+    let action: () -> Void
+    init(root: UnsafeMutablePointer<GtkWidget>, action: @escaping () -> Void) {
+        self.root = root
+        self.action = action
+    }
+}
 private final class WindowCloseBox {
     let shouldClose: () -> Bool
     let didClose: () -> Void
@@ -4307,6 +4315,7 @@ private let gtkTextBufferChangedTrampoline: @convention(c) (UnsafeMutableRawPoin
 private let gtkSelectionChangedTrampoline: @convention(c) (UnsafeMutableRawPointer?, UnsafeMutableRawPointer?, gpointer?) -> Void = { dropdown, _, userData in
     guard let dropdown, let userData else { return }
     let index = Int(gtk_drop_down_get_selected(OpaquePointer(dropdown)))
+    popdownVisiblePopovers(under: UnsafeMutablePointer<GtkWidget>(OpaquePointer(dropdown)))
     Unmanaged<IntActionBox>.fromOpaque(userData).takeUnretainedValue().action(index)
 }
 
@@ -4798,7 +4807,10 @@ private let menuBarTypeNames: Set<String> = ["GtkPopoverMenuBar", "GtkPopoverMen
 
 /// Recursively pops down any *mapped* standalone popover in `widget`'s subtree
 /// (dropdown lists, combo popups), skipping menu-bar menus.
-private func popdownVisiblePopovers(under widget: UnsafeMutablePointer<GtkWidget>) {
+private func popdownVisiblePopovers(
+    under widget: UnsafeMutablePointer<GtkWidget>,
+    includingMenuBars: Bool = false
+) {
     var child = gtk_widget_get_first_child(widget)
     while let c = child {
         let typeName = String(cString: g_type_name_from_instance(
@@ -4807,8 +4819,8 @@ private func popdownVisiblePopovers(under widget: UnsafeMutablePointer<GtkWidget
             if gtk_widget_get_mapped(c) != 0 {
                 gtk_popover_popdown(UnsafeMutablePointer<GtkPopover>(OpaquePointer(c)))
             }
-        } else if !menuBarTypeNames.contains(typeName) {
-            popdownVisiblePopovers(under: c)
+        } else if includingMenuBars || !menuBarTypeNames.contains(typeName) {
+            popdownVisiblePopovers(under: c, includingMenuBars: includingMenuBars)
         }
         child = gtk_widget_get_next_sibling(c)
     }
@@ -4846,7 +4858,11 @@ private let gtkSegmentToggledTrampoline: @convention(c) (UnsafeMutableRawPointer
 /// gpointer)`; runs a menu item's action.
 private let gtkMenuActivateTrampoline: @convention(c) (UnsafeMutableRawPointer?, UnsafeMutableRawPointer?, gpointer?) -> Void = { _, _, userData in
     guard let userData else { return }
-    Unmanaged<ActionBox>.fromOpaque(userData).takeUnretainedValue().action()
+    let box = Unmanaged<MenuActionBox>.fromOpaque(userData).takeUnretainedValue()
+    // Close first: an action is allowed to replace content or terminate the
+    // application, either of which can invalidate the menu's widget tree.
+    popdownVisiblePopovers(under: box.root, includingMenuBars: true)
+    box.action()
 }
 
 /// Handler for `GtkNotebook::switch-page` — `void (*)(GtkNotebook*, GtkWidget*,
