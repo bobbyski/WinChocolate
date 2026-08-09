@@ -2,6 +2,12 @@
 
 import PackageDescription
 
+// SwiftPM parses .pc files itself and rejects compiler-driver flags such as
+// GTK's transitive -pthread/SSE entries. Point it at package-owned equivalent
+// metadata with only include and link flags. #filePath keeps this relocatable.
+let packageRoot = String(#filePath.dropLast("Package.swift".count))
+let gtkPkgConfig = packageRoot + "Sources/CGTK/gtk4-winchocolate.pc"
+
 let package = Package(
     name: "WinChocolate",
     products: [
@@ -39,7 +45,7 @@ let package = Package(
         .systemLibrary(
             name: "CGTK",
             path: "Sources/CGTK",
-            pkgConfig: "gtk4",
+            pkgConfig: gtkPkgConfig,
             providers: [.apt(["libgtk-4-dev"])]
         ),
         // C wrappers for deliberately-used deprecated GTK calls, so the Swift
@@ -76,7 +82,7 @@ let package = Package(
                 // on Windows this module owns CGFloat/CGPoint/CGSize/CGRect,
                 // and everywhere else it defers to the platform's own.
                 .define("USE_WIN_FOUNDATION", .when(platforms: [.windows])),
-                .swiftLanguageVersion(.v5)
+                .swiftLanguageMode(.v5)
             ]
         ),
         // The shared AppKit core. One surface, every platform; the Win32 and
@@ -107,7 +113,7 @@ let package = Package(
                 // demand isolation ceremony on every nonisolated dispatch
                 // site, so the framework itself builds in Swift 5 mode;
                 // consumers get the full Swift 6 annotations either way.
-                .swiftLanguageVersion(.v5)
+                .swiftLanguageMode(.v5)
             ],
             linkerSettings: [
                 .linkedLibrary("User32", .when(platforms: [.windows])),
@@ -130,7 +136,7 @@ let package = Package(
             dependencies: ["ChocolateKit"],
             path: "Sources/WinChocolate",
             swiftSettings: [
-                .swiftLanguageVersion(.v5)
+                .swiftLanguageMode(.v5)
             ]
         ),
         // The matching Linux façade (plan 1.3). It is only ever *depended on*
@@ -142,7 +148,7 @@ let package = Package(
             dependencies: ["ChocolateKit"],
             path: "Sources/LinChocolate",
             swiftSettings: [
-                .swiftLanguageVersion(.v5)
+                .swiftLanguageMode(.v5)
             ]
         ),
         .executableTarget(

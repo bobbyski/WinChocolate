@@ -70,6 +70,11 @@ rem `buildandrun.bat --dark` still runs the main demo as before.
 rem   (default) / demo / winchocolate  -> WinChocolateDemo (the main demo)
 rem   runloop / runloopdemo            -> RunLoopDemo (the run-loop demo)
 set "APP_NAME=WinChocolateDemo"
+set "BUILD_ONLY=0"
+if /I "%~1"=="--build" (
+    set "BUILD_ONLY=1"
+    shift
+)
 if /I "%~1"=="runloop"      goto sel_runloop
 if /I "%~1"=="runloopdemo"  goto sel_runloop
 if /I "%~1"=="demo"         goto sel_demo
@@ -136,6 +141,13 @@ if not "%CONTRACT_TEST_MARKER%"=="0" (
     echo Contract tests terminated without printing their success marker.
     popd >nul
     exit /b 1
+)
+
+if "%BUILD_ONLY%"=="1" (
+    echo.
+    echo Build and contract tests completed successfully.
+    popd >nul
+    exit /b 0
 )
 
 echo.

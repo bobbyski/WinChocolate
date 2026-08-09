@@ -1,0 +1,8 @@
+prefix=/usr
+includedir=${prefix}/include
+
+Name: WinChocolate GTK4
+Description: GTK4 compile and link metadata accepted by SwiftPM system libraries
+Version: 4
+Libs: -lgtk-4 -lpangocairo-1.0 -lpango-1.0 -lharfbuzz -lgdk_pixbuf-2.0 -lcairo-gobject -lcairo -lvulkan -lgraphene-1.0 -lgio-2.0 -lgobject-2.0 -lglib-2.0
+Cflags: -I${includedir}/gtk-4.0 -I${includedir}/pango-1.0 -I${includedir}/glib-2.0 -I/usr/lib/x86_64-linux-gnu/glib-2.0/include -I/usr/lib/aarch64-linux-gnu/glib-2.0/include -I/usr/lib/arm-linux-gnueabihf/glib-2.0/include -I${includedir}/harfbuzz -I${includedir}/freetype2 -I${includedir}/libpng16 -I${includedir}/libmount -I${includedir}/blkid -I${includedir}/fribidi -I${includedir}/cairo -I${includedir}/pixman-1 -I${includedir}/gdk-pixbuf-2.0 -I${includedir}/x86_64-linux-gnu -I${includedir}/aarch64-linux-gnu -I${includedir}/arm-linux-gnueabihf -I${includedir}/webp -I${includedir}/graphene-1.0 -I/usr/lib/x86_64-linux-gnu/graphene-1.0/include -I/usr/lib/aarch64-linux-gnu/graphene-1.0/include -I/usr/lib/arm-linux-gnueabihf/graphene-1.0/include

@@ -95,6 +95,7 @@ resources, and launches the selected demo:
 
 ```bat
 buildandrun.bat
+buildandrun.bat --build
 buildandrun.bat runloop
 ```
 

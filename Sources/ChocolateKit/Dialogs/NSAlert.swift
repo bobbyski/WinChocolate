@@ -99,6 +99,7 @@ open class NSAlert: NSObject {
     public convenience init(error: Error) {
         self.init()
         alertStyle = .warning
+        #if os(Windows)
         if let nsError = error as? NSError {
             messageText = nsError.localizedDescription
             informativeText = nsError.localizedFailureReason ?? ""
@@ -108,6 +109,11 @@ open class NSAlert: NSObject {
         } else {
             messageText = "\(error)"
         }
+        #else
+        let nsError = error as NSError
+        messageText = nsError.localizedDescription
+        informativeText = nsError.localizedFailureReason ?? ""
+        #endif
         if messageText.isEmpty {
             messageText = "An error occurred."
         }

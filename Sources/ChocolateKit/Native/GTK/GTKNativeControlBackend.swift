@@ -372,19 +372,23 @@ public final class GTKNativeControlBackend: NativeControlBackend {
     public func terminateApplication() {
         for loop in nestedLoops.reversed() { g_main_loop_quit(loop) }
         nestedLoops.removeAll()
+        stoppingNestedLoops.removeAll()
         guard let loop = mainLoop else { return }
         g_main_loop_quit(loop)
     }
 
     /// Nested modal loops, innermost last.
     private var nestedLoops: [OpaquePointer] = []
+    private var stoppingNestedLoops: Set<OpaquePointer> = []
     /// Records a modal's loop so `terminateApplication` can end it.
     func pushNestedLoop(_ loop: OpaquePointer?) {
         if let loop { nestedLoops.append(loop) }
     }
     /// Drops the innermost modal loop once it has finished.
     func popNestedLoop() {
-        if !nestedLoops.isEmpty { nestedLoops.removeLast() }
+        if let loop = nestedLoops.popLast() {
+            stoppingNestedLoops.remove(loop)
+        }
     }
 
     /// Schedules `block` on GTK's main loop via `g_timeout_add`.
@@ -3977,6 +3981,10 @@ private final class WindowCloseBox {
         self.destroysSurface = destroysSurface
     }
 }
+private final class DeferredLoopQuitBox {
+    let loop: OpaquePointer
+    init(loop: OpaquePointer) { self.loop = loop }
+}
 private final class StringActionBox {
     let action: (String) -> Void
     init(_ action: @escaping (String) -> Void) { self.action = action }
@@ -6236,7 +6244,15 @@ extension GTKNativeControlBackend {
     public func stopModal(withCode code: Int) {
         coreSeam.modalCode = code
         guard let loop = nestedLoops.last else { return }
-        g_main_loop_quit(loop)
+        guard stoppingNestedLoops.insert(loop).inserted else { return }
+        let box = DeferredLoopQuitBox(loop: loop)
+        g_idle_add({ userData in
+            guard let userData else { return gboolean(0) }
+            let box = Unmanaged<DeferredLoopQuitBox>
+                .fromOpaque(userData).takeRetainedValue()
+            g_main_loop_quit(box.loop)
+            return gboolean(0)
+        }, Unmanaged.passRetained(box).toOpaque())
     }
 
     /// Prints a view.

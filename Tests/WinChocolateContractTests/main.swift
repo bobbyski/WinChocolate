@@ -14047,7 +14047,7 @@ testAppKitReorderRecipeEnablesAndAcceptsDrops()
 // A NumberFormatter subclass — this only compiles because WinFoundation's is
 // `open`, as Foundation's is. Subclassing a formatter to adjust one method is
 // ordinary AppKit practice, so it must not need a source change on Windows.
-final class ParityPercentFormatter: NumberFormatter {
+final class ParityPercentFormatter: NumberFormatter, @unchecked Sendable {
     override func string(for obj: Any?) -> String? {
         guard let value = obj as? Double else { return nil }
         return "\(Int(value * 100))%"
@@ -14099,8 +14099,9 @@ func testControlClassHierarchyMatchesAppKit() {
     // exactly that in NSPanel and NSToolbar to decide chrome and focus
     // behavior, so a path control was being handled as a text field.
     let pathControl = NSPathControl(frame: NSMakeRect(0, 0, 200, 24))
-    expect(pathControl is NSControl, "NSPathControl must be an NSControl, as on AppKit.")
-    expect(!(pathControl is NSTextField), "NSPathControl must NOT be an NSTextField — AppKit's is not.")
+    let pathControlAsAny: Any = pathControl
+    expect(pathControlAsAny is NSControl, "NSPathControl must be an NSControl, as on AppKit.")
+    expect(!(pathControlAsAny is NSTextField), "NSPathControl must NOT be an NSTextField — AppKit's is not.")
 
     // The properties that used to arrive via NSTextField are declared on
     // NSPathControl itself, because AppKit declares them there.

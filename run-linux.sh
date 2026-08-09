@@ -109,8 +109,8 @@ fi
 # core is sane on Linux. Worth running before any windowed target.
 if [[ "${1:-}" == "--tests" ]]; then
     exec docker run "${run_args[@]}" bash -c '
-        set -e
-        swift build --product WinChocolateContractTests 2>&1 | tail -3
+    set -e
+    swift build --product WinChocolateContractTests 2>&1 | tail -3
         swift run WinChocolateContractTests
     '
 fi

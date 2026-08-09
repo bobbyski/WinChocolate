@@ -26,7 +26,7 @@ let package = Package(
                 // public surface predates strict concurrency, so build it in
                 // Swift 5 language mode while Swift 6 clients continue to
                 // validate the exposed API.
-                .swiftLanguageVersion(.v5)
+                .swiftLanguageMode(.v5)
             ],
             linkerSettings: [
                 .linkedLibrary("Ole32"),
