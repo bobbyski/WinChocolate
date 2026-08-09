@@ -6235,7 +6235,8 @@ extension GTKNativeControlBackend {
     /// Ends the innermost modal loop.
     public func stopModal(withCode code: Int) {
         coreSeam.modalCode = code
-        popNestedLoop()
+        guard let loop = nestedLoops.last else { return }
+        g_main_loop_quit(loop)
     }
 
     /// Prints a view.
