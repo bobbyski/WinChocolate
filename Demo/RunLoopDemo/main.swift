@@ -10,9 +10,9 @@
 // a control's REAL target/action) lives in RunLoopDemoConveniences.swift and is
 // AppKit-compatible. The frozen demo is untouched.
 
-#if canImport(LinChocolate)
+#if os(Linux)
 import LinChocolate
-#elseif canImport(WinChocolate)
+#elseif os(Windows)
 import WinChocolate
 #elseif canImport(AppKit)
 import AppKit

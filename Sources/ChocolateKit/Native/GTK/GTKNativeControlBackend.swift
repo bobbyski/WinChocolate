@@ -106,6 +106,9 @@ public final class GTKNativeControlBackend: NativeControlBackend {
     private var collectionSectionFlows: [UInt: [(flow: OpaquePointer, base: Int)]] = [:]
     private var collectionFlowGeometry: [UInt: (interitem: Double, line: Double, horizontal: Bool)] = [:]
     private var windowResizeActions: [UInt: (Double, Double) -> Void] = [:]
+    private var windowCloseActions: [UInt: () -> Void] = [:]
+    private var windowShouldCloseHandlers: [UInt: () -> Bool] = [:]
+    private var primaryWindows: Set<UInt> = []
     private var contentViewOwners: [UInt: UInt] = [:]     // content view -> its window
     private var lastContentSizes: [UInt: NSSize] = [:]
     /// Windows that have already been through first-show setup.
@@ -1302,10 +1305,13 @@ public final class GTKNativeControlBackend: NativeControlBackend {
         }
 
         // The window-close (X) also ends the session.
-        let closeBox = ActionBox { [weak self] in
-            self?.customizationState = nil
-            handlers.onClose()
-        }
+        let closeBox = WindowCloseBox(
+            shouldClose: { true },
+            didClose: { [weak self] in
+                self?.customizationState = nil
+                handlers.onClose()
+            }
+        )
         g_signal_connect_data(
             UnsafeMutableRawPointer(panel), "close-request",
             unsafeBitCast(gtkCloseRequestTrampoline, to: GCallback.self),
@@ -1482,7 +1488,21 @@ public final class GTKNativeControlBackend: NativeControlBackend {
     /// Wires `action` to the window's `close-request` signal.
     public func registerWindowCloseAction(for handle: NativeHandle, action: @escaping () -> Void) {
         guard let w = widget(handle) else { return }
-        let box = ActionBox(action)
+        let raw = handle.rawValue
+        windowCloseActions[raw] = action
+        let box = WindowCloseBox(
+            shouldClose: { [weak self] in
+                self?.windowShouldCloseHandlers[raw]?() != false
+            },
+            didClose: { [weak self] in
+                self?.windowCloseActions[raw]?()
+                if self?.primaryWindows.contains(raw) == true {
+                    self?.forgetDestroyedWindow(raw)
+                    self?.terminateApplication()
+                }
+            },
+            destroysSurface: primaryWindows.contains(raw)
+        )
         g_signal_connect_data(
             UnsafeMutableRawPointer(w), "close-request",
             unsafeBitCast(gtkCloseRequestTrampoline, to: GCallback.self),
@@ -3643,7 +3663,24 @@ public final class GTKNativeControlBackend: NativeControlBackend {
         if kinds[r] == .window, let w = widgets[r] {
             gtk_window_destroy(asWindow(w))
         }
-        widgets[r] = nil; kinds[r] = nil; frames[r] = nil; parents[r] = nil
+        forgetDestroyedWindow(r)
+    }
+
+    /// Drops bookkeeping for a GtkWindow whose native surface is already gone.
+    private func forgetDestroyedWindow(_ raw: UInt) {
+        primaryWindows.remove(raw)
+        windowBoxes[raw] = nil
+        windowContents[raw] = nil
+        windowMenuBars[raw] = nil
+        windowToolbars[raw] = nil
+        windowToolbarViews[raw] = nil
+        presentedWindows.remove(raw)
+        windowCloseActions[raw] = nil
+        windowShouldCloseHandlers[raw] = nil
+        widgets[raw] = nil
+        kinds[raw] = nil
+        frames[raw] = nil
+        parents[raw] = nil
     }
 
     // MARK: Events
@@ -3927,6 +3964,17 @@ private final class ActionBox {
     let action: () -> Void
     init(_ action: @escaping () -> Void) { self.action = action }
 }
+private final class WindowCloseBox {
+    let shouldClose: () -> Bool
+    let didClose: () -> Void
+    let destroysSurface: Bool
+    init(shouldClose: @escaping () -> Bool, didClose: @escaping () -> Void,
+         destroysSurface: Bool = false) {
+        self.shouldClose = shouldClose
+        self.didClose = didClose
+        self.destroysSurface = destroysSurface
+    }
+}
 private final class StringActionBox {
     let action: (String) -> Void
     init(_ action: @escaping (String) -> Void) { self.action = action }
@@ -4173,15 +4221,19 @@ private let gtkActionTrampoline: @convention(c) (UnsafeMutableRawPointer?, gpoin
     Unmanaged<ActionBox>.fromOpaque(userData).takeUnretainedValue().action()
 }
 
-/// Handler for `GtkWindow::close-request` — returns gboolean (false = allow close).
-private let gtkCloseRequestTrampoline: @convention(c) (UnsafeMutableRawPointer?, gpointer?) -> gboolean = { _, userData in
-    if let userData {
-        Unmanaged<ActionBox>.fromOpaque(userData).takeUnretainedValue().action()
+/// Handles a title-bar close while preserving reusable GTK child widgets.
+private let gtkCloseRequestTrampoline: @convention(c) (UnsafeMutableRawPointer?, gpointer?) -> gboolean = { window, userData in
+    guard let window, let userData else { return gboolean(1) }
+    let box = Unmanaged<WindowCloseBox>.fromOpaque(userData).takeUnretainedValue()
+    guard box.shouldClose() else { return gboolean(1) }
+    if box.destroysSurface {
+        gtk_window_destroy(UnsafeMutablePointer<GtkWindow>(OpaquePointer(window)))
+    } else {
+        gtk_widget_set_visible(UnsafeMutablePointer<GtkWidget>(OpaquePointer(window)), gboolean(0))
     }
-    // TRUE: the close is OURS. Returning FALSE would let GTK destroy the
-    // window after the callback — which is how closing the demo's floating
-    // panel crashed re-presenting it (the NSWindow was reused over a destroyed
-    // GtkWindow). The Swift side hides or terminates instead.
+    box.didClose()
+    // TRUE: either the delegate vetoed the request or we hid the window and
+    // notified the shared lifecycle. GTK must not destroy reusable children.
     return gboolean(1)
 }
 
@@ -5124,7 +5176,9 @@ extension GTKNativeControlBackend {
     /// core's `installMainMenu` does that work instead.
     public func createWindow(title: String, frame: NSRect, styleMask: NSWindow.StyleMask,
                              usesMainMenu: Bool) -> NativeHandle {
-        createWindow(title: title, frame: frame, styleMask: styleMask)
+        let handle = createWindow(title: title, frame: frame, styleMask: styleMask)
+        if usesMainMenu { primaryWindows.insert(handle.rawValue) }
+        return handle
     }
 
     /// Creates a push button. A non-bordered button drops GTK's frame.
@@ -5735,7 +5789,13 @@ extension GTKNativeControlBackend {
     /// Closes a window.
     public func closeWindow(_ handle: NativeHandle) {
         guard let w = widget(handle) else { return }
-        gtk_window_close(asWindow(w))
+        if primaryWindows.contains(handle.rawValue) {
+            gtk_window_destroy(asWindow(w))
+            forgetDestroyedWindow(handle.rawValue)
+            terminateApplication()
+        } else {
+            gtk_widget_set_visible(asWidget(w), gboolean(0))
+        }
     }
 
     /// Whether the window is on screen.
@@ -6020,7 +6080,7 @@ extension GTKNativeControlBackend {
     /// Registers a should-close handler.
     public func registerWindowShouldCloseHandler(for handle: NativeHandle,
                                                  handler: @escaping () -> Bool) {
-        registerWindowCloseAction(for: handle) { _ = handler() }
+        windowShouldCloseHandlers[handle.rawValue] = handler
     }
 
     /// Registers a focus-change handler.

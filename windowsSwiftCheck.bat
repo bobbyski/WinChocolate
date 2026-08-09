@@ -13,16 +13,26 @@ set "NEED_PYTHON=0"
 set "NEED_VS=0"
 set "NEED_DEVMODE=0"
 
+rem Refresh the parts of PATH installed alongside Swift. This makes the check
+rem reliable in the same terminal that ran --install and works for either
+rem AMD64 or ARM64 because the installed runtime selects its own architecture.
+for /d %%D in ("%LocalAppData%\Programs\Swift\Runtimes\*") do if exist "%%~fD\usr\bin" set "PATH=%%~fD\usr\bin;!PATH!"
+for /d %%D in ("%LocalAppData%\Programs\Swift\Python-*") do if exist "%%~fD\usr\bin" set "PATH=%%~fD\usr\bin;!PATH!"
+
 echo WinChocolate Windows prerequisite check
 echo =======================================
 echo.
 
-where swift.exe >nul 2>&1
-if errorlevel 1 (
+set "SWIFT_EXE="
+for /f "delims=" %%I in ('where swift.exe 2^>nul') do if not defined SWIFT_EXE set "SWIFT_EXE=%%I"
+if not defined SWIFT_EXE for /d %%D in ("%LocalAppData%\Programs\Swift\Toolchains\*") do (
+    if exist "%%~fD\usr\bin\swift.exe" set "SWIFT_EXE=%%~fD\usr\bin\swift.exe"
+)
+if not defined SWIFT_EXE (
     call :missing "Swift toolchain"
     set "NEED_SWIFT=1"
 ) else (
-    for /f "delims=" %%I in ('swift --version 2^>^&1') do if not defined SWIFT_VERSION set "SWIFT_VERSION=%%I"
+    for /f "delims=" %%I in ('call "!SWIFT_EXE!" --version 2^>^&1') do if not defined SWIFT_VERSION set "SWIFT_VERSION=%%I"
     call :ok "Swift: !SWIFT_VERSION!"
 )
 
@@ -43,7 +53,7 @@ if errorlevel 1 (
     for /f "delims=" %%I in ('python --version 2^>^&1') do set "PYTHON_VERSION=%%I"
     echo !PYTHON_VERSION! | findstr /B /C:"Python 3.10." >nul
     if errorlevel 1 (
-        call :missing "Python 3.10 (found !PYTHON_VERSION!)"
+        call :missing "Python 3.10 - found !PYTHON_VERSION!"
         set "NEED_PYTHON=1"
     ) else (
         call :ok "!PYTHON_VERSION!"

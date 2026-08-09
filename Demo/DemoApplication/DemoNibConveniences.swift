@@ -15,9 +15,9 @@
 // Chocolate readers resolve connections against a nil owner to nothing. The
 // demo wires the same behaviors through `onAction` below instead.)
 
-#if canImport(LinChocolate)
+#if os(Linux)
 import LinChocolate
-#elseif canImport(WinChocolate)
+#elseif os(Windows)
 import WinChocolate
 #elseif canImport(AppKit)
 import AppKit
@@ -60,7 +60,7 @@ func installDemoNibPanel() {
     var topLevel: NSArray?
     let nib = NSNib(nibData: nibData, bundle: nil)
     guard nib.instantiate(withOwner: nil, topLevelObjects: &topLevel),
-          let panel = (topLevel as? [Any])?.compactMap({ $0 as? NSView }).first else {
+          let panel = topLevel?.compactMap({ $0 as? NSView }).first else {
         nibStatusLabel.stringValue = "DemoNibPanel failed to instantiate."
         return
     }
@@ -111,5 +111,5 @@ func installDemoNibPanel() {
 
     let wired = ["nibButton", "nibShowButton", "nibSlider", "nibField", "nibCheck", "nibPopup", "nibCountLabel"]
         .filter { demoNibView($0, under: panel) != nil }
-    nibStatusLabel.stringValue = "Instantiated \((topLevel as? [Any])?.count ?? 0) top-level object(s) from \(nibPath.hasSuffix("nib") ? "the compiled nib" : "the xib"); \(wired.count)/7 controls resolved by identifier: \(wired.joined(separator: ", "))"
+    nibStatusLabel.stringValue = "Instantiated \(topLevel?.count ?? 0) top-level object(s) from \(nibPath.hasSuffix("nib") ? "the compiled nib" : "the xib"); \(wired.count)/7 controls resolved by identifier: \(wired.joined(separator: ", "))"
 }

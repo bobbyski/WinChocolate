@@ -259,7 +259,7 @@ open class NSPasteboard: NSObject {
         var results: [Any] = []
 
         for readClass in classes {
-            if readClass == URL.self {
+            if readClass == URL.self || readClass == NSURL.self {
                 results.append(contentsOf: backend.clipboardFilePaths().map { URL(fileURLWithPath: $0) })
             } else if readClass == String.self {
                 if let text = backend.clipboardString() {

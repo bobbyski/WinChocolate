@@ -10,6 +10,10 @@ let package = Package(
             targets: ["WinChocolate"]
         ),
         .library(
+            name: "LinChocolate",
+            targets: ["LinChocolate"]
+        ),
+        .library(
             name: "WinCoreGraphics",
             targets: ["WinCoreGraphics"]
         ),
@@ -34,7 +38,7 @@ let package = Package(
         // gtk4` — which cannot resolve on Windows — is never consulted here.
         .systemLibrary(
             name: "CGTK",
-            path: "LinChocolate/Sources/CGTK",
+            path: "Sources/CGTK",
             pkgConfig: "gtk4",
             providers: [.apt(["libgtk-4-dev"])]
         ),
@@ -43,7 +47,7 @@ let package = Package(
         .target(
             name: "CGTKCompat",
             dependencies: ["CGTK"],
-            path: "LinChocolate/Sources/CGTKCompat",
+            path: "Sources/CGTKCompat",
             linkerSettings: [
                 .linkedLibrary("X11", .when(platforms: [.linux]))
             ]

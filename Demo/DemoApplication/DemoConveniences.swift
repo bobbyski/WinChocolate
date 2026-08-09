@@ -25,9 +25,9 @@
 // Darwin the ObjC runtime dispatches them; on the Chocolate frameworks
 // `NSResponder.perform(_:with:)` does — one source, no platform seam.
 
-#if canImport(LinChocolate)
+#if os(Linux)
 import LinChocolate
-#elseif canImport(WinChocolate)
+#elseif os(Windows)
 import WinChocolate
 #elseif canImport(AppKit)
 import AppKit

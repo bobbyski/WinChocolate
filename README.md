@@ -1,6 +1,11 @@
-# WinChocolate
+# ChocolateKit / WinChocolate
 
-WinChocolate is an AppKit-compatible Swift framework for Windows. The goal is to let simple Cocoa/AppKit Swift apps move toward Windows by replacing:
+ChocolateKit is one AppKit-compatible Swift framework with native Win32 and
+GTK4 backends. `WinChocolate` and `LinChocolate` are thin platform-facing
+module names over the same shared implementation.
+
+The goal is to let simple Cocoa/AppKit Swift apps move toward Windows or Linux
+by replacing:
 
 ```swift
 import Cocoa
@@ -69,7 +74,9 @@ WinChocolate is early and intentionally incomplete. The current milestone proves
 - Tab-order/focus visibility is now tracked as a dedicated late-stage deep dive instead of an ad hoc smoke test
 - SwiftPM demo app with a click counter, editable/secure/combo/token text, path display, multiline notes, tabs, segmented controls, bitmap image tests, clip-view scrolling, split view panes, value controls, a standalone scroller, and larger table/outline/collection selection exercises
 
-The Win32 backend currently uses a narrow manual User32/Gdi32 FFI layer because this local ARM64 Swift toolchain cannot import `WinSDK` cleanly.
+The Win32 backend currently uses a narrow manual User32/Gdi32 FFI layer because
+the ARM64 Swift toolchain used during its development could not import `WinSDK`
+cleanly. The same sources are retained for x64 and ARM64 Windows builds.
 
 Foundation is the intended default for Foundation-shaped API. The current local Windows ARM64 toolchain cannot compile `import Foundation`, so Windows builds define `USE_WIN_FOUNDATION` and use the small repo-local `WinFoundation` target as a temporary bridge. Pass `-Xswiftc -DUSE_REAL_FOUNDATION` to force real Foundation when testing a newer toolchain.
 
@@ -107,12 +114,40 @@ still runs the main demo (with `--dark`), and `buildandrun.bat runloop --dark`
 runs the run-loop demo. The `runloop` app has no `--diagnose` self-check or
 bundled resources, so those steps are skipped for it.
 
+### WSL / Linux
+
+From PowerShell in the repository root, build and run the same combined
+`ChocolateKit` framework through its GTK backend:
+
+```bat
+run-wsl.bat
+run-wsl.bat runloop
+run-wsl.bat --build
+run-wsl.bat --tests
+run-wsl.bat --diagnose
+```
+
+The runner mirrors the checkout onto WSL's native filesystem before building,
+which avoids SwiftPM and symlink problems under `/mnt/c`. Initial WSL/GTK setup
+is one command from the repository root:
+
+```bat
+setup-wsl.bat
+```
+
+On macOS with Docker and XQuartz, use `./run-linux.sh`; it builds this same root
+package in an architecture-native Linux container (including Apple Silicon ARM64).
+
 ## Package Layout
 
 ```text
 Package.swift
-Sources/WinFoundation
+Sources/ChocolateKit
+Sources/CGTK
+Sources/CGTKCompat
 Sources/WinChocolate
+Sources/LinChocolate
+WinFoundation
 Tests/WinChocolateContractTests
 Demo/DemoApplication
 Docs/Architecture.md

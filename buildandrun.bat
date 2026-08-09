@@ -8,14 +8,60 @@ if not defined SWIFT_EXE (
     where swift.exe >nul 2>&1
     if not errorlevel 1 (
         set "SWIFT_EXE=swift.exe"
-    ) else if exist "%LocalAppData%\Programs\Swift\Toolchains\0.0.0+Asserts\usr\bin\swift.exe" (
-        set "SWIFT_EXE=%LocalAppData%\Programs\Swift\Toolchains\0.0.0+Asserts\usr\bin\swift.exe"
     ) else (
-        echo Swift was not found. Install the Windows Swift toolchain and open a new terminal.
-        echo See SETUP_WINDOWS.md for setup instructions.
-        popd >nul
-        exit /b 1
+        for /d %%D in ("%LocalAppData%\Programs\Swift\Toolchains\*") do (
+            if exist "%%~fD\usr\bin\swift.exe" set "SWIFT_EXE=%%~fD\usr\bin\swift.exe"
+        )
+        if not defined SWIFT_EXE (
+            echo Swift was not found. Install the Windows Swift toolchain and open a new terminal.
+            echo See SETUP_WINDOWS.md for setup instructions.
+            popd >nul
+            exit /b 1
+        )
     )
+)
+
+rem A newly installed Swift toolchain may not be visible to this process yet.
+rem Add its matching runtime and bundled Python directories explicitly so the
+rem compiler works without requiring a reboot or a fresh terminal. Wildcards
+rem deliberately support both version changes and AMD64/ARM64 installations.
+for /d %%D in ("%LocalAppData%\Programs\Swift\Runtimes\*") do if exist "%%~fD\usr\bin" set "PATH=%%~fD\usr\bin;!PATH!"
+for /d %%D in ("%LocalAppData%\Programs\Swift\Python-*") do if exist "%%~fD\usr\bin" set "PATH=%%~fD\usr\bin;!PATH!"
+if not defined SDKROOT for /d %%D in ("%LocalAppData%\Programs\Swift\Platforms\*") do (
+    if exist "%%~fD\Windows.platform\Developer\SDKs\Windows.sdk" set "SDKROOT=%%~fD\Windows.platform\Developer\SDKs\Windows.sdk"
+)
+
+rem Swift delegates native linking to Visual Studio. Initialize that environment
+rem automatically when this was launched from ordinary PowerShell/cmd. Keep the
+rem target architecture native so the same script works on Windows ARM64.
+where link.exe >nul 2>&1
+if errorlevel 1 (
+    set "VSWHERE=%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe"
+    if exist "!VSWHERE!" (
+        for /f "usebackq delims=" %%I in (`"!VSWHERE!" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set "VS_PATH=%%I"
+        if /I "%PROCESSOR_ARCHITECTURE%"=="ARM64" (
+            for /f "usebackq delims=" %%I in (`"!VSWHERE!" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.ARM64 -property installationPath`) do set "VS_PATH=%%I"
+            set "VS_ARCH=arm64"
+        ) else (
+            set "VS_ARCH=amd64"
+        )
+        if defined VS_PATH if exist "!VS_PATH!\Common7\Tools\VsDevCmd.bat" call "!VS_PATH!\Common7\Tools\VsDevCmd.bat" -no_logo -arch=!VS_ARCH! -host_arch=!VS_ARCH!
+    )
+)
+
+if not defined SDKROOT (
+    echo Swift's Windows SDK was not found.
+    echo Run windowsSwiftCheck.bat --install, then try again.
+    popd >nul
+    exit /b 1
+)
+
+where link.exe >nul 2>&1
+if errorlevel 1 (
+    echo Visual Studio's native linker was not found.
+    echo Run windowsSwiftCheck.bat --install, then try again.
+    popd >nul
+    exit /b 1
 )
 
 rem Which app to build and run. The first argument may select it; anything else

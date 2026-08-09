@@ -7,9 +7,9 @@
 // `#if` here does the only thing the rule allows: switch between AppKit and the
 // Chocolate frameworks. (Same arrangement as DemoApplication/DemoConveniences.)
 
-#if canImport(LinChocolate)
+#if os(Linux)
 import LinChocolate
-#elseif canImport(WinChocolate)
+#elseif os(Windows)
 import WinChocolate
 #elseif canImport(AppKit)
 import AppKit
@@ -23,7 +23,7 @@ final class RunLoopDemoActionTarget: NSObject {
 
     var handler: (@MainActor () -> Void)?
 
-    #if canImport(AppKit) && !canImport(WinChocolate) && !canImport(LinChocolate)
+    #if os(macOS)
     // Real AppKit: a genuine Objective-C action method the runtime dispatches.
     @objc func fire(_ sender: Any?) {
         nonisolated(unsafe) let block = handler

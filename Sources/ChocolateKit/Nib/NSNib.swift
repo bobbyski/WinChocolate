@@ -35,6 +35,21 @@ open class NSNib: NSObject {
                 break
             }
         }
+        if found == nil {
+            // corelibs Foundation does not create a Bundle from an arbitrary
+            // working directory. Bundle-less Windows and Linux SwiftPM apps
+            // still carry xibs as ordinary files, so honor the documented
+            // fallback directly on every platform.
+            let fileName = name + ".xib"
+            let workingDirectoryCandidates = [
+                fileName,
+                "Resources/" + fileName,
+                "Demo/DemoApplication/Resources/" + fileName
+            ]
+            found = workingDirectoryCandidates.first {
+                FileManager.default.fileExists(atPath: $0)
+            }
+        }
         guard let path = found, let text = try? String(contentsOf: URL(fileURLWithPath: path)) else {
             return nil
         }

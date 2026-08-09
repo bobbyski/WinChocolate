@@ -173,7 +173,9 @@ open class NSDatePicker: NSControl {
             // native but would not match the sibling field, so the day is
             // dropped from the short date pattern instead, which keeps the
             // locale's field order.
-            parts.append(Self.removingDayField(from: resolvedLocale.shortDatePattern))
+            parts.append(Self.expandingYearField(
+                in: Self.removingDayField(from: resolvedLocale.shortDatePattern)
+            ))
         }
         if datePickerElements.contains(.era) {
             parts.append("gg")
@@ -237,6 +239,22 @@ open class NSDatePicker: NSControl {
             tokens.removeLast()
         }
         return tokens.map(\.text).joined()
+    }
+
+    /// AppKit's year/month template requests a full numeric year even when
+    /// the platform locale's short-date pattern uses ICU's flexible `y` field.
+    /// Windows commonly already reports `yyyy`; Linux ICU often reports `y`.
+    /// Normalizing only this requested field keeps locale ordering and
+    /// separators while making the control's API behavior platform-independent.
+    private static func expandingYearField(in pattern: String) -> String {
+        tokenized(pattern).map { token in
+            guard token.isField,
+                  let field = token.text.first,
+                  field == "y" || field == "Y" else {
+                return token.text
+            }
+            return String(repeating: field, count: 4)
+        }.joined()
     }
 
     /// One run of a date pattern: a field (a run of one letter) or a literal.

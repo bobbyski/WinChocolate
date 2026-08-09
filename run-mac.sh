@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 #
 # Build & run the shared WinChocolate demo against real Apple AppKit on macOS —
-# the third leg of the tri-target compatibility proof (Linux/GTK via
-# LinChocolate/run-linux.sh, Windows/Win32 via WinChocolate, and macOS/AppKit
+# the third leg of the tri-target compatibility proof (Linux/GTK via root
+# run-linux.sh, Windows/Win32 via WinChocolate, and macOS/AppKit
 # here). The *same* Demo/DemoApplication sources compile unmodified against
 # genuine AppKit — NO shim (set in stone, Phase 18): the framework surface IS
 # Apple's, and the demo's ergonomic sugar lives in DemoConveniences.swift,

@@ -4,12 +4,6 @@ WinChocolate is a Swift Package Manager project that builds native Win32
 executables. It requires the Windows Swift toolchain, the matching Microsoft C++
 build tools, and a Windows SDK.
 
-## Current machine status
-
-At the time this guide was added, this x64 machine did not have `swift`, Visual
-Studio Build Tools, or `winget` available. Install the prerequisites below before
-building the project.
-
 ## 1. Install the platform prerequisites
 
 First, check the current machine without changing it:
@@ -35,8 +29,9 @@ Installation mode requests administrator access and installs all missing pieces:
 - Windows Developer Mode
 
 Swiftly is not currently the Windows installation route; the official Swift for
-Windows package is `Swift.Toolchain`. Open a new terminal after installation and
-run the check again so updated `PATH` entries are visible.
+Windows package is `Swift.Toolchain`. The project scripts discover versioned
+Swift toolchains, runtimes, the bundled Python, Windows SDK, and Visual Studio
+environment automatically, including in the terminal that performed installation.
 
 The simplest supported route is the official Swift for Windows installation
 guide:
@@ -78,7 +73,7 @@ git --version
 `swift --version` should report a Windows target matching the installed
 toolchain, normally `x86_64-unknown-windows-msvc` on an x64 machine.
 
-If Swift is installed but is not on `PATH`, set `SWIFT_EXE` for the current
+If Swift is installed in a nonstandard location, set `SWIFT_EXE` for the current
 Command Prompt before running the build script:
 
 ```bat

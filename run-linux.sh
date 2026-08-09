@@ -2,19 +2,13 @@
 #
 # Unified Chocolate — run a demo on Linux from the MERGED tree (root package).
 #
-# This is the sibling of LinChocolate/run-linux.sh and is deliberately
-# command-compatible with it, so muscle memory and old notes keep working:
+# This replaces the retired nested Linux runner and keeps its command-line
+# shape, so muscle memory and old notes keep working:
 #
 #   ./run-linux.sh                    # build image, then run WinChocolateDemo
 #   ./run-linux.sh <Executable>       # run a different executable target
 #   ./run-linux.sh --shell            # interactive container shell
 #   ./run-linux.sh <Exe> --page 3     # extra args pass through to the app
-#
-# THE DIFFERENCE THAT MATTERS
-# ---------------------------
-# LinChocolate/run-linux.sh sets `-w /work/LinChocolate`, so it builds
-# LinChocolate/Package.swift — a manifest with **zero** references to
-# ChocolateKit. A green run there says nothing about the merge.
 #
 # This script sets `-w /work` and builds the ROOT Package.swift, i.e. the
 # shared `ChocolateKit` core with the GTK backend behind
@@ -33,7 +27,7 @@ set -euo pipefail
 IMAGE="linchocolate-dev"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$HERE"                       # the repo root IS the package root now
-DOCKER_CTX="$HERE/LinChocolate"    # Dockerfile still lives there; image is fine
+DOCKER_CTX="$HERE"
 export PATH="/opt/X11/bin:$PATH"
 
 command -v xhost >/dev/null 2>&1 || {
@@ -105,7 +99,7 @@ run_args+=(
 )
 
 echo "• XQuartz listening, access authorized, DISPLAY=${HOST_IP}:0"
-echo "• Building the MERGED root package (ChocolateKit), not LinChocolate/"
+echo "• Building the combined root package (ChocolateKit)"
 
 if [[ "${1:-}" == "--shell" ]]; then
     exec docker run "${run_args[@]}" bash

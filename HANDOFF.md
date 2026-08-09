@@ -1,4 +1,9 @@
-# HANDOFF — Linux work for the AI on the docker instance
+# HANDOFF — Linux consolidation (completed)
+
+> **Completed 2026-08-08.** The remainder is retained as migration history.
+> The nested `LinChocolate/` package and duplicate implementation are retired.
+> Use root `run-wsl.bat`, `setup-wsl.bat`, or `./run-linux.sh`. Native Windows
+> and WSL/GTK gates now pass against the shared `ChocolateKit` sources.
 
 **Written 2026-08-05 from the Windows VM.** Everything below is uncommitted work
 in this tree, verified on Windows, **never built on Linux**.

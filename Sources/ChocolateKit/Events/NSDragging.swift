@@ -100,7 +100,7 @@ final class WinDragPasteboard: NSPasteboard {
     override func readObjects(forClasses classes: [Any.Type], options: [String: Any]? = nil) -> [Any]? {
         var results: [Any] = []
         for readClass in classes {
-            if readClass == URL.self {
+            if readClass == URL.self || readClass == NSURL.self {
                 results.append(contentsOf: content.filePaths.map { URL(fileURLWithPath: $0) })
             } else if readClass == String.self, let text = content.text {
                 results.append(text)

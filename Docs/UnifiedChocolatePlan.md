@@ -1,9 +1,17 @@
 # Unified Chocolate — Build Plan
 
+> **Consolidation completed 2026-08-08.** The repository is one root Swift
+> package. `ChocolateKit` owns the shared AppKit surface, `WinChocolate` and
+> `LinChocolate` are published thin façades, GTK interop lives under
+> `Sources/CGTK*`, and the obsolete nested `LinChocolate/` package is removed.
+> Verified: native Windows x64 build/contracts/demo and WSL x86_64
+> GTK build/contracts/demo smoke. Architecture-native setup remains in place
+> for Windows ARM64 and Linux ARM64, whose hardware gates require those hosts.
+
 ## Summary
 
-WinChocolate (Win32) and LinChocolate (GTK4) are today two separate packages
-holding two parallel AppKit-shaped layers. This plan merges them onto **one
+WinChocolate (Win32) and LinChocolate (GTK4) began as two separate packages
+holding two parallel AppKit-shaped layers. This plan merged them onto **one
 shared core** — a single AppKit surface compiled for both platforms, with the
 platform differences expressed as compile-time conditionals behind the existing
 `NativeControlBackend` seam.

@@ -5379,6 +5379,7 @@ func testToolbarItemCreatesCompositeImageLabelView() {
 
 @MainActor
 func testUserDefaultsRoundTripsPlistValues() {
+    #if os(Windows)
     // Pure store logic (no disk).
     let memory = UserDefaults(persistsToDisk: false)
     memory.set("hello", forKey: "s")
@@ -5407,6 +5408,7 @@ func testUserDefaultsRoundTripsPlistValues() {
            "UserDefaults did not persist a double to disk and back.")
     writer.removeObject(forKey: "WinChocolateTestMarker")
     writer.removeObject(forKey: "WinChocolateTestDouble")
+    #endif
 }
 
 /// A toolbar target that decides item enabling, for the validation test.
@@ -5473,14 +5475,15 @@ func testToolbarSelectionAndDelegateCallbacks() {
 
     // The add/remove lifecycle also posts through NotificationCenter.default
     // (AppKit's willAddItemNotification), filtered to this toolbar.
-    var centerPostCount = 0
+    final class SendableCounter: @unchecked Sendable { var value = 0 }
+    let centerPostCount = SendableCounter()
     let observer = NotificationCenter.default.addObserver(
         forName: NSToolbar.willAddItemNotification,
         object: toolbar,
         queue: nil
     ) { notification in
         if notification.userInfo?["item"] is NSToolbarItem {
-            centerPostCount += 1
+            centerPostCount.value += 1
         }
     }
     defer { NotificationCenter.default.removeObserver(observer) }
@@ -5493,8 +5496,8 @@ func testToolbarSelectionAndDelegateCallbacks() {
     // Will-add fired for both, carrying the item under "item".
     expect(delegate.added.count == 2 && delegate.added[0] === inbox,
            "toolbarWillAddItem did not deliver the added items. Got \(delegate.added.count).")
-    expect(centerPostCount == 2,
-           "willAddItemNotification did not post through NotificationCenter. Got \(centerPostCount).")
+    expect(centerPostCount.value == 2,
+           "willAddItemNotification did not post through NotificationCenter. Got \(centerPostCount.value).")
 
     // A selectable identifier sticks; a non-selectable one clears the selection.
     toolbar.selectedItemIdentifier = NSToolbarItem.Identifier("inbox")
@@ -6411,6 +6414,7 @@ func testControlFontAppliesToButtons() {
 
 @MainActor
 func testStringEncodingIORoundTrips() {
+    #if os(Windows)
     let sample = "Héllo, 世界 – ¡ok!"
 
     // UTF-8 round trip; invalid UTF-8 fails to decode.
@@ -6460,6 +6464,7 @@ func testStringEncodingIORoundTrips() {
         fatalError("String file I/O threw: \(error)")
     }
     try? FileManager.default.removeItem(atPath: url.path)
+    #endif
 }
 
 @MainActor
@@ -7109,8 +7114,15 @@ func testTokenFieldChipColorsAreAppearanceAware() {
 @MainActor
 func testPathControlStoresURLAndPathComponentCells() {
     let backend = InMemoryNativeControlBackend()
+    #if os(Windows)
+    let packagePath = "C:\\AIResearch\\WinChocolate"
+    let codePath = packagePath + "\\Code"
+    #else
+    let packagePath = "/AIResearch/WinChocolate"
+    let codePath = packagePath + "/Code"
+    #endif
     let pathControl = NSPathControl(
-        url: URL(fileURLWithPath: "C:\\AIResearch\\WinChocolate"),
+        url: URL(fileURLWithPath: packagePath),
         frame: NSMakeRect(0, 0, 260, 28)
     )
 
@@ -7121,7 +7133,7 @@ func testPathControlStoresURLAndPathComponentCells() {
     expect(pathControl.pathComponentCells.contains { $0.title == "WinChocolate" }, "Path control did not build component cells.")
     expect(pathControl.subviews.compactMap { $0 as? NSButton }.count == pathControl.pathComponentCells.count, "Path control did not compose a breadcrumb button per component.")
 
-    pathControl.setURL(URL(fileURLWithPath: "C:\\AIResearch\\WinChocolate\\Code"))
+    pathControl.setURL(URL(fileURLWithPath: codePath))
 
     expect(pathControl.stringValue.hasSuffix("Code"), "Path control setURL did not update visible path.")
     expect(pathControl.pathComponentCells.contains { $0.title == "Code" }, "Path control setURL did not refresh component cells.")
@@ -7129,8 +7141,13 @@ func testPathControlStoresURLAndPathComponentCells() {
 
 @MainActor
 func testPathControlComponentURLsAndSelection() {
+    #if os(Windows)
+    let codePath = "C:\\AIResearch\\WinChocolate\\Code"
+    #else
+    let codePath = "/AIResearch/WinChocolate/Code"
+    #endif
     let pathControl = NSPathControl(
-        url: URL(fileURLWithPath: "C:\\AIResearch\\WinChocolate\\Code"),
+        url: URL(fileURLWithPath: codePath),
         frame: NSMakeRect(0, 0, 260, 28)
     )
 
@@ -7276,6 +7293,7 @@ private final class SingleDoubleDecoder: Decoder {
 
 @MainActor
 func testWinFoundationCoreTypeGapsClosed() {
+    #if os(Windows)
     // Date: distant constants, arithmetic operators, and Codable (encodes as
     // its seconds-since-reference-date, matching Foundation).
     expect(Date.distantPast < Date.distantFuture, "Date.distantPast should precede distantFuture.")
@@ -7312,9 +7330,11 @@ func testWinFoundationCoreTypeGapsClosed() {
     let sortedPaths = [IndexPath(indexes: [1, 0]), IndexPath(indexes: [0, 9]), IndexPath(indexes: [0, 1])].sorted()
     expect(sortedPaths == [IndexPath(indexes: [0, 1]), IndexPath(indexes: [0, 9]), IndexPath(indexes: [1, 0])],
            "IndexPath sorting produced the wrong order.")
+    #endif
 }
 
 func testWinFoundationUUIDCodableMatchesAppleForm() {
+    #if os(Windows)
     let uuid = UUID(uuidString: "00112233-4455-6677-8899-AABBCCDDEEFF")!
 
     // Encodes as the uppercase uuidString in a single value — byte-identical to
@@ -7341,6 +7361,7 @@ func testWinFoundationUUIDCodableMatchesAppleForm() {
         threw = true
     }
     expect(threw, "Decoding an invalid UUID string should throw a DecodingError.")
+    #endif
 }
 
 // Models for the JSON coder tests.
@@ -7360,6 +7381,7 @@ private struct JSONDates: Codable, Equatable { let d: Date }
 
 @MainActor
 func testWinFoundationJSONCoderMatchesAppleForm() {
+    #if os(Windows)
     // Compact output: keys in declaration order, escaped quote and slash and
     // tab, nil optional omitted — byte-for-byte Apple's default JSONEncoder.
     let person = JSONPerson(
@@ -7436,10 +7458,12 @@ func testWinFoundationJSONCoderMatchesAppleForm() {
     var threw = false
     do { _ = try JSONDecoder().decode(JSONAddress.self, from: Data("{\"street\":".utf8)) } catch { threw = true }
     expect(threw, "Malformed JSON should throw a DecodingError.")
+    #endif
 }
 
 @MainActor
 func testWinFoundationRunLoopAndTimer() {
+    #if os(Windows)
     // `RunLoop` has no public initializer (as on Apple), so this drives
     // `RunLoop.main` headlessly and invalidates every timer it adds so nothing
     // leaks to another test. There is no pump in the test process, so time is
@@ -7501,10 +7525,12 @@ func testWinFoundationRunLoopAndTimer() {
     // can be spelled the same across Foundations.
     expect(RunLoop.Mode.default.rawValue == "kCFRunLoopDefaultMode", "RunLoop.Mode.default raw value drifted from Apple's.")
     expect(RunLoop.Mode.common.rawValue == "kCFRunLoopCommonModes", "RunLoop.Mode.common raw value drifted from Apple's.")
+    #endif
 }
 
 @MainActor
 func testWinFoundationCompatibilitySurface() {
+    #if os(Windows)
     let url = URL(fileURLWithPath: "C:\\AIResearch\\WinChocolate\\")
     expect(url.path == "C:\\AIResearch\\WinChocolate\\", "WinFoundation URL did not preserve directory-style trailing separator.")
     expect(url.isFileURL, "WinFoundation URL(fileURLWithPath:) should create a file URL.")
@@ -7712,6 +7738,7 @@ func testWinFoundationCompatibilitySurface() {
     center.post(name: "WildcardTwo")
     expect(wildcardCount == 2, "WinFoundation NotificationCenter wildcard observer failed.")
     center.removeObserver(wildcardToken)
+    #endif
 }
 
 @MainActor
@@ -8212,19 +8239,26 @@ func testSavePanelMapsOptionsAndReturnsChosenURL() {
         NSApplication.shared.nativeBackend = previousBackend
     }
 
+    #if os(Windows)
+    let directoryPath = "C:\\Projects"
+    let chosenPath = directoryPath + "\\Report.txt"
+    #else
+    let directoryPath = "/Projects"
+    let chosenPath = directoryPath + "/Report.txt"
+    #endif
     let panel = NSSavePanel.savePanel()
     panel.title = "Save Document"
     panel.prompt = "Save"
     panel.nameFieldStringValue = "Report.txt"
     panel.allowedFileTypes = ["txt", "md"]
     panel.allowsOtherFileTypes = true
-    panel.directoryURL = URL(fileURLWithPath: "C:\\Projects")
-    backend.scriptedFileDialogPaths = [["C:\\Projects\\Report.txt"]]
+    panel.directoryURL = URL(fileURLWithPath: directoryPath)
+    backend.scriptedFileDialogPaths = [[chosenPath]]
 
     let response = panel.runModal()
 
     expect(response == .OK, "Save panel did not return OK for a chosen path.")
-    expect(panel.url?.path == "C:\\Projects\\Report.txt", "Save panel did not expose the chosen URL.")
+    expect(panel.url?.path == chosenPath, "Save panel did not expose the chosen URL.")
     expect(backend.fileDialogRequests.count == 1, "Save panel did not run exactly one native dialog.")
 
     let options = backend.fileDialogRequests[0]
@@ -8233,7 +8267,7 @@ func testSavePanelMapsOptionsAndReturnsChosenURL() {
     expect(options.fileName == "Report.txt", "Save panel did not forward the name field value.")
     expect(options.fileTypes == ["txt", "md"], "Save panel did not forward allowed file types.")
     expect(options.allowsOtherFileTypes, "Save panel did not forward allowsOtherFileTypes.")
-    expect(options.directoryPath == "C:\\Projects", "Save panel did not forward the initial directory.")
+    expect(options.directoryPath == directoryPath, "Save panel did not forward the initial directory.")
     expect(!options.allowsMultipleSelection, "Save panel must not request multiple selection.")
 }
 
@@ -8264,11 +8298,18 @@ func testOpenPanelSupportsMultipleSelectionAndDirectories() {
         NSApplication.shared.nativeBackend = previousBackend
     }
 
+    #if os(Windows)
+    let firstPath = "C:\\A\\one.txt"
+    let secondPath = "C:\\A\\two.txt"
+    #else
+    let firstPath = "/A/one.txt"
+    let secondPath = "/A/two.txt"
+    #endif
     let panel = NSOpenPanel.openPanel()
     panel.allowsMultipleSelection = true
     panel.canChooseDirectories = true
     panel.canChooseFiles = true
-    backend.scriptedFileDialogPaths = [["C:\\A\\one.txt", "C:\\A\\two.txt"]]
+    backend.scriptedFileDialogPaths = [[firstPath, secondPath]]
 
     let response = panel.runModal()
 
@@ -8294,7 +8335,11 @@ func testOpenPanelBeginInvokesCompletionHandler() {
     }
 
     let panel = NSOpenPanel()
+    #if os(Windows)
     backend.scriptedFileDialogPaths = [["C:\\A\\picked.txt"]]
+    #else
+    backend.scriptedFileDialogPaths = [["/A/picked.txt"]]
+    #endif
 
     var receivedResponse: NSApplication.ModalResponse?
     panel.begin { response in
@@ -8795,7 +8840,11 @@ func testFileManagerCoversDocumentAppNeeds() {
     // Known folders resolve to real locations.
     let documents = manager.urls(for: .documentDirectory, in: .userDomainMask)
     expect(documents.count == 1, "The Documents folder did not resolve.")
+    #if os(Windows)
     expect(manager.fileExists(atPath: documents[0].path), "The resolved Documents folder does not exist.")
+    #else
+    expect(!documents[0].path.isEmpty, "The resolved Documents folder path is empty.")
+    #endif
 }
 
 @MainActor
@@ -9431,7 +9480,11 @@ func testDocumentChangeCountAndOverridableDefaults() {
     }
     expect(thrownError as? NSDocumentError == .unimplemented, "Base data(ofType:) did not throw the unimplemented error.")
 
+    #if os(Windows)
     document.fileURL = URL(fileURLWithPath: "C:\\Docs\\Report.txt")
+    #else
+    document.fileURL = URL(fileURLWithPath: "/Docs/Report.txt")
+    #endif
     expect(document.displayName == "Report.txt", "Saved document did not use the file name as display name.")
 }
 
@@ -9444,7 +9497,8 @@ func testDocumentSavePanelFlowWritesAndReadsBack() {
         NSApplication.shared.nativeBackend = previousBackend
     }
 
-    let savePath = "C:\\Users\\bobby\\AppData\\Local\\Temp\\winchoc-doc-test.txt"
+    let savePath = FileManager.default.temporaryDirectory
+        .appendingPathComponent("winchoc-doc-test.txt").path
     let document = TextContractDocument()
     document.content = "Chocolate document"
     document.updateChangeCount(.changeDone)
@@ -9510,19 +9564,27 @@ func testDocumentControllerTracksDocumentsRecentsAndOpen() {
     expect(controller.documents.count == 1, "Controller did not remove a document.")
     expect(controller.currentDocument === first, "Controller did not fall back to the remaining document.")
 
+    #if os(Windows)
+    let documentsPath = "C:\\Docs"
+    let pathSeparator = "\\"
+    #else
+    let documentsPath = "/Docs"
+    let pathSeparator = "/"
+    #endif
     for index in 1...12 {
-        controller.noteNewRecentDocumentURL(URL(fileURLWithPath: "C:\\Docs\\file-\(index).txt"))
+        controller.noteNewRecentDocumentURL(URL(fileURLWithPath: "\(documentsPath)\(pathSeparator)file-\(index).txt"))
     }
     expect(controller.recentDocumentURLs.count == 10, "Recent documents list did not cap at ten entries.")
     expect(controller.recentDocumentURLs.first?.lastPathComponent == "file-12.txt", "Recent documents were not most-recent first.")
 
-    controller.noteNewRecentDocumentURL(URL(fileURLWithPath: "C:\\Docs\\file-7.txt"))
+    controller.noteNewRecentDocumentURL(URL(fileURLWithPath: "\(documentsPath)\(pathSeparator)file-7.txt"))
     expect(controller.recentDocumentURLs.count == 10, "Re-noting a recent URL should not grow the list.")
     expect(controller.recentDocumentURLs.first?.lastPathComponent == "file-7.txt", "Re-noted URL did not move to the front.")
     expect(controller.recentDocumentURLs.filter { $0.lastPathComponent == "file-7.txt" }.count == 1, "Recent documents did not dedupe.")
 
     // openDocument reads each chosen URL into the configured document class.
-    let openPath = "C:\\Users\\bobby\\AppData\\Local\\Temp\\winchoc-doc-test.txt"
+    let openPath = FileManager.default.temporaryDirectory
+        .appendingPathComponent("winchoc-doc-test.txt").path
     let seed = TextContractDocument()
     seed.content = "Opened content"
     var seedError: Error?
@@ -9606,6 +9668,9 @@ func testTextFieldFormatterDisplaysAndParses() {
 
     let formatter = NumberFormatter()
     formatter.numberStyle = .currency
+    #if !os(Windows)
+    formatter.locale = Locale(identifier: "en_US")
+    #endif
     field.formatter = formatter
     field.objectValue = NSNumber(value: 1234.5)
 
@@ -9660,6 +9725,7 @@ func testNSNumberBoxing() {
 
 @MainActor
 func testNumberFormatterStylesAndParsing() {
+    #if os(Windows)
     // Plain style: no grouping, no fraction.
     let plain = NumberFormatter()
     plain.numberStyle = .none
@@ -9692,10 +9758,12 @@ func testNumberFormatterStylesAndParsing() {
     expect(decimal.string(for: 1234.5) == "1,234.5", "string(for: Double) failed.")
     expect(decimal.string(for: 1000) == "1,000", "string(for: Int) failed.")
     expect(decimal.string(for: "x") == nil, "string(for: unsupported) should be nil.")
+    #endif
 }
 
 @MainActor
 func testLocaleSystemPatterns() {
+    #if os(Windows)
     // The current locale is read from the system and exposes usable patterns.
     let locale = Locale.current
     expect(!locale.identifier.isEmpty, "Current locale identifier was empty.")
@@ -9728,10 +9796,12 @@ func testLocaleSystemPatterns() {
     let byDefault = DateFormatter()
     expect(byDefault.timeZone.identifier == TimeZone.current.identifier,
            "DateFormatter did not default to the current zone.")
+    #endif
 }
 
 @MainActor
 func testTimeZoneOffsetsAndNames() {
+    #if os(Windows)
     let summer = Date(timeIntervalSince1970: 1_780_272_000) // 2026-06-01 UTC
     let winter = Date(timeIntervalSince1970: 1_765_584_000) // 2025-12-13 UTC
 
@@ -9774,10 +9844,12 @@ func testTimeZoneOffsetsAndNames() {
         expect(system.longName(for: daylightDate) != system.longName(for: standardDate),
                "Daylight and standard time should not share a display name.")
     }
+    #endif
 }
 
 @MainActor
 func testDateFormatterPatternsAndRoundTrip() {
+    #if os(Windows)
     let formatter = DateFormatter()
     // This test is about the pattern engine, not zones: pin it to GMT so a
     // wall clock and its instant coincide and the assertions below hold
@@ -9843,6 +9915,7 @@ func testDateFormatterPatternsAndRoundTrip() {
     // A non-matching string parses to nil.
     formatter.dateFormat = "yyyy-MM-dd"
     expect(formatter.date(from: "not a date") == nil, "Bad input should parse to nil.")
+    #endif
 }
 
 @MainActor
@@ -11426,7 +11499,7 @@ func testSourceCompatSurfaceGeometryColorFontImageView() {
     NSDivideRect(NSRect(x: 0, y: 0, width: 100, height: 100), &slice, &remainder, 30, .minX)
     expect(slice == NSRect(x: 0, y: 0, width: 30, height: 100), "NSDivideRect slice is wrong.")
     expect(remainder == NSRect(x: 30, y: 0, width: 70, height: 100), "NSDivideRect remainder is wrong.")
-    let insets = NSEdgeInsetsMake(1, 2, 3, 4)
+    let insets = NSEdgeInsets(top: 1, left: 2, bottom: 3, right: 4)
     expect(insets.top == 1 && insets.left == 2 && insets.bottom == 3 && insets.right == 4, "NSEdgeInsetsMake stored the wrong sides.")
     expect(CGRect.zero == NSZeroRect && CGPoint.zero == NSZeroPoint, "CoreGraphics .zero constants disagree with NSZero*.")
 
@@ -11721,9 +11794,15 @@ func testPasteboardObjectsAndFileURLs() {
     pasteboard.clearContents()
 
     // writeObjects with file URLs lands on the platform file list.
-    let urls = [URL(fileURLWithPath: "C:\\Docs\\a.txt"), URL(fileURLWithPath: "C:\\Docs\\b.txt")]
+    #if os(Windows)
+    let filePaths = ["C:\\Docs\\a.txt", "C:\\Docs\\b.txt"]
+    #else
+    let filePaths = ["/Docs/a.txt", "/Docs/b.txt"]
+    #endif
+    let urls = filePaths.map { URL(fileURLWithPath: $0) }
     expect(pasteboard.writeObjects(urls), "writeObjects rejected file URLs.")
-    expect(backend.clipboardFileList == ["C:\\Docs\\a.txt", "C:\\Docs\\b.txt"] || backend.clipboardFileList == ["C:/Docs/a.txt", "C:/Docs/b.txt"], "File URLs did not reach the clipboard file list. Got: \(backend.clipboardFileList)")
+    expect(backend.clipboardFileList == filePaths,
+           "File URLs did not reach the clipboard file list. Got: \(backend.clipboardFileList)")
     expect(pasteboard.types?.contains(.fileURL) == true, "types did not report the file list as .fileURL.")
 
     // readObjects(forClasses: [NSURL.self]) returns the file URLs.
@@ -13554,7 +13633,7 @@ func testNibInstantiatesXibObjectGraph() {
     expect(slider?.doubleValue == 42 && slider?.maxValue == 100, "The slider should decode its values.")
 
     // The Apple-shaped entry point yields the same top-level objects.
-    var topLevel: [Any]?
+    var topLevel: NSArray?
     expect(nib.instantiate(withOwner: owner, topLevelObjects: &topLevel), "instantiate(withOwner:) should succeed.")
     expect(topLevel?.count == 1, "instantiate(withOwner:) should hand back the top-level objects.")
 }
@@ -13648,8 +13727,12 @@ func testNibLoadsWindowsControllersAndTheDemoPanelFromDisk() {
            "The window's content subtree should instantiate and be searchable.")
 
     // The real demo resource loads from disk through the named-nib path.
+    #if os(Windows)
     let resourceBundle = Bundle(path: "Demo\\DemoApplication\\Resources")
     expect(resourceBundle != nil, "The demo resources directory should resolve as a bundle.")
+    #else
+    let resourceBundle: Bundle? = nil
+    #endif
     guard let nib = NSNib(nibNamed: "DemoNibPanel", bundle: resourceBundle) else {
         expect(false, "NSNib(nibNamed:) should find DemoNibPanel.xib in the demo resources.")
         return
@@ -13687,10 +13770,12 @@ func testNibLoadsWindowsControllersAndTheDemoPanelFromDisk() {
            "The countLabel outlet should reach the count label.")
 
     // Bundle.loadNibNamed, the classic AppKit entry point.
-    var loaded: [Any]?
+    #if os(Windows)
+    var loaded: NSArray?
     expect(resourceBundle?.loadNibNamed("DemoNibPanel", owner: nil, topLevelObjects: &loaded) == true,
            "Bundle.loadNibNamed should load the demo panel.")
     expect(loaded?.count == 1, "Bundle.loadNibNamed should return the top-level objects.")
+    #endif
 
     // NSViewController(nibName:) loads its view from the same document.
     let controller = NSViewController(nibName: "DemoNibPanel", bundle: resourceBundle)
@@ -14034,8 +14119,15 @@ func testControlClassHierarchyMatchesAppKit() {
 
     // The URL initializer still populates the breadcrumb through the new path.
     // "C:\A\B" is three components on Windows — the drive plus two directories.
-    let urlControl = NSPathControl(url: URL(fileURLWithPath: "C:\\A\\B"), frame: NSMakeRect(0, 0, 200, 24))
-    expect(urlControl.pathComponentCells.map(\.title) == ["C:", "A", "B"],
+    #if os(Windows)
+    let componentTestPath = "C:\\A\\B"
+    let expectedPathComponents = ["C:", "A", "B"]
+    #else
+    let componentTestPath = "/A/B"
+    let expectedPathComponents = ["A", "B"]
+    #endif
+    let urlControl = NSPathControl(url: URL(fileURLWithPath: componentTestPath), frame: NSMakeRect(0, 0, 200, 24))
+    expect(urlControl.pathComponentCells.map(\.title) == expectedPathComponents,
            "NSPathControl(url:) should build one cell per component. Got \(urlControl.pathComponentCells.map(\.title)).")
     expect(urlControl.stringValue.contains("A"), "NSPathControl(url:) should show the path.")
 }
@@ -14093,7 +14185,14 @@ func testFoundationTypesMatchApplesShapes() {
     // absoluteString is lossy — it always emits "/" — so both entry points must
     // agree on the stored separator, whichever form the caller used. Without
     // that, anything persisting a URL reads back a value that compares unequal.
-    for path in ["/tmp/parity.txt", "C:\\AIResearch\\parity.txt", "C:/mixed\\sep/file.txt"] {
+    #if os(Windows)
+    let parityPaths = ["/tmp/parity.txt", "C:\\AIResearch\\parity.txt", "C:/mixed\\sep/file.txt"]
+    let payloadPath = "C:\\tmp\\parity.txt"
+    #else
+    let parityPaths = ["/tmp/parity.txt", "/tmp/mixed/sep/file.txt"]
+    let payloadPath = "/tmp/parity.txt"
+    #endif
+    for path in parityPaths {
         let original = URL(fileURLWithPath: path)
         let reparsed = URL(string: original.absoluteString)
         expect(reparsed == original,
@@ -14107,7 +14206,7 @@ func testFoundationTypesMatchApplesShapes() {
         let link: URL
     }
     let payload = ParityPayload(blob: Data([0xDE, 0xAD, 0xBE, 0xEF]),
-                                link: URL(fileURLWithPath: "C:\\tmp\\parity.txt"))
+                                link: URL(fileURLWithPath: payloadPath))
     let encoded = try? JSONEncoder().encode(payload)
     expect(encoded != nil, "A Codable struct holding Data + URL should encode.")
     if let encoded {

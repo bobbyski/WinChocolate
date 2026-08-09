@@ -36,7 +36,7 @@ for arg in "$@"; do
     esac
 done
 
-echo "Installing LinChocolate WSL dependencies..."
+echo "Installing ChocolateKit WSL dependencies..."
 sudo apt-get update
 sudo apt-get install -y \
     bash \
