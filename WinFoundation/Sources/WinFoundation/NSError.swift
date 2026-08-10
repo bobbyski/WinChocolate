@@ -35,7 +35,7 @@ open class NSError: Error, CustomStringConvertible, @unchecked Sendable {
         if let description = userInfo[NSLocalizedDescriptionKey] as? String, !description.isEmpty {
             return description
         }
-        return "The operation couldnâ€™t be completed. (\(domain) error \(code).)"
+        return "The operation couldn’t be completed. (\(domain) error \(code).)"
     }
 
     /// A description of the reason for the failure, when supplied.

@@ -60,7 +60,7 @@ extension String {
         return result
     }
 
-    /// Whether the string contains another, compared case-insensitively â€”
+    /// Whether the string contains another, compared case-insensitively —
     /// matching Foundation's name (locale-specific folding is out of scope
     /// for this slice; `lowercased()` folding applies).
     public func localizedCaseInsensitiveContains(_ other: String) -> Bool {

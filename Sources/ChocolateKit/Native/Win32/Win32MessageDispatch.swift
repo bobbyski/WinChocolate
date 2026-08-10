@@ -498,7 +498,7 @@ extension Win32NativeControlBackend {
                 if monthCalHandles.contains(handle.rawValue) {
                     if let current = datePickerDate(for: handle) {
                         let previous = monthCalDates[handle.rawValue]
-                        if previous == nil || abs(current.timeIntervalSince1970 - previous!.timeIntervalSince1970) >= 1 {
+                        if previous.map({ abs(current.timeIntervalSince1970 - $0.timeIntervalSince1970) >= 1 }) ?? true {
                             monthCalDates[handle.rawValue] = current
                             controlActions[handle.rawValue]?()
                         }

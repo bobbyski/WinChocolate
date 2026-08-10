@@ -43,8 +43,8 @@ public struct Notification {
     }
 }
 
-/// `NSObjectProtocol`, matching Foundation's core requirements so that â€” as
-/// on Apple platforms â€” conforming to it (directly or through a delegate
+/// `NSObjectProtocol`, matching Foundation's core requirements so that — as
+/// on Apple platforms — conforming to it (directly or through a delegate
 /// protocol that refines it) effectively requires inheriting `NSObject`,
 /// which provides these members.
 public protocol NSObjectProtocol: AnyObject {

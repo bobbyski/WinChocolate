@@ -199,7 +199,7 @@ public final class RecordingDrawingContext: NativeDrawingContext {
 /// system. It keeps framework behavior deterministic in unit tests while the
 /// Win32 backend owns real HWND creation for application runs.
 public final class InMemoryNativeControlBackend: NativeControlBackend {
-    /// The kind of a native object â€” see `NativeControlKind`, which this names
+    /// The kind of a native object — see `NativeControlKind`, which this names
     /// for the backends and tests that grew up spelling it
     /// `InMemoryNativeControlBackend.Kind`.
     public typealias Kind = NativeControlKind
@@ -1084,7 +1084,7 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
         records[handle]?.datePickerDate = date
         records[handle]?.datePickerMinDate = minDate
         records[handle]?.datePickerMaxDate = maxDate
-        // The stepper is the observable half of `.textFieldAndStepper` â€” the
+        // The stepper is the observable half of `.textFieldAndStepper` — the
         // style is named for it, and a field without one is the bug this
         // records so a test can catch.
         records[handle]?.datePickerShowsStepper = style == .textFieldAndStepper
@@ -2070,10 +2070,10 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
         NSMakeSize(CGFloat(text.count) * fontSize * 0.55, fontSize * 1.35)
     }
 
-    /// Deterministic word-wrap estimate: the single-line metrics (`0.55 Ã—
-    /// pointSize` per character, `1.35 Ã— pointSize` per line) greedily packed
-    /// into `maxWidth`-wide lines. Height is line count Ã— line height; width is
-    /// the widest packed line (â‰¤ `maxWidth`).
+    /// Deterministic word-wrap estimate: the single-line metrics (`0.55 ×
+    /// pointSize` per character, `1.35 × pointSize` per line) greedily packed
+    /// into `maxWidth`-wide lines. Height is line count × line height; width is
+    /// the widest packed line (≤ `maxWidth`).
     public func measureText(_ text: String, fontName: String, fontSize: CGFloat, weight: Int, italic: Bool, wrappingAt maxWidth: CGFloat) -> NSSize {
         let charWidth = fontSize * 0.55
         let lineHeight = fontSize * 1.35
@@ -2169,7 +2169,7 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
         timerActions[identifier]?()
     }
 
-    /// Fires every scheduled timer's action once â€” a whole "message-loop tick"
+    /// Fires every scheduled timer's action once — a whole "message-loop tick"
     /// for headless tests of coalesced re-render paths (a Timer-batched layout
     /// pass fires here rather than waiting on a real run loop). Iterates a
     /// snapshot so a timer that reschedules during its action doesn't recurse.

@@ -1549,8 +1549,10 @@ final class DemoFlowCollectionDataSource: NSObject, NSCollectionViewDataSource {
         // recreated during a redraw after a system switch pick up the new look.
         let dark = NSApplication.shared.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
         if kind == NSCollectionView.elementKindSectionHeader {
-            let header = collectionView.makeSupplementaryView(
-                ofKind: kind, withIdentifier: Self.headerID, for: indexPath) as! NSTextField
+            guard let header = collectionView.makeSupplementaryView(
+                ofKind: kind, withIdentifier: Self.headerID, for: indexPath) as? NSTextField else {
+                return NSView()
+            }
             header.stringValue = "  \(section.title)"
             header.isBordered = false
             header.isEditable = false
@@ -1563,8 +1565,10 @@ final class DemoFlowCollectionDataSource: NSObject, NSCollectionViewDataSource {
             return header
         }
         if kind == NSCollectionView.elementKindSectionFooter {
-            let footer = collectionView.makeSupplementaryView(
-                ofKind: kind, withIdentifier: Self.footerID, for: indexPath) as! NSTextField
+            guard let footer = collectionView.makeSupplementaryView(
+                ofKind: kind, withIdentifier: Self.footerID, for: indexPath) as? NSTextField else {
+                return NSView()
+            }
             footer.stringValue = "  — \(section.items.count) classes —"
             footer.isBordered = false
             footer.isEditable = false

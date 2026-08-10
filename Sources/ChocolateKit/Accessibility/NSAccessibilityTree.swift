@@ -6,7 +6,7 @@
 
 extension NSView: NSAccessibilityProtocol {}
 
-/// A serialized node of the accessibility tree â€” the shape assistive technology
+/// A serialized node of the accessibility tree — the shape assistive technology
 /// (and the contract tests) see. Value type, so it is safe to capture and diff.
 public struct WinAccessibilitySnapshot: Sendable {
     /// The `role` value.
@@ -33,7 +33,7 @@ public struct WinAccessibilitySnapshot: Sendable {
     public var children: [WinAccessibilitySnapshot]
 
     /// The number of elements in this subtree (self if an element, plus
-    /// descendants) â€” a convenient assertion target.
+    /// descendants) — a convenient assertion target.
     public var elementCount: Int {
         (isElement ? 1 : 0) + children.reduce(0) { $0 + $1.elementCount }
     }

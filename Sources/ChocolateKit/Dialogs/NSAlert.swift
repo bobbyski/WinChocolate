@@ -147,7 +147,7 @@ open class NSAlert: NSObject {
     /// panel so AppKit button semantics are preserved exactly.
     /// Whether the alert can use the OS `MessageBox`: only a plain alert
     /// (default buttons, no suppression/accessory/help/custom icon) qualifies,
-    /// and **only in light mode** â€” the native message box does not honor dark
+    /// and **only in light mode** — the native message box does not honor dark
     /// mode, so a dark app composes the alert from its own dark-aware views
     /// instead (matching the 8.5 owner-draw-what-doesn't-theme rule).
     private var winCanUseNativeMessageBox: Bool {
@@ -212,7 +212,7 @@ open class NSAlert: NSObject {
         var y: CGFloat = 20
 
         // Height of `text` word-wrapped at `textWidth`, counting explicit
-        // newlines *and* wrapping â€” so multi-line message/informative text
+        // newlines *and* wrapping — so multi-line message/informative text
         // (which the plain wrapped measure alone can under-count on embedded
         // "\n") gets a label tall enough to show every line.
         func wrappedHeight(_ text: String, font: NSFont) -> CGFloat {

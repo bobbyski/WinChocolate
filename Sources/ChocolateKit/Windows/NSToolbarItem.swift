@@ -625,7 +625,7 @@ open class NSToolbarItemGroup: NSToolbarItem {
         self.action = action
         self.subitems = titles.enumerated().map { index, title in
             let subitem = NSToolbarItem(itemIdentifier: NSToolbarItem.Identifier(rawValue: "\(itemIdentifier.rawValue)#\(index)"))
-            subitem.label = labels?.indices.contains(index) == true ? labels![index] : title
+            subitem.label = labels.flatMap { $0.indices.contains(index) ? $0[index] : nil } ?? title
             subitem.title = title
             return subitem
         }

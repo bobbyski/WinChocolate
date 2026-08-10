@@ -176,7 +176,7 @@ open class NSWindow: NSResponder {
     }
 
     /// Whether closing releases the window (AppKit memory management).
-    /// Stored for source compatibility â€” Swift/ARC owns WinChocolate
+    /// Stored for source compatibility — Swift/ARC owns WinChocolate
     /// windows, so the flag changes nothing here.
     open var isReleasedWhenClosed: Bool = true
 
@@ -370,7 +370,7 @@ open class NSWindow: NSResponder {
         }
     }
 
-    /// Swift-native callback invoked after the first responder changes â€”
+    /// Swift-native callback invoked after the first responder changes —
     /// the observation surface AppKit consumers get from KVO, which has no
     /// ObjC-runtime equivalent here.
     open var onFirstResponderChange: ((NSWindow) -> Void)?
@@ -510,7 +510,7 @@ open class NSWindow: NSResponder {
     open internal(set) weak var sheetParent: NSWindow?
 
     // Sheets requested while another sheet is attached, presented FIFO as each
-    // preceding sheet ends â€” matching AppKit's sheet queue.
+    // preceding sheet ends — matching AppKit's sheet queue.
     private var winQueuedSheets: [(NSWindow, ((NSApplication.ModalResponse) -> Void)?)] = []
 
     /// The vertical inset from this window's top at which an attached sheet
@@ -543,7 +543,7 @@ open class NSWindow: NSResponder {
     /// attached queues behind it. Slide animation and parent dimming arrive
     /// with the modern appearance.
     open func beginSheet(_ sheetWindow: NSWindow, completionHandler handler: ((NSApplication.ModalResponse) -> Void)? = nil) {
-        // A sheet is already up â€” queue this one behind it.
+        // A sheet is already up — queue this one behind it.
         if attachedSheet != nil {
             winQueuedSheets.append((sheetWindow, handler))
             return
@@ -913,7 +913,7 @@ open class NSWindow: NSResponder {
     ///
     /// AppKit slides the title bar away and merges the toolbar into it; Windows
     /// has no equivalent title-bar merge, so WinChocolate presents the honest
-    /// Windows full screen â€” a borderless window covering the display â€” and the
+    /// Windows full screen — a borderless window covering the display — and the
     /// toolbar stays put as the window's top strip (still fully functional).
     /// A window whose `collectionBehavior` is `.fullScreenNone` won't toggle.
     open func toggleFullScreen(_ sender: Any?) {
@@ -935,7 +935,7 @@ open class NSWindow: NSResponder {
         winIsFullScreen = entering
         nativeBackend.setWindowFullScreen(entering, for: handle)
         // The toolbar/content re-layout for the new frame (the toolbar remains
-        // the top strip â€” no title-bar merge on Windows).
+        // the top strip — no title-bar merge on Windows).
         layoutToolbarAndContent()
 
         if entering {

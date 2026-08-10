@@ -9,9 +9,9 @@
 ///     CGPath/CGMutablePath           (path built from native segments)
 ///     CGGradient/CGColorSpace        (value stand-ins for the gradient API)
 ///
-/// The op set covers what AppKit-shaped drawing code actually calls â€” paths,
+/// The op set covers what AppKit-shaped drawing code actually calls — paths,
 /// fills, strokes, clipping, translate/scale transforms, and linear/radial
-/// gradients â€” not the whole of Core Graphics. Radial gradients rasterize as
+/// gradients — not the whole of Core Graphics. Radial gradients rasterize as
 /// concentric interpolated rings over the native path primitives.
 
 // MARK: - Colors
@@ -21,7 +21,7 @@
 public typealias CGColor = NSColor
 
 extension NSColor {
-    /// The color as a `CGColor` â€” itself, matching the AppKit spelling.
+    /// The color as a `CGColor` — itself, matching the AppKit spelling.
     public var cgColor: CGColor { self }
 }
 
@@ -45,8 +45,8 @@ public enum CGLineCap: Sendable {
 /// An immutable drawing path, matching Core Graphics' shape.
 ///
 /// Backed by WinChocolate's native path segments; the mutable subclass adds
-/// the builder calls. Arcs, ellipses, and rounded rects flatten to BÃ©zier
-/// curves â€” the same segments the native renderer consumes.
+/// the builder calls. Arcs, ellipses, and rounded rects flatten to Bézier
+/// curves — the same segments the native renderer consumes.
 public class CGPath {
     /// The native segments the path has accumulated.
     private(set) var winSegments: [NativePathSegment] = []
@@ -83,12 +83,12 @@ public final class CGMutablePath: CGPath {
         winAppend(.line(point))
     }
 
-    /// Adds a cubic BÃ©zier curve.
+    /// Adds a cubic Bézier curve.
     public func addCurve(to end: CGPoint, control1: CGPoint, control2: CGPoint) {
         winAppend(.curve(to: end, control1: control1, control2: control2))
     }
 
-    /// Adds a quadratic BÃ©zier curve, elevated to the cubic the native
+    /// Adds a quadratic Bézier curve, elevated to the cubic the native
     /// renderer consumes.
     public func addQuadCurve(to end: CGPoint, control: CGPoint) {
         let start = winCurrentPoint
@@ -112,9 +112,9 @@ public final class CGMutablePath: CGPath {
         closeSubpath()
     }
 
-    /// Adds an ellipse inscribed in a rectangle, as four BÃ©zier quadrants.
+    /// Adds an ellipse inscribed in a rectangle, as four Bézier quadrants.
     public func addEllipse(in rect: CGRect) {
-        // The circle-to-BÃ©zier control-point factor.
+        // The circle-to-Bézier control-point factor.
         let kappa: CGFloat = 0.5522847498
         let cx = rect.midX, cy = rect.midY
         let rx = rect.width / 2, ry = rect.height / 2
@@ -136,7 +136,7 @@ public final class CGMutablePath: CGPath {
         closeSubpath()
     }
 
-    /// Adds a rounded rectangle as lines joined by BÃ©zier corner quadrants.
+    /// Adds a rounded rectangle as lines joined by Bézier corner quadrants.
     public func addRoundedRect(in rect: CGRect, cornerWidth: CGFloat, cornerHeight: CGFloat) {
         let rx = min(cornerWidth, rect.width / 2)
         let ry = min(cornerHeight, rect.height / 2)
@@ -163,7 +163,7 @@ public final class CGMutablePath: CGPath {
         closeSubpath()
     }
 
-    /// Adds a circular arc, flattened to BÃ©zier segments of at most a
+    /// Adds a circular arc, flattened to Bézier segments of at most a
     /// quarter turn each.
     public func addArc(
         center: CGPoint,
@@ -193,7 +193,7 @@ public final class CGMutablePath: CGPath {
         while angle < end - 0.0001 {
             let step = min(.pi / 2, end - angle)
             let next = angle + step
-            // Control-point distance for a BÃ©zier approximating this sweep.
+            // Control-point distance for a Bézier approximating this sweep.
             let alpha = 4.0 / 3.0 * tanApprox(step / 4)
             let from = CGPoint(x: center.x + radius * cos(angle), y: center.y + radius * sin(angle))
             let to = CGPoint(x: center.x + radius * cos(next), y: center.y + radius * sin(next))
@@ -296,7 +296,7 @@ public final class CGGradient {
 public typealias CGContext = NSGraphicsContext
 
 extension NSGraphicsContext {
-    /// The context as a `CGContext` â€” itself, matching the AppKit spelling.
+    /// The context as a `CGContext` — itself, matching the AppKit spelling.
     public var cgContext: CGContext { self }
 
     // MARK: State
@@ -461,7 +461,7 @@ extension NSGraphicsContext {
         nativeContext.drawLinearGradient(gradient.winStops, in: rect, angle: angle)
     }
 
-    /// Draws a radial gradient as concentric interpolated rings â€” the
+    /// Draws a radial gradient as concentric interpolated rings — the
     /// native surface has no radial primitive, so the ramp rasterizes
     /// outside-in over the path primitives it does have.
     public func drawRadialGradient(

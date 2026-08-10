@@ -1,8 +1,8 @@
 /// The system pasteboard.
 ///
-/// This slice keeps AppKit's `NSPasteboard` surface â€” the `general`
+/// This slice keeps AppKit's `NSPasteboard` surface — the `general`
 /// pasteboard, typed string and data access, `changeCount`, and the
-/// old-style `declareTypes(_:owner:)` â€” over the platform clipboard, so copy
+/// old-style `declareTypes(_:owner:)` — over the platform clipboard, so copy
 /// and paste interoperate with other applications. Plain text, rich text
 /// (`.rtf` over the platform "Rich Text Format"), and PNG images (`.png`)
 /// are the supported types. Writes after `clearContents()` accumulate, so
@@ -350,7 +350,7 @@ extension NSPasteboard {
     }
 }
 
-/// A type that can write itself to a pasteboard â€” AppKit's `NSPasteboardWriting`.
+/// A type that can write itself to a pasteboard — AppKit's `NSPasteboardWriting`.
 ///
 /// Apple refines `NSObjectProtocol`; WinChocolate does not, so value types
 /// bridged as `NSString`/`URL` (which are Swift value types here, not ObjC
@@ -375,7 +375,7 @@ extension NSPasteboardWriting {
 }
 
 // `NSString` is `typealias NSString = String` here, so this conformance is what
-// the demo's `"â€¦" as NSString` relies on.
+// the demo's `"…" as NSString` relies on.
 extension String: NSPasteboardWriting {
     /// Performs the `writableTypes` operation.
     public func writableTypes(for pasteboard: NSPasteboard) -> [NSPasteboard.PasteboardType] {

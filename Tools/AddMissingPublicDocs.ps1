@@ -34,10 +34,11 @@ function Get-Documentation([string]$declaration) {
 $files = foreach ($root in $Roots) {
     Get-ChildItem -LiteralPath $root -Recurse -Filter *.swift -File
 }
+$utf8 = [Text.UTF8Encoding]::new($false)
 
 foreach ($file in $files) {
     $lines = [Collections.Generic.List[string]]::new()
-    foreach ($line in (Get-Content -LiteralPath $file.FullName)) { $lines.Add($line) }
+    foreach ($line in [IO.File]::ReadAllLines($file.FullName, $utf8)) { $lines.Add($line) }
     $changed = $false
     for ($i = $lines.Count - 1; $i -ge 0; $i--) {
         $line = $lines[$i]
@@ -55,6 +56,6 @@ foreach ($file in $files) {
         $changed = $true
     }
     if ($changed) {
-        [IO.File]::WriteAllLines($file.FullName, $lines, [Text.UTF8Encoding]::new($false))
+        [IO.File]::WriteAllLines($file.FullName, $lines, $utf8)
     }
 }

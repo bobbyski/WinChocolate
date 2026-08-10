@@ -294,6 +294,7 @@ public final class NSApplication: NSObject {
         "stopModal": { application, _ in application.stopModal() },
     ]
 
+    /// Reports whether the application implements a built-in or inherited selector.
     public override func responds(to aSelector: Selector?) -> Bool {
         guard let aSelector else {
             return false
@@ -307,6 +308,7 @@ public final class NSApplication: NSObject {
     }
 
     @discardableResult
+    /// Dispatches an application selector through the built-in action table.
     public override func perform(_ aSelector: Selector, with object: Any?) -> Any? {
         if let handler = Self.winApplicationSelectors[aSelector.name] {
             handler(self, object)

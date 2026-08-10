@@ -189,7 +189,8 @@ public final class Bundle: Equatable, Hashable, Sendable {
         var wide = Array(path.utf16)
         wide.append(0)
         let attributes = wide.withUnsafeBufferPointer { pointer in
-            WinFoundationGetFileAttributesW(pointer.baseAddress!)
+            guard let baseAddress = pointer.baseAddress else { return UInt32.max }
+            return WinFoundationGetFileAttributesW(baseAddress)
         }
         return attributes != UInt32.max
         #else

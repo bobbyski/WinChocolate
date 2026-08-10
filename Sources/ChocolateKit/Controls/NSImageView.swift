@@ -240,6 +240,7 @@ open class NSImageView: NSControl {
     /// An image view reports `.image`; its label defaults to the underlying
     /// image's accessibility description (the alt text set at image creation).
     open override var winIntrinsicAccessibilityRole: NSAccessibilityRole { .image }
+    /// The underlying image's accessibility description, when present.
     open override var winIntrinsicAccessibilityLabel: String? {
         let description = image?.accessibilityDescription ?? ""
         return description.isEmpty ? nil : description

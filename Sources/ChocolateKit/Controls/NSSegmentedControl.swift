@@ -206,6 +206,7 @@ open class NSSegmentedControl: NSControl {
     }
 
     @discardableResult
+    /// Creates the native segmented-control peer and synchronizes segment state.
     open override func realizeNativePeer(in backend: NativeControlBackend, parent: NativeHandle?) -> NativeHandle {
         let handle = super.realizeNativePeer(in: backend, parent: parent)
         needsDisplay = true
@@ -487,6 +488,7 @@ open class NSSegmentedControl: NSControl {
         return path
     }
 
+    /// Draws the framework-rendered segmented-control bezel and labels.
     open override func draw(_ dirtyRect: NSRect) {
         guard !segments.isEmpty else {
             return

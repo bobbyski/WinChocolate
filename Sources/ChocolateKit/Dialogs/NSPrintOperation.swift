@@ -147,7 +147,8 @@ open class NSPrintOperation: NSObject {
     public init(view: NSView, printInfo: NSPrintInfo = .shared) {
         self.view = view
         self.printInfo = printInfo
-        self.jobTitle = view.window?.title.isEmpty == false ? view.window!.title : "WinChocolate Document"
+        let windowTitle = view.window?.title ?? ""
+        self.jobTitle = windowTitle.isEmpty ? "WinChocolate Document" : windowTitle
         super.init()
     }
 

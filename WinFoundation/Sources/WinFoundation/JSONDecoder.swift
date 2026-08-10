@@ -1,4 +1,4 @@
-/// A Foundation-compatible JSON decoder â€” the inverse of `JSONEncoder`, built
+/// A Foundation-compatible JSON decoder — the inverse of `JSONEncoder`, built
 /// on the standard library's `Decodable`/`Decoder` machinery, with Apple's
 /// default strategies (`Date` from seconds-since-2001, `Data` from base64).
 public final class JSONDecoder {
@@ -123,15 +123,20 @@ private final class _JSONDecoder: Decoder {
     func unbox<T: Decodable>(_ value: JSONValue, as type: T.Type, at path: [CodingKey]) throws -> T {
         switch type {
         case is Date.Type:
-            return try unboxDate(value, at: path) as! T
+            let date = try unboxDate(value, at: path)
+            guard let result = date as? T else { throw typeMismatch(type, "date") }
+            return result
         case is Data.Type:
-            return try unboxData(value, at: path) as! T
+            let data = try unboxData(value, at: path)
+            guard let result = data as? T else { throw typeMismatch(type, "data") }
+            return result
         case is URL.Type:
             guard case .string(let text) = value, let url = URL(string: text) else {
                 throw DecodingError.dataCorrupted(DecodingError.Context(
                     codingPath: path, debugDescription: "Invalid URL string."))
             }
-            return url as! T
+            guard let result = url as? T else { throw typeMismatch(type, "URL") }
+            return result
         default:
             let nested = _JSONDecoder(value: value, options: options, codingPath: path)
             return try T(from: nested)

@@ -86,10 +86,12 @@ open class NSClickGestureRecognizer: NSGestureRecognizer {
     // Where the press started, to reject drags.
     private var downPoint: NSPoint?
 
+    /// Records the initial press location for click recognition.
     open override func mouseDown(with event: NSEvent) {
         downPoint = event.locationInWindow
     }
 
+    /// Completes recognition when the pointer is released without a drag.
     open override func mouseUp(with event: NSEvent) {
         guard isEnabled, let downPoint else {
             return
@@ -116,6 +118,7 @@ open class NSPressGestureRecognizer: NSGestureRecognizer {
     private var holdTimer: Timer?
     private var isPressed = false
 
+    /// Starts press recognition and its minimum-duration timer.
     open override func mouseDown(with event: NSEvent) {
         guard isEnabled else {
             return
@@ -132,6 +135,7 @@ open class NSPressGestureRecognizer: NSGestureRecognizer {
         }
     }
 
+    /// Finishes or cancels the active press recognition.
     open override func mouseUp(with event: NSEvent) {
         holdTimer?.invalidate()
         holdTimer = nil
@@ -161,6 +165,7 @@ open class NSPanGestureRecognizer: NSGestureRecognizer {
         )
     }
 
+    /// Begins tracking a possible pan gesture.
     open override func mouseDown(with event: NSEvent) {
         guard isEnabled else {
             return
@@ -169,6 +174,7 @@ open class NSPanGestureRecognizer: NSGestureRecognizer {
         winLastLocationInWindow = event.locationInWindow
     }
 
+    /// Updates the pan gesture with the pointer's latest location.
     open override func mouseDragged(with event: NSEvent) {
         guard isEnabled, startPoint != nil else {
             return
@@ -180,6 +186,7 @@ open class NSPanGestureRecognizer: NSGestureRecognizer {
         }
     }
 
+    /// Ends the active pan gesture.
     open override func mouseUp(with event: NSEvent) {
         guard startPoint != nil else {
             return

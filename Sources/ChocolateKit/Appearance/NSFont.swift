@@ -63,7 +63,7 @@ public struct NSFont: Equatable {
 
 
     /// Creates a font record. Not API (18.7): Apple has only the failable
-    /// `init?(name:size:)` â€” package for the framework and suite.
+    /// `init?(name:size:)` — package for the framework and suite.
     package init(name fontName: String, size pointSize: CGFloat, weight: Weight = .regular, italic: Bool = false) {
         self.fontName = fontName
         self.pointSize = max(pointSize, 1)
@@ -71,7 +71,7 @@ public struct NSFont: Equatable {
         self.italic = italic
     }
 
-    /// Creates a font by name â€” Apple's failable `init?(name:size:)`. The
+    /// Creates a font by name — Apple's failable `init?(name:size:)`. The
     /// composed backend resolves faces lazily, so unknown names fall back at
     /// render time rather than returning `nil` here.
     public init?(name fontName: String, size pointSize: CGFloat) {
@@ -168,7 +168,7 @@ public struct NSFont: Equatable {
 /// A description of a font's attributes used to create or vary a font.
 ///
 /// This slice keeps AppKit's `NSFontDescriptor` shape for the common trait
-/// operations â€” a family, size, and symbolic bold/italic traits â€” that
+/// operations — a family, size, and symbolic bold/italic traits — that
 /// programmatic ports reach for; the full attribute-dictionary matching model
 /// is future work.
 public struct NSFontDescriptor: Equatable, Sendable {

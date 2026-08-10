@@ -201,7 +201,9 @@ extension Win32NativeControlBackend {
         }
 
         Array(buffer).withUnsafeBytes { source in
-            target.copyMemory(from: source.baseAddress!, byteCount: byteCount)
+            if let baseAddress = source.baseAddress {
+                target.copyMemory(from: baseAddress, byteCount: byteCount)
+            }
         }
         // GlobalAlloc rounds sizes up; zero the slack so text formats like
         // RTF stay NUL-terminated instead of trailing allocation garbage.

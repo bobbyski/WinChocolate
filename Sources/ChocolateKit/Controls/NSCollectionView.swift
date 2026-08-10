@@ -13,7 +13,7 @@ public protocol NSCollectionViewDataSource: NSObjectProtocol {
     /// Returns a supplementary view (e.g. a section header) for an index path.
     ///
     /// The returned view MUST come from
-    /// `makeSupplementaryView(ofKind:withIdentifier:for:)` â€” real AppKit asserts
+    /// `makeSupplementaryView(ofKind:withIdentifier:for:)` — real AppKit asserts
     /// on any other view. See Issue N in `Docs/AppKitFaithfulnessIssues.md`.
     func collectionView(_ collectionView: NSCollectionView, viewForSupplementaryElementOfKind kind: NSCollectionView.SupplementaryElementKind, at indexPath: IndexPath) -> NSView
 }
@@ -244,7 +244,7 @@ open class NSCollectionView: NSControl {
     /// `register(_:forSupplementaryViewOfKind:withIdentifier:)`.
     ///
     /// Instantiating the class from its metatype is why `NSView.init(frame:)` is
-    /// `required` â€” the same reason `NSCollectionViewItem.init()` is.
+    /// `required` — the same reason `NSCollectionViewItem.init()` is.
     open func register(_ viewClass: AnyClass?,
                        forSupplementaryViewOfKind kind: SupplementaryElementKind,
                        withIdentifier identifier: NSUserInterfaceItemIdentifier) {
@@ -263,7 +263,7 @@ open class NSCollectionView: NSControl {
     /// Returns a supplementary view for a kind+identifier, recycling one when
     /// available. Data sources MUST vend their header/footer views from here
     /// rather than constructing them: real AppKit raises "the view returned from
-    /// -collectionView:viewForSupplementaryElementOfKind: â€¦ was not retrieved by
+    /// -collectionView:viewForSupplementaryElementOfKind: … was not retrieved by
     /// calling -makeSupplementaryViewOfKind:withIdentifier:forIndexPath:", so a
     /// data source that builds its own views works here but crashes on Apple.
     open func makeSupplementaryView(ofKind kind: SupplementaryElementKind,
@@ -278,7 +278,7 @@ open class NSCollectionView: NSControl {
         guard let viewType = supplementaryClasses[key] else {
             fatalError("""
                 no class registered for supplementary view of kind '\(kind)' with \
-                identifier '\(identifier.rawValue)' â€” call \
+                identifier '\(identifier.rawValue)' — call \
                 register(_:forSupplementaryViewOfKind:withIdentifier:) first
                 """)
         }
@@ -393,7 +393,7 @@ open class NSCollectionView: NSControl {
 
     /// (Re)builds the hosted supplementary views the data source vends, keyed by
     /// a per-section header/footer slot. Called only when the *set* of views can
-    /// change (`reloadData`, layout swap) â€” NOT on every `tile()`. Between
+    /// change (`reloadData`, layout swap) — NOT on every `tile()`. Between
     /// rebuilds the views are reused and merely repositioned, so re-layout
     /// (item-size/spacing changes, scrolling) never re-asks the data source or
     /// re-allocates supplementary views.
@@ -401,7 +401,7 @@ open class NSCollectionView: NSControl {
     /// Views the data source vends now come from `makeSupplementaryView`, so
     /// retire each one into the reuse pool here (keyed by the kind its slot
     /// encodes plus the identifier `makeSupplementaryView` stamped on it) rather
-    /// than dropping it â€” otherwise every rebuild would allocate afresh.
+    /// than dropping it — otherwise every rebuild would allocate afresh.
     private func rebuildSupplementaryViews() {
         for (key, view) in hostedSupplementaryViews {
             view.removeFromSuperview()
@@ -457,7 +457,11 @@ open class NSCollectionView: NSControl {
         }
 
         let oldSelection = selectionIndexPaths
-        selectionIndexPaths = allowsMultipleSelection ? selectionIndexPaths.union(valid) : [valid.min(by: compareIndexPaths) ?? valid.first!]
+        if allowsMultipleSelection {
+            selectionIndexPaths.formUnion(valid)
+        } else if let first = valid.min(by: compareIndexPaths) {
+            selectionIndexPaths = [first]
+        }
         updateItemSelectionState()
 
         let selected = selectionIndexPaths.subtracting(oldSelection)

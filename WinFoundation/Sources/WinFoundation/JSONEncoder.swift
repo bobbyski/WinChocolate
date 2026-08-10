@@ -1,16 +1,16 @@
 /// A Foundation-compatible JSON encoder.
 ///
 /// Real Foundation's `JSONEncoder` lives in Foundation, not the standard
-/// library â€” but the machinery it drives (`Encodable`, `Encoder`, the keyed /
+/// library — but the machinery it drives (`Encodable`, `Encoder`, the keyed /
 /// unkeyed / single-value container protocols, `CodingKey`, `EncodingError`)
 /// is all standard-library, so this rebuilds the encoder on top of it. The
 /// goal is **byte-for-byte** parity with Apple's defaults so a model encoded on
 /// a WinFoundation build round-trips with one encoded on a real-Foundation Mac:
 ///
-/// - `Date` â†’ seconds since the 2001 reference date, as a bare JSON number
+/// - `Date` → seconds since the 2001 reference date, as a bare JSON number
 ///   (Apple's `.deferredToDate` default; `Date`'s own `Codable` already does
 ///   exactly this).
-/// - `Data` â†’ a base64 string (Apple's `.base64` default), **not** deferred to
+/// - `Data` → a base64 string (Apple's `.base64` default), **not** deferred to
 ///   `Data`'s array-of-bytes `Codable`.
 /// - Keys unchanged, compact output, in declaration order.
 public final class JSONEncoder {
@@ -32,7 +32,7 @@ public final class JSONEncoder {
 
     /// How `Date` values are written.
     public enum DateEncodingStrategy {
-        /// `Date`'s own `Codable` â€” seconds since 2001, a bare number. Default.
+        /// `Date`'s own `Codable` — seconds since 2001, a bare number. Default.
         case deferredToDate
         /// Seconds since 1970 as a number.
         case secondsSince1970
@@ -48,7 +48,7 @@ public final class JSONEncoder {
 
     /// How `Data` values are written.
     public enum DataEncodingStrategy {
-        /// `Data`'s own `Codable` â€” an array of byte numbers.
+        /// `Data`'s own `Codable` — an array of byte numbers.
         case deferredToData
         /// A base64 string. Default.
         case base64
@@ -60,7 +60,7 @@ public final class JSONEncoder {
     public enum KeyEncodingStrategy {
         /// Keys unchanged. Default.
         case useDefaultKeys
-        /// `camelCase` â†’ `snake_case`, matching Foundation's algorithm.
+        /// `camelCase` → `snake_case`, matching Foundation's algorithm.
         case convertToSnakeCase
         /// A caller-provided transform of the coding path.
         case custom(([CodingKey]) -> CodingKey)

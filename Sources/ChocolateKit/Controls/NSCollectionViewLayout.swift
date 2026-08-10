@@ -62,6 +62,7 @@ public enum NSCollectionViewScrollDirection: Sendable {
 /// columns (horizontal scroll), wrapping when the next item would exceed the
 /// available extent. Each section is inset and stacked after the previous one.
 open class NSCollectionViewFlowLayout: NSCollectionViewLayout {
+    /// Creates a flow layout with default metrics.
     public override init() {
         super.init()
     }
@@ -107,14 +108,17 @@ open class NSCollectionViewFlowLayout: NSCollectionViewLayout {
     private var footerAttributes: [Int: NSCollectionViewLayoutAttributes] = [:]
     private var contentSize: NSSize = .zero
 
+    /// The total size occupied by the prepared collection content.
     open override var collectionViewContentSize: NSSize {
         contentSize
     }
 
+    /// Returns the prepared layout attributes for an item.
     open override func layoutAttributesForItem(at indexPath: IndexPath) -> NSCollectionViewLayoutAttributes? {
         attributes[indexPath]
     }
 
+    /// Returns the prepared attributes for a supplementary view.
     open override func layoutAttributesForSupplementaryView(ofKind elementKind: String, at indexPath: IndexPath) -> NSCollectionViewLayoutAttributes? {
         switch elementKind {
         case NSCollectionView.elementKindSectionHeader:
@@ -126,6 +130,7 @@ open class NSCollectionViewFlowLayout: NSCollectionViewLayout {
         }
     }
 
+    /// Computes item and supplementary-view geometry for the current collection.
     open override func prepare() {
         attributes.removeAll()
         headerAttributes.removeAll()

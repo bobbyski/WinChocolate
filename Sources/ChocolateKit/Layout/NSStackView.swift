@@ -205,6 +205,7 @@ open class NSStackView: NSView {
 
     // MARK: - Layout
 
+    /// Arranges the stack's visible views along its orientation axis.
     open override func layout() {
         arrangeSubviews()
     }

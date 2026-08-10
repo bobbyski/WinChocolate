@@ -116,6 +116,7 @@ open class NSColorWell: NSControl {
         sendAction()
     }
 
+    /// Presents the color-selection interface for a pointer press.
     open override func mouseDown(with event: NSEvent) {
         WinDiagnostics.log("colorwell.mouseDown style=\(colorWellStyle)")
         // Clicking a well presents the panel/palette; it does NOT send the

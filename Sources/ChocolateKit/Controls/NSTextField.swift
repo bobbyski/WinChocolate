@@ -160,6 +160,7 @@ open class NSTextField: NSControl {
     /// The field's text is its accessibility value; the placeholder is its
     /// label when no explicit label was set.
     open override var winIntrinsicAccessibilityValue: Any? { stringValue }
+    /// The placeholder exposed as the accessibility label when nonempty.
     open override var winIntrinsicAccessibilityLabel: String? {
         let placeholder = placeholderString ?? ""
         return placeholder.isEmpty ? nil : placeholder

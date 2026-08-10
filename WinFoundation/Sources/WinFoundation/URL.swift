@@ -271,12 +271,12 @@ public struct URL: Equatable, Hashable, Sendable, CustomStringConvertible {
 
     private static func normalizedFilePath(_ path: String, keepTrailingSeparator: Bool) -> String {
         // File-URL storage is the native path, which on Windows means
-        // backslashes â€” `pathFromFileURLString` already normalizes that way when
+        // backslashes — `pathFromFileURLString` already normalizes that way when
         // parsing a "file://" string. Doing the same here is what makes a URL
         // survive a round-trip through its own `absoluteString`: that property
         // is lossy (it always emits "/"), so unless both entry points agree on
         // one separator, `URL(string: u.absoluteString) != u` and any app that
-        // persists a URL â€” JSON, defaults, the pasteboard â€” silently reads back
+        // persists a URL — JSON, defaults, the pasteboard — silently reads back
         // a value that compares unequal to the one it wrote.
         let separated = replacingSeparators(in: path, with: "\\")
         guard separated.count > 1 else {
@@ -538,7 +538,7 @@ public struct URL: Equatable, Hashable, Sendable, CustomStringConvertible {
 
 // MARK: - Codable
 
-/// `URL` is `Codable` in Foundation, so it is here too â€” without it a type with
+/// `URL` is `Codable` in Foundation, so it is here too — without it a type with
 /// a `URL` property cannot synthesize `Codable`. The value is carried as its
 /// absolute string, which is the form `JSONEncoder`/`JSONDecoder` also write and
 /// read when they intercept `URL`, so the two paths agree.

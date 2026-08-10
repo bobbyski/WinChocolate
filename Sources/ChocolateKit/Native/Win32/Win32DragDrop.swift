@@ -350,7 +350,9 @@ private func hGlobalBytes(_ bytes: [UInt8]) -> UnsafeMutableRawPointer? {
         return nil
     }
     bytes.withUnsafeBytes { source in
-        target.copyMemory(from: source.baseAddress!, byteCount: bytes.count)
+        if let baseAddress = source.baseAddress {
+            target.copyMemory(from: baseAddress, byteCount: bytes.count)
+        }
     }
     _ = winGlobalUnlock(memory)
     return memory

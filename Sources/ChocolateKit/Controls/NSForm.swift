@@ -10,11 +10,12 @@ open class NSFormCell: NSTextFieldCell {
     var winInternalTitleWidthChanged: (() -> Void)?
 
     /// Lets the owning form mirror programmatic value changes into its
-    /// composed field â€” on Apple the cell IS the entry, so assigning
+    /// composed field — on Apple the cell IS the entry, so assigning
     /// `stringValue` updates the display; the composed implementation keeps
     /// that contract here.
     var winInternalValueChanged: ((String) -> Void)?
 
+    /// The editable value stored by this form cell.
     open override var stringValue: String {
         get {
             super.stringValue
@@ -114,8 +115,8 @@ open class NSForm: NSControl {
     }
 
     /// Default width for new entries' title columns. Not API (18.7): Apple's
-    /// `NSForm` has no form-level title width â€” each `NSFormCell.titleWidth`
-    /// owns its own (which the layout reads) â€” `package` for the suite.
+    /// `NSForm` has no form-level title width — each `NSFormCell.titleWidth`
+    /// owns its own (which the layout reads) — `package` for the suite.
     package var titleWidth: CGFloat = 96 {
         didSet {
             for index in rows.indices {
@@ -242,7 +243,7 @@ open class NSForm: NSControl {
     }
 
     /// Duplicate row accessor. Not API (18.7): Apple imports `cellAtIndex:`
-    /// as `cell(at:)` â€” package for the suite.
+    /// as `cell(at:)` — package for the suite.
     package func cell(atIndex index: Int) -> NSFormCell? {
         guard rows.indices.contains(index) else {
             return nil
@@ -252,7 +253,7 @@ open class NSForm: NSControl {
     }
 
     /// Returns the editable text field for a row. Not API (18.7): AppKit's
-    /// `NSForm` is cell-drawn and vends no field views â€” `package` for the
+    /// `NSForm` is cell-drawn and vends no field views — `package` for the
     /// composed implementation and the suite.
     package func textField(at index: Int) -> NSTextField? {
         guard rows.indices.contains(index) else {

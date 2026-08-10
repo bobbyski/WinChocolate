@@ -111,7 +111,9 @@ public struct Data: Equatable, Hashable, Sendable, RandomAccessCollection, Mutab
     public init?(base64Encoded string: String) {
         var lookup = [Int](repeating: -1, count: 128)
         for (index, character) in Data.base64Alphabet.enumerated() {
-            lookup[Int(character.asciiValue!)] = index
+            if let ascii = character.asciiValue {
+                lookup[Int(ascii)] = index
+            }
         }
         var accumulator = 0
         var bitCount = 0
@@ -347,7 +349,7 @@ private func WinFoundationCloseHandle(_ object: UnsafeMutableRawPointer?) -> Int
 
 // MARK: - Codable
 
-/// `Data` is `Codable` in Foundation, so it is here too â€” without it a type
+/// `Data` is `Codable` in Foundation, so it is here too — without it a type
 /// with a `Data` property cannot synthesize `Codable` at all. Foundation encodes
 /// the bytes as an unkeyed container; `JSONEncoder`/`JSONDecoder` intercept
 /// `Data` ahead of this to apply their base64 strategy, exactly as Apple's do.

@@ -295,6 +295,7 @@ open class NSButton: NSControl {
     open override var winIntrinsicAccessibilityTitle: String? {
         displayedTitle.isEmpty ? nil : displayedTitle
     }
+    /// The button title exposed as its accessibility label.
     open override var winIntrinsicAccessibilityLabel: String? {
         winIntrinsicAccessibilityTitle
     }

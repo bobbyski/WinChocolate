@@ -86,36 +86,43 @@ open class NSParagraphStyle: NSObject {
 
 /// A paragraph style whose properties can be changed, matching AppKit.
 open class NSMutableParagraphStyle: NSParagraphStyle {
+    /// The paragraph's mutable text alignment.
     open override var alignment: NSTextAlignment {
         get { storedAlignment }
         set { storedAlignment = newValue }
     }
 
+    /// The mutable spacing between lines.
     open override var lineSpacing: CGFloat {
         get { storedLineSpacing }
         set { storedLineSpacing = newValue }
     }
 
+    /// The mutable spacing after the paragraph.
     open override var paragraphSpacing: CGFloat {
         get { storedParagraphSpacing }
         set { storedParagraphSpacing = newValue }
     }
 
+    /// The mutable indentation applied to lines after the first.
     open override var headIndent: CGFloat {
         get { storedHeadIndent }
         set { storedHeadIndent = newValue }
     }
 
+    /// The mutable trailing indentation.
     open override var tailIndent: CGFloat {
         get { storedTailIndent }
         set { storedTailIndent = newValue }
     }
 
+    /// The mutable indentation applied to the first line.
     open override var firstLineHeadIndent: CGFloat {
         get { storedFirstLineHeadIndent }
         set { storedFirstLineHeadIndent = newValue }
     }
 
+    /// The mutable line-breaking behavior.
     open override var lineBreakMode: NSLineBreakMode {
         get { storedLineBreakMode }
         set { storedLineBreakMode = newValue }

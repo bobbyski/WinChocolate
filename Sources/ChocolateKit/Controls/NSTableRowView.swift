@@ -66,6 +66,7 @@ open class NSTableRowView: NSView {
         realizedBackend?.setBackgroundColor(effectiveFill, for: nativeHandle)
     }
 
+    /// Creates the native row peer and applies its selection-aware background.
     open override func realizeNativePeer(in backend: NativeControlBackend, parent: NativeHandle?) -> NativeHandle {
         let handle = super.realizeNativePeer(in: backend, parent: parent)
         // `super` filled with the base color via the overridden getter; ensure

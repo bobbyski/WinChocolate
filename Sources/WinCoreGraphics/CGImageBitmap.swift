@@ -1,12 +1,12 @@
 // CoreGraphics bitmap-construction surface, matching Apple's module layering:
 // `CGColorSpace`, `CGDataProvider`, `CGBitmapInfo`, `CGImageAlphaInfo`,
 // `CGColorRenderingIntent`, and `CGImage`'s designated initializer are all
-// CoreGraphics on Apple, so they live here alongside `CGImage` â€” not up in
-// WinChocolate. (The drawing-backed surface â€” `CGContext`, `CGColor = NSColor`,
-// `CGPath`, `CGGradient` â€” stays in WinChocolate, where those genuinely are the
+// CoreGraphics on Apple, so they live here alongside `CGImage` — not up in
+// WinChocolate. (The drawing-backed surface — `CGContext`, `CGColor = NSColor`,
+// `CGPath`, `CGGradient` — stays in WinChocolate, where those genuinely are the
 // AppKit objects.)
 
-/// A color-space stand-in â€” CoreGraphics' `CGColorSpace`. WinChocolate colors
+/// A color-space stand-in — CoreGraphics' `CGColorSpace`. WinChocolate colors
 /// are device-independent RGBA values, so spaces carry no conversion; the type
 /// exists so AppKit-shaped source compiles unchanged.
 public final class CGColorSpace: @unchecked Sendable {
@@ -31,18 +31,18 @@ public func CGColorSpaceCreateDeviceRGB() -> CGColorSpace {
 /// is WinFoundation.
 public typealias CFData = Data
 
-/// A data source for a `CGImage` â€” CoreGraphics' `CGDataProvider`.
+/// A data source for a `CGImage` — CoreGraphics' `CGDataProvider`.
 public final class CGDataProvider: @unchecked Sendable {
     /// The provided bytes.
     public let data: Data
 
-    /// Creates a provider over a data buffer â€” CoreGraphics' `init?(data:)`.
+    /// Creates a provider over a data buffer — CoreGraphics' `init?(data:)`.
     public init?(data: CFData) {
         self.data = data
     }
 }
 
-/// Alpha layout for a bitmap â€” CoreGraphics' `CGImageAlphaInfo`. Raw values
+/// Alpha layout for a bitmap — CoreGraphics' `CGImageAlphaInfo`. Raw values
 /// match CoreGraphics.
 public enum CGImageAlphaInfo: UInt32, Sendable {
     case none = 0
@@ -55,7 +55,7 @@ public enum CGImageAlphaInfo: UInt32, Sendable {
     case alphaOnly = 7
 }
 
-/// Bitmap layout flags â€” CoreGraphics' `CGBitmapInfo`. The low 5 bits carry a
+/// Bitmap layout flags — CoreGraphics' `CGBitmapInfo`. The low 5 bits carry a
 /// `CGImageAlphaInfo` raw value.
 public struct CGBitmapInfo: OptionSet, Sendable {
     /// The `rawValue` value.
@@ -74,7 +74,7 @@ public struct CGBitmapInfo: OptionSet, Sendable {
     public static let byteOrderDefault = CGBitmapInfo([])
 }
 
-/// Rendering intent â€” CoreGraphics' `CGColorRenderingIntent`.
+/// Rendering intent — CoreGraphics' `CGColorRenderingIntent`.
 public enum CGColorRenderingIntent: Int32, Sendable {
     case defaultIntent = 0
     case absoluteColorimetric = 1

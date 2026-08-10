@@ -7,11 +7,6 @@
 /// so re-entering the actor is always factually sound; the unsafe bindings
 /// only carry non-Sendable values across the static isolation boundary.
 func winMainActor<T>(_ body: @MainActor () -> T) -> T {
-    nonisolated(unsafe) var result: T?
     nonisolated(unsafe) let body = body
-    MainActor.assumeIsolated {
-        result = body()
-    }
-    // assumeIsolated runs the body synchronously, so the box is always set.
-    return result!
+    return MainActor.assumeIsolated { body() }
 }

@@ -76,7 +76,10 @@ public final class NSGridColumn {
 
     /// The cell at a row index.
     public func cell(at rowIndex: Int) -> NSGridCell {
-        gridView!.cell(atColumnIndex: index, rowIndex: rowIndex)
+        guard let gridView else {
+            preconditionFailure("Detached NSGridColumn has no cells.")
+        }
+        return gridView.cell(atColumnIndex: index, rowIndex: rowIndex)
     }
 }
 
@@ -125,16 +128,19 @@ public final class NSGridRow {
 
     /// The cell at a column index.
     public func cell(at columnIndex: Int) -> NSGridCell {
-        gridView!.cell(atColumnIndex: columnIndex, rowIndex: index)
+        guard let gridView else {
+            preconditionFailure("Detached NSGridRow has no cells.")
+        }
+        return gridView.cell(atColumnIndex: columnIndex, rowIndex: index)
     }
 }
 
 /// A view that lays out its content in a 2-D grid of rows and columns, matching
-/// AppKit's `NSGridView` â€” the standard container for label-and-field forms.
+/// AppKit's `NSGridView` — the standard container for label-and-field forms.
 ///
 /// Each column sizes to the widest cell content (or an explicit `width`), each
 /// row to the tallest, and every cell positions its content view per the
-/// resolved placement (cell â†’ column/row â†’ grid). The grid reports an
+/// resolved placement (cell → column/row → grid). The grid reports an
 /// `intrinsicContentSize`, so it composes inside a constraint layout.
 open class NSGridView: NSView {
     /// Sentinel for a column/row that should size to its content.
@@ -151,7 +157,7 @@ open class NSGridView: NSView {
     /// align a row's cell contents on their text baselines (via each view's
     /// `baselineOffsetFromBottom`), overriding row/grid y-placement; a cell's
     /// own explicit `yPlacement` still wins. WinChocolate defaults to `.none`
-    /// (centered placement) â€” a documented divergence from AppKit's
+    /// (centered placement) — a documented divergence from AppKit's
     /// `.firstBaseline` default, pinned by existing consumers; set it
     /// explicitly for baseline rows.
     open var rowAlignment: NSGridRow.Alignment = .none { didSet { relayout() } }
@@ -178,6 +184,7 @@ open class NSGridView: NSView {
     /// Cells indexed `[rowIndex][columnIndex]`.
     private var cells: [[NSGridCell]] = []
 
+    /// Creates an empty grid view with the supplied frame.
     public required init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
     }
@@ -388,7 +395,7 @@ open class NSGridView: NSView {
     private var visibleRows: [Int] { rows.indices.filter { !rows[$0].isHidden } }
 
     /// Column widths, indexed by column index (hidden columns get 0). Cells in a
-    /// merged region are excluded â€” a spanning cell doesn't dictate any single
+    /// merged region are excluded — a spanning cell doesn't dictate any single
     /// column's width; it just fills whatever the spanned columns become.
     private func columnWidths() -> [CGFloat] {
         columns.indices.map { c in
@@ -426,6 +433,7 @@ open class NSGridView: NSView {
         }
     }
 
+    /// The size required by the grid's rows, columns, spacing, and padding.
     open override var intrinsicContentSize: NSSize {
         let widths = columnWidths()
         let heights = rowHeights()
@@ -437,13 +445,14 @@ open class NSGridView: NSView {
         return NSSize(width: totalWidth, height: totalHeight)
     }
 
+    /// Arranges grid cells using the current row and column metrics.
     open override func layout() {
         var widths = columnWidths()
         var heights = rowHeights()
 
         // An over-sized grid distributes its extra space equally to the
         // content-sized tracks (explicit-width/height tracks keep their size),
-        // so a grid pinned larger than its fitting size fills the frame â€”
+        // so a grid pinned larger than its fitting size fills the frame —
         // matching AppKit's constraint-driven stretching. The fitting
         // (intrinsic) size is unaffected.
         let fittingWidth = visibleColumns.reduce(0) { $0 + widths[$1] }

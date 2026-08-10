@@ -210,6 +210,7 @@ open class URLSessionTask: @unchecked Sendable {
 
 /// Describes the public `URLSessionDataTask` class.
 open class URLSessionDataTask: URLSessionTask, @unchecked Sendable {
+    /// Creates a data task in its initial suspended state.
     public override init() {
         super.init()
     }

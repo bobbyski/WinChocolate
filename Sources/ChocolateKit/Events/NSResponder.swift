@@ -73,6 +73,7 @@ open class NSResponder: NSObject {
     }
 
     @discardableResult
+    /// Dispatches supported responder-chain selectors before consulting the superclass.
     open override func perform(_ aSelector: Selector, with object: Any?) -> Any? {
         switch aSelector.name {
         case "changeFont:":

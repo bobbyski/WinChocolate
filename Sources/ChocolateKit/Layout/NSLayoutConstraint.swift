@@ -1,7 +1,7 @@
 /// A single Auto Layout constraint relating two view attributes.
 ///
 /// WinChocolate implements a real constraint-to-frame solver (see
-/// `NSLayoutSolver`), so activating constraints actually lays views out â€” the
+/// `NSLayoutSolver`), so activating constraints actually lays views out — the
 /// plan deliberately avoids stubs that silently do nothing. The first slice
 /// covers the positional/size attributes and equality plus inequality
 /// relations with priority-weighted relaxation; strict Cassowary priority
@@ -174,7 +174,7 @@ public final class NSLayoutConstraint {
         }
         // A self-referential constraint (both items the same view, e.g. an
         // aspect-ratio `width == height`) constrains the view's own frame, which
-        // its superview lays out â€” so it must own the constraint, exactly like a
+        // its superview lays out — so it must own the constraint, exactly like a
         // single-item constant constraint.
         guard let second = secondItem, second !== first else {
             return first.superview ?? first

@@ -5,8 +5,8 @@
 /// `5/31/2026, 8:00:00 PM` on an Eastern machine, as it does on AppKit.
 ///
 /// **Where the behaviour comes from.** LinChocolate renders this control's
-/// field itself â€” building the text, tracking which element is selected, and
-/// stepping and typing into it â€” because GTK has no date field to delegate to.
+/// field itself — building the text, tracking which element is selected, and
+/// stepping and typing into it — because GTK has no date field to delegate to.
 /// Windows does: `SysDateTimePick32` selects an element on click, moves between
 /// elements with the arrow keys, steps the *selected* element from its stepper,
 /// and takes typed digits with auto-advance. That is both the behaviour AppKit
@@ -19,7 +19,7 @@ open class NSDatePicker: NSControl {
     ///
     /// Raw values are Apple's.
     public enum Style: UInt, Sendable {
-        /// A field with a stepper â€” AppKit's default. No calendar popup.
+        /// A field with a stepper — AppKit's default. No calendar popup.
         case textFieldAndStepper = 0
         /// A graphical month grid.
         case clockAndCalendar = 1
@@ -31,7 +31,7 @@ open class NSDatePicker: NSControl {
     ///
     /// These are Apple's real raw values, and they are **cumulative**:
     /// `.hourMinuteSecond` contains `.hourMinute`, and `.yearMonthDay` contains
-    /// `.yearMonth`. Test the wider flag first â€” `contains(.yearMonth)` is true
+    /// `.yearMonth`. Test the wider flag first — `contains(.yearMonth)` is true
     /// for a year-month-day picker. (The previous values here were invented
     /// `1 << n` bits, which compiled fine under symbolic use while every raw
     /// value and every cross-pair `contains` check was wrong.)
@@ -46,13 +46,13 @@ open class NSDatePicker: NSControl {
 
         /// Hour and minute.
         public static let hourMinute = ElementFlags(rawValue: 0x000c)
-        /// Hour, minute and second â€” contains `.hourMinute`.
+        /// Hour, minute and second — contains `.hourMinute`.
         public static let hourMinuteSecond = ElementFlags(rawValue: 0x000e)
         /// The time zone.
         public static let timeZone = ElementFlags(rawValue: 0x0010)
         /// Year and month.
         public static let yearMonth = ElementFlags(rawValue: 0x00c0)
-        /// Year, month and day â€” contains `.yearMonth`.
+        /// Year, month and day — contains `.yearMonth`.
         public static let yearMonthDay = ElementFlags(rawValue: 0x00e0)
         /// The era.
         public static let era = ElementFlags(rawValue: 0x0100)
@@ -154,9 +154,9 @@ open class NSDatePicker: NSControl {
     /// AppKit builds its field from a locale *template*
     /// (`dateFormat(fromTemplate: "Mdyyyyjmmss")` -> `M/d/yyyy, h:mm:ss a`),
     /// which is why it shows a four-digit year that a plain short date style
-    /// cannot produce. The Windows equivalent is the locale's own patterns â€”
+    /// cannot produce. The Windows equivalent is the locale's own patterns —
     /// `LOCALE_SSHORTDATE` is already `M/d/yyyy` on a modern en-US machine, and
-    /// already in the syntax the control wants â€” so the field order follows the
+    /// already in the syntax the control wants — so the field order follows the
     /// locale here exactly as it does on Apple, without a template engine.
     var nativeDateFormat: String? {
         // Cumulative flags: the wider one has to be tested first.
@@ -169,7 +169,7 @@ open class NSDatePicker: NSControl {
         if showsDay {
             parts.append(resolvedLocale.shortDatePattern)
         } else if showsYearMonth {
-            // Apple's "yyyyM" template renders "5/2026" â€” the same numeric
+            // Apple's "yyyyM" template renders "5/2026" — the same numeric
             // shape as its year-month-day field, not a spelled-out month. The
             // locale's own year-month format (Windows: "MMMM yyyy") would look
             // native but would not match the sibling field, so the day is
@@ -367,7 +367,7 @@ open class NSDatePicker: NSControl {
 
     /// The value as a string.
     ///
-    /// AppKit returns the **full** date and time here â€” probed on real AppKit
+    /// AppKit returns the **full** date and time here — probed on real AppKit
     /// as `Sunday, May 31, 2026 at 8:00:00 PM Eastern Daylight Time`, which is
     /// exactly `DateFormatter(dateStyle: .full, timeStyle: .full)`. It is *not*
     /// the field's text, and it does **not** vary with `datePickerElements`: a

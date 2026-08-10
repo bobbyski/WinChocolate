@@ -1,4 +1,4 @@
-/// A bitmap image representation â€” AppKit's `NSBitmapImageRep`, which *is*
+/// A bitmap image representation — AppKit's `NSBitmapImageRep`, which *is*
 /// Apple's BMP codec (`representation(using: .bmp)` / `init(data:)`) and pixel
 /// accessor (`colorAt(x:y:)`).
 ///
@@ -8,7 +8,7 @@
 /// `NSImageRep`; this slice needs only the standalone codec surface the demo
 /// exercises, so it is a plain `NSObject` for now.
 open class NSBitmapImageRep: NSObject {
-    /// Bitmap file formats â€” AppKit's `NSBitmapImageRep.FileType`. Raw values
+    /// Bitmap file formats — AppKit's `NSBitmapImageRep.FileType`. Raw values
     /// match AppKit's ordering.
     public enum FileType: UInt, Sendable {
         case tiff = 0
@@ -19,7 +19,7 @@ open class NSBitmapImageRep: NSObject {
         case jpeg2000 = 5
     }
 
-    /// Keys for `representation(using:properties:)` â€” AppKit's
+    /// Keys for `representation(using:properties:)` — AppKit's
     /// `NSBitmapImageRep.PropertyKey`. This slice reads none; the parameter
     /// exists for exact source parity.
     public struct PropertyKey: RawRepresentable, Hashable, Sendable {
@@ -35,13 +35,13 @@ open class NSBitmapImageRep: NSObject {
     /// The backing image (RGBA8, top row first).
     public let cgImage: CGImage
 
-    /// Wraps a `CGImage` â€” AppKit's `init(cgImage:)`.
+    /// Wraps a `CGImage` — AppKit's `init(cgImage:)`.
     public init(cgImage: CGImage) {
         self.cgImage = cgImage
         super.init()
     }
 
-    /// Decodes bitmap data â€” AppKit's `init(data:)`. Accepts the BMP the
+    /// Decodes bitmap data — AppKit's `init(data:)`. Accepts the BMP the
     /// `.bmp` representation produces, and PNG.
     public init?(data: Data) {
         let bytes = Array(data)
@@ -52,13 +52,13 @@ open class NSBitmapImageRep: NSObject {
         super.init()
     }
 
-    /// The pixel width â€” AppKit's `pixelsWide`.
+    /// The pixel width — AppKit's `pixelsWide`.
     open var pixelsWide: Int { cgImage.width }
 
-    /// The pixel height â€” AppKit's `pixelsHigh`.
+    /// The pixel height — AppKit's `pixelsHigh`.
     open var pixelsHigh: Int { cgImage.height }
 
-    /// Encodes the bitmap to a file format â€” AppKit's
+    /// Encodes the bitmap to a file format — AppKit's
     /// `representation(using:properties:)`. This slice supports `.bmp`.
     open func representation(using storageType: FileType, properties: [PropertyKey: Any]) -> Data? {
         switch storageType {
@@ -69,7 +69,7 @@ open class NSBitmapImageRep: NSObject {
         }
     }
 
-    /// The color at a pixel (top-left origin) â€” AppKit's `colorAt(x:y:)`.
+    /// The color at a pixel (top-left origin) — AppKit's `colorAt(x:y:)`.
     open func colorAt(x: Int, y: Int) -> NSColor? {
         guard let pixel = cgImage.pixel(atX: x, y: y) else {
             return nil

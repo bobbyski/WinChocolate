@@ -92,7 +92,9 @@ open class NSControl: NSView {
     // Controls are accessibility elements (leaves assistive technology lands
     // on), and their enabled state tracks `isEnabled`. Concrete controls refine
     // the role/value below.
+    /// Controls are exposed as intrinsic accessibility elements.
     open override var winIsIntrinsicAccessibilityElement: Bool { true }
+    /// The accessibility enabled state follows the control's enabled state.
     open override var winIntrinsicAccessibilityEnabled: Bool { isEnabled }
 
     /// Sends an action to a target through the application, matching AppKit's

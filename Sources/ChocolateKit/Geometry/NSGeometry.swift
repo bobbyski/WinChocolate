@@ -1,4 +1,4 @@
-// The geometry value types are owned by WinCoreGraphics (plan 13.1/13.2) â€”
+// The geometry value types are owned by WinCoreGraphics (plan 13.1/13.2) —
 // exactly Apple's layering, where `NSRect` *is* `CGRect`. The module is
 // re-exported so `import WinChocolate` keeps providing `CGRect`/`CGFloat`
 // and the rest of the CG-named surface unchanged.
@@ -111,7 +111,7 @@ public func NSInsetRect(_ rect: NSRect, _ deltaX: CGFloat, _ deltaY: CGFloat) ->
 }
 
 // (The CG-named aliases, `CGVector`, and the Swift-idiomatic rect members now
-// live in WinCoreGraphics â€” see CGGeometry.swift there.)
+// live in WinCoreGraphics — see CGGeometry.swift there.)
 
 // MARK: - Additional C-style geometry functions
 

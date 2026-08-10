@@ -1,15 +1,15 @@
 // NSNib.swift
 // Interface Builder document loading (Phase 15).
 //
-// WinChocolate parses `.xib` XML documents directly â€” the human-readable
-// source format â€” rather than compiled binary `.nib` keyed archives (plan
+// WinChocolate parses `.xib` XML documents directly — the human-readable
+// source format — rather than compiled binary `.nib` keyed archives (plan
 // 15's design decision: parsing the stable XML avoids reimplementing
 // NSKeyedUnarchiver, and Windows-built apps carry their xibs as resources).
 //
 // Outlet wiring (`@IBOutlet` by name) needs KVC/reflection Swift-on-Windows
 // does not provide (the same gap deferring Cocoa bindings, 12.1), so the
 // first slice matches plan 15.4: the object graph is instantiated fully, and
-// apps wire outlets through `WinNibInstance` â€” identified-object lookup plus
+// apps wire outlets through `WinNibInstance` — identified-object lookup plus
 // the parsed connection records. Actions on controls whose target resolves
 // (File's Owner or another nib object) are applied as `target`/`action`.
 
@@ -23,7 +23,7 @@ open class NSNib: NSObject {
 
     /// Loads a nib by name from a bundle (searching `<name>.xib`).
     ///
-    /// Passing `nil` searches the main bundle, then the working directory â€”
+    /// Passing `nil` searches the main bundle, then the working directory —
     /// covering bundle-less Windows executables whose resources sit beside
     /// the package.
     public init?(nibNamed name: NSNib.Name, bundle: Bundle? = nil) {
@@ -74,7 +74,7 @@ open class NSNib: NSObject {
     /// Windows `NSArray` is `[Any]`, so this is the same type it always was; on
     /// Linux/macOS it is Foundation's class, which is what lets an app pass the
     /// `var topLevel: NSArray?` it declares on Apple straight through here.
-    /// (Foundation parity, Phase 2 â€” the shared core spells Apple's types, not
+    /// (Foundation parity, Phase 2 — the shared core spells Apple's types, not
     /// the Windows stand-in's, so a signature match on one platform is a
     /// signature match on all three.)
     @discardableResult
@@ -88,7 +88,7 @@ open class NSNib: NSObject {
 
     /// Instantiates the nib's object graph and returns the rich result:
     /// top-level objects, every identified object, and the parsed outlet and
-    /// action connections â€” the Windows-side wiring surface while automatic
+    /// action connections — the Windows-side wiring surface while automatic
     /// `@IBOutlet` binding awaits a KVC layer (plan 15.4).
     open func winInstantiate(withOwner owner: Any? = nil) -> WinNibInstance? {
         guard let xibText, let document = WinXML.parse(xibText), document.name == "document" else {
@@ -132,7 +132,7 @@ public final class WinNibInstance {
     }
 
     /// Depth-first search of the top-level views for a view whose
-    /// `identifier` (the Identity inspector's "Identifier" field) matches â€”
+    /// `identifier` (the Identity inspector's "Identifier" field) matches —
     /// the manual-wiring lookup apps use in place of outlets.
     public func view(withIdentifier identifier: String) -> NSView? {
         func search(_ view: NSView) -> NSView? {

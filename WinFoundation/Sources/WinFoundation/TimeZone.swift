@@ -1,7 +1,7 @@
 /// A minimal Foundation-compatible time zone.
 ///
 /// `Date` is an absolute instant; a time zone is what turns it into a wall
-/// clock. Without one, `DateFormatter` could only render UTC â€” so a picker
+/// clock. Without one, `DateFormatter` could only render UTC — so a picker
 /// holding 2026-06-01T00:00Z showed `12:00:00 AM` where AppKit, on an Eastern
 /// machine, shows `8:00:00 PM` the previous day.
 ///
@@ -9,7 +9,7 @@
 /// come from `SystemTimeToTzSpecificLocalTime` (which applies the right rule
 /// for the *date* being converted, not just today's), and the names from
 /// `GetTimeZoneInformationForYear`. Named IANA zones (`America/New_York`) are
-/// not supported â€” Windows has no such database â€” so `init(identifier:)`
+/// not supported — Windows has no such database — so `init(identifier:)`
 /// accepts UTC/GMT and the current zone's own name only.
 public struct TimeZone: Equatable, Sendable {
     /// How a zone determines its offset.
@@ -74,7 +74,7 @@ public struct TimeZone: Equatable, Sendable {
 
     /// The offset from GMT, in seconds, in effect at `date`.
     ///
-    /// DST-aware: the same zone returns âˆ’4h in June and âˆ’5h in December.
+    /// DST-aware: the same zone returns −4h in June and −5h in December.
     public func secondsFromGMT(for date: Date = Date()) -> Int {
         switch kind {
         case .fixed(let seconds):
@@ -88,7 +88,7 @@ public struct TimeZone: Equatable, Sendable {
     ///
     /// Determined by comparing the offset at `date` against the zone's own
     /// yearly extremes rather than by reading a DST flag: DST always *adds* to
-    /// the standard offset, so the larger of the two is daylight â€” which holds
+    /// the standard offset, so the larger of the two is daylight — which holds
     /// in the southern hemisphere too, where the seasons are inverted.
     public func isDaylightSavingTime(for date: Date = Date()) -> Bool {
         guard case .current = kind else {
@@ -108,7 +108,7 @@ public struct TimeZone: Equatable, Sendable {
     /// right for the Americas but not universal (Central European Summer Time
     /// abbreviates CEST, not CEST's initials of the *Windows* name), so a name
     /// that doesn't fit the pattern falls back to a GMT offset, which is never
-    /// wrong â€” only less pretty.
+    /// wrong — only less pretty.
     public func abbreviation(for date: Date = Date()) -> String? {
         guard case .current = kind else {
             return TimeZone.gmtIdentifier(for: secondsFromGMT(for: date))
@@ -133,7 +133,7 @@ public struct TimeZone: Equatable, Sendable {
         case shortGeneric
     }
 
-    /// The zone's display name â€” "Eastern Daylight Time" â€” for `date`'s year.
+    /// The zone's display name — "Eastern Daylight Time" — for `date`'s year.
     ///
     /// This is what `DateFormatter`'s full time style appends, and what makes
     /// `NSDatePicker.stringValue` match AppKit.
@@ -153,7 +153,7 @@ public struct TimeZone: Equatable, Sendable {
         }
     }
 
-    /// The display name in effect at `date` â€” standard or daylight.
+    /// The display name in effect at `date` — standard or daylight.
     ///
     /// The distinction is per-instant, not per-today: a June date reads
     /// "Eastern Daylight Time" even when it is December on the machine.
@@ -255,7 +255,7 @@ enum WinTimeZone {
     ///
     /// Windows is asked to convert the instant rather than being asked for a
     /// bias: `SystemTimeToTzSpecificLocalTime` applies the DST rule that was in
-    /// force on that date, so a June instant reads âˆ’4h even in December.
+    /// force on that date, so a June instant reads −4h even in December.
     static func secondsFromGMT(for date: Date) -> Int {
         #if os(Windows)
         let utcSeconds = Int(date.timeIntervalSince1970.rounded(.down))
@@ -277,7 +277,7 @@ enum WinTimeZone {
     /// The zone's standard and daylight offsets in `date`'s year, in seconds.
     ///
     /// Probed by converting a midwinter and a midsummer instant rather than by
-    /// reading the bias fields â€” no sign conventions to get wrong. DST adds, so
+    /// reading the bias fields — no sign conventions to get wrong. DST adds, so
     /// the larger offset is the daylight one in either hemisphere.
     static func yearOffsets(around date: Date) -> (standard: Int, daylight: Int) {
         let year = WinCivilTime.parts(fromEpoch: Int(date.timeIntervalSince1970.rounded(.down))).year
@@ -360,7 +360,7 @@ private func WinFoundationGetTimeZoneInformationForYear(_ year: UInt16, _ dynami
 
 // MARK: - Foundation parity conformances (plan Phase 2)
 
-/// `Hashable` and `Codable` because Foundation's `TimeZone` is both â€” same
+/// `Hashable` and `Codable` because Foundation's `TimeZone` is both — same
 /// reasoning as `Locale`. Decoding an identifier this build cannot resolve falls
 /// back to the current zone rather than throwing: Foundation resolves against a
 /// full tz database, and the Windows zone set is narrower, so a document written
