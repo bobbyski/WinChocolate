@@ -7655,6 +7655,15 @@ func testWinFoundationCompatibilitySurface() {
     let driveRoot = URL(fileURLWithPath: "C:\\")
     expect(driveRoot.deletingLastPathComponent().path == "C:\\", "WinFoundation URL should preserve Windows drive root when deleting last component.")
 
+    testWinFoundationDataCompatibility()
+    testWinFoundationValueTypeCompatibility()
+    testWinFoundationBundleAndNotificationCompatibility()
+    #endif
+}
+
+@MainActor
+private func testWinFoundationDataCompatibility() {
+    #if os(Windows)
     let data = Data([1, 2, 3])
     expect(data.count == 3, "WinFoundation Data count failed.")
     expect(Array(data) == [1, 2, 3], "WinFoundation Data iteration failed.")
@@ -7696,6 +7705,12 @@ func testWinFoundationCompatibilitySurface() {
         fatalError("WinFoundation Data file I/O threw unexpectedly: \(error)")
     }
 
+    #endif
+}
+
+@MainActor
+private func testWinFoundationValueTypeCompatibility() {
+    #if os(Windows)
     var indexes = IndexSet(integer: 2)
     indexes.insert(1)
     indexes.insert(3)
@@ -7754,6 +7769,12 @@ func testWinFoundationCompatibilitySurface() {
     let interval: TimeInterval = 2.5
     expect(Date(timeInterval: interval, since: early).timeIntervalSinceReferenceDate == 3.5, "WinFoundation TimeInterval alias failed.")
 
+    #endif
+}
+
+@MainActor
+private func testWinFoundationBundleAndNotificationCompatibility() {
+    #if os(Windows)
     guard let packageBundle = Bundle(path: ".") else {
         fatalError("WinFoundation Bundle(path:) failed.")
     }

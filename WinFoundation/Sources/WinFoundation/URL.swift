@@ -257,7 +257,10 @@ public struct URL: Equatable, Hashable, Sendable, CustomStringConvertible {
         isFileURL ? standardizedFileURL : absoluteURL
     }
 
-    private var preferredSeparator: String {
+}
+
+private extension URL {
+    var preferredSeparator: String {
         storage.contains("\\") ? "\\" : "/"
     }
 

@@ -323,30 +323,6 @@ open class NSButton: NSControl {
         super.init(frame: frameRect)
     }
 
-    /// Creates a standard push button, matching AppKit's convenience shape.
-    /// The action selector dispatches to the target on click, as in AppKit.
-    public convenience init(title: String, target: AnyObject?, action: Selector?) {
-        self.init(title: title, frame: .zero)
-        self.target = target
-        self.action = action
-    }
-
-    /// Creates a checkbox, matching AppKit's convenience shape.
-    public convenience init(checkboxWithTitle title: String, target: AnyObject?, action: Selector?) {
-        self.init(title: title, frame: .zero)
-        setButtonType(.switch)
-        self.target = target
-        self.action = action
-    }
-
-    /// Creates a radio button, matching AppKit's convenience shape.
-    public convenience init(radioButtonWithTitle title: String, target: AnyObject?, action: Selector?) {
-        self.init(title: title, frame: .zero)
-        setButtonType(.radio)
-        self.target = target
-        self.action = action
-    }
-
     /// Creates the native Windows button peer.
     open override func createNativePeer(in backend: NativeControlBackend, parent: NativeHandle?) -> NativeHandle {
         if usesFrameworkDrawnBezel {
@@ -604,5 +580,31 @@ open class NSButton: NSControl {
         for case let button as NSButton in superview.subviews where button !== self && button.buttonType == .radio {
             button.state = .off
         }
+    }
+}
+
+public extension NSButton {
+    /// Creates a standard push button, matching AppKit's convenience shape.
+    /// The action selector dispatches to the target on click, as in AppKit.
+    convenience init(title: String, target: AnyObject?, action: Selector?) {
+        self.init(title: title, frame: .zero)
+        self.target = target
+        self.action = action
+    }
+
+    /// Creates a checkbox, matching AppKit's convenience shape.
+    convenience init(checkboxWithTitle title: String, target: AnyObject?, action: Selector?) {
+        self.init(title: title, frame: .zero)
+        setButtonType(.switch)
+        self.target = target
+        self.action = action
+    }
+
+    /// Creates a radio button, matching AppKit's convenience shape.
+    convenience init(radioButtonWithTitle title: String, target: AnyObject?, action: Selector?) {
+        self.init(title: title, frame: .zero)
+        setButtonType(.radio)
+        self.target = target
+        self.action = action
     }
 }

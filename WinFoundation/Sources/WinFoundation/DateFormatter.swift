@@ -314,6 +314,34 @@ open class DateFormatter: Formatter {
 
     // MARK: - Parsing
 
+    private func readInteger(from input: [Character], index: inout Int, maxDigits: Int) -> Int? {
+        var value = 0
+        var count = 0
+        while index < input.count, input[index].isNumber, count < maxDigits {
+            guard let digit = Int(String(input[index])) else {
+                return nil
+            }
+            value = value * 10 + digit
+            index += 1
+            count += 1
+        }
+        return count > 0 ? value : nil
+    }
+
+    private func matchName(_ names: [String], in input: [Character], index: inout Int) -> Int? {
+        for (offset, name) in names.enumerated() {
+            let candidate = Array(name)
+            guard index + candidate.count <= input.count else {
+                continue
+            }
+            if Array(input[index..<(index + candidate.count)]) == candidate {
+                index += candidate.count
+                return offset
+            }
+        }
+        return nil
+    }
+
     private func parse(_ string: String, using pattern: String) -> Date? {
         let format = Array(pattern)
         let input = Array(string)
@@ -323,29 +351,6 @@ open class DateFormatter: Formatter {
         var year = 1_970, month = 1, day = 1, hour = 0, minute = 0, second = 0
         var isPM = false
         var sawMeridiem = false
-
-        func readInt(maxDigits: Int) -> Int? {
-            var value = 0
-            var read = 0
-            while inputIndex < input.count, input[inputIndex].isNumber, read < maxDigits {
-                value = value * 10 + Int(String(input[inputIndex]))!
-                inputIndex += 1
-                read += 1
-            }
-            return read > 0 ? value : nil
-        }
-
-        func matchName(_ names: [String]) -> Int? {
-            for (offset, name) in names.enumerated() {
-                let candidate = Array(name)
-                if inputIndex + candidate.count <= input.count,
-                   Array(input[inputIndex..<(inputIndex + candidate.count)]) == candidate {
-                    inputIndex += candidate.count
-                    return offset
-                }
-            }
-            return nil
-        }
 
         while formatIndex < format.count {
             let character = format[formatIndex]
@@ -376,43 +381,47 @@ open class DateFormatter: Formatter {
 
                 switch character {
                 case "y":
-                    guard let value = readInt(maxDigits: runLength == 2 ? 2 : 4) else { return nil }
+                    guard let value = readInteger(from: input, index: &inputIndex, maxDigits: runLength == 2 ? 2 : 4) else { return nil }
                     year = runLength == 2 ? 2_000 + value : value
                 case "M":
                     if runLength >= 3 {
-                        guard let index = matchName(runLength >= 4 ? Self.longMonths : Self.shortMonths) else { return nil }
+                        guard let index = matchName(runLength >= 4 ? Self.longMonths : Self.shortMonths, in: input, index: &inputIndex) else { return nil }
                         month = index + 1
                     } else {
-                        guard let value = readInt(maxDigits: 2) else { return nil }
+                        guard let value = readInteger(from: input, index: &inputIndex, maxDigits: 2) else { return nil }
                         month = value
                     }
                 case "d":
-                    guard let value = readInt(maxDigits: 2) else { return nil }
+                    guard let value = readInteger(from: input, index: &inputIndex, maxDigits: 2) else { return nil }
                     day = value
                 case "H":
-                    guard let value = readInt(maxDigits: 2) else { return nil }
+                    guard let value = readInteger(from: input, index: &inputIndex, maxDigits: 2) else { return nil }
                     hour = value
                 case "h":
-                    guard let value = readInt(maxDigits: 2) else { return nil }
+                    guard let value = readInteger(from: input, index: &inputIndex, maxDigits: 2) else { return nil }
                     hour = value % 12
                 case "m":
-                    guard let value = readInt(maxDigits: 2) else { return nil }
+                    guard let value = readInteger(from: input, index: &inputIndex, maxDigits: 2) else { return nil }
                     minute = value
                 case "s":
-                    guard let value = readInt(maxDigits: 2) else { return nil }
+                    guard let value = readInteger(from: input, index: &inputIndex, maxDigits: 2) else { return nil }
                     second = value
                 case "a":
-                    if matchName(["AM", "am"]) != nil {
+                    if matchName(["AM", "am"], in: input, index: &inputIndex) != nil {
                         isPM = false
                         sawMeridiem = true
-                    } else if matchName(["PM", "pm"]) != nil {
+                    } else if matchName(["PM", "pm"], in: input, index: &inputIndex) != nil {
                         isPM = true
                         sawMeridiem = true
                     } else {
                         return nil
                     }
                 case "E":
-                    _ = matchName(runLength >= 4 ? Self.longWeekdays : Self.shortWeekdays)
+                    _ = matchName(
+                        runLength >= 4 ? Self.longWeekdays : Self.shortWeekdays,
+                        in: input,
+                        index: &inputIndex
+                    )
                 default:
                     return nil
                 }
