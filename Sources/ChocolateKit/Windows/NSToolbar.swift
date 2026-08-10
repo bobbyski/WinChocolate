@@ -825,7 +825,10 @@ open class NSToolbarView: NSView {
         return handle
     }
 
-    private func rebuildItemViews(for toolbar: NSToolbar) {
+}
+
+private extension NSToolbarView {
+    func rebuildItemViews(for toolbar: NSToolbar) {
         for renderedView in renderedItemViews {
             renderedView.removeFromSuperview()
         }

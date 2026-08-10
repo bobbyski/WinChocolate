@@ -336,7 +336,10 @@ internal final class NSToolbarCustomizationPanel: NSPanel {
     }
 
     /// Returns strip tile widths, capped so the whole set fits the strip.
-    private func stripTileWidths(for toolbar: NSToolbar) -> [CGFloat] {
+}
+
+private extension NSToolbarCustomizationPanel {
+    func stripTileWidths(for toolbar: NSToolbar) -> [CGFloat] {
         let naturalWidths = toolbar.items.map { tileWidth(for: title(for: $0.itemIdentifier, prefersPaletteLabel: false)) }
         guard !naturalWidths.isEmpty else {
             return naturalWidths
@@ -369,7 +372,7 @@ internal final class NSToolbarCustomizationPanel: NSPanel {
         }
     }
 
-    private func moveDragPreview(for tile: NSToolbarCustomizationTile, frame: NSRect) -> Bool {
+    func moveDragPreview(for tile: NSToolbarCustomizationTile, frame: NSRect) -> Bool {
         guard let parent = tile.superview else {
             return false
         }
@@ -402,7 +405,7 @@ internal final class NSToolbarCustomizationPanel: NSPanel {
         return true
     }
 
-    private func hideDragPreview() {
+    func hideDragPreview() {
         dragPreview.isHidden = true
         dragPreview.frame = NSMakeRect(-10_000, -10_000, 1, 1)
         insertionIndicator.isHidden = true
@@ -410,7 +413,7 @@ internal final class NSToolbarCustomizationPanel: NSPanel {
     }
 
     /// The x of the insertion bar for a strip insertion index.
-    private func insertionIndicatorX(forIndex index: Int) -> CGFloat {
+    func insertionIndicatorX(forIndex index: Int) -> CGFloat {
         guard let toolbar = customizedToolbar else {
             return 8
         }
@@ -425,7 +428,7 @@ internal final class NSToolbarCustomizationPanel: NSPanel {
         return max(2, x - (Metrics.stripSpacing / 2) - 1)
     }
 
-    private func finishDrag(from tile: NSToolbarCustomizationTile, event: NSEvent) {
+    func finishDrag(from tile: NSToolbarCustomizationTile, event: NSEvent) {
         defer {
             dragSource = nil
             pendingInsertionIndex = nil
@@ -459,13 +462,13 @@ internal final class NSToolbarCustomizationPanel: NSPanel {
     }
 
     /// Returns the strip insertion index for a drop event, or `nil` outside the strip.
-    private func stripInsertionIndex(for event: NSEvent) -> Int? {
+    func stripInsertionIndex(for event: NSEvent) -> Int? {
         stripInsertionIndex(forContentPoint: content.convert(event.locationInWindow, from: nil))
     }
 
     /// Returns the strip insertion index for a content-space point, or `nil`
     /// when the point is outside the strip zone.
-    private func stripInsertionIndex(forContentPoint point: NSPoint) -> Int? {
+    func stripInsertionIndex(forContentPoint point: NSPoint) -> Int? {
         guard let toolbar = customizedToolbar else {
             return nil
         }
@@ -488,7 +491,7 @@ internal final class NSToolbarCustomizationPanel: NSPanel {
 
     // MARK: - Toolbar mutations
 
-    private func insertIdentifier(_ identifier: NSToolbarItem.Identifier, at insertionIndex: Int) {
+    func insertIdentifier(_ identifier: NSToolbarItem.Identifier, at insertionIndex: Int) {
         guard let toolbar = customizedToolbar else {
             return
         }
@@ -505,7 +508,7 @@ internal final class NSToolbarCustomizationPanel: NSPanel {
         rebuildStripTiles()
     }
 
-    private func removeItem(at index: Int) {
+    func removeItem(at index: Int) {
         guard let toolbar = customizedToolbar else {
             return
         }
@@ -520,7 +523,7 @@ internal final class NSToolbarCustomizationPanel: NSPanel {
         rebuildStripTiles()
     }
 
-    private func moveItem(from currentIndex: Int, to insertionIndex: Int) {
+    func moveItem(from currentIndex: Int, to insertionIndex: Int) {
         guard let toolbar = customizedToolbar else {
             return
         }
@@ -543,11 +546,11 @@ internal final class NSToolbarCustomizationPanel: NSPanel {
 
     // MARK: - Item presentation
 
-    private func tileWidth(for title: String) -> CGFloat {
+    func tileWidth(for title: String) -> CGFloat {
         max(64, min(112, CGFloat(title.count * 7 + 24)))
     }
 
-    private func title(for identifier: NSToolbarItem.Identifier, prefersPaletteLabel: Bool = true) -> String {
+    func title(for identifier: NSToolbarItem.Identifier, prefersPaletteLabel: Bool = true) -> String {
         if identifier == .flexibleSpace {
             return "Flexible Space"
         }
@@ -565,7 +568,7 @@ internal final class NSToolbarCustomizationPanel: NSPanel {
         return item?.label ?? identifier.rawValue
     }
 
-    private func imageName(for identifier: NSToolbarItem.Identifier) -> String {
+    func imageName(for identifier: NSToolbarItem.Identifier) -> String {
         switch identifier {
         case .separator:
             return "separator"
