@@ -251,7 +251,7 @@ public final class GTKNativeControlBackend: NativeControlBackend {
                 padding: 1px 2px;
             }
             """
-        let provider = gtk_css_provider_new()!
+        guard let provider = gtk_css_provider_new() else { return }
         lc_css_provider_load(provider, css)
         // 590 < the toolbar/app provider (600) so per-widget rules still win.
         gtk_style_context_add_provider_for_display(display, OpaquePointer(provider), 590)
@@ -309,7 +309,7 @@ public final class GTKNativeControlBackend: NativeControlBackend {
                 border-color: alpha(@theme_selected_bg_color, 0.65);
             }
             """
-        let provider = gtk_css_provider_new()!
+        guard let provider = gtk_css_provider_new() else { return }
         lc_css_provider_load(provider, css)
         gtk_style_context_add_provider_for_display(display, OpaquePointer(provider), 600)
     }
@@ -327,7 +327,7 @@ public final class GTKNativeControlBackend: NativeControlBackend {
             popover { margin: 0; padding: 0; border-radius: 0; background: #fafafa; }
             popover > contents { margin: 0; box-shadow: none; border-radius: 0; border: 1px solid rgba(0,0,0,0.25); }
             """
-        let provider = gtk_css_provider_new()!
+        guard let provider = gtk_css_provider_new() else { return }
         lc_css_provider_load(provider, css)
         // 600 = GTK_STYLE_PROVIDER_PRIORITY_APPLICATION (macro doesn't import).
         gtk_style_context_add_provider_for_display(display, OpaquePointer(provider), 600)
@@ -411,8 +411,7 @@ public final class GTKNativeControlBackend: NativeControlBackend {
             block = {
                 let ms = Double(g_get_monotonic_time() - start) / 1000.0
                 FileHandle.standardError.write(
-                    String(format: "LCPAINT %8.1fms [timer] every=%.2fs\n", ms, every)
-                        .data(using: .utf8)!)
+                    Data(String(format: "LCPAINT %8.1fms [timer] every=%.2fs\n", ms, every).utf8))
                 original()
             }
         }
@@ -607,13 +606,13 @@ public final class GTKNativeControlBackend: NativeControlBackend {
             paintTraceReported.insert(raw)
             let delay = Double(g_get_monotonic_time() - mapped) / 1000.0
             FileHandle.standardError.write(
-                String(format: "LCPAINT ======== [%@] FIRST FRAME %.1f ms after map ========\n",
-                       title as NSString, delay).data(using: .utf8)!)
+                Data(String(format: "LCPAINT ======== [%@] FIRST FRAME %.1f ms after map ========\n",
+                            title as NSString, delay).utf8))
         }
         FileHandle.standardError.write(
-            String(format: "LCPAINT %8.1fms [%@] %-12@ win=%dx%d %@%@%@\n",
-                   ms, title as NSString, event as NSString, Int(ww), Int(wh),
-                   (content + surface) as NSString, frame as NSString, note as NSString).data(using: .utf8)!)
+            Data(String(format: "LCPAINT %8.1fms [%@] %-12@ win=%dx%d %@%@%@\n",
+                        ms, title as NSString, event as NSString, Int(ww), Int(wh),
+                        (content + surface) as NSString, frame as NSString, note as NSString).utf8))
     }
 
     /// Hooks the window's lifecycle and its frame clock so every paint cycle is
@@ -907,12 +906,12 @@ public final class GTKNativeControlBackend: NativeControlBackend {
     private func logZoom(_ phase: String, handle: NativeHandle, content: UnsafeMutablePointer<GtkWidget>,
                          window: UnsafeMutablePointer<GtkWindow>, req: (Int32, Int32)) {
         guard !(ProcessInfo.processInfo.environment["LINCHOCOLATE_ZOOM_DEBUG"] ?? "").isEmpty else { return }
-        FileHandle.standardError.write("ZOOM \(phase): monitor req=\(req.0)x\(req.1)\n".data(using: .utf8)!)
+        FileHandle.standardError.write(Data("ZOOM \(phase): monitor req=\(req.0)x\(req.1)\n".utf8))
         let box = ActionBox {
             let cw = gtk_widget_get_width(content), ch = gtk_widget_get_height(content)
             let ww = gtk_widget_get_width(UnsafeMutablePointer<GtkWidget>(OpaquePointer(window)))
             let wh = gtk_widget_get_height(UnsafeMutablePointer<GtkWidget>(OpaquePointer(window)))
-            FileHandle.standardError.write("ZOOM alloc: content=\(cw)x\(ch) window=\(ww)x\(wh)\n".data(using: .utf8)!)
+            FileHandle.standardError.write(Data("ZOOM alloc: content=\(cw)x\(ch) window=\(ww)x\(wh)\n".utf8))
         }
         g_timeout_add(guint(700), { ud in
             guard let ud else { return gboolean(0) }
@@ -2209,7 +2208,10 @@ public final class GTKNativeControlBackend: NativeControlBackend {
         // AppKit's default style is .textFieldAndStepper — a compact field *with
         // a stepper*, not a full month grid. clockAndCalendar swaps in a
         // GtkCalendar via setDatePickerGraphical.
-        let h = allocate(gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0)!, .datePicker, frame: frame)
+        guard let box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0) else {
+            preconditionFailure("GTK failed to create a date-picker container")
+        }
+        let h = allocate(box, .datePicker, frame: frame)
         buildCompactDatePicker(raw: h.rawValue, frame: frame)
         setDateValue(date, for: h)
         return h
@@ -3466,8 +3468,7 @@ public final class GTKNativeControlBackend: NativeControlBackend {
         if paintTrace {
             let ms = Double(g_get_monotonic_time() - paintTraceStart) / 1000.0
             FileHandle.standardError.write(
-                String(format: "LCPAINT %8.1fms [invalidate] view=%d\n", ms, Int(handle.rawValue))
-                    .data(using: .utf8)!)
+                Data(String(format: "LCPAINT %8.1fms [invalidate] view=%d\n", ms, Int(handle.rawValue)).utf8))
         }
         gtk_widget_queue_draw(asWidget(area))
     }
@@ -6355,8 +6356,7 @@ extension GTKNativeControlBackend {
             action = {
                 let ms = Double(g_get_monotonic_time() - start) / 1000.0
                 FileHandle.standardError.write(
-                    String(format: "LCPAINT %8.1fms [timer] every=%.2fs\n", ms, every)
-                        .data(using: .utf8)!)
+                    Data(String(format: "LCPAINT %8.1fms [timer] every=%.2fs\n", ms, every).utf8))
                 original()
             }
         }

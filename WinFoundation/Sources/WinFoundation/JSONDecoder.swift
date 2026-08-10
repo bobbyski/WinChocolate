@@ -291,7 +291,15 @@ private struct KeyedContainer<Key: CodingKey>: KeyedDecodingContainerProtocol {
         return try nested.unkeyedContainer()
     }
 
-    func superDecoder() throws -> Decoder { try superDecoder(forKey: Key(stringValue: "super")!) }
+    func superDecoder() throws -> Decoder {
+        guard let key = Key(stringValue: "super") else {
+            throw DecodingError.dataCorrupted(DecodingError.Context(
+                codingPath: codingPath,
+                debugDescription: "The coding-key type rejected the reserved 'super' key."
+            ))
+        }
+        return try superDecoder(forKey: key)
+    }
 
     func superDecoder(forKey key: Key) throws -> Decoder {
         _JSONDecoder(value: values[key.stringValue] ?? .null, options: decoder.options, codingPath: codingPath + [key])

@@ -320,7 +320,12 @@ private final class KeyedContainer<Key: CodingKey>: KeyedEncodingContainerProtoc
         return container
     }
 
-    func superEncoder() -> Encoder { superEncoder(forKey: Key(stringValue: "super")!) }
+    func superEncoder() -> Encoder {
+        guard let key = Key(stringValue: "super") else {
+            return _JSONEncoder(options: encoder.options, codingPath: codingPath)
+        }
+        return superEncoder(forKey: key)
+    }
 
     func superEncoder(forKey key: Key) -> Encoder {
         let nested = _JSONEncoder(options: encoder.options, codingPath: codingPath + [key])
@@ -460,4 +465,3 @@ private struct SingleValueContainer: SingleValueEncodingContainer {
         return .number(JSONNumber.string(from: value))
     }
 }
-

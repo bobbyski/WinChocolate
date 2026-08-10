@@ -217,7 +217,10 @@ extension Win32NativeControlBackend {
             var info = MONITORINFOW()
             info.cbSize = UINT(MemoryLayout<MONITORINFOW>.stride)
             if winGetMonitorInfoW(monitor, &info) != 0 {
-                let collector = Unmanaged<MonitorCollector>.fromOpaque(UnsafeRawPointer(bitPattern: data)!).takeUnretainedValue()
+                guard let pointer = UnsafeRawPointer(bitPattern: data) else {
+                    return 0
+                }
+                let collector = Unmanaged<MonitorCollector>.fromOpaque(pointer).takeUnretainedValue()
                 let s = collector.scale
                 let description = NativeScreenDescription(
                     frame: NSRect(

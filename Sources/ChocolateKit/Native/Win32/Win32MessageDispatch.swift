@@ -1370,10 +1370,10 @@ extension Win32NativeControlBackend {
         let shiftIsDown = modifierFlags.contains(.shift)
         switch virtualKey {
         case 0x30...0x39:
-            return String(UnicodeScalar(UInt32(virtualKey))!)
+            return UnicodeScalar(UInt32(virtualKey)).map(String.init)
         case 0x41...0x5a:
             let scalar = shiftIsDown ? UInt32(virtualKey) : UInt32(virtualKey + 32)
-            return String(UnicodeScalar(scalar)!)
+            return UnicodeScalar(scalar).map(String.init)
         case UInt16(vkSpace):
             return " "
         case UInt16(vkTab):

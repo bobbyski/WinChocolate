@@ -187,7 +187,9 @@ extension NSAttributedString {
             case 0x0d:
                 break
             case let ascii where ascii < 0x80:
-                escaped.append(Character(UnicodeScalar(ascii)!))
+                if let scalar = UnicodeScalar(ascii) {
+                    escaped.append(Character(scalar))
+                }
             default:
                 // RTF unicode escapes are signed 16-bit with a fallback char.
                 escaped += "\\u\(Int16(bitPattern: unit))?"
