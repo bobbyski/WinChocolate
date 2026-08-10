@@ -365,7 +365,10 @@ final class WinNibDecoder {
         NSLayoutConstraint.activate(decoded)
     }
 
-    private func attribute(named name: String?) -> NSLayoutConstraint.Attribute? {
+}
+
+private extension WinNibDecoder {
+    func attribute(named name: String?) -> NSLayoutConstraint.Attribute? {
         switch name {
         case "left": return .left
         case "right": return .right
@@ -384,7 +387,7 @@ final class WinNibDecoder {
     }
 
     /// IB multipliers appear as plain numbers ("0.5") or ratios ("3:4").
-    private func multiplier(from text: String?) -> CGFloat {
+    func multiplier(from text: String?) -> CGFloat {
         guard let text else { return 1 }
         if text.contains(":") {
             let parts = text.split(separator: ":")
@@ -401,7 +404,7 @@ final class WinNibDecoder {
 
     // MARK: Connections (15.4 first slice)
 
-    private func resolvePendingConnections() {
+    func resolvePendingConnections() {
         for (source, connectionsElement) in pendingConnections {
             for element in connectionsElement.children {
                 switch element.name {
@@ -431,7 +434,7 @@ final class WinNibDecoder {
         }
     }
 
-    private func resolveReference(_ id: String) -> AnyObject? {
+    func resolveReference(_ id: String) -> AnyObject? {
         if id == "-2" { return owner }
         if id == "-1" || id == "-3" { return nil }
         return objectsByID[id]
@@ -439,7 +442,7 @@ final class WinNibDecoder {
 
     // MARK: Attribute value helpers
 
-    private func rect(from element: WinXMLElement?) -> NSRect? {
+    func rect(from element: WinXMLElement?) -> NSRect? {
         guard let element,
               let x = double(element.attribute("x")),
               let y = double(element.attribute("y")),
@@ -450,11 +453,11 @@ final class WinNibDecoder {
         return NSMakeRect(CGFloat(x), CGFloat(y), CGFloat(width), CGFloat(height))
     }
 
-    private func double(_ text: String?) -> Double? {
+    func double(_ text: String?) -> Double? {
         text.flatMap { Double($0) }
     }
 
-    private func bool(_ text: String?, default defaultValue: Bool = false) -> Bool {
+    func bool(_ text: String?, default defaultValue: Bool = false) -> Bool {
         guard let text else { return defaultValue }
         return text == "YES"
     }

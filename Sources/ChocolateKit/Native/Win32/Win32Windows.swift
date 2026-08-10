@@ -549,16 +549,21 @@ extension Win32NativeControlBackend {
                 style: style,
                 hasMenu: windowMenuFlags[handle.rawValue] ?? false
             )
-            let rect = (Int32((frame.origin.x * dpi).rounded()), Int32((frame.origin.y * dpi).rounded()), outerSize.width, outerSize.height)
+            let rect = WinDeviceRect(
+                x: Int32((frame.origin.x * dpi).rounded()),
+                y: Int32((frame.origin.y * dpi).rounded()),
+                width: outerSize.width,
+                height: outerSize.height
+            )
             let previous = lastFrameDeviceRects[handle.rawValue]
             if previous.map({ $0 != rect }) ?? true {
                 lastFrameDeviceRects[handle.rawValue] = rect
-                let sizeChanged = previous.map { $0.2 != rect.2 || $0.3 != rect.3 } ?? true
+                let sizeChanged = previous.map { $0.width != rect.width || $0.height != rect.height } ?? true
                 if sizeChanged {
-                    _ = winMoveWindow(hwnd, rect.0, rect.1, rect.2, rect.3, 1)
+                    _ = winMoveWindow(hwnd, rect.x, rect.y, rect.width, rect.height, 1)
                 } else {
                     // Pure window move (drag): copy pixels instead of repainting.
-                    _ = winSetWindowPos(hwnd, nil, rect.0, rect.1, 0, 0, swpNoSize | swpNoZOrder | swpNoActivate)
+                    _ = winSetWindowPos(hwnd, nil, rect.x, rect.y, 0, 0, swpNoSize | swpNoZOrder | swpNoActivate)
                 }
             }
             return
@@ -575,11 +580,11 @@ extension Win32NativeControlBackend {
             height: frame.size.height * scale
         )
 
-        let rect = (
-            Int32(scaledFrame.origin.x),
-            Int32(scaledFrame.origin.y),
-            Int32(scaledFrame.size.width),
-            Int32(max(scaledFrame.size.height, comboBoxDropdownHeights[handle.rawValue] ?? scaledFrame.size.height))
+        let rect = WinDeviceRect(
+            x: Int32(scaledFrame.origin.x),
+            y: Int32(scaledFrame.origin.y),
+            width: Int32(scaledFrame.size.width),
+            height: Int32(max(scaledFrame.size.height, comboBoxDropdownHeights[handle.rawValue] ?? scaledFrame.size.height))
         )
         // Skip the native move (and its repaint) when the control is already at
         // this exact device rect — the duplicate-update flicker guard.
@@ -589,10 +594,10 @@ extension Win32NativeControlBackend {
         }
         lastFrameDeviceRects[handle.rawValue] = rect
 
-        let sizeChanged = previous.map { $0.2 != rect.2 || $0.3 != rect.3 } ?? true
+        let sizeChanged = previous.map { $0.width != rect.width || $0.height != rect.height } ?? true
         if sizeChanged {
             // A resize genuinely changes content extent, so repaint the control.
-            _ = winMoveWindow(hwnd, rect.0, rect.1, rect.2, rect.3, 1)
+            _ = winMoveWindow(hwnd, rect.x, rect.y, rect.width, rect.height, 1)
             // A shrinking custom view can uncover siblings behind it; repaint
             // the area it vacated so no stale pixels remain.
             if customViewHandles.contains(handle.rawValue), let parent = winGetParent(hwnd) {
@@ -607,7 +612,7 @@ extension Win32NativeControlBackend {
             // large) window every step — and the blanket parent+all-children
             // redraw that erased and repainted the whole scroll area each notch.
             // The result is smooth, minimal-repaint scrolling.
-            _ = winSetWindowPos(hwnd, nil, rect.0, rect.1, 0, 0, swpNoSize | swpNoZOrder | swpNoActivate)
+            _ = winSetWindowPos(hwnd, nil, rect.x, rect.y, 0, 0, swpNoSize | swpNoZOrder | swpNoActivate)
         }
     }
 

@@ -527,7 +527,10 @@ open class NSBrowser: NSControl {
         return columnItems[column]
     }
 
-    private func children(of item: Any?) -> [Any] {
+}
+
+private extension NSBrowser {
+    func children(of item: Any?) -> [Any] {
         let count = winMainActor { delegate?.browser(self, numberOfChildrenOfItem: item) } ?? 0
         guard count > 0 else {
             return []
@@ -538,7 +541,7 @@ open class NSBrowser: NSControl {
         }
     }
 
-    private func addColumn(at index: Int) {
+    func addColumn(at index: Int) {
         let frame = NSMakeRect(CGFloat(index) * defaultColumnWidth, 0, defaultColumnWidth, self.frame.size.height)
         let column = BrowserColumn(browser: self, column: index, frame: frame)
         let titleColumn = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("browser"))
@@ -567,7 +570,7 @@ open class NSBrowser: NSControl {
         addSubview(column.scrollView)
     }
 
-    private func trimColumns(after column: Int) {
+    func trimColumns(after column: Int) {
         while columns.count > column + 1 {
             let removed = columns.removeLast()
             removed.scrollView.removeFromSuperview()

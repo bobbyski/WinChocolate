@@ -578,10 +578,6 @@ open class NSOutlineView: NSTableView {
         return "\(indent)\(marker)\(value.map { String(describing: $0) } ?? "")"
     }
 
-    private func key(for item: Any) -> String {
-        String(describing: item)
-    }
-
     // MARK: Drawn disclosure triangle + indentation
 
     /// The x of the disclosure triangle's left edge for a row's first column.
@@ -636,5 +632,11 @@ open class NSOutlineView: NSTableView {
             return true
         }
         return false
+    }
+}
+
+private extension NSOutlineView {
+    func key(for item: Any) -> String {
+        String(describing: item)
     }
 }

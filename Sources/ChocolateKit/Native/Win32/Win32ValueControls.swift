@@ -427,11 +427,11 @@ extension Win32NativeControlBackend {
         let lower = Int32(min(minValue, maxValue).rounded())
         let upper = Int32(max(minValue, maxValue).rounded())
         let current = stepperRanges[handle.rawValue]?.value ?? Double(lower)
-        stepperRanges[handle.rawValue] = (
-            Double(lower),
-            Double(upper),
-            max(1, increment.rounded()),
-            min(max(current, Double(lower)), Double(upper))
+        stepperRanges[handle.rawValue] = WinStepperRange(
+            minValue: Double(lower),
+            maxValue: Double(upper),
+            increment: max(1, increment.rounded()),
+            value: min(max(current, Double(lower)), Double(upper))
         )
         _ = winSendMessageW(hwnd, udmSetRange32, WPARAM(lower), LPARAM(upper))
     }
@@ -442,7 +442,8 @@ extension Win32NativeControlBackend {
             return
         }
 
-        var range = stepperRanges[handle.rawValue] ?? (0, 100, 1, 0)
+        var range = stepperRanges[handle.rawValue]
+            ?? WinStepperRange(minValue: 0, maxValue: 100, increment: 1, value: 0)
         range.value = min(max(value, range.minValue), range.maxValue)
         stepperRanges[handle.rawValue] = range
         _ = winSendMessageW(hwnd, udmSetPos32, 0, LPARAM(Int32(range.value.rounded())))

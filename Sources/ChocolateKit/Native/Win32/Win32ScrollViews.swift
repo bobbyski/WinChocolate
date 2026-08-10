@@ -25,12 +25,12 @@ extension Win32NativeControlBackend {
 
     /// Updates native scroll-view document and viewport geometry.
     public func setScrollViewContentSize(_ contentSize: NSSize, viewportSize: NSSize, hasVerticalScroller: Bool, hasHorizontalScroller: Bool, for handle: NativeHandle) {
-        scrollViewMetrics[handle.rawValue] = (
-            contentSize,
-            viewportSize,
-            hasVerticalScroller,
-            hasHorizontalScroller,
-            scrollViewMetrics[handle.rawValue]?.offset ?? NSZeroPoint
+        scrollViewMetrics[handle.rawValue] = WinScrollViewMetrics(
+            contentSize: contentSize,
+            viewportSize: viewportSize,
+            hasVerticalScroller: hasVerticalScroller,
+            hasHorizontalScroller: hasHorizontalScroller,
+            offset: scrollViewMetrics[handle.rawValue]?.offset ?? NSZeroPoint
         )
         updateScrollViewBars(for: handle)
     }

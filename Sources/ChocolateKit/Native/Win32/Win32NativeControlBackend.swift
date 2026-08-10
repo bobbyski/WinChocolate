@@ -1,4 +1,26 @@
 #if os(Windows)
+struct WinDeviceRect: Equatable {
+    let x: Int32
+    let y: Int32
+    let width: Int32
+    let height: Int32
+}
+
+struct WinScrollViewMetrics {
+    let contentSize: NSSize
+    let viewportSize: NSSize
+    let hasVerticalScroller: Bool
+    let hasHorizontalScroller: Bool
+    var offset: NSPoint
+}
+
+struct WinStepperRange {
+    let minValue: Double
+    let maxValue: Double
+    let increment: Double
+    var value: Double
+}
+
 /// Win32 implementation of WinChocolate's native backend.
 ///
 /// This backend owns the first native milestone: top-level windows, a menu bar,
@@ -35,7 +57,7 @@ public final class Win32NativeControlBackend: NativeControlBackend {
     // The last device rect (x, y, w, h) each window/control was moved to, so a
     // `setFrame` to an unchanged rect skips the native `MoveWindow` (which would
     // repaint and flicker). Cleared on control teardown.
-    var lastFrameDeviceRects: [UInt: (Int32, Int32, Int32, Int32)] = [:]
+    var lastFrameDeviceRects: [UInt: WinDeviceRect] = [:]
     var timerActions: [UInt: () -> Void] = [:]
     var keyEquivalentHandler: ((NSEvent) -> Bool)?
     var drawActions: [UInt: (NativeDrawingContext, NSRect) -> Void] = [:]
@@ -90,8 +112,8 @@ public final class Win32NativeControlBackend: NativeControlBackend {
     var editableLevelHandles: Set<UInt> = []
     var levelIndicatorRanges: [UInt: (minValue: Double, maxValue: Double)] = [:]
     var levelIndicatorValues: [UInt: Double] = [:]
-    var scrollViewMetrics: [UInt: (contentSize: NSSize, viewportSize: NSSize, hasVerticalScroller: Bool, hasHorizontalScroller: Bool, offset: NSPoint)] = [:]
-    var stepperRanges: [UInt: (minValue: Double, maxValue: Double, increment: Double, value: Double)] = [:]
+    var scrollViewMetrics: [UInt: WinScrollViewMetrics] = [:]
+    var stepperRanges: [UInt: WinStepperRange] = [:]
     var comboBoxHandles: Set<UInt> = []
     var comboBoxDropdownHeights: [UInt: CGFloat] = [:]
     var groupBoxHandles: Set<UInt> = []

@@ -1190,7 +1190,8 @@ extension Win32NativeControlBackend {
             return
         }
 
-        let range = stepperRanges[handle.rawValue] ?? (0, 100, 1, 0)
+        let range = stepperRanges[handle.rawValue]
+            ?? WinStepperRange(minValue: 0, maxValue: 100, increment: 1, value: 0)
         let code = scrollParameter & 0xffff
         let thumb = Double((scrollParameter >> 16) & 0xffff)
         let nextValue: Double

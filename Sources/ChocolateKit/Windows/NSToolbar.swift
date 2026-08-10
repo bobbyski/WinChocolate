@@ -810,6 +810,7 @@ open class NSToolbarView: NSView {
 
     /// Creates the native host peer for the composed toolbar.
     /// Creates the native peer used by the toolbar overflow control.
+    /// Creates the noninteractive native view used to render a toolbar separator.
     open override func createNativePeer(in backend: NativeControlBackend, parent: NativeHandle?) -> NativeHandle {
         backend.createView(frame: frame, parent: parent)
     }
@@ -1341,4 +1342,3 @@ open class NSToolbarSeparatorView: NSView {
         return handle
     }
 }
-

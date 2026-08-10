@@ -1305,8 +1305,9 @@ func testWindowRealizationCreatesNativeHierarchy() {
     expect(backend.records[windowHandle]?.isHidden == true, "Realized window should stay hidden until ordered front.")
     expect(contentView.nativeHandle != nil, "Content view was not realized.")
     expect(button.nativeHandle != nil, "Button was not realized.")
-    expect(backend.records[button.nativeHandle!]?.kind == "button", "Button native record was not created.")
-    expect(backend.records[button.nativeHandle!]?.parent == contentView.nativeHandle, "Button parent was not content view.")
+    let buttonHandle = requireValue(button.nativeHandle, "Button should have a native handle.")
+    expect(backend.records[buttonHandle]?.kind == "button", "Button native record was not created.")
+    expect(backend.records[buttonHandle]?.parent == contentView.nativeHandle, "Button parent was not content view.")
 
     window.makeKeyAndOrderFront(nil)
 
@@ -1624,8 +1625,10 @@ func testScrollViewUsesNativePeerAndRealizesDocumentView() {
     expect(backend.records[handle]?.kind == "scrollView", "Scroll view did not request native scroll peer.")
     expect(scrollView.contentView.nativeHandle != nil, "Scroll view did not realize clip view.")
     expect(documentView.nativeHandle != nil, "Scroll view did not realize document view.")
-    expect(backend.records[scrollView.contentView.nativeHandle!]?.parent == handle, "Clip view native parent was not scroll view.")
-    expect(backend.records[documentView.nativeHandle!]?.parent == scrollView.contentView.nativeHandle, "Document view native parent was not clip view.")
+    let clipHandle = requireValue(scrollView.contentView.nativeHandle, "Clip view should have a native handle.")
+    let documentHandle = requireValue(documentView.nativeHandle, "Document view should have a native handle.")
+    expect(backend.records[clipHandle]?.parent == handle, "Clip view native parent was not scroll view.")
+    expect(backend.records[documentHandle]?.parent == clipHandle, "Document view native parent was not clip view.")
     expect(backend.records[handle]?.scrollViewContentSize == NSMakeSize(300, 240), "Scroll view did not sync document size.")
     expect(backend.records[handle]?.scrollViewViewportSize == NSMakeSize(200, 120), "Scroll view did not sync viewport size.")
 }
@@ -4773,7 +4776,8 @@ func testNativeWindowResizeUpdatesContentAndAutoresizesSubviews() {
 
     expect(window.frame.size == NSMakeSize(260, 180), "Native resize did not update window frame size.")
     expect(contentView.frame == NSMakeRect(0, 0, 260, 180), "Native resize did not update content view frame.")
-    expect(backend.records[contentView.nativeHandle!]?.frame == contentView.frame, "Native resize did not sync content view frame to backend.")
+    let contentHandle = requireValue(contentView.nativeHandle, "Content view should have a native handle.")
+    expect(backend.records[contentHandle]?.frame == contentView.frame, "Native resize did not sync content view frame to backend.")
     expect(stretchView.frame == NSMakeRect(10, 10, 140, 30), "Autoresizing width mask did not stretch subview.")
     expect(trailingView.frame == NSMakeRect(210, 140, 30, 20), "Autoresizing margins did not move trailing subview.")
 }
@@ -12870,17 +12874,19 @@ func testDrawnTableHostsRowViewsWithSelectionFill() {
     expect(firstRowIndex >= 0 && firstCellIndex > firstRowIndex, "Row views do not layer behind the cell views.")
 
     // Unselected rows paint their base color natively.
-    expect(backend.records[rowViews[0].nativeHandle!]?.backgroundColor == delegate.base,
+    let firstRowHandle = requireValue(rowViews[0].nativeHandle, "First row should have a native handle.")
+    expect(backend.records[firstRowHandle]?.backgroundColor == delegate.base,
            "Row view did not fill with its base color.")
 
     // Clicking row 1 flips its selection and swaps its native fill to the
     // selection color, leaving the others on their base color.
     backend.mouseDownActions[handle]?(NSEvent(type: .leftMouseDown, locationInWindow: NSMakePoint(10, 24 + 24 + 6)))
     expect(rowViews[1].isSelected, "Clicking row 1 did not select its row view.")
-    expect(backend.records[rowViews[1].nativeHandle!]?.backgroundColor == NSColor.selectedTextBackgroundColor,
+    let secondRowHandle = requireValue(rowViews[1].nativeHandle, "Second row should have a native handle.")
+    expect(backend.records[secondRowHandle]?.backgroundColor == NSColor.selectedTextBackgroundColor,
            "Selected row view did not swap to the selection fill.")
     expect(rowViews[0].isSelected == false, "Row 0 should not be selected.")
-    expect(backend.records[rowViews[0].nativeHandle!]?.backgroundColor == delegate.base,
+    expect(backend.records[firstRowHandle]?.backgroundColor == delegate.base,
            "Unselected row view lost its base fill.")
 
     // The click repaints the whole table tree (not just the surface), so the
