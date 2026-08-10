@@ -76,6 +76,7 @@ public struct Date: Equatable, Comparable, Hashable, Sendable {
         addingTimeInterval(seconds)
     }
 
+    /// This declaration is part of the public API.
     public static func < (lhs: Date, rhs: Date) -> Bool {
         lhs.secondsSinceReferenceDate < rhs.secondsSinceReferenceDate
     }
@@ -102,7 +103,9 @@ extension Date {
     public static func - (lhs: Date, rhs: Double) -> Date { lhs.addingTimeInterval(-rhs) }
     /// The interval between two dates.
     public static func - (lhs: Date, rhs: Date) -> Double { lhs.timeIntervalSince(rhs) }
+    /// This declaration is part of the public API.
     public static func += (lhs: inout Date, rhs: Double) { lhs = lhs + rhs }
+    /// This declaration is part of the public API.
     public static func -= (lhs: inout Date, rhs: Double) { lhs = lhs - rhs }
 }
 

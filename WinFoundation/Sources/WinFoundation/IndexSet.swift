@@ -22,6 +22,7 @@ public struct IndexSet: Equatable, Hashable, Sendable, Sequence, ExpressibleByAr
         self.init(elements)
     }
 
+    /// Creates a value with the supplied arguments.
     public init<S: Sequence>(_ indexes: S) where S.Element == Int {
         self.storage = Set(indexes)
     }
@@ -161,6 +162,7 @@ public struct IndexSet: Equatable, Hashable, Sendable, Sequence, ExpressibleByAr
         storage.isEmpty
     }
 
+    /// Performs the `makeIterator` operation.
     public func makeIterator() -> IndexingIterator<[Int]> {
         storage.sorted().makeIterator()
     }

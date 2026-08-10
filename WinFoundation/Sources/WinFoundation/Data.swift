@@ -1,7 +1,10 @@
 /// A small Foundation-compatible byte buffer subset.
 public struct Data: Equatable, Hashable, Sendable, RandomAccessCollection, MutableCollection, RangeReplaceableCollection {
+    /// The public `Element` type alias.
     public typealias Element = UInt8
+    /// The public `Index` type alias.
     public typealias Index = Int
+    /// The public `SubSequence` type alias.
     public typealias SubSequence = ArraySlice<UInt8>
 
     private var bytes: [UInt8]
@@ -344,11 +347,12 @@ private func WinFoundationCloseHandle(_ object: UnsafeMutableRawPointer?) -> Int
 
 // MARK: - Codable
 
-/// `Data` is `Codable` in Foundation, so it is here too — without it a type
+/// `Data` is `Codable` in Foundation, so it is here too â€” without it a type
 /// with a `Data` property cannot synthesize `Codable` at all. Foundation encodes
 /// the bytes as an unkeyed container; `JSONEncoder`/`JSONDecoder` intercept
 /// `Data` ahead of this to apply their base64 strategy, exactly as Apple's do.
 extension Data: Codable {
+    /// Creates a value with the supplied arguments.
     public init(from decoder: Decoder) throws {
         var container = try decoder.unkeyedContainer()
         var bytes: [UInt8] = []
@@ -361,6 +365,7 @@ extension Data: Codable {
         self.init(bytes)
     }
 
+    /// Performs the `encode` operation.
     public func encode(to encoder: Encoder) throws {
         var container = encoder.unkeyedContainer()
         for byte in self {

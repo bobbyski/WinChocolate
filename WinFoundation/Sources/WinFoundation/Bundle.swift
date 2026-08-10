@@ -81,10 +81,12 @@ public final class Bundle: Equatable, Hashable, Sendable {
         return URL(fileURLWithPath: path)
     }
 
+    /// This declaration is part of the public API.
     public static func == (lhs: Bundle, rhs: Bundle) -> Bool {
         lhs.rootPath.lowercased() == rhs.rootPath.lowercased()
     }
 
+    /// Performs the `hash` operation.
     public func hash(into hasher: inout Hasher) {
         hasher.combine(rootPath.lowercased())
     }

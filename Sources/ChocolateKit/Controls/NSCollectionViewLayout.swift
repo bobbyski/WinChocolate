@@ -10,6 +10,7 @@ open class NSCollectionViewLayoutAttributes {
     /// regular item.
     open var representedElementKind: String?
 
+    /// Creates a value with the supplied arguments.
     public init(forItemWith indexPath: IndexPath) {
         self.indexPath = indexPath
     }
@@ -21,6 +22,7 @@ open class NSCollectionViewLayout {
     /// The collection view this layout arranges (set when assigned).
     open weak var collectionView: NSCollectionView?
 
+    /// Creates a value with the supplied arguments.
     public init() {}
 
     /// Recomputes cached geometry. Called before laying out.

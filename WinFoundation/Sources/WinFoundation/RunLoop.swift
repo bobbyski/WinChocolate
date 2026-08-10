@@ -1,8 +1,8 @@
 /// A Foundation-compatible run loop.
 ///
 /// On macOS `RunLoop.main` *is* the main thread's event loop, and
-/// `NSApplication.run()` drives it. WinFoundation owns the loop itself — timers,
-/// input sources, `run(mode:before:)` — in pure Swift, knowing nothing about
+/// `NSApplication.run()` drives it. WinFoundation owns the loop itself â€” timers,
+/// input sources, `run(mode:before:)` â€” in pure Swift, knowing nothing about
 /// Win32. The platform's message pump is lent to it through
 /// `RunLoopPlatformPump`, which WinChocolate installs at startup (see
 /// `Docs/RunLoopDesign.md`). That keeps the dependency arrow pointing down:
@@ -15,8 +15,11 @@ public final class RunLoop: @unchecked Sendable {
 
     /// A mode the loop can run in.
     public struct Mode: RawRepresentable, Hashable, Sendable {
+        /// The `rawValue` value.
         public let rawValue: String
+        /// Creates a value with the supplied arguments.
         public init(rawValue: String) { self.rawValue = rawValue }
+        /// Creates a value with the supplied arguments.
         public init(_ rawValue: String) { self.rawValue = rawValue }
 
         /// The default mode. Apple's raw value.
@@ -151,7 +154,7 @@ public final class RunLoop: @unchecked Sendable {
             let wakeAt: Date? = nextTimer.map { min(limit, $0) } ?? (limit == .distantFuture ? nil : limit)
             guard let pump = platformPump else {
                 // Headless: nothing will wake us. Fire what's due (done above)
-                // and return — tests advance time via `fireTimers`.
+                // and return â€” tests advance time via `fireTimers`.
                 break
             }
             // A false return means the platform asked the loop to stop (WM_QUIT).
@@ -160,7 +163,7 @@ public final class RunLoop: @unchecked Sendable {
         return didWork
     }
 
-    /// Runs the loop in the default mode until the platform stops it — what
+    /// Runs the loop in the default mode until the platform stops it â€” what
     /// `NSApplication.run()` drives. With a pump this blocks until `WM_QUIT`;
     /// headless it returns immediately after firing due timers.
     public func run() {
@@ -178,7 +181,7 @@ public protocol RunLoopPlatformPump: AnyObject {
     /// before returning. Returns `false` when the platform has asked the loop
     /// to stop (Windows `WM_QUIT`), so `run` can exit.
     func waitForEvents(until limit: Date?) -> Bool
-    /// Wakes a blocked `waitForEvents` early — e.g. when a timer or `perform`
+    /// Wakes a blocked `waitForEvents` early â€” e.g. when a timer or `perform`
     /// block is added from elsewhere.
     func wake()
 }

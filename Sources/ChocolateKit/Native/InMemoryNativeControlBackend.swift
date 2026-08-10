@@ -71,13 +71,18 @@ public final class RecordingDrawingContext: NativeDrawingContext {
 
     /// A recorded in-memory (data-backed) bitmap draw.
     public struct BitmapImage: Equatable {
+        /// The `width` value.
         public let width: Int
+        /// The `height` value.
         public let height: Int
+        /// The `rect` value.
         public let rect: NSRect
+        /// The `tint` value.
         public let tint: NSColor?
         /// The RGBA byte count supplied (width*height*4), for assertions.
         public let byteCount: Int
 
+        /// Creates a value with the supplied arguments.
         public init(width: Int, height: Int, rect: NSRect, tint: NSColor?, byteCount: Int) {
             self.width = width
             self.height = height
@@ -194,7 +199,7 @@ public final class RecordingDrawingContext: NativeDrawingContext {
 /// system. It keeps framework behavior deterministic in unit tests while the
 /// Win32 backend owns real HWND creation for application runs.
 public final class InMemoryNativeControlBackend: NativeControlBackend {
-    /// The kind of a native object — see `NativeControlKind`, which this names
+    /// The kind of a native object â€” see `NativeControlKind`, which this names
     /// for the backends and tests that grew up spelling it
     /// `InMemoryNativeControlBackend.Kind`.
     public typealias Kind = NativeControlKind
@@ -204,6 +209,7 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     // which are not Sendable on Apple either. The backend is single-threaded
     // (everything runs on the UI/test thread), so nothing needs to cross an
     // isolation boundary.
+    /// Describes the public `Record` struct.
     public struct Record: Equatable {
         /// The kind of native object requested.
         public var kind: String
@@ -907,6 +913,7 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     /// Whether a text-field handle was created multi-line, for tests.
     public private(set) var multilineTextFields: [NativeHandle: Bool] = [:]
 
+    /// Performs the `createTextField` operation.
     public func createTextField(text: String, frame: NSRect, parent: NativeHandle?, isEditable: Bool, isBordered: Bool, isMultiline: Bool) -> NativeHandle {
         let handle = makeHandle(kind: isEditable ? "editableTextField" : "textField", text: text, frame: frame, parent: parent)
         multilineTextFields[handle] = isMultiline
@@ -1077,7 +1084,7 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
         records[handle]?.datePickerDate = date
         records[handle]?.datePickerMinDate = minDate
         records[handle]?.datePickerMaxDate = maxDate
-        // The stepper is the observable half of `.textFieldAndStepper` — the
+        // The stepper is the observable half of `.textFieldAndStepper` â€” the
         // style is named for it, and a field without one is the bug this
         // records so a test can catch.
         records[handle]?.datePickerShowsStepper = style == .textFieldAndStepper
@@ -1664,6 +1671,7 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     /// Records whether a stepper wraps at its range ends.
     public private(set) var stepperWraps: [NativeHandle: Bool] = [:]
 
+    /// Performs the `setStepperWraps` operation.
     public func setStepperWraps(_ wraps: Bool, for handle: NativeHandle) {
         stepperWraps[handle] = wraps
     }
@@ -1731,8 +1739,11 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
 
     /// Recorded per-handle table state for multiple selection, editing, sorting.
     public private(set) var tableSelectedRowSets: [NativeHandle: [Int]] = [:]
+    /// The `tableAllowsMultipleSelection` value.
     public private(set) var tableAllowsMultipleSelection: [NativeHandle: Bool] = [:]
+    /// The `tableEditableHandles` value.
     public private(set) var tableEditableHandles: Set<NativeHandle> = []
+    /// The `tableSortIndicators` value.
     public private(set) var tableSortIndicators: [NativeHandle: (column: Int, ascending: Bool)] = [:]
     private var tableEditActionsByHandle: [NativeHandle: (Int, Int, String) -> Void] = [:]
     private var tableDoubleClickActionsByHandle: [NativeHandle: () -> Void] = [:]
@@ -2059,10 +2070,10 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
         NSMakeSize(CGFloat(text.count) * fontSize * 0.55, fontSize * 1.35)
     }
 
-    /// Deterministic word-wrap estimate: the single-line metrics (`0.55 ×
-    /// pointSize` per character, `1.35 × pointSize` per line) greedily packed
-    /// into `maxWidth`-wide lines. Height is line count × line height; width is
-    /// the widest packed line (≤ `maxWidth`).
+    /// Deterministic word-wrap estimate: the single-line metrics (`0.55 Ã—
+    /// pointSize` per character, `1.35 Ã— pointSize` per line) greedily packed
+    /// into `maxWidth`-wide lines. Height is line count Ã— line height; width is
+    /// the widest packed line (â‰¤ `maxWidth`).
     public func measureText(_ text: String, fontName: String, fontSize: CGFloat, weight: Int, italic: Bool, wrappingAt maxWidth: CGFloat) -> NSSize {
         let charWidth = fontSize * 0.55
         let lineHeight = fontSize * 1.35
@@ -2158,7 +2169,7 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
         timerActions[identifier]?()
     }
 
-    /// Fires every scheduled timer's action once — a whole "message-loop tick"
+    /// Fires every scheduled timer's action once â€” a whole "message-loop tick"
     /// for headless tests of coalesced re-render paths (a Timer-batched layout
     /// pass fires here rather than waiting on a real run loop). Iterates a
     /// snapshot so a timer that reschedules during its action doesn't recurse.

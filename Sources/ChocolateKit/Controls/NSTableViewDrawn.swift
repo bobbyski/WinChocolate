@@ -5,7 +5,7 @@
 /// draws the header, grid, and selection itself, and hosts the delegate's cell
 /// views as real child subviews positioned in a column/row grid. This is the
 /// same custom-draw approach used for the level indicator and token chips,
-/// scaled to a table. (First slice: no vertical scrolling yet — rows beyond
+/// scaled to a table. (First slice: no vertical scrolling yet â€” rows beyond
 /// the frame are clipped; scrolling is a follow-up.)
 /// The drawn table's per-presentation style tokens. The classic skin matches
 /// the native `SysListView32` look (gray header slab, bold titles, visible
@@ -78,13 +78,14 @@ struct WinDrawnTableStyle {
 /// (focus loss / Enter), then tears the overlay down.
 public final class WinDrawnCellEditor: NSObject, NSTextFieldDelegate {
     weak var table: NSTableView?
+    /// Performs the `controlTextDidEndEditing` operation.
     public func controlTextDidEndEditing(_ obj: Notification) {
         table?.winCommitDrawnEdit()
     }
 
     /// Intercepts the field editor's Tab/Backtab so editing commits and moves
     /// to the next/previous editable cell instead of letting Windows move focus
-    /// off the field — AppKit's `control(_:textView:doCommandBy:)` contract.
+    /// off the field â€” AppKit's `control(_:textView:doCommandBy:)` contract.
     public func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
         guard let table else { return false }
         switch commandSelector {
@@ -136,8 +137,8 @@ public final class WinDrawnHeaderStrip: NSView {
 extension NSTableView {
     /// Whether the table should draw itself and host view-based cells.
     ///
-    /// Matches AppKit's rule: a table is *view-based* — and so uses the
-    /// framework-drawn peer that can host per-cell/row views — when its delegate
+    /// Matches AppKit's rule: a table is *view-based* â€” and so uses the
+    /// framework-drawn peer that can host per-cell/row views â€” when its delegate
     /// vends a cell view for the first cell or a full-width row view for the
     /// first row. `winUsesViewBasedCells` forces it on for callers that want a
     /// drawn (all-text) table without vending any view.
@@ -190,7 +191,7 @@ extension NSTableView {
     ///
     /// `heightOfRow` has a protocol-default that returns `rowHeight`, so a value
     /// equal to `rowHeight` is indistinguishable from "delegate didn't override"
-    /// — in that case we keep the drawn baseline (`winDrawnRowHeight`). A value
+    /// â€” in that case we keep the drawn baseline (`winDrawnRowHeight`). A value
     /// that differs is a genuine per-row customization and is honored.
     func winRowHeight(_ row: Int) -> CGFloat {
         if let delegate = winEffectiveDelegate {
@@ -203,7 +204,7 @@ extension NSTableView {
     }
 
     /// The cached height of a row (from the last rebuild), or a fresh query
-    /// when the cache is stale/empty — so drawing and hit-testing agree.
+    /// when the cache is stale/empty â€” so drawing and hit-testing agree.
     func winRowHeightAt(_ row: Int) -> CGFloat {
         guard row >= 0 else { return winDrawnRowHeight }
         if row < winRowHeights.count {
@@ -268,7 +269,7 @@ extension NSTableView {
         guard winIsDrawn, let scrollView = enclosingScrollView else {
             return
         }
-        // Install/refresh the pinned header strip first — it insets the content
+        // Install/refresh the pinned header strip first â€” it insets the content
         // clip, which changes the viewport size the document sizes against.
         winSetupPinnedHeader()
         let width = max(scrollView.contentView.bounds.size.width, tableColumns.reduce(0) { $0 + max(20, $1.width) })
@@ -408,7 +409,7 @@ extension NSTableView {
             }
         }
 
-        // Header row — drawn in the body only when it is NOT pinned into a
+        // Header row â€” drawn in the body only when it is NOT pinned into a
         // separate strip (see `winDrawHeaderBar`).
         if !winHeaderIsPinned {
             winDrawHeaderBar(width: width)
@@ -438,7 +439,7 @@ extension NSTableView {
                 let trailing = winDrawnTrailingInset(forRow: row, column: column)
                 let color: NSColor = selectedRowIndexes.contains(row)
                     ? .selectedTextColor : style.cellTextColor
-                // Match the native control font (Segoe UI 9pt → 12px) and center
+                // Match the native control font (Segoe UI 9pt â†’ 12px) and center
                 // the text the way the header title is (optically centered).
                 let attributes: [NSAttributedString.Key: Any] = [
                     .font: NSFont.systemFont(ofSize: 9),
@@ -487,7 +488,7 @@ extension NSTableView {
         if text.isEmpty || text.size(withAttributes: attributes).width <= width {
             return text
         }
-        let ellipsis = "…"
+        let ellipsis = "â€¦"
         var truncated = text
         while !truncated.isEmpty {
             truncated.removeLast()
@@ -529,7 +530,7 @@ extension NSTableView {
 
         // Title text. `TextOutW` (TA_TOP) anchors the cell top at this y, and the
         // font's internal leading sits above the glyphs, so the visible text
-        // reads lower than the geometric center — bias the y upward to match the
+        // reads lower than the geometric center â€” bias the y upward to match the
         // natively-centered row cells.
         let titleY: CGFloat = 0
         for column in tableColumns.indices {
@@ -541,7 +542,7 @@ extension NSTableView {
             if let sort = sortDescriptors.first,
                sort.key == tableColumns[column].sortDescriptorPrototype?.key {
                 let arrowX = winColumnX(column) + max(20, tableColumns[column].width) - 14
-                (sort.ascending ? "▲" : "▼").draw(at: NSMakePoint(arrowX, titleY + 3), withAttributes: [
+                (sort.ascending ? "â–²" : "â–¼").draw(at: NSMakePoint(arrowX, titleY + 3), withAttributes: [
                     .font: NSFont.systemFont(ofSize: 8),
                     .foregroundColor: style.sortArrowColor,
                 ])
@@ -584,7 +585,7 @@ extension NSTableView {
         }
     }
 
-    /// The column whose right edge is within `tolerance` points of `x`, or nil —
+    /// The column whose right edge is within `tolerance` points of `x`, or nil â€”
     /// used to start an interactive column resize from the header.
     func winColumnBoundary(atX x: CGFloat, tolerance: CGFloat = 4) -> Int? {
         var edge: CGFloat = 0
@@ -665,7 +666,7 @@ extension NSTableView {
             }
             return
         }
-        // No drag: treat as a header click → sort.
+        // No drag: treat as a header click â†’ sort.
         if winHeaderDragColumn >= 0 {
             winHeaderStripClicked(atX: winHeaderDragStartX)
         }
@@ -696,7 +697,7 @@ extension NSTableView {
         sendAction()
     }
 
-    /// The first editable, non-hosted (drawn-text) column of a row, or `nil` —
+    /// The first editable, non-hosted (drawn-text) column of a row, or `nil` â€”
     /// the target for keyboard-driven (Return) edit-begin.
     func winFirstEditableDrawnColumn(forRow row: Int) -> Int? {
         tableColumns.indices.first { column in
@@ -778,7 +779,7 @@ extension NSTableView {
     /// The next editable, non-hosted drawn cell after `(row, column)`, scanning
     /// forward (or backward when `reversed`) across columns and then wrapping to
     /// the next/previous row. Returns `nil` when there is no further editable
-    /// cell — matching AppKit, where Tab past the last field ends editing.
+    /// cell â€” matching AppKit, where Tab past the last field ends editing.
     func winNextEditableDrawnCell(afterRow row: Int, column: Int, reversed: Bool) -> (row: Int, column: Int)? {
         guard numberOfRows > 0, !tableColumns.isEmpty else { return nil }
         let columnCount = tableColumns.count
@@ -825,7 +826,7 @@ extension NSTableView {
         let point = convert(event.locationInWindow, from: nil)
         _ = window?.makeFirstResponder(self)
 
-        // Header click → record the clicked column, apply its sort, and send
+        // Header click â†’ record the clicked column, apply its sort, and send
         // the table action (parity with the native header path). When the header
         // is pinned into a strip, the strip handles clicks instead.
         if !winHeaderHidden, !winHeaderIsPinned, point.y < winDrawnHeaderHeight {
@@ -855,7 +856,7 @@ extension NSTableView {
         let extend = allowsMultipleSelection && (event.modifierFlags.contains(.shift) || event.modifierFlags.contains(.command))
 
         // Pressing an already-selected row of a multi-selection (no modifier)
-        // must not collapse the selection yet — that would prevent dragging all
+        // must not collapse the selection yet â€” that would prevent dragging all
         // of them. Defer the collapse to mouse-up (only if no drag happens) and
         // arm a multi-row drag now. (AppKit's mouse-down-and-drag behavior.)
         if !extend, winReorderDragEnabled(forRow: row), selectedRowIndexes.contains(row), selectedRowIndexes.count > 1 {
@@ -877,8 +878,8 @@ extension NSTableView {
 
         // Arm a single-row reorder drag from this row (the explicit handler,
         // or AppKit's recipe: `.move` local mask + a data-source pasteboard
-        // writer), or — when the table isn't reorderable but the data source
-        // vends a writer — an external (system/OLE) drag out of the table.
+        // writer), or â€” when the table isn't reorderable but the data source
+        // vends a writer â€” an external (system/OLE) drag out of the table.
         if winReorderDragEnabled(forRow: row) {
             winDraggingRow = row
             winDraggingRows = IndexSet(integer: row)
@@ -1002,7 +1003,7 @@ extension NSTableView {
         guard winDraggingRow >= 0, winDropIndex >= 0 else {
             return
         }
-        // Rows start at `winBodyTopInset` — 0 when the header is pinned in its
+        // Rows start at `winBodyTopInset` â€” 0 when the header is pinned in its
         // own strip. Measuring from `winHeaderHeight` drew the line one header
         // height low (a top drop showed between rows 1 and 2 while correctly
         // inserting before row 1).

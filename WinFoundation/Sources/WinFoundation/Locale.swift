@@ -1,7 +1,7 @@
 /// A minimal Foundation-compatible locale.
 ///
 /// This shim exposes just enough for `DateFormatter` to format dates the way
-/// the user's Windows locale does — on a US machine that means US dates. The
+/// the user's Windows locale does â€” on a US machine that means US dates. The
 /// identifier follows Foundation's `en_US` style; the Windows APIs use the
 /// `en-US` form, which this type bridges. Full locale data (collation,
 /// number formats, etc.) is future Foundation-parity work.
@@ -203,7 +203,7 @@ private func WinFoundationGetTimeFormatEx(_ localeName: UnsafePointer<UInt16>?, 
 
 /// `Hashable` and `Codable` because Foundation's `Locale` is both. Without them
 /// a settings struct holding a `Locale` cannot synthesize `Codable`, and a
-/// `Locale` cannot key a dictionary — neither of which an app should have to
+/// `Locale` cannot key a dictionary â€” neither of which an app should have to
 /// work around on Windows. The encoded form matches Foundation's: a keyed
 /// container carrying the identifier, so JSON written on one platform reads on
 /// the other.
@@ -212,11 +212,13 @@ extension Locale: Hashable, Codable {
         case identifier
     }
 
+    /// Creates a value with the supplied arguments.
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         self.init(identifier: try container.decode(String.self, forKey: .identifier))
     }
 
+    /// Performs the `encode` operation.
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(identifier, forKey: .identifier)

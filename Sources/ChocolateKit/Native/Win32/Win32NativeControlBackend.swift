@@ -79,11 +79,11 @@ public final class Win32NativeControlBackend: NativeControlBackend {
     /// subclasses override `mouseDown`), not the control-action path.
     var imageViewHandles: Set<UInt> = []
     var monthCalDates: [UInt: Date] = [:]
-    /// The zone each date picker renders its wall clock in — the framework
+    /// The zone each date picker renders its wall clock in â€” the framework
     /// resolves `NSDatePicker.timeZone` and pushes it here.
     var datePickerTimeZones: [UInt: TimeZone] = [:]
     /// Compact date pickers (`SysDateTimePick32`) whose closed field is
-    /// owner-drawn dark — the control has no dark theme part and no color API,
+    /// owner-drawn dark â€” the control has no dark theme part and no color API,
     /// so the resting field is painted by the framework under a dark
     /// appearance (plan 8.5).
     var darkDatePickerFieldHandles: Set<UInt> = []
@@ -138,6 +138,7 @@ public final class Win32NativeControlBackend: NativeControlBackend {
     /// no-op on the common path.
     var winDeviceScale: CGFloat = 1
 
+    /// Creates a value with the supplied arguments.
     public init() {
         Self.activeBackend = self
         // Declare per-monitor-v2 DPI awareness before any window or device
@@ -148,9 +149,9 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         // Only adopt a manual device scale when *we* successfully declared
         // awareness: if the process is already DPI-aware (e.g. a manifest set
         // it) our call fails, and the safest assumption is that geometry is
-        // still being handled as before — scaling manually on top would
+        // still being handled as before â€” scaling manually on top would
         // double-scale at HiDPI. In that case winDeviceScale stays 1 (the
-        // point≈pixel path), a strict no-op.
+        // pointâ‰ˆpixel path), a strict no-op.
         let declaredAwareness =
             winSetProcessDpiAwarenessContext(winDpiAwarenessPerMonitorV2) != 0 ||
             winSetProcessDPIAware() != 0
@@ -168,7 +169,7 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         }
     }
 
-    /// The device scale used by point↔pixel conversions (overrides the
+    /// The device scale used by pointâ†”pixel conversions (overrides the
     /// protocol default so `NSScreen.winDisplayScale` and callers see the real
     /// DPI the process declared awareness for).
     public func winDisplayScale() -> CGFloat { winDeviceScale }
@@ -337,7 +338,7 @@ public final class Win32NativeControlBackend: NativeControlBackend {
             // The view surface erases with the dynamic window background so a
             // dark effective appearance yields dark view surfaces (the class
             // registers on first control creation, after the appearance is
-            // decided — the same one-way binding as WinPresentation).
+            // decided â€” the same one-way binding as WinPresentation).
             windowClass.hbrBackground = winCreateSolidBrush(colorRef(from: .windowBackgroundColor))
             windowClass.lpszClassName = className
 
@@ -467,7 +468,7 @@ public final class Win32NativeControlBackend: NativeControlBackend {
         // A dark effective appearance opts native controls into the system's
         // dark control themes (the same undocumented-but-stable subclasses
         // Explorer and the common dialogs use). Best-effort: classes without
-        // a dark theme part keep their light rendering — tracked in 8.5.
+        // a dark theme part keep their light rendering â€” tracked in 8.5.
         // Rich edit is excluded: the dark theme dims its text rendering while
         // the control already takes explicit colors (EM_SETBKGNDCOLOR + char
         // formats), which the dark path applies directly.

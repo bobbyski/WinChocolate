@@ -22,6 +22,7 @@ public protocol NSBrowserDelegate: NSObjectProtocol {
     func browser(_ browser: NSBrowser, imageForItem item: Any?) -> NSImage?
 }
 
+/// Adds public behavior to `NSBrowserDelegate`.
 public extension NSBrowserDelegate {
     /// Default leaf behavior treats items with no children as leaves.
     func browser(_ browser: NSBrowser, isLeafItem item: Any?) -> Bool {
@@ -290,14 +291,14 @@ open class NSBrowser: NSControl {
 
     /// Width assigned to each visible column.
     /// Uniform column width for new columns. Not API (18.7): Apple.s
-    /// `defaultColumnWidth` is a read-only method — package for the suite.
+    /// `defaultColumnWidth` is a read-only method â€” package for the suite.
     package var defaultColumnWidth: CGFloat = 160 {
         didSet {
             tile()
         }
     }
 
-    /// How a browser sizes its columns — AppKit's `NSBrowser.ColumnResizingType`.
+    /// How a browser sizes its columns â€” AppKit's `NSBrowser.ColumnResizingType`.
     public enum ColumnResizingType: Int, Sendable {
         /// Columns are a fixed width; no resizing.
         case noColumnResizing = 0
@@ -307,7 +308,7 @@ open class NSBrowser: NSControl {
         case userColumnResizing = 2
     }
 
-    /// The column-resizing policy. Apple's default is `.autoColumnResizing` —
+    /// The column-resizing policy. Apple's default is `.autoColumnResizing` â€”
     /// the browser owns the widths, so a user drag has nothing to change until
     /// this is set to `.userColumnResizing`.
     open var columnResizingType: ColumnResizingType = .autoColumnResizing {

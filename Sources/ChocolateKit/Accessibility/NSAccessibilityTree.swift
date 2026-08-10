@@ -6,23 +6,34 @@
 
 extension NSView: NSAccessibilityProtocol {}
 
-/// A serialized node of the accessibility tree — the shape assistive technology
+/// A serialized node of the accessibility tree â€” the shape assistive technology
 /// (and the contract tests) see. Value type, so it is safe to capture and diff.
 public struct WinAccessibilitySnapshot: Sendable {
+    /// The `role` value.
     public var role: String
+    /// The `subrole` value.
     public var subrole: String?
+    /// The `roleDescription` value.
     public var roleDescription: String?
+    /// The `label` value.
     public var label: String?
+    /// The `title` value.
     public var title: String?
+    /// The `value` value.
     public var value: String?
+    /// The `help` value.
     public var help: String?
+    /// The `isElement` value.
     public var isElement: Bool
+    /// The `isEnabled` value.
     public var isEnabled: Bool
+    /// The `frame` value.
     public var frame: NSRect
+    /// The `children` value.
     public var children: [WinAccessibilitySnapshot]
 
     /// The number of elements in this subtree (self if an element, plus
-    /// descendants) — a convenient assertion target.
+    /// descendants) â€” a convenient assertion target.
     public var elementCount: Int {
         (isElement ? 1 : 0) + children.reduce(0) { $0 + $1.elementCount }
     }
@@ -45,6 +56,7 @@ public struct WinAccessibilitySnapshot: Sendable {
     }
 }
 
+/// Performs the `winMakeAccessibilitySnapshot` operation.
 public func winMakeAccessibilitySnapshot(of element: NSAccessibilityProtocol) -> WinAccessibilitySnapshot {
     let childElements: [NSAccessibilityProtocol] = (element.accessibilityChildren() ?? [])
         .compactMap { $0 as? NSAccessibilityProtocol }

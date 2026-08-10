@@ -47,6 +47,7 @@ open class NSAccessibilityElement: NSAccessibilityProtocol {
     /// The element's parent element (weakly held to avoid retain cycles).
     open weak var winAccessibilityParent: AnyObject?
 
+    /// Creates a value with the supplied arguments.
     public init() {}
 
     /// Convenience initializer mirroring AppKit's factory element.
@@ -62,13 +63,21 @@ open class NSAccessibilityElement: NSAccessibilityProtocol {
         return element
     }
 
+    /// Performs the `setAccessibilityRole` operation.
     open func setAccessibilityRole(_ role: NSAccessibilityRole?) { storedRole = role }
+    /// Performs the `setAccessibilitySubrole` operation.
     open func setAccessibilitySubrole(_ subrole: NSAccessibilitySubrole?) { storedSubrole = subrole }
+    /// Performs the `setAccessibilityLabel` operation.
     open func setAccessibilityLabel(_ label: String?) { storedLabel = label }
+    /// Performs the `setAccessibilityTitle` operation.
     open func setAccessibilityTitle(_ title: String?) { storedTitle = title }
+    /// Performs the `setAccessibilityValue` operation.
     open func setAccessibilityValue(_ value: Any?) { storedValue = value }
+    /// Performs the `setAccessibilityHelp` operation.
     open func setAccessibilityHelp(_ help: String?) { storedHelp = help }
+    /// Performs the `setAccessibilityRoleDescription` operation.
     open func setAccessibilityRoleDescription(_ description: String?) { storedRoleDescription = description }
+    /// Performs the `setAccessibilityEnabled` operation.
     open func setAccessibilityEnabled(_ enabled: Bool) { storedEnabled = enabled }
 
     /// Replaces the element's child elements.
@@ -87,18 +96,29 @@ open class NSAccessibilityElement: NSAccessibilityProtocol {
 
     // MARK: NSAccessibilityProtocol
 
+    /// Performs the `isAccessibilityElement` operation.
     open func isAccessibilityElement() -> Bool { true }
+    /// Performs the `accessibilityRole` operation.
     open func accessibilityRole() -> NSAccessibilityRole? { storedRole }
+    /// Performs the `accessibilitySubrole` operation.
     open func accessibilitySubrole() -> NSAccessibilitySubrole? { storedSubrole }
+    /// Performs the `accessibilityRoleDescription` operation.
     open func accessibilityRoleDescription() -> String? {
         storedRoleDescription ?? storedRole?.winDefaultRoleDescription
     }
+    /// Performs the `accessibilityLabel` operation.
     open func accessibilityLabel() -> String? { storedLabel }
+    /// Performs the `accessibilityTitle` operation.
     open func accessibilityTitle() -> String? { storedTitle }
+    /// Performs the `accessibilityValue` operation.
     open func accessibilityValue() -> Any? { storedValue }
+    /// Performs the `accessibilityHelp` operation.
     open func accessibilityHelp() -> String? { storedHelp }
+    /// Performs the `accessibilityFrame` operation.
     open func accessibilityFrame() -> NSRect { accessibilityFrameInParentSpace }
+    /// Performs the `isAccessibilityEnabled` operation.
     open func isAccessibilityEnabled() -> Bool { storedEnabled }
+    /// Performs the `accessibilityChildren` operation.
     open func accessibilityChildren() -> [Any]? {
         storedChildren.isEmpty ? nil : storedChildren
     }

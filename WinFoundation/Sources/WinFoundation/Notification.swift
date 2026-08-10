@@ -2,20 +2,25 @@
 public struct Notification {
     /// Foundation-compatible notification name.
     public struct Name: RawRepresentable, Equatable, Hashable, Sendable, ExpressibleByStringLiteral, CustomStringConvertible {
+        /// The `rawValue` value.
         public var rawValue: String
 
+        /// Creates a value with the supplied arguments.
         public init(_ rawValue: String) {
             self.rawValue = rawValue
         }
 
+        /// Creates a value with the supplied arguments.
         public init(rawValue: String) {
             self.rawValue = rawValue
         }
 
+        /// Creates a value with the supplied arguments.
         public init(stringLiteral value: String) {
             self.rawValue = value
         }
 
+        /// The `description` value.
         public var description: String {
             rawValue
         }
@@ -38,8 +43,8 @@ public struct Notification {
     }
 }
 
-/// `NSObjectProtocol`, matching Foundation's core requirements so that — as
-/// on Apple platforms — conforming to it (directly or through a delegate
+/// `NSObjectProtocol`, matching Foundation's core requirements so that â€” as
+/// on Apple platforms â€” conforming to it (directly or through a delegate
 /// protocol that refines it) effectively requires inheriting `NSObject`,
 /// which provides these members.
 public protocol NSObjectProtocol: AnyObject {
@@ -57,6 +62,7 @@ public protocol NSObjectProtocol: AnyObject {
 /// NotificationCenter observers remain synchronous, matching the shim's
 /// documented delivery behavior; scheduler clients use `addOperation(_:)`.
 public final class OperationQueue: @unchecked Sendable {
+    /// The `` type-level value.
     public static let main = OperationQueue(isMain: true)
 
     private let isMain: Bool
@@ -65,6 +71,7 @@ public final class OperationQueue: @unchecked Sendable {
         self.isMain = isMain
     }
 
+    /// Creates a value with the supplied arguments.
     public init() {
         self.isMain = false
     }
@@ -185,6 +192,7 @@ public final class NotificationCenter: @unchecked Sendable {
 
     private var observers: [Observer] = []
 
+    /// Creates a value with the supplied arguments.
     public init() {}
 
     /// Adds a synchronous block observer.

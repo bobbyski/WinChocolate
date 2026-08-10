@@ -1,7 +1,7 @@
 /// A single Auto Layout constraint relating two view attributes.
 ///
 /// WinChocolate implements a real constraint-to-frame solver (see
-/// `NSLayoutSolver`), so activating constraints actually lays views out — the
+/// `NSLayoutSolver`), so activating constraints actually lays views out â€” the
 /// plan deliberately avoids stubs that silently do nothing. The first slice
 /// covers the positional/size attributes and equality plus inequality
 /// relations with priority-weighted relaxation; strict Cassowary priority
@@ -50,18 +50,29 @@ public final class NSLayoutConstraint {
 
     /// The strength of a constraint, matching AppKit's `NSLayoutConstraint.Priority`.
     public struct Priority: RawRepresentable, Equatable, Comparable, Sendable {
+        /// The `rawValue` value.
         public var rawValue: Float
+        /// Creates a value with the supplied arguments.
         public init(rawValue: Float) { self.rawValue = rawValue }
+        /// Creates a value with the supplied arguments.
         public init(_ value: Float) { self.rawValue = value }
 
+        /// The `` type-level value.
         public static let required = Priority(1000)
+        /// The `` type-level value.
         public static let defaultHigh = Priority(750)
+        /// The `` type-level value.
         public static let dragThatCanResizeWindow = Priority(510)
+        /// The `` type-level value.
         public static let windowSizeStayPut = Priority(500)
+        /// The `` type-level value.
         public static let dragThatCannotResizeWindow = Priority(490)
+        /// The `` type-level value.
         public static let defaultLow = Priority(250)
+        /// The `` type-level value.
         public static let fittingSizeCompression = Priority(50)
 
+        /// This declaration is part of the public API.
         public static func < (lhs: Priority, rhs: Priority) -> Bool {
             lhs.rawValue < rhs.rawValue
         }
@@ -163,7 +174,7 @@ public final class NSLayoutConstraint {
         }
         // A self-referential constraint (both items the same view, e.g. an
         // aspect-ratio `width == height`) constrains the view's own frame, which
-        // its superview lays out — so it must own the constraint, exactly like a
+        // its superview lays out â€” so it must own the constraint, exactly like a
         // single-item constant constraint.
         guard let second = secondItem, second !== first else {
             return first.superview ?? first

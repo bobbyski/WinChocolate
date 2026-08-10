@@ -35,7 +35,7 @@ open class NSError: Error, CustomStringConvertible, @unchecked Sendable {
         if let description = userInfo[NSLocalizedDescriptionKey] as? String, !description.isEmpty {
             return description
         }
-        return "The operation couldn’t be completed. (\(domain) error \(code).)"
+        return "The operation couldnâ€™t be completed. (\(domain) error \(code).)"
     }
 
     /// A description of the reason for the failure, when supplied.
@@ -48,6 +48,7 @@ open class NSError: Error, CustomStringConvertible, @unchecked Sendable {
         userInfo[NSLocalizedRecoverySuggestionErrorKey] as? String
     }
 
+    /// The `description` value.
     public var description: String {
         "Error Domain=\(domain) Code=\(code) \"\(localizedDescription)\""
     }
@@ -70,8 +71,12 @@ public protocol LocalizedError: Error {
 }
 
 extension LocalizedError {
+    /// The `errorDescription` value.
     public var errorDescription: String? { nil }
+    /// The `failureReason` value.
     public var failureReason: String? { nil }
+    /// The `recoverySuggestion` value.
     public var recoverySuggestion: String? { nil }
+    /// The `helpAnchor` value.
     public var helpAnchor: String? { nil }
 }

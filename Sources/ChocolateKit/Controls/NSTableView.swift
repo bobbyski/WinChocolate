@@ -12,11 +12,11 @@ public protocol NSTableViewDataSource: NSObjectProtocol {
 
     /// Returns the object that supplies a row's pasteboard representation for a
     /// drag out of the table (a `String`, file `URL`, or `NSPasteboardItem`), or
-    /// `nil` if the row is not draggable — matching AppKit's
+    /// `nil` if the row is not draggable â€” matching AppKit's
     /// `tableView(_:pasteboardWriterForRow:)`.
     func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> NSPasteboardWriting?
 
-    /// Accepts a drop at a target row, returning whether it was consumed —
+    /// Accepts a drop at a target row, returning whether it was consumed â€”
     /// AppKit's exact `tableView(_:acceptDrop:row:dropOperation:)`. Covers
     /// external (or cross-view) content drops AND the table's own row-reorder
     /// drops (a `.move`-masked local drag whose pasteboard carries the dragged
@@ -45,6 +45,7 @@ public protocol NSTableViewDelegate: NSObjectProtocol {
     func tableView(_ tableView: NSTableView, sortDescriptorsDidChange oldDescriptors: [NSSortDescriptor])
 }
 
+/// Adds public behavior to `NSTableViewDataSource`.
 public extension NSTableViewDataSource {
     /// Default: no display value (view-based tables vend views instead).
     func tableView(_ tableView: NSTableView, objectValueFor tableColumn: NSTableColumn?, row: Int) -> Any? {
@@ -65,6 +66,7 @@ public extension NSTableViewDataSource {
     }
 }
 
+/// Adds public behavior to `NSTableViewDelegate`.
 public extension NSTableViewDelegate {
     /// Default table selection notification.
     func tableViewSelectionDidChange(_ notification: Notification) {}
@@ -120,7 +122,7 @@ open class NSTableView: NSControl {
     }
 
     /// The operations this table permits as a drag source, split by
-    /// destination locality — AppKit's `setDraggingSourceOperationMask(_:forLocal:)`.
+    /// destination locality â€” AppKit's `setDraggingSourceOperationMask(_:forLocal:)`.
     /// A **local mask containing `.move`** (plus a data source that vends
     /// `pasteboardWriterForRow`) enables drag-to-reorder: the drop arrives at
     /// the data source's `tableView(_:acceptDrop:row:dropOperation:)` with
@@ -147,7 +149,7 @@ open class NSTableView: NSControl {
     package var winProposedDropRow: Int = -1
     package var winProposedDropOperation: DropOperation = .above
 
-    /// Retargets the current drop to a row and operation — AppKit's
+    /// Retargets the current drop to a row and operation â€” AppKit's
     /// `setDropRow(_:dropOperation:)`. Called from `validateDrop` to convert a
     /// proposed `.on` (pointer over a row body) into the reorder gap (`.above`),
     /// which is the only way to make the whole table a valid reorder target.
@@ -159,7 +161,7 @@ open class NSTableView: NSControl {
     }
 
     /// Whether a reorder drag may start from a row: the explicit handler
-    /// (framework-internal path), or AppKit's recipe — a `.move` local mask
+    /// (framework-internal path), or AppKit's recipe â€” a `.move` local mask
     /// plus a data-source pasteboard writer for the row.
     package func winReorderDragEnabled(forRow row: Int) -> Bool {
         if winRowReorderHandler != nil {
@@ -288,7 +290,7 @@ open class NSTableView: NSControl {
     }
 
     /// Reflows the drawn table after column widths change (a no-op for the
-    /// native-list peer, whose column widths are fixed at creation — the same
+    /// native-list peer, whose column widths are fixed at creation â€” the same
     /// boundary as interactive resize).
     private func winApplyColumnWidths() {
         if winIsDrawn {
@@ -298,7 +300,7 @@ open class NSTableView: NSControl {
     }
 
     /// Resizes the last column so the columns exactly fill the table's width,
-    /// clamped to that column's min/max — AppKit's `sizeLastColumnToFit()`.
+    /// clamped to that column's min/max â€” AppKit's `sizeLastColumnToFit()`.
     open func sizeLastColumnToFit() {
         guard let lastIndex = tableColumns.indices.last else {
             return
@@ -311,7 +313,7 @@ open class NSTableView: NSControl {
     }
 
     /// Resizes columns to fill the table's width per `columnAutoresizingStyle`,
-    /// clamped to each column's min/max — AppKit's `sizeToFit()`.
+    /// clamped to each column's min/max â€” AppKit's `sizeToFit()`.
     open override func sizeToFit() {
         guard !tableColumns.isEmpty else {
             return
@@ -381,7 +383,7 @@ open class NSTableView: NSControl {
     }
 
     /// The `NSAttributedString` behind a drawn cell, when the data source vended
-    /// one — used to render the cell with the attributed value's own attributes.
+    /// one â€” used to render the cell with the attributed value's own attributes.
     func winAttributedValue(atColumn columnIndex: Int, row rowIndex: Int) -> NSAttributedString? {
         guard rowRawValues.indices.contains(rowIndex),
               rowRawValues[rowIndex].indices.contains(columnIndex) else {
@@ -394,11 +396,11 @@ open class NSTableView: NSControl {
     //
     // When the delegate vends cell views, the table realizes a custom-drawn
     // peer that draws the header/grid/selection itself and hosts those views
-    // per cell — something the native list-view can't do.
+    // per cell â€” something the native list-view can't do.
     /// Forces this table onto the framework-drawn, view-based rendering path.
     ///
     /// This is normally unnecessary: the table now auto-detects view-based mode
-    /// the way AppKit does — if the delegate vends a cell view (or a row view),
+    /// the way AppKit does â€” if the delegate vends a cell view (or a row view),
     /// it uses the drawn peer that draws its own header/grid/selection and hosts
     /// those views. Set this `true` only to force the drawn (all-text) peer for
     /// a table whose delegate vends no views. Cell-based tables (no `viewFor`)
@@ -406,13 +408,13 @@ open class NSTableView: NSControl {
     open var winUsesViewBasedCells: Bool = false
     var winIsDrawn = false
     var winHostedCellViews: [NSView] = []
-    /// Recycled hosted cell/row views available for reuse, keyed by identifier —
+    /// Recycled hosted cell/row views available for reuse, keyed by identifier â€”
     /// populated from the outgoing views at the start of each drawn rebuild and
     /// drained by `makeView(withIdentifier:owner:)`.
     var winCellViewReusePool: [String: [NSView]] = [:]
 
     /// Returns a recycled hosted view previously created with `identifier`, or
-    /// `nil` when none is available — matching AppKit's
+    /// `nil` when none is available â€” matching AppKit's
     /// `makeView(withIdentifier:owner:)` for a view-based table with no nib/class
     /// registered (the delegate creates a fresh view, stamping its `identifier`,
     /// on a `nil` result). Reused views are handed back during a drawn rebuild.
@@ -436,7 +438,7 @@ open class NSTableView: NSControl {
     var winHostedRowViews: [Int: NSTableRowView] = [:]
 
     /// Framework-internal reorder hook (the outline's row bridge uses it).
-    /// Not API (18.8): applications enable reorder with AppKit's recipe —
+    /// Not API (18.8): applications enable reorder with AppKit's recipe â€”
     /// `setDraggingSourceOperationMask(.move, forLocal: true)`, a data-source
     /// `pasteboardWriterForRow`, and `tableView(_:acceptDrop:row:dropOperation:)`.
     package var winRowReorderHandler: ((_ fromRows: IndexSet, _ toIndex: Int) -> Void)?
@@ -483,9 +485,9 @@ open class NSTableView: NSControl {
         return editor
     }()
 
-    // MARK: Drawn-cell customization hooks (overridable — used by NSOutlineView)
+    // MARK: Drawn-cell customization hooks (overridable â€” used by NSOutlineView)
 
-    /// Extra leading inset (points) for a drawn cell's content — e.g. the
+    /// Extra leading inset (points) for a drawn cell's content â€” e.g. the
     /// indentation + disclosure-triangle space an outline view needs on its
     /// first column. Applied to drawn text and to hosted cell-view frames.
     /// Default 0.
@@ -493,7 +495,7 @@ open class NSTableView: NSControl {
         0
     }
 
-    /// Extra trailing inset (points) for a drawn cell's content — space reserved
+    /// Extra trailing inset (points) for a drawn cell's content â€” space reserved
     /// at the cell's right edge so drawn text is clipped short of it (e.g. an
     /// `NSBrowser` branch chevron). Default 0.
     open func winDrawnTrailingInset(forRow row: Int, column: Int) -> CGFloat {
@@ -629,9 +631,9 @@ open class NSTableView: NSControl {
     /// `selectRowIndexes(_:byExtendingSelection:)`.
     ///
     /// Deliberately *not* an overload of the AppKit name: Apple declares only
-    /// the `IndexSet` form, and once real Foundation is underneath — where
-    /// `IndexSet` is `ExpressibleByArrayLiteral`, as Apple's is — a second
-    /// overload taking `Set<Int>` makes every `selectRowIndexes([row], …)`
+    /// the `IndexSet` form, and once real Foundation is underneath â€” where
+    /// `IndexSet` is `ExpressibleByArrayLiteral`, as Apple's is â€” a second
+    /// overload taking `Set<Int>` makes every `selectRowIndexes([row], â€¦)`
     /// call site ambiguous.
     func selectRows(_ indexes: Set<Int>, byExtendingSelection extend: Bool) {
         let validIndexes = indexes.filter { rowValues.indices.contains($0) }
@@ -721,7 +723,7 @@ open class NSTableView: NSControl {
         selectedRowIndexes.contains(row)
     }
 
-    /// Scrolls the enclosing scroll view so a row is visible — AppKit's
+    /// Scrolls the enclosing scroll view so a row is visible â€” AppKit's
     /// `scrollRowToVisible(_:)`. Uses the drawn table's row geometry
     /// (`winRowY`/`winRowHeightAt`) and nudges the clip view only as far as
     /// needed, exactly like AppKit (an already-visible row does not move).
@@ -799,8 +801,8 @@ open class NSTableView: NSControl {
 
     // MARK: Accessibility
     //
-    // The framework-drawn table draws its own cells, so — unlike a control
-    // backed by a native window — it has no child views for assistive tech to
+    // The framework-drawn table draws its own cells, so â€” unlike a control
+    // backed by a native window â€” it has no child views for assistive tech to
     // find. Instead it publishes a synthetic element tree: the table is an
     // `AXTable` whose children are `AXRow`s, each holding one `AXCell` per
     // column carrying that cell's text. This is the moved-from-5.1 data-view

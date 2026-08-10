@@ -19,7 +19,9 @@ public enum StringIOError: Error {
 extension String {
     /// A text encoding for string I/O (raw values match Foundation's).
     public struct Encoding: RawRepresentable, Hashable, Sendable {
+        /// The `rawValue` value.
         public let rawValue: UInt
+        /// Creates a value with the supplied arguments.
         public init(rawValue: UInt) {
             self.rawValue = rawValue
         }

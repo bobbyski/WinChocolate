@@ -2,8 +2,8 @@
 ///
 /// WinChocolate maps AppKit's appearance model onto Windows themes: `.aqua`
 /// is the light theme and `.darkAqua` the Windows dark theme. The *effective*
-/// appearance resolves through the AppKit inheritance chain — view → window →
-/// application → system — where the system leg asks the backend whether
+/// appearance resolves through the AppKit inheritance chain â€” view â†’ window â†’
+/// application â†’ system â€” where the system leg asks the backend whether
 /// Windows "dark mode for applications" is on.
 ///
 /// This is the 8.5 API scaffold: names, resolution, and inheritance are real
@@ -12,10 +12,13 @@
 public final class NSAppearance: Sendable {
     /// The name of a standard appearance.
     public struct Name: Hashable, RawRepresentable, Sendable {
+        /// The `rawValue` value.
         public let rawValue: String
+        /// Creates a value with the supplied arguments.
         public init(rawValue: String) {
             self.rawValue = rawValue
         }
+        /// Creates a value with the supplied arguments.
         public init(_ rawValue: String) {
             self.rawValue = rawValue
         }
@@ -89,7 +92,7 @@ public final class NSAppearance: Sendable {
     }
 }
 
-// MARK: - Effective-appearance inheritance (view → window → app → system)
+// MARK: - Effective-appearance inheritance (view â†’ window â†’ app â†’ system)
 
 extension NSApplication {
     /// The application's appearance override; `nil` follows the system theme.

@@ -13,6 +13,7 @@ public protocol NSApplicationDelegate: NSObjectProtocol {
     func applicationWillTerminate(_ notification: Notification)
 }
 
+/// Adds public behavior to `NSApplicationDelegate`.
 public extension NSApplicationDelegate {
     /// Default no-op launch preparation callback.
     func applicationWillFinishLaunching(_ notification: Notification) {}

@@ -24,6 +24,7 @@ public protocol NSMenuItemValidation: AnyObject {
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool
 }
 
+/// Describes the public `NSMenu` class.
 open class NSMenu: NSObject {
     /// The menu title.
     open var title: String

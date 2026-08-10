@@ -1,4 +1,4 @@
-/// A Foundation-compatible JSON decoder — the inverse of `JSONEncoder`, built
+/// A Foundation-compatible JSON decoder â€” the inverse of `JSONEncoder`, built
 /// on the standard library's `Decodable`/`Decoder` machinery, with Apple's
 /// default strategies (`Date` from seconds-since-2001, `Data` from base64).
 public final class JSONDecoder {
@@ -27,11 +27,16 @@ public final class JSONDecoder {
         case custom(([CodingKey]) -> CodingKey)
     }
 
+    /// The `dateDecodingStrategy` value.
     public var dateDecodingStrategy: DateDecodingStrategy = .deferredToDate
+    /// The `dataDecodingStrategy` value.
     public var dataDecodingStrategy: DataDecodingStrategy = .base64
+    /// The `keyDecodingStrategy` value.
     public var keyDecodingStrategy: KeyDecodingStrategy = .useDefaultKeys
+    /// The `userInfo` value.
     public var userInfo: [CodingUserInfoKey: Any] = [:]
 
+    /// Creates a value with the supplied arguments.
     public init() {}
 
     /// Decodes a value from UTF-8 JSON bytes.

@@ -1,4 +1,6 @@
+/// Describes the public `URLRequest` struct.
 public struct URLRequest: Equatable, Hashable, Sendable {
+    /// Describes the public `CachePolicy` enum.
     public enum CachePolicy: UInt, Sendable {
         case useProtocolCachePolicy = 0
         case reloadIgnoringLocalCacheData = 1
@@ -8,19 +10,32 @@ public struct URLRequest: Equatable, Hashable, Sendable {
         case reloadRevalidatingCacheData = 5
     }
 
+    /// The `url` value.
     public var url: URL?
+    /// The `cachePolicy` value.
     public var cachePolicy: CachePolicy
+    /// The `timeoutInterval` value.
     public var timeoutInterval: TimeInterval
+    /// The `httpMethod` value.
     public var httpMethod: String?
+    /// The `httpBody` value.
     public var httpBody: Data?
+    /// The `allHTTPHeaderFields` value.
     public var allHTTPHeaderFields: [String: String]?
+    /// The `mainDocumentURL` value.
     public var mainDocumentURL: URL?
+    /// The `httpShouldHandleCookies` value.
     public var httpShouldHandleCookies = true
+    /// The `httpShouldUsePipelining` value.
     public var httpShouldUsePipelining = false
+    /// The `allowsCellularAccess` value.
     public var allowsCellularAccess = true
+    /// The `allowsConstrainedNetworkAccess` value.
     public var allowsConstrainedNetworkAccess = true
+    /// The `allowsExpensiveNetworkAccess` value.
     public var allowsExpensiveNetworkAccess = true
 
+    /// Creates a value with the supplied arguments.
     public init(
         url: URL,
         cachePolicy: CachePolicy = .useProtocolCachePolicy,
@@ -31,6 +46,7 @@ public struct URLRequest: Equatable, Hashable, Sendable {
         self.timeoutInterval = timeoutInterval
     }
 
+    /// This declaration is part of the public API.
     public mutating func setValue(
         _ value: String?,
         forHTTPHeaderField field: String
@@ -47,6 +63,7 @@ public struct URLRequest: Equatable, Hashable, Sendable {
         }
     }
 
+    /// This declaration is part of the public API.
     public mutating func addValue(
         _ value: String,
         forHTTPHeaderField field: String
@@ -58,6 +75,7 @@ public struct URLRequest: Equatable, Hashable, Sendable {
         }
     }
 
+    /// Performs the `value` operation.
     public func value(forHTTPHeaderField field: String) -> String? {
         allHTTPHeaderFields?.first {
             $0.key.lowercased() == field.lowercased()
@@ -65,12 +83,18 @@ public struct URLRequest: Equatable, Hashable, Sendable {
     }
 }
 
+/// Describes the public `URLResponse` class.
 open class URLResponse: @unchecked Sendable {
+    /// The `url` value.
     public let url: URL?
+    /// The `mimeType` value.
     public let mimeType: String?
+    /// The `expectedContentLength` value.
     public let expectedContentLength: Int64
+    /// The `textEncodingName` value.
     public let textEncodingName: String?
 
+    /// Creates a value with the supplied arguments.
     public init(
         url: URL,
         mimeType: String?,
@@ -83,6 +107,7 @@ open class URLResponse: @unchecked Sendable {
         self.textEncodingName = textEncodingName
     }
 
+    /// The `suggestedFilename` value.
     public var suggestedFilename: String? {
         guard let component = url?.lastPathComponent, !component.isEmpty else {
             return nil
@@ -91,10 +116,14 @@ open class URLResponse: @unchecked Sendable {
     }
 }
 
+/// Describes the public `HTTPURLResponse` class.
 open class HTTPURLResponse: URLResponse, @unchecked Sendable {
+    /// The `statusCode` value.
     public let statusCode: Int
+    /// The `allHeaderFields` value.
     public let allHeaderFields: [AnyHashable: Any]
 
+    /// Creates a value with the supplied arguments.
     public init?(
         url: URL,
         statusCode: Int,
@@ -135,6 +164,7 @@ open class HTTPURLResponse: URLResponse, @unchecked Sendable {
         )
     }
 
+    /// Performs the `value` operation.
     public func value(forHTTPHeaderField field: String) -> String? {
         allHeaderFields.first {
             String(describing: $0.key).lowercased() == field.lowercased()
@@ -142,7 +172,9 @@ open class HTTPURLResponse: URLResponse, @unchecked Sendable {
     }
 }
 
+/// Describes the public `URLError` struct.
 public struct URLError: Error, Equatable, Hashable, Sendable {
+    /// Describes the public `Code` enum.
     public enum Code: Int, Sendable {
         case unknown = -1
         case cancelled = -999
@@ -156,31 +188,42 @@ public struct URLError: Error, Equatable, Hashable, Sendable {
         case secureConnectionFailed = -1200
     }
 
+    /// The `code` value.
     public let code: Code
 
+    /// Creates a value with the supplied arguments.
     public init(_ code: Code) {
         self.code = code
     }
 }
 
+/// Describes the public `URLSessionTask` class.
 open class URLSessionTask: @unchecked Sendable {
+    /// Creates a value with the supplied arguments.
     public init() {}
 
+    /// Performs the `resume` operation.
     open func resume() {}
+    /// Performs the `cancel` operation.
     open func cancel() {}
 }
 
+/// Describes the public `URLSessionDataTask` class.
 open class URLSessionDataTask: URLSessionTask, @unchecked Sendable {
     public override init() {
         super.init()
     }
 }
 
+/// Describes the public `URLSession` class.
 open class URLSession: @unchecked Sendable {
+    /// The `` type-level value.
     public static let shared = URLSession()
 
+    /// Creates a value with the supplied arguments.
     public init() {}
 
+    /// Performs the `dataTask` operation.
     open func dataTask(
         with request: URLRequest,
         completionHandler: @escaping @Sendable (
@@ -195,6 +238,7 @@ open class URLSession: @unchecked Sendable {
         )
     }
 
+    /// Performs the `dataTask` operation.
     open func dataTask(
         with url: URL,
         completionHandler: @escaping @Sendable (

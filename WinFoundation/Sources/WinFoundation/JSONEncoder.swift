@@ -1,23 +1,25 @@
 /// A Foundation-compatible JSON encoder.
 ///
 /// Real Foundation's `JSONEncoder` lives in Foundation, not the standard
-/// library — but the machinery it drives (`Encodable`, `Encoder`, the keyed /
+/// library â€” but the machinery it drives (`Encodable`, `Encoder`, the keyed /
 /// unkeyed / single-value container protocols, `CodingKey`, `EncodingError`)
 /// is all standard-library, so this rebuilds the encoder on top of it. The
 /// goal is **byte-for-byte** parity with Apple's defaults so a model encoded on
 /// a WinFoundation build round-trips with one encoded on a real-Foundation Mac:
 ///
-/// - `Date` → seconds since the 2001 reference date, as a bare JSON number
+/// - `Date` â†’ seconds since the 2001 reference date, as a bare JSON number
 ///   (Apple's `.deferredToDate` default; `Date`'s own `Codable` already does
 ///   exactly this).
-/// - `Data` → a base64 string (Apple's `.base64` default), **not** deferred to
+/// - `Data` â†’ a base64 string (Apple's `.base64` default), **not** deferred to
 ///   `Data`'s array-of-bytes `Codable`.
 /// - Keys unchanged, compact output, in declaration order.
 public final class JSONEncoder {
 
     /// Formatting options for the produced JSON.
     public struct OutputFormatting: OptionSet, Sendable {
+        /// The `rawValue` value.
         public let rawValue: UInt
+        /// Creates a value with the supplied arguments.
         public init(rawValue: UInt) { self.rawValue = rawValue }
 
         /// Insert newlines and indentation for readability.
@@ -30,7 +32,7 @@ public final class JSONEncoder {
 
     /// How `Date` values are written.
     public enum DateEncodingStrategy {
-        /// `Date`'s own `Codable` — seconds since 2001, a bare number. Default.
+        /// `Date`'s own `Codable` â€” seconds since 2001, a bare number. Default.
         case deferredToDate
         /// Seconds since 1970 as a number.
         case secondsSince1970
@@ -46,7 +48,7 @@ public final class JSONEncoder {
 
     /// How `Data` values are written.
     public enum DataEncodingStrategy {
-        /// `Data`'s own `Codable` — an array of byte numbers.
+        /// `Data`'s own `Codable` â€” an array of byte numbers.
         case deferredToData
         /// A base64 string. Default.
         case base64
@@ -58,18 +60,24 @@ public final class JSONEncoder {
     public enum KeyEncodingStrategy {
         /// Keys unchanged. Default.
         case useDefaultKeys
-        /// `camelCase` → `snake_case`, matching Foundation's algorithm.
+        /// `camelCase` â†’ `snake_case`, matching Foundation's algorithm.
         case convertToSnakeCase
         /// A caller-provided transform of the coding path.
         case custom(([CodingKey]) -> CodingKey)
     }
 
+    /// The `outputFormatting` value.
     public var outputFormatting: OutputFormatting = []
+    /// The `dateEncodingStrategy` value.
     public var dateEncodingStrategy: DateEncodingStrategy = .deferredToDate
+    /// The `dataEncodingStrategy` value.
     public var dataEncodingStrategy: DataEncodingStrategy = .base64
+    /// The `keyEncodingStrategy` value.
     public var keyEncodingStrategy: KeyEncodingStrategy = .useDefaultKeys
+    /// The `userInfo` value.
     public var userInfo: [CodingUserInfoKey: Any] = [:]
 
+    /// Creates a value with the supplied arguments.
     public init() {}
 
     /// Encodes a value to UTF-8 JSON bytes.

@@ -16,8 +16,10 @@ extension String {
     /// String comparison options, matching Foundation's names. This slice
     /// carries the search options ported UI code uses.
     public struct CompareOptions: OptionSet, Sendable {
+        /// The `rawValue` value.
         public let rawValue: UInt
 
+        /// Creates a value with the supplied arguments.
         public init(rawValue: UInt) {
             self.rawValue = rawValue
         }
@@ -58,7 +60,7 @@ extension String {
         return result
     }
 
-    /// Whether the string contains another, compared case-insensitively —
+    /// Whether the string contains another, compared case-insensitively â€”
     /// matching Foundation's name (locale-specific folding is out of scope
     /// for this slice; `lowercased()` folding applies).
     public func localizedCaseInsensitiveContains(_ other: String) -> Bool {

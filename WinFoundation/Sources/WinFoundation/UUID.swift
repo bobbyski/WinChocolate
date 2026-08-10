@@ -1,3 +1,4 @@
+/// The public `uuid_t` type alias.
 public typealias uuid_t = (
     UInt8, UInt8, UInt8, UInt8,
     UInt8, UInt8, UInt8, UInt8,
@@ -48,6 +49,7 @@ public struct UUID: Equatable, Hashable, Sendable, CustomStringConvertible {
         return "\(hex[0])\(hex[1])\(hex[2])\(hex[3])-\(hex[4])\(hex[5])-\(hex[6])\(hex[7])-\(hex[8])\(hex[9])-\(hex[10])\(hex[11])\(hex[12])\(hex[13])\(hex[14])\(hex[15])"
     }
 
+    /// The `description` value.
     public var description: String {
         uuidString
     }
@@ -151,6 +153,7 @@ extension UUID: Codable {
         self = uuid
     }
 
+    /// Performs the `encode` operation.
     public func encode(to encoder: Encoder) throws {
         var container = encoder.singleValueContainer()
         try container.encode(uuidString)

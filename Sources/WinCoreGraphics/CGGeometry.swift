@@ -1,19 +1,19 @@
 /// CoreGraphics-shaped geometry value types (plan Phase 13).
 ///
-/// WinCoreGraphics owns the CG-named types — exactly Apple's layering, where
-/// `NSRect` *is* `CGRect` — and WinChocolate re-exports the module with
+/// WinCoreGraphics owns the CG-named types â€” exactly Apple's layering, where
+/// `NSRect` *is* `CGRect` â€” and WinChocolate re-exports the module with
 /// `NSPoint`/`NSSize`/`NSRect` typealiases, so both spellings compile
 /// unchanged.
 ///
 /// *Owns them where nothing else does.* This file is the CoreGraphics half of
 /// conditional C1, the Foundation seam (Docs/UnifiedChocolatePlan.md):
 ///
-///   Windows  →  ours, because this toolchain has no real Foundation at all.
-///   Linux    →  corelibs-foundation's, which already defines CGFloat, CGPoint,
-///               CGSize, and CGRect (with midX/insetBy/union/NSMakeRect…).
-///   macOS    →  CoreGraphics', re-exported by Foundation.
+///   Windows  â†’  ours, because this toolchain has no real Foundation at all.
+///   Linux    â†’  corelibs-foundation's, which already defines CGFloat, CGPoint,
+///               CGSize, and CGRect (with midX/insetBy/union/NSMakeRectâ€¦).
+///   macOS    â†’  CoreGraphics', re-exported by Foundation.
 ///
-/// Declaring our own alongside theirs is not additive — it makes every single
+/// Declaring our own alongside theirs is not additive â€” it makes every single
 /// reference in the shared core "ambiguous for type lookup", which is exactly
 /// what the first Linux build of the merged core hit: 13,626 errors for
 /// `CGFloat` alone. So on Linux and macOS we take the platform's types instead,
@@ -191,32 +191,44 @@ public struct CGRect: Equatable, Sendable {
 
 /// A two-dimensional vector (a delta), matching CoreGraphics' `CGVector`.
 public struct CGVector: Equatable, Sendable {
+    /// The `dx` value.
     public var dx: CGFloat
+    /// The `dy` value.
     public var dy: CGFloat
 
+    /// Creates a value with the supplied arguments.
     public init(dx: CGFloat, dy: CGFloat) {
         self.dx = dx
         self.dy = dy
     }
 
+    /// Creates a value with the supplied arguments.
     public init() {
         self.dx = 0
         self.dy = 0
     }
 
+    /// The `` type-level value.
     public static let zero = CGVector(dx: 0, dy: 0)
 }
 
-/// A 2×3 affine transformation matrix, matching CoreGraphics' layout:
-/// `x' = a·x + c·y + tx`, `y' = b·x + d·y + ty`.
+/// A 2Ã—3 affine transformation matrix, matching CoreGraphics' layout:
+/// `x' = aÂ·x + cÂ·y + tx`, `y' = bÂ·x + dÂ·y + ty`.
 public struct CGAffineTransform: Equatable, Sendable {
+    /// The `a` value.
     public var a: CGFloat
+    /// The `b` value.
     public var b: CGFloat
+    /// The `c` value.
     public var c: CGFloat
+    /// The `d` value.
     public var d: CGFloat
+    /// The `tx` value.
     public var tx: CGFloat
+    /// The `ty` value.
     public var ty: CGFloat
 
+    /// Creates a value with the supplied arguments.
     public init(a: CGFloat, b: CGFloat, c: CGFloat, d: CGFloat, tx: CGFloat, ty: CGFloat) {
         self.a = a
         self.b = b

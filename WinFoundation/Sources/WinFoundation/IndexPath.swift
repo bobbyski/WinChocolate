@@ -4,7 +4,9 @@
 /// use cases WinChocolate needs while the real Windows Foundation import is
 /// unavailable.
 public struct IndexPath: Hashable, Sendable, ExpressibleByArrayLiteral, RandomAccessCollection {
+    /// The public `Element` type alias.
     public typealias Element = Int
+    /// The public `Index` type alias.
     public typealias Index = Int
 
     private var indexes: [Int]

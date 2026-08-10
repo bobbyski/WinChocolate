@@ -147,12 +147,13 @@ public protocol NSDraggingSource: AnyObject {
     func draggingSession(_ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation
 
     /// Tells the source the session ended, matching AppKit's
-    /// `draggingSession(_:endedAt:operation:)` — `operation` is `[]` when the
+    /// `draggingSession(_:endedAt:operation:)` â€” `operation` is `[]` when the
     /// drag was canceled. The classic backend runs drags synchronously and
     /// does not track the drop screen point, so `screenPoint` is `.zero`.
     func draggingSession(_ session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation)
 }
 
+/// Adds public behavior to `NSDraggingSource`.
 public extension NSDraggingSource {
     /// Default: sources that don't observe the outcome need no ended hook.
     func draggingSession(_ session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) {}
@@ -200,7 +201,7 @@ extension NSView {
     /// Registers the view to receive native drops of the given types.
     ///
     /// The classic backend delivers plain text (`.string`) and file lists
-    /// (`.fileURL`) — the platform's cross-application drag formats. The
+    /// (`.fileURL`) â€” the platform's cross-application drag formats. The
     /// dragging methods (`draggingEntered`, `performDragOperation`, ...) run
     /// against a pasteboard carrying the dragged content.
     public func registerForDraggedTypes(_ newTypes: [NSPasteboard.PasteboardType]) {
@@ -322,7 +323,7 @@ extension NSView {
             from: nativeHandle
         )
         // The classic backend runs the drag synchronously, so the session's
-        // outcome is known here — report it through AppKit's real ended hook.
+        // outcome is known here â€” report it through AppKit's real ended hook.
         source.draggingSession(session, endedAt: .zero, operation: session.winDropped ? .copy : [])
         return session
     }

@@ -1,4 +1,4 @@
-// The geometry value types are owned by WinCoreGraphics (plan 13.1/13.2) —
+// The geometry value types are owned by WinCoreGraphics (plan 13.1/13.2) â€”
 // exactly Apple's layering, where `NSRect` *is* `CGRect`. The module is
 // re-exported so `import WinChocolate` keeps providing `CGRect`/`CGFloat`
 // and the rest of the CG-named surface unchanged.
@@ -111,7 +111,7 @@ public func NSInsetRect(_ rect: NSRect, _ deltaX: CGFloat, _ deltaY: CGFloat) ->
 }
 
 // (The CG-named aliases, `CGVector`, and the Swift-idiomatic rect members now
-// live in WinCoreGraphics — see CGGeometry.swift there.)
+// live in WinCoreGraphics â€” see CGGeometry.swift there.)
 
 // MARK: - Additional C-style geometry functions
 
@@ -171,11 +171,16 @@ public func NSDivideRect(_ rect: NSRect, _ slice: inout NSRect, _ remainder: ino
 
 /// The inset distances for the sides of a rectangle, matching `NSEdgeInsets`.
 public struct NSEdgeInsets: Equatable, Sendable {
+    /// The `top` value.
     public var top: CGFloat
+    /// The `left` value.
     public var left: CGFloat
+    /// The `bottom` value.
     public var bottom: CGFloat
+    /// The `right` value.
     public var right: CGFloat
 
+    /// Creates a value with the supplied arguments.
     public init(top: CGFloat, left: CGFloat, bottom: CGFloat, right: CGFloat) {
         self.top = top
         self.left = left
@@ -183,6 +188,7 @@ public struct NSEdgeInsets: Equatable, Sendable {
         self.right = right
     }
 
+    /// Creates a value with the supplied arguments.
     public init() {
         self.init(top: 0, left: 0, bottom: 0, right: 0)
     }
@@ -195,11 +201,16 @@ public let NSEdgeInsetsZero = NSEdgeInsets()
 /// `NSDirectionalEdgeInsets` (leading/trailing rather than left/right). In a
 /// left-to-right layout, `leading` is the left edge and `trailing` the right.
 public struct NSDirectionalEdgeInsets: Equatable, Sendable {
+    /// The `top` value.
     public var top: CGFloat
+    /// The `leading` value.
     public var leading: CGFloat
+    /// The `bottom` value.
     public var bottom: CGFloat
+    /// The `trailing` value.
     public var trailing: CGFloat
 
+    /// Creates a value with the supplied arguments.
     public init(top: CGFloat, leading: CGFloat, bottom: CGFloat, trailing: CGFloat) {
         self.top = top
         self.leading = leading
@@ -207,6 +218,7 @@ public struct NSDirectionalEdgeInsets: Equatable, Sendable {
         self.trailing = trailing
     }
 
+    /// Creates a value with the supplied arguments.
     public init() {
         self.init(top: 0, leading: 0, bottom: 0, trailing: 0)
     }

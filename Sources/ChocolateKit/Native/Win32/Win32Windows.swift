@@ -69,7 +69,7 @@ extension Win32NativeControlBackend {
         }
 
         // The modern presentation asks Windows 11 for Fluent rounded corners
-        // on every top-level window — framed windows already have them, and
+        // on every top-level window â€” framed windows already have them, and
         // this extends the look to borderless framework popups (popovers,
         // panels). A quiet no-op on Windows 10.
         if WinPresentation.selected == .modern {
@@ -136,7 +136,7 @@ extension Win32NativeControlBackend {
     /// Updates whether a native window hides while the application is inactive.
     /// Makes `handle` an owned window of `parent` (AppKit's panel-to-owner
     /// relationship). Win32 expresses ownership as the window's `GWLP_HWNDPARENT`
-    /// — for a non-`WS_CHILD` window that sets the *owner*, not a parent, so the
+    /// â€” for a non-`WS_CHILD` window that sets the *owner*, not a parent, so the
     /// panel stays a top-level window while gaining the owned behaviour:
     /// always above its owner, minimizing and restoring with it, and absent from
     /// the taskbar.
@@ -148,6 +148,7 @@ extension Win32NativeControlBackend {
         _ = winSetWindowLongPtrW(panelHwnd, gwlpHwndParent, Int(bitPattern: ownerHwnd))
     }
 
+    /// Performs the `setHidesOnDeactivate` operation.
     public func setHidesOnDeactivate(_ hidesOnDeactivate: Bool, for handle: NativeHandle) {
         if hidesOnDeactivate {
             hidesOnDeactivateHandles.insert(handle.rawValue)
@@ -267,7 +268,7 @@ extension Win32NativeControlBackend {
 
     /// Enters or exits full-screen: a borderless window covering the display it
     /// is on. There is no Windows title-bar merge (an AppKit-only concept), so
-    /// the toolbar strip stays where it is — the honest Windows full screen.
+    /// the toolbar strip stays where it is â€” the honest Windows full screen.
     public func setWindowFullScreen(_ fullScreen: Bool, for handle: NativeHandle) {
         guard let hwnd = hwnd(from: handle) else {
             return
@@ -581,7 +582,7 @@ extension Win32NativeControlBackend {
             Int32(max(scaledFrame.size.height, comboBoxDropdownHeights[handle.rawValue] ?? scaledFrame.size.height))
         )
         // Skip the native move (and its repaint) when the control is already at
-        // this exact device rect — the duplicate-update flicker guard.
+        // this exact device rect â€” the duplicate-update flicker guard.
         let previous = lastFrameDeviceRects[handle.rawValue]
         guard previous == nil || previous! != rect else {
             return
@@ -602,8 +603,8 @@ extension Win32NativeControlBackend {
             // the window's existing pixels to the new position and invalidates
             // only the genuinely-new regions (the strip scrolled into view and
             // the area vacated on the parent). This replaces
-            // MoveWindow(bRepaint: true) — which repainted the *entire* (often
-            // large) window every step — and the blanket parent+all-children
+            // MoveWindow(bRepaint: true) â€” which repainted the *entire* (often
+            // large) window every step â€” and the blanket parent+all-children
             // redraw that erased and repainted the whole scroll area each notch.
             // The result is smooth, minimal-repaint scrolling.
             _ = winSetWindowPos(hwnd, nil, rect.0, rect.1, 0, 0, swpNoSize | swpNoZOrder | swpNoActivate)

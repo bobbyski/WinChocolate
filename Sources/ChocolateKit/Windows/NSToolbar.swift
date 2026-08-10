@@ -26,6 +26,7 @@ public protocol NSToolbarDelegate: NSObjectProtocol {
     func toolbarDidRemoveItem(_ notification: Notification)
 }
 
+/// Adds public behavior to `NSToolbarDelegate`.
 public extension NSToolbarDelegate {
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
         toolbar.items.map(\.itemIdentifier)
@@ -167,7 +168,7 @@ open class NSToolbar: NSObject {
         }
     }
 
-    /// Which Apple toolbar look the strip renders — toolbars are the project's
+    /// Which Apple toolbar look the strip renders â€” toolbars are the project's
     /// deliberate exception to the "look like Windows" rule, and this selects
     /// among the Apple looks: `.automatic` (follow the app-wide presentation,
     /// the default), `.unified` (the flat modern look), or `.metallic` (the
@@ -179,7 +180,7 @@ open class NSToolbar: NSObject {
     }
 
     /// The concrete look the renderer draws, resolving `.automatic` against the
-    /// app-wide presentation (Phase 8): classic → metallic, modern → unified.
+    /// app-wide presentation (Phase 8): classic â†’ metallic, modern â†’ unified.
     /// This is the coordination point between the toolbar's Apple looks and the
     /// `WinPresentation` switch the rest of the app already follows.
     public var winResolvedAppleLook: WinToolbarAppleLook {
@@ -297,7 +298,7 @@ open class NSToolbar: NSObject {
             // every request of a structural identifier (the demo reuses a single
             // separator instance). When two such identifiers arrive in the same
             // pass, itemForVisibleIdentifier only guards against reusing items
-            // already in `self.items` — not ones we've just consumed here — so it
+            // already in `self.items` â€” not ones we've just consumed here â€” so it
             // hands back the same instance twice. Aliasing one item into two slots
             // corrupts the index/identity operations the customization panel and
             // renderer rely on, so mint a fresh instance instead.
@@ -605,7 +606,7 @@ open class NSToolbarView: NSView {
     private var winCustomViewShrink: CGFloat = 1
 
     /// Token for the live appearance-change observer, removed on deinit.
-    // The opaque token `NotificationCenter.addObserver(forName:…)` hands back. Typed
+    // The opaque token `NotificationCenter.addObserver(forName:â€¦)` hands back. Typed
     // `Any?` rather than AppKit's `NSObjectProtocol?` because the core shadows
     // that protocol (see Runtime/FoundationBridge.swift) while the token comes
     // from whichever Foundation is underneath. `removeObserver(_:)` takes `Any`
@@ -679,10 +680,10 @@ open class NSToolbarView: NSView {
         Self.winMetallicChromeGradient()?.draw(in: bounds, angle: -90)
     }
 
-    /// Right-clicking the toolbar (empty space, or an item — item views don't
+    /// Right-clicking the toolbar (empty space, or an item â€” item views don't
     /// consume right-clicks, so they bubble here) pops the Mac toolbar context
     /// menu: the display-mode switches with the current mode checked, and
-    /// "Customize Toolbar…" when customization is allowed.
+    /// "Customize Toolbarâ€¦" when customization is allowed.
     open override func rightMouseDown(with event: NSEvent) {
         guard let toolbar else {
             super.rightMouseDown(with: event)
@@ -729,7 +730,7 @@ open class NSToolbarView: NSView {
 
         if toolbar.allowsUserCustomization {
             menu.addItem(NSMenuItem.separator())
-            let customize = NSMenuItem(title: "Customize Toolbar…", action: nil, keyEquivalent: "")
+            let customize = NSMenuItem(title: "Customize Toolbarâ€¦", action: nil, keyEquivalent: "")
             customize.winInternalAction = { [weak toolbar] _ in
                 toolbar?.runCustomizationPalette(nil)
             }
@@ -911,13 +912,13 @@ open class NSToolbarView: NSView {
             case .space:
                 // Gaps host no child window at all: the strip surface (flat
                 // background or gradient chrome) shows through directly in
-                // every look — a child view would erase a flat patch over the
+                // every look â€” a child view would erase a flat patch over the
                 // metallic gradient.
                 break
             }
         }
 
-        // Overflow chevron (»): pops a menu of the items the narrow strip
+        // Overflow chevron (Â»): pops a menu of the items the narrow strip
         // pushed out, matching the Mac toolbar's overflow behavior.
         let structuralIdentifiers: Set<NSToolbarItem.Identifier> = [
             .space, .flexibleSpace, .separator, .sidebarTrackingSeparator, .inspectorTrackingSeparator,
@@ -1235,9 +1236,9 @@ open class NSToolbarView: NSView {
             return max(item.minSize.width, total)
         }
 
-        // `minSize`/`maxSize` bound the item's CONTENT (the icon box) — the
+        // `minSize`/`maxSize` bound the item's CONTENT (the icon box) â€” the
         // label renders below and may be wider, as on Apple, where "Disable
-        // Save" shows in full under a 32×32 item.
+        // Save" shows in full under a 32Ã—32 item.
         let showsLabel = mode != .iconOnly
         let labelWidth = showsLabel ? CGFloat(max(28, item.label.count * 6)) + 8 : 0
         let naturalWidth = standardNaturalWidth(for: item, mode: mode)
@@ -1263,7 +1264,7 @@ open class NSToolbarView: NSView {
         }
         // A native closed combo renders a fixed ~24pt control anchored to the
         // top of whatever frame it gets (the given height only sizes the
-        // dropdown), so center popups/combos by their visible height — else
+        // dropdown), so center popups/combos by their visible height â€” else
         // they sit visually high next to fields that fill their frames.
         if item.view is NSPopUpButton || item.view is NSComboBox {
             return 24
@@ -1276,7 +1277,7 @@ open class NSToolbarView: NSView {
 
 }
 
-/// The overflow chevron (») shown when a narrow toolbar pushes items into a
+/// The overflow chevron (Â») shown when a narrow toolbar pushes items into a
 /// menu, matching the Mac toolbar's overflow control.
 final class NSToolbarOverflowChevronView: NSView {
     /// Opens the overflow menu; installed by the toolbar renderer.
@@ -1306,7 +1307,7 @@ final class NSToolbarOverflowChevronView: NSView {
         let chevronColor = onDarkStrip
             ? NSColor(calibratedWhite: 0.85, alpha: 1)
             : NSColor(calibratedRed: 0.25, green: 0.27, blue: 0.30, alpha: 1.0)
-        "»".draw(at: NSMakePoint(max((frame.size.width - 10) / 2, 0), max((frame.size.height - 18) / 2, 0)), withAttributes: [
+        "Â»".draw(at: NSMakePoint(max((frame.size.width - 10) / 2, 0), max((frame.size.height - 18) / 2, 0)), withAttributes: [
             .font: NSFont.boldSystemFont(ofSize: 13),
             .foregroundColor: chevronColor,
         ])

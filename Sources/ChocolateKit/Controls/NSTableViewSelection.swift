@@ -2,6 +2,7 @@ nonisolated(unsafe) private var tableAllowsColumnSelection: [ObjectIdentifier: B
 nonisolated(unsafe) private var tableSelectedColumnIndexes: [ObjectIdentifier: Set<Int>] = [:]
 nonisolated(unsafe) private var tableDoubleActions: [ObjectIdentifier: Selector] = [:]
 
+/// Adds public behavior to `NSTableView`.
 public extension NSTableView {
     /// Most recent row activated by mouse or keyboard, or `-1`.
     var clickedRow: Int {
