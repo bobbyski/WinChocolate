@@ -6,6 +6,21 @@ func expect(_ condition: @autoclosure () -> Bool, _ message: String) {
     }
 }
 
+func requireValue<T>(_ value: T?, _ message: String) -> T {
+    guard let value else {
+        fatalError(message)
+    }
+    return value
+}
+
+func requireNoThrow<T>(_ operation: () throws -> T, _ message: String) -> T {
+    do {
+        return try operation()
+    } catch {
+        fatalError("\(message): \(error)")
+    }
+}
+
 // MARK: - Test-local frame-carrying init sugar
 //
 // The framework's frame-carrying inits are gone from the public surface
@@ -2829,7 +2844,8 @@ func testCollectionViewReloadsItemsAndTracksSelection() {
     let secondSection = IndexPath(item: 1, section: 1)
     expect(collectionView.subviews.count == 5, "Collection view did not compose item views.")
     expect(collectionView.item(at: first)?.representedObject as? String == "NSButton", "Collection item lookup returned wrong represented object.")
-    expect(collectionView.indexPath(for: collectionView.item(at: secondSection)!) == secondSection, "Collection reverse item lookup failed.")
+    let secondItem = requireValue(collectionView.item(at: secondSection), "Collection item should exist.")
+    expect(collectionView.indexPath(for: secondItem) == secondSection, "Collection reverse item lookup failed.")
 
     let handle = collectionView.realizeNativePeer(in: backend, parent: nil)
 
@@ -7308,9 +7324,9 @@ func testWinFoundationCoreTypeGapsClosed() {
     expect(moving.timeIntervalSinceReferenceDate == 103, "Date += / -= failed.")
 
     let dateEncoder = SingleStringEncoder()
-    try! base.encode(to: dateEncoder)
+    requireNoThrow({ try base.encode(to: dateEncoder) }, "Date encoding should succeed")
     expect(dateEncoder.capturedDouble == 100, "Date should encode as its seconds-since-reference-date.")
-    let dateDecoded = try! Date(from: SingleDoubleDecoder(100))
+    let dateDecoded = requireNoThrow({ try Date(from: SingleDoubleDecoder(100)) }, "Date decoding should succeed")
     expect(dateDecoded == base, "Date did not round-trip through Codable.")
 
     // Data: Base64 round-trip + a known RFC 4648 vector.
@@ -7335,22 +7351,29 @@ func testWinFoundationCoreTypeGapsClosed() {
 
 func testWinFoundationUUIDCodableMatchesAppleForm() {
     #if os(Windows)
-    let uuid = UUID(uuidString: "00112233-4455-6677-8899-AABBCCDDEEFF")!
+    let uuid = requireValue(
+        UUID(uuidString: "00112233-4455-6677-8899-AABBCCDDEEFF"),
+        "Canonical UUID fixture should be valid."
+    )
 
     // Encodes as the uppercase uuidString in a single value — byte-identical to
     // Apple Foundation's UUID coding, so a JSON model file interchanges across
     // the two Foundations without a UUID mismatch.
     let encoder = SingleStringEncoder()
-    try! uuid.encode(to: encoder)
+    requireNoThrow({ try uuid.encode(to: encoder) }, "UUID encoding should succeed")
     expect(encoder.captured == "00112233-4455-6677-8899-AABBCCDDEEFF",
         "UUID should encode as its uppercase uuidString; got \(String(describing: encoder.captured)).")
 
     // Round-trips its own output.
-    let decoded = try! UUID(from: SingleStringDecoder(encoder.captured!))
+    let encodedUUID = requireValue(encoder.captured, "UUID encoder should capture a value.")
+    let decoded = requireNoThrow({ try UUID(from: SingleStringDecoder(encodedUUID)) }, "UUID decoding should succeed")
     expect(decoded == uuid, "UUID did not round-trip through Codable.")
 
     // Decodes Apple's canonical lowercase uuidString too (interop robustness).
-    let fromLower = try! UUID(from: SingleStringDecoder("00112233-4455-6677-8899-aabbccddeeff"))
+    let fromLower = requireNoThrow(
+        { try UUID(from: SingleStringDecoder("00112233-4455-6677-8899-aabbccddeeff")) },
+        "Lowercase UUID decoding should succeed"
+    )
     expect(fromLower == uuid, "UUID should decode Apple's lowercase uuidString form.")
 
     // A malformed string throws a DecodingError instead of crashing.
@@ -7387,30 +7410,43 @@ func testWinFoundationJSONCoderMatchesAppleForm() {
     let person = JSONPerson(
         name: "Bobby \"B\"", age: 42, height: 1.75, admin: true, nickname: nil,
         tags: ["a", "b/c"], address: JSONAddress(street: "1 Main\tSt", zip: 90210),
-        id: UUID(uuidString: "E621E1F8-C36C-495A-93FC-0C247A3E6E5F")!)
-    let compact = try! JSONEncoder().encode(person)
+        id: requireValue(
+            UUID(uuidString: "E621E1F8-C36C-495A-93FC-0C247A3E6E5F"),
+            "JSON UUID fixture should be valid."
+        ))
+    let compact = requireNoThrow({ try JSONEncoder().encode(person) }, "Compact JSON encoding should succeed")
     let expectedCompact = "{\"name\":\"Bobby \\\"B\\\"\",\"age\":42,\"height\":1.75,\"admin\":true,\"tags\":[\"a\",\"b\\/c\"],\"address\":{\"street\":\"1 Main\\tSt\",\"zip\":90210},\"id\":\"E621E1F8-C36C-495A-93FC-0C247A3E6E5F\"}"
     expect(String(decoding: compact, as: UTF8.self) == expectedCompact,
         "Compact JSON did not match Apple's form; got \(String(decoding: compact, as: UTF8.self)).")
 
     // Round-trips its own output.
-    let back = try! JSONDecoder().decode(JSONPerson.self, from: compact)
+    let back = requireNoThrow(
+        { try JSONDecoder().decode(JSONPerson.self, from: compact) },
+        "JSON model decoding should succeed"
+    )
     expect(back == person, "JSON did not round-trip a model with nested and optional fields.")
 
     // Integral doubles print without a fractional part; fractions keep precision.
-    let numbers = try! JSONEncoder().encode([5.0, 5.5, -3.25, 100.0])
+    let numbers = requireNoThrow({ try JSONEncoder().encode([5.0, 5.5, -3.25, 100.0]) }, "Number encoding should succeed")
     expect(String(decoding: numbers, as: UTF8.self) == "[5,5.5,-3.25,100]",
         "Number formatting did not match Apple; got \(String(decoding: numbers, as: UTF8.self)).")
 
     // Date defaults to seconds since the 2001 reference date, a bare number.
-    let dateJSON = try! JSONEncoder().encode(JSONDates(d: Date(timeIntervalSinceReferenceDate: 0)))
+    let dateJSON = requireNoThrow(
+        { try JSONEncoder().encode(JSONDates(d: Date(timeIntervalSinceReferenceDate: 0))) },
+        "Date JSON encoding should succeed"
+    )
     expect(String(decoding: dateJSON, as: UTF8.self) == "{\"d\":0}",
         "Default Date encoding was not seconds-since-2001; got \(String(decoding: dateJSON, as: UTF8.self)).")
 
     // Pretty-printed + sorted keys: two-space indent, ": " separator, sorted.
     let pretty = JSONEncoder()
     pretty.outputFormatting = [.prettyPrinted, .sortedKeys]
-    let prettyOut = String(decoding: try! pretty.encode(JSONAddress(street: "x", zip: 1)), as: UTF8.self)
+    let prettyData = requireNoThrow(
+        { try pretty.encode(JSONAddress(street: "x", zip: 1)) },
+        "Pretty JSON encoding should succeed"
+    )
+    let prettyOut = String(decoding: prettyData, as: UTF8.self)
     expect(prettyOut == "{\n  \"street\" : \"x\",\n  \"zip\" : 1\n}",
         "Pretty-printed output did not match Apple; got \(prettyOut).")
 
@@ -7419,7 +7455,11 @@ func testWinFoundationJSONCoderMatchesAppleForm() {
     let snakeEncoder = JSONEncoder()
     snakeEncoder.keyEncodingStrategy = .convertToSnakeCase
     snakeEncoder.outputFormatting = [.sortedKeys]
-    let snake = String(decoding: try! snakeEncoder.encode(JSONSnake(firstName: "a", lastNameHTML: "b", urlString: "u")), as: UTF8.self)
+    let snakeData = requireNoThrow(
+        { try snakeEncoder.encode(JSONSnake(firstName: "a", lastNameHTML: "b", urlString: "u")) },
+        "Snake-case JSON encoding should succeed"
+    )
+    let snake = String(decoding: snakeData, as: UTF8.self)
     expect(snake == "{\"first_name\":\"a\",\"last_name_html\":\"b\",\"url_string\":\"u\"}",
         "Snake-case conversion did not match Apple's acronym handling; got \(snake).")
 
@@ -7427,32 +7467,44 @@ func testWinFoundationJSONCoderMatchesAppleForm() {
     let snakeDecoder = JSONDecoder()
     snakeDecoder.keyDecodingStrategy = .convertFromSnakeCase
     struct Pair: Codable, Equatable { let firstName: String; let lastName: String }
-    let pair = try! snakeDecoder.decode(Pair.self, from: Data("{\"first_name\":\"x\",\"last_name\":\"y\"}".utf8))
+    let pair = requireNoThrow(
+        { try snakeDecoder.decode(Pair.self, from: Data("{\"first_name\":\"x\",\"last_name\":\"y\"}".utf8)) },
+        "Snake-case JSON decoding should succeed"
+    )
     expect(pair == Pair(firstName: "x", lastName: "y"), "convertFromSnakeCase did not restore camelCase keys.")
 
     // Non-ASCII passes through unescaped; control characters are \u-escaped;
     // both survive a round trip.
     struct Text: Codable, Equatable { let s: String }
     let unicode = Text(s: "café\u{1F600}\u{01}")
-    let unicodeJSON = try! JSONEncoder().encode(unicode)
+    let unicodeJSON = requireNoThrow({ try JSONEncoder().encode(unicode) }, "Unicode JSON encoding should succeed")
     expect(String(decoding: unicodeJSON, as: UTF8.self) == "{\"s\":\"café😀\\u0001\"}",
         "Unicode/control-char escaping did not match Apple; got \(String(decoding: unicodeJSON, as: UTF8.self)).")
-    expect(try! JSONDecoder().decode(Text.self, from: unicodeJSON) == unicode, "Unicode text did not round-trip.")
+    let decodedUnicode = requireNoThrow(
+        { try JSONDecoder().decode(Text.self, from: unicodeJSON) },
+        "Unicode JSON decoding should succeed"
+    )
+    expect(decodedUnicode == unicode, "Unicode text did not round-trip.")
 
     // The withoutEscapingSlashes option leaves slashes bare.
     let noSlash = JSONEncoder()
     noSlash.outputFormatting = [.withoutEscapingSlashes]
-    let slashed = String(decoding: try! noSlash.encode(Text(s: "a/b")), as: UTF8.self)
+    let slashData = requireNoThrow({ try noSlash.encode(Text(s: "a/b")) }, "Slash JSON encoding should succeed")
+    let slashed = String(decoding: slashData, as: UTF8.self)
     expect(slashed == "{\"s\":\"a/b\"}", "withoutEscapingSlashes should leave slashes bare; got \(slashed).")
 
     // secondsSince1970 date strategy on both sides round-trips an exact instant.
     let secEncoder = JSONEncoder(); secEncoder.dateEncodingStrategy = .secondsSince1970
     let secDecoder = JSONDecoder(); secDecoder.dateDecodingStrategy = .secondsSince1970
     let instant = JSONDates(d: Date(timeIntervalSince1970: 1_780_272_000))
-    let secJSON = try! secEncoder.encode(instant)
+    let secJSON = requireNoThrow({ try secEncoder.encode(instant) }, "Epoch date encoding should succeed")
     expect(String(decoding: secJSON, as: UTF8.self) == "{\"d\":1780272000}",
         "secondsSince1970 strategy was wrong; got \(String(decoding: secJSON, as: UTF8.self)).")
-    expect(try! secDecoder.decode(JSONDates.self, from: secJSON) == instant, "secondsSince1970 date did not round-trip.")
+    let decodedInstant = requireNoThrow(
+        { try secDecoder.decode(JSONDates.self, from: secJSON) },
+        "Epoch date decoding should succeed"
+    )
+    expect(decodedInstant == instant, "secondsSince1970 date did not round-trip.")
 
     // A malformed document throws rather than crashing.
     var threw = false

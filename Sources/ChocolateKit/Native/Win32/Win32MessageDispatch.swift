@@ -885,29 +885,6 @@ extension Win32NativeControlBackend {
 
     func dispatchControlMessage(hwnd: HWND?, message: UINT, wParam: WPARAM, lParam: LPARAM) -> LRESULT? {
         switch message {
-        case wmLButtonDown:
-            guard let hwnd else {
-                return nil
-            }
-
-            let handle = actionHandle(from: hwnd)
-            if editableLevelHandles.contains(handle.rawValue) {
-                applyLevelIndicatorClick(x: Int(point(from: lParam).x), for: handle)
-                _ = winSetCapture(hwnd)
-                controlActions[handle.rawValue]?()
-                return 0
-            }
-            return nil
-        case wmLButtonUp:
-            guard let hwnd else {
-                return nil
-            }
-
-            if editableLevelHandles.contains(actionHandle(from: hwnd).rawValue) {
-                _ = winReleaseCapture()
-                return 0
-            }
-            return nil
         case wmMouseMove:
             guard let hwnd else {
                 return nil
@@ -1067,6 +1044,13 @@ extension Win32NativeControlBackend {
                 return nil
             }
 
+            if editableLevelHandles.contains(handle.rawValue) {
+                applyLevelIndicatorClick(x: Int(point(from: lParam).x), for: handle)
+                _ = winSetCapture(hwnd)
+                controlActions[handle.rawValue]?()
+                return 0
+            }
+
             if stepperRanges[handle.rawValue] != nil,
                let action = controlActions[handle.rawValue] {
                 updateStepperPosition(fromClickAt: point(from: lParam), hwnd: hwnd, for: handle)
@@ -1102,6 +1086,11 @@ extension Win32NativeControlBackend {
             }
 
             let handle = actionHandle(from: hwnd)
+            if editableLevelHandles.contains(handle.rawValue) {
+                _ = winReleaseCapture()
+                return 0
+            }
+
             guard !comboBoxHandles.contains(handle.rawValue),
                   let action = mouseUpActions[handle.rawValue] else {
                 return nil

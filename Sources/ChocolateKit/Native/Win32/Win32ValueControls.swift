@@ -605,7 +605,16 @@ extension Win32NativeControlBackend {
         return Date(timeIntervalSince1970: Double(local - offset))
     }
 
-    private func civilFromSeconds(_ total: Int) -> (year: Int, month: Int, day: Int, hour: Int, minute: Int, second: Int) {
+    private struct CivilTime {
+        let year: Int
+        let month: Int
+        let day: Int
+        let hour: Int
+        let minute: Int
+        let second: Int
+    }
+
+    private func civilFromSeconds(_ total: Int) -> CivilTime {
         let days = Int((Double(total) / 86_400.0).rounded(.down))
         var seconds = total - days * 86_400
         if seconds < 0 {
@@ -621,7 +630,14 @@ extension Win32NativeControlBackend {
         let day = doy - (153 * mp + 2) / 5 + 1
         let month = mp + (mp < 10 ? 3 : -9)
         year += month <= 2 ? 1 : 0
-        return (year, month, day, seconds / 3_600, (seconds % 3_600) / 60, seconds % 60)
+        return CivilTime(
+            year: year,
+            month: month,
+            day: day,
+            hour: seconds / 3_600,
+            minute: (seconds % 3_600) / 60,
+            second: seconds % 60
+        )
     }
 
     private func daysFromCivil(year: Int, month: Int, day: Int) -> Int {

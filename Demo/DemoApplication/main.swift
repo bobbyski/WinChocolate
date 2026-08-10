@@ -1928,12 +1928,19 @@ let toolbarSaveImagePath = demoResourcePath(named: "ToolbarSave", ofType: "png")
 let toolbarToggleImagePath = demoResourcePath(named: "ToolbarToggle", ofType: "png")
 let toolbarCustomizeImagePath = demoResourcePath(named: "ToolbarCustomize", ofType: "png")
 var imageModeIndex = 0
-let imageModes: [(NSImageScaling, NSImageAlignment, String, String)] = [
-    (.scaleProportionallyDown, .alignCenter, demoArtworkPath, "bird center/down"),
-    (.scaleProportionallyUpOrDown, .alignTopLeft, demoScreenArtworkPath, "screen top-left/fit"),
-    (.scaleAxesIndependently, .alignBottomRight, demoArtworkPath, "bird bottom-right/axes"),
-    (.scaleNone, .alignRight, demoScreenArtworkPath, "screen right/none"),
-    (.scaleProportionallyDown, .alignCenter, demoPngPath, "png center/down")
+private struct ImageMode {
+    let scaling: NSImageScaling
+    let alignment: NSImageAlignment
+    let path: String
+    let description: String
+}
+
+private let imageModes: [ImageMode] = [
+    ImageMode(scaling: .scaleProportionallyDown, alignment: .alignCenter, path: demoArtworkPath, description: "bird center/down"),
+    ImageMode(scaling: .scaleProportionallyUpOrDown, alignment: .alignTopLeft, path: demoScreenArtworkPath, description: "screen top-left/fit"),
+    ImageMode(scaling: .scaleAxesIndependently, alignment: .alignBottomRight, path: demoArtworkPath, description: "bird bottom-right/axes"),
+    ImageMode(scaling: .scaleNone, alignment: .alignRight, path: demoScreenArtworkPath, description: "screen right/none"),
+    ImageMode(scaling: .scaleProportionallyDown, alignment: .alignCenter, path: demoPngPath, description: "png center/down")
 ]
 
 final class DemoToolbarDelegate: NSObject, NSToolbarDelegate {
@@ -3021,10 +3028,10 @@ imageView.onClick = {
     updateFocusDisplay()
     imageModeIndex = (imageModeIndex + 1) % imageModes.count
     let mode = imageModes[imageModeIndex]
-    imageView.imageScaling = mode.0
-    imageView.imageAlignment = mode.1
-    imageView.image = NSImage(contentsOfFile: mode.2) ?? NSImage(named: mode.2)
-    statusLabel.stringValue = "Image mode: \(mode.3)"
+    imageView.imageScaling = mode.scaling
+    imageView.imageAlignment = mode.alignment
+    imageView.image = NSImage(contentsOfFile: mode.path) ?? NSImage(named: mode.path)
+    statusLabel.stringValue = "Image mode: \(mode.description)"
 }
 
 @MainActor

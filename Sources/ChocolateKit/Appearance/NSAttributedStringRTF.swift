@@ -227,7 +227,14 @@ private final class RTFReader {
     private var fontTable: [Int: String] = [:]
     private var colorTable: [NSColor?] = []
     private var pendingFontName = ""
-    private var pendingColor: (red: Int, green: Int, blue: Int, hasComponents: Bool) = (0, 0, 0, false)
+    private struct PendingColor {
+        var red = 0
+        var green = 0
+        var blue = 0
+        var hasComponents = false
+    }
+
+    private var pendingColor = PendingColor()
     private var pendingText: [UInt16] = []
     private let result = NSMutableAttributedString(string: "")
 
@@ -440,7 +447,7 @@ private final class RTFReader {
                     // The empty first entry is the automatic color.
                     colorTable.append(nil)
                 }
-                pendingColor = (0, 0, 0, false)
+                pendingColor = PendingColor()
             }
         case .skip:
             break
