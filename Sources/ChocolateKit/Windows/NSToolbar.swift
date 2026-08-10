@@ -920,8 +920,11 @@ open class NSToolbarView: NSView {
             }
         }
 
-        // Overflow chevron (»): pops a menu of the items the narrow strip
-        // pushed out, matching the Mac toolbar's overflow behavior.
+        addOverflowChevron(for: toolbar)
+        addBottomEdge()
+    }
+
+    private func addOverflowChevron(for toolbar: NSToolbar) {
         let structuralIdentifiers: Set<NSToolbarItem.Identifier> = [
             .space, .flexibleSpace, .separator, .sidebarTrackingSeparator, .inspectorTrackingSeparator,
         ]
@@ -953,9 +956,9 @@ open class NSToolbarView: NSView {
             }
             addRenderedSubview(chevron)
         }
+    }
 
-        // Chrome hairline separating the toolbar strip from window content.
-        // Added after the item views so item indices stay stable for callers.
+    private func addBottomEdge() {
         let bottomEdge = NSView(frame: NSMakeRect(0, max(frame.size.height - 1, 0), frame.size.width, 1))
         bottomEdge.winBackgroundColor = NSColor(calibratedRed: 0.85, green: 0.85, blue: 0.85, alpha: 1.0)
         bottomEdge.autoresizingMask = [.width]

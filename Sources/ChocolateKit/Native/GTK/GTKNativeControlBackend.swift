@@ -261,13 +261,19 @@ public final class GTKNativeControlBackend: NativeControlBackend {
         // controls have breathing room, like AppKit's colour panel. This must
         // sit ABOVE the theme (600) — the Adwaita rules that zero these margins
         // would otherwise win — so it rides at USER priority (800).
-        let colorCSS = """
+        installColorChooserStyle(on: display)
+    }
+
+    private func installColorChooserStyle(on display: OpaquePointer) {
+        let css = """
             colorchooser { padding: 16px 16px 8px 16px; }
             box.dialog-action-area { margin: 0 16px 14px 0; }
             """
-        let colorProvider = gtk_css_provider_new()!
-        lc_css_provider_load(colorProvider, colorCSS)
-        gtk_style_context_add_provider_for_display(display, OpaquePointer(colorProvider), 800)
+        guard let provider = gtk_css_provider_new() else {
+            return
+        }
+        lc_css_provider_load(provider, css)
+        gtk_style_context_add_provider_for_display(display, OpaquePointer(provider), 800)
     }
 
     /// Display-wide CSS for the Apple-look toolbar (the deliberate Apple

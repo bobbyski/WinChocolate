@@ -239,14 +239,17 @@ open class NSStackView: NSView {
 
     /// A view's size for arrangement: its intrinsic size per axis where it has
     /// one, else its current frame size.
-    private func arrangedSize(_ view: NSView) -> NSSize {
+}
+
+private extension NSStackView {
+    func arrangedSize(_ view: NSView) -> NSSize {
         let intrinsic = view.intrinsicContentSize
         let width = intrinsic.width == NSView.noIntrinsicMetric ? view.frame.size.width : intrinsic.width
         let height = intrinsic.height == NSView.noIntrinsicMetric ? view.frame.size.height : intrinsic.height
         return NSSize(width: width, height: height)
     }
 
-    private func hasIntrinsicCross(_ view: NSView) -> Bool {
+    func hasIntrinsicCross(_ view: NSView) -> Bool {
         orientation == .horizontal
             ? view.intrinsicContentSize.height != NSView.noIntrinsicMetric
             : view.intrinsicContentSize.width != NSView.noIntrinsicMetric
@@ -267,7 +270,14 @@ open class NSStackView: NSView {
         }
     }
 
-    private func arrangeSubviews() {
+    func commonBaseline(for views: [NSView], availableCross: CGFloat) -> CGFloat {
+        views.reduce(0) { baseline, view in
+            let height = min(arrangedSize(view).height, availableCross)
+            return max(baseline, height - view.baselineOffsetFromBottom)
+        }
+    }
+
+    func arrangeSubviews() {
         let views = layoutArrangedViews
         guard !views.isEmpty else {
             return
@@ -359,13 +369,9 @@ open class NSStackView: NSView {
         // For baseline alignment: the deepest baseline-from-top across the row,
         // so every view hangs from a common baseline.
         let alignmentMode = crossAlignment()
-        var commonBaseline: CGFloat = 0
-        if alignmentMode == .baseline {
-            for view in views {
-                let height = min(arrangedSize(view).height, availableCross)
-                commonBaseline = max(commonBaseline, height - view.baselineOffsetFromBottom)
-            }
-        }
+        let commonBaseline = alignmentMode == .baseline
+            ? commonBaseline(for: views, availableCross: availableCross)
+            : 0
 
         // Place each view along the main axis, aligned across it.
         var mainCursor = mainStart
