@@ -4,6 +4,7 @@ import CGTKCompat
 import Foundation
 
 extension GTKNativeControlBackend {
+    /// Creates a native color well initialized to a color.
     public func createColorWell(color: NSColor, frame: NSRect) -> NativeHandle {
         // GtkColorButton (via the GtkColorChooser interface) is deprecated in
         // GTK 4.10 like GtkComboBoxText, but remains the direct color-well

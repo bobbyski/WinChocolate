@@ -1,5 +1,6 @@
 #if os(Windows)
 extension Win32NativeControlBackend {
+    /// Sets the time zone used to translate a date picker's native wall-clock value.
     public func setDatePickerTimeZone(_ timeZone: TimeZone, for handle: NativeHandle) {
         datePickerTimeZones[handle.rawValue] = timeZone
     }

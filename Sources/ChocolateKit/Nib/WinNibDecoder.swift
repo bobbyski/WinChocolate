@@ -301,7 +301,7 @@ final class WinNibDecoder {
             view.toolTip = toolTip
         }
         if let maskElement = element.firstChild(withKey: "autoresizingMask") {
-            var mask: NSView.AutoresizingMask = []
+            var mask = NSView.AutoresizingMask()
             if bool(maskElement.attribute("widthSizable")) { mask.insert(.width) }
             if bool(maskElement.attribute("heightSizable")) { mask.insert(.height) }
             if bool(maskElement.attribute("flexibleMinX")) { mask.insert(.minXMargin) }
@@ -368,22 +368,17 @@ final class WinNibDecoder {
 }
 
 private extension WinNibDecoder {
+    static let constraintAttributes: [String: NSLayoutConstraint.Attribute] = [
+        "left": .left, "right": .right, "top": .top, "bottom": .bottom,
+        "leading": .leading, "trailing": .trailing,
+        "width": .width, "height": .height,
+        "centerX": .centerX, "centerY": .centerY,
+        "baseline": .lastBaseline, "lastBaseline": .lastBaseline,
+        "firstBaseline": .firstBaseline
+    ]
+
     func attribute(named name: String?) -> NSLayoutConstraint.Attribute? {
-        switch name {
-        case "left": return .left
-        case "right": return .right
-        case "top": return .top
-        case "bottom": return .bottom
-        case "leading": return .leading
-        case "trailing": return .trailing
-        case "width": return .width
-        case "height": return .height
-        case "centerX": return .centerX
-        case "centerY": return .centerY
-        case "baseline", "lastBaseline": return .lastBaseline
-        case "firstBaseline": return .firstBaseline
-        default: return nil
-        }
+        name.flatMap { Self.constraintAttributes[$0] }
     }
 
     /// IB multipliers appear as plain numbers ("0.5") or ratios ("3:4").

@@ -135,6 +135,7 @@ internal let gtkCompactControlCSS = """
             }
     """
 
+/// GTK implementation of WinChocolate's native control backend.
 public final class GTKNativeControlBackend: NativeControlBackend {
 
     internal var nextRaw: UInt = 1

@@ -4,6 +4,7 @@ import CGTKCompat
 import Foundation
 
 extension GTKNativeControlBackend {
+    /// Presents an open panel and returns the selected path, or nil on cancellation.
     public func runOpenPanel(directory: String?, for window: NativeHandle?) -> String? {
         runFileDialog(open: true, directory: directory, suggestedName: nil, for: window)
     }

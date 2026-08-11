@@ -1,3 +1,4 @@
+/// Records native-backend operations in memory for deterministic tests.
 public final class InMemoryNativeControlBackend: NativeControlBackend {
     /// The kind of a native object — see `NativeControlKind`, which this names
     /// for the backends and tests that grew up spelling it

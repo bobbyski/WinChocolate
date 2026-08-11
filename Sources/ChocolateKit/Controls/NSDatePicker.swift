@@ -219,8 +219,6 @@ open class NSDatePicker: NSControl {
             return "00/00/0000"
         }
         let formatter = DateFormatter()
-        // The control's pattern syntax and Foundation's agree on the numeric
-        // fields; only the meridiem differs (`tt` versus `a`).
         formatter.dateFormat = format.replacingOccurrences(of: "tt", with: "a")
         formatter.locale = resolvedLocale
         formatter.timeZone = resolvedTimeZone

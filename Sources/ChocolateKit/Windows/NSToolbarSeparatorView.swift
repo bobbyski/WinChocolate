@@ -1,3 +1,4 @@
+/// Draws the fixed separator item used between groups of toolbar controls.
 open class NSToolbarSeparatorView: NSView {
     /// Creates a separator view.
     public required init(frame frameRect: NSRect) {

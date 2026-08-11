@@ -1,6 +1,7 @@
 extension NSTableView {
 
     @discardableResult
+    /// Commits the active drawn-cell edit and advances to the adjacent editable cell.
     public func winAdvanceDrawnEdit(reversed: Bool) -> Bool {
         guard winDrawnEditField != nil else { return false }
         let fromRow = winDrawnEditRow

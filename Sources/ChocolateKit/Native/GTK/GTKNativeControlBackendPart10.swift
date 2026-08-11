@@ -4,6 +4,7 @@ import CGTKCompat
 import Foundation
 
 extension GTKNativeControlBackend {
+    /// Creates a native image view with the requested frame.
     public func createImageView(frame: NSRect) -> NativeHandle {
         let picture = gtk_picture_new()!
         gtk_widget_set_size_request(picture, Int32(frame.width), Int32(frame.height))

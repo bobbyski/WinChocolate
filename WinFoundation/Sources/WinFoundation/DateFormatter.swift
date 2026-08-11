@@ -247,24 +247,18 @@ open class DateFormatter: Formatter {
             case 3: return Self.shortMonths[monthIndex(c.month)]
             default: return Self.longMonths[monthIndex(c.month)]
             }
-        case "d":
-            return count >= 2 ? padded(c.day, 2) : String(c.day)
-        case "H":
-            return count >= 2 ? padded(c.hour, 2) : String(c.hour)
+        case "d": return count >= 2 ? padded(c.day, 2) : String(c.day)
+        case "H": return count >= 2 ? padded(c.hour, 2) : String(c.hour)
         case "h":
             let twelve = c.hour % 12 == 0 ? 12 : c.hour % 12
             return count >= 2 ? padded(twelve, 2) : String(twelve)
-        case "m":
-            return count >= 2 ? padded(c.minute, 2) : String(c.minute)
-        case "s":
-            return count >= 2 ? padded(c.second, 2) : String(c.second)
-        case "a":
-            return c.hour < 12 ? "AM" : "PM"
+        case "m": return count >= 2 ? padded(c.minute, 2) : String(c.minute)
+        case "s": return count >= 2 ? padded(c.second, 2) : String(c.second)
+        case "a": return c.hour < 12 ? "AM" : "PM"
         case "E":
             let day = weekdayIndex(c.weekday)
             return count >= 4 ? Self.longWeekdays[day] : Self.shortWeekdays[day]
-        default:
-            return String(repeating: String(character), count: count)
+        default: return String(repeating: String(character), count: count)
         }
     }
 

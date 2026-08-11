@@ -4,6 +4,7 @@ import CGTKCompat
 import Foundation
 
 extension GTKNativeControlBackend {
+    /// Starts or stops animation for an indeterminate progress indicator.
     public func setProgressAnimating(_ animating: Bool, for handle: NativeHandle) {
         let raw = handle.rawValue
         if progressSpinners.contains(raw) {

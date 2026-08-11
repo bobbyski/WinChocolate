@@ -282,6 +282,7 @@ public struct NativeTextRangeFormat {
     }
 }
 
+/// Drawing operations exposed by a platform-native graphics context.
 public protocol NativeGraphicsContext: AnyObject {
     /// Sets the fill color used by subsequent `fillPath` calls.
     func setFillColor(_ color: NSColor)

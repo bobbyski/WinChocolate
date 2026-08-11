@@ -4,6 +4,7 @@ import CGTKCompat
 import Foundation
 
 extension GTKNativeControlBackend {
+    /// Updates the on/off state of a native check or radio button.
     public func setButtonState(_ on: Bool, for handle: NativeHandle) {
         guard let w = widget(handle) else { return }
         gtk_check_button_set_active(asCheckButton(w), gboolean(on ? 1 : 0))

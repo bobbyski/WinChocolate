@@ -324,8 +324,7 @@ open class NSSegmentedControl: NSControl {
         }
     }
 
-    /// Activates a segment as if clicked (respecting its menu and the tracking
-    /// mode). Exposed for tests and scripted/programmatic interaction.
+    /// Activates a segment as if clicked (respecting its menu and tracking mode).
     public func winSelectSegment(byClickAt index: Int) {
         activateSegment(at: index)
     }
@@ -411,10 +410,12 @@ open class NSSegmentedControl: NSControl {
 }
 
 extension NSSegmentedControl {
+    /// Returns the horizontal gap between segments for a style.
     public static func winSegmentSpacing(for style: Style) -> CGFloat {
         style == .separated ? 4 : 0
     }
 
+    /// Returns the corner radius used to draw a segment in a style.
     public static func winSegmentCornerRadius(for style: Style, height: CGFloat) -> CGFloat {
         switch style {
         case .capsule: return height / 2
@@ -424,6 +425,7 @@ extension NSSegmentedControl {
         }
     }
 
+    /// Calculates the frame of every segment in the receiver's coordinates.
     public func winSegmentFrames() -> [NSRect] {
         guard !segments.isEmpty else { return [] }
         let spacing = Self.winSegmentSpacing(for: segmentStyle)

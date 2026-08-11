@@ -4,6 +4,7 @@ import CGTKCompat
 import Foundation
 
 extension GTKNativeControlBackend {
+    /// Registers a callback that receives the newly selected item index.
     public func setSelectionChangeAction(for handle: NativeHandle, action: @escaping (Int) -> Void) {
         if collectionFlows[handle.rawValue] != nil {
             collectionSelectionActions[handle.rawValue] = action

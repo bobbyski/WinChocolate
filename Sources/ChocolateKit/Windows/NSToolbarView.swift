@@ -1,3 +1,4 @@
+/// Renders an `NSToolbar` as an interactive horizontal strip.
 open class NSToolbarView: NSView {
     /// Toolbar model rendered by this view.
     open var toolbar: NSToolbar? {
@@ -220,26 +221,11 @@ open class NSToolbarView: NSView {
         let baseHeight: CGFloat
         switch displayMode {
         case .default, .iconAndLabel:
-            switch toolbar.sizeMode {
-            case .small:
-                baseHeight = 34
-            case .default, .regular:
-                baseHeight = 40
-            }
+            baseHeight = toolbar.sizeMode == .small ? 34 : 40
         case .iconOnly:
-            switch toolbar.sizeMode {
-            case .small:
-                baseHeight = 26
-            case .default, .regular:
-                baseHeight = 30
-            }
+            baseHeight = toolbar.sizeMode == .small ? 26 : 30
         case .labelOnly:
-            switch toolbar.sizeMode {
-            case .small:
-                baseHeight = 24
-            case .default, .regular:
-                baseHeight = 26
-            }
+            baseHeight = toolbar.sizeMode == .small ? 24 : 26
         }
 
         guard hasCustomView else {
