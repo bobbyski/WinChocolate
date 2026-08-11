@@ -60,14 +60,11 @@ enum NSLayoutSolver {
         let outerPasses = hasCrossAxis ? 16 : 1
 
         for _ in 0..<outerPasses {
-            let horizontal = solveAxis(
-                constraints: constraints, container: container, containerBounds: containerBounds,
-                solved: solved, indexOf: indexOf, isHorizontal: true
+            let context = AxisSolveContext(
+                container: container, containerBounds: containerBounds, solved: solved, indexOf: indexOf
             )
-            let vertical = solveAxis(
-                constraints: constraints, container: container, containerBounds: containerBounds,
-                solved: solved, indexOf: indexOf, isHorizontal: false
-            )
+            let horizontal = solveAxis(constraints: constraints, context: context, isHorizontal: true)
+            let vertical = solveAxis(constraints: constraints, context: context, isHorizontal: false)
 
             var maxDelta = 0.0
             for (i, view) in solved.enumerated() {
@@ -92,56 +89,47 @@ enum NSLayoutSolver {
     /// Solves one axis, returning per-solved-view `(pos, size)` or `nil` when
     /// that axis carries no constraints.
     private static func solveAxis(
-        constraints: [NSLayoutConstraint],
-        container: NSView,
-        containerBounds: NSRect,
-        solved: [NSView],
-        indexOf: [ObjectIdentifier: Int],
-        isHorizontal: Bool
+        constraints: [NSLayoutConstraint], context: AxisSolveContext, isHorizontal: Bool
     ) -> [(pos: Double, size: Double)]? {
+        let solved = context.solved
         // Two unknowns per solved view: [pos0, size0, pos1, size1, ...].
         var values = [Double](repeating: 0, count: solved.count * 2)
         for (i, view) in solved.enumerated() {
             values[i * 2] = Double(isHorizontal ? view.frame.origin.x : view.frame.origin.y)
             values[i * 2 + 1] = Double(isHorizontal ? view.frame.size.width : view.frame.size.height)
         }
-        func vars(for index: Int) -> AxisVars { AxisVars(posIndex: index * 2, sizeIndex: index * 2 + 1) }
-
-        var equations: [AxisEquation] = []
-        for constraint in constraints where constraint.firstAttribute.isHorizontal == isHorizontal
-            && constraint.firstAttribute != .notAnAttribute {
-            if let equation = linearize(
-                constraint, container: container, containerBounds: containerBounds,
-                indexOf: indexOf, isHorizontal: isHorizontal, vars: vars
-            ) {
-                equations.append(equation)
-            }
+        let expressionContext = ExpressionContext(
+            container: context.container, containerBounds: context.containerBounds,
+            indexOf: context.indexOf, isHorizontal: isHorizontal
+        )
+        var equations = constraints.compactMap { constraint -> AxisEquation? in
+            guard constraint.firstAttribute.isHorizontal == isHorizontal,
+                  constraint.firstAttribute != .notAnAttribute else { return nil }
+            return linearize(constraint, context: expressionContext)
         }
         // Each solved view with an intrinsic metric on this axis contributes
         // two implicit inequalities: it resists shrinking below the intrinsic
         // size (compression resistance) and growing past it (content hugging),
         // at the view's per-axis priorities — exactly AppKit's model.
-        for (i, view) in solved.enumerated() {
-            let intrinsic = isHorizontal ? view.intrinsicContentSize.width : view.intrinsicContentSize.height
-            guard intrinsic != NSView.noIntrinsicMetric else {
-                continue
-            }
-            let sizeIndex = vars(for: i).sizeIndex
-            let compression = isHorizontal
-                ? view.winCompressionResistancePriority.horizontal : view.winCompressionResistancePriority.vertical
-            let hugging = isHorizontal
-                ? view.winContentHuggingPriority.horizontal : view.winContentHuggingPriority.vertical
-            equations.append(AxisEquation(
-                terms: [(index: sizeIndex, coeff: 1)], rhs: Double(intrinsic),
-                relation: .greaterThanOrEqual, priority: compression))
-            equations.append(AxisEquation(
-                terms: [(index: sizeIndex, coeff: 1)], rhs: Double(intrinsic),
-                relation: .lessThanOrEqual, priority: hugging))
-        }
+        equations.append(contentsOf: intrinsicEquations(for: solved, isHorizontal: isHorizontal))
 
         guard !equations.isEmpty else {
             return nil
         }
+
+        solveEquations(equations, values: &values)
+        return (0..<solved.count).map { (pos: values[$0 * 2], size: values[$0 * 2 + 1]) }
+    }
+
+    private struct AxisSolveContext {
+        let container: NSView
+        let containerBounds: NSRect
+        let solved: [NSView]
+        let indexOf: [ObjectIdentifier: Int]
+    }
+
+    private static func solveEquations(_ equations: [AxisEquation], values: inout [Double]) {
+        var workingValues = values
 
         let epsilon = 1e-8
         let maxIterations = 1000
@@ -151,7 +139,7 @@ enum NSLayoutSolver {
         func sweep(_ eqs: [AxisEquation]) -> Double {
             var maxDelta = 0.0
             for equation in eqs {
-                let lhs = equation.terms.reduce(0.0) { $0 + $1.coeff * values[$1.index] }
+                let lhs = equation.terms.reduce(0.0) { $0 + $1.coeff * workingValues[$1.index] }
                 let residual = lhs - equation.rhs
                 switch equation.relation {
                 case .lessThanOrEqual where residual <= 0: continue
@@ -163,7 +151,7 @@ enum NSLayoutSolver {
                 let step = residual / norm
                 for term in equation.terms {
                     let delta = step * term.coeff
-                    values[term.index] -= delta
+                    workingValues[term.index] -= delta
                     maxDelta = max(maxDelta, abs(delta))
                 }
             }
@@ -195,8 +183,27 @@ enum NSLayoutSolver {
             }
             committed.append(contentsOf: tier)
         }
+        values = workingValues
+    }
 
-        return (0..<solved.count).map { (pos: values[$0 * 2], size: values[$0 * 2 + 1]) }
+    private static func intrinsicEquations(for solved: [NSView], isHorizontal: Bool) -> [AxisEquation] {
+        var equations: [AxisEquation] = []
+        for (index, view) in solved.enumerated() {
+            let intrinsic = isHorizontal ? view.intrinsicContentSize.width : view.intrinsicContentSize.height
+            guard intrinsic != NSView.noIntrinsicMetric else { continue }
+            let compression = isHorizontal
+                ? view.winCompressionResistancePriority.horizontal : view.winCompressionResistancePriority.vertical
+            let hugging = isHorizontal
+                ? view.winContentHuggingPriority.horizontal : view.winContentHuggingPriority.vertical
+            let terms = [(index: index * 2 + 1, coeff: 1.0)]
+            equations.append(AxisEquation(
+                terms: terms, rhs: Double(intrinsic), relation: .greaterThanOrEqual, priority: compression
+            ))
+            equations.append(AxisEquation(
+                terms: terms, rhs: Double(intrinsic), relation: .lessThanOrEqual, priority: hugging
+            ))
+        }
+        return equations
     }
 
     /// Reduces a constraint to a single-axis linear equation over the solved
@@ -205,20 +212,13 @@ enum NSLayoutSolver {
     /// neither the container nor a solved direct subview (a documented
     /// first-slice limitation: cross-hierarchy constraints aren't solved here).
     private static func linearize(
-        _ constraint: NSLayoutConstraint,
-        container: NSView,
-        containerBounds: NSRect,
-        indexOf: [ObjectIdentifier: Int],
-        isHorizontal: Bool,
-        vars: (Int) -> AxisVars
+        _ constraint: NSLayoutConstraint, context: ExpressionContext
     ) -> AxisEquation? {
         guard let first = constraint.firstItem else {
             return nil
         }
         guard let firstExpr = attributeExpression(
-            view: first, attribute: constraint.firstAttribute,
-            container: container, containerBounds: containerBounds, indexOf: indexOf,
-            isHorizontal: isHorizontal, vars: vars
+            view: first, attribute: constraint.firstAttribute, context: context
         ) else {
             return nil
         }
@@ -228,9 +228,7 @@ enum NSLayoutSolver {
 
         if let second = constraint.secondItem {
             guard let secondExpr = attributeExpression(
-                view: second, attribute: constraint.secondAttribute,
-                container: container, containerBounds: containerBounds, indexOf: indexOf,
-                isHorizontal: isHorizontal, vars: vars
+                view: second, attribute: constraint.secondAttribute, context: context
             ) else {
                 return nil
             }
@@ -262,22 +260,27 @@ enum NSLayoutSolver {
         var constant: Double
     }
 
+    private struct ExpressionContext {
+        let container: NSView
+        let containerBounds: NSRect
+        let indexOf: [ObjectIdentifier: Int]
+        let isHorizontal: Bool
+    }
+
     /// Expresses `view.attribute` on the axis as a linear form over the solved
     /// variables (or a pure constant for the container / a fixed subview).
     private static func attributeExpression(
         view: NSView,
         attribute: NSLayoutConstraint.Attribute,
-        container: NSView,
-        containerBounds: NSRect,
-        indexOf: [ObjectIdentifier: Int],
-        isHorizontal: Bool,
-        vars: (Int) -> AxisVars
+        context: ExpressionContext
     ) -> Expression? {
+        let container = context.container
+        let containerBounds = context.containerBounds
         // A reference to the *other* axis (an aspect-ratio constraint's second
         // dimension): fold it as a constant from the current geometry so the
         // outer solve loop couples the axes. This keeps the per-axis solve
         // linear while still honoring `width == height`-style constraints.
-        if attribute != .notAnAttribute && attribute.isHorizontal != isHorizontal {
+        if attribute != .notAnAttribute && attribute.isHorizontal != context.isHorizontal {
             if view === container {
                 return Expression(terms: [], constant: containerConstant(attribute, bounds: containerBounds))
             }
@@ -288,31 +291,8 @@ enum NSLayoutSolver {
             return Expression(terms: [], constant: containerConstant(attribute, bounds: containerBounds))
         }
         // Solved subview → linear in (pos, size).
-        if let index = indexOf[ObjectIdentifier(view)] {
-            let v = vars(index)
-            let (posCoeff, sizeCoeff): (Double, Double)
-            var constant = 0.0
-            switch attribute {
-            case .left, .leading, .top:
-                (posCoeff, sizeCoeff) = (1, 0)
-            case .right, .trailing, .bottom:
-                (posCoeff, sizeCoeff) = (1, 1)
-            case .width, .height:
-                (posCoeff, sizeCoeff) = (0, 1)
-            case .centerX, .centerY:
-                (posCoeff, sizeCoeff) = (1, 0.5)
-            case .firstBaseline, .lastBaseline:
-                // Baseline = bottom - the view's baseline offset (single-line
-                // model: first and last baseline coincide).
-                (posCoeff, sizeCoeff) = (1, 1)
-                constant = -Double(view.baselineOffsetFromBottom)
-            case .notAnAttribute:
-                return nil
-            }
-            var terms: [(index: Int, coeff: Double)] = []
-            if posCoeff != 0 { terms.append((index: v.posIndex, coeff: posCoeff)) }
-            if sizeCoeff != 0 { terms.append((index: v.sizeIndex, coeff: sizeCoeff)) }
-            return Expression(terms: terms, constant: constant)
+        if let index = context.indexOf[ObjectIdentifier(view)] {
+            return solvedExpression(view: view, attribute: attribute, index: index)
         }
         // A fixed direct subview (autoresizing) → constant from its frame.
         if view.superview === container {
@@ -329,6 +309,32 @@ enum NSLayoutSolver {
         }
         // Not in the container's tree at all — outside this constraint system.
         return nil
+    }
+
+    private static func solvedExpression(
+        view: NSView, attribute: NSLayoutConstraint.Attribute, index: Int
+    ) -> Expression? {
+        let variables = AxisVars(posIndex: index * 2, sizeIndex: index * 2 + 1)
+        let coefficients: (position: Double, size: Double)
+        var constant = 0.0
+        switch attribute {
+        case .left, .leading, .top: coefficients = (1, 0)
+        case .right, .trailing, .bottom: coefficients = (1, 1)
+        case .width, .height: coefficients = (0, 1)
+        case .centerX, .centerY: coefficients = (1, 0.5)
+        case .firstBaseline, .lastBaseline:
+            coefficients = (1, 1)
+            constant = -Double(view.baselineOffsetFromBottom)
+        case .notAnAttribute: return nil
+        }
+        var terms: [(index: Int, coeff: Double)] = []
+        if coefficients.position != 0 {
+            terms.append((index: variables.posIndex, coeff: coefficients.position))
+        }
+        if coefficients.size != 0 {
+            terms.append((index: variables.sizeIndex, coeff: coefficients.size))
+        }
+        return Expression(terms: terms, constant: constant)
     }
 
     /// The view's frame expressed in `container` coordinates, or `nil` when the

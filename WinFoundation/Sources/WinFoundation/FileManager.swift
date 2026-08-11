@@ -6,57 +6,6 @@
 /// `urls(for:in:)`. Attributes dictionaries, enumerators, and delegates are
 /// future work.
 open class FileManager {
-    /// Errors thrown by file operations.
-    ///
-    /// Foundation reports these through `NSError`; the shim uses a Swift
-    /// error enum carrying the path involved.
-    public enum FileError: Error, Equatable {
-        /// The path does not exist.
-        case fileNotFound(String)
-
-        /// The destination already exists.
-        case alreadyExists(String)
-
-        /// The underlying system call failed.
-        case operationFailed(String)
-    }
-
-    /// Known directory locations for `urls(for:in:)`.
-    public enum SearchPathDirectory: Sendable {
-        /// The user's Documents folder.
-        case documentDirectory
-
-        /// The user's Desktop folder.
-        case desktopDirectory
-
-        /// Per-user application support data (roaming AppData on Windows).
-        case applicationSupportDirectory
-
-        /// Per-user cache data (local AppData on Windows).
-        case cachesDirectory
-
-        /// The user's home profile folder.
-        case userDirectory
-    }
-
-    /// Domain masks for `urls(for:in:)`; only the user domain is meaningful
-    /// on Windows.
-    public struct SearchPathDomainMask: OptionSet, Sendable {
-        /// The raw option value.
-        public let rawValue: UInt
-
-        /// Creates a mask from a raw value.
-        public init(rawValue: UInt) {
-            self.rawValue = rawValue
-        }
-
-        /// The current user's domain.
-        public static let userDomainMask = SearchPathDomainMask(rawValue: 1)
-
-        /// Every domain; treated as the user domain on Windows.
-        public static let allDomainsMask = SearchPathDomainMask(rawValue: 0x0fff)
-    }
-
     /// The process-wide shared file manager.
     nonisolated(unsafe) public static let `default` = FileManager()
 
@@ -329,27 +278,24 @@ open class FileManager {
         #endif
     }
 
-    // MARK: - Native helpers
+}
 
-    private static let directoryAttribute: UInt32 = 0x0000_0010
-    private static let invalidAttributes: UInt32 = 0xffff_ffff
-    private static let moveCopyAllowed: UInt32 = 0x0000_0002
-    private static let findDataSize = 592
-    private static let findDataNameOffset = 44
-    private static let findDataNameCapacity = 260
+private extension FileManager {
+    static let directoryAttribute: UInt32 = 0x0000_0010
+    static let invalidAttributes: UInt32 = 0xffff_ffff
+    static let moveCopyAllowed: UInt32 = 0x0000_0002
+    static let findDataSize = 592
+    static let findDataNameOffset = 44
+    static let findDataNameCapacity = 260
 
-    private func joinPath(_ base: String, _ component: String) -> String {
+    func joinPath(_ base: String, _ component: String) -> String {
         base.hasSuffix("\\") || base.hasSuffix("/") ? "\(base)\(component)" : "\(base)\\\(component)"
     }
 
-    private func nativeAttributes(atPath path: String) -> UInt32? {
+    func nativeAttributes(atPath path: String) -> UInt32? {
         #if os(Windows)
-        guard !path.isEmpty else {
-            return nil
-        }
-        let attributes = withWidePath(path) { widePath in
-            WinFoundationGetFileAttributesW(widePath)
-        }
+        guard !path.isEmpty else { return nil }
+        let attributes = withWidePath(path) { WinFoundationGetFileAttributesW($0) }
         return attributes == FileManager.invalidAttributes ? nil : attributes
         #else
         return nil
@@ -357,29 +303,23 @@ open class FileManager {
     }
 
     #if os(Windows)
-    private func withWidePath<Result>(_ path: String, _ body: (UnsafePointer<UInt16>?) -> Result) -> Result {
+    func withWidePath<Result>(_ path: String, _ body: (UnsafePointer<UInt16>?) -> Result) -> Result {
         var units = Array(String(path.map { $0 == "/" ? "\\" : $0 }).utf16)
         units.append(0)
-        return units.withUnsafeBufferPointer { pointer in
-            body(pointer.baseAddress)
-        }
+        return units.withUnsafeBufferPointer { body($0.baseAddress) }
     }
 
-    private func isValidFindHandle(_ handle: UnsafeMutableRawPointer?) -> Bool {
-        guard let handle else {
-            return false
-        }
+    func isValidFindHandle(_ handle: UnsafeMutableRawPointer?) -> Bool {
+        guard let handle else { return false }
         return UInt(bitPattern: handle) != UInt(bitPattern: -1)
     }
 
-    private func fileName(inFindData buffer: UnsafeMutableRawPointer) -> String {
+    func fileName(inFindData buffer: UnsafeMutableRawPointer) -> String {
         let namePointer = (buffer + FileManager.findDataNameOffset).assumingMemoryBound(to: UInt16.self)
         var units: [UInt16] = []
         for index in 0..<FileManager.findDataNameCapacity {
             let unit = namePointer[index]
-            if unit == 0 {
-                break
-            }
+            if unit == 0 { break }
             units.append(unit)
         }
         return String(decoding: units, as: UTF16.self)

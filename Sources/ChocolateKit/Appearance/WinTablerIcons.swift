@@ -91,35 +91,27 @@ enum WinTablerIcons {
     /// stock image list (or a hand-drawn glyph) resolves to real artwork.
     static func iconName(forGlyphKey key: String) -> String? {
         let lowered = key.lowercased()
-        switch lowered {
-        case "new", "document", "doc", "filenew", "square.and.pencil":
-            return "file-plus"
-        case "open", "folder", "folder.open", "fileopen":
-            return "folder-open"
-        case "save", "filesave", "square.and.arrow.down", "tray.and.arrow.down":
-            return "device-floppy"
-        case "print", "printer":
-            return "printer"
-        case "properties", "info", "info.circle", "gear", "gearshape", "settings":
-            return "settings"
-        case "customize", "slider.horizontal.3", "adjustments":
-            return "adjustments-horizontal"
-        case "help", "questionmark", "questionmark.circle":
-            return "help-circle"
-        case "trash", "delete", "remove":
-            return "trash"
-        case "search", "find", "magnifyingglass":
-            return "search"
-        case "colors", "showcolors", "paintpalette":
-            return "palette"
-        case "fonts", "showfonts", "textformat":
-            return "typography"
-        case "ban", "disable", "nosign":
-            return "ban"
-        default:
-            return icons[lowered] != nil ? lowered : nil
-        }
+        return glyphAliases[lowered] ?? (icons[lowered] != nil ? lowered : nil)
     }
+
+    private static let glyphAliases: [String: String] = [
+        "new": "file-plus", "document": "file-plus", "doc": "file-plus",
+        "filenew": "file-plus", "square.and.pencil": "file-plus",
+        "open": "folder-open", "folder": "folder-open", "folder.open": "folder-open", "fileopen": "folder-open",
+        "save": "device-floppy", "filesave": "device-floppy",
+        "square.and.arrow.down": "device-floppy", "tray.and.arrow.down": "device-floppy",
+        "print": "printer", "printer": "printer",
+        "properties": "settings", "info": "settings", "info.circle": "settings",
+        "gear": "settings", "gearshape": "settings", "settings": "settings",
+        "customize": "adjustments-horizontal", "slider.horizontal.3": "adjustments-horizontal",
+        "adjustments": "adjustments-horizontal",
+        "help": "help-circle", "questionmark": "help-circle", "questionmark.circle": "help-circle",
+        "trash": "trash", "delete": "trash", "remove": "trash",
+        "search": "search", "find": "search", "magnifyingglass": "search",
+        "colors": "palette", "showcolors": "palette", "paintpalette": "palette",
+        "fonts": "typography", "showfonts": "typography", "textformat": "typography",
+        "ban": "ban", "disable": "ban", "nosign": "ban"
+    ]
 
     /// The icon's paths scaled into a target square, ready to stroke with
     /// width `2 × (side / designSize)`.

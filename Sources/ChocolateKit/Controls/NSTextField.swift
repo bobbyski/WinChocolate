@@ -359,7 +359,16 @@ open class NSTextField: NSControl {
 
     /// Creates the native Windows text field peer.
     open override func createNativePeer(in backend: NativeControlBackend, parent: NativeHandle?) -> NativeHandle {
-        backend.createTextField(text: stringValue, frame: frame, parent: parent, isEditable: isEditable, isBordered: isBordered, isMultiline: isMultiline)
+        backend.createTextField(
+            text: stringValue,
+            frame: frame,
+            parent: parent,
+            options: NativeTextFieldOptions(
+                isEditable: isEditable,
+                isBordered: isBordered,
+                isMultiline: isMultiline
+            )
+        )
     }
 
     /// Ensures the text field has a native peer and registers text change dispatch.

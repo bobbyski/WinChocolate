@@ -46,16 +46,16 @@ internal final class Win32DrawingContext: NativeDrawingContext {
     }
 
     /// Draws a single-line text run with `TextOutW` using a transient font.
-    internal func drawText(_ text: String, at point: NSPoint, color: NSColor, fontName: String, fontSize: CGFloat, weight: Int, italic: Bool) {
-        let font = withWideString(fontName) { faceName in
+    internal func drawText(_ text: String, at point: NSPoint, color: NSColor, font: NativeFontSpec) {
+        let nativeFont = withWideString(font.family ?? "Segoe UI") { faceName in
             // Points convert to pixels at 96 DPI, matching setFont rendering.
             winCreateFontW(
-                -Int32(max((fontSize * 96.0 / 72.0).rounded(), 1)),
+                -Int32(max((font.size * 96.0 / 72.0).rounded(), 1)),
                 0,
                 0,
                 0,
-                Int32(weight),
-                italic ? 1 : 0,
+                font.bold ? 700 : 400,
+                font.italic ? 1 : 0,
                 0,
                 0,
                 defaultCharset,
@@ -66,14 +66,14 @@ internal final class Win32DrawingContext: NativeDrawingContext {
                 faceName
             )
         }
-        guard let font else {
+        guard let nativeFont else {
             return
         }
         defer {
-            _ = winDeleteObject(font)
+            _ = winDeleteObject(nativeFont)
         }
 
-        let previousFont = winSelectObject(deviceContext, font)
+        let previousFont = winSelectObject(deviceContext, nativeFont)
         let previousColor = winSetTextColor(deviceContext, colorRef(from: color))
         let previousBkMode = winSetBkMode(deviceContext, transparentBkMode)
         let characters = Array(text.utf16)
@@ -225,16 +225,7 @@ internal final class Win32DrawingContext: NativeDrawingContext {
         defer {
             _ = winGdipDisposeImageAttributes(attributes)
         }
-        let matrix = Win32GdiPlusImageDecoder.tintColorMatrix(
-            red: Float(tint.redComponent),
-            green: Float(tint.greenComponent),
-            blue: Float(tint.blueComponent),
-            alpha: Float(tint.alphaComponent)
-        )
-        let matrixStatus = matrix.withUnsafeBufferPointer { buffer in
-            winGdipSetImageAttributesColorMatrix(attributes, 0, 1, buffer.baseAddress, nil, 0)
-        }
-        guard matrixStatus == gdiplusOkStatus else {
+        guard configureTint(tint, attributes: attributes) else {
             return
         }
 
@@ -247,6 +238,16 @@ internal final class Win32DrawingContext: NativeDrawingContext {
             0, 0, Int32(width), Int32(height),
             gdiplusUnitPixel, attributes, nil, nil
         )
+    }
+
+    private func configureTint(_ tint: NSColor, attributes: UnsafeMutableRawPointer) -> Bool {
+        let matrix = Win32GdiPlusImageDecoder.tintColorMatrix(
+            red: Float(tint.redComponent), green: Float(tint.greenComponent),
+            blue: Float(tint.blueComponent), alpha: Float(tint.alphaComponent)
+        )
+        return matrix.withUnsafeBufferPointer { buffer in
+            winGdipSetImageAttributesColorMatrix(attributes, 0, 1, buffer.baseAddress, nil, 0)
+        } == gdiplusOkStatus
     }
 
     /// Fills a rectangle with a GDI+ linear gradient along an angle.
@@ -295,21 +296,7 @@ internal final class Win32DrawingContext: NativeDrawingContext {
             _ = winGdipDeleteBrush(brush)
         }
 
-        // Preset blends require positions starting at 0 and ending at 1.
-        var colors: [UInt32] = []
-        var positions: [Float] = []
-        if let first = stops.first, first.location > 0 {
-            colors.append(argb(from: first.color))
-            positions.append(0)
-        }
-        for stop in stops {
-            colors.append(argb(from: stop.color))
-            positions.append(Float(min(max(stop.location, 0), 1)))
-        }
-        if let last = stops.last, last.location < 1 {
-            colors.append(argb(from: last.color))
-            positions.append(1)
-        }
+        let (colors, positions) = gradientPreset(stops)
         colors.withUnsafeBufferPointer { colorPointer in
             positions.withUnsafeBufferPointer { positionPointer in
                 _ = winGdipSetLinePresetBlend(brush, colorPointer.baseAddress, positionPointer.baseAddress, Int32(colors.count))
@@ -324,6 +311,24 @@ internal final class Win32DrawingContext: NativeDrawingContext {
             Float(rect.size.width),
             Float(rect.size.height)
         )
+    }
+
+    private func gradientPreset(_ stops: [NativeGradientStop]) -> ([UInt32], [Float]) {
+        var colors: [UInt32] = []
+        var positions: [Float] = []
+        if let first = stops.first, first.location > 0 {
+            colors.append(argb(from: first.color))
+            positions.append(0)
+        }
+        for stop in stops {
+            colors.append(argb(from: stop.color))
+            positions.append(Float(min(max(stop.location, 0), 1)))
+        }
+        if let last = stops.last, last.location < 1 {
+            colors.append(argb(from: last.color))
+            positions.append(1)
+        }
+        return (colors, positions)
     }
 
     /// Intersects the device context's clip region with a path.

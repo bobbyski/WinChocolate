@@ -215,24 +215,13 @@ open class NSAlert: NSObject {
         // newlines *and* wrapping — so multi-line message/informative text
         // (which the plain wrapped measure alone can under-count on embedded
         // "\n") gets a label tall enough to show every line.
-        func wrappedHeight(_ text: String, font: NSFont) -> CGFloat {
-            let lineHeight = font.pointSize + 7
-            var total: CGFloat = 0
-            for segment in text.split(separator: "\n", omittingEmptySubsequences: false) {
-                let line = segment.isEmpty ? " " : String(segment)
-                let measured = line.size(withAttributes: [.font: font], maxWidth: textWidth).height
-                total += max(measured, lineHeight)
-            }
-            return total
-        }
-
         let content = NSView(frame: NSMakeRect(0, 0, width, 200))
         content.winBackgroundColor = .windowBackgroundColor
 
         let iconView = AlertIconView(style: alertStyle, icon: icon, frame: NSMakeRect(24, 20, 40, 40))
         content.addSubview(iconView)
 
-        let messageHeight = max(24, wrappedHeight(messageText, font: messageFont))
+        let messageHeight = max(24, wrappedHeight(messageText, font: messageFont, width: textWidth))
         let messageLabel = NSTextField(string: messageText, frame: NSMakeRect(textLeft, y, textWidth, messageHeight))
         messageLabel.isBordered = false
         messageLabel.drawsBackground = false
@@ -244,7 +233,7 @@ open class NSAlert: NSObject {
 
         if !informativeText.isEmpty {
             let informativeFont = NSFont.systemFont(ofSize: 12)
-            let informativeHeight = wrappedHeight(informativeText, font: informativeFont)
+            let informativeHeight = wrappedHeight(informativeText, font: informativeFont, width: textWidth)
             let informativeLabel = NSTextField(string: informativeText, frame: NSMakeRect(textLeft, y, textWidth, informativeHeight))
             informativeLabel.isBordered = false
             informativeLabel.drawsBackground = false
@@ -255,19 +244,7 @@ open class NSAlert: NSObject {
             y += informativeHeight + 12
         }
 
-        if showsSuppressionButton, let suppressionButton {
-            suppressionButton.frame = NSMakeRect(textLeft, y, width - textLeft - margin, 20)
-            content.addSubview(suppressionButton)
-            y += 32
-        }
-
-        if let accessoryView {
-            var accessoryFrame = accessoryView.frame
-            accessoryFrame.origin = NSMakePoint(textLeft, y)
-            accessoryView.frame = accessoryFrame
-            content.addSubview(accessoryView)
-            y += accessoryFrame.size.height + 12
-        }
+        y = addOptionalContent(to: content, textLeft: textLeft, width: width, margin: margin, y: y)
 
         // An alert always needs a way to dismiss it; synthesize the default
         // "OK" button when the caller added none, matching AppKit.
@@ -277,55 +254,96 @@ open class NSAlert: NSObject {
 
         // Buttons flow right to left; the first button is the rightmost
         // default, matching AppKit. Each button carries its response as its tag.
+        addAlertButtons(to: content, application: application, width: width, margin: margin, y: y)
+
+        let contentHeight = y + 52
+        content.frame = NSMakeRect(0, 0, width, contentHeight)
+        let panel = makeAlertPanel(content: content, width: width, height: contentHeight, parent: parent)
+
+        let response = application.runModal(for: panel)
+        panel.close()
+        return response
+    }
+
+    private func wrappedHeight(_ text: String, font: NSFont, width: CGFloat) -> CGFloat {
+        let lineHeight = font.pointSize + 7
+        return text.split(separator: "\n", omittingEmptySubsequences: false).reduce(0) { total, segment in
+            let line = segment.isEmpty ? " " : String(segment)
+            let measured = line.size(withAttributes: [.font: font], maxWidth: width).height
+            return total + max(measured, lineHeight)
+        }
+    }
+
+    private func addOptionalContent(
+        to content: NSView,
+        textLeft: CGFloat,
+        width: CGFloat,
+        margin: CGFloat,
+        y: CGFloat
+    ) -> CGFloat {
+        var nextY = y
+        if showsSuppressionButton, let suppressionButton {
+            suppressionButton.frame = NSMakeRect(textLeft, nextY, width - textLeft - margin, 20)
+            content.addSubview(suppressionButton)
+            nextY += 32
+        }
+        if let accessoryView {
+            var frame = accessoryView.frame
+            frame.origin = NSMakePoint(textLeft, nextY)
+            accessoryView.frame = frame
+            content.addSubview(accessoryView)
+            nextY += frame.size.height + 12
+        }
+        return nextY
+    }
+
+    private func addAlertButtons(
+        to content: NSView,
+        application: NSApplication,
+        width: CGFloat,
+        margin: CGFloat,
+        y: CGFloat
+    ) {
         var buttonRight = width - margin
         for button in buttons {
             let buttonWidth = max(76, CGFloat(button.title.count * 7 + 28))
             button.frame = NSMakeRect(buttonRight - buttonWidth, y + 8, buttonWidth, 28)
             let code = NSApplication.ModalResponse(rawValue: button.tag)
-            button.winInternalAction = { _ in
-                application.stopModal(withCode: code)
-            }
+            button.winInternalAction = { _ in application.stopModal(withCode: code) }
             content.addSubview(button)
             buttonRight -= buttonWidth + 8
         }
-
-        // The help button sits at the bottom-left and does not dismiss the
-        // alert, matching AppKit's round "?" help affordance.
-        if showsHelp {
-            let helpButton = NSButton(title: "?", frame: NSMakeRect(margin, y + 8, 28, 28))
-            helpButton.winInternalAction = { [weak self] _ in
-                guard let self else {
-                    return
-                }
-                _ = self.delegate?.alertShowHelp(self)
-            }
-            content.addSubview(helpButton)
+        guard showsHelp else { return }
+        let helpButton = NSButton(title: "?", frame: NSMakeRect(margin, y + 8, 28, 28))
+        helpButton.winInternalAction = { [weak self] _ in
+            guard let self else { return }
+            _ = self.delegate?.alertShowHelp(self)
         }
+        content.addSubview(helpButton)
+    }
 
-        let contentHeight = y + 52
-        content.frame = NSMakeRect(0, 0, width, contentHeight)
-        var panelOrigin = NSMakePoint(360, 280)
+    private func makeAlertPanel(
+        content: NSView,
+        width: CGFloat,
+        height: CGFloat,
+        parent: NSWindow?
+    ) -> NSPanel {
+        var origin = NSMakePoint(360, 280)
         if let parent {
-            // Sheet placement: centered under the parent's title area.
-            panelOrigin = NSMakePoint(
+            origin = NSMakePoint(
                 parent.frame.origin.x + max((parent.frame.size.width - width) / 2, 0),
                 parent.frame.origin.y + 56
             )
         }
-        // Sheets attach chromeless under the parent's title area like AppKit;
-        // standalone alerts keep a captioned dialog frame.
         let panel = NSPanel(
-            contentRect: NSRect(origin: panelOrigin, size: NSMakeSize(width, contentHeight)),
+            contentRect: NSRect(origin: origin, size: NSMakeSize(width, height)),
             styleMask: parent == nil ? [.titled] : .borderless,
             backing: .buffered,
             defer: false
         )
         panel.title = ""
         panel.contentView = content
-
-        let response = application.runModal(for: panel)
-        panel.close()
-        return response
+        return panel
     }
 }
 

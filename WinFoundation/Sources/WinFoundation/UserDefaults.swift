@@ -353,35 +353,47 @@ enum WinJSON {
                     index += 1
                     return String(result)
                 }
-                if scalar == "\\", index + 1 < text.count {
-                    index += 1
-                    switch text[index] {
-                    case "\"": result.append("\"")
-                    case "\\": result.append("\\")
-                    case "/": result.append("/")
-                    case "n": result.append("\n")
-                    case "r": result.append("\r")
-                    case "t": result.append("\t")
-                    case "u":
-                        guard index + 4 < text.count else {
-                            return nil
-                        }
-                        let hex = String(String.UnicodeScalarView(text[index + 1...index + 4]))
-                        guard let value = UInt32(hex, radix: 16), let unicode = Unicode.Scalar(value) else {
-                            return nil
-                        }
-                        result.append(unicode)
-                        index += 4
-                    default:
+                if scalar == "\\" {
+                    guard let escaped = parseEscapedScalar() else {
                         return nil
                     }
-                    index += 1
+                    result.append(escaped)
                     continue
                 }
                 result.append(scalar)
                 index += 1
             }
             return nil
+        }
+
+        mutating func parseEscapedScalar() -> Unicode.Scalar? {
+            index += 1
+            guard index < text.count else {
+                return nil
+            }
+            let marker = text[index]
+            if marker == "u" {
+                guard index + 4 < text.count else {
+                    return nil
+                }
+                let hex = String(String.UnicodeScalarView(text[index + 1...index + 4]))
+                guard let value = UInt32(hex, radix: 16), let unicode = Unicode.Scalar(value) else {
+                    return nil
+                }
+                index += 5
+                return unicode
+            }
+
+            index += 1
+            switch marker {
+            case "\"": return "\""
+            case "\\": return "\\"
+            case "/": return "/"
+            case "n": return "\n"
+            case "r": return "\r"
+            case "t": return "\t"
+            default: return nil
+            }
         }
 
         mutating func parseNumber() -> Any? {

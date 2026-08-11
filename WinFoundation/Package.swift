@@ -18,7 +18,12 @@ let package = Package(
     ],
     targets: [
         .target(
+            name: "CWinFoundationCompat",
+            path: "Sources/CWinFoundationCompat"
+        ),
+        .target(
             name: "WinFoundation",
+            dependencies: ["CWinFoundationCompat"],
             swiftSettings: [
                 // The current ARM64 Windows Swift 6 development toolchain
                 // asserts in TransferNonSendable during optimized builds of

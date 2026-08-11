@@ -469,10 +469,7 @@ extension String {
             self,
             at: point,
             color: color,
-            fontName: font?.fontName ?? "Segoe UI",
-            fontSize: font?.pointSize ?? 12,
-            weight: font?.weight.rawValue ?? NSFont.Weight.regular.rawValue,
-            italic: font?.italic ?? false
+            font: nativeFontSpec(from: font)
         )
     }
 
@@ -484,10 +481,7 @@ extension String {
         let font = attributes?[.font] as? NSFont
         return NSApplication.shared.nativeBackend.measureText(
             self,
-            fontName: font?.fontName ?? "Segoe UI",
-            fontSize: font?.pointSize ?? 12,
-            weight: font?.weight.rawValue ?? NSFont.Weight.regular.rawValue,
-            italic: font?.italic ?? false
+            font: nativeFontSpec(from: font)
         )
     }
 
@@ -499,11 +493,18 @@ extension String {
         let font = attributes?[.font] as? NSFont
         return NSApplication.shared.nativeBackend.measureText(
             self,
-            fontName: font?.fontName ?? "Segoe UI",
-            fontSize: font?.pointSize ?? 12,
-            weight: font?.weight.rawValue ?? NSFont.Weight.regular.rawValue,
-            italic: font?.italic ?? false,
+            font: nativeFontSpec(from: font),
             wrappingAt: maxWidth
+        )
+    }
+
+    private func nativeFontSpec(from font: NSFont?) -> NativeFontSpec {
+        let resolved = font ?? NSFont.systemFont(ofSize: 12)
+        return NativeFontSpec(
+            family: resolved.fontName,
+            size: resolved.pointSize,
+            bold: resolved.weight.rawValue >= NSFont.Weight.semibold.rawValue,
+            italic: resolved.italic
         )
     }
 }

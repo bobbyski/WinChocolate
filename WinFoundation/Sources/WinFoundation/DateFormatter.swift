@@ -85,22 +85,7 @@ open class DateFormatter: Formatter {
         var parts: [String] = []
 
         if dateStyle != .none {
-            let datePart: String?
-            switch dateStyle {
-            case .short:
-                datePart = WinLocale.formatDate(time, localeName: name, flags: WinLocale.dateShortDate, pattern: nil)
-            case .medium:
-                datePart = WinLocale.formatDate(time, localeName: name, flags: 0, pattern: "MMM d, yyyy")
-            case .long:
-                datePart = WinLocale.formatDate(time, localeName: name, flags: 0, pattern: "MMMM d, yyyy")
-            case .full:
-                datePart = WinLocale.formatDate(time, localeName: name, flags: WinLocale.dateLongDate, pattern: nil)
-            case .none:
-                datePart = nil
-            }
-            guard let datePart else {
-                return nil
-            }
+            guard let datePart = localeDatePart(time, localeName: name) else { return nil }
             parts.append(datePart)
         }
 
@@ -131,6 +116,16 @@ open class DateFormatter: Formatter {
             return nil
         }
         return parts.joined(separator: dateTimeSeparator)
+    }
+
+    private func localeDatePart(_ time: WinSystemTime, localeName: String) -> String? {
+        switch dateStyle {
+        case .short: WinLocale.formatDate(time, localeName: localeName, flags: WinLocale.dateShortDate, pattern: nil)
+        case .medium: WinLocale.formatDate(time, localeName: localeName, flags: 0, pattern: "MMM d, yyyy")
+        case .long: WinLocale.formatDate(time, localeName: localeName, flags: 0, pattern: "MMMM d, yyyy")
+        case .full: WinLocale.formatDate(time, localeName: localeName, flags: WinLocale.dateLongDate, pattern: nil)
+        case .none: nil
+        }
     }
 
     /// How the date and time halves are joined.
@@ -306,7 +301,11 @@ open class DateFormatter: Formatter {
     /// implies. One refinement settles every case except the hour that DST
     /// skips or repeats, which is genuinely ambiguous.
     private func timestamp(year: Int, month: Int, day: Int, hour: Int, minute: Int, second: Int) -> Double {
-        let local = WinCivilTime.epoch(year: year, month: month, day: day, hour: hour, minute: minute, second: second)
+        let parts = WinCivilTime.Parts(
+            year: year, month: month, day: day,
+            hour: hour, minute: minute, second: second, weekday: 0
+        )
+        let local = WinCivilTime.epoch(from: parts)
         var offset = timeZone.secondsFromGMT(for: Date(timeIntervalSince1970: Double(local)))
         offset = timeZone.secondsFromGMT(for: Date(timeIntervalSince1970: Double(local - offset)))
         return Double(local - offset)
@@ -342,33 +341,100 @@ open class DateFormatter: Formatter {
         return nil
     }
 
+    private struct ParsedDateFields {
+        var year = 1_970
+        var month = 1
+        var day = 1
+        var hour = 0
+        var minute = 0
+        var second = 0
+        var isPM = false
+        var sawMeridiem = false
+    }
+
+    private func numericWidth(for character: Character, runLength: Int) -> Int? {
+        switch character {
+        case "y": return runLength == 2 ? 2 : 4
+        case "d", "H", "h", "m", "s": return 2
+        default: return nil
+        }
+    }
+
+    private func applyNumericField(
+        _ character: Character, value: Int, runLength: Int, fields: inout ParsedDateFields
+    ) {
+        switch character {
+        case "y": fields.year = runLength == 2 ? 2_000 + value : value
+        case "d": fields.day = value
+        case "H": fields.hour = value
+        case "h": fields.hour = value % 12
+        case "m": fields.minute = value
+        case "s": fields.second = value
+        default: break
+        }
+    }
+
+    private func applyPatternField(
+        _ character: Character,
+        runLength: Int,
+        input: [Character],
+        inputIndex: inout Int,
+        fields: inout ParsedDateFields
+    ) -> Bool {
+        if character == "M" {
+            if runLength >= 3 {
+                guard let index = matchName(
+                    runLength >= 4 ? Self.longMonths : Self.shortMonths,
+                    in: input,
+                    index: &inputIndex
+                ) else { return false }
+                fields.month = index + 1
+            } else {
+                guard let value = readInteger(from: input, index: &inputIndex, maxDigits: 2) else { return false }
+                fields.month = value
+            }
+            return true
+        }
+        if character == "a" {
+            if matchName(["AM", "am"], in: input, index: &inputIndex) != nil {
+                fields.isPM = false
+            } else if matchName(["PM", "pm"], in: input, index: &inputIndex) != nil {
+                fields.isPM = true
+            } else {
+                return false
+            }
+            fields.sawMeridiem = true
+            return true
+        }
+        if character == "E" {
+            _ = matchName(
+                runLength >= 4 ? Self.longWeekdays : Self.shortWeekdays,
+                in: input,
+                index: &inputIndex
+            )
+            return true
+        }
+        guard let width = numericWidth(for: character, runLength: runLength),
+              let value = readInteger(from: input, index: &inputIndex, maxDigits: width) else {
+            return false
+        }
+        applyNumericField(character, value: value, runLength: runLength, fields: &fields)
+        return true
+    }
+
     private func parse(_ string: String, using pattern: String) -> Date? {
         let format = Array(pattern)
         let input = Array(string)
         var formatIndex = 0
         var inputIndex = 0
 
-        var year = 1_970, month = 1, day = 1, hour = 0, minute = 0, second = 0
-        var isPM = false
-        var sawMeridiem = false
+        var fields = ParsedDateFields()
 
         while formatIndex < format.count {
             let character = format[formatIndex]
 
             if character == "'" {
-                formatIndex += 1
-                if formatIndex < format.count && format[formatIndex] == "'" {
-                    guard inputIndex < input.count, input[inputIndex] == "'" else { return nil }
-                    inputIndex += 1
-                    formatIndex += 1
-                    continue
-                }
-                while formatIndex < format.count && format[formatIndex] != "'" {
-                    guard inputIndex < input.count, input[inputIndex] == format[formatIndex] else { return nil }
-                    inputIndex += 1
-                    formatIndex += 1
-                }
-                formatIndex += 1
+                guard parseQuotedLiteral(format, formatIndex: &formatIndex, input: input, inputIndex: &inputIndex) else { return nil }
                 continue
             }
 
@@ -379,52 +445,13 @@ open class DateFormatter: Formatter {
                     formatIndex += 1
                 }
 
-                switch character {
-                case "y":
-                    guard let value = readInteger(from: input, index: &inputIndex, maxDigits: runLength == 2 ? 2 : 4) else { return nil }
-                    year = runLength == 2 ? 2_000 + value : value
-                case "M":
-                    if runLength >= 3 {
-                        guard let index = matchName(runLength >= 4 ? Self.longMonths : Self.shortMonths, in: input, index: &inputIndex) else { return nil }
-                        month = index + 1
-                    } else {
-                        guard let value = readInteger(from: input, index: &inputIndex, maxDigits: 2) else { return nil }
-                        month = value
-                    }
-                case "d":
-                    guard let value = readInteger(from: input, index: &inputIndex, maxDigits: 2) else { return nil }
-                    day = value
-                case "H":
-                    guard let value = readInteger(from: input, index: &inputIndex, maxDigits: 2) else { return nil }
-                    hour = value
-                case "h":
-                    guard let value = readInteger(from: input, index: &inputIndex, maxDigits: 2) else { return nil }
-                    hour = value % 12
-                case "m":
-                    guard let value = readInteger(from: input, index: &inputIndex, maxDigits: 2) else { return nil }
-                    minute = value
-                case "s":
-                    guard let value = readInteger(from: input, index: &inputIndex, maxDigits: 2) else { return nil }
-                    second = value
-                case "a":
-                    if matchName(["AM", "am"], in: input, index: &inputIndex) != nil {
-                        isPM = false
-                        sawMeridiem = true
-                    } else if matchName(["PM", "pm"], in: input, index: &inputIndex) != nil {
-                        isPM = true
-                        sawMeridiem = true
-                    } else {
-                        return nil
-                    }
-                case "E":
-                    _ = matchName(
-                        runLength >= 4 ? Self.longWeekdays : Self.shortWeekdays,
-                        in: input,
-                        index: &inputIndex
-                    )
-                default:
-                    return nil
-                }
+                guard applyPatternField(
+                    character,
+                    runLength: runLength,
+                    input: input,
+                    inputIndex: &inputIndex,
+                    fields: &fields
+                ) else { return nil }
                 continue
             }
 
@@ -436,10 +463,39 @@ open class DateFormatter: Formatter {
             formatIndex += 1
         }
 
-        if sawMeridiem && isPM && hour < 12 {
-            hour += 12
+        if fields.sawMeridiem && fields.isPM && fields.hour < 12 {
+            fields.hour += 12
         }
 
-        return Date(timeIntervalSince1970: timestamp(year: year, month: month, day: day, hour: hour, minute: minute, second: second))
+        return Date(timeIntervalSince1970: timestamp(
+            year: fields.year,
+            month: fields.month,
+            day: fields.day,
+            hour: fields.hour,
+            minute: fields.minute,
+            second: fields.second
+        ))
+    }
+
+    private func parseQuotedLiteral(
+        _ format: [Character],
+        formatIndex: inout Int,
+        input: [Character],
+        inputIndex: inout Int
+    ) -> Bool {
+        formatIndex += 1
+        if formatIndex < format.count && format[formatIndex] == "'" {
+            guard inputIndex < input.count, input[inputIndex] == "'" else { return false }
+            inputIndex += 1
+            formatIndex += 1
+            return true
+        }
+        while formatIndex < format.count && format[formatIndex] != "'" {
+            guard inputIndex < input.count, input[inputIndex] == format[formatIndex] else { return false }
+            inputIndex += 1
+            formatIndex += 1
+        }
+        formatIndex += 1
+        return true
     }
 }

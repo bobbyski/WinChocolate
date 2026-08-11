@@ -1,12 +1,23 @@
 #if os(Windows)
 extension Win32NativeControlBackend {
     /// Creates a native table-view child.
-    public func createTableView(columns: [String], rows: [[String]], selectedRow: Int, frame: NSRect, parent: NativeHandle?) -> NativeHandle {
-        createTableView(columns: columns, columnWidths: [], rows: rows, selectedRow: selectedRow, frame: frame, parent: parent)
+    public func createTableView(
+        columns: [String],
+        content: NativeTableContent,
+        frame: NSRect,
+        parent: NativeHandle?
+    ) -> NativeHandle {
+        createTableView(columns: columns, columnWidths: [], content: content, frame: frame, parent: parent)
     }
 
     /// Creates a native table-view child with explicit column widths.
-    public func createTableView(columns: [String], columnWidths: [CGFloat], rows: [[String]], selectedRow: Int, frame: NSRect, parent: NativeHandle?) -> NativeHandle {
+    public func createTableView(
+        columns: [String],
+        columnWidths: [CGFloat],
+        content: NativeTableContent,
+        frame: NSRect,
+        parent: NativeHandle?
+    ) -> NativeHandle {
         initializeListViewControls()
         let handle = createChildWindow(
             className: "SysListView32",
@@ -30,7 +41,7 @@ extension Win32NativeControlBackend {
             // and scrollbar; the row background/text need explicit colors.
             applyDarkListViewColorsIfNeeded(hwnd)
         }
-        setTableRows(rows, selectedRow: selectedRow, for: handle)
+        setTableRows(content.rows, selectedRow: content.selectedRow, for: handle)
         return handle
     }
 

@@ -1,10 +1,4 @@
-/// The public `uuid_t` type alias.
-public typealias uuid_t = (
-    UInt8, UInt8, UInt8, UInt8,
-    UInt8, UInt8, UInt8, UInt8,
-    UInt8, UInt8, UInt8, UInt8,
-    UInt8, UInt8, UInt8, UInt8
-)
+@_exported import CWinFoundationCompat
 
 /// A Foundation-compatible UUID subset backed by native Windows GUID creation.
 public struct UUID: Equatable, Hashable, Sendable, CustomStringConvertible {
@@ -104,7 +98,7 @@ public struct UUID: Equatable, Hashable, Sendable, CustomStringConvertible {
     private static func makeNativeUUIDBytes() -> [UInt8] {
         #if os(Windows)
         var guid = WinFoundationGUID()
-        let result = WinFoundationCoCreateGuid(&guid)
+        let result = WFCoCreateGuid(&guid)
         if result == 0 {
             return [
                 UInt8((guid.data1 >> 24) & 0xFF),
@@ -131,7 +125,6 @@ public struct UUID: Equatable, Hashable, Sendable, CustomStringConvertible {
         ]
     }
 }
-
 extension UUID: Codable {
     /// Matches Apple Foundation's `UUID` coding exactly: a single-value container
     /// holding the uppercase `uuidString`. Because WinFoundation's `uuidString`
@@ -159,15 +152,3 @@ extension UUID: Codable {
         try container.encode(uuidString)
     }
 }
-
-#if os(Windows)
-private struct WinFoundationGUID {
-    var data1: UInt32 = 0
-    var data2: UInt16 = 0
-    var data3: UInt16 = 0
-    var data4: (UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8) = (0, 0, 0, 0, 0, 0, 0, 0)
-}
-
-@_silgen_name("CoCreateGuid")
-private func WinFoundationCoCreateGuid(_ guid: UnsafeMutablePointer<WinFoundationGUID>) -> Int32
-#endif

@@ -10,114 +10,174 @@ enum WinSVGPath {
     static func path(from d: String) -> NSBezierPath {
         let path = NSBezierPath()
         var scanner = Scanner(text: d)
-
-        var current = NSPoint(x: 0, y: 0)
-        var subpathStart = current
-        var lastControl: NSPoint?
-        var lastCommand: Character = " "
+        var state = PathState(path: path)
 
         while let command = scanner.nextCommand() {
             var cmd = command
             repeat {
-                switch cmd {
-                case "M", "m":
-                    guard let x = scanner.nextNumber(), let y = scanner.nextNumber() else { return path }
-                    current = cmd == "m" ? NSPoint(x: current.x + x, y: current.y + y) : NSPoint(x: x, y: y)
-                    path.move(to: current)
-                    subpathStart = current
-                    // Subsequent coordinate pairs are implicit linetos.
-                    cmd = cmd == "m" ? "l" : "L"
-                    lastControl = nil
-                case "L", "l":
-                    guard let x = scanner.nextNumber(), let y = scanner.nextNumber() else { return path }
-                    current = cmd == "l" ? NSPoint(x: current.x + x, y: current.y + y) : NSPoint(x: x, y: y)
-                    path.line(to: current)
-                    lastControl = nil
-                case "H", "h":
-                    guard let x = scanner.nextNumber() else { return path }
-                    current = NSPoint(x: cmd == "h" ? current.x + x : x, y: current.y)
-                    path.line(to: current)
-                    lastControl = nil
-                case "V", "v":
-                    guard let y = scanner.nextNumber() else { return path }
-                    current = NSPoint(x: current.x, y: cmd == "v" ? current.y + y : y)
-                    path.line(to: current)
-                    lastControl = nil
-                case "C", "c":
-                    guard let x1 = scanner.nextNumber(), let y1 = scanner.nextNumber(),
-                          let x2 = scanner.nextNumber(), let y2 = scanner.nextNumber(),
-                          let x = scanner.nextNumber(), let y = scanner.nextNumber() else { return path }
-                    let base = cmd == "c" ? current : NSPoint(x: 0, y: 0)
-                    let c1 = NSPoint(x: base.x + x1, y: base.y + y1)
-                    let c2 = NSPoint(x: base.x + x2, y: base.y + y2)
-                    let end = NSPoint(x: base.x + x, y: base.y + y)
-                    path.curve(to: end, controlPoint1: c1, controlPoint2: c2)
-                    lastControl = c2
-                    current = end
-                case "S", "s":
-                    guard let x2 = scanner.nextNumber(), let y2 = scanner.nextNumber(),
-                          let x = scanner.nextNumber(), let y = scanner.nextNumber() else { return path }
-                    let base = cmd == "s" ? current : NSPoint(x: 0, y: 0)
-                    let reflected: NSPoint
-                    if let lastControl, lastCommand == "C" || lastCommand == "c" || lastCommand == "S" || lastCommand == "s" {
-                        reflected = NSPoint(x: 2 * current.x - lastControl.x, y: 2 * current.y - lastControl.y)
-                    } else {
-                        reflected = current
-                    }
-                    let c2 = NSPoint(x: base.x + x2, y: base.y + y2)
-                    let end = NSPoint(x: base.x + x, y: base.y + y)
-                    path.curve(to: end, controlPoint1: reflected, controlPoint2: c2)
-                    lastControl = c2
-                    current = end
-                case "Q", "q":
-                    guard let qx = scanner.nextNumber(), let qy = scanner.nextNumber(),
-                          let x = scanner.nextNumber(), let y = scanner.nextNumber() else { return path }
-                    let base = cmd == "q" ? current : NSPoint(x: 0, y: 0)
-                    let q = NSPoint(x: base.x + qx, y: base.y + qy)
-                    let end = NSPoint(x: base.x + x, y: base.y + y)
-                    // Quadratic → cubic elevation.
-                    let c1 = NSPoint(x: current.x + 2 / 3 * (q.x - current.x), y: current.y + 2 / 3 * (q.y - current.y))
-                    let c2 = NSPoint(x: end.x + 2 / 3 * (q.x - end.x), y: end.y + 2 / 3 * (q.y - end.y))
-                    path.curve(to: end, controlPoint1: c1, controlPoint2: c2)
-                    lastControl = q
-                    current = end
-                case "A", "a":
-                    guard let rx = scanner.nextNumber(), let ry = scanner.nextNumber(),
-                          let rotation = scanner.nextNumber(),
-                          let largeArc = scanner.nextFlag(), let sweep = scanner.nextFlag(),
-                          let x = scanner.nextNumber(), let y = scanner.nextNumber() else { return path }
-                    let end = cmd == "a" ? NSPoint(x: current.x + x, y: current.y + y) : NSPoint(x: x, y: y)
-                    appendArc(to: path, from: current, to: end,
-                              rx: rx, ry: ry, rotationDegrees: rotation,
-                              largeArc: largeArc, sweep: sweep)
-                    current = end
-                    lastControl = nil
-                case "Z", "z":
-                    path.close()
-                    current = subpathStart
-                    lastControl = nil
-                default:
-                    return path
+                let applied: Bool
+                if "MmLlHhVv".contains(cmd) {
+                    applied = applyLinearCommand(&cmd, scanner: &scanner, state: &state)
+                } else if "CcSsQq".contains(cmd) {
+                    applied = applyCurveCommand(cmd, scanner: &scanner, state: &state)
+                } else if cmd == "A" || cmd == "a" {
+                    applied = applyArcCommand(cmd, scanner: &scanner, state: &state)
+                } else if cmd == "Z" || cmd == "z" {
+                    state.path.close()
+                    state.current = state.subpathStart
+                    state.lastControl = nil
+                    applied = true
+                } else {
+                    applied = false
                 }
-                lastCommand = cmd
+                guard applied else { return path }
+                state.lastCommand = cmd
             } while scanner.hasMoreNumbers() && cmd != "Z" && cmd != "z"
         }
 
         return path
     }
 
+    private struct PathState {
+        let path: NSBezierPath
+        var current = NSPoint(x: 0, y: 0)
+        var subpathStart = NSPoint(x: 0, y: 0)
+        var lastControl: NSPoint?
+        var lastCommand: Character = " "
+    }
+
+    private static func applyLinearCommand(
+        _ command: inout Character, scanner: inout Scanner, state: inout PathState
+    ) -> Bool {
+        switch command {
+        case "M", "m":
+            guard let point = scanner.nextPoint() else { return false }
+            state.current = absolutePoint(point, relative: command == "m", from: state.current)
+            state.path.move(to: state.current)
+            state.subpathStart = state.current
+            command = command == "m" ? "l" : "L"
+        case "L", "l":
+            guard let point = scanner.nextPoint() else { return false }
+            state.current = absolutePoint(point, relative: command == "l", from: state.current)
+            state.path.line(to: state.current)
+        case "H", "h":
+            guard let x = scanner.nextNumber() else { return false }
+            state.current.x = command == "h" ? state.current.x + x : x
+            state.path.line(to: state.current)
+        case "V", "v":
+            guard let y = scanner.nextNumber() else { return false }
+            state.current.y = command == "v" ? state.current.y + y : y
+            state.path.line(to: state.current)
+        default:
+            return false
+        }
+        state.lastControl = nil
+        return true
+    }
+
+    private static func applyCurveCommand(
+        _ command: Character, scanner: inout Scanner, state: inout PathState
+    ) -> Bool {
+        switch command {
+        case "C", "c": return applyCubicCommand(command, scanner: &scanner, state: &state)
+        case "S", "s": return applySmoothCommand(command, scanner: &scanner, state: &state)
+        case "Q", "q": return applyQuadraticCommand(command, scanner: &scanner, state: &state)
+        default: return false
+        }
+    }
+
+    private static func applyCubicCommand(
+        _ command: Character, scanner: inout Scanner, state: inout PathState
+    ) -> Bool {
+        guard let first = scanner.nextPoint(), let second = scanner.nextPoint(), let endpoint = scanner.nextPoint() else {
+            return false
+        }
+        let relative = command == "c"
+        let control1 = absolutePoint(first, relative: relative, from: state.current)
+        let control2 = absolutePoint(second, relative: relative, from: state.current)
+        let end = absolutePoint(endpoint, relative: relative, from: state.current)
+        state.path.curve(to: end, controlPoint1: control1, controlPoint2: control2)
+        state.lastControl = control2
+        state.current = end
+        return true
+    }
+
+    private static func applySmoothCommand(
+        _ command: Character, scanner: inout Scanner, state: inout PathState
+    ) -> Bool {
+        guard let second = scanner.nextPoint(), let endpoint = scanner.nextPoint() else { return false }
+        let relative = command == "s"
+        let control1 = reflectedControl(for: state)
+        let control2 = absolutePoint(second, relative: relative, from: state.current)
+        let end = absolutePoint(endpoint, relative: relative, from: state.current)
+        state.path.curve(to: end, controlPoint1: control1, controlPoint2: control2)
+        state.lastControl = control2
+        state.current = end
+        return true
+    }
+
+    private static func applyQuadraticCommand(
+        _ command: Character, scanner: inout Scanner, state: inout PathState
+    ) -> Bool {
+        guard let control = scanner.nextPoint(), let endpoint = scanner.nextPoint() else { return false }
+        let relative = command == "q"
+        let quadratic = absolutePoint(control, relative: relative, from: state.current)
+        let end = absolutePoint(endpoint, relative: relative, from: state.current)
+        let control1 = NSPoint(
+            x: state.current.x + 2 / 3 * (quadratic.x - state.current.x),
+            y: state.current.y + 2 / 3 * (quadratic.y - state.current.y)
+        )
+        let control2 = NSPoint(
+            x: end.x + 2 / 3 * (quadratic.x - end.x),
+            y: end.y + 2 / 3 * (quadratic.y - end.y)
+        )
+        state.path.curve(to: end, controlPoint1: control1, controlPoint2: control2)
+        state.lastControl = quadratic
+        state.current = end
+        return true
+    }
+
+    private static func applyArcCommand(
+        _ command: Character, scanner: inout Scanner, state: inout PathState
+    ) -> Bool {
+        guard let rx = scanner.nextNumber(), let ry = scanner.nextNumber(),
+              let rotation = scanner.nextNumber(),
+              let largeArc = scanner.nextFlag(), let sweep = scanner.nextFlag(),
+              let endpoint = scanner.nextPoint() else { return false }
+        let end = absolutePoint(endpoint, relative: command == "a", from: state.current)
+        let arc = ArcCommand(
+            start: state.current, end: end, radiusX: rx, radiusY: ry,
+            rotationDegrees: rotation, largeArc: largeArc, sweep: sweep
+        )
+        appendArc(to: state.path, command: arc)
+        state.current = end
+        state.lastControl = nil
+        return true
+    }
+
+    private static func absolutePoint(_ point: NSPoint, relative: Bool, from current: NSPoint) -> NSPoint {
+        relative ? NSPoint(x: current.x + point.x, y: current.y + point.y) : point
+    }
+
+    private static func reflectedControl(for state: PathState) -> NSPoint {
+        guard let control = state.lastControl, "CcSs".contains(state.lastCommand) else {
+            return state.current
+        }
+        return NSPoint(x: 2 * state.current.x - control.x, y: 2 * state.current.y - control.y)
+    }
+
     /// Converts one SVG elliptical arc into cubic Bézier segments
     /// (endpoint → center parameterization, W3C algorithm).
-    private static func appendArc(to path: NSBezierPath, from start: NSPoint, to end: NSPoint,
-                                  rx radiusX: Double, ry radiusY: Double, rotationDegrees: Double,
-                                  largeArc: Bool, sweep: Bool) {
-        var rx = abs(radiusX), ry = abs(radiusY)
+    private static func appendArc(to path: NSBezierPath, command: ArcCommand) {
+        let start = command.start
+        let end = command.end
+        var rx = abs(command.radiusX), ry = abs(command.radiusY)
         if rx == 0 || ry == 0 || (start.x == end.x && start.y == end.y) {
             path.line(to: end)
             return
         }
 
-        let phi = rotationDegrees * .pi / 180
+        let phi = command.rotationDegrees * .pi / 180
         let cosPhi = cos(phi), sinPhi = sin(phi)
 
         // Step 1: (x1', y1')
@@ -139,7 +199,7 @@ enum WinSVGPath {
         let numerator = max(0, rxSq * rySq - rxSq * y1p * y1p - rySq * x1p * x1p)
         let denominator = rxSq * y1p * y1p + rySq * x1p * x1p
         var coefficient = denominator == 0 ? 0 : (numerator / denominator).squareRoot()
-        if largeArc == sweep {
+        if command.largeArc == command.sweep {
             coefficient = -coefficient
         }
         let cxp = coefficient * rx * y1p / ry
@@ -149,24 +209,32 @@ enum WinSVGPath {
         let cx = cosPhi * cxp - sinPhi * cyp + (Double(start.x) + Double(end.x)) / 2
         let cy = sinPhi * cxp + cosPhi * cyp + (Double(start.y) + Double(end.y)) / 2
 
-        // Step 4: angles
-        func angle(_ ux: Double, _ uy: Double, _ vx: Double, _ vy: Double) -> Double {
-            let dot = ux * vx + uy * vy
-            let length = ((ux * ux + uy * uy) * (vx * vx + vy * vy)).squareRoot()
-            guard length > 0 else { return 0 }
-            var value = acos(min(1, max(-1, dot / length)))
-            if ux * vy - uy * vx < 0 {
-                value = -value
-            }
-            return value
-        }
-        let startAngle = angle(1, 0, (x1p - cxp) / rx, (y1p - cyp) / ry)
-        var sweepAngle = angle((x1p - cxp) / rx, (y1p - cyp) / ry, (-x1p - cxp) / rx, (-y1p - cyp) / ry)
-        if !sweep, sweepAngle > 0 {
+        let startAngle = vectorAngle(x: 1, y: 0, toX: (x1p - cxp) / rx, toY: (y1p - cyp) / ry)
+        var sweepAngle = vectorAngle(
+            x: (x1p - cxp) / rx, y: (y1p - cyp) / ry,
+            toX: (-x1p - cxp) / rx, toY: (-y1p - cyp) / ry
+        )
+        if !command.sweep, sweepAngle > 0 {
             sweepAngle -= 2 * .pi
-        } else if sweep, sweepAngle < 0 {
+        } else if command.sweep, sweepAngle < 0 {
             sweepAngle += 2 * .pi
         }
+
+        let geometry = ArcGeometry(rx: rx, ry: ry, cx: cx, cy: cy, cosPhi: cosPhi, sinPhi: sinPhi)
+        appendArcSegments(to: path, geometry: geometry, startAngle: startAngle, sweepAngle: sweepAngle)
+    }
+
+    private static func vectorAngle(x: Double, y: Double, toX: Double, toY: Double) -> Double {
+        let dot = x * toX + y * toY
+        let length = ((x * x + y * y) * (toX * toX + toY * toY)).squareRoot()
+        guard length > 0 else { return 0 }
+        let magnitude = acos(min(1, max(-1, dot / length)))
+        return x * toY - y * toX < 0 ? -magnitude : magnitude
+    }
+
+    private static func appendArcSegments(
+        to path: NSBezierPath, geometry: ArcGeometry, startAngle: Double, sweepAngle: Double
+    ) {
 
         // Split into ≤90° segments, each as one cubic.
         let segmentCount = max(1, Int(ceil(abs(sweepAngle) / (.pi / 2))))
@@ -179,24 +247,47 @@ enum WinSVGPath {
             let angleNext = angleCursor + delta
             let cos2 = cos(angleNext), sin2 = sin(angleNext)
 
-            func onEllipse(_ c: Double, _ s: Double) -> NSPoint {
-                NSPoint(
-                    x: cx + rx * c * cosPhi - ry * s * sinPhi,
-                    y: cy + rx * c * sinPhi + ry * s * cosPhi
-                )
-            }
-            func derivative(_ c: Double, _ s: Double) -> (Double, Double) {
-                (-rx * s * cosPhi - ry * c * sinPhi, -rx * s * sinPhi + ry * c * cosPhi)
-            }
-
-            let p1 = onEllipse(cos1, sin1)
-            let p2 = onEllipse(cos2, sin2)
-            let d1 = derivative(cos1, sin1)
-            let d2 = derivative(cos2, sin2)
-            let control1 = NSPoint(x: Double(p1.x) + t * d1.0, y: Double(p1.y) + t * d1.1)
-            let control2 = NSPoint(x: Double(p2.x) - t * d2.0, y: Double(p2.y) - t * d2.1)
+            let p1 = geometry.point(cosine: cos1, sine: sin1)
+            let p2 = geometry.point(cosine: cos2, sine: sin2)
+            let d1 = geometry.derivative(cosine: cos1, sine: sin1)
+            let d2 = geometry.derivative(cosine: cos2, sine: sin2)
+            let control1 = NSPoint(x: Double(p1.x) + t * d1.x, y: Double(p1.y) + t * d1.y)
+            let control2 = NSPoint(x: Double(p2.x) - t * d2.x, y: Double(p2.y) - t * d2.y)
             path.curve(to: p2, controlPoint1: control1, controlPoint2: control2)
             angleCursor = angleNext
+        }
+    }
+
+    private struct ArcCommand {
+        let start: NSPoint
+        let end: NSPoint
+        let radiusX: Double
+        let radiusY: Double
+        let rotationDegrees: Double
+        let largeArc: Bool
+        let sweep: Bool
+    }
+
+    private struct ArcGeometry {
+        let rx: Double
+        let ry: Double
+        let cx: Double
+        let cy: Double
+        let cosPhi: Double
+        let sinPhi: Double
+
+        func point(cosine: Double, sine: Double) -> NSPoint {
+            NSPoint(
+                x: cx + rx * cosine * cosPhi - ry * sine * sinPhi,
+                y: cy + rx * cosine * sinPhi + ry * sine * cosPhi
+            )
+        }
+
+        func derivative(cosine: Double, sine: Double) -> NSPoint {
+            NSPoint(
+                x: -rx * sine * cosPhi - ry * cosine * sinPhi,
+                y: -rx * sine * sinPhi + ry * cosine * cosPhi
+            )
         }
     }
 
@@ -250,6 +341,13 @@ enum WinSVGPath {
                 index += 1
             }
             return Double(text)
+        }
+
+        mutating func nextPoint() -> NSPoint? {
+            guard let x = nextNumber(), let y = nextNumber() else {
+                return nil
+            }
+            return NSPoint(x: x, y: y)
         }
 
         /// Arc flags are single `0`/`1` digits that may be run together.

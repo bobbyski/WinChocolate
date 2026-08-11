@@ -118,6 +118,9 @@ struct JSONParser {
         }
         let byte = bytes[index]
         index += 1
+        if byte == 0x75 {
+            return try parseUnicodeEscape()
+        }
         switch byte {
         case 0x22: return "\""
         case 0x5C: return "\\"
@@ -127,7 +130,6 @@ struct JSONParser {
         case 0x6E: return "\n"
         case 0x72: return "\r"
         case 0x74: return "\t"
-        case 0x75: return try parseUnicodeEscape()
         default:
             throw ParseError(message: "Invalid escape '\\\(Character(Unicode.Scalar(byte)))'.")
         }
@@ -231,15 +233,7 @@ struct JSONParser {
     /// width, so raw multibyte text inside strings is preserved exactly.
     private func decodeUTF8(at offset: Int) throws -> (Unicode.Scalar, Int) {
         let first = bytes[offset]
-        let width: Int
-        switch first {
-        case 0x00...0x7F: width = 1
-        case 0xC0...0xDF: width = 2
-        case 0xE0...0xEF: width = 3
-        case 0xF0...0xF7: width = 4
-        default:
-            throw ParseError(message: "Invalid UTF-8 lead byte.")
-        }
+        let width = try utf8Width(for: first)
         guard offset + width <= bytes.count else {
             throw ParseError(message: "Truncated UTF-8 sequence.")
         }
@@ -249,6 +243,17 @@ struct JSONParser {
         case .scalarValue(let scalar): return (scalar, width)
         default:
             throw ParseError(message: "Invalid UTF-8 sequence.")
+        }
+    }
+
+    private func utf8Width(for first: UInt8) throws -> Int {
+        switch first {
+        case 0x00...0x7F: return 1
+        case 0xC0...0xDF: return 2
+        case 0xE0...0xEF: return 3
+        case 0xF0...0xF7: return 4
+        default:
+            throw ParseError(message: "Invalid UTF-8 lead byte.")
         }
     }
 }

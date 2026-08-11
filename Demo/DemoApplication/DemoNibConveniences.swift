@@ -48,17 +48,13 @@ func installDemoNibPanel() {
     // xib); the Chocolate frameworks read the Interface Builder XML directly.
     // Same code path: take the compiled document when present, the source
     // document otherwise — a file-presence check, not a platform check.
-    var nibPath = demoResourcePath(named: "DemoNibPanel", ofType: "nib")
-    if !FileManager.default.fileExists(atPath: nibPath) {
-        nibPath = demoResourcePath(named: "DemoNibPanel", ofType: "xib")
-    }
-    guard let nibData = try? Data(contentsOf: URL(fileURLWithPath: nibPath)) else {
-        nibStatusLabel.stringValue = "DemoNibPanel not found at \(nibPath)."
+    guard let loadedNib = loadDemoNibData() else {
         return
     }
+    let nibPath = loadedNib.path
 
     var topLevel: NSArray?
-    let nib = NSNib(nibData: nibData, bundle: nil)
+    let nib = NSNib(nibData: loadedNib.data, bundle: nil)
     guard nib.instantiate(withOwner: nil, topLevelObjects: &topLevel),
           let panel = topLevel?.compactMap({ $0 as? NSView }).first else {
         nibStatusLabel.stringValue = "DemoNibPanel failed to instantiate."
@@ -112,4 +108,17 @@ func installDemoNibPanel() {
     let wired = ["nibButton", "nibShowButton", "nibSlider", "nibField", "nibCheck", "nibPopup", "nibCountLabel"]
         .filter { demoNibView($0, under: panel) != nil }
     nibStatusLabel.stringValue = "Instantiated \(topLevel?.count ?? 0) top-level object(s) from \(nibPath.hasSuffix("nib") ? "the compiled nib" : "the xib"); \(wired.count)/7 controls resolved by identifier: \(wired.joined(separator: ", "))"
+}
+
+@MainActor
+private func loadDemoNibData() -> (path: String, data: Data)? {
+    var path = demoResourcePath(named: "DemoNibPanel", ofType: "nib")
+    if !FileManager.default.fileExists(atPath: path) {
+        path = demoResourcePath(named: "DemoNibPanel", ofType: "xib")
+    }
+    guard let data = try? Data(contentsOf: URL(fileURLWithPath: path)) else {
+        nibStatusLabel.stringValue = "DemoNibPanel not found at \(path)."
+        return nil
+    }
+    return (path, data)
 }

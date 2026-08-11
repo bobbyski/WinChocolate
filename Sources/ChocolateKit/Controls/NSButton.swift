@@ -439,96 +439,17 @@ open class NSButton: NSControl {
             return
         }
 
-        switch bezelStyle {
-        case .disclosure, .roundedDisclosure:
-            drawDisclosureBezel()
-        case .circular:
-            drawCircularBezel()
-        case .recessed:
-            drawRecessedBezel()
-        case .inline:
-            drawInlineBezel()
-        default:
-            break
-        }
-    }
-
-    /// A disclosure triangle (right closed / down open), optionally framed.
-    private func drawDisclosureBezel() {
-        if bezelStyle == .roundedDisclosure {
-            let bezel = NSBezierPath(roundedRect: bounds.insetBy(dx: 1, dy: 1), xRadius: 3, yRadius: 3)
-            NSColor.separatorColor.setStroke()
-            bezel.stroke()
-        }
-
-        let vertices = NSButton.winDisclosureTriangle(in: bounds, isOpen: state == .on)
-        let triangle = NSBezierPath()
-        triangle.move(to: vertices[0])
-        triangle.line(to: vertices[1])
-        triangle.line(to: vertices[2])
-        triangle.close()
-        (isEnabled ? NSColor.labelColor : NSColor.tertiaryLabelColor).setFill()
-        triangle.fill()
-    }
-
-    /// A round button: a filled disc with a hairline ring and centered title.
-    private func drawCircularBezel() {
-        let diameter = min(bounds.size.width, bounds.size.height) - 2
-        let disc = NSRect(
-            x: bounds.origin.x + (bounds.size.width - diameter) / 2,
-            y: bounds.origin.y + (bounds.size.height - diameter) / 2,
-            width: diameter,
-            height: diameter
+        NSButtonBezelRenderer.draw(
+            NSButtonBezelDrawing(
+                bounds: bounds,
+                title: displayedTitle,
+                font: font ?? NSFont.systemFont(ofSize: 12),
+                isEnabled: isEnabled,
+                isDark: effectiveAppearance.winIsDark,
+                style: bezelStyle,
+                state: state
+            )
         )
-        let path = NSBezierPath(ovalIn: disc)
-        NSButton.winBezelFaceColor(isDark: effectiveAppearance.winIsDark).setFill()
-        path.fill()
-        NSColor.separatorColor.setStroke()
-        path.stroke()
-        drawCenteredBezelTitle(color: isEnabled ? .labelColor : .tertiaryLabelColor)
-    }
-
-    /// A recessed toggle: subtle when off, accent-filled with light text when on.
-    private func drawRecessedBezel() {
-        let rect = bounds.insetBy(dx: 1, dy: 1)
-        let path = NSBezierPath(roundedRect: rect, xRadius: 4, yRadius: 4)
-        if state == .on {
-            NSColor.controlAccentColor.setFill()
-            path.fill()
-            drawCenteredBezelTitle(color: .white)
-        } else {
-            NSButton.winBezelFaceColor(isDark: effectiveAppearance.winIsDark).setFill()
-            path.fill()
-            drawCenteredBezelTitle(color: isEnabled ? .labelColor : .tertiaryLabelColor)
-        }
-    }
-
-    /// An inline pill: a filled capsule badge with centered text.
-    private func drawInlineBezel() {
-        let rect = bounds.insetBy(dx: 1, dy: 1)
-        let radius = rect.size.height / 2
-        let path = NSBezierPath(roundedRect: rect, xRadius: radius, yRadius: radius)
-        NSButton.winInlineBadgeColor(isDark: effectiveAppearance.winIsDark).setFill()
-        path.fill()
-        drawCenteredBezelTitle(color: isEnabled ? .labelColor : .tertiaryLabelColor)
-    }
-
-    /// Draws the button's displayed title centered in its bounds.
-    private func drawCenteredBezelTitle(color: NSColor) {
-        let text = displayedTitle
-        guard !text.isEmpty else {
-            return
-        }
-        let attributes: [NSAttributedString.Key: Any] = [
-            .foregroundColor: color,
-            .font: font ?? NSFont.systemFont(ofSize: 12)
-        ]
-        let size = text.size(withAttributes: attributes)
-        let origin = NSPoint(
-            x: bounds.origin.x + (bounds.size.width - size.width) / 2,
-            y: bounds.origin.y + (bounds.size.height - size.height) / 2
-        )
-        text.draw(at: origin, withAttributes: attributes)
     }
 
     /// The neutral face fill of a framework-drawn button, light or dark. Pure/testable.
@@ -583,6 +504,93 @@ open class NSButton: NSControl {
     }
 }
 
+private struct NSButtonBezelDrawing {
+    let bounds: NSRect
+    let title: String
+    let font: NSFont
+    let isEnabled: Bool
+    let isDark: Bool
+    let style: NSButton.BezelStyle
+    let state: NSButton.StateValue
+}
+
+private enum NSButtonBezelRenderer {
+    static func draw(_ drawing: NSButtonBezelDrawing) {
+        switch drawing.style {
+        case .disclosure, .roundedDisclosure: drawDisclosure(drawing)
+        case .circular: drawCircular(drawing)
+        case .recessed: drawRecessed(drawing)
+        case .inline: drawInline(drawing)
+        default: break
+        }
+    }
+
+    private static func drawDisclosure(_ drawing: NSButtonBezelDrawing) {
+        if drawing.style == .roundedDisclosure {
+            let bezel = NSBezierPath(roundedRect: drawing.bounds.insetBy(dx: 1, dy: 1), xRadius: 3, yRadius: 3)
+            NSColor.separatorColor.setStroke()
+            bezel.stroke()
+        }
+        let vertices = NSButton.winDisclosureTriangle(in: drawing.bounds, isOpen: drawing.state == .on)
+        let triangle = NSBezierPath()
+        triangle.move(to: vertices[0])
+        triangle.line(to: vertices[1])
+        triangle.line(to: vertices[2])
+        triangle.close()
+        (drawing.isEnabled ? NSColor.labelColor : NSColor.tertiaryLabelColor).setFill()
+        triangle.fill()
+    }
+
+    private static func drawCircular(_ drawing: NSButtonBezelDrawing) {
+        let diameter = min(drawing.bounds.size.width, drawing.bounds.size.height) - 2
+        let disc = NSRect(
+            x: drawing.bounds.origin.x + (drawing.bounds.size.width - diameter) / 2,
+            y: drawing.bounds.origin.y + (drawing.bounds.size.height - diameter) / 2,
+            width: diameter,
+            height: diameter
+        )
+        let path = NSBezierPath(ovalIn: disc)
+        NSButton.winBezelFaceColor(isDark: drawing.isDark).setFill()
+        path.fill()
+        NSColor.separatorColor.setStroke()
+        path.stroke()
+        drawTitle(drawing, color: drawing.isEnabled ? .labelColor : .tertiaryLabelColor)
+    }
+
+    private static func drawRecessed(_ drawing: NSButtonBezelDrawing) {
+        let path = NSBezierPath(roundedRect: drawing.bounds.insetBy(dx: 1, dy: 1), xRadius: 4, yRadius: 4)
+        if drawing.state == .on {
+            NSColor.controlAccentColor.setFill()
+            path.fill()
+            drawTitle(drawing, color: .white)
+        } else {
+            NSButton.winBezelFaceColor(isDark: drawing.isDark).setFill()
+            path.fill()
+            drawTitle(drawing, color: drawing.isEnabled ? .labelColor : .tertiaryLabelColor)
+        }
+    }
+
+    private static func drawInline(_ drawing: NSButtonBezelDrawing) {
+        let rect = drawing.bounds.insetBy(dx: 1, dy: 1)
+        let path = NSBezierPath(roundedRect: rect, xRadius: rect.size.height / 2, yRadius: rect.size.height / 2)
+        NSButton.winInlineBadgeColor(isDark: drawing.isDark).setFill()
+        path.fill()
+        drawTitle(drawing, color: drawing.isEnabled ? .labelColor : .tertiaryLabelColor)
+    }
+
+    private static func drawTitle(_ drawing: NSButtonBezelDrawing, color: NSColor) {
+        guard !drawing.title.isEmpty else { return }
+        let attributes: [NSAttributedString.Key: Any] = [.foregroundColor: color, .font: drawing.font]
+        let size = drawing.title.size(withAttributes: attributes)
+        let origin = NSPoint(
+            x: drawing.bounds.origin.x + (drawing.bounds.size.width - size.width) / 2,
+            y: drawing.bounds.origin.y + (drawing.bounds.size.height - size.height) / 2
+        )
+        drawing.title.draw(at: origin, withAttributes: attributes)
+    }
+}
+
+/// AppKit-compatible convenience initializers for common button styles.
 public extension NSButton {
     /// Creates a standard push button, matching AppKit's convenience shape.
     /// The action selector dispatches to the target on click, as in AppKit.

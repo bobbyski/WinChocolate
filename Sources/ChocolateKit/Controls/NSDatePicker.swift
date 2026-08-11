@@ -311,14 +311,6 @@ open class NSDatePicker: NSControl {
         "'" + text.replacingOccurrences(of: "'", with: "''") + "'"
     }
 
-    private func applyDatePickerFormat() {
-        guard let nativeHandle else {
-            return
-        }
-
-        realizedBackend?.setDatePickerFormat(nativeDateFormat, for: nativeHandle)
-    }
-
     /// Creates a date picker with the current date.
     public required init(frame frameRect: NSRect) {
         self.dateValue = Date()
@@ -338,7 +330,16 @@ open class NSDatePicker: NSControl {
 
     /// Creates the native date picker peer.
     open override func createNativePeer(in backend: NativeControlBackend, parent: NativeHandle?) -> NativeHandle {
-        backend.createDatePicker(date: dateValue, minDate: minDate, maxDate: maxDate, style: datePickerStyle, frame: frame, parent: parent)
+        backend.createDatePicker(
+            configuration: NativeDatePickerConfiguration(
+                date: dateValue,
+                minDate: minDate,
+                maxDate: maxDate,
+                style: datePickerStyle
+            ),
+            frame: frame,
+            parent: parent
+        )
     }
 
     /// Wires native date change notifications into the control action path.
@@ -381,22 +382,22 @@ open class NSDatePicker: NSControl {
         return formatter.string(from: dateValue)
     }
 
-    private func syncNativeDate() {
-        guard let nativeHandle else {
-            return
-        }
+}
 
+private extension NSDatePicker {
+    func applyDatePickerFormat() {
+        guard let nativeHandle else { return }
+        realizedBackend?.setDatePickerFormat(nativeDateFormat, for: nativeHandle)
+    }
+
+    func syncNativeDate() {
+        guard let nativeHandle else { return }
         realizedBackend?.setDatePickerDate(dateValue, minDate: minDate, maxDate: maxDate, for: nativeHandle)
     }
 
-    private func clampedDate(_ date: Date) -> Date {
-        if let minDate, date < minDate {
-            return minDate
-        }
-        if let maxDate, date > maxDate {
-            return maxDate
-        }
+    func clampedDate(_ date: Date) -> Date {
+        if let minDate, date < minDate { return minDate }
+        if let maxDate, date > maxDate { return maxDate }
         return date
     }
-
 }

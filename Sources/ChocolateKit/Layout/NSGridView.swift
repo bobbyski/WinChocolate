@@ -168,21 +168,21 @@ open class NSGridView: NSView {
     /// Space between adjacent columns.
     open var columnSpacing: CGFloat = 8 { didSet { relayout() } }
 
-    private var columns: [NSGridColumn] = []
-    private var rows: [NSGridRow] = []
+    var columns: [NSGridColumn] = []
+    var rows: [NSGridRow] = []
 
     /// A rectangular block of merged cells: the top-left cell's content spans
     /// the whole block; the other cells are covered (empty).
-    private struct MergedRegion {
+    struct MergedRegion {
         var columns: Range<Int>
         var rows: Range<Int>
         var headRow: Int { rows.lowerBound }
         var headColumn: Int { columns.lowerBound }
         func covers(row: Int, column: Int) -> Bool { rows.contains(row) && columns.contains(column) }
     }
-    private var mergedRegions: [MergedRegion] = []
+    var mergedRegions: [MergedRegion] = []
     /// Cells indexed `[rowIndex][columnIndex]`.
-    private var cells: [[NSGridCell]] = []
+    var cells: [[NSGridCell]] = []
 
     /// Creates an empty grid view with the supplied frame.
     public required init(frame frameRect: NSRect) {
@@ -333,106 +333,6 @@ open class NSGridView: NSView {
     }
 
     /// The merged region covering a cell, if any.
-    private func mergedRegion(row: Int, column: Int) -> MergedRegion? {
-        mergedRegions.first { $0.covers(row: row, column: column) }
-    }
-
-    private func ensureColumnCount(_ count: Int) {
-        while columns.count < count {
-            let column = NSGridColumn()
-            column.gridView = self
-            columns.append(column)
-            for row in cells.indices {
-                let cell = NSGridCell(contentView: nil)
-                cell.owner = self
-                cell.row = rows[row]
-                cell.column = column
-                cells[row].append(cell)
-            }
-        }
-    }
-
-    private func ensureRowCount(_ count: Int) {
-        while rows.count < count {
-            let row = NSGridRow()
-            row.gridView = self
-            rows.append(row)
-            var rowCells: [NSGridCell] = []
-            for column in columns {
-                let cell = NSGridCell(contentView: nil)
-                cell.owner = self
-                cell.row = row
-                cell.column = column
-                rowCells.append(cell)
-            }
-            cells.append(rowCells)
-        }
-    }
-
-    private func reindex() {
-        for (i, row) in rows.enumerated() { row.index = i }
-        for (j, column) in columns.enumerated() { column.index = j }
-    }
-
-    private func relayout() {
-        invalidateIntrinsicContentSize()
-        winSetNeedsLayout()
-    }
-
-    // MARK: - Sizing + layout
-
-    /// A cell's content size for measuring: its intrinsic size per axis where it
-    /// has one, else its current frame size (0 for an empty cell).
-    private func contentSize(_ cell: NSGridCell) -> NSSize {
-        guard let view = cell.contentView else { return .zero }
-        let intrinsic = view.intrinsicContentSize
-        let width = intrinsic.width == NSView.noIntrinsicMetric ? view.frame.size.width : intrinsic.width
-        let height = intrinsic.height == NSView.noIntrinsicMetric ? view.frame.size.height : intrinsic.height
-        return NSSize(width: width, height: height)
-    }
-
-    private var visibleColumns: [Int] { columns.indices.filter { !columns[$0].isHidden } }
-    private var visibleRows: [Int] { rows.indices.filter { !rows[$0].isHidden } }
-
-    /// Column widths, indexed by column index (hidden columns get 0). Cells in a
-    /// merged region are excluded — a spanning cell doesn't dictate any single
-    /// column's width; it just fills whatever the spanned columns become.
-    private func columnWidths() -> [CGFloat] {
-        columns.indices.map { c in
-            guard !columns[c].isHidden else { return 0 }
-            if columns[c].width != NSGridView.sizedForContent {
-                return columns[c].width
-            }
-            // A cell that spans more than one column can't size a single column
-            // (its width belongs to the whole span), so it's excluded here; a
-            // cell merged only vertically still contributes its width.
-            let content = visibleRows.compactMap { r -> CGFloat? in
-                if let region = mergedRegion(row: r, column: c), region.columns.count > 1 { return nil }
-                return contentSize(cells[r][c]).width
-            }.max() ?? 0
-            return content + columns[c].leadingPadding + columns[c].trailingPadding
-        }
-    }
-
-    /// Row heights, indexed by row index (hidden rows get 0). Merged cells are
-    /// excluded (see `columnWidths`).
-    private func rowHeights() -> [CGFloat] {
-        rows.indices.map { r in
-            guard !rows[r].isHidden else { return 0 }
-            if rows[r].height != NSGridView.sizedForContent {
-                return rows[r].height
-            }
-            // Excluded only when the cell spans more than one row (its height
-            // belongs to the whole vertical span); a horizontally-merged header
-            // still sizes the row it heads.
-            let content = visibleColumns.compactMap { c -> CGFloat? in
-                if let region = mergedRegion(row: r, column: c), region.rows.count > 1 { return nil }
-                return contentSize(cells[r][c]).height
-            }.max() ?? 0
-            return content + rows[r].topPadding + rows[r].bottomPadding
-        }
-    }
-
     /// The size required by the grid's rows, columns, spacing, and padding.
     open override var intrinsicContentSize: NSSize {
         let widths = columnWidths()
@@ -447,150 +347,7 @@ open class NSGridView: NSView {
 
     /// Arranges grid cells using the current row and column metrics.
     open override func layout() {
-        var widths = columnWidths()
-        var heights = rowHeights()
-
-        // An over-sized grid distributes its extra space equally to the
-        // content-sized tracks (explicit-width/height tracks keep their size),
-        // so a grid pinned larger than its fitting size fills the frame —
-        // matching AppKit's constraint-driven stretching. The fitting
-        // (intrinsic) size is unaffected.
-        let fittingWidth = visibleColumns.reduce(0) { $0 + widths[$1] }
-            + columnSpacing * CGFloat(max(visibleColumns.count - 1, 0))
-        let extraWidth = bounds.size.width - fittingWidth
-        if extraWidth > 0 {
-            let stretchable = visibleColumns.filter { columns[$0].width == NSGridView.sizedForContent }
-            if !stretchable.isEmpty {
-                let share = extraWidth / CGFloat(stretchable.count)
-                for c in stretchable { widths[c] += share }
-            }
-        }
-        let fittingHeight = visibleRows.reduce(0) { $0 + heights[$1] }
-            + rowSpacing * CGFloat(max(visibleRows.count - 1, 0))
-        let extraHeight = bounds.size.height - fittingHeight
-        if extraHeight > 0 {
-            let stretchable = visibleRows.filter { rows[$0].height == NSGridView.sizedForContent }
-            if !stretchable.isEmpty {
-                let share = extraHeight / CGFloat(stretchable.count)
-                for r in stretchable { heights[r] += share }
-            }
-        }
-
-        // Column x-origins (left to right, skipping hidden columns).
-        var columnX = [CGFloat](repeating: 0, count: columns.count)
-        var x: CGFloat = 0
-        for c in visibleColumns {
-            columnX[c] = x
-            x += widths[c] + columnSpacing
-        }
-        // Row y-origins (top to bottom, flipped coordinates).
-        var rowY = [CGFloat](repeating: 0, count: rows.count)
-        var y: CGFloat = 0
-        for r in visibleRows {
-            rowY[r] = y
-            y += heights[r] + rowSpacing
-        }
-
-        for r in visibleRows {
-            // Baseline row alignment (row overrides grid; `.inherited` falls
-            // through): the row's cell contents hang from a common baseline
-            // computed from each view's `baselineOffsetFromBottom`. A cell's
-            // own explicit `yPlacement` still wins.
-            let effectiveAlignment = rows[r].rowAlignment == .inherited ? rowAlignment : rows[r].rowAlignment
-            let alignsBaselines = effectiveAlignment == .firstBaseline || effectiveAlignment == .lastBaseline
-            var rowBaseline: CGFloat = 0
-            if alignsBaselines {
-                for c in visibleColumns where mergedRegion(row: r, column: c) == nil {
-                    guard let content = cells[r][c].contentView else { continue }
-                    let size = contentSize(cell: content)
-                    rowBaseline = max(rowBaseline, size.height - content.baselineOffsetFromBottom)
-                }
-            }
-            for c in visibleColumns {
-                // A merged region is laid out once, at its head cell; other
-                // covered cells are skipped.
-                if let region = mergedRegion(row: r, column: c) {
-                    guard r == region.headRow, c == region.headColumn else { continue }
-                    let cell = cells[r][c]
-                    guard let content = cell.contentView else { continue }
-                    let firstCol = region.columns.lowerBound
-                    let lastCol = region.columns.upperBound - 1
-                    let firstRow = region.rows.lowerBound
-                    let lastRow = region.rows.upperBound - 1
-                    let left = columnX[firstCol] + columns[firstCol].leadingPadding
-                    let right = columnX[lastCol] + widths[lastCol] - columns[lastCol].trailingPadding
-                    let top = rowY[firstRow] + rows[firstRow].topPadding
-                    let bottom = rowY[lastRow] + heights[lastRow] - rows[lastRow].bottomPadding
-                    let spanRect = NSRect(x: left, y: top, width: max(right - left, 0), height: max(bottom - top, 0))
-                    content.frame = placeContent(content, in: spanRect,
-                                                 x: resolvedX(cell), y: resolvedY(cell))
-                    continue
-                }
-                let cell = cells[r][c]
-                guard let content = cell.contentView else { continue }
-                let cellRect = NSRect(x: columnX[c] + columns[c].leadingPadding,
-                                      y: rowY[r] + rows[r].topPadding,
-                                      width: max(widths[c] - columns[c].leadingPadding - columns[c].trailingPadding, 0),
-                                      height: max(heights[r] - rows[r].topPadding - rows[r].bottomPadding, 0))
-                var frame = placeContent(content, in: cellRect,
-                                         x: resolvedX(cell), y: resolvedY(cell))
-                if alignsBaselines, cell.yPlacement == .inherited {
-                    frame.origin.y = cellRect.origin.y + rowBaseline
-                        - (frame.size.height - content.baselineOffsetFromBottom)
-                }
-                content.frame = frame
-            }
-        }
+        winLayoutGrid()
     }
 
-    private func resolvedX(_ cell: NSGridCell) -> NSGridCell.Placement {
-        for value in [cell.xPlacement, cell.column?.xPlacement ?? .inherited, xPlacement] where value != .inherited {
-            return value
-        }
-        return .leading
-    }
-
-    private func resolvedY(_ cell: NSGridCell) -> NSGridCell.Placement {
-        for value in [cell.yPlacement, cell.row?.yPlacement ?? .inherited, yPlacement] where value != .inherited {
-            return value
-        }
-        return .center
-    }
-
-    private func placeContent(_ view: NSView, in cell: NSRect, x: NSGridCell.Placement, y: NSGridCell.Placement) -> NSRect {
-        let size = contentSize(cell: view)
-        var frame = NSRect(origin: cell.origin, size: size)
-
-        switch x {
-        case .fill:
-            frame.origin.x = cell.origin.x
-            frame.size.width = cell.size.width
-        case .trailing:
-            frame.origin.x = cell.origin.x + cell.size.width - size.width
-        case .center:
-            frame.origin.x = cell.origin.x + (cell.size.width - size.width) / 2
-        default: // .leading, .none, .top, .bottom, .inherited
-            frame.origin.x = cell.origin.x
-        }
-
-        switch y {
-        case .fill:
-            frame.origin.y = cell.origin.y
-            frame.size.height = cell.size.height
-        case .bottom:
-            frame.origin.y = cell.origin.y + cell.size.height - size.height
-        case .center:
-            frame.origin.y = cell.origin.y + (cell.size.height - size.height) / 2
-        default: // .top, .leading, .none, .trailing, .inherited
-            frame.origin.y = cell.origin.y
-        }
-        return frame
-    }
-
-    private func contentSize(cell view: NSView) -> NSSize {
-        let intrinsic = view.intrinsicContentSize
-        let width = intrinsic.width == NSView.noIntrinsicMetric ? view.frame.size.width : intrinsic.width
-        let height = intrinsic.height == NSView.noIntrinsicMetric ? view.frame.size.height : intrinsic.height
-        return NSSize(width: width, height: height)
-    }
 }

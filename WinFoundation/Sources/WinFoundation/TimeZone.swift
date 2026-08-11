@@ -226,21 +226,15 @@ enum WinCivilTime {
 
     /// Joins a wall clock back into seconds since the epoch.
     static func epoch(from parts: Parts) -> Int {
-        epoch(year: parts.year, month: parts.month, day: parts.day,
-              hour: parts.hour, minute: parts.minute, second: parts.second)
-    }
-
-    /// Joins wall-clock fields back into seconds since the epoch.
-    static func epoch(year: Int, month: Int, day: Int, hour: Int, minute: Int, second: Int) -> Int {
-        var adjustedYear = year
-        adjustedYear -= month <= 2 ? 1 : 0
+        var adjustedYear = parts.year
+        adjustedYear -= parts.month <= 2 ? 1 : 0
         let era = (adjustedYear >= 0 ? adjustedYear : adjustedYear - 399) / 400
         let yoe = adjustedYear - era * 400
-        let adjustedMonth = month + (month > 2 ? -3 : 9)
-        let doy = (153 * adjustedMonth + 2) / 5 + day - 1
+        let adjustedMonth = parts.month + (parts.month > 2 ? -3 : 9)
+        let doy = (153 * adjustedMonth + 2) / 5 + parts.day - 1
         let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy
         let days = era * 146_097 + doe - 719_468
-        return days * 86_400 + hour * 3_600 + minute * 60 + second
+        return days * 86_400 + parts.hour * 3_600 + parts.minute * 60 + parts.second
     }
 }
 
@@ -265,8 +259,11 @@ enum WinTimeZone {
         guard WinFoundationSystemTimeToTzSpecificLocalTime(nil, &utc, &local) != 0 else {
             return 0
         }
-        let localSeconds = WinCivilTime.epoch(year: Int(local.year), month: Int(local.month), day: Int(local.day),
-                                              hour: Int(local.hour), minute: Int(local.minute), second: Int(local.second))
+        let localParts = WinCivilTime.Parts(
+            year: Int(local.year), month: Int(local.month), day: Int(local.day),
+            hour: Int(local.hour), minute: Int(local.minute), second: Int(local.second), weekday: 0
+        )
+        let localSeconds = WinCivilTime.epoch(from: localParts)
         return localSeconds - utcSeconds
         #else
         _ = date
@@ -281,8 +278,10 @@ enum WinTimeZone {
     /// the larger offset is the daylight one in either hemisphere.
     static func yearOffsets(around date: Date) -> (standard: Int, daylight: Int) {
         let year = WinCivilTime.parts(fromEpoch: Int(date.timeIntervalSince1970.rounded(.down))).year
-        let january = Date(timeIntervalSince1970: Double(WinCivilTime.epoch(year: year, month: 1, day: 15, hour: 12, minute: 0, second: 0)))
-        let july = Date(timeIntervalSince1970: Double(WinCivilTime.epoch(year: year, month: 7, day: 15, hour: 12, minute: 0, second: 0)))
+        let januaryParts = WinCivilTime.Parts(year: year, month: 1, day: 15, hour: 12, minute: 0, second: 0, weekday: 0)
+        let julyParts = WinCivilTime.Parts(year: year, month: 7, day: 15, hour: 12, minute: 0, second: 0, weekday: 0)
+        let january = Date(timeIntervalSince1970: Double(WinCivilTime.epoch(from: januaryParts)))
+        let july = Date(timeIntervalSince1970: Double(WinCivilTime.epoch(from: julyParts)))
         let first = secondsFromGMT(for: january)
         let second = secondsFromGMT(for: july)
         return (standard: min(first, second), daylight: max(first, second))

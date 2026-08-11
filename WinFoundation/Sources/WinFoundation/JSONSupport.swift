@@ -100,25 +100,29 @@ struct JSONWriter {
     private mutating func writeString(_ text: String) {
         utf8.append(0x22) // "
         for scalar in text.unicodeScalars {
-            switch scalar {
-            case "\"": utf8.append(contentsOf: [0x5C, 0x22])
-            case "\\": utf8.append(contentsOf: [0x5C, 0x5C])
-            case "\n": utf8.append(contentsOf: [0x5C, 0x6E])
-            case "\r": utf8.append(contentsOf: [0x5C, 0x72])
-            case "\t": utf8.append(contentsOf: [0x5C, 0x74])
-            case "\u{08}": utf8.append(contentsOf: [0x5C, 0x62]) // \b
-            case "\u{0C}": utf8.append(contentsOf: [0x5C, 0x66]) // \f
-            case "/" where escapeSlashes:
-                utf8.append(contentsOf: [0x5C, 0x2F])
-            default:
-                if scalar.value < 0x20 {
-                    appendUnicodeEscape(UInt16(scalar.value))
-                } else {
-                    utf8.append(contentsOf: String(scalar).utf8)
-                }
+            if let escaped = escapedBytes(for: scalar) {
+                utf8.append(contentsOf: escaped)
+            } else if scalar.value < 0x20 {
+                appendUnicodeEscape(UInt16(scalar.value))
+            } else {
+                utf8.append(contentsOf: String(scalar).utf8)
             }
         }
         utf8.append(0x22) // "
+    }
+
+    private func escapedBytes(for scalar: Unicode.Scalar) -> [UInt8]? {
+        switch scalar {
+        case "\"": [0x5C, 0x22]
+        case "\\": [0x5C, 0x5C]
+        case "\n": [0x5C, 0x6E]
+        case "\r": [0x5C, 0x72]
+        case "\t": [0x5C, 0x74]
+        case "\u{08}": [0x5C, 0x62]
+        case "\u{0C}": [0x5C, 0x66]
+        case "/" where escapeSlashes: [0x5C, 0x2F]
+        default: nil
+        }
     }
 
     private mutating func appendUnicodeEscape(_ code: UInt16) {

@@ -341,19 +341,19 @@ extension NSGraphicsContext {
 
     /// Translates the user space.
     public func translateBy(x: CGFloat, y: CGFloat) {
-        winTransform.prepend(a: 1, b: 0, c: 0, d: 1, tx: x, ty: y)
+        winTransform.prepend(.init(tx: x, ty: y))
     }
 
     /// Scales the user space.
     public func scaleBy(x: CGFloat, y: CGFloat) {
-        winTransform.prepend(a: x, b: 0, c: 0, d: y, tx: 0, ty: 0)
+        winTransform.prepend(.init(a: x, d: y))
     }
 
     /// Rotates the user space by an angle in radians.
     public func rotate(by angle: CGFloat) {
         let cosine = cos(angle)
         let sine = sin(angle)
-        winTransform.prepend(a: cosine, b: sine, c: -sine, d: cosine, tx: 0, ty: 0)
+        winTransform.prepend(.init(a: cosine, b: sine, c: -sine, d: cosine))
     }
 
     // MARK: Paths

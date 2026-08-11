@@ -115,9 +115,7 @@ public struct NSFont: Equatable {
         case .subheadline: systemFont(ofSize: 11)
         case .body: systemFont(ofSize: 13)
         case .callout: systemFont(ofSize: 12)
-        case .footnote: systemFont(ofSize: 10)
-        case .caption1: systemFont(ofSize: 10)
-        case .caption2: systemFont(ofSize: 10)
+        case .footnote, .caption1, .caption2: systemFont(ofSize: 10)
         }
     }
 

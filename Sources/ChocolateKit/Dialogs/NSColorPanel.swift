@@ -176,13 +176,7 @@ open class NSColorPanel: NSPanel {
         content.addSubview(modeSwitch)
         modeControl = modeSwitch
 
-        let presets: [NSColor] = [
-            .black, .darkGray, .gray, .lightGray, .white, .red, .orange, .yellow,
-            .green, .cyan, .blue, .purple, .magenta, .brown,
-            NSColor(calibratedRed: 0.5, green: 0, blue: 0, alpha: 1),
-            NSColor(calibratedRed: 0, green: 0.2, blue: 0.6, alpha: 1),
-        ]
-        for (index, preset) in presets.enumerated() {
+        for (index, preset) in Self.presetColors.enumerated() {
             let column = CGFloat(index % 8)
             let row = CGFloat(index / 8)
             let swatch = WinColorSwatchView(frame: NSMakeRect(16 + column * 27, 96 + row * 23, 24, 20))
@@ -218,6 +212,15 @@ open class NSColorPanel: NSPanel {
 
         contentView = content
         syncControls()
+    }
+
+    private static var presetColors: [NSColor] {
+        [
+            .black, .darkGray, .gray, .lightGray, .white, .red, .orange, .yellow,
+            .green, .cyan, .blue, .purple, .magenta, .brown,
+            NSColor(calibratedRed: 0.5, green: 0, blue: 0, alpha: 1),
+            NSColor(calibratedRed: 0, green: 0.2, blue: 0.6, alpha: 1)
+        ]
     }
 
     /// Builds the opacity row on demand the first time alpha is enabled, so a

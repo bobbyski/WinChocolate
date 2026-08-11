@@ -40,7 +40,13 @@ open class NSGraphicsContext {
 
         /// Concatenates another transform before this one (CG's convention
         /// for cumulative context transforms).
-        mutating func prepend(a pa: CGFloat, b pb: CGFloat, c pc: CGFloat, d pd: CGFloat, tx ptx: CGFloat, ty pty: CGFloat) {
+        mutating func prepend(_ transform: WinTransform) {
+            let pa = transform.a
+            let pb = transform.b
+            let pc = transform.c
+            let pd = transform.d
+            let ptx = transform.tx
+            let pty = transform.ty
             let na = a * pa + c * pb
             let nb = b * pa + d * pb
             let nc = a * pc + c * pd

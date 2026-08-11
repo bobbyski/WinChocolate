@@ -25,110 +25,142 @@ extension CGImage {
         guard bytes.count > 8, Array(bytes[0..<8]) == signature else {
             return nil
         }
-
-        func be32(_ offset: Int) -> Int {
-            Int(bytes[offset]) << 24 | Int(bytes[offset + 1]) << 16
-                | Int(bytes[offset + 2]) << 8 | Int(bytes[offset + 3])
+        guard let png = parsePNGChunks(bytes),
+              png.width > 0, png.height > 0,
+              png.bitDepth == 8, png.interlace == 0,
+              let channels = pngChannelCount(for: png.colorType),
+              let raw = try? Inflate.inflateZlib(png.imageData),
+              let recon = unfilterPNG(raw, width: png.width, height: png.height, channels: channels) else {
+            return nil
         }
+        let rgba = expandPNGToRGBA(
+            recon,
+            pixelCount: png.width * png.height,
+            channels: channels,
+            colorType: png.colorType
+        )
+        return CGImage(width: png.width, height: png.height, rgbaPixels: rgba)
+    }
 
+    private struct PNGChunks {
+        var width = 0
+        var height = 0
+        var bitDepth = 0
+        var colorType = 0
+        var interlace = 0
+        var imageData: [UInt8] = []
+    }
+
+    private static func parsePNGChunks(_ bytes: [UInt8]) -> PNGChunks? {
         var offset = 8
-        var width = 0, height = 0, bitDepth = 0, colorType = 0, interlace = 0
+        var result = PNGChunks()
         var sawHeader = false
-        var idat = [UInt8]()
-
         while offset + 8 <= bytes.count {
-            let length = be32(offset)
+            let length = pngBigEndianInt(bytes, at: offset)
             let type = String(decoding: bytes[offset + 4..<offset + 8], as: UTF8.self)
             let dataStart = offset + 8
-            guard dataStart + length + 4 <= bytes.count else {
-                break
-            }
+            guard dataStart + length + 4 <= bytes.count else { return nil }
             switch type {
             case "IHDR":
                 guard length >= 13 else { return nil }
-                width = be32(dataStart)
-                height = be32(dataStart + 4)
-                bitDepth = Int(bytes[dataStart + 8])
-                colorType = Int(bytes[dataStart + 9])
-                interlace = Int(bytes[dataStart + 12])
+                result.width = pngBigEndianInt(bytes, at: dataStart)
+                result.height = pngBigEndianInt(bytes, at: dataStart + 4)
+                result.bitDepth = Int(bytes[dataStart + 8])
+                result.colorType = Int(bytes[dataStart + 9])
+                result.interlace = Int(bytes[dataStart + 12])
                 sawHeader = true
             case "IDAT":
-                idat.append(contentsOf: bytes[dataStart..<dataStart + length])
+                result.imageData.append(contentsOf: bytes[dataStart..<dataStart + length])
             case "IEND":
-                offset = bytes.count
+                return sawHeader ? result : nil
             default:
                 break // ancillary chunks (pHYs, tEXt, …) are ignored
             }
             offset = dataStart + length + 4 // skip data + CRC
         }
+        return sawHeader ? result : nil
+    }
 
-        guard sawHeader, width > 0, height > 0, bitDepth == 8, interlace == 0 else {
-            return nil
-        }
-        let channels: Int
+    private static func pngBigEndianInt(_ bytes: [UInt8], at offset: Int) -> Int {
+        Int(bytes[offset]) << 24 | Int(bytes[offset + 1]) << 16
+            | Int(bytes[offset + 2]) << 8 | Int(bytes[offset + 3])
+    }
+
+    private static func pngChannelCount(for colorType: Int) -> Int? {
         switch colorType {
-        case 0: channels = 1 // grayscale
-        case 2: channels = 3 // RGB
-        case 4: channels = 2 // grayscale + alpha
-        case 6: channels = 4 // RGBA
-        default: return nil  // palette / unsupported
+        case 0: return 1
+        case 2: return 3
+        case 4: return 2
+        case 6: return 4
+        default: return nil
         }
+    }
 
-        guard let raw = try? Inflate.inflateZlib(idat) else {
-            return nil
-        }
+    private static func unfilterPNG(_ raw: [UInt8], width: Int, height: Int, channels: Int) -> [UInt8]? {
         let stride = width * channels
-        guard raw.count >= (stride + 1) * height else {
-            return nil
-        }
-
-        // Unfilter into a contiguous channel buffer (RFC 2083 §6).
-        var recon = [UInt8](repeating: 0, count: stride * height)
-        let bpp = channels
+        guard raw.count >= (stride + 1) * height else { return nil }
+        var result = [UInt8](repeating: 0, count: stride * height)
         for row in 0..<height {
-            let filterType = raw[row * (stride + 1)]
+            let filter = raw[row * (stride + 1)]
             let sourceStart = row * (stride + 1) + 1
-            let destStart = row * stride
+            let destinationStart = row * stride
             for index in 0..<stride {
                 let filtered = Int(raw[sourceStart + index])
-                let a = index >= bpp ? Int(recon[destStart + index - bpp]) : 0
-                let b = row > 0 ? Int(recon[destStart - stride + index]) : 0
-                let c = (row > 0 && index >= bpp) ? Int(recon[destStart - stride + index - bpp]) : 0
-                let value: Int
-                switch filterType {
-                case 0: value = filtered
-                case 1: value = filtered + a
-                case 2: value = filtered + b
-                case 3: value = filtered + (a + b) / 2
-                case 4: value = filtered + paeth(a, b, c)
-                default: return nil
-                }
-                recon[destStart + index] = UInt8(value & 0xFF)
+                let left = index >= channels ? Int(result[destinationStart + index - channels]) : 0
+                let above = row > 0 ? Int(result[destinationStart - stride + index]) : 0
+                let upperLeft = row > 0 && index >= channels
+                    ? Int(result[destinationStart - stride + index - channels])
+                    : 0
+                guard let value = pngFilterValue(
+                    filter,
+                    filtered: filtered,
+                    left: left,
+                    above: above,
+                    upperLeft: upperLeft
+                ) else { return nil }
+                result[destinationStart + index] = UInt8(value & 0xFF)
             }
         }
+        return result
+    }
 
-        // Expand to RGBA8.
-        var rgba = [UInt8](repeating: 0, count: width * height * 4)
-        for pixel in 0..<(width * height) {
+    private static func pngFilterValue(
+        _ filter: UInt8, filtered: Int, left: Int, above: Int, upperLeft: Int
+    ) -> Int? {
+        switch filter {
+        case 0: return filtered
+        case 1: return filtered + left
+        case 2: return filtered + above
+        case 3: return filtered + (left + above) / 2
+        case 4: return filtered + paeth(left, above, upperLeft)
+        default: return nil
+        }
+    }
+
+    private static func expandPNGToRGBA(
+        _ bytes: [UInt8], pixelCount: Int, channels: Int, colorType: Int
+    ) -> [UInt8] {
+        var rgba = [UInt8](repeating: 0, count: pixelCount * 4)
+        for pixel in 0..<pixelCount {
             let source = pixel * channels
             let dest = pixel * 4
             switch colorType {
             case 0:
-                let gray = recon[source]
+                let gray = bytes[source]
                 rgba[dest] = gray; rgba[dest + 1] = gray; rgba[dest + 2] = gray; rgba[dest + 3] = 255
             case 2:
-                rgba[dest] = recon[source]; rgba[dest + 1] = recon[source + 1]
-                rgba[dest + 2] = recon[source + 2]; rgba[dest + 3] = 255
+                rgba[dest] = bytes[source]; rgba[dest + 1] = bytes[source + 1]
+                rgba[dest + 2] = bytes[source + 2]; rgba[dest + 3] = 255
             case 4:
-                let gray = recon[source]
+                let gray = bytes[source]
                 rgba[dest] = gray; rgba[dest + 1] = gray; rgba[dest + 2] = gray
-                rgba[dest + 3] = recon[source + 1]
+                rgba[dest + 3] = bytes[source + 1]
             default: // 6
-                rgba[dest] = recon[source]; rgba[dest + 1] = recon[source + 1]
-                rgba[dest + 2] = recon[source + 2]; rgba[dest + 3] = recon[source + 3]
+                rgba[dest] = bytes[source]; rgba[dest + 1] = bytes[source + 1]
+                rgba[dest + 2] = bytes[source + 2]; rgba[dest + 3] = bytes[source + 3]
             }
         }
-        return CGImage(width: width, height: height, rgbaPixels: rgba)
+        return rgba
     }
 
     /// The PNG Paeth predictor (RFC 2083 §6.6).

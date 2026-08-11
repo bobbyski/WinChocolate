@@ -92,6 +92,11 @@ extension Win32NativeControlBackend {
     /// covered (an unpainted bitmap holds garbage); a view with no explicit
     /// background inherits its nearest ancestor's color.
     private func renderCustomViewContent(into deviceContext: HDC, hwnd: HWND?, handle: NativeHandle, rectangle: RECT) {
+        renderViewDrawing(into: deviceContext, hwnd: hwnd, handle: handle, rectangle: rectangle)
+        renderToolbarPreview(into: deviceContext, hwnd: hwnd, handle: handle, rectangle: rectangle)
+    }
+
+    private func renderViewDrawing(into deviceContext: HDC, hwnd: HWND?, handle: NativeHandle, rectangle: RECT) {
         if let brush = backgroundBrushes[handle.rawValue] {
             withUnsafePointer(to: rectangle) { rectanglePointer in
                 _ = winFillRect(deviceContext, rectanglePointer, brush)
@@ -127,7 +132,9 @@ extension Win32NativeControlBackend {
                 _ = winSetGraphicsMode(deviceContext, gmCompatible)
             }
         }
+    }
 
+    private func renderToolbarPreview(into deviceContext: HDC, hwnd: HWND?, handle: NativeHandle, rectangle: RECT) {
         let preview = toolbarPreview(from: text(from: hwnd))
         guard preview.showItem || preview.showLabel else {
             return

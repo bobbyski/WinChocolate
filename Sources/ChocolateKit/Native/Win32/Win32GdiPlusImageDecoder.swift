@@ -8,6 +8,12 @@
 /// started lazily once per process; the startup token is intentionally never
 /// released because decoding can be requested for the process lifetime.
 enum Win32GdiPlusImageDecoder {
+    private struct SourceImage {
+        let pointer: UnsafeMutableRawPointer
+        let width: UINT
+        let height: UINT
+    }
+
     // Decoding happens on the native UI thread during control updates and
     // paint dispatch, matching the backend's single-threaded access pattern.
     nonisolated(unsafe) private static var startupToken: UInt = 0
@@ -112,24 +118,13 @@ enum Win32GdiPlusImageDecoder {
             return nil
         }
 
-        var source: UnsafeMutableRawPointer?
-        let createStatus = withWideString(path) { widePath in
-            winGdipCreateBitmapFromFile(widePath, &source)
-        }
-        guard createStatus == gdiplusOkStatus, let source else {
-            return nil
-        }
+        guard let sourceImage = loadSourceImage(path: path) else { return nil }
+        let source = sourceImage.pointer
         defer {
             _ = winGdipDisposeImage(source)
         }
-
-        var width: UINT = 0
-        var height: UINT = 0
-        _ = winGdipGetImageWidth(source, &width)
-        _ = winGdipGetImageHeight(source, &height)
-        guard width > 0, height > 0 else {
-            return nil
-        }
+        let width = sourceImage.width
+        let height = sourceImage.height
 
         // Render the source through the tint matrix into a fresh ARGB bitmap.
         var tinted: UnsafeMutableRawPointer?
@@ -173,11 +168,34 @@ enum Win32GdiPlusImageDecoder {
             return nil
         }
 
+        return decodedBitmap(from: tinted, width: width, height: height)
+    }
+
+    private static func decodedBitmap(
+        from image: UnsafeMutableRawPointer,
+        width: UINT,
+        height: UINT
+    ) -> DecodedBitmap? {
         var bitmap: HBITMAP?
-        guard winGdipCreateHBITMAPFromBitmap(tinted, &bitmap, gdiplusWhiteBackground) == gdiplusOkStatus, let bitmap else {
+        guard winGdipCreateHBITMAPFromBitmap(image, &bitmap, gdiplusWhiteBackground) == gdiplusOkStatus,
+              let bitmap else { return nil }
+        return DecodedBitmap(bitmap: bitmap, width: Int32(width), height: Int32(height))
+    }
+
+    private static func loadSourceImage(path: String) -> SourceImage? {
+        var source: UnsafeMutableRawPointer?
+        let status = withWideString(path) { winGdipCreateBitmapFromFile($0, &source) }
+        guard status == gdiplusOkStatus, let source else { return nil }
+
+        var width: UINT = 0
+        var height: UINT = 0
+        _ = winGdipGetImageWidth(source, &width)
+        _ = winGdipGetImageHeight(source, &height)
+        guard width > 0, height > 0 else {
+            _ = winGdipDisposeImage(source)
             return nil
         }
-        return DecodedBitmap(bitmap: bitmap, width: Int32(width), height: Int32(height))
+        return SourceImage(pointer: source, width: width, height: height)
     }
 
     /// Starts GDI+ once per process, remembering a failed startup.

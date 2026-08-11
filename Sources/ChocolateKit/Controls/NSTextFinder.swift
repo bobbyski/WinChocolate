@@ -173,22 +173,15 @@ extension NSTextView {
         let content = NSView(frame: NSMakeRect(0, 0, width, 152))
         content.winBackgroundColor = .windowBackgroundColor
 
-        func label(_ text: String, y: CGFloat) -> NSTextField {
-            let field = NSTextField(string: text, frame: NSMakeRect(20, y, 82, 24))
-            field.isBordered = false
-            field.drawsBackground = false
-            return field
-        }
-
         let findField = NSTextField(string: NSTextFinder.winSharedSearchString, frame: NSMakeRect(110, 20, 350, 28))
         findField.isEditable = true
         findField.isSelectable = true
         let replaceField = NSTextField(string: NSTextFinder.winSharedReplacementString, frame: NSMakeRect(110, 58, 350, 28))
         replaceField.isEditable = true
         replaceField.isSelectable = true
-        content.addSubview(label("Find:", y: 22))
+        content.addSubview(makeFindLabel("Find:", y: 22))
         content.addSubview(findField)
-        content.addSubview(label("Replace:", y: 60))
+        content.addSubview(makeFindLabel("Replace:", y: 60))
         content.addSubview(replaceField)
 
         func syncSharedStrings() {
@@ -221,7 +214,21 @@ extension NSTextView {
             application.stopModal(withCode: .OK)
         }
 
-        // Sheet-style placement under the owning window's title area.
+        let panel = makeFindPanel(content: content, width: width)
+
+        _ = application.runModal(for: panel)
+        syncSharedStrings()
+        panel.close()
+    }
+
+    private func makeFindLabel(_ text: String, y: CGFloat) -> NSTextField {
+        let field = NSTextField(string: text, frame: NSMakeRect(20, y, 82, 24))
+        field.isBordered = false
+        field.drawsBackground = false
+        return field
+    }
+
+    private func makeFindPanel(content: NSView, width: CGFloat) -> NSPanel {
         var origin = NSMakePoint(360, 280)
         if let parent = window {
             origin = NSMakePoint(
@@ -237,9 +244,6 @@ extension NSTextView {
         )
         panel.title = "Find"
         panel.contentView = content
-
-        _ = application.runModal(for: panel)
-        syncSharedStrings()
-        panel.close()
+        return panel
     }
 }

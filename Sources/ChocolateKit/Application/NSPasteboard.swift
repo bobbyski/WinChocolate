@@ -50,17 +50,11 @@ open class NSPasteboard: NSObject {
         }
     }
 
-    nonisolated(unsafe) private static var sharedGeneral: NSPasteboard?
+    nonisolated(unsafe) private static let sharedGeneral = Unmanaged.passRetained(NSPasteboard())
 
     /// The shared general pasteboard, backed by the system clipboard.
     open class var general: NSPasteboard {
-        if let sharedGeneral {
-            return sharedGeneral
-        }
-
-        let pasteboard = NSPasteboard()
-        sharedGeneral = pasteboard
-        return pasteboard
+        sharedGeneral.takeUnretainedValue()
     }
 
     /// Representations staged since the last `clearContents()`.
@@ -208,43 +202,47 @@ open class NSPasteboard: NSObject {
     /// clipboard update.
     @discardableResult
     open func writeObjects(_ objects: [Any]) -> Bool {
-        var wroteAny = false
-        for object in objects {
-            switch object {
-            case let url as URL:
-                if url.isFileURL {
-                    stagedFilePaths.append(url.path)
-                    wroteAny = true
-                }
-            case let string as String:
-                stagedText = string
-                wroteAny = true
-            case let attributed as NSAttributedString:
-                stagedText = attributed.string
-                if let rtfData = attributed.rtf(from: NSRange(location: 0, length: attributed.length)),
-                   let formatName = PasteboardType.rtf.winClipboardFormatName {
-                    stagedData[formatName] = Array(rtfData)
-                }
-                wroteAny = true
-            case let item as NSPasteboardItem:
-                for type in item.types {
-                    if type == .string, let text = item.string(forType: .string) {
-                        stagedText = text
-                        wroteAny = true
-                    } else if type == .fileURL, let urlString = item.string(forType: .fileURL), let url = URL(string: urlString), url.isFileURL {
-                        stagedFilePaths.append(url.path)
-                        wroteAny = true
-                    } else if let formatName = type.winClipboardFormatName, let data = item.data(forType: type) {
-                        stagedData[formatName] = Array(data)
-                        wroteAny = true
-                    }
-                }
-            default:
-                break
-            }
-        }
+        let wroteAny = objects.reduce(false) { writeObject($1) || $0 }
         if wroteAny {
             flushStagedContents()
+        }
+        return wroteAny
+    }
+
+    private func writeObject(_ object: Any) -> Bool {
+        switch object {
+        case let url as URL where url.isFileURL:
+            stagedFilePaths.append(url.path)
+        case let string as String:
+            stagedText = string
+        case let attributed as NSAttributedString:
+            stagedText = attributed.string
+            if let data = attributed.rtf(from: NSRange(location: 0, length: attributed.length)),
+               let formatName = PasteboardType.rtf.winClipboardFormatName {
+                stagedData[formatName] = Array(data)
+            }
+        case let item as NSPasteboardItem:
+            return writePasteboardItem(item)
+        default:
+            return false
+        }
+        return true
+    }
+
+    private func writePasteboardItem(_ item: NSPasteboardItem) -> Bool {
+        var wroteAny = false
+        for type in item.types {
+            if type == .string, let text = item.string(forType: .string) {
+                stagedText = text
+                wroteAny = true
+            } else if type == .fileURL, let value = item.string(forType: .fileURL),
+                      let url = URL(string: value), url.isFileURL {
+                stagedFilePaths.append(url.path)
+                wroteAny = true
+            } else if let formatName = type.winClipboardFormatName, let data = item.data(forType: type) {
+                stagedData[formatName] = Array(data)
+                wroteAny = true
+            }
         }
         return wroteAny
     }

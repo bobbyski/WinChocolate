@@ -4,23 +4,28 @@ extension Win32NativeControlBackend {
     ///
     /// A multi-line editable field wraps text with a scrolling `EDIT`
     /// (`ES_MULTILINE`) instead of the single-line auto-h-scroll style.
-    public func createTextField(text: String, frame: NSRect, parent: NativeHandle?, isEditable: Bool, isBordered: Bool, isMultiline: Bool) -> NativeHandle {
-        let editStyle: DWORD = isMultiline
+    public func createTextField(
+        text: String,
+        frame: NSRect,
+        parent: NativeHandle?,
+        options: NativeTextFieldOptions
+    ) -> NativeHandle {
+        let editStyle: DWORD = options.isMultiline
             ? esMultiline | esAutoVScroll | esWantReturn | wsVScroll
             : esAutoHScroll
         let handle = createChildWindow(
-            className: isEditable ? "EDIT" : "STATIC",
+            className: options.isEditable ? "EDIT" : "STATIC",
             text: text,
             frame: frame,
             parent: parent,
             commandIdentifier: nil,
-            style: isEditable
-                ? wsChild | wsVisible | wsTabStop | (isBordered ? wsBorder : 0) | editStyle
+            style: options.isEditable
+                ? wsChild | wsVisible | wsTabStop | (options.isBordered ? wsBorder : 0) | editStyle
                 : wsChild | wsVisible
         )
-        if isEditable {
+        if options.isEditable {
             subclassControlForTabKey(handle)
-            if isMultiline {
+            if options.isMultiline {
                 // Multi-line edits keep Return for newlines, so default-button
                 // key routing skips them.
                 multilineTextHandles.insert(handle.rawValue)
@@ -126,18 +131,20 @@ extension Win32NativeControlBackend {
     /// The range is selected, formatted with `EM_SETCHARFORMAT`, and the
     /// user's selection restored, so callers can format without disturbing
     /// editing state.
-    public func setTextRangeFormat(font: NSFont?, color: NSColor?, underline: Bool?, strikethrough: Bool?, location: Int, length: Int, for handle: NativeHandle) {
-        guard let hwnd = hwnd(from: handle), font != nil || color != nil || underline != nil || strikethrough != nil else {
+    public func setTextRangeFormat(_ request: NativeTextRangeFormat, for handle: NativeHandle) {
+        guard let hwnd = hwnd(from: handle),
+              request.font != nil || request.color != nil
+                || request.underline != nil || request.strikethrough != nil else {
             return
         }
 
         let savedSelection = textSelection(for: handle)
-        let start = max(0, location)
-        _ = winSendMessageW(hwnd, emSetSel, WPARAM(start), LPARAM(start + max(0, length)))
+        let start = max(0, request.range.location)
+        _ = winSendMessageW(hwnd, emSetSel, WPARAM(start), LPARAM(start + max(0, request.range.length)))
 
         var format = CHARFORMATW()
         format.cbSize = UINT(MemoryLayout<CHARFORMATW>.stride)
-        if let font {
+        if let font = request.font {
             format.dwMask |= cfmFace | cfmSize | cfmBold | cfmItalic
             // Rich edit character heights are in twips (1/20 point).
             format.yHeight = Int32((font.pointSize * 20).rounded())
@@ -154,17 +161,17 @@ extension Win32NativeControlBackend {
                 }
             }
         }
-        if let color {
+        if let color = request.color {
             format.dwMask |= cfmColor
             format.crTextColor = colorRef(from: color)
         }
-        if let underline {
+        if let underline = request.underline {
             format.dwMask |= cfmUnderline
             if underline {
                 format.dwEffects |= cfeUnderline
             }
         }
-        if let strikethrough {
+        if let strikethrough = request.strikethrough {
             format.dwMask |= cfmStrikeOut
             if strikethrough {
                 format.dwEffects |= cfeStrikeOut
@@ -421,7 +428,7 @@ extension Win32NativeControlBackend {
     }
 
     /// Measures a single-line text run with the real font metrics.
-    public func measureText(_ text: String, fontName: String, fontSize: CGFloat, weight: Int, italic: Bool) -> NSSize {
+    public func measureText(_ text: String, font specification: NativeFontSpec) -> NSSize {
         guard let deviceContext = winGetDC(nil) else {
             return NSMakeSize(0, 0)
         }
@@ -430,14 +437,14 @@ extension Win32NativeControlBackend {
         }
 
         // Points convert to pixels at 96 DPI, matching setFont rendering.
-        let font = withWideString(fontName) { faceName in
+        let font = withWideString(specification.family ?? "Segoe UI") { faceName in
             winCreateFontW(
-                -Int32(max((fontSize * 96.0 / 72.0).rounded(), 1)),
+                -Int32(max((specification.size * 96.0 / 72.0).rounded(), 1)),
                 0,
                 0,
                 0,
-                Int32(weight),
-                italic ? 1 : 0,
+                specification.bold ? 700 : 400,
+                specification.italic ? 1 : 0,
                 0,
                 0,
                 defaultCharset,
@@ -468,9 +475,13 @@ extension Win32NativeControlBackend {
     /// Measures a word-wrapped run: `DrawTextW` with `DT_CALCRECT | DT_WORDBREAK`
     /// into a `maxWidth`-wide rect returns the height for every wrapped line and
     /// the widest line's width.
-    public func measureText(_ text: String, fontName: String, fontSize: CGFloat, weight: Int, italic: Bool, wrappingAt maxWidth: CGFloat) -> NSSize {
+    public func measureText(
+        _ text: String,
+        font specification: NativeFontSpec,
+        wrappingAt maxWidth: CGFloat
+    ) -> NSSize {
         guard maxWidth > 0 else {
-            return measureText(text, fontName: fontName, fontSize: fontSize, weight: weight, italic: italic)
+            return measureText(text, font: specification)
         }
         guard let deviceContext = winGetDC(nil) else {
             return NSMakeSize(0, 0)
@@ -479,10 +490,10 @@ extension Win32NativeControlBackend {
             _ = winReleaseDC(nil, deviceContext)
         }
 
-        let font = withWideString(fontName) { faceName in
+        let font = withWideString(specification.family ?? "Segoe UI") { faceName in
             winCreateFontW(
-                -Int32(max((fontSize * 96.0 / 72.0).rounded(), 1)),
-                0, 0, 0, Int32(weight), italic ? 1 : 0, 0, 0,
+                -Int32(max((specification.size * 96.0 / 72.0).rounded(), 1)),
+                0, 0, 0, specification.bold ? 700 : 400, specification.italic ? 1 : 0, 0, 0,
                 defaultCharset, defaultPrecision, defaultPrecision,
                 defaultQuality, defaultPitchAndFamily, faceName
             )

@@ -119,6 +119,169 @@ public enum NativeMouseEvent {
 /// Platform drawing surface handed to a view's draw handler. Path-based:
 /// build a path with the primitive ops, then fill or stroke it (both consume
 /// the path). Backed by Cairo on GTK and by an op recorder in tests.
+/// A cubic Bézier segment expressed in native drawing coordinates.
+public struct NativeBezierCurve: Equatable, Sendable {
+    /// The segment endpoint.
+    public let endpoint: NSPoint
+    /// The first control point.
+    public let controlPoint1: NSPoint
+    /// The second control point.
+    public let controlPoint2: NSPoint
+
+    /// Creates a cubic Bézier segment.
+    public init(endpoint: NSPoint, controlPoint1: NSPoint, controlPoint2: NSPoint) {
+        self.endpoint = endpoint
+        self.controlPoint1 = controlPoint1
+        self.controlPoint2 = controlPoint2
+    }
+}
+
+/// An arc expressed in native drawing coordinates and radians.
+public struct NativeArc: Equatable, Sendable {
+    /// The center point.
+    public let center: NSPoint
+    /// The radius.
+    public let radius: Double
+    /// The starting angle in radians.
+    public let startAngleRadians: Double
+    /// The ending angle in radians.
+    public let endAngleRadians: Double
+    /// Whether the visual sweep is clockwise.
+    public let clockwise: Bool
+
+    /// Creates a native arc.
+    public init(
+        center: NSPoint,
+        radius: Double,
+        startAngleRadians: Double,
+        endAngleRadians: Double,
+        clockwise: Bool
+    ) {
+        self.center = center
+        self.radius = radius
+        self.startAngleRadians = startAngleRadians
+        self.endAngleRadians = endAngleRadians
+        self.clockwise = clockwise
+    }
+}
+
+/// Behavioral options used when creating a native text field.
+public struct NativeTextFieldOptions: Equatable, Sendable {
+    /// Whether the user may edit the field.
+    public let isEditable: Bool
+    /// Whether the field draws its native border.
+    public let isBordered: Bool
+    /// Whether the field accepts multiple lines.
+    public let isMultiline: Bool
+
+    /// Creates native text-field options.
+    public init(isEditable: Bool, isBordered: Bool, isMultiline: Bool) {
+        self.isEditable = isEditable
+        self.isBordered = isBordered
+        self.isMultiline = isMultiline
+    }
+}
+
+/// Numeric settings used when creating a native stepper.
+public struct NativeStepperConfiguration: Equatable, Sendable {
+    /// The initial value.
+    public let value: Double
+    /// The minimum value.
+    public let minValue: Double
+    /// The maximum value.
+    public let maxValue: Double
+    /// The increment applied by each step.
+    public let increment: Double
+
+    /// Creates native stepper settings.
+    public init(value: Double, minValue: Double, maxValue: Double, increment: Double) {
+        self.value = value
+        self.minValue = minValue
+        self.maxValue = maxValue
+        self.increment = increment
+    }
+}
+
+/// Value and presentation settings used when creating a native date picker.
+public struct NativeDatePickerConfiguration: Equatable, Sendable {
+    /// The initial date.
+    public let date: Date
+    /// The optional minimum date.
+    public let minDate: Date?
+    /// The optional maximum date.
+    public let maxDate: Date?
+    /// The requested AppKit presentation style.
+    public let style: NSDatePicker.Style
+
+    /// Creates native date-picker settings.
+    public init(date: Date, minDate: Date?, maxDate: Date?, style: NSDatePicker.Style) {
+        self.date = date
+        self.minDate = minDate
+        self.maxDate = maxDate
+        self.style = style
+    }
+}
+
+/// Row content and selection used when creating a native table view.
+public struct NativeTableContent: Equatable, Sendable {
+    /// The table's row values.
+    public let rows: [[String]]
+    /// The initially selected row.
+    public let selectedRow: Int
+
+    /// Creates native table content.
+    public init(rows: [[String]], selectedRow: Int) {
+        self.rows = rows
+        self.selectedRow = selectedRow
+    }
+}
+
+/// Visibility of a window's standard title-bar buttons.
+public struct NativeWindowButtonVisibility: Equatable, Sendable {
+    /// Whether the close button is hidden.
+    public let close: Bool
+    /// Whether the minimize button is hidden.
+    public let minimize: Bool
+    /// Whether the zoom button is hidden.
+    public let zoom: Bool
+
+    /// Creates a standard-button visibility value.
+    public init(close: Bool, minimize: Bool, zoom: Bool) {
+        self.close = close
+        self.minimize = minimize
+        self.zoom = zoom
+    }
+}
+
+/// Formatting attributes applied to a native text range.
+public struct NativeTextRangeFormat {
+    /// The font to apply, or `nil` to retain the existing font.
+    public let font: NSFont?
+    /// The color to apply, or `nil` to retain the existing color.
+    public let color: NSColor?
+    /// The underline state, or `nil` to retain it.
+    public let underline: Bool?
+    /// The strikethrough state, or `nil` to retain it.
+    public let strikethrough: Bool?
+    /// The UTF-16 range to format.
+    public let range: NSRange
+
+    /// Creates a native text-range formatting request.
+    public init(
+        font: NSFont?,
+        color: NSColor?,
+        underline: Bool?,
+        strikethrough: Bool?,
+        range: NSRange
+    ) {
+        self.font = font
+        self.color = color
+        self.underline = underline
+        self.strikethrough = strikethrough
+        self.range = range
+    }
+}
+
 public protocol NativeGraphicsContext: AnyObject {
     /// Sets the fill color used by subsequent `fillPath` calls.
     func setFillColor(_ color: NSColor)
@@ -134,10 +297,9 @@ public protocol NativeGraphicsContext: AnyObject {
     func line(toX x: Double, y: Double)
     /// Appends a cubic Bezier curve from the current point to `(x, y)` with
     /// control points `(c1x, c1y)` and `(c2x, c2y)`.
-    func curve(toX x: Double, y: Double, c1x: Double, c1y: Double, c2x: Double, c2y: Double)
+    func curve(_ curve: NativeBezierCurve)
     /// Appends an arc to the current path (angles in radians, AppKit space).
-    func addArc(centerX: Double, centerY: Double, radius: Double,
-                startAngleRadians: Double, endAngleRadians: Double, clockwise: Bool)
+    func addArc(_ arc: NativeArc)
     /// Closes the current subpath with a straight line back to its start.
     func closePath()
     /// Fills the current path with the fill color (consumes the path).

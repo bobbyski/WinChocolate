@@ -58,6 +58,10 @@ let package = Package(
                 .linkedLibrary("X11", .when(platforms: [.linux]))
             ]
         ),
+        .target(
+            name: "CWin32Compat",
+            path: "Sources/CWin32Compat"
+        ),
 
         // CoreGraphics-shaped value types (plan Phase 13): pure geometry +
         // bitmap types with no platform dependencies. WinChocolate re-exports
@@ -102,7 +106,8 @@ let package = Package(
                 // Linux-only: the GTK backend's C interop. Conditional so the
                 // Windows build never resolves `pkg-config gtk4`.
                 .target(name: "CGTK", condition: .when(platforms: [.linux])),
-                .target(name: "CGTKCompat", condition: .when(platforms: [.linux]))
+                .target(name: "CGTKCompat", condition: .when(platforms: [.linux])),
+                .target(name: "CWin32Compat", condition: .when(platforms: [.windows]))
             ],
             swiftSettings: [
                 .define("USE_WIN_FOUNDATION", .when(platforms: [.windows])),

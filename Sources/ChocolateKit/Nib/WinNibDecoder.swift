@@ -168,117 +168,117 @@ final class WinNibDecoder {
     }
 
     private func instantiateView(_ element: WinXMLElement, frame: NSRect) -> NSView? {
-        let cell = element.firstChild(withKey: "cell")
         switch element.name {
-        case "button":
-            let button = NSButton(frame: frame)
-            if let cell {
-                switch cell.attribute("type") {
-                case "check": button.setButtonType(.switch)
-                case "radio": button.setButtonType(.radio)
-                default: button.setButtonType(.momentaryPushIn)
-                }
-                button.title = cell.attribute("title") ?? ""
-                if cell.attribute("state") == "on" { button.state = .on }
-                if bool(cell.attribute("enabled"), default: true) == false { button.isEnabled = false }
-            }
-            return button
+        case "button": return instantiateButton(element, frame: frame)
+        case "textField": return instantiateTextField(element, frame: frame)
+        case "slider": return instantiateSlider(element, frame: frame)
+        case "popUpButton": return instantiatePopUpButton(element, frame: frame)
+        case "comboBox": return instantiateComboBox(element, frame: frame)
+        default:
+            return instantiateContainerOrDisplayView(element, frame: frame)
+        }
+    }
 
-        case "textField":
-            let field = NSTextField(frame: frame)
-            if let cell {
-                field.stringValue = cell.attribute("title") ?? ""
-                field.placeholderString = cell.attribute("placeholderString")
-                field.isEditable = bool(cell.attribute("editable"))
-                field.isSelectable = bool(cell.attribute("selectable"))
-                // Labels carry no borderStyle; fields use bezel. Matching IB:
-                // borderless + no background unless the cell says otherwise.
-                let borderStyle = cell.attribute("borderStyle")
-                field.isBordered = borderStyle != nil
-                field.isBezeled = borderStyle == "bezel"
-                field.drawsBackground = bool(cell.attribute("drawsBackground"))
-            }
-            return field
+    private func instantiateButton(_ element: WinXMLElement, frame: NSRect) -> NSButton {
+        let button = NSButton(frame: frame)
+        guard let cell = element.firstChild(withKey: "cell") else { return button }
+        switch cell.attribute("type") {
+        case "check": button.setButtonType(.switch)
+        case "radio": button.setButtonType(.radio)
+        default: button.setButtonType(.momentaryPushIn)
+        }
+        button.title = cell.attribute("title") ?? ""
+        if cell.attribute("state") == "on" { button.state = .on }
+        if !bool(cell.attribute("enabled"), default: true) { button.isEnabled = false }
+        return button
+    }
 
-        case "slider":
-            let slider = NSSlider(frame: frame)
-            if let cell {
-                slider.minValue = double(cell.attribute("minValue")) ?? 0
-                slider.maxValue = double(cell.attribute("maxValue")) ?? 100
-                slider.doubleValue = double(cell.attribute("doubleValue")) ?? slider.minValue
-                slider.isContinuous = bool(cell.attribute("continuous"))
-                slider.isVertical = frame.size.height > frame.size.width
-            }
-            return slider
+    private func instantiateTextField(_ element: WinXMLElement, frame: NSRect) -> NSTextField {
+        let field = NSTextField(frame: frame)
+        guard let cell = element.firstChild(withKey: "cell") else { return field }
+        field.stringValue = cell.attribute("title") ?? ""
+        field.placeholderString = cell.attribute("placeholderString")
+        field.isEditable = bool(cell.attribute("editable"))
+        field.isSelectable = bool(cell.attribute("selectable"))
+        let borderStyle = cell.attribute("borderStyle")
+        field.isBordered = borderStyle != nil
+        field.isBezeled = borderStyle == "bezel"
+        field.drawsBackground = bool(cell.attribute("drawsBackground"))
+        return field
+    }
 
-        case "popUpButton":
-            let popup = NSPopUpButton(frame: frame)
-            if let cell,
-               let menu = cell.firstChild(withKey: "menu") ?? cell.firstChild(named: "menu"),
-               let items = menu.firstChild(named: "items") {
-                var selectedTitle: String?
-                for item in items.children(named: "menuItem") {
-                    let title = item.attribute("title") ?? ""
-                    popup.addItem(withTitle: title)
-                    if item.attribute("state") == "on" || item.attribute("id") == cell.attribute("selectedItem") {
-                        selectedTitle = title
-                    }
-                }
-                if let selectedTitle {
-                    popup.selectItem(withTitle: selectedTitle)
-                }
-            }
-            return popup
+    private func instantiateSlider(_ element: WinXMLElement, frame: NSRect) -> NSSlider {
+        let slider = NSSlider(frame: frame)
+        guard let cell = element.firstChild(withKey: "cell") else { return slider }
+        slider.minValue = double(cell.attribute("minValue")) ?? 0
+        slider.maxValue = double(cell.attribute("maxValue")) ?? 100
+        slider.doubleValue = double(cell.attribute("doubleValue")) ?? slider.minValue
+        slider.isContinuous = bool(cell.attribute("continuous"))
+        slider.isVertical = frame.size.height > frame.size.width
+        return slider
+    }
 
-        case "comboBox":
-            let combo = NSComboBox(frame: frame)
-            if let cell {
-                combo.stringValue = cell.attribute("title") ?? ""
+    private func instantiatePopUpButton(_ element: WinXMLElement, frame: NSRect) -> NSPopUpButton {
+        let popup = NSPopUpButton(frame: frame)
+        guard let cell = element.firstChild(withKey: "cell"),
+              let menu = cell.firstChild(withKey: "menu") ?? cell.firstChild(named: "menu"),
+              let items = menu.firstChild(named: "items") else { return popup }
+        var selectedTitle: String?
+        for item in items.children(named: "menuItem") {
+            let title = item.attribute("title") ?? ""
+            popup.addItem(withTitle: title)
+            if item.attribute("state") == "on" || item.attribute("id") == cell.attribute("selectedItem") {
+                selectedTitle = title
             }
-            return combo
+        }
+        if let selectedTitle { popup.selectItem(withTitle: selectedTitle) }
+        return popup
+    }
 
+    private func instantiateComboBox(_ element: WinXMLElement, frame: NSRect) -> NSComboBox {
+        let combo = NSComboBox(frame: frame)
+        combo.stringValue = element.firstChild(withKey: "cell")?.attribute("title") ?? ""
+        return combo
+    }
+
+    private func instantiateContainerOrDisplayView(_ element: WinXMLElement, frame: NSRect) -> NSView {
+        switch element.name {
         case "imageView":
             let imageView = NSImageView(frame: frame)
-            if let cell, let imageName = cell.attribute("image") {
+            if let imageName = element.firstChild(withKey: "cell")?.attribute("image") {
                 imageView.image = NSImage(named: imageName)
             }
             return imageView
-
         case "progressIndicator":
-            let indicator = NSProgressIndicator(frame: frame)
-            indicator.minValue = double(element.attribute("minValue")) ?? 0
-            indicator.maxValue = double(element.attribute("maxValue")) ?? 100
-            indicator.isIndeterminate = bool(element.attribute("indeterminate"))
-            if let value = double(element.attribute("doubleValue")) {
-                indicator.doubleValue = value
-            }
-            return indicator
-
+            return instantiateProgressIndicator(element, frame: frame)
         case "box":
-            let box = NSBox(title: element.attribute("title") ?? "", frame: frame)
-            return box
-
+            return NSBox(title: element.attribute("title") ?? "", frame: frame)
         case "scrollView":
-            let scrollView = NSScrollView(frame: frame)
-            scrollView.hasVerticalScroller = bool(element.attribute("hasVerticalScroller"), default: true)
-            scrollView.hasHorizontalScroller = bool(element.attribute("hasHorizontalScroller"))
-            // IB nests the document view inside <clipView key="contentView">.
-            if let clip = element.firstChild(withKey: "contentView"),
-               let documentElement = clip.firstChild(named: "subviews")?.children.first,
-               let documentView = buildView(documentElement, parentHeight: nil) {
-                scrollView.documentView = documentView
-            }
-            return scrollView
-
-        case "customView", "view":
-            return NSView(frame: frame)
-
+            return instantiateScrollView(element, frame: frame)
         default:
-            // Unmapped IB classes degrade to a plain view of the right frame
-            // so the rest of the document still loads — the honest fallback
-            // while the class map grows on demand.
             return NSView(frame: frame)
         }
+    }
+
+    private func instantiateProgressIndicator(_ element: WinXMLElement, frame: NSRect) -> NSProgressIndicator {
+        let indicator = NSProgressIndicator(frame: frame)
+        indicator.minValue = double(element.attribute("minValue")) ?? 0
+        indicator.maxValue = double(element.attribute("maxValue")) ?? 100
+        indicator.isIndeterminate = bool(element.attribute("indeterminate"))
+        if let value = double(element.attribute("doubleValue")) { indicator.doubleValue = value }
+        return indicator
+    }
+
+    private func instantiateScrollView(_ element: WinXMLElement, frame: NSRect) -> NSScrollView {
+        let scrollView = NSScrollView(frame: frame)
+        scrollView.hasVerticalScroller = bool(element.attribute("hasVerticalScroller"), default: true)
+        scrollView.hasHorizontalScroller = bool(element.attribute("hasHorizontalScroller"))
+        if let clip = element.firstChild(withKey: "contentView"),
+           let documentElement = clip.firstChild(named: "subviews")?.children.first,
+           let documentView = buildView(documentElement, parentHeight: nil) {
+            scrollView.documentView = documentView
+        }
+        return scrollView
     }
 
     private func applyCommonAttributes(_ element: WinXMLElement, to view: NSView) {

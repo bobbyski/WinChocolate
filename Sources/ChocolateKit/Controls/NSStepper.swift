@@ -96,7 +96,16 @@ open class NSStepper: NSControl {
 
     /// Creates the native stepper peer.
     open override func createNativePeer(in backend: NativeControlBackend, parent: NativeHandle?) -> NativeHandle {
-        backend.createStepper(value: doubleValue, minValue: minValue, maxValue: maxValue, increment: increment, frame: frame, parent: parent)
+        backend.createStepper(
+            configuration: NativeStepperConfiguration(
+                value: doubleValue,
+                minValue: minValue,
+                maxValue: maxValue,
+                increment: increment
+            ),
+            frame: frame,
+            parent: parent
+        )
     }
 
     /// Ensures native range, value, and action dispatch are synced.

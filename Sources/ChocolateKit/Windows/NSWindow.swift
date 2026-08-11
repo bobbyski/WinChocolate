@@ -71,132 +71,10 @@ extension NSWindowDelegate {
 /// Showing the window realizes the content hierarchy into native Windows
 /// controls through `NativeControlBackend`.
 open class NSWindow: NSResponder {
-    /// Window style options matching AppKit names.
-    public struct StyleMask: OptionSet, Sendable {
-        /// Raw option value.
-        public let rawValue: UInt
-
-        /// Creates a style mask from a raw value.
-        public init(rawValue: UInt) {
-            self.rawValue = rawValue
-        }
-
-        /// Titled window style.
-        public static let titled = StyleMask(rawValue: 1 << 0)
-
-        /// Borderless window style.
-        public static var borderless: StyleMask { [] }
-
-        /// Closable window style.
-        public static let closable = StyleMask(rawValue: 1 << 1)
-
-        /// Miniaturizable window style.
-        public static let miniaturizable = StyleMask(rawValue: 1 << 2)
-
-        /// Resizable window style.
-        public static let resizable = StyleMask(rawValue: 1 << 3)
-
-        /// Utility-panel window style with compact tool-window chrome.
-        public static let utilityWindow = StyleMask(rawValue: 1 << 4)
-
-        /// Content view fills the whole frame, including under the title bar.
-        public static let fullSizeContentView = StyleMask(rawValue: 1 << 5)
-
-        /// A panel that does not become key/activate when shown.
-        public static let nonactivatingPanel = StyleMask(rawValue: 1 << 6)
-
-        /// A heads-up-display style panel (dark translucent chrome on
-        /// AppKit; the classic backend renders a standard utility panel).
-        public static let hudWindow = StyleMask(rawValue: 1 << 7)
-
-        /// Present while the window occupies the full screen. AppKit adds this
-        /// to `styleMask` for the duration of full-screen mode; WinChocolate
-        /// does the same (see `toggleFullScreen`).
-        public static let fullScreen = StyleMask(rawValue: 1 << 7)
-    }
-
-    /// How a window participates in spaces and full screen, matching AppKit's
-    /// `NSWindow.CollectionBehavior`. WinChocolate stores the value for API
-    /// fidelity; only the full-screen flags affect behavior on Windows.
-    public struct CollectionBehavior: OptionSet, Sendable {
-        /// The `rawValue` value.
-        public let rawValue: Int
-        /// Creates a value with the supplied arguments.
-        public init(rawValue: Int) { self.rawValue = rawValue }
-
-        /// The window can enter full screen as a primary full-screen window.
-        public static let fullScreenPrimary = CollectionBehavior(rawValue: 1 << 7)
-
-        /// The window can join another window's full-screen space.
-        public static let fullScreenAuxiliary = CollectionBehavior(rawValue: 1 << 8)
-
-        /// The window cannot be made full screen.
-        public static let fullScreenNone = CollectionBehavior(rawValue: 1 << 9)
-    }
-
-    /// Whether the window shows its title text.
-    public enum TitleVisibility: Sendable {
-        /// The title is shown in the title bar (default).
-        case visible
-
-        /// The title text is hidden while the title bar remains.
-        case hidden
-    }
-
-    /// The standard title-bar buttons AppKit can vend.
-    public enum ButtonType: Sendable {
-        case closeButton
-        case miniaturizeButton
-        case zoomButton
-        case toolbarButton
-        case documentIconButton
-    }
-
-    /// Window z-ordering levels matching AppKit names.
-    public struct Level: RawRepresentable, Equatable, Hashable, Sendable {
-        /// Raw level value; higher levels order above lower ones.
-        public let rawValue: Int
-
-        /// Creates a level from a raw value.
-        public init(rawValue: Int) {
-            self.rawValue = rawValue
-        }
-
-        /// The default level for document windows.
-        public static let normal = Level(rawValue: 0)
-
-        /// The level for floating utility panels above document windows.
-        public static let floating = Level(rawValue: 3)
-
-        /// The level for modal panels.
-        public static let modalPanel = Level(rawValue: 8)
-
-        /// The level for status-bar items, above floating panels.
-        public static let statusBar = Level(rawValue: 25)
-    }
-
     /// Whether closing releases the window (AppKit memory management).
     /// Stored for source compatibility — Swift/ARC owns WinChocolate
     /// windows, so the flag changes nothing here.
     open var isReleasedWhenClosed: Bool = true
-
-    /// Window backing store strategy.
-    public enum BackingStoreType: Sendable {
-        /// Buffered backing store.
-        case buffered
-    }
-
-    /// Relative ordering used when inserting views.
-    public enum OrderingMode: Sendable {
-        /// Place above the reference object.
-        case above
-
-        /// Place below the reference object.
-        case below
-
-        /// Remove from ordering.
-        case out
-    }
 
     /// The window frame rectangle.
     open var frame: NSRect
@@ -228,11 +106,11 @@ open class NSWindow: NSResponder {
     /// effective appearance (see `effectiveAppearance` in NSAppearance.swift).
     open var appearance: NSAppearance?
 
-    private var standardButtons: [ButtonType: NSButton] = [:]
+    internal var standardButtons: [ButtonType: NSButton] = [:]
 
     /// The style mask the window was created with (without the transient
     /// full-screen flag).
-    private let baseStyleMask: StyleMask
+    internal let baseStyleMask: StyleMask
 
     /// The window style mask. Reports `.fullScreen` while in full-screen mode,
     /// matching AppKit (the base mask is preserved for restore).
@@ -246,7 +124,7 @@ open class NSWindow: NSResponder {
         set { winIsFullScreen = newValue }
     }
 
-    private var winIsFullScreen = false
+    internal var winIsFullScreen = false
 
     /// How the window participates in full screen. Stored for API fidelity; on
     /// Windows only the presence of `.fullScreenPrimary`/`.fullScreenAuxiliary`
@@ -359,10 +237,10 @@ open class NSWindow: NSResponder {
     }
 
     /// The backend-created native handle, if realized.
-    public private(set) var nativeHandle: NativeHandle?
+    public internal(set) var nativeHandle: NativeHandle?
 
     /// The responder currently receiving keyboard focus in this window.
-    public private(set) weak var firstResponder: NSResponder? {
+    public internal(set) weak var firstResponder: NSResponder? {
         didSet {
             if firstResponder !== oldValue {
                 onFirstResponderChange?(self)
@@ -388,7 +266,7 @@ open class NSWindow: NSResponder {
         contentView?.performKeyEquivalent(with: event) ?? false
     }
 
-    private var storedUndoManager: NSUndoManager?
+    internal var storedUndoManager: NSUndoManager?
 
     /// The undo manager shared by this window's views.
     ///
@@ -404,9 +282,9 @@ open class NSWindow: NSResponder {
     /// Backend used for native work.
     public let nativeBackend: NativeControlBackend
 
-    private var toolbarHostView: NSToolbarView?
-    private var usesAutomaticToolbarHeight = true
-    private var isUpdatingToolbarHeight = false
+    internal var toolbarHostView: NSToolbarView?
+    internal var usesAutomaticToolbarHeight = true
+    internal var isUpdatingToolbarHeight = false
 
     /// Whether this window is the application's key window.
     open var isKeyWindow: Bool {
@@ -433,6 +311,18 @@ open class NSWindow: NSResponder {
     open var usesMainMenu: Bool {
         true
     }
+
+    /// The sheet currently attached to this window, if any (AppKit's
+    /// `attachedSheet`). While a sheet is attached, additional `beginSheet`
+    /// calls queue behind it.
+    open internal(set) var attachedSheet: NSWindow?
+
+    /// The window this window is a sheet of, if any (AppKit's `sheetParent`).
+    open internal(set) weak var sheetParent: NSWindow?
+
+    // Sheets requested while another sheet is attached, presented FIFO as each
+    // preceding sheet ends — matching AppKit's sheet queue.
+    internal var winQueuedSheets: [(NSWindow, ((NSApplication.ModalResponse) -> Void)?)] = []
 
     /// Creates a window using AppKit's designated initializer shape.
     public init(
@@ -465,7 +355,7 @@ open class NSWindow: NSResponder {
         super.init()
     }
 
-    /// Whether the window can become the key window.
+/// Whether the window can become the key window.
     open var canBecomeKey: Bool {
         true
     }
@@ -501,17 +391,7 @@ open class NSWindow: NSResponder {
         nativeBackend.setHidden(true, for: nativeHandle)
     }
 
-    /// The sheet currently attached to this window, if any (AppKit's
-    /// `attachedSheet`). While a sheet is attached, additional `beginSheet`
-    /// calls queue behind it.
-    open internal(set) var attachedSheet: NSWindow?
 
-    /// The window this window is a sheet of, if any (AppKit's `sheetParent`).
-    open internal(set) weak var sheetParent: NSWindow?
-
-    // Sheets requested while another sheet is attached, presented FIFO as each
-    // preceding sheet ends — matching AppKit's sheet queue.
-    private var winQueuedSheets: [(NSWindow, ((NSApplication.ModalResponse) -> Void)?)] = []
 
     /// The vertical inset from this window's top at which an attached sheet
     /// hangs: the title area, plus the toolbar strip when a visible toolbar is
@@ -551,28 +431,10 @@ open class NSWindow: NSResponder {
         winPresentSheet(sheetWindow, completionHandler: handler)
     }
 
-    private func winPresentSheet(_ sheetWindow: NSWindow, completionHandler handler: ((NSApplication.ModalResponse) -> Void)?) {
-        let sheetSize = sheetWindow.frame.size
-        sheetWindow.setFrame(NSRect(origin: winSheetOrigin(for: sheetSize), size: sheetSize), display: true)
-        attachedSheet = sheetWindow
-        sheetWindow.sheetParent = self
-        let response = NSApplication.shared.runModal(for: sheetWindow)
-        handler?(response)
-    }
-
     /// Ends a sheet session presented with `beginSheet(_:completionHandler:)`,
     /// unlinks it, and presents the next queued sheet if one is waiting.
     open func endSheet(_ sheetWindow: NSWindow, returnCode: NSApplication.ModalResponse = .OK) {
-        NSApplication.shared.stopModal(withCode: returnCode)
-        sheetWindow.close()
-        if attachedSheet === sheetWindow {
-            attachedSheet = nil
-        }
-        sheetWindow.sheetParent = nil
-        if !winQueuedSheets.isEmpty {
-            let (next, handler) = winQueuedSheets.removeFirst()
-            winPresentSheet(next, completionHandler: handler)
-        }
+        winEndSheet(sheetWindow, returnCode: returnCode)
     }
 
     /// Makes the window the key window.
@@ -614,50 +476,15 @@ open class NSWindow: NSResponder {
     /// Attempts to make a responder the window's first responder.
     @discardableResult
     open func makeFirstResponder(_ responder: NSResponder?) -> Bool {
-        if responder === firstResponder {
-            return true
-        }
-
-        if let firstResponder, !firstResponder.resignFirstResponder() {
-            return false
-        }
-
-        guard let responder else {
-            firstResponder = nil
-            return true
-        }
-
-        guard responder.becomeFirstResponder() else {
-            return false
-        }
-
-        firstResponder = responder
-
-        if let view = responder as? NSView, let nativeHandle = view.nativeHandle {
-            view.realizedBackend?.focusControl(nativeHandle)
-        }
-
-        return true
+        return winMakeFirstResponder(responder)
     }
 
     /// Closes the native window.
     open func close() {
-        guard let nativeHandle else {
-            return
-        }
-
-        // A modal window closed from its title bar ends its session, so
-        // `runModal(for:)` callers unwind instead of leaking a nested loop.
-        NSApplication.shared.windowWillClose(self)
-        nativeBackend.closeWindow(nativeHandle)
-        toolbarHostView?.destroyNativePeer()
-        toolbarHostView = nil
-        contentView?.destroyNativePeer()
-        self.nativeHandle = nil
-        NSApplication.shared.removeWindowsItem(self)
+        winClose()
     }
 
-    /// Sets the window frame and optionally requests display.
+/// Sets the window frame and optionally requests display.
     open func setFrame(_ frameRect: NSRect, display flag: Bool) {
         frame = frameRect
 
@@ -678,63 +505,13 @@ open class NSWindow: NSResponder {
 
     /// Centers the window in the screen's visible (work) area.
     open func center() {
-        let workArea = nativeBackend.screenDescriptions().first?.visibleFrame
-            ?? NSRect(x: 0, y: 0, width: 1024, height: 768)
-        let origin = NSPoint(
-            x: NSMidX(workArea) - frame.size.width / 2,
-            y: NSMidY(workArea) - frame.size.height / 2
-        )
-        setFrame(NSRect(origin: origin, size: frame.size), display: true)
+        winCenter()
     }
 
     /// Ensures the window and content hierarchy have native peers.
     @discardableResult
     open func realizeNativePeer() -> NativeHandle {
-        if let nativeHandle {
-            return nativeHandle
-        }
-
-        let handle = nativeBackend.createWindow(title: title, frame: frame, styleMask: styleMask, usesMainMenu: usesMainMenu)
-        nativeHandle = handle
-        nativeBackend.registerWindowCloseAction(for: handle) { [weak self] in
-            self?.nativeWindowDidClose()
-        }
-        nativeBackend.registerWindowShouldCloseHandler(for: handle) { [weak self] in
-            guard let self else {
-                return true
-            }
-            return self.delegate?.windowShouldClose(self) ?? true
-        }
-        nativeBackend.registerWindowResizeAction(for: handle) { [weak self] size in
-            self?.nativeWindowDidResize(to: size)
-        }
-        nativeBackend.registerWindowMoveAction(for: handle) { [weak self] origin in
-            self?.nativeWindowDidMove(to: origin)
-        }
-        if level != .normal {
-            nativeBackend.setWindowLevel(level, for: handle)
-        }
-        applySizeLimits()
-        NSApplication.shared.addWindowsItem(self)
-        applyTitleVisibility()
-        applyStandardButtonVisibility()
-        installToolbarHost()
-        layoutToolbarAndContent()
-        contentView?.realizeNativePeer(in: nativeBackend, parent: handle)
-        if isMovableByWindowBackground {
-            applyMovableByWindowBackground()
-        }
-        return handle
-    }
-
-    /// Pushes the effective caption text to the native window, honoring
-    /// `titleVisibility`.
-    private func applyTitleVisibility() {
-        guard let nativeHandle else {
-            return
-        }
-
-        nativeBackend.setText(titleVisibility == .hidden ? "" : title, for: nativeHandle)
+        return winRealizeNativePeer()
     }
 
     /// Returns the AppKit-style proxy for a standard title-bar button.
@@ -744,72 +521,7 @@ open class NSWindow: NSResponder {
     /// (which does not separate the caption buttons the way Cocoa does) is
     /// tracked as later window-chrome work; borderless windows vend no buttons.
     open func standardWindowButton(_ type: ButtonType) -> NSButton? {
-        guard styleMask.contains(.titled) else {
-            return nil
-        }
-
-        if let existing = standardButtons[type] {
-            return existing
-        }
-
-        let button = StandardWindowButtonProxy(frame: NSMakeRect(0, 0, 14, 14))
-        switch type {
-        case .closeButton:
-            button.title = "Close"
-        case .miniaturizeButton:
-            button.title = "Minimize"
-        case .zoomButton:
-            button.title = "Zoom"
-        case .toolbarButton:
-            button.title = "Toolbar"
-        case .documentIconButton:
-            button.title = ""
-        }
-        // Hiding a caption button (close/minimize/zoom) reflects onto the
-        // native title bar.
-        button.onVisibilityChanged = { [weak self] in
-            self?.applyStandardButtonVisibility()
-        }
-        standardButtons[type] = button
-        return button
-    }
-
-    /// Reflects the standard-button proxies' `isHidden` onto the native caption.
-    private func applyStandardButtonVisibility() {
-        guard let nativeHandle else {
-            return
-        }
-
-        nativeBackend.setWindowButtonsHidden(
-            closeHidden: standardButtons[.closeButton]?.isHidden ?? false,
-            minimizeHidden: standardButtons[.miniaturizeButton]?.isHidden ?? false,
-            zoomHidden: standardButtons[.zoomButton]?.isHidden ?? false,
-            for: nativeHandle
-        )
-    }
-
-    private func applyMovableByWindowBackground() {
-        guard let contentHandle = contentView?.nativeHandle else {
-            return
-        }
-
-        nativeBackend.setViewDragsParentWindow(isMovableByWindowBackground, for: contentHandle)
-    }
-
-    private func applySizeLimits() {
-        guard let nativeHandle else {
-            return
-        }
-
-        func positive(_ size: NSSize) -> NSSize? {
-            (size.width > 0 || size.height > 0) ? size : nil
-        }
-
-        nativeBackend.setWindowContentSizeLimits(
-            minSize: positive(contentMinSize) ?? positive(minSize),
-            maxSize: positive(contentMaxSize) ?? positive(maxSize),
-            for: nativeHandle
-        )
+        return winStandardWindowButton(type)
     }
 
     /// Closes the window after asking the delegate, like the close button.
@@ -817,35 +529,6 @@ open class NSWindow: NSResponder {
         if delegate?.windowShouldClose(self) ?? true {
             close()
         }
-    }
-
-    private func nativeWindowDidClose() {
-        // The title-bar close arrives here, not through `close()`, so the modal
-        // session has to be ended on this path too. `NSApplication` makes the
-        // call idempotent, so a programmatic `close()` that also triggers this
-        // callback cannot stop the session twice.
-        NSApplication.shared.windowWillClose(self)
-        toolbarHostView?.destroyNativePeer()
-        toolbarHostView = nil
-        contentView?.destroyNativePeer()
-        nativeHandle = nil
-        NSApplication.shared.removeWindowsItem(self)
-        delegate?.windowWillClose(Notification(name: Notification.Name("NSWindowWillCloseNotification"), object: self))
-    }
-
-    private func nativeWindowDidResize(to size: NSSize) {
-        frame = NSRect(origin: frame.origin, size: size)
-        layoutToolbarAndContent()
-        // Run the layout pass synchronously so live resize tracks the new
-        // size instead of waiting for the next pump tick.
-        contentView?.layoutSubtreeIfNeeded()
-        delegate?.windowDidResize(Notification(name: Notification.Name("NSWindowDidResizeNotification"), object: self))
-    }
-
-    private func nativeWindowDidMove(to origin: NSPoint) {
-        // Track the native origin without pushing it back to the backend.
-        frame.origin = origin
-        delegate?.windowDidMove(Notification(name: Notification.Name("NSWindowDidMoveNotification"), object: self))
     }
 
     // MARK: - Window state
@@ -858,11 +541,6 @@ open class NSWindow: NSResponder {
             intersectionArea(of: first.frame) < intersectionArea(of: second.frame)
         }
         return best ?? screens.first
-    }
-
-    private func intersectionArea(of rect: NSRect) -> CGFloat {
-        let overlap = frame.intersection(rect)
-        return overlap.width * overlap.height
     }
 
     /// Whether the window is on screen (ordered in and not minimized).
@@ -917,32 +595,7 @@ open class NSWindow: NSResponder {
     /// toolbar stays put as the window's top strip (still fully functional).
     /// A window whose `collectionBehavior` is `.fullScreenNone` won't toggle.
     open func toggleFullScreen(_ sender: Any?) {
-        guard !collectionBehavior.contains(.fullScreenNone) else {
-            return
-        }
-
-        let handle = realizeNativePeer()
-        let entering = !winIsFullScreen
-        let willName = entering ? "NSWindowWillEnterFullScreenNotification" : "NSWindowWillExitFullScreenNotification"
-        let didName = entering ? "NSWindowDidEnterFullScreenNotification" : "NSWindowDidExitFullScreenNotification"
-
-        if entering {
-            delegate?.windowWillEnterFullScreen(Notification(name: Notification.Name(willName), object: self))
-        } else {
-            delegate?.windowWillExitFullScreen(Notification(name: Notification.Name(willName), object: self))
-        }
-
-        winIsFullScreen = entering
-        nativeBackend.setWindowFullScreen(entering, for: handle)
-        // The toolbar/content re-layout for the new frame (the toolbar remains
-        // the top strip — no title-bar merge on Windows).
-        layoutToolbarAndContent()
-
-        if entering {
-            delegate?.windowDidEnterFullScreen(Notification(name: Notification.Name(didName), object: self))
-        } else {
-            delegate?.windowDidExitFullScreen(Notification(name: Notification.Name(didName), object: self))
-        }
+        winToggleFullScreen(sender)
     }
 
     /// Moves the window to the back of the z-order without activating it.
@@ -951,7 +604,7 @@ open class NSWindow: NSResponder {
         nativeBackend.orderWindowBack(handle)
     }
 
-    private func installToolbarHost() {
+internal func installToolbarHost() {
         guard let toolbar else {
             toolbarHostView?.destroyNativePeer()
             toolbarHostView = nil
@@ -975,169 +628,6 @@ open class NSWindow: NSResponder {
         if let nativeHandle, host.nativeHandle == nil {
             host.realizeNativePeer(in: nativeBackend, parent: nativeHandle)
         }
-    }
-
-    private func layoutToolbarAndContent() {
-        syncAutomaticToolbarHeight()
-
-        if let toolbarHostView {
-            toolbarHostView.frame = NSMakeRect(0, 0, frame.size.width, resolvedToolbarHeight)
-            if let handle = toolbarHostView.nativeHandle {
-                nativeBackend.setFrame(toolbarHostView.frame, for: handle)
-                toolbarHostView.reloadItems()
-            }
-        }
-
-        guard let contentView else {
-            return
-        }
-
-        contentView.frame = contentLayoutRect
-        if let handle = contentView.nativeHandle {
-            nativeBackend.setFrame(contentView.frame, for: handle)
-        }
-    }
-
-    private var resolvedToolbarHeight: CGFloat {
-        if usesAutomaticToolbarHeight {
-            return NSToolbarView.preferredHeight(for: toolbar)
-        }
-
-        return toolbarHeight
-    }
-
-    private func syncAutomaticToolbarHeight() {
-        guard usesAutomaticToolbarHeight else {
-            return
-        }
-
-        let preferredHeight = NSToolbarView.preferredHeight(for: toolbar)
-        guard toolbarHeight != preferredHeight else {
-            return
-        }
-
-        isUpdatingToolbarHeight = true
-        toolbarHeight = preferredHeight
-        isUpdatingToolbarHeight = false
-    }
-
-    private func nextKeyView(after responder: NSResponder?) -> NSView? {
-        if let view = responder as? NSView, let nextKeyView = firstFocusableNextKeyView(startingAt: view.winEffectiveNextKeyView) {
-            return nextKeyView
-        }
-
-        return firstFocusableView(startingAt: contentView)
-    }
-
-    private func previousKeyView(before responder: NSResponder?) -> NSView? {
-        if let view = responder as? NSView, let previousKeyView = firstFocusablePreviousKeyView(startingAt: view.previousKeyView) {
-            return previousKeyView
-        }
-
-        return lastFocusableView(in: contentView)
-    }
-
-    private func firstFocusableNextKeyView(startingAt view: NSView?) -> NSView? {
-        var visited: Set<ObjectIdentifier> = []
-        var current = view
-
-        while let candidate = current {
-            let identifier = ObjectIdentifier(candidate)
-            guard !visited.contains(identifier) else {
-                return nil
-            }
-
-            visited.insert(identifier)
-
-            if candidate.acceptsFirstResponder && !isHiddenInHierarchy(candidate) {
-                return candidate
-            }
-
-            if candidate.winShouldDescendInKeyLoop, let focusableChild = firstFocusableView(startingAt: candidate) {
-                return focusableChild
-            }
-
-            current = candidate.winEffectiveNextKeyView
-        }
-
-        return nil
-    }
-
-    private func firstFocusablePreviousKeyView(startingAt view: NSView?) -> NSView? {
-        var visited: Set<ObjectIdentifier> = []
-        var current = view
-
-        while let candidate = current {
-            let identifier = ObjectIdentifier(candidate)
-            guard !visited.contains(identifier) else {
-                return nil
-            }
-
-            visited.insert(identifier)
-
-            if candidate.acceptsFirstResponder && !isHiddenInHierarchy(candidate) {
-                return candidate
-            }
-
-            if candidate.winShouldDescendInKeyLoop, let focusableChild = lastFocusableView(in: candidate) {
-                return focusableChild
-            }
-
-            current = candidate.previousKeyView
-        }
-
-        return nil
-    }
-
-    private func firstFocusableView(startingAt view: NSView?) -> NSView? {
-        guard let view else {
-            return nil
-        }
-
-        if isHiddenInHierarchy(view) {
-            return nil
-        }
-
-        if view.acceptsFirstResponder {
-            return view
-        }
-
-        for subview in view.subviews {
-            if let focusable = firstFocusableView(startingAt: subview) {
-                return focusable
-            }
-        }
-
-        return nil
-    }
-
-    private func lastFocusableView(in view: NSView?) -> NSView? {
-        guard let view else {
-            return nil
-        }
-
-        if isHiddenInHierarchy(view) {
-            return nil
-        }
-
-        for subview in view.subviews.reversed() {
-            if let focusable = lastFocusableView(in: subview) {
-                return focusable
-            }
-        }
-
-        return view.acceptsFirstResponder ? view : nil
-    }
-
-    private func isHiddenInHierarchy(_ view: NSView) -> Bool {
-        var current: NSView? = view
-        while let candidate = current {
-            if candidate.isHidden {
-                return true
-            }
-            current = candidate.superview
-        }
-        return false
     }
 }
 

@@ -117,20 +117,7 @@ extension String {
     static func winDecode(_ bytes: [UInt8], encoding: Encoding) -> String? {
         switch encoding {
         case .utf8:
-            var decoder = UTF8()
-            var iterator = bytes.makeIterator()
-            var result = ""
-            result.reserveCapacity(bytes.count)
-            while true {
-                switch decoder.decode(&iterator) {
-                case .scalarValue(let scalar):
-                    result.unicodeScalars.append(scalar)
-                case .emptyInput:
-                    return result
-                case .error:
-                    return nil
-                }
-            }
+            return winDecodeUTF8(bytes)
         case .ascii:
             guard bytes.allSatisfy({ $0 < 0x80 }) else {
                 return nil
@@ -139,44 +126,58 @@ extension String {
         case .isoLatin1:
             return String(bytes.map { Character(UnicodeScalar($0)) })
         case .utf16, .utf16LittleEndian, .utf16BigEndian:
-            var payload = bytes[...]
-            var bigEndian = encoding == .utf16BigEndian
-            if encoding == .utf16 {
-                // Honor a BOM; default to little-endian (the Windows order).
-                if payload.count >= 2, payload.first == 0xFF, payload.dropFirst().first == 0xFE {
-                    payload = payload.dropFirst(2)
-                } else if payload.count >= 2, payload.first == 0xFE, payload.dropFirst().first == 0xFF {
-                    payload = payload.dropFirst(2)
-                    bigEndian = true
-                }
-            }
-            guard payload.count % 2 == 0 else {
-                return nil
-            }
-            var units: [UInt16] = []
-            units.reserveCapacity(payload.count / 2)
-            var index = payload.startIndex
-            while index < payload.endIndex {
-                let first = UInt16(payload[index])
-                let second = UInt16(payload[payload.index(after: index)])
-                units.append(bigEndian ? (first << 8) | second : (second << 8) | first)
-                index = payload.index(index, offsetBy: 2)
-            }
-            var decoder = UTF16()
-            var iterator = units.makeIterator()
-            var result = ""
-            while true {
-                switch decoder.decode(&iterator) {
-                case .scalarValue(let scalar):
-                    result.unicodeScalars.append(scalar)
-                case .emptyInput:
-                    return result
-                case .error:
-                    return nil
-                }
-            }
+            return winDecodeUTF16(bytes, encoding: encoding)
         default:
             return nil
+        }
+    }
+
+    private static func winDecodeUTF8(_ bytes: [UInt8]) -> String? {
+        var decoder = UTF8()
+        var iterator = bytes.makeIterator()
+        var result = ""
+        result.reserveCapacity(bytes.count)
+        while true {
+            switch decoder.decode(&iterator) {
+            case .scalarValue(let scalar): result.unicodeScalars.append(scalar)
+            case .emptyInput: return result
+            case .error: return nil
+            }
+        }
+    }
+
+    private static func winDecodeUTF16(_ bytes: [UInt8], encoding: Encoding) -> String? {
+        var payload = bytes[...]
+        var bigEndian = encoding == .utf16BigEndian
+        if encoding == .utf16 {
+            if payload.count >= 2, payload.first == 0xFF, payload.dropFirst().first == 0xFE {
+                payload = payload.dropFirst(2)
+            } else if payload.count >= 2, payload.first == 0xFE, payload.dropFirst().first == 0xFF {
+                payload = payload.dropFirst(2)
+                bigEndian = true
+            }
+        }
+        guard payload.count % 2 == 0 else { return nil }
+
+        var units: [UInt16] = []
+        units.reserveCapacity(payload.count / 2)
+        var index = payload.startIndex
+        while index < payload.endIndex {
+            let first = UInt16(payload[index])
+            let second = UInt16(payload[payload.index(after: index)])
+            units.append(bigEndian ? (first << 8) | second : (second << 8) | first)
+            index = payload.index(index, offsetBy: 2)
+        }
+
+        var decoder = UTF16()
+        var iterator = units.makeIterator()
+        var result = ""
+        while true {
+            switch decoder.decode(&iterator) {
+            case .scalarValue(let scalar): result.unicodeScalars.append(scalar)
+            case .emptyInput: return result
+            case .error: return nil
+            }
         }
     }
 

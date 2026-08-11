@@ -271,7 +271,7 @@ public protocol NativeDrawingContext: AnyObject {
     func strokePath(_ segments: [NativePathSegment], color: NSColor, lineWidth: CGFloat)
 
     /// Draws a single-line text run with its top-left corner at a point.
-    func drawText(_ text: String, at point: NSPoint, color: NSColor, fontName: String, fontSize: CGFloat, weight: Int, italic: Bool)
+    func drawText(_ text: String, at point: NSPoint, color: NSColor, font: NativeFontSpec)
 
     /// Draws an image file scaled to fill a rectangle.
     ///
@@ -568,7 +568,12 @@ public protocol NativeControlBackend: AnyObject {
     func createBox(title: String, frame: NSRect, parent: NativeHandle?) -> NativeHandle
 
     /// Creates a native text field child.
-    func createTextField(text: String, frame: NSRect, parent: NativeHandle?, isEditable: Bool, isBordered: Bool, isMultiline: Bool) -> NativeHandle
+    func createTextField(
+        text: String,
+        frame: NSRect,
+        parent: NativeHandle?,
+        options: NativeTextFieldOptions
+    ) -> NativeHandle
 
     /// Creates a native secure text field child.
     func createSecureTextField(text: String, frame: NSRect, parent: NativeHandle?) -> NativeHandle
@@ -649,7 +654,11 @@ public protocol NativeControlBackend: AnyObject {
     func createScroller(value: Double, knobProportion: Double, isVertical: Bool, frame: NSRect, parent: NativeHandle?) -> NativeHandle
 
     /// Creates a native stepper child.
-    func createStepper(value: Double, minValue: Double, maxValue: Double, increment: Double, frame: NSRect, parent: NativeHandle?) -> NativeHandle
+    func createStepper(
+        configuration: NativeStepperConfiguration,
+        frame: NSRect,
+        parent: NativeHandle?
+    ) -> NativeHandle
 
     /// Creates a native date-picker child.
     ///
@@ -657,7 +666,11 @@ public protocol NativeControlBackend: AnyObject {
     /// clock-and-calendar style) instead of the compact text-field picker.
     /// Creates a date-picker peer for an AppKit style: a field with a stepper,
     /// a graphical calendar, or a bare field.
-    func createDatePicker(date: Date, minDate: Date?, maxDate: Date?, style: NSDatePicker.Style, frame: NSRect, parent: NativeHandle?) -> NativeHandle
+    func createDatePicker(
+        configuration: NativeDatePickerConfiguration,
+        frame: NSRect,
+        parent: NativeHandle?
+    ) -> NativeHandle
 
     /// Creates a native scroll-view child.
     func createScrollView(frame: NSRect, parent: NativeHandle?, hasVerticalScroller: Bool, hasHorizontalScroller: Bool) -> NativeHandle
@@ -672,10 +685,21 @@ public protocol NativeControlBackend: AnyObject {
     func scrollViewContentOffset(for handle: NativeHandle) -> NSPoint
 
     /// Creates a native table-view child.
-    func createTableView(columns: [String], rows: [[String]], selectedRow: Int, frame: NSRect, parent: NativeHandle?) -> NativeHandle
+    func createTableView(
+        columns: [String],
+        content: NativeTableContent,
+        frame: NSRect,
+        parent: NativeHandle?
+    ) -> NativeHandle
 
     /// Creates a native table-view child with explicit column widths.
-    func createTableView(columns: [String], columnWidths: [CGFloat], rows: [[String]], selectedRow: Int, frame: NSRect, parent: NativeHandle?) -> NativeHandle
+    func createTableView(
+        columns: [String],
+        columnWidths: [CGFloat],
+        content: NativeTableContent,
+        frame: NSRect,
+        parent: NativeHandle?
+    ) -> NativeHandle
 
     /// Updates the visible text for a native control.
     func setText(_ text: String, for handle: NativeHandle)
@@ -695,7 +719,7 @@ public protocol NativeControlBackend: AnyObject {
     /// A `nil` font, color, underline, or strikethrough leaves that aspect of
     /// the range unchanged; `false` explicitly clears an effect. The user's
     /// selection is preserved across the formatting change.
-    func setTextRangeFormat(font: NSFont?, color: NSColor?, underline: Bool?, strikethrough: Bool?, location: Int, length: Int, for handle: NativeHandle)
+    func setTextRangeFormat(_ format: NativeTextRangeFormat, for handle: NativeHandle)
 
     /// Applies paragraph alignment to the paragraphs covering a character
     /// range of a rich text view.
@@ -1025,12 +1049,12 @@ public protocol NativeControlBackend: AnyObject {
     func runContextMenu(_ menu: NSMenu, atScreenPoint point: NSPoint) -> NSMenuItem?
 
     /// Measures the rendered size of a single-line text run.
-    func measureText(_ text: String, fontName: String, fontSize: CGFloat, weight: Int, italic: Bool) -> NSSize
+    func measureText(_ text: String, font: NativeFontSpec) -> NSSize
 
     /// Measures the rendered size of a text run wrapped at `maxWidth` (word
     /// wrap): the returned height covers every line the text breaks into, and
     /// the width is the widest line (≤ `maxWidth`). A non-positive `maxWidth`
     /// measures as a single line. Lets layout know a multiline label's height
     /// before any control exists.
-    func measureText(_ text: String, fontName: String, fontSize: CGFloat, weight: Int, italic: Bool, wrappingAt maxWidth: CGFloat) -> NSSize
+    func measureText(_ text: String, font: NativeFontSpec, wrappingAt maxWidth: CGFloat) -> NSSize
 }

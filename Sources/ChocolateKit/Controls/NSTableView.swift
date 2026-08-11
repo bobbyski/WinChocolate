@@ -96,30 +96,6 @@ public extension NSTableViewDelegate {
 /// and maps the classic backend to a native list box until a full ListView
 /// implementation lands.
 open class NSTableView: NSControl {
-    /// Grid-line drawing options.
-    public struct GridLineStyle: OptionSet, Sendable {
-        /// Raw option value.
-        public let rawValue: UInt
-
-        /// Creates grid-line options from a raw value.
-        public init(rawValue: UInt) {
-            self.rawValue = rawValue
-        }
-
-        /// Horizontal grid lines.
-        public static let solidHorizontalGridLineMask = GridLineStyle(rawValue: 1 << 0)
-
-        /// Vertical grid lines.
-        public static let solidVerticalGridLineMask = GridLineStyle(rawValue: 1 << 1)
-    }
-
-    /// Where a drop lands relative to a row, matching AppKit's
-    /// `NSTableView.DropOperation`: `.on` targets the row itself, `.above`
-    /// inserts between rows (the row-reorder form).
-    public enum DropOperation: Int, Sendable {
-        case on = 0
-        case above = 1
-    }
 
     /// The operations this table permits as a drag source, split by
     /// destination locality — AppKit's `setDraggingSourceOperationMask(_:forLocal:)`.
@@ -172,35 +148,11 @@ open class NSTableView: NSControl {
             && winMainActor { winEffectiveDataSource?.tableView(self, pasteboardWriterForRow: row) } != nil
     }
 
-    /// Selection highlight style.
-    public enum SelectionHighlightStyle: Sendable {
-        /// Regular table selection highlight.
-        case regular
-
-        /// Source-list style selection highlight.
-        case sourceList
-
-        /// No visible highlight.
-        case none
-    }
-
-    /// Column autoresizing style.
-    public enum ColumnAutoresizingStyle: Sendable {
-        /// No automatic column resizing.
-        case noColumnAutoresizing
-
-        /// Uniformly resize columns.
-        case uniformColumnAutoresizingStyle
-
-        /// Resize the last column.
-        case lastColumnOnlyAutoresizingStyle
-    }
-
     /// Selection-changed notification name.
     public static let selectionDidChangeNotification = "NSTableViewSelectionDidChangeNotification"
 
     /// Table columns in display order.
-    public private(set) var tableColumns: [NSTableColumn] = []
+    public internal(set) var tableColumns: [NSTableColumn] = []
 
     /// Object that provides row values.
     open weak var dataSource: NSTableViewDataSource?
@@ -263,7 +215,7 @@ open class NSTableView: NSControl {
     /// Reloads specific rows/columns by `IndexSet`, matching AppKit's
     /// signature.
     open func reloadData(forRowIndexes rowIndexes: IndexSet, columnIndexes: IndexSet) {
-        reloadDataForRows(Set(rowIndexes), columns: Set(columnIndexes))
+        winReloadData(forRowIndexes: rowIndexes, columnIndexes: columnIndexes)
     }
 
     /// Space between table cells.
@@ -278,26 +230,6 @@ open class NSTableView: NSControl {
     /// Column autoresizing style. Applied when `sizeToFit()` runs (AppKit also
     /// applies it during live resize; here it is driven explicitly).
     open var columnAutoresizingStyle: ColumnAutoresizingStyle = .uniformColumnAutoresizingStyle
-
-    /// Clamps a proposed column width to the column's `minWidth`/`maxWidth`
-    /// (`maxWidth <= 0` means unbounded).
-    private func winClampedColumnWidth(_ width: CGFloat, for column: NSTableColumn) -> CGFloat {
-        var w = max(width, column.minWidth)
-        if column.maxWidth > 0 {
-            w = min(w, column.maxWidth)
-        }
-        return w
-    }
-
-    /// Reflows the drawn table after column widths change (a no-op for the
-    /// native-list peer, whose column widths are fixed at creation — the same
-    /// boundary as interactive resize).
-    private func winApplyColumnWidths() {
-        if winIsDrawn {
-            winRebuildHostedViews()
-            needsDisplay = true
-        }
-    }
 
     /// Resizes the last column so the columns exactly fill the table's width,
     /// clamped to that column's min/max — AppKit's `sizeLastColumnToFit()`.
@@ -315,27 +247,7 @@ open class NSTableView: NSControl {
     /// Resizes columns to fill the table's width per `columnAutoresizingStyle`,
     /// clamped to each column's min/max — AppKit's `sizeToFit()`.
     open override func sizeToFit() {
-        guard !tableColumns.isEmpty else {
-            return
-        }
-        switch columnAutoresizingStyle {
-        case .noColumnAutoresizing:
-            return
-        case .lastColumnOnlyAutoresizingStyle:
-            sizeLastColumnToFit()
-        case .uniformColumnAutoresizingStyle:
-            let spacing = intercellSpacing.width * CGFloat(max(0, tableColumns.count - 1))
-            let current = tableColumns.reduce(0) { $0 + $1.width }
-            let delta = frame.size.width - spacing - current
-            guard abs(delta) > 0.5 else {
-                return
-            }
-            let share = delta / CGFloat(tableColumns.count)
-            for index in tableColumns.indices {
-                tableColumns[index].width = winClampedColumnWidth(tableColumns[index].width + share, for: tableColumns[index])
-            }
-            winApplyColumnWidths()
-        }
+        winSizeToFit()
     }
 
     /// Current table sort descriptors.
@@ -359,38 +271,19 @@ open class NSTableView: NSControl {
     var winInternalSelectionChanged: ((NSTableView) -> Void)?
 
     /// Current selected row, or `-1` when nothing is selected.
-    public private(set) var selectedRow: Int = -1
+    public internal(set) var selectedRow: Int = -1
 
     /// Current selected column, or `-1` when nothing is selected.
-    public private(set) var selectedColumn: Int = -1
+    public internal(set) var selectedColumn: Int = -1
 
     /// Current selected row indexes.
-    public private(set) var selectedRowIndexes: Set<Int> = []
+    public internal(set) var selectedRowIndexes: Set<Int> = []
 
-    private var rowValues: [[String]] = []
+    internal var rowValues: [[String]] = []
     /// The raw object values behind `rowValues`, kept in parallel so the drawn
     /// table can render an `NSAttributedString` cell with its own attributes.
-    private var rowRawValues: [[Any?]] = []
-    private var isUpdatingSelectionFromNative = false
-
-    /// The plain display string for a data-source object value (an
-    /// `NSAttributedString`'s `.string`, else the value's description).
-    func winDisplayString(from value: Any?) -> String {
-        if let attributed = value as? NSAttributedString {
-            return attributed.string
-        }
-        return value.map { String(describing: $0) } ?? ""
-    }
-
-    /// The `NSAttributedString` behind a drawn cell, when the data source vended
-    /// one — used to render the cell with the attributed value's own attributes.
-    func winAttributedValue(atColumn columnIndex: Int, row rowIndex: Int) -> NSAttributedString? {
-        guard rowRawValues.indices.contains(rowIndex),
-              rowRawValues[rowIndex].indices.contains(columnIndex) else {
-            return nil
-        }
-        return rowRawValues[rowIndex][columnIndex] as? NSAttributedString
-    }
+    internal var rowRawValues: [[Any?]] = []
+    internal var isUpdatingSelectionFromNative = false
 
     // MARK: - Framework-drawn (view-based) table state
     //
@@ -518,7 +411,7 @@ open class NSTableView: NSControl {
     /// in `NSEvent.keyCode`. Named so the switch below reads by intent rather
     /// than by magic hex. (Case patterns need constants, not locals, so these
     /// live here as static values.)
-    private enum TableKeyCode {
+    internal enum TableKeyCode {
         static let tab: UInt16 = 0x09
         static let `return`: UInt16 = 0x0d
         static let space: UInt16 = 0x20
@@ -532,41 +425,7 @@ open class NSTableView: NSControl {
 
     /// Tables handle standard navigation keys as part of their component behavior.
     open override func keyDown(with event: NSEvent) {
-        switch event.keyCode {
-        case TableKeyCode.tab:
-            moveFocusWithTab(event)
-        case TableKeyCode.upArrow:
-            moveSelection(by: -1, extending: event.modifierFlags.contains(.shift))
-        case TableKeyCode.downArrow:
-            moveSelection(by: 1, extending: event.modifierFlags.contains(.shift))
-        case TableKeyCode.pageUp:
-            moveSelection(by: -10, extending: event.modifierFlags.contains(.shift))
-        case TableKeyCode.pageDown:
-            moveSelection(by: 10, extending: event.modifierFlags.contains(.shift))
-        case TableKeyCode.home:
-            selectKeyboardRow(0, extending: event.modifierFlags.contains(.shift))
-        case TableKeyCode.end:
-            selectKeyboardRow(max(0, numberOfRows - 1), extending: event.modifierFlags.contains(.shift))
-        case TableKeyCode.return:
-            // Return begins editing the selected row's first editable drawn cell
-            // (AppKit convention); if nothing is editable, it acts as the row
-            // action instead.
-            if !winBeginEditSelectedRow() {
-                sendAction()
-            }
-        case TableKeyCode.space:
-            sendAction()
-        default:
-            super.keyDown(with: event)
-        }
-    }
-
-    private func moveFocusWithTab(_ event: NSEvent) {
-        if event.modifierFlags.contains(.shift) {
-            window?.selectPreviousKeyView(nil)
-        } else {
-            window?.selectNextKeyView(nil)
-        }
+        winKeyDown(with: event)
     }
 
     /// Number of columns.
@@ -627,56 +486,9 @@ open class NSTableView: NSControl {
         return tableColumns[columnIndex]
     }
 
-    /// Selects rows by a plain `Set`, the shared implementation behind AppKit's
-    /// `selectRowIndexes(_:byExtendingSelection:)`.
-    ///
-    /// Deliberately *not* an overload of the AppKit name: Apple declares only
-    /// the `IndexSet` form, and once real Foundation is underneath — where
-    /// `IndexSet` is `ExpressibleByArrayLiteral`, as Apple's is — a second
-    /// overload taking `Set<Int>` makes every `selectRowIndexes([row], …)`
-    /// call site ambiguous.
-    func selectRows(_ indexes: Set<Int>, byExtendingSelection extend: Bool) {
-        let validIndexes = indexes.filter { rowValues.indices.contains($0) }
-        guard !validIndexes.isEmpty else {
-            if allowsEmptySelection {
-                deselectAll(nil)
-            }
-            return
-        }
-
-        let oldSelection = selectedRowIndexes
-        // With multiple selection, replace with (or extend by) the whole set;
-        // single-selection tables keep only the first index.
-        if allowsMultipleSelection {
-            selectedRowIndexes = extend ? selectedRowIndexes.union(validIndexes) : validIndexes
-        } else {
-            selectedRowIndexes = [validIndexes.min() ?? -1]
-        }
-        selectedRow = selectedRowIndexes.min() ?? -1
-        selectedColumn = numberOfColumns > 0 ? 0 : -1
-        if !isUpdatingSelectionFromNative, let nativeHandle {
-            realizedBackend?.setTableSelectedRows(selectedRowIndexes, for: nativeHandle)
-        }
-
-        if selectedRowIndexes != oldSelection {
-            notifySelectionChanged()
-        }
-    }
-
     /// Deselects all rows.
     open func deselectAll(_ sender: Any?) {
-        guard allowsEmptySelection else {
-            return
-        }
-
-        selectedRow = -1
-        selectedColumn = -1
-        selectedRowIndexes = []
-        if let nativeHandle {
-            realizedBackend?.setTableSelectedRows([], for: nativeHandle)
-        }
-
-        notifySelectionChanged()
+        winDeselectAll(sender)
     }
 
     /// Deselects a specific row.
@@ -697,25 +509,7 @@ open class NSTableView: NSControl {
 
     /// Selects all rows when multiple selection is enabled.
     open func selectAll(_ sender: Any?) {
-        guard allowsMultipleSelection else {
-            if !rowValues.isEmpty {
-                selectRowIndexes([0], byExtendingSelection: false)
-            }
-            return
-        }
-
-        let oldSelection = selectedRowIndexes
-        selectedRowIndexes = Set(rowValues.indices)
-        selectedRow = selectedRowIndexes.min() ?? -1
-        selectedColumn = selectedRow >= 0 && numberOfColumns > 0 ? 0 : -1
-
-        if let nativeHandle {
-            realizedBackend?.setTableSelectedRows(selectedRowIndexes, for: nativeHandle)
-        }
-
-        if selectedRowIndexes != oldSelection {
-            notifySelectionChanged()
-        }
+        winSelectAll(sender)
     }
 
     /// Returns whether a row is selected.
@@ -728,37 +522,7 @@ open class NSTableView: NSControl {
     /// (`winRowY`/`winRowHeightAt`) and nudges the clip view only as far as
     /// needed, exactly like AppKit (an already-visible row does not move).
     open func scrollRowToVisible(_ row: Int) {
-        guard row >= 0, row < numberOfRows else {
-            return
-        }
-
-        // A native list peer scrolls itself (LVM_ENSUREVISIBLE); the clip-view
-        // nudge below is the drawn table's mechanism.
-        if !winIsDrawn, let nativeHandle {
-            realizedBackend?.scrollTableRowToVisible(row, for: nativeHandle)
-            return
-        }
-
-        guard let scrollView = enclosingScrollView else {
-            return
-        }
-
-        let clip = scrollView.contentView
-        let rowTop = winIsDrawn ? winRowY(row) : CGFloat(row) * rowHeight
-        let rowHeightValue = winIsDrawn ? winRowHeightAt(row) : rowHeight
-        let visible = clip.documentVisibleRect
-
-        var origin = visible.origin
-        if rowTop < visible.origin.y {
-            origin.y = rowTop
-        } else if rowTop + rowHeightValue > visible.origin.y + visible.size.height {
-            origin.y = rowTop + rowHeightValue - visible.size.height
-        } else {
-            return
-        }
-
-        clip.scroll(to: origin)
-        scrollView.reflectScrolledClipView(clip)
+        winScrollRowToVisible(row)
     }
 
     /// Scrolls a column into view. Stored for compatibility; native scrolling is future work.
@@ -829,34 +593,7 @@ open class NSTableView: NSControl {
 
     /// Returns accessibility elements for the table's currently represented rows.
     open override func accessibilityChildren() -> [Any]? {
-        // The data-driven row/cell tree is the table's accessibility surface:
-        // it carries every cell's text whether the table draws its own cells
-        // or hosts cell views, so assistive technology and the contract tests
-        // see the same structure. An explicit app override still wins.
-        if let explicit = winExplicitAccessibilityChildren { return explicit }
-        guard numberOfRows > 0 else { return nil }
-        var rows: [NSAccessibilityProtocol] = []
-        for row in 0..<numberOfRows {
-            let rowElement = NSAccessibilityElement()
-            rowElement.setAccessibilityRole(.row)
-            rowElement.setAccessibilitySubrole(winReportsAsOutline ? .outlineRow : .tableRow)
-            rowElement.accessibilityFrameInParentSpace = winAccessibilityRowFrame(row)
-            rowElement.winAccessibilityParent = self
-            var cells: [NSAccessibilityProtocol] = []
-            for column in 0..<max(1, tableColumns.count) {
-                let cell = NSAccessibilityElement()
-                cell.setAccessibilityRole(.cell)
-                cell.setAccessibilityValue(value(atColumn: column, row: row) ?? "")
-                if tableColumns.indices.contains(column) {
-                    cell.setAccessibilityLabel(tableColumns[column].title)
-                }
-                cell.accessibilityFrameInParentSpace = winAccessibilityRowFrame(row)
-                cells.append(cell)
-            }
-            rowElement.setAccessibilityChildren(cells)
-            rows.append(rowElement)
-        }
-        return rows
+        return winAccessibilityChildren()
     }
 
     /// Returns the value for a column object and row.
@@ -868,57 +605,9 @@ open class NSTableView: NSControl {
         return value(atColumn: column(withIdentifier: tableColumn.identifier), row: rowIndex)
     }
 
-    /// Reloads only the given cells from the data source, updating each in
-    /// place natively instead of rebuilding the whole table.
-    private func reloadDataForRows(_ rowIndexes: Set<Int>, columns columnIndexes: Set<Int>) {
-        let columns = columnIndexes.isEmpty ? Set(tableColumns.indices) : columnIndexes
-        for row in rowIndexes where rowValues.indices.contains(row) {
-            for column in columns where tableColumns.indices.contains(column) {
-                let value = winMainActor { winEffectiveDataSource?.tableView(self, objectValueFor: tableColumns[column], row: row) }
-                let text = winDisplayString(from: value)
-                rowValues[row][column] = text
-                if rowRawValues.indices.contains(row), rowRawValues[row].indices.contains(column) {
-                    rowRawValues[row][column] = value
-                }
-                if let nativeHandle {
-                    realizedBackend?.setTableCellText(text, row: row, column: column, for: nativeHandle)
-                }
-            }
-        }
-    }
-
     /// Reloads all rows from the data source.
     open func reloadData() {
-        let count = winMainActor { winEffectiveDataSource?.numberOfRows(in: self) } ?? 0
-        var nextRows: [[String]] = []
-        var nextRaw: [[Any?]] = []
-
-        for row in 0..<count {
-            var strings: [String] = []
-            var raws: [Any?] = []
-            for column in tableColumns {
-                let value = winMainActor { winEffectiveDataSource?.tableView(self, objectValueFor: column, row: row) }
-                raws.append(value)
-                strings.append(winDisplayString(from: value))
-            }
-            nextRows.append(strings)
-            nextRaw.append(raws)
-        }
-
-        rowValues = nextRows
-        rowRawValues = nextRaw
-        if selectedRow >= rowValues.count {
-            selectedRow = rowValues.isEmpty ? -1 : rowValues.count - 1
-        }
-        selectedRowIndexes = selectedRow >= 0 ? [selectedRow] : []
-        selectedColumn = selectedRow >= 0 && numberOfColumns > 0 ? max(selectedColumn, 0) : -1
-
-        if winIsDrawn {
-            winRebuildHostedViews()
-            needsDisplay = true
-        } else {
-            syncRowsToNative()
-        }
+        winReloadAllData()
     }
 
     /// Creates the native table peer (or a custom-drawn view for view-based
@@ -927,7 +616,12 @@ open class NSTableView: NSControl {
         if winIsDrawn {
             return backend.createView(frame: frame, parent: parent)
         }
-        return backend.createTableView(columns: tableColumns.map(\.title), rows: rowValues, selectedRow: selectedRow, frame: frame, parent: parent)
+        return backend.createTableView(
+            columns: tableColumns.map(\.title),
+            content: NativeTableContent(rows: rowValues, selectedRow: selectedRow),
+            frame: frame,
+            parent: parent
+        )
     }
 
     /// Draws the header/grid/selection for a framework-drawn table.
@@ -982,128 +676,13 @@ open class NSTableView: NSControl {
     /// Ensures native table state and selection dispatch are wired.
     @discardableResult
     open override func realizeNativePeer(in backend: NativeControlBackend, parent: NativeHandle?) -> NativeHandle {
-        reloadData()
-        winIsDrawn = winShouldUseDrawnCells
-        let handle = super.realizeNativePeer(in: backend, parent: parent)
-        if winIsDrawn {
-            winRebuildHostedViews()
-            needsDisplay = true
-            return handle
-        }
-        if allowsMultipleSelection {
-            backend.setTableAllowsMultipleSelection(true, for: handle)
-        }
-        // First-column in-place editing when the first column opts in.
-        if tableColumns.first?.isEditable == true {
-            backend.setTableEditable(true, for: handle)
-        }
-        backend.registerTableEditAction(for: handle) { [weak self] row, column, text in
-            self?.commitEdit(row: row, column: column, text: text)
-        }
-        backend.registerTableDoubleClickAction(for: handle) { [weak self] in
-            self?.sendDoubleAction()
-        }
-        backend.registerAction(for: handle) { [weak self, weak backend] in
-            guard let self, let backend, let nativeHandle = self.nativeHandle else {
-                return
-            }
-
-            // A header click (column set, no row) applies the column's sort
-            // prototype + indicator, then sends the table action so apps that
-            // re-sort their model on the action (reading `sortDescriptors`) run.
-            let clickedColumn = backend.tableClickedColumn(for: nativeHandle)
-            let clickedRow = backend.tableClickedRow(for: nativeHandle)
-            if clickedColumn >= 0, clickedRow < 0 {
-                self.handleHeaderClick(column: clickedColumn)
-                self.sendAction()
-                return
-            }
-
-            self.updateSelectionFromNative(rows: backend.tableSelectedRows(for: nativeHandle))
-            _ = self.window?.makeFirstResponder(self)
-            self.sendAction()
-            self.notifySelectionChanged()
-        }
-        return handle
+        return winRealizeNativePeer(in: backend, parent: parent)
     }
 
     /// Begins editing a cell. The framework-drawn table edits any column via the
     /// overlay editor; the native list edits its first column.
     open func editColumn(_ column: Int, row: Int, with event: NSEvent?, select: Bool) {
-        guard rowValues.indices.contains(row) else {
-            return
-        }
-        if winIsDrawn {
-            selectRowIndexes([row], byExtendingSelection: false)
-            winUpdateHostedRowSelection()
-            winBeginDrawnEdit(row: row, column: column)
-            return
-        }
-        guard let nativeHandle else {
-            return
-        }
-        realizedBackend?.editTableCell(row: row, column: column, for: nativeHandle)
-    }
-
-    private func commitEdit(row: Int, column: Int, text: String) {
-        guard rowValues.indices.contains(row) else {
-            return
-        }
-        setObjectValue(text, for: tableColumn(at: column), row: row)
-    }
-
-    private func handleHeaderClick(column: Int) {
-        headerView?.clickedColumn = column
-        guard let sort = sortUsingDescriptorPrototype(forColumn: column) else {
-            return
-        }
-        if let nativeHandle {
-            realizedBackend?.setTableSortIndicator(column: column, ascending: sort.ascending, for: nativeHandle)
-        }
-    }
-
-    private func syncRowsToNative() {
-        guard let nativeHandle else {
-            return
-        }
-
-        realizedBackend?.setTableRows(rowValues, selectedRow: selectedRow, for: nativeHandle)
-    }
-
-    private func updateSelectionFromNative(rows: [Int]) {
-        isUpdatingSelectionFromNative = true
-        let valid = Set(rows.filter { rowValues.indices.contains($0) })
-        selectedRowIndexes = valid
-        selectedRow = valid.min() ?? -1
-        selectedColumn = selectedRow >= 0 && numberOfColumns > 0 ? 0 : -1
-        isUpdatingSelectionFromNative = false
-    }
-
-    private func moveSelection(by offset: Int, extending: Bool) {
-        guard numberOfRows > 0 else {
-            return
-        }
-
-        let base = selectedRow >= 0 ? selectedRow : (offset < 0 ? numberOfRows : -1)
-        selectKeyboardRow(base + offset, extending: extending)
-    }
-
-    private func selectKeyboardRow(_ row: Int, extending: Bool) {
-        guard numberOfRows > 0 else {
-            return
-        }
-
-        let clampedRow = max(0, min(row, numberOfRows - 1))
-        selectRowIndexes([clampedRow], byExtendingSelection: extending)
-        scrollRowToVisible(clampedRow)
-    }
-
-    private func notifySelectionChanged() {
-        if winIsDrawn {
-            needsDisplay = true
-        }
-        winInternalSelectionChanged?(self)
-        winMainActor { winEffectiveDelegate?.tableViewSelectionDidChange(Notification(name: Notification.Name(Self.selectionDidChangeNotification), object: self)) }
+        winEditColumn(column, row: row, with: event, select: select)
     }
 }
 

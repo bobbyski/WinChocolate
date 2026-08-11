@@ -45,6 +45,107 @@ public extension NSBrowserDelegate {
     }
 }
 
+private final class NSBrowserColumnDataSource: NSObject, NSTableViewDataSource {
+    nonisolated(unsafe) weak var browser: NSBrowser?
+    nonisolated let column: Int
+
+    nonisolated init(browser: NSBrowser, column: Int) {
+        self.browser = browser
+        self.column = column
+    }
+
+    func numberOfRows(in tableView: NSTableView) -> Int {
+        browser?.items(inColumn: column).count ?? 0
+    }
+
+    func tableView(_ tableView: NSTableView, objectValueFor tableColumn: NSTableColumn?, row: Int) -> Any? {
+        guard let browser, let item = browser.item(atRow: row, inColumn: column) else { return nil }
+        return winMainActor { browser.delegate?.browser(browser, objectValueForItem: item) }
+            ?? String(describing: item)
+    }
+}
+
+private enum NSBrowserCellDecoration {
+    static func drawBranchChevron(in cellRect: NSRect) {
+        let x = cellRect.maxX - 12
+        let centerY = cellRect.midY
+        let path = NSBezierPath()
+        path.move(to: NSMakePoint(x, centerY - 4))
+        path.line(to: NSMakePoint(x + 5, centerY))
+        path.line(to: NSMakePoint(x, centerY + 4))
+        path.close()
+        NSColor(white: 0.45, alpha: 1).setFill()
+        path.fill()
+    }
+
+    static func drawCellIcon(image: NSImage?, isLeaf: Bool, in cellRect: NSRect) {
+        let centerY = cellRect.midY
+        let left = cellRect.minX + 4
+        if let image {
+            image.draw(in: NSRect(x: left, y: centerY - 7, width: 14, height: 14))
+            return
+        }
+        if isLeaf {
+            drawDocumentIcon(left: left, centerY: centerY)
+        } else {
+            drawFolderIcon(left: left, centerY: centerY)
+        }
+    }
+
+    private static func drawDocumentIcon(left: CGFloat, centerY: CGFloat) {
+        let isDark = NSApplication.shared.effectiveAppearance.winIsDark
+        let page = NSRect(x: left + 1, y: centerY - 6, width: 11, height: 13)
+        (isDark ? NSColor(white: 0.28, alpha: 1) : NSColor.white).setFill()
+        NSBezierPath(rect: page).fill()
+        NSColor(white: 0.55, alpha: 1).setStroke()
+        let border = NSBezierPath(rect: page)
+        border.lineWidth = 1
+        border.stroke()
+        (isDark ? NSColor(white: 0.5, alpha: 1) : NSColor(white: 0.7, alpha: 1)).setStroke()
+        for offset in [3, 7] {
+            let line = NSBezierPath()
+            line.move(to: NSMakePoint(page.minX + 2, page.minY + CGFloat(offset)))
+            line.line(to: NSMakePoint(page.maxX - 2, page.minY + CGFloat(offset)))
+            line.stroke()
+        }
+    }
+
+    private static func drawFolderIcon(left: CGFloat, centerY: CGFloat) {
+        NSColor(calibratedRed: 0.90, green: 0.78, blue: 0.44, alpha: 1).setFill()
+        NSBezierPath(rect: NSRect(x: left, y: centerY + 3, width: 6, height: 2)).fill()
+        let body = NSRect(x: left, y: centerY - 5, width: 14, height: 9)
+        NSBezierPath(rect: body).fill()
+        NSColor(calibratedRed: 0.72, green: 0.60, blue: 0.28, alpha: 1).setStroke()
+        let outline = NSBezierPath(rect: body)
+        outline.lineWidth = 1
+        outline.stroke()
+    }
+}
+
+private final class NSBrowserColumn {
+    let scrollView: NSScrollView
+    let tableView: NSBrowser.BrowserColumnTableView
+    let dataSource: NSBrowserColumnDataSource
+    let titleLabel: NSTextField
+
+    init(browser: NSBrowser, column: Int, frame: NSRect) {
+        scrollView = NSScrollView(frame: frame)
+        tableView = NSBrowser.BrowserColumnTableView(
+            browser: browser,
+            columnIndex: column,
+            frame: NSRect(origin: NSZeroPoint, size: frame.size)
+        )
+        dataSource = NSBrowserColumnDataSource(browser: browser, column: column)
+        titleLabel = NSTextField(string: "", frame: .zero)
+        titleLabel.isBordered = false
+        titleLabel.alignment = .center
+        titleLabel.font = NSFont.boldSystemFont(ofSize: 11)
+        titleLabel.winBackgroundColor = NSApplication.shared.effectiveAppearance.winIsDark
+            ? NSColor(white: 0.24, alpha: 1)
+            : NSColor(white: 0.92, alpha: 1)
+    }
+}
+
 /// A multi-column AppKit browser.
 ///
 /// This first slice composes `NSTableView` columns inside scroll views. It keeps
@@ -54,34 +155,10 @@ open class NSBrowser: NSControl {
     // Members are nonisolated: the @MainActor data-source protocol infers
     // @MainActor on the class, but everything here reads nonisolated
     // browser state, and all calls happen on the Win32 UI thread.
-    private final class BrowserColumnDataSource: NSObject, NSTableViewDataSource {
-        nonisolated(unsafe) weak var browser: NSBrowser?
-        nonisolated let column: Int
-
-        nonisolated init(browser: NSBrowser, column: Int) {
-            self.browser = browser
-            self.column = column
-        }
-
-        func numberOfRows(in tableView: NSTableView) -> Int {
-            browser?.items(inColumn: column).count ?? 0
-        }
-
-        func tableView(_ tableView: NSTableView, objectValueFor tableColumn: NSTableColumn?, row: Int) -> Any? {
-            guard let browser,
-                  let item = browser.item(atRow: row, inColumn: column) else {
-                return nil
-            }
-
-            return winMainActor { browser.delegate?.browser(browser, objectValueForItem: item) }
-                ?? String(describing: item)
-        }
-    }
-
     /// A browser column's list, drawn by the framework table so each row can
     /// paint an `NSBrowserCell`-style leading icon (a folder for branches, a
     /// document for leaves) plus a trailing branch chevron on non-leaf rows.
-    private final class BrowserColumnTableView: NSTableView {
+    fileprivate final class BrowserColumnTableView: NSTableView {
         weak var browser: NSBrowser?
         let columnIndex: Int
 
@@ -128,93 +205,16 @@ open class NSBrowser: NSControl {
             let isLeaf = winMainActor { browser.delegate?.browser(browser, isLeafItem: item) } ?? true
             if browser.showsCellIcons {
                 let image = winMainActor { browser.delegate?.browser(browser, imageForItem: item) }
-                drawCellIcon(image: image, isLeaf: isLeaf, in: cellRect)
+                NSBrowserCellDecoration.drawCellIcon(image: image, isLeaf: isLeaf, in: cellRect)
             }
             if !isLeaf {
-                drawBranchChevron(in: cellRect)
+                NSBrowserCellDecoration.drawBranchChevron(in: cellRect)
             }
         }
 
-        /// A right-pointing triangle at the trailing edge (branch mark).
-        private func drawBranchChevron(in cellRect: NSRect) {
-            let x = cellRect.maxX - 12
-            let cy = cellRect.midY
-            let path = NSBezierPath()
-            path.move(to: NSMakePoint(x, cy - 4))
-            path.line(to: NSMakePoint(x + 5, cy))
-            path.line(to: NSMakePoint(x, cy + 4))
-            path.close()
-            NSColor(white: 0.45, alpha: 1).setFill()
-            path.fill()
-        }
-
-        /// Draws the leading cell icon: a delegate-provided image when present,
-        /// otherwise a simple, original folder (branch) or document (leaf) glyph
-        /// drawn from rects/lines so it never collides with the chevron's
-        /// triangle in fill-shape tests.
-        private func drawCellIcon(image: NSImage?, isLeaf: Bool, in cellRect: NSRect) {
-            let cy = cellRect.midY
-            let left = cellRect.minX + 4
-            if let image {
-                image.draw(in: NSRect(x: left, y: cy - 7, width: 14, height: 14))
-                return
-            }
-            if isLeaf {
-                // Document: a page with two text lines. Appearance-aware so the
-                // page isn't a bright island on the dark browser column.
-                let isDark = NSApplication.shared.effectiveAppearance.winIsDark
-                let page = NSRect(x: left + 1, y: cy - 6, width: 11, height: 13)
-                (isDark ? NSColor(white: 0.28, alpha: 1) : NSColor.white).setFill()
-                NSBezierPath(rect: page).fill()
-                NSColor(white: 0.55, alpha: 1).setStroke()
-                let border = NSBezierPath(rect: page)
-                border.lineWidth = 1
-                border.stroke()
-                (isDark ? NSColor(white: 0.5, alpha: 1) : NSColor(white: 0.7, alpha: 1)).setStroke()
-                for dy in [3, 7] {
-                    let line = NSBezierPath()
-                    line.move(to: NSMakePoint(page.minX + 2, page.minY + CGFloat(dy)))
-                    line.line(to: NSMakePoint(page.maxX - 2, page.minY + CGFloat(dy)))
-                    line.stroke()
-                }
-            } else {
-                // Folder: a body with a small tab on the top-left.
-                let manila = NSColor(calibratedRed: 0.90, green: 0.78, blue: 0.44, alpha: 1)
-                manila.setFill()
-                NSBezierPath(rect: NSRect(x: left, y: cy + 3, width: 6, height: 2)).fill()
-                NSBezierPath(rect: NSRect(x: left, y: cy - 5, width: 14, height: 9)).fill()
-                NSColor(calibratedRed: 0.72, green: 0.60, blue: 0.28, alpha: 1).setStroke()
-                let outline = NSBezierPath(rect: NSRect(x: left, y: cy - 5, width: 14, height: 9))
-                outline.lineWidth = 1
-                outline.stroke()
-            }
-        }
     }
 
-    private final class BrowserColumn {
-        let scrollView: NSScrollView
-        let tableView: BrowserColumnTableView
-        let dataSource: BrowserColumnDataSource
-        let titleLabel: NSTextField
-
-        init(browser: NSBrowser, column: Int, frame: NSRect) {
-            scrollView = NSScrollView(frame: frame)
-            tableView = BrowserColumnTableView(browser: browser, columnIndex: column,
-                                               frame: NSRect(origin: NSZeroPoint, size: frame.size))
-            dataSource = BrowserColumnDataSource(browser: browser, column: column)
-            titleLabel = NSTextField(string: "", frame: .zero)
-            titleLabel.isBordered = false
-            titleLabel.alignment = .center
-            titleLabel.font = NSFont.boldSystemFont(ofSize: 11)
-            // The title strip follows the appearance so its text stays
-            // legible (light band on light, header tone on dark).
-            titleLabel.winBackgroundColor = NSApplication.shared.effectiveAppearance.winIsDark
-                ? NSColor(white: 0.24, alpha: 1)
-                : NSColor(white: 0.92, alpha: 1)
-        }
-    }
-
-    private var columns: [BrowserColumn] = []
+    private var columns: [NSBrowserColumn] = []
     private var columnItems: [[Any]] = []
     private var selectedRowsByColumn: [Int: Int] = [:]
     private var isUpdatingTableSelection = false
@@ -543,7 +543,7 @@ private extension NSBrowser {
 
     func addColumn(at index: Int) {
         let frame = NSMakeRect(CGFloat(index) * defaultColumnWidth, 0, defaultColumnWidth, self.frame.size.height)
-        let column = BrowserColumn(browser: self, column: index, frame: frame)
+        let column = NSBrowserColumn(browser: self, column: index, frame: frame)
         let titleColumn = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("browser"))
         titleColumn.title = ""
         titleColumn.width = defaultColumnWidth

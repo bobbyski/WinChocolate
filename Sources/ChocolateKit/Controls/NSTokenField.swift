@@ -2,6 +2,25 @@
 /// token fields report text changes through the text-field delegate surface.
 public protocol NSTokenFieldDelegate: NSTextFieldDelegate {}
 
+/// Appearance-aware colors used to draw a token chip.
+public struct NSTokenChipColors {
+    /// Chip fill color.
+    public let fill: NSColor
+
+    /// Chip outline color.
+    public let border: NSColor
+
+    /// Chip label color.
+    public let text: NSColor
+
+    /// Creates a token-chip color set.
+    public init(fill: NSColor, border: NSColor, text: NSColor) {
+        self.fill = fill
+        self.border = border
+        self.text = text
+    }
+}
+
 /// A tokenizing text field.
 ///
 /// This first slice keeps AppKit's `NSTokenField` name and token/object-value
@@ -114,16 +133,20 @@ open class NSTokenField: NSTextField {
     /// dark text under light, a deep accent fill with light text under dark, so
     /// the chips read as tokens in either theme instead of a fixed light island.
     /// Pure and `isDark`-parameterized for testing.
-    public static func winChipColors(isDark: Bool) -> (fill: NSColor, border: NSColor, text: NSColor) {
+    public static func winChipColors(isDark: Bool) -> NSTokenChipColors {
         let accent = NSColor.controlAccentColor
         if isDark {
-            return (fill: accent.blended(withFraction: 0.55, of: .black) ?? accent,
-                    border: accent,
-                    text: .white)
+            return NSTokenChipColors(
+                fill: accent.blended(withFraction: 0.55, of: .black) ?? accent,
+                border: accent,
+                text: .white
+            )
         }
-        return (fill: accent.blended(withFraction: 0.80, of: .white) ?? accent,
-                border: accent.blended(withFraction: 0.35, of: .white) ?? accent,
-                text: .black)
+        return NSTokenChipColors(
+            fill: accent.blended(withFraction: 0.80, of: .white) ?? accent,
+            border: accent.blended(withFraction: 0.35, of: .white) ?? accent,
+            text: .black
+        )
     }
 
     /// Draws the tokens as rounded chips.

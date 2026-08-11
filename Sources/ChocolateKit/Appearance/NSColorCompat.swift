@@ -27,6 +27,18 @@ public final class NSColorSpace: Sendable {
     public init() {}
 }
 
+private struct NSRGBComponents {
+    let red: CGFloat
+    let green: CGFloat
+    let blue: CGFloat
+}
+
+private struct NSHSBComponents {
+    let hue: CGFloat
+    let saturation: CGFloat
+    let brightness: CGFloat
+}
+
 extension NSColor {
     // MARK: - Additional initializers
 
@@ -218,11 +230,11 @@ extension NSColor {
 
     // MARK: - HSB conversion helpers
 
-    static func hsbToRGB(hue: CGFloat, saturation: CGFloat, brightness: CGFloat) -> (red: CGFloat, green: CGFloat, blue: CGFloat) {
+    private static func hsbToRGB(hue: CGFloat, saturation: CGFloat, brightness: CGFloat) -> NSRGBComponents {
         let s = min(max(saturation, 0), 1)
         let v = min(max(brightness, 0), 1)
         if s == 0 {
-            return (v, v, v)
+            return NSRGBComponents(red: v, green: v, blue: v)
         }
         var h = hue.truncatingRemainder(dividingBy: 1)
         if h < 0 { h += 1 }
@@ -232,17 +244,19 @@ extension NSColor {
         let p = v * (1 - s)
         let q = v * (1 - s * f)
         let t = v * (1 - s * (1 - f))
+        let values: NSRGBComponents
         switch sector {
-        case 0: return (v, t, p)
-        case 1: return (q, v, p)
-        case 2: return (p, v, t)
-        case 3: return (p, q, v)
-        case 4: return (t, p, v)
-        default: return (v, p, q)
+        case 0: values = NSRGBComponents(red: v, green: t, blue: p)
+        case 1: values = NSRGBComponents(red: q, green: v, blue: p)
+        case 2: values = NSRGBComponents(red: p, green: v, blue: t)
+        case 3: values = NSRGBComponents(red: p, green: q, blue: v)
+        case 4: values = NSRGBComponents(red: t, green: p, blue: v)
+        default: values = NSRGBComponents(red: v, green: p, blue: q)
         }
+        return values
     }
 
-    static func rgbToHSB(_ color: NSColor) -> (hue: CGFloat, saturation: CGFloat, brightness: CGFloat) {
+    private static func rgbToHSB(_ color: NSColor) -> NSHSBComponents {
         let r = color.redComponent, g = color.greenComponent, b = color.blueComponent
         let maxV = max(r, g, b)
         let minV = min(r, g, b)
@@ -261,6 +275,6 @@ extension NSColor {
             hue /= 6
             if hue < 0 { hue += 1 }
         }
-        return (hue, saturation, brightness)
+        return NSHSBComponents(hue: hue, saturation: saturation, brightness: brightness)
     }
 }

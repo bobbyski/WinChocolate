@@ -1,3 +1,38 @@
+/// The four color components of an RGBA8 image pixel.
+public struct CGImagePixel: Equatable, Hashable, Sendable {
+    /// The red component.
+    public let red: UInt8
+
+    /// The green component.
+    public let green: UInt8
+
+    /// The blue component.
+    public let blue: UInt8
+
+    /// The alpha component.
+    public let alpha: UInt8
+
+    /// A compatibility alias for ``red``.
+    public var r: UInt8 { red }
+
+    /// A compatibility alias for ``green``.
+    public var g: UInt8 { green }
+
+    /// A compatibility alias for ``blue``.
+    public var b: UInt8 { blue }
+
+    /// A compatibility alias for ``alpha``.
+    public var a: UInt8 { alpha }
+
+    /// Creates an RGBA8 pixel.
+    public init(red: UInt8, green: UInt8, blue: UInt8, alpha: UInt8) {
+        self.red = red
+        self.green = green
+        self.blue = blue
+        self.alpha = alpha
+    }
+}
+
 /// A CoreGraphics-shaped bitmap image (plan 13.6).
 ///
 /// `CGImage` owns decoded pixels — width × height rows of RGBA8 — giving the
@@ -38,12 +73,17 @@ public final class CGImage: @unchecked Sendable {
 
     /// Reads the pixel at a coordinate (top-left origin) as RGBA components,
     /// or `nil` outside the image.
-    public func pixel(atX x: Int, y: Int) -> (r: UInt8, g: UInt8, b: UInt8, a: UInt8)? {
+    public func pixel(atX x: Int, y: Int) -> CGImagePixel? {
         guard x >= 0, x < width, y >= 0, y < height else {
             return nil
         }
         let offset = (y * width + x) * 4
-        return (pixels[offset], pixels[offset + 1], pixels[offset + 2], pixels[offset + 3])
+        return CGImagePixel(
+            red: pixels[offset],
+            green: pixels[offset + 1],
+            blue: pixels[offset + 2],
+            alpha: pixels[offset + 3]
+        )
     }
 
     // MARK: - BMP codec
@@ -55,29 +95,18 @@ public final class CGImage: @unchecked Sendable {
         guard bytes.count > 54, bytes[0] == 0x42, bytes[1] == 0x4D else {
             return nil
         }
-        func u32(_ offset: Int) -> UInt32 {
-            UInt32(bytes[offset])
-                | (UInt32(bytes[offset + 1]) << 8)
-                | (UInt32(bytes[offset + 2]) << 16)
-                | (UInt32(bytes[offset + 3]) << 24)
-        }
-        func i32(_ offset: Int) -> Int32 { Int32(bitPattern: u32(offset)) }
-        func u16(_ offset: Int) -> UInt16 {
-            UInt16(bytes[offset]) | (UInt16(bytes[offset + 1]) << 8)
-        }
-
-        let pixelOffset = Int(u32(10))
-        let headerSize = Int(u32(14))
+        let pixelOffset = Int(bmpUInt32(bytes, at: 10))
+        let headerSize = Int(bmpUInt32(bytes, at: 14))
         guard headerSize >= 40 else {
             return nil // BITMAPCOREHEADER not supported.
         }
-        let width = Int(i32(18))
-        let rawHeight = Int(i32(22))
+        let width = Int(Int32(bitPattern: bmpUInt32(bytes, at: 18)))
+        let rawHeight = Int(Int32(bitPattern: bmpUInt32(bytes, at: 22)))
         let topDown = rawHeight < 0
         let height = abs(rawHeight)
-        let planes = u16(26)
-        let bitCount = Int(u16(28))
-        let compression = u32(30)
+        let planes = bmpUInt16(bytes, at: 26)
+        let bitCount = Int(bmpUInt16(bytes, at: 28))
+        let compression = bmpUInt32(bytes, at: 30)
         guard width > 0, height > 0, planes == 1,
               bitCount == 24 || bitCount == 32,
               compression == 0 /* BI_RGB */ else {
@@ -107,6 +136,17 @@ public final class CGImage: @unchecked Sendable {
             }
         }
         return CGImage(width: width, height: height, rgbaPixels: rgba)
+    }
+
+    private static func bmpUInt16(_ bytes: [UInt8], at offset: Int) -> UInt16 {
+        UInt16(bytes[offset]) | (UInt16(bytes[offset + 1]) << 8)
+    }
+
+    private static func bmpUInt32(_ bytes: [UInt8], at offset: Int) -> UInt32 {
+        UInt32(bytes[offset])
+            | (UInt32(bytes[offset + 1]) << 8)
+            | (UInt32(bytes[offset + 2]) << 16)
+            | (UInt32(bytes[offset + 3]) << 24)
     }
 
     /// Encodes the image as an uncompressed 32-bit bottom-up BMP.

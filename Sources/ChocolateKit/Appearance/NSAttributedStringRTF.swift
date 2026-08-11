@@ -83,8 +83,23 @@ extension NSAttributedString {
         let bounded = clamped(range)
         let content = attributedSubstring(from: bounded)
 
-        // Collect the font and color tables from the runs.
-        var fontNames: [String] = ["Segoe UI"]
+        let (fontNames, colors) = Self.rtfTables(for: content)
+        var rtf = Self.rtfHeader(fontNames: fontNames, colors: colors)
+
+        content.enumerateAttributes(in: NSRange(location: 0, length: content.length)) { attributes, runRange, _ in
+            let controls = Self.rtfControls(for: attributes, fontNames: fontNames, colors: colors)
+
+            let text = Self.rtfEscaped(String(decoding: content.units[runRange.location..<(runRange.location + runRange.length)], as: UTF16.self))
+            // Group scoping keeps run formatting from leaking into the next run.
+            rtf += controls.isEmpty ? "{\(text)}" : "{\(controls) \(text)}"
+        }
+
+        rtf += "}"
+        return Data(Array(rtf.utf8))
+    }
+
+    private static func rtfTables(for content: NSAttributedString) -> ([String], [NSColor]) {
+        var fontNames = ["Segoe UI"]
         var colors: [NSColor] = []
         content.enumerateAttributes(in: NSRange(location: 0, length: content.length)) { attributes, _, _ in
             if let font = attributes[.font] as? NSFont, !fontNames.contains(font.fontName) {
@@ -94,66 +109,43 @@ extension NSAttributedString {
                 colors.append(color)
             }
         }
+        return (fontNames, colors)
+    }
 
-        var rtf = "{\\rtf1\\ansi\\deff0"
-        rtf += "{\\fonttbl"
+    private static func rtfHeader(fontNames: [String], colors: [NSColor]) -> String {
+        var header = "{\\rtf1\\ansi\\deff0{\\fonttbl"
         for (index, name) in fontNames.enumerated() {
-            rtf += "{\\f\(index)\\fnil \(Self.rtfEscaped(name));}"
+            header += "{\\f\(index)\\fnil \(rtfEscaped(name));}"
         }
-        rtf += "}"
-        if !colors.isEmpty {
-            // The leading semicolon keeps index 0 as the automatic color.
-            rtf += "{\\colortbl ;"
-            for color in colors {
-                let red = Int((color.redComponent * 255).rounded())
-                let green = Int((color.greenComponent * 255).rounded())
-                let blue = Int((color.blueComponent * 255).rounded())
-                rtf += "\\red\(red)\\green\(green)\\blue\(blue);"
-            }
-            rtf += "}"
+        header += "}"
+        guard !colors.isEmpty else { return header }
+        header += "{\\colortbl ;"
+        for color in colors {
+            header += "\\red\(Int((color.redComponent * 255).rounded()))"
+            header += "\\green\(Int((color.greenComponent * 255).rounded()))"
+            header += "\\blue\(Int((color.blueComponent * 255).rounded()));"
         }
+        return header + "}"
+    }
 
-        content.enumerateAttributes(in: NSRange(location: 0, length: content.length)) { attributes, runRange, _ in
-            var controls = ""
-            if let font = attributes[.font] as? NSFont {
-                let fontIndex = fontNames.firstIndex(of: font.fontName) ?? 0
-                controls += "\\f\(fontIndex)\\fs\(Int((font.pointSize * 2).rounded()))"
-                if font.weight.isBold {
-                    controls += "\\b"
-                }
-                if font.italic {
-                    controls += "\\i"
-                }
-            }
-            if let color = attributes[.foregroundColor] as? NSColor, let colorIndex = colors.firstIndex(of: color) {
-                controls += "\\cf\(colorIndex + 1)"
-            }
-            if let underline = attributes[.underlineStyle] as? Int, underline != 0 {
-                controls += "\\ul"
-            }
-            if let strikethrough = attributes[.strikethroughStyle] as? Int, strikethrough != 0 {
-                controls += "\\strike"
-            }
-            if let paragraph = attributes[.paragraphStyle] as? NSParagraphStyle {
-                switch paragraph.alignment {
-                case .center:
-                    controls += "\\qc"
-                case .right:
-                    controls += "\\qr"
-                case .left:
-                    controls += "\\ql"
-                case .natural, .justified:
-                    break
-                }
-            }
-
-            let text = Self.rtfEscaped(String(decoding: content.units[runRange.location..<(runRange.location + runRange.length)], as: UTF16.self))
-            // Group scoping keeps run formatting from leaking into the next run.
-            rtf += controls.isEmpty ? "{\(text)}" : "{\(controls) \(text)}"
+    private static func rtfControls(
+        for attributes: [NSAttributedString.Key: Any], fontNames: [String], colors: [NSColor]
+    ) -> String {
+        var controls = ""
+        if let font = attributes[.font] as? NSFont {
+            controls += "\\f\(fontNames.firstIndex(of: font.fontName) ?? 0)\\fs\(Int((font.pointSize * 2).rounded()))"
+            if font.weight.isBold { controls += "\\b" }
+            if font.italic { controls += "\\i" }
         }
-
-        rtf += "}"
-        return Data(Array(rtf.utf8))
+        if let color = attributes[.foregroundColor] as? NSColor, let index = colors.firstIndex(of: color) {
+            controls += "\\cf\(index + 1)"
+        }
+        if let style = attributes[.underlineStyle] as? Int, style != 0 { controls += "\\ul" }
+        if let style = attributes[.strikethroughStyle] as? Int, style != 0 { controls += "\\strike" }
+        if let paragraph = attributes[.paragraphStyle] as? NSParagraphStyle {
+            controls += [.center: "\\qc", .right: "\\qr", .left: "\\ql"][paragraph.alignment] ?? ""
+        }
+        return controls
     }
 
     /// Creates an attributed string by parsing RTF data.
@@ -286,13 +278,19 @@ private final class RTFReader {
             return
         }
         let byte = bytes[index]
+        guard !parseControlSymbol(byte) else {
+            return
+        }
+        let (word, parameter) = parseControlWord()
+        apply(word: word, parameter: parameter)
+    }
 
-        // Control symbols.
+    private func parseControlSymbol(_ byte: UInt8) -> Bool {
         switch byte {
         case UInt8(ascii: "\\"), UInt8(ascii: "{"), UInt8(ascii: "}"):
             consumeText(byte)
             index += 1
-            return
+            return true
         case UInt8(ascii: "'"):
             index += 1
             let high = hexValue(at: index)
@@ -302,21 +300,22 @@ private final class RTFReader {
                 // Treat hex escapes as Latin-1, close enough for common text.
                 appendScalar(UInt16(high * 16 + low))
             }
-            return
+            return true
         case UInt8(ascii: "*"):
             // \* marks an optional destination; skip the whole group.
             index += 1
             state.destination = .skip
-            return
+            return true
         case UInt8(ascii: "~"):
             index += 1
             consumeText(UInt8(ascii: " "))
-            return
+            return true
         default:
-            break
+            return false
         }
+    }
 
-        // Control words: letters plus an optional signed parameter.
+    private func parseControlWord() -> (String, Int?) {
         var word = ""
         while index < bytes.count, (UInt8(ascii: "a")...UInt8(ascii: "z")).contains(bytes[index]) {
             word.append(Character(UnicodeScalar(bytes[index])))
@@ -342,66 +341,111 @@ private final class RTFReader {
         if index < bytes.count, bytes[index] == UInt8(ascii: " ") {
             index += 1
         }
-
-        apply(word: word, parameter: parameter)
+        return (word, parameter)
     }
 
     /// Applies one control word to the parser state.
     private func apply(word: String, parameter: Int?) {
+        if applyDestinationWord(word) { return }
+        if applyFontWord(word, parameter: parameter) { return }
+        if applyAlignmentWord(word) { return }
+        if applyTextWord(word, parameter: parameter) { return }
+        _ = applyColorWord(word, parameter: parameter)
+    }
+
+    private func applyDestinationWord(_ word: String) -> Bool {
         switch word {
         case "fonttbl":
             state.destination = .fontTable
+            return true
         case "colortbl":
             state.destination = .colorTable
+            return true
         case "stylesheet", "info", "pict", "themedata", "colorschememapping", "fldinst", "generator":
             state.destination = .skip
+            return true
+        default:
+            return false
+        }
+    }
+
+    private func applyFontWord(_ word: String, parameter: Int?) -> Bool {
+        switch word {
         case "f":
             if state.destination == .fontTable {
                 finishFontEntry()
             }
             flushText()
             state.fontIndex = parameter ?? 0
+            return true
         case "fs":
             flushText()
             state.fontSize = CGFloat(parameter ?? 24) / 2
+            return true
         case "b":
             flushText()
             state.bold = parameter != 0
+            return true
         case "i":
             flushText()
             state.italic = parameter != 0
+            return true
         case "ul":
             flushText()
             state.underline = parameter != 0
+            return true
         case "ulnone":
             flushText()
             state.underline = false
+            return true
         case "strike":
             flushText()
             state.strikethrough = parameter != 0
+            return true
         case "cf":
             flushText()
             state.colorIndex = parameter ?? 0
+            return true
+        default:
+            return false
+        }
+    }
+
+    private func applyAlignmentWord(_ word: String) -> Bool {
+        switch word {
         case "ql":
             flushText()
             state.alignment = .left
+            return true
         case "qc":
             flushText()
             state.alignment = .center
+            return true
         case "qr":
             flushText()
             state.alignment = .right
+            return true
         case "pard":
             flushText()
             state.alignment = .natural
+            return true
+        default:
+            return false
+        }
+    }
+
+    private func applyTextWord(_ word: String, parameter: Int?) -> Bool {
+        switch word {
         case "par", "line":
             if state.destination == .content {
                 appendScalar(UInt16(0x0a))
             }
+            return true
         case "tab":
             if state.destination == .content {
                 appendScalar(UInt16(0x09))
             }
+            return true
         case "u":
             if state.destination == .content, let parameter {
                 appendScalar(UInt16(bitPattern: Int16(truncatingIfNeeded: parameter)))
@@ -410,18 +454,28 @@ private final class RTFReader {
                     index += 1
                 }
             }
+            return true
+        default:
+            return false
+        }
+    }
+
+    private func applyColorWord(_ word: String, parameter: Int?) -> Bool {
+        switch word {
         case "red":
             pendingColor.red = parameter ?? 0
             pendingColor.hasComponents = true
+            return true
         case "green":
             pendingColor.green = parameter ?? 0
             pendingColor.hasComponents = true
+            return true
         case "blue":
             pendingColor.blue = parameter ?? 0
             pendingColor.hasComponents = true
+            return true
         default:
-            // Unknown control words are ignored, matching RTF's design.
-            break
+            return false
         }
     }
 

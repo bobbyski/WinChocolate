@@ -66,19 +66,7 @@ extension Win32NativeControlBackend {
             fileBuffer[index] = unit
         }
 
-        var flags: DWORD = ofnExplorer | ofnHideReadOnly | ofnNoChangeDir | ofnPathMustExist
-        switch options.kind {
-        case .open:
-            flags |= ofnFileMustExist
-            if options.allowsMultipleSelection {
-                flags |= ofnAllowMultiSelect
-            }
-        case .save:
-            flags |= ofnOverwritePrompt
-        }
-        if options.showsHiddenFiles {
-            flags |= ofnForceShowHidden
-        }
+        let flags = fileDialogFlags(for: options)
 
         let filter = fileDialogFilter(for: options)
         let defaultExtension = options.kind == .save ? options.fileTypes.first : nil
@@ -118,6 +106,23 @@ extension Win32NativeControlBackend {
             fileBuffer,
             allowsMultipleSelection: options.kind == .open && options.allowsMultipleSelection
         )
+    }
+
+    private func fileDialogFlags(for options: NativeFileDialogOptions) -> DWORD {
+        var flags: DWORD = ofnExplorer | ofnHideReadOnly | ofnNoChangeDir | ofnPathMustExist
+        switch options.kind {
+        case .open:
+            flags |= ofnFileMustExist
+            if options.allowsMultipleSelection {
+                flags |= ofnAllowMultiSelect
+            }
+        case .save:
+            flags |= ofnOverwritePrompt
+        }
+        if options.showsHiddenFiles {
+            flags |= ofnForceShowHidden
+        }
+        return flags
     }
 
     private func runFolderDialog(_ options: NativeFileDialogOptions, owner: HWND?) -> [String]? {

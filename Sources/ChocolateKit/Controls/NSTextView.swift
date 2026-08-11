@@ -126,7 +126,16 @@ open class NSTextView: NSControl, NSFontChanging {
             return
         }
 
-        realizedBackend?.setTextRangeFormat(font: font, color: nil, underline: nil, strikethrough: nil, location: range.location, length: range.length, for: nativeHandle)
+        realizedBackend?.setTextRangeFormat(
+            NativeTextRangeFormat(
+                font: font,
+                color: nil,
+                underline: nil,
+                strikethrough: nil,
+                range: range
+            ),
+            for: nativeHandle
+        )
     }
 
     /// Applies paragraph alignment to the paragraphs covering a character
@@ -148,7 +157,16 @@ open class NSTextView: NSControl, NSFontChanging {
             return
         }
 
-        realizedBackend?.setTextRangeFormat(font: nil, color: color, underline: nil, strikethrough: nil, location: range.location, length: range.length, for: nativeHandle)
+        realizedBackend?.setTextRangeFormat(
+            NativeTextRangeFormat(
+                font: nil,
+                color: color,
+                underline: nil,
+                strikethrough: nil,
+                range: range
+            ),
+            for: nativeHandle
+        )
     }
 
     private var storedTextStorage: NSTextStorage?
@@ -195,12 +213,13 @@ open class NSTextView: NSControl, NSFontChanging {
             let underlineStyle = attributes[.underlineStyle] as? Int
             let strikethroughStyle = attributes[.strikethroughStyle] as? Int
             realizedBackend.setTextRangeFormat(
-                font: attributes[.font] as? NSFont,
-                color: attributes[.foregroundColor] as? NSColor,
-                underline: underlineStyle.map { $0 != 0 },
-                strikethrough: strikethroughStyle.map { $0 != 0 },
-                location: range.location,
-                length: range.length,
+                NativeTextRangeFormat(
+                    font: attributes[.font] as? NSFont,
+                    color: attributes[.foregroundColor] as? NSColor,
+                    underline: underlineStyle.map { $0 != 0 },
+                    strikethrough: strikethroughStyle.map { $0 != 0 },
+                    range: range
+                ),
                 for: nativeHandle
             )
             if let paragraph = attributes[.paragraphStyle] as? NSParagraphStyle, paragraph.alignment != .natural {
@@ -338,22 +357,6 @@ open class NSTextView: NSControl, NSFontChanging {
     }
 
     /// The selected substring, or `nil` when the selection is empty.
-    private func currentSelectedText() -> String? {
-        let selection = selectedRange
-        guard selection.length > 0 else {
-            return nil
-        }
-
-        let units = Array(string.utf16)
-        let location = min(max(0, selection.location), units.count)
-        let length = min(max(0, selection.length), units.count - location)
-        guard length > 0 else {
-            return nil
-        }
-
-        return String(decoding: units[location..<(location + length)], as: UTF16.self)
-    }
-
     /// Creates the native multiline text peer.
     open override func createNativePeer(in backend: NativeControlBackend, parent: NativeHandle?) -> NativeHandle {
         backend.createTextView(text: string, frame: frame, parent: parent, isEditable: isEditable, isRichText: isRichText)
@@ -382,21 +385,6 @@ open class NSTextView: NSControl, NSFontChanging {
     private var hasOpenTypingUndoGroup = false
     private var typingGroupIsInsertion = false
 
-    private func updateStringFromNative(_ text: String) {
-        let previousText = string
-        isUpdatingFromNative = true
-        string = text
-        objectValue = text
-        isUpdatingFromNative = false
-        if !isApplyingTextStorage {
-            storedTextStorage?.winSyncPlainText(text)
-        }
-        if allowsUndo && previousText != text {
-            registerTypingUndo(previousText: previousText, text: text)
-        }
-        winMainActor { delegate?.textDidChange(Notification(name: Notification.Name(Self.textDidChangeNotification), object: self)) }
-    }
-
     /// Registers undo state for one native edit, coalescing typing bursts.
     ///
     /// Word-sized granularity like AppKit: consecutive single-unit
@@ -404,19 +392,46 @@ open class NSTextView: NSControl, NSFontChanging {
     /// word, consecutive single-unit deletions share one action, switching
     /// between inserting and deleting starts a new action, and larger edits
     /// (paste, cut) always stand alone.
-    private func registerTypingUndo(previousText: String, text: String) {
+    /// Whether a single-unit insertion added a whitespace character.
+    /// Registers an undo action restoring earlier text.
+    ///
+    /// The handler registers its own inverse before applying, so performing
+    /// an undo records the matching redo (and vice versa) through the undo
+    /// manager's stack routing.
+}
+
+private extension NSTextView {
+    func currentSelectedText() -> String? {
+        let selection = selectedRange
+        guard selection.length > 0 else { return nil }
+        let units = Array(string.utf16)
+        let location = min(max(0, selection.location), units.count)
+        let length = min(max(0, selection.length), units.count - location)
+        guard length > 0 else { return nil }
+        return String(decoding: units[location..<(location + length)], as: UTF16.self)
+    }
+
+    func updateStringFromNative(_ text: String) {
+        let previousText = string
+        isUpdatingFromNative = true
+        string = text
+        objectValue = text
+        isUpdatingFromNative = false
+        if !isApplyingTextStorage { storedTextStorage?.winSyncPlainText(text) }
+        if allowsUndo && previousText != text {
+            registerTypingUndo(previousText: previousText, text: text)
+        }
+        winMainActor { delegate?.textDidChange(Notification(name: Notification.Name(Self.textDidChangeNotification), object: self)) }
+    }
+
+    func registerTypingUndo(previousText: String, text: String) {
         let delta = text.utf16.count - previousText.utf16.count
         let isSingleInsertion = delta == 1
         let isSingleDeletion = delta == -1
-
         let continuesGroup = hasOpenTypingUndoGroup
             && ((isSingleInsertion && typingGroupIsInsertion) || (isSingleDeletion && !typingGroupIsInsertion))
-        if !continuesGroup {
-            registerUndoReplacingText(with: previousText)
-        }
-
+        if !continuesGroup { registerUndoReplacingText(with: previousText) }
         if isSingleInsertion {
-            // A whitespace unit finishes the word and closes its group.
             hasOpenTypingUndoGroup = !insertedUnitIsWhitespace(previousText: previousText, text: text)
             typingGroupIsInsertion = true
         } else if isSingleDeletion {
@@ -427,28 +442,17 @@ open class NSTextView: NSControl, NSFontChanging {
         }
     }
 
-    /// Whether a single-unit insertion added a whitespace character.
-    private func insertedUnitIsWhitespace(previousText: String, text: String) -> Bool {
+    func insertedUnitIsWhitespace(previousText: String, text: String) -> Bool {
         let oldUnits = Array(previousText.utf16)
         let newUnits = Array(text.utf16)
         var index = 0
-        while index < oldUnits.count && oldUnits[index] == newUnits[index] {
-            index += 1
-        }
+        while index < oldUnits.count && oldUnits[index] == newUnits[index] { index += 1 }
         let inserted = newUnits[index]
         return inserted == 32 || inserted == 9 || inserted == 10 || inserted == 13
     }
 
-    /// Registers an undo action restoring earlier text.
-    ///
-    /// The handler registers its own inverse before applying, so performing
-    /// an undo records the matching redo (and vice versa) through the undo
-    /// manager's stack routing.
-    private func registerUndoReplacingText(with previousText: String) {
-        guard let manager = undoManager else {
-            return
-        }
-
+    func registerUndoReplacingText(with previousText: String) {
+        guard let manager = undoManager else { return }
         manager.registerUndo(withTarget: self) { target in
             target.registerUndoReplacingText(with: target.string)
             target.applyUndoText(previousText)
@@ -456,7 +460,7 @@ open class NSTextView: NSControl, NSFontChanging {
         manager.setActionName("Typing")
     }
 
-    private func applyUndoText(_ text: String) {
+    func applyUndoText(_ text: String) {
         hasOpenTypingUndoGroup = false
         string = text
         objectValue = text

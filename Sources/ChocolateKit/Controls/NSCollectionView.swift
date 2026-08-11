@@ -306,16 +306,6 @@ open class NSCollectionView: NSControl {
 
     /// Moves the current items into the reuse pool (keyed by identifier) so the
     /// next `makeItem` can hand them back instead of allocating.
-    private func recycleCurrentItems() {
-        for item in itemsByIndexPath.values {
-            item.view.removeFromSuperview()
-            guard let key = item.identifier?.rawValue else {
-                continue
-            }
-            reusePool[key, default: []].append(item)
-        }
-    }
-
     /// Reloads all collection items from the data source.
     open func reloadData() {
         recycleCurrentItems()
@@ -379,18 +369,6 @@ open class NSCollectionView: NSControl {
 
     /// When the collection view is a scroll view's document view, grows it to
     /// the layout's content size so the scroll view can scroll the items.
-    private func sizeToContentIfScrolled(_ contentSize: NSSize) {
-        guard let scrollView = enclosingScrollView else {
-            return
-        }
-        let width = max(scrollView.contentView.bounds.size.width, contentSize.width)
-        let height = max(scrollView.contentView.bounds.size.height, contentSize.height)
-        if frame.size.width != width || frame.size.height != height {
-            frame = NSRect(x: frame.origin.x, y: frame.origin.y, width: width, height: height)
-        }
-        scrollView.tile()
-    }
-
     /// (Re)builds the hosted supplementary views the data source vends, keyed by
     /// a per-section header/footer slot. Called only when the *set* of views can
     /// change (`reloadData`, layout swap) — NOT on every `tile()`. Between
@@ -402,50 +380,9 @@ open class NSCollectionView: NSControl {
     /// retire each one into the reuse pool here (keyed by the kind its slot
     /// encodes plus the identifier `makeSupplementaryView` stamped on it) rather
     /// than dropping it — otherwise every rebuild would allocate afresh.
-    private func rebuildSupplementaryViews() {
-        for (key, view) in hostedSupplementaryViews {
-            view.removeFromSuperview()
-            let kind = (key % 2 == 0) ? Self.elementKindSectionHeader : Self.elementKindSectionFooter
-            if let identifier = view.identifier {
-                supplementaryReusePool[supplementaryKey(kind, identifier), default: []].append(view)
-            }
-        }
-        hostedSupplementaryViews.removeAll()
-
-        // Supplementary views are layout-driven; the built-in grid has none.
-        guard collectionViewLayout != nil else {
-            return
-        }
-
-        let sectionCount = winMainActor { dataSource?.numberOfSections(in: self) } ?? 0
-        for section in 0..<sectionCount {
-            let indexPath = IndexPath(item: 0, section: section)
-            for (offset, kind) in [Self.elementKindSectionHeader, Self.elementKindSectionFooter].enumerated() {
-                guard let view = winMainActor({ dataSource?.collectionView(self, viewForSupplementaryElementOfKind: kind, at: indexPath) }) else {
-                    continue
-                }
-                addSubview(view)
-                // Key headers and footers into disjoint slots per section.
-                hostedSupplementaryViews[section * 2 + offset] = view
-            }
-        }
-    }
-
     /// Repositions the already-hosted supplementary views to their current
     /// layout frames. A view the layout no longer reserves space for collapses
     /// to a zero frame (kept alive for reuse rather than destroyed).
-    private func positionSupplementaryViews(with layout: NSCollectionViewLayout) {
-        for (key, view) in hostedSupplementaryViews {
-            let section = key / 2
-            let kind = (key % 2 == 0) ? Self.elementKindSectionHeader : Self.elementKindSectionFooter
-            if let attr = layout.layoutAttributesForSupplementaryView(ofKind: kind, at: IndexPath(item: 0, section: section)) {
-                view.frame = attr.frame
-            } else {
-                view.frame = .zero
-            }
-        }
-    }
-
     /// Selects a set of items.
     open func selectItems(at indexPaths: Set<IndexPath>, scrollPosition: NSCollectionView.ScrollPosition = []) {
         let valid = indexPaths.filter { itemsByIndexPath[$0] != nil }
@@ -511,7 +448,60 @@ open class NSCollectionView: NSControl {
         itemsByIndexPath.first { $0.value === item }?.key
     }
 
-    private func wireSelectionAction(for item: NSCollectionViewItem, at indexPath: IndexPath) {
+}
+
+private extension NSCollectionView {
+    func recycleCurrentItems() {
+        for item in itemsByIndexPath.values {
+            item.view.removeFromSuperview()
+            guard let key = item.identifier?.rawValue else { continue }
+            reusePool[key, default: []].append(item)
+        }
+    }
+
+    func sizeToContentIfScrolled(_ contentSize: NSSize) {
+        guard let scrollView = enclosingScrollView else { return }
+        let width = max(scrollView.contentView.bounds.size.width, contentSize.width)
+        let height = max(scrollView.contentView.bounds.size.height, contentSize.height)
+        if frame.size.width != width || frame.size.height != height {
+            frame = NSRect(x: frame.origin.x, y: frame.origin.y, width: width, height: height)
+        }
+        scrollView.tile()
+    }
+
+    func rebuildSupplementaryViews() {
+        for (key, view) in hostedSupplementaryViews {
+            view.removeFromSuperview()
+            let kind = key % 2 == 0 ? Self.elementKindSectionHeader : Self.elementKindSectionFooter
+            if let identifier = view.identifier {
+                supplementaryReusePool[supplementaryKey(kind, identifier), default: []].append(view)
+            }
+        }
+        hostedSupplementaryViews.removeAll()
+        guard collectionViewLayout != nil else { return }
+        let sectionCount = winMainActor { dataSource?.numberOfSections(in: self) } ?? 0
+        for section in 0..<sectionCount {
+            let indexPath = IndexPath(item: 0, section: section)
+            for (offset, kind) in [Self.elementKindSectionHeader, Self.elementKindSectionFooter].enumerated() {
+                guard let view = winMainActor({ dataSource?.collectionView(self, viewForSupplementaryElementOfKind: kind, at: indexPath) }) else { continue }
+                addSubview(view)
+                hostedSupplementaryViews[section * 2 + offset] = view
+            }
+        }
+    }
+
+    func positionSupplementaryViews(with layout: NSCollectionViewLayout) {
+        for (key, view) in hostedSupplementaryViews {
+            let section = key / 2
+            let kind = key % 2 == 0 ? Self.elementKindSectionHeader : Self.elementKindSectionFooter
+            view.frame = layout.layoutAttributesForSupplementaryView(
+                ofKind: kind,
+                at: IndexPath(item: 0, section: section)
+            )?.frame ?? .zero
+        }
+    }
+
+    func wireSelectionAction(for item: NSCollectionViewItem, at indexPath: IndexPath) {
         if let control = item.view as? NSControl {
             let previousAction = control.winInternalAction
             control.winInternalAction = { [weak self, weak control] _ in
@@ -519,24 +509,18 @@ open class NSCollectionView: NSControl {
                 self?.selectItems(at: [indexPath])
             }
         } else {
-            item.view.registerCollectionClick { [weak self] in
-                self?.selectItems(at: [indexPath])
-            }
+            item.view.registerCollectionClick { [weak self] in self?.selectItems(at: [indexPath]) }
         }
     }
 
-    private func updateItemSelectionState() {
+    func updateItemSelectionState() {
         for (indexPath, item) in itemsByIndexPath {
             item.isSelected = selectionIndexPaths.contains(indexPath)
         }
     }
 
-    private func compareIndexPaths(_ lhs: IndexPath, _ rhs: IndexPath) -> Bool {
-        if lhs.section == rhs.section {
-            return lhs.item < rhs.item
-        }
-
-        return lhs.section < rhs.section
+    func compareIndexPaths(_ lhs: IndexPath, _ rhs: IndexPath) -> Bool {
+        lhs.section == rhs.section ? lhs.item < rhs.item : lhs.section < rhs.section
     }
 }
 
