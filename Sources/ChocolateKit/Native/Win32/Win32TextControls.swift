@@ -14,8 +14,7 @@ extension Win32NativeControlBackend {
             ? esMultiline | esAutoVScroll | esWantReturn | wsVScroll
             : esAutoHScroll
         let handle = createChildWindow(
-            className: options.isEditable ? "EDIT" : "STATIC",
-            text: text,
+            content: (options.isEditable ? "EDIT" : "STATIC", text),
             frame: frame,
             parent: parent,
             commandIdentifier: nil,
@@ -53,8 +52,7 @@ extension Win32NativeControlBackend {
     /// Creates a native secure text field child.
     public func createSecureTextField(text: String, frame: NSRect, parent: NativeHandle?) -> NativeHandle {
         let handle = createChildWindow(
-            className: "EDIT",
-            text: text,
+            content: ("EDIT", text),
             frame: frame,
             parent: parent,
             commandIdentifier: nil,
@@ -78,8 +76,7 @@ extension Win32NativeControlBackend {
         }
 
         let handle = createChildWindow(
-            className: className,
-            text: text,
+            content: (className, text),
             frame: frame,
             parent: parent,
             commandIdentifier: nil,

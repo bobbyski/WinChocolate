@@ -4,8 +4,7 @@ extension Win32NativeControlBackend {
     public func createSlider(value: Double, minValue: Double, maxValue: Double, frame: NSRect, parent: NativeHandle?) -> NativeHandle {
         initializeToolbarControls()
         let handle = createChildWindow(
-            className: "msctls_trackbar32",
-            text: "",
+            content: ("msctls_trackbar32", ""),
             frame: frame,
             parent: parent,
             commandIdentifier: nil,
@@ -25,8 +24,7 @@ extension Win32NativeControlBackend {
     public func createProgressIndicator(value: Double, minValue: Double, maxValue: Double, frame: NSRect, parent: NativeHandle?) -> NativeHandle {
         initializeProgressControls()
         let handle = createChildWindow(
-            className: "msctls_progress32",
-            text: "",
+            content: ("msctls_progress32", ""),
             frame: frame,
             parent: parent,
             commandIdentifier: nil,
@@ -43,8 +41,7 @@ extension Win32NativeControlBackend {
     /// Creates a native scroller child.
     public func createScroller(value: Double, knobProportion: Double, isVertical: Bool, frame: NSRect, parent: NativeHandle?) -> NativeHandle {
         let handle = createChildWindow(
-            className: "SCROLLBAR",
-            text: "",
+            content: ("SCROLLBAR", ""),
             frame: frame,
             parent: parent,
             commandIdentifier: nil,
@@ -64,8 +61,7 @@ extension Win32NativeControlBackend {
     ) -> NativeHandle {
         initializeUpDownControls()
         let handle = createChildWindow(
-            className: "msctls_updown32",
-            text: "",
+            content: ("msctls_updown32", ""),
             frame: frame,
             parent: parent,
             commandIdentifier: nil,
@@ -100,8 +96,7 @@ extension Win32NativeControlBackend {
         initializeDateControls()
         let showsCalendar = configuration.style == .clockAndCalendar
         let handle = createChildWindow(
-            className: showsCalendar ? "SysMonthCal32" : "SysDateTimePick32",
-            text: "",
+            content: (showsCalendar ? "SysMonthCal32" : "SysDateTimePick32", ""),
             frame: frame,
             parent: parent,
             commandIdentifier: nil,

@@ -4,47 +4,6 @@
 /// backend. The public surface follows AppKit's common title, target, and action
 /// workflow.
 open class NSButton: NSControl {
-    /// Button rendering and behavior type, matching AppKit's case names
-    /// (`.switch` and `.radio` — the pre-10.14 `switchButton`/`radioButton`
-    /// spellings do not exist in Apple's Swift surface).
-    public enum ButtonType: Sendable {
-        /// Momentary push button.
-        case momentaryPushIn
-
-        /// Toggle checkbox button.
-        case `switch`
-
-        /// Mutually exclusive radio button.
-        case radio
-    }
-
-    /// Image position relative to the title.
-    public enum ImagePosition: Sendable {
-        /// No image.
-        case noImage
-
-        /// Image only, no title.
-        case imageOnly
-
-        /// Image to the left of the title.
-        case imageLeft
-
-        /// Image to the right of the title.
-        case imageRight
-
-        /// Image above the title.
-        case imageAbove
-
-        /// Image below the title.
-        case imageBelow
-
-        /// Image on the leading edge of the title (left in LTR).
-        case imageLeading
-
-        /// Image on the trailing edge of the title (right in LTR).
-        case imageTrailing
-    }
-
     /// The button title.
     open var title: String {
         didSet {
@@ -114,67 +73,6 @@ open class NSButton: NSControl {
         }
     }
 
-    /// Whether the bezel style renders as a flat square button.
-    private var isFlatBezel: Bool {
-        switch bezelStyle {
-        case .flexiblePush, .shadowlessSquare, .texturedSquare, .smallSquare:
-            return true
-        default:
-            return false
-        }
-    }
-
-    /// Whether this bezel style is drawn by the framework on a view peer rather
-    /// than mapped to a native push button. These AppKit bezels — disclosure
-    /// triangles, circular buttons, recessed toggles, and inline pills — have no
-    /// native Win32 form, so WinChocolate draws them (matching the drawn-control
-    /// pattern used by the level indicator and token chips).
-    var usesFrameworkDrawnBezel: Bool {
-        switch bezelStyle {
-        case .disclosure, .pushDisclosure, .circular, .helpButton, .accessoryBarAction, .badge:
-            return true
-        default:
-            return false
-        }
-    }
-
-    /// Whether clicking this framework-drawn bezel toggles its on/off state
-    /// (disclosure triangles and recessed toggles) versus firing momentarily
-    /// (circular and inline).
-    private var bezelTogglesState: Bool {
-        switch bezelStyle {
-        case .disclosure, .pushDisclosure, .accessoryBarAction:
-            return true
-        default:
-            return false
-        }
-    }
-
-    /// The three vertices of the disclosure triangle inside `bounds`: a
-    /// right-pointing glyph when closed (vertical base, apex at max-x), a
-    /// down-pointing glyph when open (horizontal base, single apex in y). Pure
-    /// and orientation-testable.
-    public static func winDisclosureTriangle(in bounds: NSRect, isOpen: Bool) -> [NSPoint] {
-        let side = min(bounds.size.width, bounds.size.height) * 0.5
-        let half = side / 2
-        let cx = bounds.origin.x + bounds.size.width / 2
-        let cy = bounds.origin.y + bounds.size.height / 2
-        if isOpen {
-            // Down-pointing: horizontal base across the top, apex at the bottom.
-            return [
-                NSPoint(x: cx - half, y: cy + half),
-                NSPoint(x: cx + half, y: cy + half),
-                NSPoint(x: cx, y: cy - half)
-            ]
-        }
-        // Right-pointing: vertical base on the left, apex on the right.
-        return [
-            NSPoint(x: cx - half, y: cy - half),
-            NSPoint(x: cx - half, y: cy + half),
-            NSPoint(x: cx + half, y: cy)
-        ]
-    }
-
     /// The title shown while the button is in its alternate (on) state.
     open var alternateTitle: String = "" {
         didSet {
@@ -195,19 +93,6 @@ open class NSButton: NSControl {
 
     /// The image position relative to the title.
     open var imagePosition: ImagePosition = .noImage
-
-    /// The title currently shown: the alternate title while on, else the title.
-    private var displayedTitle: String {
-        (state == .on && !alternateTitle.isEmpty) ? alternateTitle : title
-    }
-
-    private func syncDisplayedTitle() {
-        guard let nativeHandle else {
-            return
-        }
-
-        realizedBackend?.setText(displayedTitle, for: nativeHandle)
-    }
 
     /// Button type.
     open private(set) var buttonType: ButtonType = .momentaryPushIn
@@ -483,22 +368,82 @@ open class NSButton: NSControl {
         buttonType = type
     }
 
+}
+
+public extension NSButton {
+    /// Button rendering and behavior type.
+    enum ButtonType: Sendable {
+        case momentaryPushIn
+        case `switch`
+        case radio
+    }
+
+    /// Image position relative to the title.
+    enum ImagePosition: Sendable {
+        case noImage
+        case imageOnly
+        case imageLeft
+        case imageRight
+        case imageAbove
+        case imageBelow
+        case imageLeading
+        case imageTrailing
+    }
+
+    /// Returns the disclosure-triangle vertices for the supplied bounds and state.
+    static func winDisclosureTriangle(in bounds: NSRect, isOpen: Bool) -> [NSPoint] {
+        let side = min(bounds.size.width, bounds.size.height) * 0.5
+        let half = side / 2
+        let cx = bounds.origin.x + bounds.size.width / 2
+        let cy = bounds.origin.y + bounds.size.height / 2
+        if isOpen {
+            return [
+                NSPoint(x: cx - half, y: cy + half),
+                NSPoint(x: cx + half, y: cy + half),
+                NSPoint(x: cx, y: cy - half)
+            ]
+        }
+        return [
+            NSPoint(x: cx - half, y: cy - half),
+            NSPoint(x: cx - half, y: cy + half),
+            NSPoint(x: cx + half, y: cy)
+        ]
+    }
+}
+
+extension NSButton {
+    private var isFlatBezel: Bool {
+        [.flexiblePush, .shadowlessSquare, .texturedSquare, .smallSquare].contains(bezelStyle)
+    }
+
+    var usesFrameworkDrawnBezel: Bool {
+        [.disclosure, .pushDisclosure, .circular, .helpButton, .accessoryBarAction, .badge].contains(bezelStyle)
+    }
+
+    private var bezelTogglesState: Bool {
+        [.disclosure, .pushDisclosure, .accessoryBarAction].contains(bezelStyle)
+    }
+
+    private var displayedTitle: String {
+        (state == .on && !alternateTitle.isEmpty) ? alternateTitle : title
+    }
+
+    private func syncDisplayedTitle() {
+        guard let nativeHandle else { return }
+        realizedBackend?.setText(displayedTitle, for: nativeHandle)
+    }
+
     private func updateStateFromNative(_ state: StateValue) {
         isUpdatingStateFromNative = true
         self.state = state
         isUpdatingStateFromNative = false
-
-        if buttonType == .radio, state == .on {
-            clearSiblingRadioButtons()
-        }
+        if buttonType == .radio, state == .on { clearSiblingRadioButtons() }
     }
 
     private func clearSiblingRadioButtons() {
-        guard let superview else {
-            return
-        }
-
-        for case let button as NSButton in superview.subviews where button !== self && button.buttonType == .radio {
+        guard let superview else { return }
+        for case let button as NSButton in superview.subviews
+            where button !== self && button.buttonType == .radio {
             button.state = .off
         }
     }

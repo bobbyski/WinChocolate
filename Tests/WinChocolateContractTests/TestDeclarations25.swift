@@ -282,9 +282,7 @@ final class DispatchProbeResponderView: NSView {
     }
 }
 
-func testTargetActionDispatchesThroughRealSelectors() {
-    // Explicit target: NSControl.sendAction() must reach the target's
-    // selector — target/action are live dispatch, not stored decoration.
+private func explicitTargetActionProbe() -> DispatchProbeTarget {
     let target = DispatchProbeTarget()
     let button = NSButton(title: "Go", target: target, action: Selector("probe:"))
     button.sendAction()
@@ -302,7 +300,11 @@ func testTargetActionDispatchesThroughRealSelectors() {
     expect(direct.sendAction(Selector("probe:"), to: target), "sendAction(_:to:) should dispatch and report true.")
     expect(target.received.count == 2, "sendAction(_:to:) should reach the target.")
     expect(!direct.sendAction(nil, to: target), "A nil action must return false.")
+    return target
+}
 
+func testTargetActionDispatchesThroughRealSelectors() {
+    let target = explicitTargetActionProbe()
     // Menu items dispatch the same way (the old terminate:-only special case
     // is gone — any selector reaches any target).
     let item = NSMenuItem(title: "Probe", action: Selector("probe:"), keyEquivalent: "")

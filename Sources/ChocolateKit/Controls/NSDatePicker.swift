@@ -22,18 +22,6 @@ open class NSDatePicker: NSControl {
     var winDateTypingDigits = 0
     #endif
 
-    /// Visual style for the date picker.
-    ///
-    /// Raw values are Apple's.
-    public enum Style: UInt, Sendable {
-        /// A field with a stepper — AppKit's default. No calendar popup.
-        case textFieldAndStepper = 0
-        /// A graphical month grid.
-        case clockAndCalendar = 1
-        /// A field alone.
-        case textField = 2
-    }
-
     /// Which date/time elements the picker presents.
     ///
     /// These are Apple's real raw values, and they are **cumulative**:
@@ -391,6 +379,18 @@ open class NSDatePicker: NSControl {
         return formatter.string(from: dateValue)
     }
 
+}
+
+public extension NSDatePicker {
+    /// Visual style for the date picker, using Apple's raw values.
+    enum Style: UInt, Sendable {
+        /// A field with a stepper — AppKit's default. No calendar popup.
+        case textFieldAndStepper = 0
+        /// A graphical month grid.
+        case clockAndCalendar = 1
+        /// A field alone.
+        case textField = 2
+    }
 }
 
 private extension NSDatePicker {

@@ -9,8 +9,7 @@ extension Win32NativeControlBackend {
             height: max(frame.size.height, 160)
         )
         let handle = createChildWindow(
-            className: "COMBOBOX",
-            text: "",
+            content: ("COMBOBOX", ""),
             frame: nativeFrame,
             parent: parent,
             commandIdentifier: nextCommandID(),
@@ -32,8 +31,7 @@ extension Win32NativeControlBackend {
             height: max(frame.size.height, 128)
         )
         let handle = createChildWindow(
-            className: "COMBOBOX",
-            text: text,
+            content: ("COMBOBOX", text),
             frame: nativeFrame,
             parent: parent,
             commandIdentifier: nil,

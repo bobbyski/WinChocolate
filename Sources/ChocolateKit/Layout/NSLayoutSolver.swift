@@ -255,7 +255,10 @@ enum NSLayoutSolver {
     }
 
     /// A linear expression `Σ coeff·var + constant` for one attribute.
-    private struct Expression {
+}
+
+private extension NSLayoutSolver {
+    struct Expression {
         var terms: [(index: Int, coeff: Double)]
         var constant: Double
     }

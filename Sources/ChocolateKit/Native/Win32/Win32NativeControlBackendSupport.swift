@@ -153,13 +153,13 @@ extension Win32NativeControlBackend {
     }
 
     func createChildWindow(
-        className: String,
-        text: String,
+        content: (className: String, text: String),
         frame: NSRect,
         parent: NativeHandle?,
         commandIdentifier: UInt?,
         style: DWORD
     ) -> NativeHandle {
+        let (className, text) = content
         guard let parentHwnd = parent.flatMap({ hwnd(from: $0) }) else {
             return NativeHandle(rawValue: 0)
         }

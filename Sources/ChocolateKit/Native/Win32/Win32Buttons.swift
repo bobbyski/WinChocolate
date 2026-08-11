@@ -3,8 +3,7 @@ extension Win32NativeControlBackend {
     /// Creates a native push button child.
     public func createButton(title: String, frame: NSRect, parent: NativeHandle?, isBordered: Bool) -> NativeHandle {
         let handle = createChildWindow(
-            className: "BUTTON",
-            text: title,
+            content: ("BUTTON", title),
             frame: frame,
             parent: parent,
             commandIdentifier: nextCommandID(),
@@ -33,8 +32,7 @@ extension Win32NativeControlBackend {
     /// Creates a native checkbox child.
     public func createCheckbox(title: String, frame: NSRect, parent: NativeHandle?) -> NativeHandle {
         let handle = createChildWindow(
-            className: "BUTTON",
-            text: title,
+            content: ("BUTTON", title),
             frame: frame,
             parent: parent,
             commandIdentifier: nextCommandID(),
@@ -51,8 +49,7 @@ extension Win32NativeControlBackend {
     /// Creates a native radio button child.
     public func createRadioButton(title: String, frame: NSRect, parent: NativeHandle?) -> NativeHandle {
         let handle = createChildWindow(
-            className: "BUTTON",
-            text: title,
+            content: ("BUTTON", title),
             frame: frame,
             parent: parent,
             commandIdentifier: nextCommandID(),
@@ -81,8 +78,7 @@ extension Win32NativeControlBackend {
     /// Creates a native box child.
     public func createBox(title: String, frame: NSRect, parent: NativeHandle?) -> NativeHandle {
         let handle = createChildWindow(
-            className: "BUTTON",
-            text: title,
+            content: ("BUTTON", title),
             frame: frame,
             parent: parent,
             commandIdentifier: nil,

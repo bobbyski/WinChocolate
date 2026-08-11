@@ -3,8 +3,7 @@ extension Win32NativeControlBackend {
     /// Creates a native image-view child.
     public func createImageView(description: String, imagePath: String?, frame: NSRect, parent: NativeHandle?) -> NativeHandle {
         let handle = createChildWindow(
-            className: "STATIC",
-            text: description,
+            content: ("STATIC", description),
             frame: frame,
             parent: parent,
             commandIdentifier: nil,
@@ -20,8 +19,7 @@ extension Win32NativeControlBackend {
     public func createTabView(items: [String], selectedIndex: Int, frame: NSRect, parent: NativeHandle?) -> NativeHandle {
         initializeTabControls()
         let handle = createChildWindow(
-            className: "SysTabControl32",
-            text: "",
+            content: ("SysTabControl32", ""),
             frame: frame,
             parent: parent,
             commandIdentifier: nil,

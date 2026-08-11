@@ -246,14 +246,16 @@ internal extension NSToolbarCustomizationPanel {
         }
 
         let key = "\(identifier.rawValue) \(item?.label ?? "") \(item?.paletteLabel ?? "")".lowercased()
-        if key.contains("open") || key.contains("folder") { return "folder" }
         if key.contains("disable") && key.contains("save") { return "properties" }
-        if key.contains("save") { return "save" }
-        if key.contains("print") { return "print" }
-        if key.contains("custom") || key.contains("setting") || key.contains("gear") { return "properties" }
-        if key.contains("delete") || key.contains("remove") || key.contains("trash") { return "trash" }
-        if key.contains("search") || key.contains("find") { return "search" }
-        if key.contains("new") || key.contains("add") { return "plus" }
+        let keywordImages = [
+            "open": "folder", "folder": "folder", "save": "save", "print": "print",
+            "custom": "properties", "setting": "properties", "gear": "properties",
+            "delete": "trash", "remove": "trash", "trash": "trash",
+            "search": "search", "find": "search", "new": "plus", "add": "plus"
+        ]
+        for (keyword, image) in keywordImages where key.contains(keyword) {
+            return image
+        }
         return "document"
     }
 }

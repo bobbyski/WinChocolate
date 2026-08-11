@@ -273,7 +273,10 @@ private final class RTFReader {
     }
 
     /// Handles the character(s) after a backslash.
-    private func parseControl() {
+}
+
+private extension RTFReader {
+    func parseControl() {
         guard index < bytes.count else {
             return
         }

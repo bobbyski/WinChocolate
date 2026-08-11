@@ -201,6 +201,12 @@ extension NSTableView {
     }
 
     func winKeyDown(with event: NSEvent) {
+        if event.keyCode == TableKeyCode.return {
+            if !winBeginEditSelectedRow() {
+                sendAction()
+            }
+            return
+        }
         switch event.keyCode {
         case TableKeyCode.tab:
             moveFocusWithTab(event)
@@ -216,13 +222,6 @@ extension NSTableView {
             selectKeyboardRow(0, extending: event.modifierFlags.contains(.shift))
         case TableKeyCode.end:
             selectKeyboardRow(max(0, numberOfRows - 1), extending: event.modifierFlags.contains(.shift))
-        case TableKeyCode.return:
-            // Return begins editing the selected row's first editable drawn cell
-            // (AppKit convention); if nothing is editable, it acts as the row
-            // action instead.
-            if !winBeginEditSelectedRow() {
-                sendAction()
-            }
         case TableKeyCode.space:
             sendAction()
         default:
