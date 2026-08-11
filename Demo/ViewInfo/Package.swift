@@ -13,7 +13,7 @@ let package = Package(
         .executable(name: "ViewInfo", targets: ["ViewInfo"])
     ],
     dependencies: [
-        .package(url: "https://github.com/swiftlang/swift-syntax.git", from: "600.0.0")
+        .package(url: "https://github.com/swiftlang/swift-syntax.git", from: "603.0.0")
     ],
     targets: [
         .executableTarget(
