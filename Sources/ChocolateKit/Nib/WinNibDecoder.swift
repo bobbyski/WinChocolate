@@ -281,45 +281,6 @@ final class WinNibDecoder {
         return scrollView
     }
 
-    private func applyCommonAttributes(_ element: WinXMLElement, to view: NSView) {
-        if let identifier = element.attribute("identifier") {
-            view.identifier = NSUserInterfaceItemIdentifier(identifier)
-        }
-        if bool(element.attribute("hidden")) {
-            view.isHidden = true
-        }
-        if let tag = element.attribute("tag").flatMap({ Int($0) }) {
-            view.tag = tag
-        }
-        if element.attribute("translatesAutoresizingMaskIntoConstraints") == "NO" {
-            view.translatesAutoresizingMaskIntoConstraints = false
-        }
-        if let control = view as? NSControl, bool(element.attribute("enabled"), default: true) == false {
-            control.isEnabled = false
-        }
-        if let toolTip = element.attribute("toolTip") {
-            view.toolTip = toolTip
-        }
-        if let maskElement = element.firstChild(withKey: "autoresizingMask") {
-            var mask = NSView.AutoresizingMask()
-            if bool(maskElement.attribute("widthSizable")) { mask.insert(.width) }
-            if bool(maskElement.attribute("heightSizable")) { mask.insert(.height) }
-            if bool(maskElement.attribute("flexibleMinX")) { mask.insert(.minXMargin) }
-            if bool(maskElement.attribute("flexibleMaxX")) { mask.insert(.maxXMargin) }
-            // Cocoa's flexible-min-Y is the bottom margin; in WinChocolate's
-            // top-down space the bottom margin is maxY — flip the pair.
-            if bool(maskElement.attribute("flexibleMinY")) { mask.insert(.maxYMargin) }
-            if bool(maskElement.attribute("flexibleMaxY")) { mask.insert(.minYMargin) }
-            view.autoresizingMask = mask
-        }
-    }
-
-    private func register(_ element: WinXMLElement, as object: AnyObject) {
-        if let id = element.attribute("id") {
-            objectsByID[id] = object
-        }
-    }
-
     // MARK: Constraints (15.3)
 
     private func resolvePendingConstraints() {
@@ -376,6 +337,39 @@ private extension WinNibDecoder {
         "baseline": .lastBaseline, "lastBaseline": .lastBaseline,
         "firstBaseline": .firstBaseline
     ]
+
+    func applyCommonAttributes(_ element: WinXMLElement, to view: NSView) {
+        if let identifier = element.attribute("identifier") {
+            view.identifier = NSUserInterfaceItemIdentifier(identifier)
+        }
+        if bool(element.attribute("hidden")) { view.isHidden = true }
+        if let tag = element.attribute("tag").flatMap({ Int($0) }) { view.tag = tag }
+        if element.attribute("translatesAutoresizingMaskIntoConstraints") == "NO" {
+            view.translatesAutoresizingMaskIntoConstraints = false
+        }
+        if let control = view as? NSControl, !bool(element.attribute("enabled"), default: true) {
+            control.isEnabled = false
+        }
+        if let toolTip = element.attribute("toolTip") { view.toolTip = toolTip }
+        if let maskElement = element.firstChild(withKey: "autoresizingMask") {
+            view.autoresizingMask = autoresizingMask(from: maskElement)
+        }
+    }
+
+    func autoresizingMask(from element: WinXMLElement) -> NSView.AutoresizingMask {
+        let mappings: [(String, NSView.AutoresizingMask)] = [
+            ("widthSizable", .width), ("heightSizable", .height),
+            ("flexibleMinX", .minXMargin), ("flexibleMaxX", .maxXMargin),
+            ("flexibleMinY", .maxYMargin), ("flexibleMaxY", .minYMargin)
+        ]
+        return mappings.reduce(into: NSView.AutoresizingMask()) { mask, mapping in
+            if bool(element.attribute(mapping.0)) { mask.insert(mapping.1) }
+        }
+    }
+
+    func register(_ element: WinXMLElement, as object: AnyObject) {
+        if let id = element.attribute("id") { objectsByID[id] = object }
+    }
 
     func attribute(named name: String?) -> NSLayoutConstraint.Attribute? {
         name.flatMap { Self.constraintAttributes[$0] }

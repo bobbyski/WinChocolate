@@ -14,8 +14,7 @@ extension Win32NativeControlBackend {
         }
 
         return createChildWindow(
-            className: winChocolateViewClassName,
-            text: "",
+            content: (winChocolateViewClassName, ""),
             frame: frame,
             parent: parent,
             commandIdentifier: nil,

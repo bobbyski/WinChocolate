@@ -89,30 +89,13 @@ enum WinXML {
             let name = readName()
             guard !name.isEmpty else { return nil }
 
-            var attributes: [String: String] = [:]
-            while true {
-                skipWhitespace()
-                if consume("/") {
-                    // Self-closing element.
-                    guard consume(">") else { return nil }
-                    return WinXMLElement(name: name, attributes: attributes)
-                }
-                if consume(">") {
-                    break
-                }
-                let attributeName = readName()
-                guard !attributeName.isEmpty else { return nil }
-                skipWhitespace()
-                guard consume("=") else { return nil }
-                skipWhitespace()
-                guard let value = readQuotedValue() else { return nil }
-                attributes[attributeName] = value
-            }
+            guard let parsed = readAttributes() else { return nil }
+            let element = WinXMLElement(name: name, attributes: parsed.attributes)
+            if parsed.isSelfClosing { return element }
 
             // Children until the matching close tag. Text content (IB emits
             // it only for a few elements like <string>) is skipped — the nib
             // loader consumes attributes and structure.
-            let element = WinXMLElement(name: name, attributes: attributes)
             while !isAtEnd {
                 skipUntil("<")
                 if matches("<!--") {
@@ -130,6 +113,24 @@ enum WinXML {
                 element.addChild(child)
             }
             return element
+        }
+
+        private mutating func readAttributes() -> (attributes: [String: String], isSelfClosing: Bool)? {
+            var attributes: [String: String] = [:]
+            while true {
+                skipWhitespace()
+                if consume("/") {
+                    return consume(">") ? (attributes, true) : nil
+                }
+                if consume(">") { return (attributes, false) }
+                let name = readName()
+                guard !name.isEmpty else { return nil }
+                skipWhitespace()
+                guard consume("=") else { return nil }
+                skipWhitespace()
+                guard let value = readQuotedValue() else { return nil }
+                attributes[name] = value
+            }
         }
 
         private mutating func readName() -> String {
@@ -230,20 +231,7 @@ enum WinXML {
                 continue
             }
             let body = String(String.UnicodeScalarView(scalars[(i + 1)..<end]))
-            var decoded: Unicode.Scalar?
-            switch body {
-            case "amp": decoded = "&"
-            case "lt": decoded = "<"
-            case "gt": decoded = ">"
-            case "quot": decoded = "\""
-            case "apos": decoded = "'"
-            default:
-                if body.hasPrefix("#x") || body.hasPrefix("#X") {
-                    decoded = UInt32(body.dropFirst(2), radix: 16).flatMap { Unicode.Scalar($0) }
-                } else if body.hasPrefix("#") {
-                    decoded = UInt32(body.dropFirst()).flatMap { Unicode.Scalar($0) }
-                }
-            }
+            let decoded = decodedEntity(body)
             if let decoded {
                 out.append(decoded)
                 i = end + 1
@@ -253,5 +241,19 @@ enum WinXML {
             }
         }
         return String(out)
+    }
+
+    private static func decodedEntity(_ body: String) -> Unicode.Scalar? {
+        let named: [String: Unicode.Scalar] = [
+            "amp": "&", "lt": "<", "gt": ">", "quot": "\"", "apos": "'"
+        ]
+        if let scalar = named[body] { return scalar }
+        if body.hasPrefix("#x") || body.hasPrefix("#X") {
+            return UInt32(body.dropFirst(2), radix: 16).flatMap { Unicode.Scalar($0) }
+        }
+        if body.hasPrefix("#") {
+            return UInt32(body.dropFirst()).flatMap { Unicode.Scalar($0) }
+        }
+        return nil
     }
 }

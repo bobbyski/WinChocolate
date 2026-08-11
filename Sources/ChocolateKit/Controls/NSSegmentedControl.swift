@@ -8,13 +8,6 @@
 /// surface follows AppKit's segment model: labels, per-segment
 /// width/enabled/image/tag/menu, tracking mode, and keyboard selection.
 open class NSSegmentedControl: NSControl {
-    /// Segment selection behavior.
-    public enum TrackingMode: Sendable {
-        case selectOne
-        case selectAny
-        case momentary
-    }
-
     /// Segment visual style.
     public enum Style: Sendable {
         case automatic
@@ -407,6 +400,15 @@ open class NSSegmentedControl: NSControl {
     /// This view's origin in window coordinates (for click hit mapping).
     // MARK: - Model maintenance
 
+}
+
+public extension NSSegmentedControl {
+    /// Segment selection behavior.
+    enum TrackingMode: Sendable {
+        case selectOne
+        case selectAny
+        case momentary
+    }
 }
 
 extension NSSegmentedControl {

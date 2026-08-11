@@ -121,18 +121,15 @@ struct JSONParser {
         if byte == 0x75 {
             return try parseUnicodeEscape()
         }
-        switch byte {
-        case 0x22: return "\""
-        case 0x5C: return "\\"
-        case 0x2F: return "/"
-        case 0x62: return "\u{08}"
-        case 0x66: return "\u{0C}"
-        case 0x6E: return "\n"
-        case 0x72: return "\r"
-        case 0x74: return "\t"
-        default:
+        let escapes: [UInt8: Unicode.Scalar] = [
+            0x22: "\"", 0x5C: "\\", 0x2F: "/",
+            0x62: "\u{08}", 0x66: "\u{0C}",
+            0x6E: "\n", 0x72: "\r", 0x74: "\t"
+        ]
+        guard let escaped = escapes[byte] else {
             throw ParseError(message: "Invalid escape '\\\(Character(Unicode.Scalar(byte)))'.")
         }
+        return escaped
     }
 
     private mutating func parseUnicodeEscape() throws -> Unicode.Scalar {

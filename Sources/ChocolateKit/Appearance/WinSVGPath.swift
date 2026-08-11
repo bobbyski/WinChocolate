@@ -258,7 +258,10 @@ enum WinSVGPath {
         }
     }
 
-    private struct ArcCommand {
+}
+
+private extension WinSVGPath {
+    struct ArcCommand {
         let start: NSPoint
         let end: NSPoint
         let radiusX: Double

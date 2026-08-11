@@ -385,15 +385,11 @@ enum WinJSON {
             }
 
             index += 1
-            switch marker {
-            case "\"": return "\""
-            case "\\": return "\\"
-            case "/": return "/"
-            case "n": return "\n"
-            case "r": return "\r"
-            case "t": return "\t"
-            default: return nil
-            }
+            let escapes: [Unicode.Scalar: Unicode.Scalar] = [
+                "\"": "\"", "\\": "\\", "/": "/",
+                "n": "\n", "r": "\r", "t": "\t"
+            ]
+            return escapes[marker]
         }
 
         mutating func parseNumber() -> Any? {

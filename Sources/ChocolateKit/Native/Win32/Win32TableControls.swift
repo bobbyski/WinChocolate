@@ -20,8 +20,7 @@ extension Win32NativeControlBackend {
     ) -> NativeHandle {
         initializeListViewControls()
         let handle = createChildWindow(
-            className: "SysListView32",
-            text: "",
+            content: ("SysListView32", ""),
             frame: frame,
             parent: parent,
             commandIdentifier: nextCommandID(),

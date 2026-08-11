@@ -282,8 +282,7 @@ public final class Win32NativeControlBackend: NativeControlBackend {
     public func createView(frame: NSRect, parent: NativeHandle?) -> NativeHandle {
         registerViewClassIfNeeded()
         let handle = createChildWindow(
-            className: winChocolateViewClassName,
-            text: "",
+            content: (winChocolateViewClassName, ""),
             frame: frame,
             parent: parent,
             commandIdentifier: nil,

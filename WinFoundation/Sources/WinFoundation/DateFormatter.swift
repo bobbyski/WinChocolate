@@ -237,29 +237,28 @@ open class DateFormatter: Formatter {
     }
 
     private func token(_ character: Character, count: Int, components c: Components) -> String {
-        switch character {
-        case "y":
+        if character == "y" {
             return count == 2 ? padded(c.year % 100, 2) : (count >= 4 ? padded(c.year, 4) : String(c.year))
-        case "M":
+        }
+        if character == "M" {
             switch count {
             case 1: return String(c.month)
             case 2: return padded(c.month, 2)
             case 3: return Self.shortMonths[monthIndex(c.month)]
             default: return Self.longMonths[monthIndex(c.month)]
             }
-        case "d": return count >= 2 ? padded(c.day, 2) : String(c.day)
-        case "H": return count >= 2 ? padded(c.hour, 2) : String(c.hour)
-        case "h":
-            let twelve = c.hour % 12 == 0 ? 12 : c.hour % 12
-            return count >= 2 ? padded(twelve, 2) : String(twelve)
-        case "m": return count >= 2 ? padded(c.minute, 2) : String(c.minute)
-        case "s": return count >= 2 ? padded(c.second, 2) : String(c.second)
-        case "a": return c.hour < 12 ? "AM" : "PM"
-        case "E":
+        }
+        if character == "a" { return c.hour < 12 ? "AM" : "PM" }
+        if character == "E" {
             let day = weekdayIndex(c.weekday)
             return count >= 4 ? Self.longWeekdays[day] : Self.shortWeekdays[day]
-        default: return String(repeating: String(character), count: count)
         }
+        let twelve = c.hour % 12 == 0 ? 12 : c.hour % 12
+        let numeric: [Character: Int] = ["d": c.day, "H": c.hour, "h": twelve, "m": c.minute, "s": c.second]
+        guard let value = numeric[character] else {
+            return String(repeating: String(character), count: count)
+        }
+        return count >= 2 ? padded(value, 2) : String(value)
     }
 
     private func monthIndex(_ month: Int) -> Int {
@@ -294,10 +293,11 @@ open class DateFormatter: Formatter {
     /// an offset, then that offset is re-checked against the instant it
     /// implies. One refinement settles every case except the hour that DST
     /// skips or repeats, which is genuinely ambiguous.
-    private func timestamp(year: Int, month: Int, day: Int, hour: Int, minute: Int, second: Int) -> Double {
+    private func timestamp(_ components: Components) -> Double {
         let parts = WinCivilTime.Parts(
-            year: year, month: month, day: day,
-            hour: hour, minute: minute, second: second, weekday: 0
+            year: components.year, month: components.month, day: components.day,
+            hour: components.hour, minute: components.minute,
+            second: components.second, weekday: 0
         )
         let local = WinCivilTime.epoch(from: parts)
         var offset = timeZone.secondsFromGMT(for: Date(timeIntervalSince1970: Double(local)))
@@ -305,7 +305,11 @@ open class DateFormatter: Formatter {
         return Double(local - offset)
     }
 
-    // MARK: - Parsing
+}
+
+// MARK: - Parsing
+
+private extension DateFormatter {
 
     private func readInteger(from input: [Character], index: inout Int, maxDigits: Int) -> Int? {
         var value = 0
@@ -461,14 +465,12 @@ open class DateFormatter: Formatter {
             fields.hour += 12
         }
 
-        return Date(timeIntervalSince1970: timestamp(
-            year: fields.year,
-            month: fields.month,
-            day: fields.day,
-            hour: fields.hour,
-            minute: fields.minute,
-            second: fields.second
-        ))
+        let components = Components(
+            year: fields.year, month: fields.month, day: fields.day,
+            hour: fields.hour, minute: fields.minute, second: fields.second,
+            weekday: 0
+        )
+        return Date(timeIntervalSince1970: timestamp(components))
     }
 
     private func parseQuotedLiteral(

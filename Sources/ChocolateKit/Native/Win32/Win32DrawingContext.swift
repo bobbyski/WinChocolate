@@ -186,6 +186,9 @@ internal final class Win32DrawingContext: NativeDrawingContext {
     }
 
     /// Draws an image tinted through a GDI+ color matrix (template rendering).
+}
+
+extension Win32DrawingContext {
     private func drawTintedImage(atPath path: String, in rect: NSRect, tint: NSColor) {
         guard Win32GdiPlusImageDecoder.ensureStarted() else {
             return
