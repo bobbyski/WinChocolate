@@ -314,6 +314,25 @@ extension NativeDrawingContext {
 }
 
 extension NativeControlBackend {
+    /// Default date-field rendering hook for backends that use a complete
+    /// native date control (such as Win32).
+    public func setDatePickerText(_ text: String, for handle: NativeHandle) {}
+
+    /// Default date-field selection hook for complete native date controls.
+    public func setDatePickerSelection(location: Int, length: Int, for handle: NativeHandle) {}
+
+    /// Default step callback registration for complete native date controls.
+    public func setDateStepAction(for handle: NativeHandle, action: @escaping (Int) -> Void) {}
+
+    /// Default cursor callback registration for complete native date controls.
+    public func setDatePickerCursorAction(for handle: NativeHandle, action: @escaping (Int) -> Void) {}
+
+    /// Default field-navigation callback registration for complete native date controls.
+    public func setDatePickerMoveAction(for handle: NativeHandle, action: @escaping (Int) -> Void) {}
+
+    /// Default typed-character callback registration for complete native date controls.
+    public func setDatePickerTypeAction(for handle: NativeHandle, action: @escaping (String) -> Void) {}
+
     /// Default: no run-loop pump, so `NSApplication.run()` keeps using the
     /// bare message loop. The Win32 backend overrides this.
     public func makeRunLoopPump() -> RunLoopPlatformPump? { nil }
@@ -883,6 +902,24 @@ public protocol NativeControlBackend: AnyObject {
     /// locale default). The format follows the platform date-time format
     /// syntax the backend understands.
     func setDatePickerFormat(_ format: String?, for handle: NativeHandle)
+
+    /// Replaces the rendered text for a framework-edited date field.
+    func setDatePickerText(_ text: String, for handle: NativeHandle)
+
+    /// Selects a character range in a framework-edited date field.
+    func setDatePickerSelection(location: Int, length: Int, for handle: NativeHandle)
+
+    /// Registers a framework-edited date field's stepper callback.
+    func setDateStepAction(for handle: NativeHandle, action: @escaping (Int) -> Void)
+
+    /// Registers a framework-edited date field's click/cursor callback.
+    func setDatePickerCursorAction(for handle: NativeHandle, action: @escaping (Int) -> Void)
+
+    /// Registers a framework-edited date field's left/right navigation callback.
+    func setDatePickerMoveAction(for handle: NativeHandle, action: @escaping (Int) -> Void)
+
+    /// Registers a framework-edited date field's typed-character callback.
+    func setDatePickerTypeAction(for handle: NativeHandle, action: @escaping (String) -> Void)
 
     /// Sets a button's image from a file path (nil clears it).
     func setButtonImage(imagePath: String?, for handle: NativeHandle)

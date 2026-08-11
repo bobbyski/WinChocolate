@@ -287,6 +287,17 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
     /// Recorded in-memory backend state for `tableDoubleClickActionsByHandle`.
     internal var tableDoubleClickActionsByHandle: [NativeHandle: () -> Void] = [:]
 
+    internal var dateStepActions: [NativeHandle: (Int) -> Void] = [:]
+    internal var datePickerCursorActions: [NativeHandle: (Int) -> Void] = [:]
+    internal var datePickerMoveActions: [NativeHandle: (Int) -> Void] = [:]
+    internal var datePickerTypeActions: [NativeHandle: (String) -> Void] = [:]
+
+    /// Rendered framework-owned date-field text by handle.
+    public internal(set) var datePickerTexts: [NativeHandle: String] = [:]
+
+    /// Selected framework-owned date-field ranges by handle.
+    public internal(set) var datePickerSelections: [NativeHandle: (location: Int, length: Int)] = [:]
+
     /// Creates an in-memory backend.
     public init() {}
 }

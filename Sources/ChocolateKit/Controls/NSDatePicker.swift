@@ -15,6 +15,13 @@
 /// platform can't know: the element flags, the locale-driven format they imply,
 /// the min/max clamp, and `stringValue`.
 open class NSDatePicker: NSControl {
+    #if !USE_WIN_FOUNDATION
+    var winDateSegments: [WinDatePickerSegment] = []
+    var winSelectedDateSegment = 0
+    var winDateTypingBuffer = 0
+    var winDateTypingDigits = 0
+    #endif
+
     /// Visual style for the date picker.
     ///
     /// Raw values are Apple's.
@@ -363,6 +370,10 @@ open class NSDatePicker: NSControl {
             }
             self.sendAction()
         }
+        #if !USE_WIN_FOUNDATION
+        winWireDateFieldEditing(backend: backend, handle: handle)
+        winRefreshDateField(backend: backend, handle: handle)
+        #endif
         return handle
     }
 
@@ -388,11 +399,21 @@ private extension NSDatePicker {
     func applyDatePickerFormat() {
         guard let nativeHandle else { return }
         realizedBackend?.setDatePickerFormat(nativeDateFormat, for: nativeHandle)
+        #if !USE_WIN_FOUNDATION
+        if let backend = realizedBackend {
+            winRefreshDateField(backend: backend, handle: nativeHandle)
+        }
+        #endif
     }
 
     func syncNativeDate() {
         guard let nativeHandle else { return }
         realizedBackend?.setDatePickerDate(dateValue, minDate: minDate, maxDate: maxDate, for: nativeHandle)
+        #if !USE_WIN_FOUNDATION
+        if let backend = realizedBackend {
+            winRefreshDateField(backend: backend, handle: nativeHandle)
+        }
+        #endif
     }
 
     func clampedDate(_ date: Date) -> Date {

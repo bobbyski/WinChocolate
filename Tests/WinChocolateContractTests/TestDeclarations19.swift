@@ -373,6 +373,34 @@ func testDatePickerStyleRequestsAStepper() {
            "A calendar picker should have no stepper.")
 }
 
+#if !os(Windows)
+@MainActor
+func testDatePickerFieldEditing() {
+    let backend = InMemoryNativeControlBackend()
+    var calendar = Calendar(identifier: .gregorian)
+    calendar.locale = Locale(identifier: "en_US")
+    calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+    let seed = calendar.date(from: DateComponents(year: 2026, month: 6, day: 15))!
+    let picker = NSDatePicker(date: seed, frame: NSMakeRect(0, 0, 180, 28))
+    picker.locale = calendar.locale
+    picker.timeZone = calendar.timeZone
+    let handle = picker.realizeNativePeer(in: backend, parent: nil)
+    let initialText = backend.datePickerTexts[handle]
+
+    backend.simulateDatePickerTyping("12", for: handle)
+    expect(calendar.component(.month, from: picker.dateValue) == 12,
+           "Typing did not replace the selected date segment.")
+    let typedText = backend.datePickerTexts[handle]
+    expect(typedText != initialText, "Typing did not refresh the displayed date-field text.")
+
+    backend.simulateDateStep(1, for: handle)
+    expect(calendar.component(.day, from: picker.dateValue) == 16,
+           "The date stepper did not change the selected segment.")
+    expect(backend.datePickerTexts[handle] != typedText,
+           "Stepping did not refresh the displayed date-field text.")
+}
+#endif
+
 @MainActor
 func testButtonImageAndAlternateTitle() {
     let backend = InMemoryNativeControlBackend()

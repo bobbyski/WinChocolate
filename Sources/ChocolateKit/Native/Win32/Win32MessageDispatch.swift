@@ -87,8 +87,12 @@ extension Win32NativeControlBackend {
         case wmGetDlgCode:
             return callOriginalControlProcedure(hwnd: hwnd, message: message, wParam: wParam, lParam: lParam) | dlgcWantTab
         case wmSetFocus, wmKillFocus:
-            if let hwnd, let action = focusChangeActions[actionHandle(from: hwnd).rawValue] {
-                action(message == wmSetFocus)
+            if let hwnd {
+                let handle = actionHandle(from: hwnd)
+                focusChangeActions[handle.rawValue]?(message == wmSetFocus)
+                if darkDatePickerFieldHandles.contains(handle.rawValue) {
+                    _ = winInvalidateRect(hwnd, nil, 1)
+                }
             }
             return nil
         case wmKeyDown, wmSysKeyDown:
@@ -144,7 +148,8 @@ extension Win32NativeControlBackend {
             drawDarkTableHeader(hwnd)
             return 0
         }
-        guard darkDatePickerFieldHandles.contains(actionHandle(from: hwnd).rawValue) else { return nil }
+        guard darkDatePickerFieldHandles.contains(actionHandle(from: hwnd).rawValue),
+              winGetFocus() != hwnd else { return nil }
         drawDarkDatePickerField(hwnd)
         return 0
     }
@@ -156,7 +161,7 @@ extension Win32NativeControlBackend {
             return 1
         }
         let handle = actionHandle(from: hwnd)
-        if darkDatePickerFieldHandles.contains(handle.rawValue) { return 1 }
+        if darkDatePickerFieldHandles.contains(handle.rawValue), winGetFocus() != hwnd { return 1 }
         guard groupBoxHandles.contains(handle.rawValue) else { return nil }
         var rectangle = RECT()
         _ = winGetClientRect(hwnd, &rectangle)
