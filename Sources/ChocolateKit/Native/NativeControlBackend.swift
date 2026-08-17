@@ -314,6 +314,12 @@ extension NativeDrawingContext {
 }
 
 extension NativeControlBackend {
+    /// Default: a backend does not want class-name diagnostics.
+    public var wantsDebugClassNames: Bool { false }
+
+    /// Default: class names are diagnostics, so ignoring them is correct.
+    public func setDebugClassName(_ name: String, for handle: NativeHandle) {}
+
     /// Default date-field rendering hook for backends that use a complete
     /// native date control (such as Win32).
     public func setDatePickerText(_ text: String, for handle: NativeHandle) {}
@@ -1012,6 +1018,26 @@ public protocol NativeControlBackend: AnyObject {
 
     /// Registers the action that paints custom view content during a native paint pass.
     func registerDrawAction(for handle: NativeHandle, action: @escaping (NativeDrawingContext, NSRect) -> Void)
+
+    /// Whether the backend wants `setDebugClassName(_:for:)` calls.
+    ///
+    /// Defaults to `false`, which is what every shipping backend wants: the
+    /// name costs a string per realized view and is never consulted. A backend
+    /// under construction turns it on so it can label what it has not built.
+    var wantsDebugClassNames: Bool { get }
+
+    /// Reports the AppKit class name behind a handle, for diagnostics only.
+    ///
+    /// Nothing about rendering may depend on this. It exists because a backend
+    /// sees kinds, not classes: `NSSearchField` and `NSTokenField` both arrive
+    /// as a text field, and a framework-drawn control such as
+    /// `NSSegmentedControl` arrives as a plain view with a draw action. A
+    /// backend that renders a placeholder for what it cannot yet draw has no
+    /// other way to say which class the placeholder stands for.
+    ///
+    /// Called once per view, immediately after its peer is created — so it
+    /// arrives *after* the create call, not before.
+    func setDebugClassName(_ name: String, for handle: NativeHandle)
 
     /// Requests a repaint of a native control.
     func invalidateControl(_ handle: NativeHandle)

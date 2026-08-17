@@ -2,7 +2,9 @@
 // DemoConveniences.swift to keep each file under 500 lines.
 // Declarations only — see the note in main.swift's companions.
 
-#if os(Linux)
+#if os(WASI)
+import WASMChocolate
+#elseif os(Linux)
 import LinChocolate
 #elseif os(Windows)
 import WinChocolate

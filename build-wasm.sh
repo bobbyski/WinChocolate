@@ -2,9 +2,15 @@
 #
 # Build a Chocolate demo for the browser (Docs/WASMChocolatePlan.md).
 #
-#   ./build-wasm.sh                 # build CounterDemo and serve it
-#   ./build-wasm.sh --build         # build only
-#   ./build-wasm.sh RunLoopDemo     # a different executable target
+#   ./build-wasm.sh                    # build CounterDemo and serve it
+#   ./build-wasm.sh --build            # build only
+#   ./build-wasm.sh RunLoopDemo        # a different executable target
+#   ./build-wasm.sh WinChocolateDemo   # the 11-page catalog
+#   ./build-wasm.sh --release ...      # optimized; much smaller .wasm
+#
+# Use --release once the demo is big. A debug CounterDemo is a 76 MB .wasm and
+# the catalog is larger still; the download is the dominant cost of every
+# look-at-it iteration, and it is paid on each reload.
 #
 # The pipeline is the official Swift WASM SDK plus JavaScriptKit's PackageToJS
 # plugin — no carton. `CHOCOLATE_WASM` is what makes this package name SwiftDOM
@@ -24,10 +30,13 @@ SWIFT_WASM_SDK="${SWIFT_WASM_SDK:-swift-6.3.1-RELEASE_wasm}"
 PORT="${PORT:-8080}"
 
 BUILD_ONLY=0
+CONFIGURATION="debug"
 TARGET="CounterDemo"
 for arg in "$@"; do
     case "$arg" in
         --build) BUILD_ONLY=1 ;;
+        --release) CONFIGURATION="release" ;;
+        --debug) CONFIGURATION="debug" ;;
         -*) echo "unknown option: $arg" >&2; exit 2 ;;
         *) TARGET="$arg" ;;
     esac
@@ -58,11 +67,14 @@ trap restore_resolved EXIT
 
 export CHOCOLATE_WASM=1
 
-echo "• Building $TARGET for wasm32 (SDK: $SWIFT_WASM_SDK)"
-"$SWIFT_BIN" build --swift-sdk "$SWIFT_WASM_SDK" --product "$TARGET"
+echo "• Building $TARGET for wasm32 ($CONFIGURATION, SDK: $SWIFT_WASM_SDK)"
+"$SWIFT_BIN" build -c "$CONFIGURATION" --swift-sdk "$SWIFT_WASM_SDK" --product "$TARGET"
 
+# The configuration has to match on both calls: PackageToJS copies the binary
+# out of the build directory it is pointed at, so packaging a release build with
+# a debug flag silently ships the debug .wasm.
 echo "• Packaging with PackageToJS into $OUT"
-"$SWIFT_BIN" package --swift-sdk "$SWIFT_WASM_SDK" \
+"$SWIFT_BIN" package -c "$CONFIGURATION" --swift-sdk "$SWIFT_WASM_SDK" \
     --allow-writing-to-package-directory js \
     --product "$TARGET" --output "$OUT" --use-cdn
 

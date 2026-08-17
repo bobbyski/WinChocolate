@@ -32,7 +32,13 @@ public final class WASMNativeControlBackend: InMemoryNativeControlBackend {
     private var desktop: Element?
 
     /// The DOM element behind each native handle.
-    private var elements: [NativeHandle: Element] = [:]
+    internal var elements: [NativeHandle: Element] = [:]
+
+    /// The caption inside each "under construction" placeholder.
+    ///
+    /// Keyed by handle so `setDebugClassName` can correct the name and
+    /// `setText` can append the control's own text. See `WASMPlaceholders`.
+    internal var placeholderCaptions: [NativeHandle: Element] = [:]
 
     /// The element a window's content is added to — its client area, below the
     /// synthesized title bar.
@@ -369,6 +375,207 @@ public final class WASMNativeControlBackend: InMemoryNativeControlBackend {
         return handle
     }
 
+    // MARK: - Controls not built yet
+    //
+    // Every one of these produces a visible, captioned box rather than nothing,
+    // for the reason given at the top of `WASMPlaceholders.swift`: a create call
+    // that files no element orphans the whole subtree under it. Each is one line
+    // away from being a real control — swap `makePlaceholder` for the DOM
+    // builder and delete the row from `WASM_PARITY.md`.
+    //
+    // `createView`, `createWindow`, `createButton` and `createTextField` are
+    // absent on purpose: they are implemented, and striping the universal
+    // container would cover the page in hazard tape.
+
+    /// Creates a checkbox placeholder.
+    public override func createCheckbox(title: String, frame: NSRect, parent: NativeHandle?) -> NativeHandle {
+        let handle = super.createCheckbox(title: title, frame: frame, parent: parent)
+        makePlaceholder(handle, kind: "checkbox", frame: frame, parent: parent)
+        return handle
+    }
+
+    /// Creates a radio-button placeholder.
+    public override func createRadioButton(title: String, frame: NSRect, parent: NativeHandle?) -> NativeHandle {
+        let handle = super.createRadioButton(title: title, frame: frame, parent: parent)
+        makePlaceholder(handle, kind: "radioButton", frame: frame, parent: parent)
+        return handle
+    }
+
+    /// Creates a box placeholder. Its children are real and still render.
+    public override func createBox(title: String, frame: NSRect, parent: NativeHandle?) -> NativeHandle {
+        let handle = super.createBox(title: title, frame: frame, parent: parent)
+        makePlaceholder(handle, kind: "box", frame: frame, parent: parent)
+        return handle
+    }
+
+    /// Creates a secure-field placeholder.
+    public override func createSecureTextField(text: String, frame: NSRect, parent: NativeHandle?) -> NativeHandle {
+        let handle = super.createSecureTextField(text: text, frame: frame, parent: parent)
+        makePlaceholder(handle, kind: "secureTextField", frame: frame, parent: parent)
+        return handle
+    }
+
+    /// Creates a text-view placeholder.
+    public override func createTextView(text: String, frame: NSRect, parent: NativeHandle?,
+                                        isEditable: Bool, isRichText: Bool) -> NativeHandle {
+        let handle = super.createTextView(text: text, frame: frame, parent: parent,
+                                          isEditable: isEditable, isRichText: isRichText)
+        makePlaceholder(handle, kind: isEditable ? "editableTextView" : "textView",
+                        frame: frame, parent: parent)
+        return handle
+    }
+
+    /// Creates a pop-up button placeholder.
+    public override func createPopUpButton(items: [String], selectedIndex: Int,
+                                           frame: NSRect, parent: NativeHandle?) -> NativeHandle {
+        let handle = super.createPopUpButton(items: items, selectedIndex: selectedIndex,
+                                             frame: frame, parent: parent)
+        makePlaceholder(handle, kind: "popUpButton", frame: frame, parent: parent)
+        return handle
+    }
+
+    /// Creates a combo-box placeholder.
+    public override func createComboBox(items: [String], text: String,
+                                        frame: NSRect, parent: NativeHandle?) -> NativeHandle {
+        let handle = super.createComboBox(items: items, text: text, frame: frame, parent: parent)
+        makePlaceholder(handle, kind: "comboBox", frame: frame, parent: parent)
+        return handle
+    }
+
+    /// Creates an image-view placeholder.
+    public override func createImageView(description: String, imagePath: String?,
+                                         frame: NSRect, parent: NativeHandle?) -> NativeHandle {
+        let handle = super.createImageView(description: description, imagePath: imagePath,
+                                           frame: frame, parent: parent)
+        makePlaceholder(handle, kind: "imageView", frame: frame, parent: parent)
+        return handle
+    }
+
+    /// Creates a tab-view placeholder. Tab content is parented into it.
+    public override func createTabView(items: [String], selectedIndex: Int,
+                                       frame: NSRect, parent: NativeHandle?) -> NativeHandle {
+        let handle = super.createTabView(items: items, selectedIndex: selectedIndex,
+                                         frame: frame, parent: parent)
+        makePlaceholder(handle, kind: "tabView", frame: frame, parent: parent)
+        return handle
+    }
+
+    /// Creates a toolbar placeholder.
+    ///
+    /// Custom-view toolbar items are real subviews, so they are parented into
+    /// this box and render for real — which is why the demo's page selector is
+    /// reachable long before toolbar chrome is drawn.
+    public override func createToolbar(items: [NativeToolbarItem],
+                                       frame: NSRect, parent: NativeHandle?) -> NativeHandle {
+        let handle = super.createToolbar(items: items, frame: frame, parent: parent)
+        makePlaceholder(handle, kind: "toolbar", frame: frame, parent: parent)
+        return handle
+    }
+
+    /// Creates a slider placeholder.
+    public override func createSlider(value: Double, minValue: Double, maxValue: Double,
+                                      frame: NSRect, parent: NativeHandle?) -> NativeHandle {
+        let handle = super.createSlider(value: value, minValue: minValue, maxValue: maxValue,
+                                        frame: frame, parent: parent)
+        makePlaceholder(handle, kind: "slider", frame: frame, parent: parent)
+        return handle
+    }
+
+    /// Creates a progress-indicator placeholder.
+    public override func createProgressIndicator(value: Double, minValue: Double, maxValue: Double,
+                                                 frame: NSRect, parent: NativeHandle?) -> NativeHandle {
+        let handle = super.createProgressIndicator(value: value, minValue: minValue,
+                                                   maxValue: maxValue, frame: frame, parent: parent)
+        makePlaceholder(handle, kind: "progressIndicator", frame: frame, parent: parent)
+        return handle
+    }
+
+    /// Creates a scroller placeholder.
+    public override func createScroller(value: Double, knobProportion: Double, isVertical: Bool,
+                                        frame: NSRect, parent: NativeHandle?) -> NativeHandle {
+        let handle = super.createScroller(value: value, knobProportion: knobProportion,
+                                          isVertical: isVertical, frame: frame, parent: parent)
+        makePlaceholder(handle, kind: "scroller", frame: frame, parent: parent)
+        return handle
+    }
+
+    /// Creates a stepper placeholder.
+    public override func createStepper(configuration: NativeStepperConfiguration,
+                                       frame: NSRect, parent: NativeHandle?) -> NativeHandle {
+        let handle = super.createStepper(configuration: configuration, frame: frame, parent: parent)
+        makePlaceholder(handle, kind: "stepper", frame: frame, parent: parent)
+        return handle
+    }
+
+    /// Creates a date-picker placeholder.
+    public override func createDatePicker(configuration: NativeDatePickerConfiguration,
+                                          frame: NSRect, parent: NativeHandle?) -> NativeHandle {
+        let handle = super.createDatePicker(configuration: configuration, frame: frame, parent: parent)
+        makePlaceholder(handle, kind: configuration.style == .clockAndCalendar
+                            ? "calendarDatePicker" : "datePicker",
+                        frame: frame, parent: parent)
+        return handle
+    }
+
+    /// Creates a table-view placeholder.
+    public override func createTableView(columns: [String], columnWidths: [CGFloat],
+                                         content: NativeTableContent,
+                                         frame: NSRect, parent: NativeHandle?) -> NativeHandle {
+        let handle = super.createTableView(columns: columns, columnWidths: columnWidths,
+                                           content: content, frame: frame, parent: parent)
+        makePlaceholder(handle, kind: "tableView", frame: frame, parent: parent)
+        return handle
+    }
+
+    /// Creates a scroll view.
+    ///
+    /// Not a placeholder: a scroll view is structure, and hazard-striping the
+    /// container of the tables, the collection views and the stress page would
+    /// bury the very content this backend is trying to show. The clipping and
+    /// the scrollbars are real; the scroll *geometry* the framework pushes
+    /// through `setScrollViewContentSize` is not honoured yet, so the box
+    /// carries `data-cx-partial` and shows up in the census as incomplete
+    /// rather than passing itself off as finished.
+    public override func createScrollView(frame: NSRect, parent: NativeHandle?,
+                                          hasVerticalScroller: Bool,
+                                          hasHorizontalScroller: Bool) -> NativeHandle {
+        let handle = super.createScrollView(frame: frame, parent: parent,
+                                            hasVerticalScroller: hasVerticalScroller,
+                                            hasHorizontalScroller: hasHorizontalScroller)
+        let view = Element.div()
+            .setStyle("position", "absolute")
+            .setStyle("box-sizing", "border-box")
+            .setStyle("left", "\(frame.origin.x)px")
+            .setStyle("top", "\(frame.origin.y)px")
+            .setStyle("width", "\(frame.size.width)px")
+            .setStyle("height", "\(frame.size.height)px")
+            .setStyle("overflow-x", hasHorizontalScroller ? "auto" : "hidden")
+            .setStyle("overflow-y", hasVerticalScroller ? "auto" : "hidden")
+        _ = view.setAttribute("data-cx-partial", "NSScrollView")
+        register(handle, element: view, parent: parent)
+        return handle
+    }
+
+    // MARK: - Diagnostics
+
+    /// This backend labels what it cannot draw, so it wants the real names.
+    public override var wantsDebugClassNames: Bool { true }
+
+    /// Corrects a placeholder's caption to the actual AppKit class.
+    public override func setDebugClassName(_ name: String, for handle: NativeHandle) {
+        super.setDebugClassName(name, for: handle)
+        applyDebugClassName(name, to: handle)
+    }
+
+    /// Removes a control's element and everything filed against its handle.
+    public override func destroyControl(_ handle: NativeHandle) {
+        super.destroyControl(handle)
+        actionListeners.removeValue(forKey: handle)?.remove()
+        listeners.removeValue(forKey: handle)?.forEach { $0.remove() }
+        placeholderCaptions.removeValue(forKey: handle)
+        _ = elements.removeValue(forKey: handle)?.remove()
+    }
+
     // MARK: - Properties
 
     /// Sets a control's text — or a window's title.
@@ -379,6 +586,11 @@ public final class WASMNativeControlBackend: InMemoryNativeControlBackend {
         // chrome and the content area).
         if let titleLabel = windowTitleLabels[handle] {
             titleLabel.textContent = text
+            return
+        }
+        // Then placeholders, for the same reason: their child is the caption,
+        // and writing text to the box itself would replace it.
+        if setPlaceholderText(text, for: handle) {
             return
         }
         guard let element = elements[handle] else { return }
@@ -400,9 +612,40 @@ public final class WASMNativeControlBackend: InMemoryNativeControlBackend {
     }
 
     /// Shows or hides a control.
+    ///
+    /// Showing *clears* `visibility` rather than setting it to `visible`, and
+    /// the difference is the whole demo. `visibility` inherits, so a hidden
+    /// page view hides its subtree — but only until some descendant states its
+    /// own visibility, and the framework calls this method on every control
+    /// during realization. Writing `visible` on each one made all eleven demo
+    /// pages draw on top of each other while the page views themselves were
+    /// correctly hidden. Clearing the property lets the parent's state cascade,
+    /// which is also what AppKit means: a subview of a hidden view is not
+    /// drawn, whatever the subview thinks.
     public override func setHidden(_ isHidden: Bool, for handle: NativeHandle) {
         super.setHidden(isHidden, for: handle)
-        _ = elements[handle]?.setStyle("visibility", isHidden ? "hidden" : "visible")
+        _ = elements[handle]?.setStyle("visibility", isHidden ? "hidden" : "")
+    }
+
+    // MARK: - Screen
+
+    /// The viewport, standing in for the screen.
+    ///
+    /// Without this the inherited 1024×768 test frame decides window placement,
+    /// and the demo's 1120×760 window is positioned off the edge of a viewport
+    /// that is usually a different size again.
+    public override func primaryScreenFrame() -> NSRect {
+        guard DOM.isBrowser else {
+            return super.primaryScreenFrame()
+        }
+
+        return NSMakeRect(0, 0, CGFloat(DOM.window.innerWidth), CGFloat(DOM.window.innerHeight))
+    }
+
+    /// One synthetic screen: a page cannot see the real display arrangement.
+    public override func screenDescriptions() -> [NativeScreenDescription] {
+        let frame = primaryScreenFrame()
+        return [NativeScreenDescription(frame: frame, visibleFrame: frame)]
     }
 
     /// Enables or disables a control.
@@ -474,14 +717,17 @@ public final class WASMNativeControlBackend: InMemoryNativeControlBackend {
             .setStyle("position", "absolute")
             .setStyle("inset", "0")
             .setStyle("background", "#ffffff")
-            .setStyle("overflow", "hidden")
+            // Scrollable, not clipped: the catalog's window is larger than most
+            // viewports, and a clipped desktop makes the bottom of the demo
+            // unreachable rather than merely off-screen.
+            .setStyle("overflow", "auto")
         _ = DOM.document.body.appendChild(element)
         desktop = element
         renderMainMenuIfPossible()
     }
 
     /// Files a new element under its handle and adds it to its parent.
-    private func register(_ handle: NativeHandle, element: Element, parent: NativeHandle?) {
+    internal func register(_ handle: NativeHandle, element: Element, parent: NativeHandle?) {
         elements[handle] = element
         guard let parent else { return }
         // A window's children belong to its content area, not its chrome.

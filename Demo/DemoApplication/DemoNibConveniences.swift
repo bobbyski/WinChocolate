@@ -15,7 +15,9 @@
 // Chocolate readers resolve connections against a nil owner to nothing. The
 // demo wires the same behaviors through `onAction` below instead.)
 
-#if os(Linux)
+#if os(WASI)
+import WASMChocolate
+#elseif os(Linux)
 import LinChocolate
 #elseif os(Windows)
 import WinChocolate

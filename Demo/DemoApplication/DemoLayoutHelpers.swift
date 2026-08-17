@@ -5,7 +5,9 @@
 // into a lazily-initialized global that never runs. Declarations have no
 // such ordering, so they move freely.
 
-#if canImport(LinChocolate)
+#if canImport(WASMChocolate)
+import WASMChocolate
+#elseif canImport(LinChocolate)
 import LinChocolate
 #elseif canImport(WinChocolate)
 import WinChocolate

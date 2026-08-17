@@ -16,7 +16,9 @@
 // frame-carrying inits, `NSView.backgroundColor`, `winIsDark`, …) is a bug —
 // fix by making the real Apple mechanism work and moving any sugar demo-side
 // over real primitives. See Phase 18.
-#if os(Linux)
+#if os(WASI)
+import WASMChocolate
+#elseif os(Linux)
 import LinChocolate
 #elseif os(Windows)
 import WinChocolate

@@ -7,6 +7,16 @@ extension NSView {
         let handle = createNativePeer(in: backend, parent: parent)
         nativeHandle = handle
         realizedBackend = backend
+        // Diagnostics only, and only for a backend that asks. A backend sees
+        // coarse kinds — "textField" covers NSTextField, NSSearchField and
+        // NSTokenField alike, and a framework-drawn control creates a plain
+        // view — so a backend that has to name what it could not render has no
+        // way to know. This is the one place every realized view passes
+        // through. `wantsDebugClassNames` is false by default, so Win32, GTK
+        // and the recorder do not even pay for the string.
+        if backend.wantsDebugClassNames {
+            backend.setDebugClassName(String(describing: type(of: self)), for: handle)
+        }
         backend.setHidden(isHidden, for: handle)
         // Before any child is placed: a backend that positions children from
         // AppKit frames has to know which edge `origin.y` is measured from.

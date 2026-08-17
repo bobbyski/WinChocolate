@@ -1,34 +1,9 @@
+// Date-editing test simulations.
+//
+// The date-field writers a backend has to intercept moved to the class body in
+// `InMemoryNativeControlBackendState.swift` — see the note there. What is left
+// here drives those recordings from a test and will never be overridden.
 extension InMemoryNativeControlBackend {
-    /// Records framework-rendered date-field text.
-    public func setDatePickerText(_ text: String, for handle: NativeHandle) {
-        datePickerTexts[handle] = text
-    }
-
-    /// Records the selected date-field character range.
-    public func setDatePickerSelection(location: Int, length: Int, for handle: NativeHandle) {
-        datePickerSelections[handle] = (location, length)
-    }
-
-    /// Registers a simulated date-step action.
-    public func setDateStepAction(for handle: NativeHandle, action: @escaping (Int) -> Void) {
-        dateStepActions[handle] = action
-    }
-
-    /// Registers a simulated date-field cursor action.
-    public func setDatePickerCursorAction(for handle: NativeHandle, action: @escaping (Int) -> Void) {
-        datePickerCursorActions[handle] = action
-    }
-
-    /// Registers a simulated date-field movement action.
-    public func setDatePickerMoveAction(for handle: NativeHandle, action: @escaping (Int) -> Void) {
-        datePickerMoveActions[handle] = action
-    }
-
-    /// Registers a simulated date-field typing action.
-    public func setDatePickerTypeAction(for handle: NativeHandle, action: @escaping (String) -> Void) {
-        datePickerTypeActions[handle] = action
-    }
-
     /// Simulates pressing a compact date picker's stepper.
     public func simulateDateStep(_ direction: Int, for handle: NativeHandle) {
         dateStepActions[handle]?(direction)

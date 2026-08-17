@@ -1,61 +1,10 @@
+// Timer simulation and the shared internal helpers.
+//
+// The overridable half of this file — modal stop, wrapped text measurement,
+// indeterminate progress, cursors, the native timer seam, key equivalents and
+// context menus — moved to the class body in
+// `InMemoryNativeControlBackendState.swift`. See the note there.
 extension InMemoryNativeControlBackend {
-    /// Records a modal stop request.
-    public func stopModal(withCode code: Int) {
-        modalStopCodes.append(code)
-    }
-
-    /// Deterministic word-wrap estimate: the single-line metrics (`0.55 ×
-    /// pointSize` per character, `1.35 × pointSize` per line) greedily packed
-    /// into `maxWidth`-wide lines. Height is line count × line height; width is
-    /// the widest packed line (≤ `maxWidth`).
-    public func measureText(_ text: String, font: NativeFontSpec, wrappingAt maxWidth: CGFloat) -> NSSize {
-        let charWidth = font.size * 0.55
-        let lineHeight = font.size * 1.35
-        guard maxWidth > 0, charWidth > 0 else {
-            return measureText(text, font: font)
-        }
-
-        let maxChars = max(1, Int(maxWidth / charWidth))
-        var lineCount = 0
-        var widestChars = 0
-        for paragraph in text.split(separator: "\n", omittingEmptySubsequences: false) {
-            var currentChars = 0
-            var lineStarted = false
-            for word in paragraph.split(separator: " ", omittingEmptySubsequences: false) {
-                let addition = lineStarted ? word.count + 1 : word.count
-                if lineStarted, currentChars + addition > maxChars {
-                    lineCount += 1
-                    widestChars = max(widestChars, currentChars)
-                    currentChars = word.count
-                } else {
-                    currentChars += addition
-                }
-                lineStarted = true
-            }
-            lineCount += 1
-            widestChars = max(widestChars, currentChars)
-        }
-
-        let width = min(CGFloat(widestChars) * charWidth, maxWidth)
-        return NSMakeSize(width, CGFloat(max(lineCount, 1)) * lineHeight)
-    }
-
-    /// Records native progress indeterminate state.
-
-    public func setProgressIndicatorIndeterminate(_ isIndeterminate: Bool, animating: Bool, for handle: NativeHandle) {
-        progressIndeterminateStates[handle] = (isIndeterminate, animating)
-    }
-
-    /// Records a cursor request.
-    public func setCursor(named name: String) {
-        cursorNames.append(name)
-    }
-
-    /// Records a view's hover cursor regions.
-    public func setCursorRegions(_ regions: [NativeCursorRegion], for handle: NativeHandle) {
-        cursorRegions[handle] = regions
-    }
-
     /// A recorded run-loop timer request.
     public struct ScheduledTimer: Equatable, Sendable {
         /// The timer identifier handed back to the scheduler.
@@ -63,21 +12,6 @@ extension InMemoryNativeControlBackend {
 
         /// The requested firing interval in milliseconds.
         public let intervalMilliseconds: Int
-    }
-
-    /// Records a run-loop timer request.
-    public func scheduleNativeTimer(intervalMilliseconds: Int, action: @escaping () -> Void) -> UInt {
-        let identifier = nextTimerIdentifier
-        nextTimerIdentifier += 1
-        scheduledTimers.append(ScheduledTimer(identifier: identifier, intervalMilliseconds: intervalMilliseconds))
-        timerActions[identifier] = action
-        return identifier
-    }
-
-    /// Records a run-loop timer cancellation.
-    public func cancelNativeTimer(_ identifier: UInt) {
-        timerActions.removeValue(forKey: identifier)
-        canceledTimerIdentifiers.append(identifier)
     }
 
     /// Fires a scheduled timer's action, standing in for a message-loop tick.
@@ -96,24 +30,6 @@ extension InMemoryNativeControlBackend {
         for timer in scheduledTimers {
             timerActions[timer.identifier]?()
         }
-    }
-
-    /// Records the key-equivalent handler.
-    public func registerKeyEquivalentHandler(_ handler: @escaping (NSEvent) -> Bool) {
-        keyEquivalentHandler = handler
-    }
-
-    /// Records the pop request and performs the scripted flat-item selection.
-    public func runContextMenu(_ menu: NSMenu, atScreenPoint point: NSPoint) -> NSMenuItem? {
-        poppedContextMenus.append(menu)
-        let items = flattenedItems(of: menu)
-        guard items.indices.contains(nextContextMenuSelection) else {
-            return nil
-        }
-
-        let item = items[nextContextMenuSelection]
-        _ = item.performAction()
-        return item
     }
 
     internal func flattenedItems(of menu: NSMenu) -> [NSMenuItem] {
