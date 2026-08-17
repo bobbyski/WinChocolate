@@ -338,7 +338,11 @@ func testDatePickerRendersLocalWallClock() {
 
     // The value survives the round trip, time of day included — the read path
     // used to keep only year/month/day, silently resetting any typed time.
-    let withTime = Date(timeIntervalSince1970: 1_780_272_000 + 20 * 3_600 + 34 * 60 + 56)
+    // Built in steps: as one literal expression this exceeds the Linux
+    // toolchain's type-checker budget and fails the whole target to compile.
+    let midnight: TimeInterval = 1_780_272_000
+    let timeOfDay: TimeInterval = 20 * 3_600 + 34 * 60 + 56
+    let withTime = Date(timeIntervalSince1970: midnight + timeOfDay)
     picker.dateValue = withTime
     expect(backend.records[handle]?.datePickerDate == withTime, "The peer lost the time of day.")
 }

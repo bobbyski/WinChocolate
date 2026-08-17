@@ -21,21 +21,6 @@ extension InMemoryNativeControlBackend {
 
     /// Last fade visibility requested per window, for tests.
 
-    /// Removes a recorded native object.
-    public func closeWindow(_ handle: NativeHandle) {
-        records.removeValue(forKey: handle)
-        actions.removeValue(forKey: handle)
-        mouseDownActions.removeValue(forKey: handle)
-        mouseUpActions.removeValue(forKey: handle)
-        mouseMovedActions.removeValue(forKey: handle)
-        mouseDraggedActions.removeValue(forKey: handle)
-        keyDownActions.removeValue(forKey: handle)
-        keyUpActions.removeValue(forKey: handle)
-        toolbarActions.removeValue(forKey: handle)
-        windowResizeActions.removeValue(forKey: handle)
-        windowCloseActions.removeValue(forKey: handle)?()
-    }
-
     /// Records a native window close action.
     public func registerWindowCloseAction(for handle: NativeHandle, action: @escaping () -> Void) {
         windowCloseActions[handle] = action
@@ -78,16 +63,6 @@ extension InMemoryNativeControlBackend {
         windowResizeActions.removeValue(forKey: handle)
     }
 
-    /// Records a view creation request.
-    public func createView(frame: NSRect, parent: NativeHandle?) -> NativeHandle {
-        makeHandle(kind: "view", text: "", frame: frame, parent: parent)
-    }
-
-    /// Records a button creation request.
-    public func createButton(title: String, frame: NSRect, parent: NativeHandle?, isBordered: Bool) -> NativeHandle {
-        makeHandle(kind: "button", text: title, frame: frame, parent: parent)
-    }
-
     /// Records a checkbox creation request.
     public func createCheckbox(title: String, frame: NSRect, parent: NativeHandle?) -> NativeHandle {
         makeHandle(kind: "checkbox", text: title, frame: frame, parent: parent)
@@ -105,19 +80,6 @@ extension InMemoryNativeControlBackend {
 
     /// Records a text field creation request.
     /// Whether a text-field handle was created multi-line, for tests.
-
-    /// Performs the `createTextField` operation.
-    public func createTextField(
-        text: String,
-        frame: NSRect,
-        parent: NativeHandle?,
-        options: NativeTextFieldOptions
-    ) -> NativeHandle {
-        let kind = options.isEditable ? "editableTextField" : "textField"
-        let handle = makeHandle(kind: kind, text: text, frame: frame, parent: parent)
-        multilineTextFields[handle] = options.isMultiline
-        return handle
-    }
 
     /// Records a secure text field creation request.
     public func createSecureTextField(text: String, frame: NSRect, parent: NativeHandle?) -> NativeHandle {

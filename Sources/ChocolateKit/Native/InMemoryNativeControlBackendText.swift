@@ -68,16 +68,6 @@ extension InMemoryNativeControlBackend {
         return handle
     }
 
-    /// Updates a recorded control text value.
-    public func setText(_ text: String, for handle: NativeHandle) {
-        guard var record = records[handle] else {
-            return
-        }
-
-        record.text = text
-        records[handle] = record
-    }
-
     /// Reads a recorded text selection.
     public func textSelection(for handle: NativeHandle) -> (location: Int, length: Int) {
         guard let record = records[handle] else {
@@ -130,24 +120,6 @@ extension InMemoryNativeControlBackend {
 
     /// Number of `setFrame` calls that reached the backend per handle. Used to
     /// verify the framework coalesces duplicate frame pushes (flicker guard).
-
-    /// Updates a recorded control frame.
-    public func setFrame(_ frame: NSRect, for handle: NativeHandle) {
-        setFrameCallCounts[handle, default: 0] += 1
-        guard var record = records[handle] else {
-            return
-        }
-
-        // Scaled views record magnified native geometry, mirroring Win32.
-        let scale = record.contentScale
-        record.frame = scale == 1 ? frame : NSRect(
-            x: frame.origin.x * scale,
-            y: frame.origin.y * scale,
-            width: frame.size.width * scale,
-            height: frame.size.height * scale
-        )
-        records[handle] = record
-    }
 
     /// Records the content scale applied to a custom-drawn view.
     public func setContentScale(_ scale: CGFloat, for handle: NativeHandle) {
@@ -246,26 +218,6 @@ extension InMemoryNativeControlBackend {
     /// Records that a control should be raised above siblings.
     public func raiseControl(_ handle: NativeHandle) {
         raisedHandles.append(handle)
-    }
-
-    /// Updates a recorded hidden state.
-    public func setHidden(_ isHidden: Bool, for handle: NativeHandle) {
-        guard var record = records[handle] else {
-            return
-        }
-
-        record.isHidden = isHidden
-        records[handle] = record
-    }
-
-    /// Updates a recorded enabled state.
-    public func setEnabled(_ isEnabled: Bool, for handle: NativeHandle) {
-        guard var record = records[handle] else {
-            return
-        }
-
-        record.isEnabled = isEnabled
-        records[handle] = record
     }
 
     /// Records native focus movement.

@@ -86,6 +86,12 @@ See [FOUNDATION_SHIMS.md](FOUNDATION_SHIMS.md) for the active shim surface, main
 
 See [Docs/ProjectPlan.md](Docs/ProjectPlan.md) for the dashboard-style build plan and active project tracker.
 
+See [Docs/TermChocolatePlan.md](Docs/TermChocolatePlan.md) for the future terminal backend plan (TermChocolate): a `TUINativeControlBackend` inside `ChocolateKit` driven by TUIKit. Plan only, not scheduled work.
+
+See [Docs/WASMChocolatePlan.md](Docs/WASMChocolatePlan.md) for the future browser backend plan (WASMChocolate): a `WASMNativeControlBackend` inside `ChocolateKit` driven by SwiftDOM, compiled to WebAssembly. Plan only, not scheduled work.
+
+See [Docs/RADICALLY_DIFFERENT_UI_SPIKE.md](Docs/RADICALLY_DIFFERENT_UI_SPIKE.md) for the spike that executes the first slice of both: one unmodified click-counter demo running on Win32, GTK, a terminal, and the browser.
+
 The current visual style is the classic Win32 look on purpose. That should remain available for apps that want a retro or very small native-tool feel. The roadmap now tracks a separate modern Windows appearance layer as the eventual default, with backend or appearance selection so app code can keep the same AppKit-shaped API.
 
 The table plan is Mac-first: application code should use AppKit-shaped `NSTableView`, `NSTableColumn`, data source, delegate, sort descriptors, cell/view helpers, and `NSScrollView.documentView` patterns. The current classic backend renderer is temporary and deliberately hidden behind the same native backend boundary as the other controls.

@@ -105,19 +105,81 @@ public final class NSApplication: NSObject {
 
     /// Creates an application using the default backend for the current platform.
     public override convenience init() {
-        // Conditional C3 of the sanctioned platform switches: which native
-        // backend fronts the shared core. `canImport(CGTK)` is the same guard
-        // the GTK backend's own files carry, so the branch is live exactly
-        // where that backend compiles. Without the GTK arm, a Linux app fell
-        // through to the *headless test* backend and launched with no GUI at
-        // all — the framework was there, nothing selected it.
-        #if os(Windows)
-        self.init(nativeBackend: Win32NativeControlBackend())
+        self.init(nativeBackend: NSApplication.makeDefaultNativeBackend())
+    }
+
+    /// Builds the backend this process should run on.
+    ///
+    /// Conditional C3 of the sanctioned platform switches: which native backend
+    /// fronts the shared core. `canImport(CGTK)` is the same guard the GTK
+    /// backend's own files carry, so the branch is live exactly where that
+    /// backend compiles. Without the GTK arm, a Linux app fell through to the
+    /// *headless test* backend and launched with no GUI at all — the framework
+    /// was there, nothing selected it. That is also why every new backend gets
+    /// its arm *before* the final `#else`, never after.
+    ///
+    /// A terminal exists on every desktop OS, so the platform cannot say
+    /// whether the user wanted a GUI or a cell grid; `CHOCOLATE_BACKEND` (see
+    /// `chocolateBackendRequest()`) answers that, and answering nothing leaves
+    /// the platform default untouched.
+    static func makeDefaultNativeBackend() -> NativeControlBackend {
+        if let requested = chocolateBackendRequest(),
+           let backend = makeRequestedNativeBackend(requested) {
+            return backend
+        }
+        #if os(WASI)
+        return WASMNativeControlBackend()
+        #elseif os(Windows)
+        return Win32NativeControlBackend()
         #elseif canImport(CGTK)
-        self.init(nativeBackend: GTKNativeControlBackend())
+        return GTKNativeControlBackend()
         #else
-        self.init(nativeBackend: InMemoryNativeControlBackend())
+        return InMemoryNativeControlBackend()
         #endif
+    }
+
+    /// Builds an explicitly requested backend, or `nil` when this build does not
+    /// contain it — in which case the caller falls back to the platform default
+    /// rather than dying, and says so.
+    private static func makeRequestedNativeBackend(
+        _ request: ChocolateBackendRequest
+    ) -> NativeControlBackend? {
+        switch request {
+        case .inmemory:
+            return InMemoryNativeControlBackend()
+        case .tui:
+            #if canImport(TUIKit)
+            return TUINativeControlBackend()
+            #else
+            chocolateBackendWarn("the terminal backend is not compiled into this build; "
+                                 + "using the platform default.")
+            return nil
+            #endif
+        case .wasm:
+            #if os(WASI)
+            return WASMNativeControlBackend()
+            #else
+            chocolateBackendWarn("the browser backend only exists in a WebAssembly build; "
+                                 + "using the platform default.")
+            return nil
+            #endif
+        case .win32:
+            #if os(Windows)
+            return Win32NativeControlBackend()
+            #else
+            chocolateBackendWarn("the Win32 backend only exists on Windows; "
+                                 + "using the platform default.")
+            return nil
+            #endif
+        case .gtk:
+            #if canImport(CGTK)
+            return GTKNativeControlBackend()
+            #else
+            chocolateBackendWarn("the GTK backend is not compiled into this build; "
+                                 + "using the platform default.")
+            return nil
+            #endif
+        }
     }
 
     /// Creates an application with an explicit native backend.

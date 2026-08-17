@@ -153,11 +153,6 @@ extension InMemoryNativeControlBackend {
         records[handle]?.tableClickedColumn ?? -1
     }
 
-    /// Records a control action.
-    public func registerAction(for handle: NativeHandle, action: @escaping () -> Void) {
-        actions[handle] = action
-    }
-
     /// Records a text change action.
     public func registerTextChangeAction(for handle: NativeHandle, action: @escaping (String) -> Void) {
         textChangeActions[handle] = action

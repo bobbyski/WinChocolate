@@ -1,5 +1,13 @@
 /// Records native-backend operations in memory for deterministic tests.
-public final class InMemoryNativeControlBackend: NativeControlBackend {
+///
+/// It is also the base class a *new* backend starts from. `NativeControlBackend`
+/// has 189 requirements and this type implements all of them, so a backend under
+/// construction can subclass it and override only what it has really built: the
+/// rest keep recording, which is precisely the "honest no-op" the porting rules
+/// ask for — nothing crashes, nothing lies, and the recorded state is still
+/// inspectable from a test. (That is why the class is not `final`.) A finished
+/// backend is expected to override everything and stop inheriting behaviour.
+public class InMemoryNativeControlBackend: NativeControlBackend {
     /// The kind of a native object — see `NativeControlKind`, which this names
     /// for the backends and tests that grew up spelling it
     /// `InMemoryNativeControlBackend.Kind`.
@@ -301,4 +309,146 @@ public final class InMemoryNativeControlBackend: NativeControlBackend {
 
     /// Creates an in-memory backend.
     public init() {}
+
+    // MARK: - Overridable core seam
+    //
+    // These live in the class body rather than an extension for one
+    // reason: Swift cannot override a method declared in an extension, and
+    // a backend under construction subclasses this type to inherit honest
+    // no-ops for everything it has not built yet. This is the slice a
+    // backend must answer for before anything appears on screen.
+
+    /// Updates a recorded control text value.
+    public func setText(_ text: String, for handle: NativeHandle) {
+        guard var record = records[handle] else {
+            return
+        }
+
+        record.text = text
+        records[handle] = record
+    }
+
+    /// Updates a recorded control frame.
+    public func setFrame(_ frame: NSRect, for handle: NativeHandle) {
+        setFrameCallCounts[handle, default: 0] += 1
+        guard var record = records[handle] else {
+            return
+        }
+
+        // Scaled views record magnified native geometry, mirroring Win32.
+        let scale = record.contentScale
+        record.frame = scale == 1 ? frame : NSRect(
+            x: frame.origin.x * scale,
+            y: frame.origin.y * scale,
+            width: frame.size.width * scale,
+            height: frame.size.height * scale
+        )
+        records[handle] = record
+    }
+
+    /// Updates a recorded hidden state.
+    public func setHidden(_ isHidden: Bool, for handle: NativeHandle) {
+        guard var record = records[handle] else {
+            return
+        }
+
+        record.isHidden = isHidden
+        records[handle] = record
+    }
+
+    /// Updates a recorded enabled state.
+    public func setEnabled(_ isEnabled: Bool, for handle: NativeHandle) {
+        guard var record = records[handle] else {
+            return
+        }
+
+        record.isEnabled = isEnabled
+        records[handle] = record
+    }
+
+    /// Records that the application run loop was requested.
+    public func runApplication() {
+        didRunApplication = true
+    }
+
+    /// Records that application termination was requested.
+    public func terminateApplication() {
+        didTerminateApplication = true
+    }
+
+    /// Runs deferred work immediately in deterministic tests.
+    public func dispatchAsync(_ action: @escaping () -> Void) {
+        action()
+    }
+
+    /// Records the installed main menu.
+    public func installMainMenu(_ menu: NSMenu?) {
+        installedMainMenu = menu
+    }
+
+    /// Records a top-level window creation request.
+    public func createWindow(title: String, frame: NSRect, styleMask: NSWindow.StyleMask, usesMainMenu: Bool) -> NativeHandle {
+        let handle = makeHandle(kind: "window", text: title, frame: frame, parent: nil)
+        records[handle]?.usesMainMenu = usesMainMenu
+        records[handle]?.isHidden = true
+        return handle
+    }
+
+    /// Records that a window should be shown.
+    public func showWindow(_ handle: NativeHandle) {
+        guard var record = records[handle] else {
+            return
+        }
+
+        record.isHidden = false
+        records[handle] = record
+    }
+
+    /// Removes a recorded native object.
+    public func closeWindow(_ handle: NativeHandle) {
+        records.removeValue(forKey: handle)
+        actions.removeValue(forKey: handle)
+        mouseDownActions.removeValue(forKey: handle)
+        mouseUpActions.removeValue(forKey: handle)
+        mouseMovedActions.removeValue(forKey: handle)
+        mouseDraggedActions.removeValue(forKey: handle)
+        keyDownActions.removeValue(forKey: handle)
+        keyUpActions.removeValue(forKey: handle)
+        toolbarActions.removeValue(forKey: handle)
+        windowResizeActions.removeValue(forKey: handle)
+        windowCloseActions.removeValue(forKey: handle)?()
+    }
+
+    /// Records a view creation request.
+    public func createView(frame: NSRect, parent: NativeHandle?) -> NativeHandle {
+        makeHandle(kind: "view", text: "", frame: frame, parent: parent)
+    }
+
+    /// Records a button creation request.
+    public func createButton(title: String, frame: NSRect, parent: NativeHandle?, isBordered: Bool) -> NativeHandle {
+        makeHandle(kind: "button", text: title, frame: frame, parent: parent)
+    }
+
+    /// Performs the `createTextField` operation.
+    public func createTextField(
+        text: String,
+        frame: NSRect,
+        parent: NativeHandle?,
+        options: NativeTextFieldOptions
+    ) -> NativeHandle {
+        let kind = options.isEditable ? "editableTextField" : "textField"
+        let handle = makeHandle(kind: kind, text: text, frame: frame, parent: parent)
+        multilineTextFields[handle] = options.isMultiline
+        return handle
+    }
+
+    /// Records a control action.
+    public func registerAction(for handle: NativeHandle, action: @escaping () -> Void) {
+        actions[handle] = action
+    }
+
+    /// Measures text with a deterministic estimate for tests.
+    public func measureText(_ text: String, font: NativeFontSpec) -> NSSize {
+        NSMakeSize(CGFloat(text.count) * font.size * 0.55, font.size * 1.35)
+    }
 }

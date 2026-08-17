@@ -1,6 +1,40 @@
 // swift-tools-version: 6.0
 
 import PackageDescription
+import Foundation
+
+// The WebAssembly backend is opt-in, and it has to be: `.when(platforms:)`
+// gates whether a dependency is *used*, not whether it is *resolved*. SwiftPM
+// resolves every dependency in this manifest on every platform, so naming
+// SwiftDOM unconditionally breaks the Linux and Windows builds outright — the
+// path does not exist inside the Linux container, and JavaScriptKit's manifest
+// needs a newer toolchain than that container carries.
+//
+// A manifest is a Swift program, so the honest fix is to not name them at all
+// unless asked. `build-wasm.sh` sets this; nothing else does, which is what
+// keeps `buildandrun.bat`, `run-wsl.bat` and `./run-linux.sh` untouched.
+let wasmBackendEnabled = ProcessInfo.processInfo.environment["CHOCOLATE_WASM"] != nil
+
+let wasmPackages: [Package.Dependency] = wasmBackendEnabled ? [
+    // Drives the browser backend (Docs/WASMChocolatePlan.md).
+    //
+    // A path dependency is a spike decision, not a shipping one: it is
+    // machine-specific, so a fresh clone cannot build the WASM backend.
+    // Publishing a tag is the gate item before this leaves the branch.
+    .package(path: "/Users/bobby/AIResearch/WASM/Code/SwiftDOM"),
+    // SwiftDOM already brings JavaScriptKit in, but `JavaScriptEventLoop` is a
+    // separate product of it, and a product can only be requested from a
+    // package this manifest names directly.
+    .package(url: "https://github.com/swiftwasm/JavaScriptKit.git", from: "0.50.2")
+] : []
+
+let wasmCoreDependencies: [Target.Dependency] = wasmBackendEnabled ? [
+    .product(name: "SwiftDOM", package: "SwiftDOM",
+             condition: .when(platforms: [.wasi])),
+    // What lets `Task` and `@MainActor` run on the browser's event loop.
+    .product(name: "JavaScriptEventLoop", package: "JavaScriptKit",
+             condition: .when(platforms: [.wasi]))
+] : []
 
 // SwiftPM parses .pc files itself and rejects compiler-driver flags such as
 // GTK's transitive -pthread/SSE entries. Point it at package-owned equivalent
@@ -10,6 +44,13 @@ let gtkPkgConfig = packageRoot + "Sources/CGTK/gtk4-winchocolate.pc"
 
 let package = Package(
     name: "WinChocolate",
+    // Apple-only deployment floor, and only the demos ever build here: there is
+    // no Chocolate for macOS — ChocolateKit *is* a reimplementation of AppKit
+    // and CoreGraphics, so on macOS the demos compile against the real ones as
+    // the control group. Without a floor SwiftPM assumes 10.13 and the demos'
+    // `MainActor` use fails to compile. `platforms:` constrains Apple platforms
+    // only; the Windows and Linux builds are unaffected by this line.
+    platforms: [.macOS(.v13)],
     products: [
         .library(
             name: "WinChocolate",
@@ -33,7 +74,7 @@ let package = Package(
         // downstream projects can depend on it without pulling in the
         // AppKit layer. WinSwiftData path-depends on it directly.
         .package(path: "WinFoundation")
-    ],
+    ] + wasmPackages,
     targets: [
         // --- GTK interop (Linux only) -------------------------------------
         //
@@ -108,7 +149,9 @@ let package = Package(
                 .target(name: "CGTK", condition: .when(platforms: [.linux])),
                 .target(name: "CGTKCompat", condition: .when(platforms: [.linux])),
                 .target(name: "CWin32Compat", condition: .when(platforms: [.windows]))
-            ],
+                // WASI-only, and only when CHOCOLATE_WASM asked for it: the
+                // browser backend's substrate, invisible to every other build.
+            ] + wasmCoreDependencies,
             swiftSettings: [
                 .define("USE_WIN_FOUNDATION", .when(platforms: [.windows])),
                 // The framework is single-threaded by design (everything
@@ -156,6 +199,16 @@ let package = Package(
                 .swiftLanguageMode(.v5)
             ]
         ),
+        // The WebAssembly façade (Docs/WASMChocolatePlan.md). Same rule as
+        // LinChocolate: only ever depended on for its own platform.
+        .target(
+            name: "WASMChocolate",
+            dependencies: ["ChocolateKit"],
+            path: "Sources/WASMChocolate",
+            swiftSettings: [
+                .swiftLanguageMode(.v5)
+            ]
+        ),
         .executableTarget(
             name: "WinChocolateContractTests",
             dependencies: ["WinChocolate"],
@@ -175,6 +228,25 @@ let package = Package(
             ],
             path: "Demo/DemoApplication",
             exclude: ["Resources"],
+            linkerSettings: [
+                .unsafeFlags(
+                    ["-Xlinker", "/SUBSYSTEM:WINDOWS", "-Xlinker", "/ENTRY:mainCRTStartup"],
+                    .when(platforms: [.windows])
+                )
+            ]
+        ),
+        // The spike's shared proof app (Docs/RADICALLY_DIFFERENT_UI_SPIKE.md):
+        // one click counter, unmodified, on every backend. Same tri-target rule
+        // as the other demos — on macOS it builds against real AppKit, which is
+        // the control group the other backends are measured against.
+        .executableTarget(
+            name: "CounterDemo",
+            dependencies: [
+                .target(name: "WinChocolate", condition: .when(platforms: [.windows])),
+                .target(name: "LinChocolate", condition: .when(platforms: [.linux])),
+                .target(name: "WASMChocolate", condition: .when(platforms: [.wasi]))
+            ],
+            path: "Demo/CounterDemo",
             linkerSettings: [
                 .unsafeFlags(
                     ["-Xlinker", "/SUBSYSTEM:WINDOWS", "-Xlinker", "/ENTRY:mainCRTStartup"],

@@ -83,7 +83,11 @@ performButton.onAction = {
     // Enqueue a block for the next loop iteration.
     performLabel.stringValue = "Perform: queued…"
     RunLoop.main.perform {
-        performLabel.stringValue = "Perform: block ran on the next iteration"
+        // The block runs on the next loop iteration, on the UI thread — the
+        // same statement of fact the demo's action trampoline makes.
+        MainActor.assumeIsolated {
+            performLabel.stringValue = "Perform: block ran on the next iteration"
+        }
     }
 }
 content.addSubview(performButton)

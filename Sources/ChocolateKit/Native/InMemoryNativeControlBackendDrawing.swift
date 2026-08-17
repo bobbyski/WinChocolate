@@ -4,11 +4,6 @@ extension InMemoryNativeControlBackend {
         modalStopCodes.append(code)
     }
 
-    /// Measures text with a deterministic estimate for tests.
-    public func measureText(_ text: String, font: NativeFontSpec) -> NSSize {
-        NSMakeSize(CGFloat(text.count) * font.size * 0.55, font.size * 1.35)
-    }
-
     /// Deterministic word-wrap estimate: the single-line metrics (`0.55 ×
     /// pointSize` per character, `1.35 × pointSize` per line) greedily packed
     /// into `maxWidth`-wide lines. Height is line count × line height; width is

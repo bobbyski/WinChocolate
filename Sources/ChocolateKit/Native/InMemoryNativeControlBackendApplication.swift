@@ -1,31 +1,4 @@
 extension InMemoryNativeControlBackend {
-    /// Records that the application run loop was requested.
-    public func runApplication() {
-        didRunApplication = true
-    }
-
-    /// Records that application termination was requested.
-    public func terminateApplication() {
-        didTerminateApplication = true
-    }
-
-    /// Runs deferred work immediately in deterministic tests.
-    public func dispatchAsync(_ action: @escaping () -> Void) {
-        action()
-    }
-
-    /// Records the installed main menu.
-    public func installMainMenu(_ menu: NSMenu?) {
-        installedMainMenu = menu
-    }
-
-    /// Records a top-level window creation request.
-    public func createWindow(title: String, frame: NSRect, styleMask: NSWindow.StyleMask, usesMainMenu: Bool) -> NativeHandle {
-        let handle = makeHandle(kind: "window", text: title, frame: frame, parent: nil)
-        records[handle]?.usesMainMenu = usesMainMenu
-        records[handle]?.isHidden = true
-        return handle
-    }
 
     /// Records a native window level change.
     public func setWindowLevel(_ level: NSWindow.Level, for handle: NativeHandle) {
@@ -92,16 +65,6 @@ extension InMemoryNativeControlBackend {
     /// The recorded clipboard change count.
     public func clipboardChangeCount() -> Int {
         clipboardChanges
-    }
-
-    /// Records that a window should be shown.
-    public func showWindow(_ handle: NativeHandle) {
-        guard var record = records[handle] else {
-            return
-        }
-
-        record.isHidden = false
-        records[handle] = record
     }
 
     /// The screen frame returned to placement logic, settable for tests.
