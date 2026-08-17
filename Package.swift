@@ -224,7 +224,12 @@ let package = Package(
             // cross-check), so the framework dependency is Windows-only.
             dependencies: [
                 .target(name: "WinChocolate", condition: .when(platforms: [.windows])),
-                .target(name: "LinChocolate", condition: .when(platforms: [.linux]))
+                .target(name: "LinChocolate", condition: .when(platforms: [.linux])),
+                // The browser build of the same frozen demo
+                // (Docs/WASMChocolatePlan.md, phase P3). Same rule as the other
+                // two: depended on only for its own platform, so `canImport`
+                // in the demo's import switch cannot pick the wrong framework.
+                .target(name: "WASMChocolate", condition: .when(platforms: [.wasi]))
             ],
             path: "Demo/DemoApplication",
             exclude: ["Resources"],

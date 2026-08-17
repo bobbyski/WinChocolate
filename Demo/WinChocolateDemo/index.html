@@ -1,0 +1,133 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>WinChocolateDemo — WASMChocolate</title>
+<style>
+  html, body { margin: 0; height: 100%; }
+  body { font: 13px system-ui, sans-serif; background: #fff; }
+  #boot {
+    position: fixed; inset: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 8px; color: #444;
+  }
+  #boot code { font: 12px ui-monospace, monospace; color: #888; }
+</style>
+
+<div id="boot">
+  <div>Loading the WinChocolate demo…</div>
+  <code id="boot-detail">fetching WebAssembly module</code>
+</div>
+
+<script type="module">
+  // This page deliberately does NOT use the generated WebBuild/index.js.
+  //
+  // That entry point calls `defaultBrowserSetup` with no arguments and an empty
+  // in-memory filesystem, and the demo needs both: `--page N` so every one of
+  // the eleven pages is reachable before the toolbar renders, and a populated
+  // filesystem so `Bundle.main.path(forResource:)` and
+  // `NSImage(contentsOfFile:)` resolve exactly as they do on Windows and Linux.
+  // The demo itself is frozen — it is not changed to suit the browser, so the
+  // browser is changed to suit it.
+  import { instantiate, MODULE_PATH } from "./WebBuild/instantiate.js";
+  import {
+    WASI, File, Directory, OpenFile, ConsoleStdout, PreopenDirectory
+  } from "https://cdn.jsdelivr.net/npm/@bjorn3/browser_wasi_shim@0.4.1/+esm";
+
+  const detail = document.getElementById("boot-detail");
+  const say = (text) => { detail.textContent = text; };
+
+  // Kept small on purpose: the multi-megabyte artwork is a later phase, and
+  // every byte here is fetched before the first frame can be drawn.
+  const RESOURCES = [
+    "DemoNibPanel.xib",
+    "ToolbarOpen.png",
+    "ToolbarSave.png",
+    "ToolbarToggle.png",
+    "ToolbarCustomize.png",
+    "WinChocolatePngDemo.png",
+    "WinChocolateArtworkDemo.bmp",
+  ];
+
+  async function loadResources() {
+    const files = new Map();
+    await Promise.all(RESOURCES.map(async (name) => {
+      const response = await fetch(new URL(`Resources/${name}`, import.meta.url));
+      if (!response.ok) {
+        console.warn(`resource missing: ${name} (${response.status})`);
+        return;
+      }
+      files.set(name, new File(new Uint8Array(await response.arrayBuffer())));
+    }));
+    return files;
+  }
+
+  // Three aliases, because `demoResourcePath` in the demo tries three things in
+  // order and the third is a Windows-shaped literal. A backslash is an ordinary
+  // filename character on WASI, so that literal can be satisfied by a
+  // root-level file whose *name* contains backslashes — no demo change needed.
+  function buildFilesystem(files) {
+    const root = new Map();
+    root.set("Resources", new Directory(new Map(files)));
+    root.set("Demo", new Directory(new Map([
+      ["DemoApplication", new Directory(new Map([
+        ["Resources", new Directory(new Map(files))],
+      ]))],
+    ])));
+    for (const [name, file] of files) {
+      root.set(`Demo\\DemoApplication\\Resources\\${name}`, file);
+    }
+    return root;
+  }
+
+  function commandLineArguments() {
+    const query = new URLSearchParams(location.search);
+    const args = [];
+    const page = query.get("page");
+    if (page !== null) {
+      args.push("--page", page);
+    }
+    if (query.has("stress")) {
+      args.push("--stress");
+    }
+    // The demo follows the system theme unless told otherwise, same as Win32.
+    const appearance = query.get("appearance");
+    if (appearance === "dark" || appearance === "light") {
+      args.push(`--${appearance}`);
+    }
+    return args;
+  }
+
+  try {
+    say("fetching resources");
+    const filesystem = buildFilesystem(await loadResources());
+
+    say("fetching WebAssembly module");
+    const module = fetch(new URL(`WebBuild/${MODULE_PATH}`, import.meta.url));
+
+    const wasi = new WASI(
+      [MODULE_PATH, ...commandLineArguments()],
+      [],
+      [
+        new OpenFile(new File([])),
+        ConsoleStdout.lineBuffered((line) => console.log(line)),
+        ConsoleStdout.lineBuffered((line) => console.error(line)),
+        new PreopenDirectory("/", filesystem),
+      ],
+      { debug: false }
+    );
+
+    say("instantiating");
+    await instantiate({
+      module,
+      wasi: Object.assign(wasi, {
+        setInstance(instance) { wasi.inst = instance; },
+      }),
+    });
+
+    // The backend mounts its desktop into <body> during `runApplication()`,
+    // which returns rather than blocking — so by the time we get here the demo
+    // is on screen and the boot notice has done its job.
+    document.getElementById("boot")?.remove();
+  } catch (error) {
+    say(String(error));
+    console.error(error);
+  }
+</script>
