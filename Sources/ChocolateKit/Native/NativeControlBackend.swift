@@ -314,6 +314,9 @@ extension NativeDrawingContext {
 }
 
 extension NativeControlBackend {
+    /// Default: children are already confined by the platform's own widgets.
+    public func setClipsToBounds(_ clips: Bool, for handle: NativeHandle) {}
+
     /// Default: a backend does not want class-name diagnostics.
     public var wantsDebugClassNames: Bool { false }
 
@@ -1018,6 +1021,15 @@ public protocol NativeControlBackend: AnyObject {
 
     /// Registers the action that paints custom view content during a native paint pass.
     func registerDrawAction(for handle: NativeHandle, action: @escaping (NativeDrawingContext, NSRect) -> Void)
+
+    /// Clips a view's children to its bounds, as `NSClipView` requires.
+    ///
+    /// Most backends need do nothing: a Win32 child HWND and a GTK child widget
+    /// are already confined to their parent. A backend whose children can spill
+    /// out of their parent — the DOM, where an absolutely-positioned child
+    /// happily paints outside its box — has to act on this, or a clip view
+    /// shows its whole document instead of the part in view.
+    func setClipsToBounds(_ clips: Bool, for handle: NativeHandle)
 
     /// Whether the backend wants `setDebugClassName(_:for:)` calls.
     ///

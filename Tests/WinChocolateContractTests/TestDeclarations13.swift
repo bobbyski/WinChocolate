@@ -22,8 +22,8 @@ func testWindowToolbarHeightFollowsDisplayMode() {
 
     _ = window.realizeNativePeer()
 
-    expect(window.toolbarHeight == 40, "Default toolbar height should fit icon and label display.")
-    expect(contentView.frame == NSMakeRect(0, 40, 320, 180), "Default toolbar height did not reserve icon-and-label space.")
+    expect(window.toolbarHeight == 44, "Default toolbar height should fit icon and label display.")
+    expect(contentView.frame == NSMakeRect(0, 44, 320, 176), "Default toolbar height did not reserve icon-and-label space.")
 
     toolbar.displayMode = .iconOnly
 
@@ -38,8 +38,8 @@ func testWindowToolbarHeightFollowsDisplayMode() {
     toolbar.displayMode = .iconAndLabel
     toolbar.sizeMode = .small
 
-    expect(window.toolbarHeight == 34, "Small icon-and-label toolbar mode should use compact toolbar height.")
-    expect(contentView.frame == NSMakeRect(0, 34, 320, 186), "Small toolbar mode did not update reserved content space.")
+    expect(window.toolbarHeight == 36, "Small icon-and-label toolbar mode should use compact toolbar height.")
+    expect(contentView.frame == NSMakeRect(0, 36, 320, 184), "Small toolbar mode did not update reserved content space.")
 }
 
 @MainActor

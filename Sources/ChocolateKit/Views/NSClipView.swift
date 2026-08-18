@@ -85,8 +85,14 @@ open class NSClipView: NSView {
     }
 
     /// Creates the native viewport peer.
+    ///
+    /// A clip view clips — that is the entire object — so it asks the backend
+    /// to confine its children rather than relying on the platform to do it by
+    /// accident. Backends whose children are already confined ignore the call.
     open override func createNativePeer(in backend: NativeControlBackend, parent: NativeHandle?) -> NativeHandle {
-        backend.createView(frame: frame, parent: parent)
+        let handle = backend.createView(frame: frame, parent: parent)
+        backend.setClipsToBounds(true, for: handle)
+        return handle
     }
 
     private func positionDocumentView() {

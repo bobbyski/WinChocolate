@@ -403,7 +403,7 @@ func testToolbarItemCreatesCompositeImageLabelView() {
     item.label = "Open"
     item.image = NSImage(named: "folder")
 
-    let view = item.winCompositeView(showItem: true, showLabel: true, toolbarHeight: 40)
+    let view = item.winCompositeView(showItem: true, showLabel: true, toolbarHeight: 44)
     let handle = view.realizeNativePeer(in: backend, parent: nil)
 
     expect(view.winBackgroundColor == nil, "Toolbar composite view should have a transparent background.")
@@ -416,7 +416,7 @@ func testToolbarItemCreatesCompositeImageLabelView() {
     expect(backend.records[handle]?.drawsBackground == false, "Toolbar composite view should request a clear native background.")
 
     let separator = NSToolbarItem(itemIdentifier: .separator)
-    let separatorView = separator.winCompositeView(showItem: true, showLabel: false, toolbarHeight: 40)
+    let separatorView = separator.winCompositeView(showItem: true, showLabel: false, toolbarHeight: 44)
     let separatorHandle = separatorView.realizeNativePeer(in: backend, parent: nil)
 
     expect(separatorView is NSToolbarSeparatorView, "Toolbar separator composite should be a simple separator view.")

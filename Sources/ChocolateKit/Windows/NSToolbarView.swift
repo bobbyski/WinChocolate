@@ -221,7 +221,10 @@ open class NSToolbarView: NSView {
         let baseHeight: CGFloat
         switch displayMode {
         case .default, .iconAndLabel:
-            baseHeight = toolbar.sizeMode == .small ? 34 : 40
+            // 44 at regular size: an icon over a label needs the room, and 40
+            // left the strip looking cramped against a 24-point search field
+            // sitting in it.
+            baseHeight = toolbar.sizeMode == .small ? 36 : 44
         case .iconOnly:
             baseHeight = toolbar.sizeMode == .small ? 26 : 30
         case .labelOnly:

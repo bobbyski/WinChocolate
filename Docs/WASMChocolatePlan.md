@@ -9,6 +9,103 @@ plans deliberately rhyme: each adds one `NativeControlBackend` and one façade, 
 
 ---
 
+## Dashboard
+
+*Bars current to 2026-08-17.* The stub gate passed at **873 → 0** on 2026-08-16
+([RADICALLY_DIFFERENT_UI_SPIKE.md](RADICALLY_DIFFERENT_UI_SPIKE.md)); the 11-page catalog then
+compiled for wasm at **0 errors on the first attempt** and now renders in a browser
+([WASMDemoHandoff.md](WASMDemoHandoff.md)). Bars stay deliberately conservative — a phase is
+"done" when its whole scope is, not when something in it works.
+
+```
+Overall Progress                ██████████████░░░░░░░░░░░░   50%  (11.6/23 phases)
+
+Part W · WASM Backend           ████████████████░░░░░░░░░░   63%  (6.3/ 10)  🔄
+Part S · SwiftDOM Expansion     █████████████░░░░░░░░░░░░░   50%  ( 3 /  6)  🔄
+Part P · Proof Apps             ████████████░░░░░░░░░░░░░░   46%  (1.9/  4)  🔄
+Part L · Web Last Mile          ████░░░░░░░░░░░░░░░░░░░░░░   15%  (0.5/  3)  🔄
+
+── Part W · WASM Backend (the fifth NativeControlBackend) ──────────────
+Phase W0  · Honest Baseline           ██████████████░░░░░░░░░░░░   55%  🔄  numbers taken; WASM_PARITY.md still missing
+Phase W1  · Backend Decision (gate)   ██████████████████████████  100%  ✅  873 → 0, adapter confirmed
+Phase W2  · Browser App Harness       ██████████████████████████  100%  ✅  build-wasm.sh (+--release) + 2 served demos
+Phase W3  · Core Seam & DOM Mapper    ██████████████████████░░░░   85%  🔄  handles/frames/text/colour/font/align/tooltip/measureText; timers pending
+Phase W4  · Input Core                ██████████░░░░░░░░░░░░░░░░   40%  🔄  click/change/input wired per kind; mouse/keys/focus pending
+Phase W5  · Windows & Menus           ████████████████░░░░░░░░░░   60%  🔄  chrome, menu bar, Quit, drag-to-move, resize grip, dock
+Phase W6  · Controls                  ███████████████████████░░░   90%  🔄  every control kind real except NSTableView
+Phase W7  · Drawing & Canvas          ██████████████████████░░░░   85%  🔄  all 9 NativeDrawingContext methods over Canvas 2D; DPR handled
+Phase W8  · Tables & Scrolling        ███░░░░░░░░░░░░░░░░░░░░░░░   10%  🔄  scroll views clip for real; no geometry, no tables — now the only stub
+Phase W9  · Subsystems                ░░░░░░░░░░░░░░░░░░░░░░░░░░    0%  ⏳
+── Part S · SwiftDOM Expansion (upstream, runs alongside W) ────────────
+Phase S1  · Canvas measureText        ██████████████████████████  100%  ✅  landed in SwiftDOM; escape hatch removed
+Phase S2  · Canvas Roadmap Items      ██████████████████████████  100%  ✅  gradients, drawImage, ImageData, clip, Bezier, caps/joins
+Phase S3  · matchMedia & Color Scheme ░░░░░░░░░░░░░░░░░░░░░░░░░░    0%  ⏳
+Phase S4  · window.screen             ██████████████████████████  100%  ✅  devicePixelRatio landed; viewport via innerWidth/innerHeight
+Phase S5  · Async Clipboard           ░░░░░░░░░░░░░░░░░░░░░░░░░░    0%  ⏳
+Phase S6  · Fonts, Print & Misc       ░░░░░░░░░░░░░░░░░░░░░░░░░░    0%  ⏳
+── Part P · Proof Apps (easiest → hardest; rev 2 and 3 allowed) ────────
+Phase P1  · CounterDemo               ██████████████████████████  100%  ✅  runs in a browser
+Phase P2  · RunLoopDemo               ░░░░░░░░░░░░░░░░░░░░░░░░░░    0%  ⏳  no wasi arm in Package.swift yet
+Phase P3  · WinChocolateDemo Catalog  █████████████████████░░░░░   85%  🔄  11 pages render, navigate, take input, draw; 1 stub left
+Phase P4  · A Real App                ░░░░░░░░░░░░░░░░░░░░░░░░░░    0%  ⏳
+── Part L · Web Last Mile ──────────────────────────────────────────────
+Phase L1  · Release Size & Startup    ████████████░░░░░░░░░░░░░░   45%  🔄  measured: 45.6 MB / 17.9 MB gzip; 34 MB is the data section
+Phase L2  · Browser Matrix            ░░░░░░░░░░░░░░░░░░░░░░░░░░    0%  ⏳  Chrome only so far
+Phase L3  · Distribution              ░░░░░░░░░░░░░░░░░░░░░░░░░░    0%  ⏳
+```
+
+**Status key:** ✅ Done &nbsp;|&nbsp; 🔄 In Progress &nbsp;|&nbsp; ⏳ Pending &nbsp;|&nbsp; 🚫 Blocked &nbsp;|&nbsp; ⏸ Postponed
+
+### The number that actually moves
+
+Percentages are a judgement call; this one is counted. Every unimplemented control renders as a
+captioned placeholder carrying `data-cx-placeholder`, so "how much of the catalog is real" is a
+query, not an opinion — run it on the served page:
+
+```js
+Object.entries([...document.querySelectorAll('[data-cx-placeholder]')]
+  .reduce((m, e) => (m[e.dataset.cxClass] = (m[e.dataset.cxClass] || 0) + 1, m), {}))
+  .sort((a, b) => b[1] - a[1])
+```
+
+| Measured on the catalog | first render | 2026-08-17 |
+|---|---:|---:|
+| Compile errors, demo for wasm32 | **0** | **0** |
+| Placeholders on screen (all 11 pages) | 134 | **1** |
+| — of which framework-drawn views | 0 | 0 — all 43 now paint on canvas |
+| — of which ordinary unbuilt controls | 134 | **1** (`NSTableView`) |
+| Live `<canvas>` surfaces | 0 | 43 |
+| Real typed DOM controls | 0 | 103 |
+| Partially-implemented (`NSScrollView`) | 9 | 9 |
+| Debug `.wasm` | 78.5 MB | 75.2 MB |
+| **Release `.wasm`, gzipped** | not measured | **17.9 MB** |
+
+Read the middle rows together or the headline misleads. The count **rises** when a phase adds
+visibility rather than capability — the drawn-view detector added 43 in one commit by naming
+views that had been rendering as blank boxes, and that is the dashboard working, not a
+regression. It **falls** when controls become real: popup, checkbox, radio, slider and combo box
+took it from 147 to 56 in one pass.
+
+**One placeholder remains in the entire eleven-page catalog** — `NSTableView`. The 43
+framework-drawn views were indeed a single blocked phase rather than 43 problems: the canvas
+context cleared all of them in one change, exactly as the detector's design predicted.
+
+> **Ordering.** W0 → W1 is a gate: nothing else starts until the stub compiles for wasm and
+> the error count is published. W2 before W3, so there is a served page to be wrong. W1–W4
+> plus the menu slice of W5 **are** the RADICALLY_DIFFERENT_UI_SPIKE (executed together with
+> TermChocolate's T1/T2). Part S rows are pulled forward the moment a W phase needs them —
+> S1 lands with W3 (layout calls `measureText` immediately), S2 blocks W7's canvas. Part P
+> interleaves: P1 gated W6; P2 rides W3 (timers) and will log honest findings about run-loop
+> APIs that cannot exist in a browser; P3 and P4 are exposure tests that will push bars
+> backward. That is the plan working, not failing.
+>
+> **P3 ran early and out of order**, against the plan's own sequencing — the catalog was
+> pointed at wasm before W6/W7/W8 existed, on the theory that a placeholder that names its
+> class is more useful than a phase that is finished. It cost one prerequisite (the extension
+> override ceiling, W-H9 under Difficult issues) and returned a measured work list for every remaining phase.
+
+---
+
 ## Context
 
 Bobby wants Chocolate apps to run in a browser, compiled to WebAssembly, served from a URL.
@@ -124,63 +221,6 @@ ships current). Three additions specific to this backend:
 
 ---
 
-## Dashboard
-
-Executed so far by [RADICALLY_DIFFERENT_UI_SPIKE.md](RADICALLY_DIFFERENT_UI_SPIKE.md)
-(2026-08-16): the stub gate is passed with a measured **873 → 0**, and the counter runs in a
-browser. The bars below are current, and deliberately conservative — a phase is only "done"
-when its whole scope is, not when the spike touched it.
-
-```
-Overall Progress                ███░░░░░░░░░░░░░░░░░░░░░░░   13%  ( 3 / 23 phases)
-
-Part W · WASM Backend           ██████░░░░░░░░░░░░░░░░░░░░   25%  (2.5/ 10)  🔄
-Part S · SwiftDOM Expansion     ░░░░░░░░░░░░░░░░░░░░░░░░░░    0%  ( 0 /  6)  ⏳
-Part P · Proof Apps             ██████░░░░░░░░░░░░░░░░░░░░   25%  ( 1 /  4)  🔄
-Part L · Web Last Mile          ░░░░░░░░░░░░░░░░░░░░░░░░░░    0%  ( 0 /  3)  ⏳
-
-── Part W · WASM Backend (the fifth NativeControlBackend) ──────────────
-Phase W0  · Honest Baseline           ████████████░░░░░░░░░░░░░░   50%  🔄  (numbers taken; parity file pending)
-Phase W1  · Backend Decision (gate)   ██████████████████████████  100%  ✅  873 → 0, adapter confirmed
-Phase W2  · Browser App Harness       ██████████████████████████  100%  ✅  build-wasm.sh + index.html + served page
-Phase W3  · Core Seam & DOM Mapper    ████████████░░░░░░░░░░░░░░   50%  🔄  handles/frames/text done; S1 open
-Phase W4  · Input Core                ██████░░░░░░░░░░░░░░░░░░░░   25%  🔄  click path done; keys/focus pending
-Phase W5  · Windows & Menus           ████████░░░░░░░░░░░░░░░░░░   30%  🔄  chrome + menu bar + Quit; no drag/z-order
-Phase W6  · Controls                  ░░░░░░░░░░░░░░░░░░░░░░░░░░    0%  ⏳
-Phase W7  · Drawing & Canvas          ░░░░░░░░░░░░░░░░░░░░░░░░░░    0%  ⏳
-Phase W8  · Tables & Scrolling        ░░░░░░░░░░░░░░░░░░░░░░░░░░    0%  ⏳
-Phase W9  · Subsystems                ░░░░░░░░░░░░░░░░░░░░░░░░░░    0%  ⏳
-── Part S · SwiftDOM Expansion (upstream, runs alongside W) ────────────
-Phase S1  · Canvas measureText        ░░░░░░░░░░░░░░░░░░░░░░░░░░    0%  ⏳
-Phase S2  · Canvas Roadmap Items      ░░░░░░░░░░░░░░░░░░░░░░░░░░    0%  ⏳
-Phase S3  · matchMedia & Color Scheme ░░░░░░░░░░░░░░░░░░░░░░░░░░    0%  ⏳
-Phase S4  · window.screen             ░░░░░░░░░░░░░░░░░░░░░░░░░░    0%  ⏳
-Phase S5  · Async Clipboard           ░░░░░░░░░░░░░░░░░░░░░░░░░░    0%  ⏳
-Phase S6  · Fonts, Print & Misc       ░░░░░░░░░░░░░░░░░░░░░░░░░░    0%  ⏳
-── Part P · Proof Apps (easiest → hardest; rev 2 and 3 allowed) ────────
-Phase P1  · CounterDemo               ██████████████████████████  100%  ✅  runs in a browser
-Phase P2  · RunLoopDemo               ░░░░░░░░░░░░░░░░░░░░░░░░░░    0%  ⏳
-Phase P3  · WinChocolateDemo Catalog  ░░░░░░░░░░░░░░░░░░░░░░░░░░    0%  ⏳
-Phase P4  · A Real App                ░░░░░░░░░░░░░░░░░░░░░░░░░░    0%  ⏳
-── Part L · Web Last Mile ──────────────────────────────────────────────
-Phase L1  · Release Size & Startup    ░░░░░░░░░░░░░░░░░░░░░░░░░░    0%  ⏳
-Phase L2  · Browser Matrix            ░░░░░░░░░░░░░░░░░░░░░░░░░░    0%  ⏳
-Phase L3  · Distribution              ░░░░░░░░░░░░░░░░░░░░░░░░░░    0%  ⏳
-```
-
-**Status key:** ✅ Done &nbsp;|&nbsp; 🔄 In Progress &nbsp;|&nbsp; ⏳ Pending &nbsp;|&nbsp; 🚫 Blocked &nbsp;|&nbsp; ⏸ Postponed
-
-> **Ordering.** W0 → W1 is a gate: nothing else starts until the stub compiles for wasm and
-> the error count is published. W2 before W3, so there is a served page to be wrong. W1–W4
-> plus the menu slice of W5 **are** the RADICALLY_DIFFERENT_UI_SPIKE (executed together with
-> TermChocolate's T1/T2). Part S rows are pulled forward the moment a W phase needs them —
-> S1 lands with W3 (layout calls `measureText` immediately). Part P interleaves: P1 gates W6;
-> P2 rides W3 (timers) and will log honest findings about run-loop APIs that cannot exist in
-> a browser; P3 and P4 are exposure tests that will push bars backward. That is the plan
-> working, not failing.
-
----
-
 ## The architecture, in one diagram
 
 ```
@@ -225,6 +265,8 @@ Everything above and below it exists.
 | **W-H6** | **Packaging without breaking Win/Lin.** SwiftDOM + JavaScriptKit must never resolve into a Windows or Linux build. | Solved shape exists: declare deps on `ChocolateKit` only under `.when(platforms: [.wasi])` (CGTK precedent), guard backend files `#if canImport(JavaScriptKit)`, façade target depended on only for wasi. Watch: SwiftPM still *fetches* the packages on every platform, and builds JavaScriptKit's BridgeJS macro plugin for consumers — cost documented in Freebird's ARCHITECTURE.md. Also: `WinFoundation` is Windows-only, so WASI gets real (wasi-libc) Foundation — the `installPlatformPump` precondition applies. |
 | **W-H7** | **Closure and listener lifetime.** Every registered action crosses the Swift↔JS boundary as a `JSClosure`; dropping one while the DOM still references it is a crash, retaining forever is a leak. | Ground rule 3 above: token table per handle, released in `destroyControl`. `JSClosure` release semantics on wasm (no deinit-based release on some configurations) must be verified once, early, in W1. |
 | **W-H8** | **Coordinates.** AppKit screen coords are bottom-left-origin; DOM is top-left. ChocolateKit already runs flipped content views on Win32/GTK. | The DOM *is* a flipped surface, so view-local mapping is direct; window `frame` ↔ desktop-element positioning needs one, and only one, y-inversion at the window layer — same discipline the frame-is-law lesson taught on GTK: the backend honors the frame it is given, exactly. Units are the easy half here: CSS pixels *are* the coordinate system, so the "coordinates stay in pixels" rule TermChocolate has to work for comes free — with `devicePixelRatio` handled once, centrally, at the canvas layer only. |
+| **W-H9** | **The extension-override ceiling.** A backend subclasses `InMemoryNativeControlBackend` to inherit honest no-ops — but **Swift cannot override a method declared in an extension**, and the recorder declared all but 16 of its ~190 requirements in extension files. | Discovered and cleared 2026-08-17. It was never a scoping choice that the spike had exactly 16 overrides; that was the ceiling. ~90 writer methods were moved into the recorder's *class body* under `// MARK: - Overridable core seam`, verified as pure code motion (method inventory byte-identical at 221 entries). Getters stayed in extensions on purpose: they read `records`, which a backend writes from its own event handlers, so the inherited answer is already right — which removed ~40 methods from the work. **The same trap applies one level up:** a requirement satisfied by a *protocol extension default* is also not an overridable class member, and a subclass that redeclares it without `override` compiles and is then silently ignored. Any new requirement a backend must override has to be declared in the recorder's class body too. |
+| **W-H10** | **A control that renders nothing deletes its subtree.** `register(_:element:parent:)` attaches a child to the element filed under its parent's handle, so a `create…` that files no element does not merely fail to draw — every descendant is orphaned, with no error. | This is why placeholders are structural rather than cosmetic, why they must be containers that do not clip their children, and why `createScrollView` had to be implemented rather than deferred: without it the tables, collection views and the stress page vanish entirely. It also makes the placeholder sweep a *prerequisite* for the catalog rendering at all, not a nicety layered on afterwards. |
 
 ### Real but postponable
 
@@ -323,13 +365,15 @@ Something served, to be wrong.
 |---|---|---|
 | W5.1 | Window chrome | Title bar, close box → shouldClose/close handler chain; styleMask honored (titled/closable/resizable) |
 | W5.2 | Z-order, key window, `orderFront/orderOut` | CSS z-index ladder; click-to-activate |
-| W5.3 | Drag-to-move, resize grips | Pointer capture; feeds move/resize registrations |
+| W5.3 | **Drag-to-move, resize grips — pulled forward** | Pointer capture; feeds `registerWindowMoveAction` / `registerWindowResizeAction`. **Promoted ahead of W6–W8 deliberately:** a window that cannot be resized cannot demonstrate autoresizing or Auto Layout, and the catalog's Auto Layout page says so in its own text — *"Resize the window → the green middle box reflows live."* Until the grip exists, the constraint solver and the autoresizing path are untested on this backend rather than merely unfinished. |
 | W5.4 | `installMainMenu` | Bar + dropdowns from `NSMenu`; separators, disabled, hidden, submenus one level; `performAction()` on click; pending replay if set pre-window |
 | W5.5 | Key equivalents & `runContextMenu` | Document keydown matcher; context menu synthesized at point (may return nil first pass, as GTK does) |
 | W5.6 | Modal strategy from W-H2 | `runAlert` over `window.confirm` family first; parity rows for the rest |
+| W5.7 | **A dock, for windows to minimize to** | A bar along the bottom of the desktop element holding one tile per miniaturized window; clicking a tile restores. `setWindowMinimized(_:for:)` already exists as a seam and is currently an honest no-op here, so the window vanishes with nowhere to go — the browser has no system dock to inherit, exactly as it has no window server, so the backend supplies one for the same reason it supplies the desktop. Restores through `showWindow`; the tile carries the window title, which `setText` already steers. |
 
 **Exit:** File→Quit quits (visible terminated state); a second window stacks, activates,
-moves, and closes correctly.
+moves, resizes, minimizes to the dock, restores from it, and closes correctly. Resizing the main
+window reflows the Auto Layout page live, which is the point of pulling W5.3 forward.
 
 ### Phase W6 — Controls ⏳
 

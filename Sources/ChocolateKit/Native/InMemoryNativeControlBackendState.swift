@@ -22,6 +22,12 @@ public class InMemoryNativeControlBackend: NativeControlBackend {
     /// Recorded native object requests by handle.
     public internal(set) var records: [NativeHandle: Record] = [:]
 
+    /// Handles asked to clip their children to their bounds.
+    public internal(set) var clippingHandles: Set<NativeHandle> = []
+
+    /// Handles that measure their children from the bottom edge.
+    public internal(set) var unflippedHandles: Set<NativeHandle> = []
+
     /// AppKit class names reported through `setDebugClassName(_:for:)`.
     ///
     /// Diagnostics only — nothing about rendering may read this. Recorded
@@ -458,6 +464,15 @@ public class InMemoryNativeControlBackend: NativeControlBackend {
         NSMakeSize(CGFloat(text.count) * font.size * 0.55, font.size * 1.35)
     }
 
+    /// Records a view's clip-to-bounds state.
+    public func setClipsToBounds(_ clips: Bool, for handle: NativeHandle) {
+        if clips {
+            clippingHandles.insert(handle)
+        } else {
+            clippingHandles.remove(handle)
+        }
+    }
+
     /// Whether the backend wants class-name diagnostics. Off, as for every
     /// finished backend.
     ///
@@ -472,6 +487,19 @@ public class InMemoryNativeControlBackend: NativeControlBackend {
     /// Records the AppKit class behind a handle, for diagnostics.
     public func setDebugClassName(_ name: String, for handle: NativeHandle) {
         debugClassNames[handle] = name
+    }
+
+    /// Records which edge a view measures its children from.
+    ///
+    /// Declared here, not left to the protocol's default, for the reason given
+    /// above: a default in a protocol extension is not an overridable class
+    /// member, so a backend that needs to act on it could never be called.
+    public func setViewFlipped(_ flipped: Bool, for handle: NativeHandle) {
+        if flipped {
+            unflippedHandles.remove(handle)
+        } else {
+            unflippedHandles.insert(handle)
+        }
     }
 
     // MARK: - Overridable core seam · controls
