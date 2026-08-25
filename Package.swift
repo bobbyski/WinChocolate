@@ -28,6 +28,23 @@ let wasmPackages: [Package.Dependency] = wasmBackendEnabled ? [
     .package(url: "https://github.com/swiftwasm/JavaScriptKit.git", from: "0.50.2")
 ] : []
 
+// The façade is exported as a product only when the backend is asked for, for
+// the same reason the dependencies are: a product costs nothing to declare, but
+// declaring it unconditionally puts `WASMChocolate` into `swift build`'s set of
+// things to build on Windows and Linux, where it has no business existing.
+//
+// Downstream packages need the product because a *target* dependency is only
+// expressible inside this package — which is why the demos below can use one
+// and ActiveUI cannot. ActiveUI's browser build sets `CHOCOLATE_WASM` alongside
+// its own `ACTIVEUI_WASM` so this manifest, evaluated in the same environment,
+// offers the product its manifest asks for.
+let wasmProducts: [Product] = wasmBackendEnabled ? [
+    .library(
+        name: "WASMChocolate",
+        targets: ["WASMChocolate"]
+    )
+] : []
+
 let wasmCoreDependencies: [Target.Dependency] = wasmBackendEnabled ? [
     .product(name: "SwiftDOM", package: "SwiftDOM",
              condition: .when(platforms: [.wasi])),
@@ -68,7 +85,7 @@ let package = Package(
             name: "WinChocolateDemo",
             targets: ["WinChocolateDemo"]
         )
-    ],
+    ] + wasmProducts,
     dependencies: [
         // WinFoundation is a standalone nested package (plan 7.10) so
         // downstream projects can depend on it without pulling in the
