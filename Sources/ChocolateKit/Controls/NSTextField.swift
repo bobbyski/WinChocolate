@@ -203,6 +203,38 @@ open class NSTextField: NSControl {
     /// The bezel style used when `isBezeled` is set.
     open var bezelStyle: BezelStyle = .squareBezel
 
+    /// How many lines the field may use, or 0 for as many as it needs.
+    ///
+    /// AppKit spells the single-line case `usesSingleLineMode` and the multi
+    /// case `maximumNumberOfLines`; this is UIKit's spelling of the same
+    /// setting, which AppKit also grew. Kept in step with both so a label
+    /// configured either way behaves the same.
+    open var numberOfLines: Int {
+        get { usesSingleLineMode ? 1 : maximumNumberOfLines }
+        set {
+            usesSingleLineMode = (newValue == 1)
+            maximumNumberOfLines = newValue
+        }
+    }
+
+    /// How text too long for the field is broken or truncated.
+    open var lineBreakMode: NSLineBreakMode = .byTruncatingTail {
+        didSet { needsDisplay = true }
+    }
+
+    /// The smallest fraction of the font size the text may shrink to.
+    ///
+    /// Stored: no Chocolate backend re-measures a native control's text to make
+    /// it fit. A caller that sets it is describing intent the drawn controls
+    /// can already honour, and the native ones will when they can.
+    open var minimumScaleFactor: CGFloat = 0
+
+    /// Whether the text shrinks to fit rather than truncating.
+    open var adjustsFontSizeToFitWidth: Bool = false
+
+    /// Whether letter spacing is tightened before truncating.
+    open var allowsDefaultTighteningForTruncation: Bool = false
+
     /// The cell this field draws with.
     ///
     /// AppKit fields are cell-backed, and ported code reaches through the cell

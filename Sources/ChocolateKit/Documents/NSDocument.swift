@@ -51,6 +51,55 @@ open class NSDocument: NSObject {
     /// Subclasses return true to opt in, matching AppKit; the shared
     /// document controller then autosaves edited documents that have a file
     /// on a periodic run-loop timer.
+    /// What kind of save is being performed, matching AppKit's cases.
+    ///
+    /// The save panel and the autosave machinery both branch on this, and a
+    /// document that overrides `writableTypes(for:)` or
+    /// `fileNameExtension(forType:saveOperation:)` cannot do so without it.
+    public enum SaveOperationType: Sendable {
+        /// A plain save to the document's own URL.
+        case saveOperation
+        /// A save to a new URL, which becomes the document's.
+        case saveAsOperation
+        /// A copy written elsewhere; the document keeps its own URL.
+        case saveToOperation
+        /// An autosave in place.
+        case autosaveInPlaceOperation
+        /// An autosave elsewhere, for a document with no URL yet.
+        case autosaveElsewhereOperation
+        /// An autosave as a new document.
+        case autosaveAsOperation
+    }
+
+    /// The type identifiers this document class can open.
+    open class var readableTypes: [String] { [] }
+
+    /// The type identifiers this document class can save.
+    open class var writableTypes: [String] { [] }
+
+    /// The types this document can be saved as for a particular operation.
+    open func writableTypes(for saveOperation: SaveOperationType) -> [String] {
+        Self.writableTypes
+    }
+
+    /// Whether the document reads and writes this type itself.
+    ///
+    /// True puts the document on the save-in-place and autosave paths, which is
+    /// why it is asked before either runs.
+    open class func isNativeType(_ type: String) -> Bool {
+        readableTypes.contains(type)
+    }
+
+    /// The extension the save panel should append for a type.
+    ///
+    /// Nil by default, as AppKit's is: the framework does not keep a type
+    /// registry, so a document that has one answers from it and everything
+    /// else says it does not know rather than guessing an extension.
+    open func fileNameExtension(forType typeName: String,
+                                saveOperation: SaveOperationType) -> String? {
+        nil
+    }
+
     open class var autosavesInPlace: Bool {
         false
     }

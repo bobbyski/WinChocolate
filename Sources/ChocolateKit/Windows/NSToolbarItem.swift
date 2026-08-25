@@ -367,6 +367,37 @@ open class NSToolbarItem: NSObject {
     open var isBordered: Bool = false
 
     /// Application-defined integer tag, matching AppKit.
+    /// The labels the item might show, so the toolbar can size for the widest.
+    ///
+    /// AppKit uses it to stop an item resizing as its label changes. Nothing
+    /// here re-measures on a label change, so the set is kept and read by any
+    /// backend that grows the capability — and a caller that declares its
+    /// labels is describing the same intent either way.
+    open var possibleLabels: Set<String> = []
+
+    /// Sets a value by key, matching the KVC spelling toolbar code uses for the
+    /// handful of properties AppKit only ever exposed that way.
+    ///
+    /// Only the keys this framework has a property for are honoured; an
+    /// unknown key is reported rather than silently dropped, because a silent
+    /// drop here looks exactly like a toolbar bug.
+    open func setValue(_ value: Any?, forKey key: String) {
+        switch key {
+        case "label":
+            label = value as? String ?? ""
+        case "paletteLabel":
+            paletteLabel = value as? String ?? ""
+        case "toolTip":
+            toolTip = value as? String
+        case "tag":
+            tag = value as? Int ?? -1
+        case "isBordered", "bordered":
+            isBordered = value as? Bool ?? false
+        default:
+            chocolateBackendWarn("NSToolbarItem.setValue: no property for key '\(key)'")
+        }
+    }
+
     open var tag: Int = -1
 
     /// Compact menu representation used when the item moves into the overflow

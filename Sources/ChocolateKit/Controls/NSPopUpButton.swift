@@ -14,6 +14,40 @@ open class NSPopUpButton: NSControl {
     /// When cleared, explicit per-item enabled state (`setItemEnabled(_:at:)`)
     /// applies. Visually graying individual items in the native combo needs
     /// owner-draw (tracked in 8.3); the enabled model is available now.
+    /// The cell this button draws with.
+    ///
+    /// Created on first use and bound, like `NSTextField.cell`. Ported code
+    /// reaches through it for `arrowPosition`, which is the one property that
+    /// only ever lived on the cell.
+    open var cell: NSPopUpButtonCell? {
+        if let winCell { return winCell }
+        let created = NSPopUpButtonCell()
+        created.controlView = self
+        winCell = created
+        return created
+    }
+
+    private var winCell: NSPopUpButtonCell?
+
+    /// An icon drawn beside the title.
+    open var image: NSImage?
+
+    /// Where the image sits relative to the title.
+    open var imagePosition: NSButton.ImagePosition = .imageLeading
+
+    /// Whether the button draws its border.
+    open var isBordered: Bool = true
+
+    /// The bezel shape drawn around the button.
+    open var bezelStyle: NSButton.BezelStyle = .push
+
+    /// Re-reads the selected item's title into the button.
+    ///
+    /// AppKit needs this because the title is cached in the cell; here the
+    /// title is computed from the selection, so the call is a no-op that keeps
+    /// the shape — and keeps a port from having to find out which.
+    open func synchronizeTitleAndSelectedItem() {}
+
     open var autoenablesItems: Bool = true
 
     /// Whether the button acts as a pull-down menu (fixed title) rather than a

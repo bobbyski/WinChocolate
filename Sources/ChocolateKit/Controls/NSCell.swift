@@ -188,3 +188,48 @@ open class NSText: NSView {
     /// Whether the text can be selected.
     open var isSelectable: Bool = true
 }
+
+/// The cell a pop-up button draws with.
+open class NSPopUpButtonCell: NSCell {
+    /// Where the pull-down arrow sits.
+    public enum ArrowPosition: Sendable {
+        /// No arrow.
+        case noArrow
+        /// Beside the title.
+        case arrowAtCenter
+        /// At the trailing edge.
+        case arrowAtBottom
+    }
+
+    /// Where the arrow is drawn.
+    ///
+    /// Stored: the native pop-up draws its own arrow in its own place, and no
+    /// backend here can be asked to move it. Kept so a themed control's request
+    /// survives rather than being silently dropped *and* forgotten.
+    open var arrowPosition: ArrowPosition = .arrowAtCenter
+
+    /// Whether the button pulls down from its title rather than showing the
+    /// selected item.
+    open var pullsDown: Bool = false
+}
+
+/// The cell a segmented control draws with.
+open class NSSegmentedCell: NSCell {
+    /// How segment images are scaled.
+    open var imageScaling: NSImageScaling = .scaleProportionallyDown
+
+    /// The number of segments the cell tracks.
+    open var segmentCount: Int = 0
+}
+
+/// The cell a token field draws with.
+open class NSTokenFieldCell: NSTextFieldCell {
+    /// The characters that end a token as they are typed.
+    open var tokenizingCharacterSet: CharacterSet = CharacterSet(charactersIn: ",")
+
+    /// How long the completion list waits before appearing.
+    open var completionDelay: TimeInterval = 0
+
+    /// How tokens are drawn.
+    open var tokenStyle: NSTokenField.TokenStyle = .rounded
+}

@@ -32,6 +32,17 @@ open class NSGestureRecognizer {
     /// The selector sent to `target` on every reported state change.
     open var action: Selector?
 
+    /// The delegate consulted before and during recognition.
+    open weak var delegate: NSGestureRecognizerDelegate?
+
+    /// Whether a mouse-down that begins this gesture is also delivered to the
+    /// view underneath.
+    ///
+    /// Stored: no backend here delays a press waiting to see whether a gesture
+    /// claims it, so the press is always delivered. The property keeps a
+    /// caller's intent rather than making it discover the difference.
+    open var delaysPrimaryMouseButtonEvents: Bool = false
+
     /// Whether the recognizer participates in events.
     open var isEnabled: Bool = true
 
@@ -206,6 +217,51 @@ open class NSPanGestureRecognizer: NSGestureRecognizer {
 open class NSMagnificationGestureRecognizer: NSGestureRecognizer {
     /// The accumulated magnification delta (0 = unchanged).
     open var magnification: CGFloat = 0
+}
+
+/// A two-finger rotation gesture.
+///
+/// No Chocolate backend reports a rotation yet — Win32 and GTK deliver wheel
+/// and pointer events, and a browser reports pointers rather than gestures. The
+/// recognizer exists so a view that wants rotation can attach one and read
+/// `rotation` from its action; it stays `.possible` until a backend can drive
+/// it, which is the state AppKit's own recognizer sits in when nothing rotates.
+open class NSRotationGestureRecognizer: NSGestureRecognizer {
+    /// The accumulated rotation in radians (0 = unchanged).
+    open var rotation: CGFloat = 0
+
+    /// The rotation in degrees, matching AppKit's convenience.
+    open var rotationInDegrees: CGFloat {
+        rotation * 180 / .pi
+    }
+}
+
+/// What a recognizer asks its delegate, matching AppKit's protocol.
+///
+/// Every requirement has a default, as AppKit's does, so a delegate implements
+/// only the questions it cares about.
+@MainActor
+public protocol NSGestureRecognizerDelegate: AnyObject {
+    /// Whether the recognizer should attempt to recognize this event at all.
+    func gestureRecognizer(_ gestureRecognizer: NSGestureRecognizer,
+                           shouldAttemptToRecognizeWith event: NSEvent) -> Bool
+
+    /// Whether the recognizer should begin interpreting the gesture.
+    func gestureRecognizerShouldBegin(_ gestureRecognizer: NSGestureRecognizer) -> Bool
+
+    /// Whether two recognizers may recognize at the same time.
+    func gestureRecognizer(_ gestureRecognizer: NSGestureRecognizer,
+                           shouldRecognizeSimultaneouslyWith other: NSGestureRecognizer) -> Bool
+}
+
+public extension NSGestureRecognizerDelegate {
+    func gestureRecognizer(_ gestureRecognizer: NSGestureRecognizer,
+                           shouldAttemptToRecognizeWith event: NSEvent) -> Bool { true }
+
+    func gestureRecognizerShouldBegin(_ gestureRecognizer: NSGestureRecognizer) -> Bool { true }
+
+    func gestureRecognizer(_ gestureRecognizer: NSGestureRecognizer,
+                           shouldRecognizeSimultaneouslyWith other: NSGestureRecognizer) -> Bool { false }
 }
 
 extension NSView {

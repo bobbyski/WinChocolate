@@ -11,6 +11,11 @@ open class NSScrollView: NSView {
     /// The border drawn around the scroll view. Programmatically created AppKit
     /// scroll views default to `.noBorder`; the native peer matches (see
     /// `createScrollView`). `NSTextView.scrollableTextView()` sets `.bezelBorder`.
+    /// The colour drawn behind the document view.
+    open var backgroundColor: NSColor? {
+        didSet { needsDisplay = true }
+    }
+
     open var borderType: NSBorderType = .noBorder
     /// The clip view that hosts the document view.
     open var contentView: NSClipView {

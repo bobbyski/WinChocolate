@@ -56,6 +56,45 @@ open class NSSegmentedControl: NSControl {
     }
 
     /// Segment tracking mode.
+    /// The cell this control draws with.
+    ///
+    /// Bound like the other cell-backed controls, so `(control.cell as?
+    /// NSSegmentedCell)?.isBordered = false` reaches the control it names.
+    open var cell: NSSegmentedCell? {
+        if let winCell { return winCell }
+        let created = NSSegmentedCell()
+        created.controlView = self
+        created.segmentCount = segmentCount
+        winCell = created
+        return created
+    }
+
+    private var winCell: NSSegmentedCell?
+
+    /// How segment images are scaled to their segments.
+    open func setImageScaling(_ scaling: NSImageScaling, forSegment segment: Int) {
+        winImageScaling[segment] = scaling
+        needsDisplay = true
+    }
+
+    /// The image scaling in force for a segment.
+    open func imageScaling(forSegment segment: Int) -> NSImageScaling {
+        winImageScaling[segment] ?? .scaleProportionallyDown
+    }
+
+    /// Sets a segment's tooltip.
+    open func setToolTip(_ toolTip: String?, forSegment segment: Int) {
+        winSegmentToolTips[segment] = toolTip
+    }
+
+    /// A segment's tooltip.
+    open func toolTip(forSegment segment: Int) -> String? {
+        winSegmentToolTips[segment] ?? nil
+    }
+
+    private var winImageScaling: [Int: NSImageScaling] = [:]
+    private var winSegmentToolTips: [Int: String?] = [:]
+
     open var trackingMode: TrackingMode = .selectOne
 
     /// Segment visual style request.

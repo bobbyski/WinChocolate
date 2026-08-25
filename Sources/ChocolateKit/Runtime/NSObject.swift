@@ -14,6 +14,26 @@ open class NSObject {
         (object as? NSObject) === self
     }
 
+    /// Whether the object is an instance of a class, or of one deriving from
+    /// it — `NSObject.isKind(of:)`.
+    ///
+    /// There is no Objective-C runtime to ask — `class_getSuperclass` does not
+    /// exist off Apple — so the hierarchy is walked with `Mirror`, which
+    /// reflects a Swift class's superclass chain without one.
+    open func isKind(of aClass: AnyClass) -> Bool {
+        var mirror: Mirror? = Mirror(reflecting: self)
+        while let current = mirror {
+            if current.subjectType == aClass { return true }
+            mirror = current.superclassMirror
+        }
+        return false
+    }
+
+    /// Whether the object is an instance of exactly this class.
+    open func isMember(of aClass: AnyClass) -> Bool {
+        type(of: self) === aClass
+    }
+
     /// Identity hash, matching `NSObject.hash`.
     open var hash: Int {
         ObjectIdentifier(self).hashValue

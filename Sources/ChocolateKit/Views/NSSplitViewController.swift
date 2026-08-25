@@ -90,6 +90,26 @@ open class NSSplitViewItem: NSObject {
     public convenience init(contentListWithViewController viewController: NSViewController) {
         self.init(viewController: viewController)
     }
+
+    /// Creates a trailing inspector item hosting a controller.
+    public convenience init(inspectorWithViewController viewController: NSViewController) {
+        self.init(viewController: viewController)
+        isInspector = true
+    }
+
+    /// Whether this pane is the window's trailing inspector.
+    open var isInspector: Bool = false
+
+    /// The animating proxy for this item's properties.
+    ///
+    /// AppKit's `animator()` returns a proxy that animates whatever you set on
+    /// it; `item.animator().isCollapsed.toggle()` is the idiomatic way to
+    /// collapse a pane with the system animation. No Chocolate backend animates
+    /// a split collapse, so the proxy is the item itself: the property changes,
+    /// the pane collapses, and it simply does so at once. Every caller written
+    /// against AppKit keeps working, which is the point of returning something
+    /// rather than nothing.
+    open func animator() -> NSSplitViewItem { self }
 }
 
 /// A view controller that arranges child controllers in a split view.
@@ -136,6 +156,22 @@ open class NSSplitViewController: NSViewController {
         splitViewItem.splitViewController = nil
         splitViewItem.viewController.view.removeFromSuperview()
         applyItemGeometry()
+    }
+
+    /// Collapses or expands the sidebar item.
+    ///
+    /// AppKit's action, sent by the system toolbar item and by View ▸ Hide
+    /// Sidebar. Toggling the item directly does the same thing; this exists so
+    /// menu and toolbar wiring written against the action keeps working.
+    open func toggleSidebar(_ sender: Any?) {
+        guard let sidebar = splitViewItems.first(where: { $0.isSidebar }) else { return }
+        sidebar.isCollapsed.toggle()
+    }
+
+    /// Collapses or expands the inspector item.
+    open func toggleInspector(_ sender: Any?) {
+        guard let inspector = splitViewItems.first(where: { $0.isInspector }) else { return }
+        inspector.isCollapsed.toggle()
     }
 
     /// The item hosting a controller, if it is one of this controller's.

@@ -61,6 +61,29 @@ open class NSDocumentController: NSObject {
     }
 
     /// Registers a document and makes it current.
+    /// Creates an untitled document of a type, without opening it.
+    ///
+    /// AppKit's factory hook: `newDocument(_:)` calls it, and applications
+    /// override it to construct their own subclass. Overriding it is the
+    /// supported way to make `New` produce the right document, which is why it
+    /// has to exist separately from `newDocument(_:)`.
+    open func makeUntitledDocument(ofType typeName: String) throws -> NSDocument {
+        guard let documentClass = documentClass(forType: typeName) as? NSDocument.Type else {
+            return NSDocument()
+        }
+        let document = documentClass.init()
+        document.fileType = typeName
+        return document
+    }
+
+    /// Creates a document read from a URL, without adding it.
+    open func makeDocument(withContentsOf url: URL, ofType typeName: String) throws -> NSDocument {
+        let document = try makeUntitledDocument(ofType: typeName)
+        try document.read(from: url, ofType: typeName)
+        document.fileURL = url
+        return document
+    }
+
     open func addDocument(_ document: NSDocument) {
         documents.append(document)
         currentDocument = document

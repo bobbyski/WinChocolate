@@ -54,6 +54,49 @@ open class NSTextView: NSControl, NSFontChanging {
     /// `setFont(_:range:)`, `setTextColor(_:range:)`, and selection-scoped
     /// `changeFont(_:)` format through. Set before the view realizes; plain
     /// text remains the default, matching the classic multiline control.
+    /// The container the text flows into.
+    ///
+    /// Created on first use and bound to this view, so
+    /// `textView.textContainer?.lineFragmentPadding = 0` lands on the view that
+    /// will lay the text out.
+    open var textContainer: NSTextContainer? {
+        if let winTextContainer { return winTextContainer }
+        let container = NSTextContainer(containerSize: bounds.size)
+        container.textView = self
+        let manager = winLayoutManager ?? NSLayoutManager()
+        manager.textView = self
+        manager.textStorage = textStorage
+        manager.addTextContainer(container)
+        winLayoutManager = manager
+        winTextContainer = container
+        return container
+    }
+
+    /// The layout manager driving the container.
+    open var layoutManager: NSLayoutManager? {
+        _ = textContainer
+        return winLayoutManager
+    }
+
+    /// The margin between the view's edges and its text.
+    open var textContainerInset: NSSize = .zero {
+        didSet { needsLayout = true }
+    }
+
+    /// Whether the view fills its background before drawing text.
+    open var drawsBackground: Bool = true {
+        didSet { needsDisplay = true }
+    }
+
+    /// The colour drawn behind the text when `drawsBackground` is set.
+    open var backgroundColor: NSColor? {
+        didSet { needsDisplay = true }
+    }
+
+    // Backing storage for the text-system objects, created lazily.
+    private var winTextContainer: NSTextContainer?
+    private var winLayoutManager: NSLayoutManager?
+
     open var isRichText: Bool = false
 
     /// Whether editing changes register with the undo manager.
