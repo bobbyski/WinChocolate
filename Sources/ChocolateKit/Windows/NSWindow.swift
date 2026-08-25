@@ -508,6 +508,33 @@ open class NSWindow: NSResponder {
         layoutToolbarAndContent()
     }
 
+    /// Runs a nested tracking loop, handing each matching event to the handler
+    /// until it sets `stop` or the timeout expires.
+    ///
+    /// **No Chocolate backend has a nested event pump yet, so this is the one
+    /// place in R25 that a member could not close.** AppKit's drag tracking
+    /// re-enters the event loop and pulls events out of it; Win32, GTK and the
+    /// browser each own their loop differently, and none of them can be asked
+    /// to hand events back this way without a backend addition.
+    ///
+    /// So it does the only honest thing available: it says so, once, and calls
+    /// the handler with `nil` — the "no more events" signal AppKit itself uses,
+    /// and the value every correct caller already handles by stopping. A drag
+    /// written against this ends immediately rather than tracking; it does not
+    /// hang, and it does not silently look like it worked.
+    open func trackEvents(
+        matching mask: NSEvent.EventTypeMask,
+        timeout: TimeInterval,
+        mode: RunLoop.Mode,
+        using trackingHandler: (NSEvent?, UnsafeMutablePointer<ObjCBool>) -> Void
+    ) {
+        chocolateBackendWarn("NSWindow.trackEvents: no backend nested event pump — the tracking "
+                             + "loop ends immediately. Drag-tracking written against it will not "
+                             + "follow the pointer.")
+        var stop = ObjCBool(false)
+        withUnsafeMutablePointer(to: &stop) { trackingHandler(nil, $0) }
+    }
+
     /// Moves the window so its top-left corner lands on a point.
     ///
     /// AppKit's coordinate space puts the origin at the bottom-left, so this

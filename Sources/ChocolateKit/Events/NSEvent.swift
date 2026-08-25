@@ -76,6 +76,108 @@ public struct NSEvent: Equatable {
     /// Legacy vertical scroll delta, aliasing `scrollingDeltaY`.
     public var deltaY: CGFloat { scrollingDeltaY }
 
+    /// Which mouse button an `otherMouse*` event carries.
+    ///
+    /// Derived rather than stored: AppKit numbers the buttons 0 left, 1 right,
+    /// 2 and up for the rest, and the event type already says which it was.
+    public var buttonNumber: Int {
+        switch type {
+        case .leftMouseDown, .leftMouseUp, .leftMouseDragged:
+            return 0
+        case .rightMouseDown, .rightMouseUp:
+            return 1
+        case .otherMouseDown, .otherMouseUp:
+            return 2
+        default:
+            return 0
+        }
+    }
+
+    /// The gesture phase of a scroll or gesture event.
+    ///
+    /// Empty by default, which is exactly what AppKit reports for a scroll from
+    /// a wheel mouse — phases come from a trackpad, and no Chocolate backend
+    /// has one to report from yet. Code that switches on the phase therefore
+    /// takes the same branch it takes on a Mac with a mouse plugged in, rather
+    /// than a branch that does not exist.
+    public var phase: Phase = []
+
+    /// The momentum phase of a scroll event, after the fingers have lifted.
+    public var momentumPhase: Phase = []
+
+    /// A timeout meaning "until the tracking loop is told to stop".
+    public static let foreverDuration: TimeInterval = .greatestFiniteMagnitude
+
+    /// Gesture phases, matching AppKit's names.
+    public struct Phase: OptionSet, Sendable {
+        /// Raw option value.
+        public let rawValue: UInt
+
+        /// Creates a phase from a raw value.
+        public init(rawValue: UInt) {
+            self.rawValue = rawValue
+        }
+
+        /// The gesture may be about to begin.
+        public static let mayBegin = Phase(rawValue: 1 << 0)
+        /// The gesture began.
+        public static let began = Phase(rawValue: 1 << 1)
+        /// The gesture moved.
+        public static let changed = Phase(rawValue: 1 << 2)
+        /// The gesture paused with the fingers still down.
+        public static let stationary = Phase(rawValue: 1 << 3)
+        /// The gesture ended.
+        public static let ended = Phase(rawValue: 1 << 4)
+        /// The gesture was cancelled.
+        public static let cancelled = Phase(rawValue: 1 << 5)
+    }
+
+    /// Event categories as a set, for the APIs that match against several.
+    public struct EventTypeMask: OptionSet, Sendable {
+        /// Raw option value.
+        public let rawValue: UInt64
+
+        /// Creates a mask from a raw value.
+        public init(rawValue: UInt64) {
+            self.rawValue = rawValue
+        }
+
+        /// A left mouse button press.
+        public static let leftMouseDown = EventTypeMask(rawValue: 1 << 1)
+        /// A left mouse button release.
+        public static let leftMouseUp = EventTypeMask(rawValue: 1 << 2)
+        /// A right mouse button press.
+        public static let rightMouseDown = EventTypeMask(rawValue: 1 << 3)
+        /// A right mouse button release.
+        public static let rightMouseUp = EventTypeMask(rawValue: 1 << 4)
+        /// Mouse movement.
+        public static let mouseMoved = EventTypeMask(rawValue: 1 << 5)
+        /// Movement with the left button down.
+        public static let leftMouseDragged = EventTypeMask(rawValue: 1 << 6)
+        /// A key press.
+        public static let keyDown = EventTypeMask(rawValue: 1 << 10)
+        /// A key release.
+        public static let keyUp = EventTypeMask(rawValue: 1 << 11)
+        /// A scroll wheel movement.
+        public static let scrollWheel = EventTypeMask(rawValue: 1 << 22)
+
+        /// Whether this mask matches an event's category.
+        public func winMatches(_ type: EventType) -> Bool {
+            switch type {
+            case .leftMouseDown: return contains(.leftMouseDown)
+            case .leftMouseUp: return contains(.leftMouseUp)
+            case .rightMouseDown: return contains(.rightMouseDown)
+            case .rightMouseUp: return contains(.rightMouseUp)
+            case .mouseMoved: return contains(.mouseMoved)
+            case .leftMouseDragged: return contains(.leftMouseDragged)
+            case .keyDown: return contains(.keyDown)
+            case .keyUp: return contains(.keyUp)
+            case .scrollWheel: return contains(.scrollWheel)
+            default: return false
+            }
+        }
+    }
+
     /// Keyboard modifier flags.
     public struct ModifierFlags: OptionSet, Sendable {
         /// Raw option value.

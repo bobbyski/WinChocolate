@@ -151,6 +151,26 @@ public final class RunLoop: @unchecked Sendable {
     /// Creates a run loop.
     public init() {}
 
+    /// A run-loop mode, matching Foundation's shape.
+    public struct Mode: Hashable, Sendable {
+        /// The mode's string value.
+        public let rawValue: String
+
+        /// Creates a mode from its string value.
+        public init(_ rawValue: String) {
+            self.rawValue = rawValue
+        }
+
+        /// The mode a run loop is in when it has nothing special to do.
+        public static let `default` = Mode("kCFRunLoopDefaultMode")
+        /// The set of modes a source registered as common runs in.
+        public static let common = Mode("kCFRunLoopCommonModes")
+        /// The mode AppKit runs in while tracking a drag or a menu.
+        public static let eventTracking = Mode("NSEventTrackingRunLoopMode")
+        /// The mode AppKit runs in while a modal panel is up.
+        public static let modalPanel = Mode("NSModalPanelRunLoopMode")
+    }
+
     /// Would run the loop; a browser page cannot.
     ///
     /// Reaching here means something took the pump path on a platform that has

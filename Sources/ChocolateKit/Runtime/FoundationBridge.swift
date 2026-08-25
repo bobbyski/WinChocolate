@@ -168,3 +168,22 @@ extension RunLoop {
     }
 }
 #endif
+
+
+// AppKit defines two run-loop modes Foundation does not: the mode a drag or a
+// menu tracks in, and the mode a modal panel runs in. Off Apple, Foundation
+// supplies `RunLoop.Mode` and AppKit supplies nothing, so the framework adds
+// the two names its own API takes — under AppKit's spellings, because the whole
+// point is that one source compiles against either.
+//
+// WASI is excluded because there `RunLoop` is the framework's own shim
+// (`WASIFoundationShims.swift`), which declares these modes itself.
+#if !os(WASI) && !USE_WIN_FOUNDATION
+extension RunLoop.Mode {
+    /// The mode AppKit runs in while tracking a drag or a menu.
+    public static let eventTracking = RunLoop.Mode("NSEventTrackingRunLoopMode")
+
+    /// The mode AppKit runs in while a modal panel is up.
+    public static let modalPanel = RunLoop.Mode("NSModalPanelRunLoopMode")
+}
+#endif
