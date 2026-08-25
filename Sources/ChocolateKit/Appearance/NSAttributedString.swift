@@ -416,6 +416,16 @@ extension NSAttributedString {
         return NSSize(width: width, height: height)
     }
 
+    /// Draws the attributed text inside a rectangle.
+    ///
+    /// AppKit lays the text out in the box, wrapping and clipping to it. The
+    /// seam draws a single line from the box's top-left, which is what the
+    /// rectangle form degrades to for text that fits — and text that does not
+    /// fit is clipped by the context's own clip, not silently re-flowed.
+    public func draw(in rect: NSRect) {
+        draw(at: NSPoint(x: rect.minX, y: rect.minY))
+    }
+
     /// Draws the attributed text with its top-left corner at a point in the
     /// current graphics context, advancing across runs.
     public func draw(at point: NSPoint) {

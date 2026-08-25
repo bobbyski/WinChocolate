@@ -49,7 +49,13 @@ public enum NSImageAlignment: Sendable {
 ///
 /// This is an initial placeholder for AppKit's `NSImage`. It records a name so
 /// API ports can preserve image-view wiring before bitmap decoding is added.
-open class NSImage: NSObject {
+///
+/// `@unchecked Sendable` to match the SDK: Apple's `NSImage` is Sendable, which
+/// is why AppKit-shaped model types hold one inside a `Sendable` struct and
+/// compile on macOS. Unchecked rather than checked because the class is
+/// mutable — the same trade Apple makes, and the same discipline it implies:
+/// an image is configured once and then read, not mutated across contexts.
+open class NSImage: NSObject, @unchecked Sendable {
     /// The type used to name images, matching AppKit's `NSImage.Name`.
     public typealias Name = String
 

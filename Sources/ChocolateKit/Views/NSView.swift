@@ -67,6 +67,15 @@ open class NSView: NSResponder {
     open var autoresizesSubviews: Bool = true
 
     /// Whether this view requests layer-backed rendering.
+    /// The insets the system's own furniture claims from this view's bounds.
+    ///
+    /// Zero everywhere the Chocolate backends run, and that is the true answer
+    /// rather than a placeholder: none of them has a notch, a home indicator or
+    /// a full-height sidebar overlapping the content. The property exists so
+    /// layout written against AppKit's safe area does the same arithmetic on
+    /// every platform instead of branching around a missing name.
+    open var safeAreaInsets: NSEdgeInsets { NSEdgeInsetsZero }
+
     open var wantsLayer: Bool = false
 
     /// Informational tooltip text.

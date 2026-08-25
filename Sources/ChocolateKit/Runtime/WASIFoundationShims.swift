@@ -72,10 +72,18 @@ public final class NotificationCenter: @unchecked Sendable {
     ///
     /// Held by the observer and passed to `removeObserver`, matching
     /// Foundation's opaque-token contract.
-    private final class Observation {
+    private final class Observation: NSObjectProtocol {
         let name: Notification.Name?
         let object: AnyObject?
         let handler: (Notification) -> Void
+
+        // Foundation's `addObserver` hands back an `NSObjectProtocol`, and
+        // callers store it as one. Returning `Any` instead made every observer
+        // property in a consumer fail to type-check, which is a parity break
+        // rather than a shim detail.
+        func isEqual(_ object: Any?) -> Bool { (object as AnyObject?) === self }
+        var hash: Int { ObjectIdentifier(self).hashValue }
+        var description: String { "NotificationObservation(\(name?.rawValue ?? "any"))" }
 
         init(name: Notification.Name?, object: AnyObject?,
              handler: @escaping (Notification) -> Void) {
@@ -99,7 +107,7 @@ public final class NotificationCenter: @unchecked Sendable {
     public func addObserver(forName name: Notification.Name?,
                             object: Any?,
                             queue: OperationQueue?,
-                            using block: @escaping (Notification) -> Void) -> Any {
+                            using block: @escaping (Notification) -> Void) -> NSObjectProtocol {
         let observation = Observation(name: name, object: object as AnyObject?, handler: block)
         observations[ObjectIdentifier(observation)] = observation
         return observation

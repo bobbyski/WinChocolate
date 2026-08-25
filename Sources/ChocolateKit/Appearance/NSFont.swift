@@ -17,6 +17,45 @@ public struct NSFont: Equatable {
     /// Whether the font is italic (or oblique).
     public let italic: Bool
 
+    /// How far the tallest glyphs rise above the baseline.
+    ///
+    /// Measured through the backend's text metrics rather than derived from the
+    /// point size: the two differ by enough to misplace a baseline, and every
+    /// backend already answers `measureText`. A capital "M" spans ascender to
+    /// baseline, so it is the probe.
+    public var ascender: CGFloat {
+        NSApplication.shared.nativeBackend.measureText("M", font: winNativeSpec).height
+    }
+
+    /// How far the deepest glyphs fall below the baseline — **negative**, as in
+    /// AppKit, so `ascender - descender` is the line's full extent.
+    ///
+    /// Derived from the difference a descending glyph makes to the measured
+    /// height, which is the only descent information the seam carries.
+    public var descender: CGFloat {
+        let backend = NSApplication.shared.nativeBackend
+        let withDescender = backend.measureText("Mg", font: winNativeSpec).height
+        let withoutDescender = backend.measureText("M", font: winNativeSpec).height
+        return -max(0, withDescender - withoutDescender)
+    }
+
+    /// The rectangle the font's glyphs are drawn inside, origin at the
+    /// baseline — AppKit's `boundingRectForFont`.
+    public var boundingRectForFont: NSRect {
+        let top = ascender
+        let bottom = descender
+        return NSRect(x: 0, y: bottom, width: pointSize, height: top - bottom)
+    }
+
+    // The spec the backend's text calls take. Kept here so the three metrics
+    // above ask the same question the drawing path asks.
+    private var winNativeSpec: NativeFontSpec {
+        NativeFontSpec(family: fontName,
+                       size: Double(pointSize),
+                       bold: weight.rawValue >= Weight.semibold.rawValue,
+                       italic: italic)
+    }
+
     /// Font weight values, matching the standard nine-step scale.
     ///
     /// Raw values are the Windows `LOGFONT` weights so they translate directly;
