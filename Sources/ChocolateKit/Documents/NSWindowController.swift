@@ -24,6 +24,13 @@ open class NSWindowController: NSResponder {
     /// remaining controller.
     open var shouldCloseDocument = false
 
+    /// Whether successive windows from this controller are offset from each
+    /// other rather than opening in the same place.
+    ///
+    /// Defaults to true, as AppKit's does. Apps set it false when they restore
+    /// window frames themselves and do not want the cascade fighting them.
+    open var shouldCascadeWindows = true
+
     /// Creates a controller managing a window.
     ///
     /// The controller becomes the window's delegate when it has none, so

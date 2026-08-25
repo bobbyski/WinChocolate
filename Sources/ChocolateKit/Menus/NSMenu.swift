@@ -40,6 +40,18 @@ open class NSMenu: NSObject {
     /// Items contained by this menu.
     public private(set) var items: [NSMenuItem] = []
 
+    /// The menu this one is a submenu of, or nil for a root menu.
+    ///
+    /// Maintained where `NSMenuItem.submenu` is assigned, so a submenu can walk
+    /// back up to the menu bar the way AppKit's does.
+    open internal(set) weak var supermenu: NSMenu?
+
+    /// The font menu items are drawn with, or nil for the system default.
+    open var font: NSFont?
+
+    /// The appearance the menu draws in, or nil to inherit the application's.
+    open var appearance: NSAppearance?
+
     /// Number of items in the menu.
     open var numberOfItems: Int {
         items.count
@@ -87,6 +99,10 @@ open class NSMenu: NSObject {
     /// Adds an item to the end of the menu.
     open func addItem(_ newItem: NSMenuItem) {
         newItem.menu = self
+        // A submenu's `supermenu` is the menu holding the item that owns it,
+        // which is only knowable here — the item does not learn its own menu
+        // until this moment.
+        newItem.submenu?.supermenu = self
         items.append(newItem)
     }
 

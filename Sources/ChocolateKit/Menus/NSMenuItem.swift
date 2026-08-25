@@ -40,6 +40,55 @@ open class NSMenuItem: NSObject {
     /// The parent menu containing this item.
     public weak var menu: NSMenu?
 
+    /// An object the application associates with the item.
+    ///
+    /// AppKit never reads this; it exists so a menu can carry the model object
+    /// its action needs without a parallel dictionary keyed by tag.
+    open var representedObject: Any?
+
+    /// An icon shown beside the title.
+    ///
+    /// Backends that can draw a menu icon do; where the native menu has no
+    /// image slot the title still shows, because a menu item that vanished
+    /// because of its decoration would be worse than one drawn plainly.
+    open var image: NSImage?
+
+    /// A styled title, taking precedence over `title` where the backend can
+    /// render runs.
+    ///
+    /// Its plain text is kept in `title` as well, so a backend that draws only
+    /// strings still shows the right words.
+    open var attributedTitle: NSAttributedString? {
+        didSet {
+            if let attributedTitle {
+                title = attributedTitle.string
+            }
+        }
+    }
+
+    /// How far the item is indented, in AppKit's indentation levels (0–15).
+    open var indentationLevel: Int = 0
+
+    /// Whether the item replaces the one above it while its modifiers are held.
+    open var isAlternate: Bool = false
+
+    /// A custom view drawn in place of the item's title.
+    open var view: NSView?
+
+    /// Whether the item is a section header rather than a command.
+    ///
+    /// AppKit's own header items are disabled and unselectable; setting this
+    /// makes the item behave that way rather than merely look like it.
+    open var isSectionHeader: Bool = false
+
+    /// Creates a section header item, matching AppKit's factory.
+    open class func sectionHeader(title: String) -> NSMenuItem {
+        let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+        item.isSectionHeader = true
+        item.isEnabled = false
+        return item
+    }
+
     /// Framework-internal action hook for menu items the framework builds
     /// itself (search-field recents, toolbar context menus). Not API:
     /// application menu items use real target/action.

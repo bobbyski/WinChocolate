@@ -161,6 +161,17 @@ public final class RunLoop: @unchecked Sendable {
                              + "makeRunLoopPump() and implemented runApplication().")
     }
 
+    /// Schedules a selector-shaped hop to a later turn of the event loop.
+    ///
+    /// Foundation's spelling takes a target and selector; nothing off Apple has
+    /// an Objective-C runtime to send one with, so the block form is what the
+    /// framework calls and what this provides. The deferral is real — the work
+    /// lands on a later turn of the browser's loop, which is the whole reason
+    /// callers reach for it.
+    public func perform(_ work: @escaping @Sendable () -> Void) {
+        Task { @MainActor in work() }
+    }
+
     // `installPlatformPump` is deliberately absent: `FoundationBridge`'s
     // `extension RunLoop` supplies it for every non-WinFoundation build, and on
     // WASI that extension lands on this class. Its contract — a backend that

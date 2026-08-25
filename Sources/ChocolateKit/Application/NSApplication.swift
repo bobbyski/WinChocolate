@@ -103,6 +103,25 @@ public final class NSApplication: NSObject {
         }
     }
 
+    /// The menu the application keeps its window list in.
+    ///
+    /// AppKit adds and removes entries here as windows come and go. The
+    /// Chocolate backends do not manage the list themselves, so what this
+    /// property buys is the same *place* to put it: an app that hands AppKit
+    /// its Window menu hands this one the same menu, and the items it puts
+    /// there show up in the menu bar unchanged.
+    public var windowsMenu: NSMenu?
+
+    /// The menu the application keeps its help entries in.
+    public var helpMenu: NSMenu?
+
+    /// The menu the application keeps its services entries in.
+    ///
+    /// There is no services architecture off Apple, so nothing is inserted
+    /// here automatically — the menu shows exactly the items the app puts in
+    /// it, rather than disappearing.
+    public var servicesMenu: NSMenu?
+
     /// Creates an application using the default backend for the current platform.
     public override convenience init() {
         self.init(nativeBackend: NSApplication.makeDefaultNativeBackend())

@@ -17,7 +17,11 @@ extension NSWindow {
             return
         }
 
-        nativeBackend.setText(titleVisibility == .hidden ? "" : title, for: nativeHandle)
+        // The subtitle rides along with the title: AppKit draws it as a second,
+        // dimmer run inside the same caption, and a native title bar with one
+        // caption shows the same two pieces of information joined.
+        let caption = subtitle.isEmpty ? title : "\(title) — \(subtitle)"
+        nativeBackend.setText(titleVisibility == .hidden ? "" : caption, for: nativeHandle)
     }
 
 

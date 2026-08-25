@@ -86,6 +86,18 @@ open class NSWindow: NSResponder {
         }
     }
 
+    /// A secondary line shown under, or beside, the title.
+    ///
+    /// AppKit draws it small and dimmed next to the caption. Where the native
+    /// title bar has one caption and no second line, it is appended to the
+    /// title as ` — subtitle`, which is what the window would look like on
+    /// macOS anyway once the two are read together.
+    open var subtitle: String = "" {
+        didSet {
+            applyTitleVisibility()
+        }
+    }
+
     /// Whether the title text is shown in the title bar.
     ///
     /// Hiding the title keeps the title bar and its buttons but blanks the
@@ -494,6 +506,20 @@ open class NSWindow: NSResponder {
 
         nativeBackend.setFrame(frameRect, for: nativeHandle)
         layoutToolbarAndContent()
+    }
+
+    /// Moves the window so its top-left corner lands on a point.
+    ///
+    /// AppKit's coordinate space puts the origin at the bottom-left, so this
+    /// is `setFrameOrigin` with the height subtracted — the spelling exists
+    /// because cascading and "place it under the last one" code is written in
+    /// top-left terms and would otherwise do the arithmetic itself.
+    open func setFrameTopLeftPoint(_ point: NSPoint) {
+        setFrame(NSRect(x: point.x,
+                        y: point.y - frame.height,
+                        width: frame.width,
+                        height: frame.height),
+                 display: true)
     }
 
     /// Sets the window content size while preserving its origin.
