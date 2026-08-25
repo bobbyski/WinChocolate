@@ -158,7 +158,9 @@ extension WASMNativeControlBackend {
         _ = DOM.window.setTimeout(milliseconds: 0) { [weak self] in
             guard let self else { return }
             self.contextMenuListeners.append(
-                DOM.document.body.addEventListener(.pointerdown) { [weak self] event in
+                DOM.document.body.addEventListener(
+                    .pointerdown, options: EventListenerOptions(capture: true, once: false, passive: false)
+                ) { [weak self] event in
                     guard let self, let sheet = self.contextMenuElement else { return }
                     if let target = event.target, sheet.contains(target) { return }
                     self.dismissContextMenu()

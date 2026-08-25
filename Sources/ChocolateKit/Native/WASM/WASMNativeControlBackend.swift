@@ -166,6 +166,11 @@ public final class WASMNativeControlBackend: InMemoryNativeControlBackend {
     /// Listeners live only for the duration of a drag.
     internal var gestureListeners: [EventListener] = []
 
+    /// Kinds whose text the user is meant to be able to select and edit.
+    internal static let editableKinds: Set<String> = [
+        "editableTextField", "secureTextField", "editableTextView", "textView", "comboBox"
+    ]
+
     /// Height of the synthesized menu bar; windows sit below it.
     internal static var menuBarHeight: CGFloat { 24 }
 
@@ -451,7 +456,12 @@ public final class WASMNativeControlBackend: InMemoryNativeControlBackend {
         endOutsideClickDismissListener()
         _ = DOM.window.setTimeout(milliseconds: 0) { [weak self] in
             guard let self, DOM.isBrowser else { return }
-            self.outsideClickListener = DOM.document.body.addEventListener(.pointerdown) { event in
+            // Capture phase: a press inside a view stops bubbling (see
+            // `onPointer`), so a bubble-phase listener would never see the
+            // presses that are supposed to dismiss.
+            self.outsideClickListener = DOM.document.body.addEventListener(
+                .pointerdown, options: EventListenerOptions(capture: true, once: false, passive: false)
+            ) { event in
                 guard let element = self.elements[handle] else { return }
                 if let target = event.target, element.contains(target) { return }
                 onDismiss()
@@ -1014,22 +1024,43 @@ public final class WASMNativeControlBackend: InMemoryNativeControlBackend {
 
     // MARK: - Input
 
-    /// Delivers mouse-down through the responder chain.
+    /// Delivers mouse-down through the responder chain, and captures the pointer.
+    ///
+    /// The capture is what makes dragging work at all. AppKit delivers every
+    /// `mouseDragged` and the final `mouseUp` to the view the drag *started*
+    /// on; the DOM delivers them to whatever is under the cursor. So a
+    /// framework drag — the toolbar customization tiles, a drawn slider knob,
+    /// any custom view that tracks the mouse — stalled the instant the pointer
+    /// left the element, and its `mouseUp` was delivered somewhere else
+    /// entirely, so the drop never ran. Capturing on press restores AppKit's
+    /// rule and costs one call.
     public override func registerMouseDownAction(for handle: NativeHandle,
                                                  action: @escaping (NSEvent) -> Void) {
         super.registerMouseDownAction(for: handle, action: action)
         onPointer(.pointerdown, handle) { [weak self] event in
             guard let self, event.rawValue.button.number ?? 0 == 0 else { return }
+            // Suppress the browser's own press gesture (text selection, image
+            // dragging) for everything except editable fields, which need the
+            // default to place a caret.
+            if !Self.editableKinds.contains(self.records[handle]?.kind ?? "") {
+                event.preventDefault()
+            }
+            if let pointerId = event.pointerId {
+                self.elements[handle]?.setPointerCapture(pointerId)
+            }
             action(self.mouseEvent(.leftMouseDown, event, for: handle))
         }
     }
 
-    /// Delivers mouse-up.
+    /// Delivers mouse-up and releases the pointer capture taken on press.
     public override func registerMouseUpAction(for handle: NativeHandle,
                                                action: @escaping (NSEvent) -> Void) {
         super.registerMouseUpAction(for: handle, action: action)
         onPointer(.pointerup, handle) { [weak self] event in
             guard let self, event.rawValue.button.number ?? 0 == 0 else { return }
+            if let pointerId = event.pointerId {
+                self.elements[handle]?.releasePointerCapture(pointerId)
+            }
             action(self.mouseEvent(.leftMouseUp, event, for: handle))
         }
     }
@@ -1573,6 +1604,15 @@ public final class WASMNativeControlBackend: InMemoryNativeControlBackend {
     /// framework asked for, which is what every other backend already gives it.
     internal func register(_ handle: NativeHandle, element: Element, parent: NativeHandle?) {
         _ = element.setStyle("box-sizing", "border-box")
+        // Anything that is not an editable field must not be selectable text.
+        // A press-and-drag on a view starts a *text selection* in a browser,
+        // which wins over the framework's own drag: the toolbar customization
+        // tiles simply refused to move while every label on the panel turned
+        // blue. Editable kinds are excluded — a text field the user cannot
+        // select inside is worse than the problem.
+        if !Self.editableKinds.contains(records[handle]?.kind ?? "") {
+            _ = element.setStyle("user-select", "none")
+        }
         elements[handle] = element
         guard let parent else { return }
         // Composite controls own a content area distinct from their chrome —

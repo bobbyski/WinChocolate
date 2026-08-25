@@ -69,7 +69,17 @@ extension WASMNativeControlBackend {
     internal func onPointer(_ name: EventName, _ handle: NativeHandle,
                             _ body: @escaping (Event) -> Void) {
         guard let element = elements[handle] else { return }
-        listeners[handle, default: []].append(element.addEventListener(name) { body($0) })
+        // Stop propagation: AppKit and the DOM disagree about how many views a
+        // press belongs to. `hitTest` picks exactly one view and only that view
+        // receives `mouseDown`; a DOM event bubbles, so every ancestor view got
+        // it too — a press on a customization tile was delivered to the tile,
+        // its container *and* the panel's content view, each as though it had
+        // been clicked. Listeners run innermost-first, so stopping here leaves
+        // precisely the hit view, which is the AppKit rule.
+        listeners[handle, default: []].append(element.addEventListener(name) { event in
+            event.stopPropagation()
+            body(event)
+        })
     }
 
     /// Builds an `NSEvent` for a keyboard event.

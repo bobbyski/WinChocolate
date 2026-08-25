@@ -386,6 +386,35 @@ the part of the OS that a page does not have.
   goes through the drag-and-drop seam (`registerDropTarget`/`performDrag`), which the plan lists
   as out of scope because `DataTransfer` file access is incomplete upstream in SwiftDOM.
 
+## Why a framework drag needs three separate things in a browser
+
+The toolbar customization drag failed in two different ways at once — items with icons dragged
+but never dropped, items without icons would not move at all — and it took three fixes, each
+addressing a genuine mismatch between AppKit's input model and the DOM's.
+
+1. **The browser's own gesture wins.** Press-and-drag on a view starts a *text selection*, which
+   preempts the framework's drag entirely: the tiles sat still while every label on the panel
+   turned blue. Non-editable controls now carry `user-select: none` and their press calls
+   `preventDefault()`. Editable kinds are excluded — a field you cannot select inside is worse
+   than the bug.
+2. **The pointer must stay with the view it pressed.** AppKit delivers every `mouseDragged` and
+   the final `mouseUp` to the view the drag *started* on. The DOM delivers them to whatever is
+   under the cursor, so a drag died the moment the tile moved out from under the pointer, and the
+   release landed on the toolbar instead of the tile — which is exactly "drags but never drops".
+   `setPointerCapture` on press restores AppKit's rule (added to SwiftDOM).
+3. **A press belongs to one view, not to all of its ancestors.** `hitTest` picks a single view;
+   a DOM event bubbles. A press on a tile was delivered to the tile, its container *and* the
+   panel's content view, each believing it had been clicked. `onPointer` now stops propagation,
+   and because listeners run innermost-first that leaves precisely the hit view.
+
+Fix 3 has a consequence worth remembering: presses inside a view no longer reach `document.body`,
+so the popover and context-menu dismissal listeners moved to the **capture phase**, which runs
+before bubbling is stopped.
+
+Verified end to end with real mouse input: dragging `Print` — an item with no icon, the class
+that previously would not move — from the palette into the strip adds it to the panel's toolbar
+*and* the live window toolbar, and greys its palette tile because it is now in use.
+
 ## Do one clean Linux build after pulling this
 
 `InMemoryNativeControlBackend` gained a stored property (`debugClassNames`), which changes the
