@@ -79,6 +79,31 @@ open class NSGraphicsContext {
     /// The CG shim's line cap (stored; native strokes render default caps).
     var winLineCap: CGLineCap = .butt
 
+    /// The CG shim's line join (stored; native strokes render default joins).
+    var winLineJoin: CGLineJoin = .miter
+
+    /// The CG shim's global alpha, multiplied into every source colour.
+    var winAlpha: CGFloat = 1
+
+    /// The CG shim's antialiasing flag (stored; backends always antialias).
+    var winShouldAntialias: Bool = true
+
+    /// The paint state `saveGState` preserves alongside the transform.
+    ///
+    /// The transform has its own stack for historical reasons; everything the
+    /// CG shim added since travels together in this one, so a `setAlpha` inside
+    /// a save/restore bracket cannot leak past the restore.
+    struct WinGState {
+        var alpha: CGFloat
+        var lineWidth: CGFloat
+        var lineCap: CGLineCap
+        var lineJoin: CGLineJoin
+        var shouldAntialias: Bool
+    }
+
+    /// Paint state saved by `saveGState`.
+    var winStateStack: [WinGState] = []
+
     /// Creates a context over a backend drawing surface.
     internal init(nativeContext: NativeDrawingContext) {
         self.nativeContext = nativeContext

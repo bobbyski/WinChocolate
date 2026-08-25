@@ -40,6 +40,22 @@ public enum CGLineCap: Sendable {
     case square
 }
 
+/// Line-join styles, matching Core Graphics' names.
+public enum CGLineJoin: Sendable {
+    case miter
+    case round
+    case bevel
+}
+
+/// How `drawPath(using:)` consumes the pending path.
+public enum CGPathDrawingMode: Sendable {
+    case fill
+    case eoFill
+    case stroke
+    case fillStroke
+    case eoFillStroke
+}
+
 // MARK: - Paths
 
 /// An immutable drawing path, matching Core Graphics' shape.
@@ -305,6 +321,11 @@ extension NSGraphicsContext {
     /// transform and path state.
     public func saveGState() {
         winTransformStack.append(winTransform)
+        winStateStack.append(WinGState(alpha: winAlpha,
+                                       lineWidth: winLineWidth,
+                                       lineCap: winLineCap,
+                                       lineJoin: winLineJoin,
+                                       shouldAntialias: winShouldAntialias))
         nativeContext.saveState()
     }
 
@@ -312,6 +333,13 @@ extension NSGraphicsContext {
     public func restoreGState() {
         if let transform = winTransformStack.popLast() {
             winTransform = transform
+        }
+        if let state = winStateStack.popLast() {
+            winAlpha = state.alpha
+            winLineWidth = state.lineWidth
+            winLineCap = state.lineCap
+            winLineJoin = state.lineJoin
+            winShouldAntialias = state.shouldAntialias
         }
         nativeContext.restoreState()
     }
@@ -376,18 +404,114 @@ extension NSGraphicsContext {
         addPath(path)
     }
 
+    /// Discards any pending path and starts a new one.
+    ///
+    /// Core Graphics contexts carry *one* current path, built by the context's
+    /// own `move`/`addLine`/`addArc` calls and consumed by the next paint. The
+    /// builder calls below exist because AppKit-shaped drawing code uses the
+    /// context form as often as the `CGMutablePath` form, and a control written
+    /// against one should not have to be rewritten for the other.
+    public func beginPath() {
+        winPendingSegments.removeAll()
+    }
+
+    /// Starts a new subpath at a point.
+    public func move(to point: CGPoint) {
+        winPendingSegments.append(winTransformed(.move(point)))
+    }
+
+    /// Adds a line from the current point.
+    public func addLine(to point: CGPoint) {
+        winPendingSegments.append(winTransformed(.line(point)))
+    }
+
+    /// Adds a cubic Bézier curve from the current point.
+    public func addCurve(to end: CGPoint, control1: CGPoint, control2: CGPoint) {
+        winPendingSegments.append(
+            winTransformed(.curve(to: end, control1: control1, control2: control2))
+        )
+    }
+
+    /// Closes the current subpath with a straight line back to its start.
+    public func closePath() {
+        winPendingSegments.append(.close)
+    }
+
+    /// Adds an ellipse inscribed in a rectangle to the pending path.
+    public func addEllipse(in rect: CGRect) {
+        let path = CGMutablePath()
+        path.addEllipse(in: rect)
+        addPath(path)
+    }
+
+    /// Adds a rectangle as a closed subpath of the pending path.
+    public func addRect(_ rect: CGRect) {
+        let path = CGMutablePath()
+        path.addRect(rect)
+        addPath(path)
+    }
+
+    /// Paints the pending path the way the mode asks for.
+    ///
+    /// The even-odd modes paint identically to their non-zero counterparts:
+    /// the fill rule lives in the native renderer, and the seam does not carry
+    /// it yet. Every other distinction the mode draws — fill, stroke, or both,
+    /// in that order — is honoured.
+    public func drawPath(using mode: CGPathDrawingMode) {
+        switch mode {
+        case .fill, .eoFill:
+            fillPath()
+        case .stroke:
+            strokePath()
+        case .fillStroke, .eoFillStroke:
+            // The path is consumed by the first paint, so it is kept for the
+            // second — CG paints one path twice here, not two paths once.
+            let segments = winPendingSegments
+            fillPath()
+            winPendingSegments = segments
+            strokePath()
+        }
+    }
+
+    /// Sets the global alpha applied to everything painted after it.
+    ///
+    /// Core Graphics multiplies this into the source colour of every drawing
+    /// operation, and `saveGState`/`restoreGState` bracket it — which is how
+    /// callers fade a whole drawn control by wrapping its paint in one call.
+    public func setAlpha(_ alpha: CGFloat) {
+        winAlpha = max(0, min(1, alpha))
+    }
+
+    /// Sets the join style used where stroked segments meet.
+    ///
+    /// Stored rather than applied: the native seam carries a line width but no
+    /// join style, so strokes render with each backend's default join. The
+    /// value is kept so the state is not silently lost across a save/restore.
+    public func setLineJoin(_ join: CGLineJoin) {
+        winLineJoin = join
+    }
+
+    /// Sets whether drawing is antialiased.
+    ///
+    /// Stored for the same reason as the join style — every backend this
+    /// framework targets antialiases by default, and none of them can be asked
+    /// not to through the current seam.
+    public func setShouldAntialias(_ shouldAntialias: Bool) {
+        winShouldAntialias = shouldAntialias
+    }
+
     /// Fills the pending path with the fill color.
     public func fillPath() {
         let segments = winTakePendingSegments()
         guard !segments.isEmpty else { return }
-        nativeContext.fillPath(segments, color: fillColor)
+        nativeContext.fillPath(segments, color: winAlphaApplied(fillColor))
     }
 
     /// Strokes the pending path with the stroke color and line width.
     public func strokePath() {
         let segments = winTakePendingSegments()
         guard !segments.isEmpty else { return }
-        nativeContext.strokePath(segments, color: strokeColor, lineWidth: winLineWidth)
+        nativeContext.strokePath(segments, color: winAlphaApplied(strokeColor), lineWidth: winLineWidth)
     }
 
     /// Intersects the clip region with the pending path.
@@ -493,6 +617,13 @@ extension NSGraphicsContext {
     }
 
     // MARK: Shim state helpers
+
+    // Multiplies the context's global alpha into a colour, the way Core
+    // Graphics folds `setAlpha` into every source colour.
+    private func winAlphaApplied(_ color: NSColor) -> NSColor {
+        guard winAlpha < 1 else { return color }
+        return color.withAlphaComponent(color.alphaComponent * winAlpha)
+    }
 
     // Applies the current transform to a point.
     private func winTransformed(_ point: CGPoint) -> CGPoint {
