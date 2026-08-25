@@ -203,6 +203,70 @@ open class NSTextField: NSControl {
     /// The bezel style used when `isBezeled` is set.
     open var bezelStyle: BezelStyle = .squareBezel
 
+    /// The cell this field draws with.
+    ///
+    /// AppKit fields are cell-backed, and ported code reaches through the cell
+    /// for the handful of properties that only ever lived there — `wraps`,
+    /// `isScrollable`, `sendsActionOnEndEditing`. The cell is created on first
+    /// use and bound to this field, so a change made through it lands on the
+    /// same control a change made directly would.
+    ///
+    /// Assigning a cell rebinds it; assigning nil detaches the current one,
+    /// which then keeps its own values rather than writing to a field it no
+    /// longer belongs to.
+    open var cell: NSTextFieldCell? {
+        get {
+            if let winCell { return winCell }
+            let created = Self.winMakeCell()
+            created.controlView = self
+            winCell = created
+            return created
+        }
+        set {
+            winCell?.controlView = nil
+            newValue?.controlView = self
+            winCell = newValue
+        }
+    }
+
+    // Backing storage for `cell`, created lazily.
+    private var winCell: NSTextFieldCell?
+
+    // Whether the field currently has the editing focus. Maintained by the
+    // focus-change hook that already drives the begin/end editing delegate
+    // calls, so there is one source of truth rather than two.
+    var winIsEditing = false
+
+    /// The cell class this field type creates — overridden by subclasses so a
+    /// secure field's `cell` really is an `NSSecureTextFieldCell`.
+    class func winMakeCell() -> NSTextFieldCell {
+        NSTextFieldCell()
+    }
+
+    /// The field editor currently editing this field, or nil when it is not
+    /// being edited.
+    ///
+    /// There is no shared field editor off Apple — each native control edits
+    /// its own text — so this answers the question callers actually ask with
+    /// it: *is this field the one being typed into right now?* When it is, the
+    /// field itself is returned, which is the object AppKit's editor stands in
+    /// for anyway.
+    open func currentEditor() -> NSText? {
+        guard winIsEditing else { return nil }
+        let editor = winEditor ?? NSText()
+        winEditor = editor
+        // Kept in step on each ask rather than on every keystroke: callers read
+        // it at the moment they need it, and the native control is the truth
+        // until editing ends.
+        editor.string = stringValue
+        editor.isEditable = isEditable
+        editor.isSelectable = isSelectable
+        return editor
+    }
+
+    // The stand-in editor, created the first time one is asked for.
+    private var winEditor: NSText?
+
     /// Whether the field forces a single line of text.
     ///
     /// When cleared together with a `maximumNumberOfLines` other than 1, AppKit
@@ -408,8 +472,10 @@ open class NSTextField: NSControl {
                 }
 
                 if gained {
+                    self.winIsEditing = true
                     self.delegate?.controlTextDidBeginEditing(self.editingNotification(named: Self.textDidBeginEditingNotification))
                 } else {
+                    self.winIsEditing = false
                     // Editing ended: parse the text through the formatter so
                     // objectValue and the displayed text settle to a valid value.
                     self.commitFormattedValue()
