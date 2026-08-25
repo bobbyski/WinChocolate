@@ -76,6 +76,40 @@ public struct NSEvent: Equatable {
     /// Legacy vertical scroll delta, aliasing `scrollingDeltaY`.
     public var deltaY: CGFloat { scrollingDeltaY }
 
+    /// The window the event was delivered to, when it is known.
+    ///
+    /// Nil for events a backend synthesizes without a window in hand — most of
+    /// them. `NSWindow` stamps itself on the events it delivers from a tracking
+    /// session, which is where AppKit-shaped drag code reads it: an event's own
+    /// window is what turns its `locationInWindow` into a screen point, and the
+    /// pointer's *current* position is already stale by then.
+    ///
+    /// Excluded from equality: two events with the same content are the same
+    /// event, and comparing them should not depend on object identity.
+    public weak var window: NSWindow?
+
+    /// The pointer's position in screen coordinates.
+    ///
+    /// Maintained by whoever last had a real event with a window to convert
+    /// through — see `NSWindow`'s tracking session. Callers use it as the
+    /// fallback when an event has no window, which is exactly when this is the
+    /// best answer available.
+    public nonisolated(unsafe) static var mouseLocation: NSPoint = .zero
+
+    /// Content equality, ignoring the delivering window.
+    public static func == (lhs: NSEvent, rhs: NSEvent) -> Bool {
+        lhs.type == rhs.type
+            && lhs.locationInWindow == rhs.locationInWindow
+            && lhs.keyCode == rhs.keyCode
+            && lhs.characters == rhs.characters
+            && lhs.modifierFlags == rhs.modifierFlags
+            && lhs.clickCount == rhs.clickCount
+            && lhs.scrollingDeltaX == rhs.scrollingDeltaX
+            && lhs.scrollingDeltaY == rhs.scrollingDeltaY
+            && lhs.phase == rhs.phase
+            && lhs.momentumPhase == rhs.momentumPhase
+    }
+
     /// Which mouse button an `otherMouse*` event carries.
     ///
     /// Derived rather than stored: AppKit numbers the buttons 0 left, 1 right,

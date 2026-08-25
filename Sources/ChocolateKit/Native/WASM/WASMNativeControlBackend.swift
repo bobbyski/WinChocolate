@@ -57,6 +57,9 @@ public final class WASMNativeControlBackend: InMemoryNativeControlBackend {
     /// Listener tokens, kept so `destroyControl` can actually release them.
     internal var listeners: [NativeHandle: [EventListener]] = [:]
 
+    /// The event-tracking session in flight, if any (`WASMEventTracking.swift`).
+    internal var eventTracking: EventTrackingSession?
+
     /// The click listener carrying a control's primary action.
     ///
     /// Held separately from `listeners` because it is *replaced*, not added to:

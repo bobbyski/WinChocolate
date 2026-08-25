@@ -470,3 +470,15 @@ public struct NativeMenuSpec {
         self.items = items
     }
 }
+
+/// What an event-tracking session should do after seeing an event.
+///
+/// The backend drives the loop, so it needs the handler's answer rather than
+/// AppKit's `UnsafeMutablePointer<ObjCBool>` — the pointer is the shape
+/// `NSWindow.trackEvents` presents to *its* caller, and `NSWindow` translates.
+public enum NativeEventTrackingDisposition: Sendable {
+    /// Keep delivering matching events.
+    case `continue`
+    /// End the session; the backend releases whatever it captured.
+    case stop
+}

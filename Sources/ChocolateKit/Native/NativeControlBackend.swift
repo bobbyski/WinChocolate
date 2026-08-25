@@ -314,6 +314,27 @@ extension NativeDrawingContext {
 }
 
 extension NativeControlBackend {
+    /// Default: no nested event tracking, and the caller is told so.
+    ///
+    /// `NSWindow.trackEvents` is AppKit's *modal* tracking loop: it re-enters
+    /// the event loop, pulls matching events out of it, and does not return
+    /// until the handler says stop. Every backend can answer that differently
+    /// and none can be given a default that fakes it, so the default is an
+    /// honest "no" and `NSWindow` says what that means.
+    ///
+    /// A backend that returns `true` has taken ownership of the session and
+    /// must call `handler` for each matching event — and exactly once with
+    /// `nil` when the session ends, whatever ended it.
+    ///
+    /// See `Docs/EVENT_TRACKING.md` for what each backend needs to implement it.
+    public func beginEventTracking(
+        matching mask: NSEvent.EventTypeMask,
+        for window: NativeHandle,
+        handler: @escaping (NSEvent?) -> NativeEventTrackingDisposition
+    ) -> Bool {
+        false
+    }
+
     /// Default: children are already confined by the platform's own widgets.
     public func setClipsToBounds(_ clips: Bool, for handle: NativeHandle) {}
 
@@ -990,6 +1011,32 @@ public protocol NativeControlBackend: AnyObject {
     /// Registers the action to perform when a control gains (`true`) or loses
     /// (`false`) native keyboard focus.
     func registerFocusChangeAction(for handle: NativeHandle, action: @escaping (Bool) -> Void)
+
+    /// Takes ownership of a modal event-tracking session, or declines it.
+    ///
+    /// `NSWindow.trackEvents` is AppKit's tracking loop — the one a drag runs
+    /// inside. Backends differ enough here that this is a *request*: return
+    /// `false` and `NSWindow` degrades visibly; return `true` and the session
+    /// is yours.
+    ///
+    /// The contract for a backend that accepts:
+    ///
+    ///   * deliver every event matching `mask` to `handler`, in order;
+    ///   * stop when the handler answers `.stop`, and release any pointer
+    ///     capture taken;
+    ///   * call `handler(nil)` exactly once when the session ends, however it
+    ///     ended — that is the signal AppKit's own loop gives at timeout, and
+    ///     callers already treat it as "we are done".
+    ///
+    /// Tracking need not be synchronous. A browser cannot block, so the WASM
+    /// backend returns immediately and delivers events on later turns of the
+    /// page's loop. `Docs/EVENT_TRACKING.md` records what that costs and what
+    /// each backend needs.
+    func beginEventTracking(
+        matching mask: NSEvent.EventTypeMask,
+        for window: NativeHandle,
+        handler: @escaping (NSEvent?) -> NativeEventTrackingDisposition
+    ) -> Bool
 
     /// Registers the action to perform when a native view receives a mouse-down event.
     func registerMouseDownAction(for handle: NativeHandle, action: @escaping (NSEvent) -> Void)

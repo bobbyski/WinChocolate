@@ -508,31 +508,81 @@ open class NSWindow: NSResponder {
         layoutToolbarAndContent()
     }
 
-    /// Runs a nested tracking loop, handing each matching event to the handler
-    /// until it sets `stop` or the timeout expires.
+    /// Runs a tracking loop, handing each matching event to the handler until
+    /// it sets `stop` or the timeout expires.
     ///
-    /// **No Chocolate backend has a nested event pump yet, so this is the one
-    /// place in R25 that a member could not close.** AppKit's drag tracking
-    /// re-enters the event loop and pulls events out of it; Win32, GTK and the
-    /// browser each own their loop differently, and none of them can be asked
-    /// to hand events back this way without a backend addition.
+    /// AppKit re-enters the event loop here and does not return until the
+    /// session ends. Whether that is possible depends on the backend, so this
+    /// asks: `beginEventTracking` either takes the session or declines it
+    /// (`Docs/EVENT_TRACKING.md`).
     ///
-    /// So it does the only honest thing available: it says so, once, and calls
-    /// the handler with `nil` — the "no more events" signal AppKit itself uses,
-    /// and the value every correct caller already handles by stopping. A drag
-    /// written against this ends immediately rather than tracking; it does not
-    /// hang, and it does not silently look like it worked.
+    /// **Where a backend tracks asynchronously — a browser cannot block — this
+    /// returns before the session ends.** That is a real difference from
+    /// AppKit and callers that read state set inside the handler must handle
+    /// it. The tell is cheap and needs no new API: set a flag in the handler's
+    /// terminal branch, and if it is still clear when this returns, the session
+    /// is still running.
+    ///
+    /// Where no backend takes it, the handler is called once with `nil` — the
+    /// "no more events" signal AppKit gives at timeout, which every correct
+    /// caller already handles by stopping — and the reason is logged once.
     open func trackEvents(
         matching mask: NSEvent.EventTypeMask,
         timeout: TimeInterval,
         mode: RunLoop.Mode,
-        using trackingHandler: (NSEvent?, UnsafeMutablePointer<ObjCBool>) -> Void
+        using trackingHandler: @escaping (NSEvent?, UnsafeMutablePointer<ObjCBool>) -> Void
     ) {
-        chocolateBackendWarn("NSWindow.trackEvents: no backend nested event pump — the tracking "
-                             + "loop ends immediately. Drag-tracking written against it will not "
-                             + "follow the pointer.")
-        var stop = ObjCBool(false)
-        withUnsafeMutablePointer(to: &stop) { trackingHandler(nil, $0) }
+        // The handler AppKit hands its caller writes through a pointer; the
+        // backend's answers with a value. One translation, here, so no backend
+        // has to know about `ObjCBool` and no caller has to stop using it.
+        let adapt: (NSEvent?) -> NativeEventTrackingDisposition = { [weak self] event in
+            var stamped = event
+            if let self, stamped != nil {
+                // The event's own window is what turns `locationInWindow` into
+                // a screen point. The backend does not know which `NSWindow`
+                // its handle belongs to; this object does, and it is the one
+                // that asked for the session.
+                stamped?.window = self
+                NSEvent.mouseLocation = self.convertPoint(toScreen: stamped!.locationInWindow)
+            }
+            var stop = ObjCBool(false)
+            withUnsafeMutablePointer(to: &stop) { trackingHandler(stamped, $0) }
+            return stop.boolValue ? .stop : .continue
+        }
+
+        if let nativeHandle,
+           nativeBackend.beginEventTracking(matching: mask, for: nativeHandle, handler: adapt) {
+            return
+        }
+
+        chocolateBackendWarn("NSWindow.trackEvents: this backend has no event-tracking session, "
+                             + "so the loop ends immediately. Drag-tracking written against it "
+                             + "will not follow the pointer. See Docs/EVENT_TRACKING.md.")
+        _ = adapt(nil)
+    }
+
+    /// Converts a point in this window's coordinates to screen coordinates.
+    ///
+    /// A window's frame is already in screen space, so this is a translation by
+    /// its origin — the same arithmetic AppKit does, and the reason drag code
+    /// asks the *event's* window rather than the pointer where something is.
+    open func convertPoint(toScreen point: NSPoint) -> NSPoint {
+        NSMakePoint(frame.origin.x + point.x, frame.origin.y + point.y)
+    }
+
+    /// Converts a point in screen coordinates to this window's coordinates.
+    open func convertPoint(fromScreen point: NSPoint) -> NSPoint {
+        NSMakePoint(point.x - frame.origin.x, point.y - frame.origin.y)
+    }
+
+    /// Converts a rectangle in this window's coordinates to screen coordinates.
+    open func convertToScreen(_ rect: NSRect) -> NSRect {
+        NSRect(origin: convertPoint(toScreen: rect.origin), size: rect.size)
+    }
+
+    /// Converts a rectangle in screen coordinates to this window's coordinates.
+    open func convertFromScreen(_ rect: NSRect) -> NSRect {
+        NSRect(origin: convertPoint(fromScreen: rect.origin), size: rect.size)
     }
 
     /// Moves the window so its top-left corner lands on a point.
