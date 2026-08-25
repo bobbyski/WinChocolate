@@ -214,6 +214,37 @@ open class NSTableView: NSControl {
 
     /// Reloads specific rows/columns by `IndexSet`, matching AppKit's
     /// signature.
+    /// Row insert/remove animations, matching AppKit's option set.
+    ///
+    /// Accepted everywhere AppKit accepts it. No Chocolate backend animates row
+    /// changes yet, so the rows appear and disappear without sliding — the set
+    /// exists so the call sites that describe the animation they want keep
+    /// compiling, and keep describing it for when a backend can.
+    public struct AnimationOptions: OptionSet, Sendable {
+        /// Raw option value.
+        public let rawValue: UInt
+
+        /// Creates options from a raw value.
+        public init(rawValue: UInt) {
+            self.rawValue = rawValue
+        }
+
+        /// No animation.
+        public static let effectNone = AnimationOptions(rawValue: 0)
+        /// Fade the rows in or out.
+        public static let effectFade = AnimationOptions(rawValue: 1 << 1)
+        /// Slide the rows up.
+        public static let effectGap = AnimationOptions(rawValue: 1 << 2)
+        /// Slide the rows in from the top.
+        public static let slideUp = AnimationOptions(rawValue: 1 << 4)
+        /// Slide the rows in from the bottom.
+        public static let slideDown = AnimationOptions(rawValue: 1 << 5)
+        /// Slide the rows in from the left.
+        public static let slideLeft = AnimationOptions(rawValue: 1 << 6)
+        /// Slide the rows in from the right.
+        public static let slideRight = AnimationOptions(rawValue: 1 << 7)
+    }
+
     open func reloadData(forRowIndexes rowIndexes: IndexSet, columnIndexes: IndexSet) {
         winReloadData(forRowIndexes: rowIndexes, columnIndexes: columnIndexes)
     }

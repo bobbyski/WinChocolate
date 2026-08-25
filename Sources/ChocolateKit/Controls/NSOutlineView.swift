@@ -301,6 +301,36 @@ open class NSOutlineView: NSTableView {
         }
     }
 
+    /// Reloads one item, and optionally the rows beneath it.
+    ///
+    /// The outline is rebuilt from the data source on every `reloadData`, so a
+    /// per-item reload is a full one — correct, just not incremental. It is
+    /// spelled out separately because callers reach for the narrow API to say
+    /// what changed, and losing that call would lose the update entirely.
+    open func reloadItem(_ item: Any?, reloadChildren: Bool) {
+        reloadData()
+    }
+
+    /// Reloads one item.
+    open func reloadItem(_ item: Any?) {
+        reloadItem(item, reloadChildren: false)
+    }
+
+    /// Inserts rows under a parent.
+    ///
+    /// Same reasoning as `reloadItem`: the rows come from the data source, and
+    /// the data source has already changed by the time this is called, so a
+    /// rebuild shows exactly the rows the caller asked for. The animation
+    /// option is accepted and not performed — the rows appear, they just do not
+    /// slide in.
+    open func insertItems(
+        at indexes: IndexSet,
+        inParent parent: Any?,
+        withAnimation animationOptions: NSTableView.AnimationOptions = []
+    ) {
+        reloadData()
+    }
+
     /// Expands an item.
     open func expandItem(_ item: Any?) {
         guard let item else {

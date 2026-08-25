@@ -225,6 +225,12 @@ extension NSColor {
     public static var systemGray: NSColor { NSColor(red: 0.557, green: 0.557, blue: 0.576, alpha: 1) }
     /// System teal.
     public static var systemTeal: NSColor { NSColor(red: 0.353, green: 0.784, blue: 0.98, alpha: 1) }
+    /// System cyan.
+    public static var systemCyan: NSColor { NSColor(red: 0.196, green: 0.678, blue: 0.902, alpha: 1) }
+    /// System mint.
+    public static var systemMint: NSColor { NSColor(red: 0.0, green: 0.78, blue: 0.745, alpha: 1) }
+    /// System brown.
+    public static var systemBrown: NSColor { NSColor(red: 0.635, green: 0.518, blue: 0.369, alpha: 1) }
     /// System indigo.
     public static var systemIndigo: NSColor { NSColor(red: 0.345, green: 0.337, blue: 0.839, alpha: 1) }
 

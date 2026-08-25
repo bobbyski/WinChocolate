@@ -451,6 +451,33 @@ extension NSMutableAttributedString {
     }
 }
 
+// `NSString` is a typealias for `String` under WinFoundation, so the extension
+// below already covers it there. Real Foundation — which is what Linux and WASI
+// build against — declares `NSString` as its own class, and AppKit-shaped
+// drawing code reaches for it constantly (`text as NSString`) because that is
+// where AppKit hangs `size(withAttributes:)` and `draw(at:withAttributes:)`.
+//
+// Forwarding rather than reimplementing: one text path, one set of metrics.
+#if !USE_WIN_FOUNDATION
+extension NSString {
+    /// Draws the string with its top-left corner at a point in the current
+    /// graphics context.
+    public func draw(at point: NSPoint, withAttributes attributes: [NSAttributedString.Key: Any]? = nil) {
+        (self as String).draw(at: point, withAttributes: attributes)
+    }
+
+    /// Draws the string inside a rectangle, clipped to it.
+    public func draw(in rect: NSRect, withAttributes attributes: [NSAttributedString.Key: Any]? = nil) {
+        (self as String).draw(in: rect, withAttributes: attributes)
+    }
+
+    /// Returns the bounding size of the string with attributes.
+    public func size(withAttributes attributes: [NSAttributedString.Key: Any]? = nil) -> NSSize {
+        (self as String).size(withAttributes: attributes)
+    }
+}
+#endif
+
 extension String {
     /// Draws the string with its top-left corner at a point in the current
     /// graphics context.

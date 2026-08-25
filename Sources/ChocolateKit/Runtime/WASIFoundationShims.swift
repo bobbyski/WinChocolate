@@ -20,6 +20,17 @@
 
 #if os(WASI)
 
+/// The slice of `Thread` that means anything on a single-threaded page.
+///
+/// WASI has no threads, so the answer is not "unknown" — it is *yes*, always:
+/// there is one thread, everything runs on it, and it is the main one. Code
+/// that asserts it is on the main thread is asking a question with a real
+/// answer here, and this gives it rather than making the caller branch.
+public enum Thread {
+    /// Whether the current code is running on the main thread. Always true.
+    public static var isMainThread: Bool { true }
+}
+
 /// A notification, matching the classic Foundation shape the core posts.
 public struct Notification: Sendable {
     /// The name of a notification.
