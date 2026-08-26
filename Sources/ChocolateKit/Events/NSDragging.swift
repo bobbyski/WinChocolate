@@ -34,6 +34,15 @@ public protocol NSDraggingInfo: AnyObject {
 
     /// The operations the source permits.
     var draggingSourceOperationMask: NSDragOperation { get }
+
+    /// The object that started the drag, when it is one of this app's.
+    ///
+    /// **The question every drop destination asks first**: a table telling an
+    /// internal reorder from a drop out of another application compares this
+    /// against itself. Nil for a drag that came from outside the process,
+    /// which is exactly what AppKit reports for the same case — so the check
+    /// reads the same on every platform.
+    var draggingSource: AnyObject? { get }
 }
 
 /// The dragging info the framework hands to destination views.
@@ -42,10 +51,18 @@ final class WinDraggingInfo: NSDraggingInfo {
     let draggingLocation: NSPoint
     let draggingSourceOperationMask: NSDragOperation
 
-    init(content: NativeDropContent, location: NSPoint) {
+    // Nil until a backend can report an in-process drag source. The drops the
+    // backends deliver today all arrive from outside, which is the case this
+    // value already describes correctly.
+    weak var winSource: AnyObject?
+
+    var draggingSource: AnyObject? { winSource }
+
+    init(content: NativeDropContent, location: NSPoint, source: AnyObject? = nil) {
         draggingPasteboard = WinDragPasteboard(content: content)
         draggingLocation = location
         draggingSourceOperationMask = [.copy, .move, .link, .generic]
+        winSource = source
     }
 }
 

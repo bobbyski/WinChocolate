@@ -76,6 +76,14 @@ open class NSView: NSResponder {
     /// every platform instead of branching around a missing name.
     open var safeAreaInsets: NSEdgeInsets { NSEdgeInsetsZero }
 
+    /// Whether a click that also activates the window is delivered to this view.
+    ///
+    /// False by default, as AppKit's is. A palette or an inspector overrides it
+    /// so its tools work on the first click rather than swallowing one to
+    /// focus the window — which is the difference between a panel that feels
+    /// responsive and one that feels broken.
+    open func acceptsFirstMouse(for event: NSEvent?) -> Bool { false }
+
     open var wantsLayer: Bool = false
 
     /// Informational tooltip text.

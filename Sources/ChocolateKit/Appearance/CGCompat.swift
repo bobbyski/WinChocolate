@@ -73,6 +73,55 @@ public class CGPath {
     /// Creates an empty path.
     public init() {}
 
+    /// Creates a rounded rectangle path, matching Core Graphics' initializer.
+    ///
+    /// The `transform` parameter is accepted because drawing code spells it
+    /// out — `transform: nil` at every call site — and a signature without it
+    /// would reject all of them. A non-nil transform is applied to the points.
+    public convenience init(roundedRect rect: CGRect,
+                            cornerWidth: CGFloat,
+                            cornerHeight: CGFloat,
+                            transform: UnsafePointer<CGAffineTransform>?) {
+        let path = CGMutablePath()
+        path.addRoundedRect(in: rect, cornerWidth: cornerWidth, cornerHeight: cornerHeight)
+        self.init(winSegments: path.winSegments, transform: transform)
+    }
+
+    /// Creates a rectangle path.
+    public convenience init(rect: CGRect, transform: UnsafePointer<CGAffineTransform>?) {
+        let path = CGMutablePath()
+        path.addRect(rect)
+        self.init(winSegments: path.winSegments, transform: transform)
+    }
+
+    /// Creates an ellipse path inscribed in a rectangle.
+    public convenience init(ellipseIn rect: CGRect, transform: UnsafePointer<CGAffineTransform>?) {
+        let path = CGMutablePath()
+        path.addEllipse(in: rect)
+        self.init(winSegments: path.winSegments, transform: transform)
+    }
+
+    // The shared body of the three initializers above.
+    init(winSegments segments: [NativePathSegment], transform: UnsafePointer<CGAffineTransform>?) {
+        guard let transform else {
+            winSegments = segments
+            return
+        }
+        let matrix = transform.pointee
+        func map(_ point: CGPoint) -> CGPoint {
+            CGPoint(x: matrix.a * point.x + matrix.c * point.y + matrix.tx,
+                    y: matrix.b * point.x + matrix.d * point.y + matrix.ty)
+        }
+        winSegments = segments.map { segment in
+            switch segment {
+            case .move(let point): return .move(map(point))
+            case .line(let point): return .line(map(point))
+            case .curve(let end, let c1, let c2): return .curve(to: map(end), control1: map(c1), control2: map(c2))
+            case .close: return .close
+            }
+        }
+    }
+
     // Appends a segment and tracks the pen position.
     func winAppend(_ segment: NativePathSegment) {
         winSegments.append(segment)
@@ -83,6 +132,56 @@ public class CGPath {
             winCurrentPoint = endPoint
         case .close:
             break
+        }
+    }
+}
+
+/// One element of a path, as Core Graphics' `CGPathElement`.
+public struct CGPathElement {
+    /// The kinds of element a path is made of.
+    public enum ElementType: Sendable {
+        case moveToPoint
+        case addLineToPoint
+        case addQuadCurveToPoint
+        case addCurveToPoint
+        case closeSubpath
+    }
+
+    /// Which kind this element is.
+    public let type: ElementType
+
+    /// The element's points: one for a move or line, two for a quad curve,
+    /// three for a cubic, none for a close — the same packing CG uses.
+    public let points: UnsafeMutablePointer<CGPoint>
+}
+
+extension CGPath {
+    /// Walks the path's elements, as Core Graphics' `applyWithBlock`.
+    ///
+    /// The way a path is *read* rather than built — flattening a shape into
+    /// polylines, hit-testing it, exporting it. The framework stores cubic
+    /// segments, so a quadratic is never reported: it was elevated to a cubic
+    /// when it was added, exactly as the native renderers require.
+    public func applyWithBlock(_ body: (UnsafePointer<CGPathElement>) -> Void) {
+        for segment in winSegments {
+            var storage: [CGPoint]
+            let type: CGPathElement.ElementType
+            switch segment {
+            case .move(let point):
+                storage = [point]; type = .moveToPoint
+            case .line(let point):
+                storage = [point]; type = .addLineToPoint
+            case .curve(let end, let c1, let c2):
+                // CG orders a cubic's points control1, control2, endpoint.
+                storage = [c1, c2, end]; type = .addCurveToPoint
+            case .close:
+                storage = []; type = .closeSubpath
+            }
+            storage.withUnsafeMutableBufferPointer { buffer in
+                let base = buffer.baseAddress ?? UnsafeMutablePointer<CGPoint>.allocate(capacity: 1)
+                var element = CGPathElement(type: type, points: base)
+                withUnsafePointer(to: &element) { body($0) }
+            }
         }
     }
 }
@@ -498,6 +597,129 @@ extension NSGraphicsContext {
     /// not to through the current seam.
     public func setShouldAntialias(_ shouldAntialias: Bool) {
         winShouldAntialias = shouldAntialias
+    }
+
+    /// Draws a decoded image into a rectangle.
+    ///
+    /// `CGImage` already carries its pixels as RGBA8 and the drawing seam
+    /// already takes that form, so this is a real blit rather than a stub —
+    /// the same path a data-backed `NSImage` takes.
+    public func draw(_ image: CGImage, in rect: CGRect) {
+        nativeContext.drawImage(rgbaPixels: image.pixels,
+                                width: image.width,
+                                height: image.height,
+                                in: winTransformedRect(rect),
+                                tint: nil)
+    }
+
+    /// Replaces the pending path with the outline its stroke would cover.
+    ///
+    /// **The one CG call that is real geometry rather than a forwarding.** It
+    /// exists so a caller can *clip* to a stroke — `addPath; setLineWidth;
+    /// replacePathWithStrokedPath; clip; drawGradient` is how a gradient-filled
+    /// ring is drawn, and clipping to the unstroked path would fill the disc.
+    ///
+    /// The outline is built by flattening each subpath to a polyline and
+    /// offsetting it by half the line width to either side: outward for the
+    /// outer contour, inward for the inner one, which for the closed shapes
+    /// this is used on (rounded rects, ellipses, arcs) is exactly the stroke.
+    /// An open subpath gets the two offsets joined end to end, which is the
+    /// same figure a butt-capped stroke covers.
+    public func replacePathWithStrokedPath() {
+        let flattened = winFlattenedSubpaths()
+        let half = max(winLineWidth, 0.01) / 2
+        var outlined: [NativePathSegment] = []
+        for (points, isClosed) in flattened where points.count >= 2 {
+            let outer = Self.winOffsetContour(points, by: half, closed: isClosed)
+            let inner = Self.winOffsetContour(points, by: -half, closed: isClosed)
+            outlined += Self.winContourSegments(outer)
+            // The inner contour runs the other way so an even-odd or non-zero
+            // fill leaves the middle empty, which is what a stroke looks like.
+            outlined += Self.winContourSegments(inner.reversed())
+        }
+        winPendingSegments = outlined
+    }
+
+    // Flattens the pending path into polylines, one per subpath.
+    private func winFlattenedSubpaths() -> [([CGPoint], Bool)] {
+        var subpaths: [([CGPoint], Bool)] = []
+        var current: [CGPoint] = []
+        var here = CGPoint.zero
+
+        func flush(closed: Bool) {
+            if current.count >= 2 { subpaths.append((current, closed)) }
+            current = []
+        }
+
+        for segment in winPendingSegments {
+            switch segment {
+            case .move(let point):
+                flush(closed: false)
+                current = [point]
+                here = point
+            case .line(let point):
+                current.append(point)
+                here = point
+            case .curve(let end, let c1, let c2):
+                // 16 steps is invisible at any size these controls are drawn
+                // at, and keeps the outline cheap enough to run per frame.
+                let steps = 16
+                for step in 1...steps {
+                    let t = CGFloat(step) / CGFloat(steps)
+                    let u = 1 - t
+                    let x = u*u*u*here.x + 3*u*u*t*c1.x + 3*u*t*t*c2.x + t*t*t*end.x
+                    let y = u*u*u*here.y + 3*u*u*t*c1.y + 3*u*t*t*c2.y + t*t*t*end.y
+                    current.append(CGPoint(x: x, y: y))
+                }
+                here = end
+            case .close:
+                flush(closed: true)
+            }
+        }
+        flush(closed: false)
+        return subpaths
+    }
+
+    // Offsets a polyline by a signed distance along its own normals.
+    private static func winOffsetContour(_ points: [CGPoint], by distance: CGFloat,
+                                         closed: Bool) -> [CGPoint] {
+        var result: [CGPoint] = []
+        let count = points.count
+        for index in 0..<count {
+            let previous = points[(index - 1 + count) % count]
+            let next = points[(index + 1) % count]
+            // The vertex normal is the average of its two edge normals, which
+            // rounds corners slightly rather than mitering them — the right
+            // trade for a clip path.
+            let before = closed || index > 0 ? CGPoint(x: points[index].x - previous.x, y: points[index].y - previous.y) : .zero
+            let after = closed || index < count - 1 ? CGPoint(x: next.x - points[index].x, y: next.y - points[index].y) : .zero
+            var nx = -(before.y + after.y)
+            var ny = before.x + after.x
+            let length = (nx * nx + ny * ny).squareRoot()
+            guard length > 0 else { continue }
+            nx /= length
+            ny /= length
+            result.append(CGPoint(x: points[index].x + nx * distance,
+                                  y: points[index].y + ny * distance))
+        }
+        return result
+    }
+
+    // Turns a polyline back into path segments.
+    private static func winContourSegments(_ points: [CGPoint]) -> [NativePathSegment] {
+        guard let first = points.first else { return [] }
+        var segments: [NativePathSegment] = [.move(first)]
+        for point in points.dropFirst() { segments.append(.line(point)) }
+        segments.append(.close)
+        return segments
+    }
+
+    // The rect in device space, so an image lands where the transform says.
+    private func winTransformedRect(_ rect: CGRect) -> NSRect {
+        let origin = winTransform.apply(to: CGPoint(x: rect.minX, y: rect.minY))
+        let opposite = winTransform.apply(to: CGPoint(x: rect.maxX, y: rect.maxY))
+        return NSRect(x: min(origin.x, opposite.x), y: min(origin.y, opposite.y),
+                      width: abs(opposite.x - origin.x), height: abs(opposite.y - origin.y))
     }
 
     /// Fills the pending path with the fill color.

@@ -84,6 +84,23 @@ open class NSGestureRecognizer {
     /// Handles a release in the attached view. Subclasses override.
     open func mouseUp(with event: NSEvent) {}
 
+    /// Handles a secondary press. Subclasses override.
+    ///
+    /// A recognizer sees the whole button set, not just the primary one:
+    /// right-click context menus and middle-click-to-close are both built by
+    /// overriding here, and a recognizer missing them would push that work back
+    /// into every view.
+    open func rightMouseDown(with event: NSEvent) {}
+
+    /// Handles a secondary release. Subclasses override.
+    open func rightMouseUp(with event: NSEvent) {}
+
+    /// Handles a tertiary press. Subclasses override.
+    open func otherMouseDown(with event: NSEvent) {}
+
+    /// Handles a tertiary release. Subclasses override.
+    open func otherMouseUp(with event: NSEvent) {}
+
     // Records the event location and dispatches the action.
     func winReport(_ state: State, event: NSEvent) {
         self.state = state

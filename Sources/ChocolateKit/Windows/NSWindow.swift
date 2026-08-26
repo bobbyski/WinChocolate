@@ -561,6 +561,33 @@ open class NSWindow: NSResponder {
         _ = adapt(nil)
     }
 
+    /// Attaches a controller's view above or below the titlebar.
+    ///
+    /// Held rather than shown: no Chocolate backend draws content inside its
+    /// window chrome, so the accessory has nowhere to go. It is kept so a
+    /// window that configures one keeps the configuration, and so removing it
+    /// works — a window that silently discarded accessories would make
+    /// `remove` a crash waiting to happen.
+    open func addTitlebarAccessoryViewController(_ controller: NSTitlebarAccessoryViewController) {
+        winTitlebarAccessories.append(controller)
+        chocolateBackendWarn("NSWindow.addTitlebarAccessoryViewController: no titlebar content area on this backend.")
+    }
+
+    /// Removes a titlebar accessory by index.
+    open func removeTitlebarAccessoryViewController(at index: Int) {
+        guard winTitlebarAccessories.indices.contains(index) else { return }
+        winTitlebarAccessories.remove(at: index)
+    }
+
+    /// The accessories attached to the titlebar.
+    open var titlebarAccessoryViewControllers: [NSTitlebarAccessoryViewController] {
+        get { winTitlebarAccessories }
+        set { winTitlebarAccessories = newValue }
+    }
+
+    /// Backing storage for the titlebar accessories.
+    private var winTitlebarAccessories: [NSTitlebarAccessoryViewController] = []
+
     /// Converts a point in this window's coordinates to screen coordinates.
     ///
     /// A window's frame is already in screen space, so this is a translation by

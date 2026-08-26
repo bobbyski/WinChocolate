@@ -202,3 +202,65 @@ open class NSSearchToolbarItem: NSToolbarItem {
     /// Collapses the field back to a button.
     open func endSearchInteraction() { isSearchFieldExpanded = false }
 }
+
+/// The on/off switch, as AppKit's `NSSwitch`.
+///
+/// A real control: the backends all have a checkbox-shaped thing to realize it
+/// as, and the drawn path can paint the pill. What differs from Apple is only
+/// the look, which is what a platform's own switch is *for*.
+open class NSSwitch: NSControl {
+    /// Whether the switch is on.
+    open var state: NSControl.StateValue = .off {
+        didSet {
+            guard state != oldValue else { return }
+            needsDisplay = true
+            sendAction()
+        }
+    }
+
+    /// Creates a switch.
+    public required init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+    }
+}
+
+/// The system's application services, as AppKit's `NSWorkspace`.
+///
+/// Opening a URL is the one thing every platform can do — `ShellExecute`,
+/// `xdg-open`, `window.open` — and the one thing this is almost always used
+/// for. The rest of `NSWorkspace` (running applications, icons for file types,
+/// volume mounting) has no backend seam and is not pretended at.
+open class NSWorkspace: NSObject {
+    /// The shared workspace.
+    public static let shared = NSWorkspace()
+
+    /// Creates a workspace. Applications use `shared`.
+    public override init() {
+        super.init()
+    }
+
+    /// The icon a file's type is shown with.
+    ///
+    /// Nil everywhere: there is no system icon registry off Apple, and a
+    /// generic placeholder returned from here would be worse than nil — a
+    /// caller that checks gets to draw its own glyph, which is what the
+    /// framework's own file browser does.
+    open func icon(forFileType type: String) -> NSImage? { nil }
+
+    /// The icon for a file at a path.
+    open func icon(forFile path: String) -> NSImage? { nil }
+
+    /// Opens a URL in whatever the system considers its handler.
+    ///
+    /// **Every platform can do this and none of them can do it through the
+    /// current seam** — `ShellExecute`, `xdg-open` and `window.open` are three
+    /// one-line calls behind a `NativeControlBackend` method that does not
+    /// exist yet. Until it does, this reports and returns false, which is the
+    /// same answer AppKit gives for a URL nothing can handle, so a caller that
+    /// checks the result already behaves correctly here.
+    @discardableResult
+    open func open(_ url: URL) -> Bool {
+        chocolateBackendWarn("NSWorkspace.open(\(url)): no URL-opening call on this backend yet.")
+        return false
+    }
+}

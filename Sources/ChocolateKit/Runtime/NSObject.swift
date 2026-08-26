@@ -107,3 +107,54 @@ extension NSObject: Hashable {
         hasher.combine(ObjectIdentifier(self))
     }
 }
+
+/// Identity comparison for an untyped object reference.
+///
+/// AppKit-shaped code calls `isEqual` on `AnyObject` constantly — comparing a
+/// notification's object against a control, a delegate against self. Foundation
+/// gets it from `NSObjectProtocol`, which every Objective-C class conforms to;
+/// off Apple, an `AnyObject` might be a Swift class that conforms to nothing.
+///
+/// So the comparison is made the way it is actually meant: identity where the
+/// object is not one of ours, and the type's own answer where it is.
+extension NSObjectProtocol {
+    /// Whether this object is the same as, or equal to, another.
+    public func isEqual(_ object: AnyObject?) -> Bool {
+        isEqual(object as Any?)
+    }
+}
+
+// Foundation supplies these where it is present; only the WinFoundation build
+// is without them. Declaring them unconditionally made every call ambiguous,
+// which is the same two-module collision the browser arm hit for `Timer`.
+/// The name of a selector, as Foundation's `NSStringFromSelector`.
+///
+/// Off Apple a `Selector` *is* its name — the framework's selectors are
+/// strings, because there is no runtime to intern them into anything else — so
+/// this is the identity. Declared outside the WinFoundation gate because
+/// Foundation supplies it only where Objective-C does.
+public func NSStringFromSelector(_ selector: Selector) -> String {
+    String(describing: selector)
+}
+
+#if USE_WIN_FOUNDATION
+
+/// The name of a class, as Foundation's `NSStringFromClass`.
+///
+/// Off Apple there is no Objective-C runtime to ask, so this is Swift's own
+/// reflection — which gives the same answer for the Swift classes this
+/// framework and its consumers actually define.
+public func NSStringFromClass(_ aClass: AnyClass) -> String {
+    String(reflecting: aClass)
+}
+
+/// The class with a given name, as Foundation's `NSClassFromString`.
+///
+/// Always nil: resolving a class from a string needs a runtime registry that
+/// only Objective-C provides, and inventing one that answered sometimes would
+/// be worse than the nil Foundation itself returns for an unknown name.
+public func NSClassFromString(_ aClassName: String) -> AnyClass? {
+    nil
+}
+
+#endif

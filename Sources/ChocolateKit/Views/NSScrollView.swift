@@ -16,6 +16,17 @@ open class NSScrollView: NSView {
         didSet { needsDisplay = true }
     }
 
+    /// Insets between the scroll view's edges and its content.
+    open var contentInsets: NSEdgeInsets = NSEdgeInsetsZero {
+        didSet { needsLayout = true }
+    }
+
+    /// Whether the scroll view adds insets for window chrome itself.
+    ///
+    /// False is the honest default here: no Chocolate backend overlays content
+    /// with a translucent title bar, so there is nothing to adjust for.
+    open var automaticallyAdjustsContentInsets: Bool = false
+
     open var borderType: NSBorderType = .noBorder
     /// The clip view that hosts the document view.
     open var contentView: NSClipView {

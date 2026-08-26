@@ -42,6 +42,24 @@ open class NSDocumentController: NSObject {
     /// document types; WinChocolate has no Info.plist, so subclasses override
     /// this to supply their `NSDocument` subclass (any type name maps to the
     /// app's one class in the common single-type case).
+    /// The names of the document classes the app registered.
+    ///
+    /// AppKit reads these out of the Info.plist; an app that has no plist — or
+    /// is not a bundle at all — answers by overriding, which is why this is
+    /// `open` and empty rather than absent.
+    open var documentClassNames: [String] { [] }
+
+    /// The type a brand-new untitled document is created as.
+    open var defaultType: String? { nil }
+
+    /// The human-readable name of a registered type, for menus and panels.
+    open func displayName(forType typeName: String) -> String? { nil }
+
+    /// Resolves a file's type from its contents or extension.
+    open func typeForContents(of url: URL) throws -> String {
+        url.pathExtension
+    }
+
     open func documentClass(forType typeName: String) -> AnyClass? {
         winDocumentClass
     }

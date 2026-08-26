@@ -15,7 +15,7 @@ public enum NSDocumentError: Error, Equatable {
 /// `displayName`), the change count driving `isDocumentEdited`, throwing
 /// data/read/write overridables, and menu-driven `save`/`saveAs` flows that
 /// present an `NSSavePanel` when the document has no destination yet.
-open class NSDocument: NSObject {
+open class NSDocument: NSObject, @unchecked Sendable {
     /// A change to the document's edited state.
     ///
     /// Subset of AppKit's `NSDocument.ChangeType`; the undo-coalescing cases

@@ -27,15 +27,15 @@ extension NSTableView {
 
 
     /// Selection highlight style.
-    public enum SelectionHighlightStyle: Sendable {
+    public enum SelectionHighlightStyle: Int, Sendable {
+        /// No visible highlight.
+        case none = -1
+
         /// Regular table selection highlight.
-        case regular
+        case regular = 0
 
         /// Source-list style selection highlight.
-        case sourceList
-
-        /// No visible highlight.
-        case none
+        case sourceList = 1
     }
 
 

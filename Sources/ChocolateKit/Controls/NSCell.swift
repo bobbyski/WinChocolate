@@ -27,7 +27,10 @@ open class NSCell: NSObject {
     open var isEnabled: Bool
 
     /// Creates an empty cell.
-    public override init() {
+    ///
+    /// `required` so `NSTokenField.cellClass` can construct a substituted cell
+    /// subclass from its metatype — which is the entire point of the hook.
+    public required override init() {
         self.objectValue = nil
         self.isEditable = false
         self.isSelectable = false
@@ -93,7 +96,7 @@ public enum NSFocusRingType: Sendable {
 /// table column's `dataCell`, say) fall back to their own storage.
 open class NSTextFieldCell: NSCell {
     /// Creates a text cell.
-    public override init() {
+    public required override init() {
         super.init()
     }
 
@@ -150,6 +153,9 @@ open class NSTextFieldCell: NSCell {
             if let field { field.isBezeled = newValue } else { super.isBezeled = newValue }
         }
     }
+
+    /// Whether the last visible line is truncated rather than clipped.
+    open var truncatesLastVisibleLine: Bool = false
 
     /// The object the action is sent to.
     open var target: AnyObject? {
@@ -224,6 +230,48 @@ open class NSSegmentedCell: NSCell {
 
 /// The cell a token field draws with.
 open class NSTokenFieldCell: NSTextFieldCell {
+    // MARK: Geometry hooks
+    //
+    // The four below are AppKit's cell-drawing hooks, and they are `open`
+    // because adjusting the rect a cell draws into is *the* documented way to
+    // centre a token field's chips vertically. A cell that could not be
+    // subclassed here would force a reimplementation of the whole control.
+
+    /// The size the cell wants inside a bounding rectangle.
+    @MainActor
+    open func cellSize(forBounds rect: NSRect) -> NSSize {
+        let text = stringValue.isEmpty ? " " : stringValue
+        var attributes: [NSAttributedString.Key: Any] = [:]
+        if let font { attributes[.font] = font }
+        let measured = text.size(withAttributes: attributes)
+        return NSSize(width: min(measured.width, rect.width), height: measured.height)
+    }
+
+    /// The rectangle the cell's content is drawn into.
+    @MainActor
+    open func drawingRect(forBounds rect: NSRect) -> NSRect { rect }
+
+    /// Begins editing in a rectangle.
+    ///
+    /// The native control owns its own editing, so this records where editing
+    /// was asked to happen and lets the control do it — which keeps a
+    /// subclass's adjusted rect meaningful rather than discarded.
+    @MainActor
+    open func edit(withFrame rect: NSRect, in controlView: NSView,
+                   editor: NSText, delegate: Any?, event: NSEvent?) {
+        winEditingRect = rect
+    }
+
+    /// Selects a range within a rectangle.
+    @MainActor
+    open func select(withFrame rect: NSRect, in controlView: NSView,
+                     editor: NSText, delegate: Any?, start: Int, length: Int) {
+        winEditingRect = rect
+    }
+
+    /// Where editing was last asked to happen, for a backend that can use it.
+    public private(set) var winEditingRect: NSRect = .zero
+
     /// The characters that end a token as they are typed.
     open var tokenizingCharacterSet: CharacterSet = CharacterSet(charactersIn: ",")
 

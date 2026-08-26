@@ -209,6 +209,46 @@ public struct NSFont: Equatable {
 /// programmatic ports reach for; the full attribute-dictionary matching model
 /// is future work.
 public struct NSFontDescriptor: Equatable, Sendable {
+    /// The system's typeface designs, as AppKit's `SystemDesign`.
+    ///
+    /// Apple ships four cuts of the system font; nothing else does. The type
+    /// exists so code that asks for a rounded or monospaced system font keeps
+    /// compiling, and `withDesign` reports honestly whether it got one.
+    public struct SystemDesign: Hashable, Sendable {
+        /// The design's identifier.
+        public let rawValue: String
+
+        /// Creates a design from its identifier.
+        public init(_ rawValue: String) { self.rawValue = rawValue }
+
+        /// The standard system typeface.
+        public static let `default` = SystemDesign("default")
+        /// The rounded cut.
+        public static let rounded = SystemDesign("rounded")
+        /// The serif cut.
+        public static let serif = SystemDesign("serif")
+        /// The monospaced cut.
+        public static let monospaced = SystemDesign("monospaced")
+    }
+
+    /// A descriptor for a system design, or nil where the platform has none.
+    ///
+    /// **Nil is the truthful answer off Apple** for everything but the default,
+    /// and callers already handle it: AppKit returns nil for a design a font
+    /// cannot provide, so the fallback path is the one they were written to
+    /// take. `.monospaced` is the exception — every platform has a monospaced
+    /// face, and that is a real request rather than a brand.
+    public func withDesign(_ design: SystemDesign) -> NSFontDescriptor? {
+        switch design {
+        case .default:
+            return self
+        case .monospaced:
+            return NSFontDescriptor(name: "Menlo", size: pointSize, symbolicTraits: symbolicTraits)
+        default:
+            return nil
+        }
+    }
+
     /// Symbolic font traits.
     public struct SymbolicTraits: OptionSet, Sendable {
         /// Raw option value.

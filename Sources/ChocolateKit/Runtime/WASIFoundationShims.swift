@@ -20,6 +20,130 @@
 
 #if os(WASI)
 
+/// The slice of `UndoManager` an editor actually drives.
+///
+/// Foundation's is absent on WASI, and it is not a UI type — it is a stack of
+/// closures with a grouping discipline, which is exactly what this is. Undo has
+/// to work in a browser for a text editor to be worth shipping there, so this
+/// is a real implementation rather than a placeholder.
+public final class UndoManager {
+    private var undoStack: [[() -> Void]] = []
+    private var redoStack: [[() -> Void]] = []
+    private var openGroup: [() -> Void]?
+    private var isUndoing = false
+    private var isRedoing = false
+
+    /// Whether the manager registers new actions.
+    public var isUndoRegistrationEnabled = true
+
+    /// How many levels are kept, or 0 for no limit.
+    public var levelsOfUndo = 0
+
+    /// Creates an empty manager.
+    public init() {}
+
+    /// Whether there is anything to undo.
+    public var canUndo: Bool { !undoStack.isEmpty }
+
+    /// Whether there is anything to redo.
+    public var canRedo: Bool { !redoStack.isEmpty }
+
+    /// The name of the action `undo()` would perform, for the Edit menu.
+    public private(set) var undoActionName: String = ""
+
+    /// The name of the action `redo()` would perform.
+    public private(set) var redoActionName: String = ""
+
+    /// Names the action being registered, so the menu can read "Undo Rename".
+    public func setActionName(_ name: String) {
+        if isUndoing {
+            redoActionName = name
+        } else {
+            undoActionName = name
+        }
+    }
+
+    /// Registers an undo against a target the manager holds weakly.
+    ///
+    /// Foundation's shape, and the one callers use — a closure capturing the
+    /// target directly would keep a view alive past its window.
+    public func registerUndo<Target: AnyObject>(
+        withTarget target: Target,
+        handler: @escaping (Target) -> Void
+    ) {
+        registerUndo { [weak target] in
+            guard let target else { return }
+            handler(target)
+        }
+    }
+
+    /// Registers a closure that reverses the change just made.
+    ///
+    /// Registering *during* an undo is how redo is built, which is why the
+    /// destination depends on what is running — the same rule Foundation's has.
+    public func registerUndo(_ body: @escaping () -> Void) {
+        guard isUndoRegistrationEnabled else { return }
+        if openGroup != nil {
+            openGroup?.append(body)
+        } else if isUndoing {
+            redoStack.append([body])
+        } else {
+            undoStack.append([body])
+            if !isRedoing { redoStack.removeAll() }
+            trim()
+        }
+    }
+
+    /// Begins a group; every registration until `endUndoGrouping` undoes together.
+    public func beginUndoGrouping() {
+        openGroup = []
+    }
+
+    /// Closes the open group.
+    public func endUndoGrouping() {
+        guard let group = openGroup else { return }
+        openGroup = nil
+        guard !group.isEmpty else { return }
+        if isUndoing {
+            redoStack.append(group)
+        } else {
+            undoStack.append(group)
+            if !isRedoing { redoStack.removeAll() }
+            trim()
+        }
+    }
+
+    /// Undoes the most recent action or group.
+    public func undo() {
+        guard let group = undoStack.popLast() else { return }
+        isUndoing = true
+        // Reversed: the closures were registered in the order the changes
+        // happened, and undoing them forwards would apply them backwards.
+        for body in group.reversed() { body() }
+        isUndoing = false
+    }
+
+    /// Redoes the most recently undone action or group.
+    public func redo() {
+        guard let group = redoStack.popLast() else { return }
+        isRedoing = true
+        for body in group.reversed() { body() }
+        isRedoing = false
+    }
+
+    /// Discards everything.
+    public func removeAllActions() {
+        undoStack.removeAll()
+        redoStack.removeAll()
+        openGroup = nil
+    }
+
+    private func trim() {
+        guard levelsOfUndo > 0, undoStack.count > levelsOfUndo else { return }
+        undoStack.removeFirst(undoStack.count - levelsOfUndo)
+    }
+}
+
 /// The slice of `Thread` that means anything on a single-threaded page.
 ///
 /// WASI has no threads, so the answer is not "unknown" — it is *yes*, always:

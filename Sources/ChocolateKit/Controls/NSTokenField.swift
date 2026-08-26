@@ -26,6 +26,20 @@ public struct NSTokenChipColors {
 /// This first slice keeps AppKit's `NSTokenField` name and token/object-value
 /// surface while using a normal editable text field as the classic Win32 peer.
 open class NSTokenField: NSTextField {
+    /// The cell class this field creates.
+    ///
+    /// AppKit's hook for substituting a cell subclass, and the documented way
+    /// to adjust how a token field draws — overriding it is how chips get
+    /// centred vertically.
+    open class var cellClass: AnyClass? {
+        get { NSTokenFieldCell.self }
+        set { _ = newValue }
+    }
+
+    override class func winMakeCell() -> NSTextFieldCell {
+        (cellClass as? NSTextFieldCell.Type)?.init() ?? NSTokenFieldCell()
+    }
+
     /// Token display style.
     public enum TokenStyle: Sendable {
         /// AppKit's default rounded token appearance.

@@ -217,6 +217,14 @@ open class NSTextField: NSControl {
         }
     }
 
+    /// The width the field lays its text out against when it wraps.
+    ///
+    /// A multiline label cannot size itself without knowing how wide it will
+    /// be; AppKit's answer is this property and so is ours.
+    open var preferredMaxLayoutWidth: CGFloat = 0 {
+        didSet { needsLayout = true }
+    }
+
     /// How text too long for the field is broken or truncated.
     open var lineBreakMode: NSLineBreakMode = .byTruncatingTail {
         didSet { needsDisplay = true }

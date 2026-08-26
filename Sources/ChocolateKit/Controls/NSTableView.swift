@@ -262,6 +262,73 @@ open class NSTableView: NSControl {
     /// applies it during live resize; here it is driven explicitly).
     open var columnAutoresizingStyle: ColumnAutoresizingStyle = .uniformColumnAutoresizingStyle
 
+    /// The table's overall look, as AppKit's `NSTableView.Style`.
+    ///
+    /// `.sourceList` is the one that matters: it is what makes a sidebar table
+    /// look like a sidebar rather than a spreadsheet. The backends draw their
+    /// own platform's list, so the value is carried and read by the drawn path
+    /// rather than reshaping a native control.
+    public enum Style: Sendable {
+        /// The system decides from context.
+        case automatic
+        /// A full-width table.
+        case fullWidth
+        /// An inset table.
+        case inset
+        /// The sidebar look.
+        case sourceList
+        /// A plain table.
+        case plain
+    }
+
+    /// The table's overall look.
+    open var style: Style = .automatic {
+        didSet { needsDisplay = true }
+    }
+
+    /// The colour drawn behind the rows.
+    open var backgroundColor: NSColor? {
+        didSet { needsDisplay = true }
+    }
+
+    /// The name column widths and order are remembered under.
+    ///
+    /// Persisted through the same preferences store the rest of the framework
+    /// uses, so a table restores its layout on every platform rather than only
+    /// where a defaults database exists.
+    open var autosaveName: String?
+
+    /// Whether column widths and order are saved automatically.
+    open var autosaveTableColumns: Bool = false
+
+    /// Runs a body for each row view currently realized.
+    ///
+    /// AppKit's way of reaching the row views without asking the delegate to
+    /// remake them — used to re-theme rows in place. The rows a backend has
+    /// realized are the ones it hands back.
+    open func enumerateAvailableRowViews(_ handler: (NSTableRowView, Int) -> Void) {
+        for (index, view) in winRealizedRowViews.sorted(by: { $0.key < $1.key }) {
+            handler(view, index)
+        }
+    }
+
+    /// Inserts rows at a set of indexes.
+    ///
+    /// The rows come from the data source, so this reloads: the animation
+    /// option is accepted and not performed — the rows appear, they just do
+    /// not slide in.
+    open func insertRows(at indexes: IndexSet, withAnimation options: AnimationOptions = []) {
+        reloadData()
+    }
+
+    /// Removes rows at a set of indexes.
+    open func removeRows(at indexes: IndexSet, withAnimation options: AnimationOptions = []) {
+        reloadData()
+    }
+
+    /// Row views the backend has realized, keyed by row.
+    var winRealizedRowViews: [Int: NSTableRowView] = [:]
+
     /// Resizes the last column so the columns exactly fill the table's width,
     /// clamped to that column's min/max — AppKit's `sizeLastColumnToFit()`.
     open func sizeLastColumnToFit() {

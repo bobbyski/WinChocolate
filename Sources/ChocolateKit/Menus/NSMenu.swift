@@ -5,6 +5,7 @@
 /// submenus such as the application menu containing Quit.
 /// The methods a menu delegate uses to refresh a menu before display,
 /// matching AppKit's shape.
+@MainActor
 public protocol NSMenuDelegate: NSObjectProtocol {
     /// Asks the delegate to bring the menu's items up to date.
     func menuNeedsUpdate(_ menu: NSMenu)
@@ -78,7 +79,10 @@ open class NSMenu: NSObject {
     /// The delegate's `menuNeedsUpdate` runs first, so dynamic item
     /// providers rebuild before validation walks the items.
     open func update() {
-        delegate?.menuNeedsUpdate(self)
+        // The delegate is @MainActor, as AppKit's is, and menu updates run on
+        // the UI thread. Asserted rather than hopped: a hop would let the menu
+        // display before the delegate had rebuilt it.
+        MainActor.assumeIsolated { delegate?.menuNeedsUpdate(self) }
         for item in items {
             if autoenablesItems, !item.isSeparatorItem, item.submenu == nil {
                 item.isEnabled = validatedEnablement(for: item)
