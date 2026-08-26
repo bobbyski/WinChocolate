@@ -688,8 +688,7 @@ public final class WASMNativeControlBackend: InMemoryNativeControlBackend {
     public override func setComboBoxItems(_ items: [String], text: String, for handle: NativeHandle) {
         super.setComboBoxItems(items, text: text, for: handle)
         if let list = comboLists[handle] {
-            _ = list.removeAllChildren()
-            fillComboOptions(list, items: items)
+            fillComboOptions(handle, list, items: items)
         }
         inputElements[handle]?.value = text
     }

@@ -8,6 +8,18 @@
 /// effective native fill is selection-aware: when `isSelected`, it shows the
 /// selection color instead, matching `NSTableRowView`'s built-in highlight.
 open class NSTableRowView: NSView {
+    /// Draws the row's selection highlight.
+    ///
+    /// AppKit's own hook for repainting a selection — the one place a table can
+    /// take its highlight from a stylesheet rather than the system accent.
+    /// Subclasses override it; the base fills with the selection colour when
+    /// the row is selected, which is what `super` does on Apple too.
+    open func drawSelection(in dirtyRect: NSRect) {
+        guard isSelected else { return }
+        NSColor.selectedTextBackgroundColor.setFill()
+        dirtyRect.fill()
+    }
+
     /// Whether the row is selected.
     open var isSelected: Bool = false {
         didSet {

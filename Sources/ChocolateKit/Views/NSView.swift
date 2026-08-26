@@ -148,6 +148,9 @@ open class NSView: NSResponder {
     /// Backend that created the native peer, if realized.
     public internal(set) weak var realizedBackend: NativeControlBackend?
 
+    /// Backing storage for `layer` (`Appearance/CALayer.swift`).
+    internal var winBackingLayer: CALayer?
+
     /// Whether the view needs a redraw on the next paint pass.
     ///
     /// Setting `true` invalidates the realized native peer; the flag clears

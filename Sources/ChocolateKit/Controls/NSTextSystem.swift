@@ -14,6 +14,15 @@
 
 /// The shape text flows into, as AppKit's `NSTextContainer`.
 open class NSTextContainer: NSObject {
+    /// The area available for text, under AppKit's older spelling.
+    ///
+    /// `size` and `containerSize` are the same storage, as they are in AppKit:
+    /// the property was renamed and both names still work.
+    open var containerSize: NSSize {
+        get { size }
+        set { size = newValue }
+    }
+
     /// The area available for text, in the text view's coordinates.
     open var size: NSSize = .zero {
         didSet { textView?.needsLayout = true }
@@ -90,6 +99,16 @@ open class NSLayoutManager: NSObject {
     /// framework does not have.
     open func ensureLayout(for container: NSTextContainer) {
         textView?.layout()
+    }
+
+    /// The rectangle the laid-out text actually occupies in a container.
+    ///
+    /// Measured through the backend's text metrics rather than a glyph run,
+    /// which is the same answer for text no backend here re-shapes.
+    open func usedRect(for container: NSTextContainer) -> NSRect {
+        guard let text = textStorage?.string, !text.isEmpty else { return .zero }
+        let size = text.size(withAttributes: nil, maxWidth: container.size.width)
+        return NSRect(origin: .zero, size: size)
     }
 
     /// The number of glyphs, which off Apple is the number of characters: no

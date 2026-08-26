@@ -13,6 +13,9 @@
 /// is why the wrong superclass went unnoticed. `stringValue` is declared here
 /// too, pending the NSControl value-accessor work.
 open class NSPathControl: NSControl {
+    /// Grey text shown when the control has no path.
+    open var placeholderString: String?
+
     /// Path control display style.
     public enum Style: Sendable {
         /// Standard path style.
