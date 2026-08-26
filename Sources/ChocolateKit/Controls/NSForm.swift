@@ -42,7 +42,7 @@ open class NSFormCell: NSTextFieldCell {
     }
 
     /// Creates an empty form cell.
-    public required override init() {
+    public required init() {
         self.title = ""
         super.init()
         self.isEditable = true

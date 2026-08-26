@@ -7,7 +7,7 @@ open class NSButtonCell: NSCell {
     open var state: NSControl.StateValue
 
     /// Creates an empty button cell.
-    public required override init() {
+    public required init() {
         self.title = ""
         self.state = .off
         super.init()

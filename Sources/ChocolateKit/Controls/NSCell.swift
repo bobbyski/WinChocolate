@@ -67,6 +67,12 @@ open class NSCell: NSObject {
     /// Whether text wraps to more lines rather than being clipped.
     open var wraps: Bool = false
 
+    /// Whether the last visible line is truncated rather than clipped.
+    ///
+    /// On `NSCell` rather than the text subclass, as AppKit has it — which is
+    /// why callers reach it through the base-typed `cell` without a cast.
+    open var truncatesLastVisibleLine: Bool = false
+
     /// Whether the cell scrolls its text horizontally instead of wrapping.
     open var isScrollable: Bool = true
 
@@ -96,7 +102,7 @@ public enum NSFocusRingType: Sendable {
 /// table column's `dataCell`, say) fall back to their own storage.
 open class NSTextFieldCell: NSCell {
     /// Creates a text cell.
-    public required override init() {
+    public required init() {
         super.init()
     }
 
@@ -153,9 +159,6 @@ open class NSTextFieldCell: NSCell {
             if let field { field.isBezeled = newValue } else { super.isBezeled = newValue }
         }
     }
-
-    /// Whether the last visible line is truncated rather than clipped.
-    open var truncatesLastVisibleLine: Bool = false
 
     /// The object the action is sent to.
     open var target: AnyObject? {

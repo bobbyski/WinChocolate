@@ -19,7 +19,7 @@ open class NSPopUpButton: NSControl {
     /// Created on first use and bound, like `NSTextField.cell`. Ported code
     /// reaches through it for `arrowPosition`, which is the one property that
     /// only ever lived on the cell.
-    open var cell: NSPopUpButtonCell? {
+    open var cell: NSCell? {
         if let winCell { return winCell }
         let created = NSPopUpButtonCell()
         created.controlView = self

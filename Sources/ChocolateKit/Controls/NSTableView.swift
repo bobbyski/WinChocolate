@@ -229,8 +229,8 @@ open class NSTableView: NSControl {
             self.rawValue = rawValue
         }
 
-        /// No animation.
-        public static let effectNone = AnimationOptions(rawValue: 0)
+        /// No animation — the empty set, as AppKit's is.
+        public static let effectNone: AnimationOptions = []
         /// Fade the rows in or out.
         public static let effectFade = AnimationOptions(rawValue: 1 << 1)
         /// Slide the rows up.

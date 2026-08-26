@@ -60,7 +60,7 @@ open class NSSegmentedControl: NSControl {
     ///
     /// Bound like the other cell-backed controls, so `(control.cell as?
     /// NSSegmentedCell)?.isBordered = false` reaches the control it names.
-    open var cell: NSSegmentedCell? {
+    open var cell: NSCell? {
         if let winCell { return winCell }
         let created = NSSegmentedCell()
         created.controlView = self

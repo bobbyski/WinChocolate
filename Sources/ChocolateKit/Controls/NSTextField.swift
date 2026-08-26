@@ -254,7 +254,7 @@ open class NSTextField: NSControl {
     /// Assigning a cell rebinds it; assigning nil detaches the current one,
     /// which then keeps its own values rather than writing to a field it no
     /// longer belongs to.
-    open var cell: NSTextFieldCell? {
+    open var cell: NSCell? {
         get {
             if let winCell { return winCell }
             let created = Self.winMakeCell()
@@ -265,7 +265,10 @@ open class NSTextField: NSControl {
         set {
             winCell?.controlView = nil
             newValue?.controlView = self
-            winCell = newValue
+            // A field's cell is a text cell, as it is in AppKit — assigning
+            // some other kind detaches the old one and leaves the field
+            // cell-less, which is what AppKit does with a mismatched class too.
+            winCell = newValue as? NSTextFieldCell
         }
     }
 
