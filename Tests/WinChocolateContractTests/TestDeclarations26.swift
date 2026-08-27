@@ -120,3 +120,59 @@ func testFoundationTypesMatchApplesShapes() {
     testFoundationCodableAndHashableShapes()
 }
 
+
+func testWindowFrameAutosaveRoundTrips() {
+    // A unique name per run: these tests share one persistent store with
+    // whatever else the process has written, and a frame left behind by an
+    // earlier run would make this pass for the wrong reason.
+    let name = "ChocolateTestFrame-\(ProcessInfo.processInfo.processIdentifier)"
+    let backend = NSApplication.shared.nativeBackend
+    backend.setPersistentValue(nil, forKey: "NSWindow Frame \(name)")
+
+    let window = NSWindow(
+        contentRect: NSMakeRect(0, 0, 300, 200),
+        styleMask: [.titled, .closable, .resizable],
+        backing: .buffered,
+        defer: false
+    )
+    expect(window.frameAutosaveName.isEmpty,
+           "A new window should not autosave until it is given a name.")
+
+    // Nothing saved yet, so naming it must leave the designed frame alone.
+    expect(window.setFrameAutosaveName(name),
+           "An unused autosave name should be accepted.")
+    expect(window.frame.size.width == 300,
+           "A first launch has nothing to restore, so the frame should not move. "
+               + "Got \(window.frame).")
+
+    // Moving it writes through…
+    window.setFrame(NSMakeRect(40, 60, 320, 240), display: true)
+    expect(backend.persistentValue(forKey: "NSWindow Frame \(name)") != nil,
+           "Moving an autosaving window should persist its frame.")
+
+    // …and a second window under the same name reads it back. This is the
+    // whole feature: a relaunch is a different window object.
+    let second = NSWindow(
+        contentRect: NSMakeRect(0, 0, 300, 200),
+        styleMask: [.titled, .closable, .resizable],
+        backing: .buffered,
+        defer: false
+    )
+    expect(second.setFrameUsingName(name),
+           "A saved frame should be found under its name.")
+    expect(second.frame == NSMakeRect(40, 60, 320, 240),
+           "The restored frame should match what was saved. Got \(second.frame).")
+
+    // Two windows must not share one stored frame.
+    expect(window.setFrameAutosaveName(name),
+           "Re-setting the same name on the same window is not a conflict.")
+    _ = second.setFrameAutosaveName(name)
+    expect(second.frameAutosaveName != name || window.frameAutosaveName != name,
+           "Two live windows should not both autosave under one name.")
+
+    window.close()
+    second.close()
+    backend.setPersistentValue(nil, forKey: "NSWindow Frame \(name)")
+    expect(backend.persistentValue(forKey: "NSWindow Frame \(name)") == nil,
+           "Writing nil should remove a persisted value.")
+}

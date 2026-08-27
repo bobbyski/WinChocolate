@@ -1,0 +1,1391 @@
+{
+  "": {
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/master.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Accessibility/NSAccessibilityElement.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSAccessibilityElement.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSAccessibilityElement.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSAccessibilityElement~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSAccessibilityElement.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Accessibility/NSAccessibilityRole.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSAccessibilityRole.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSAccessibilityRole.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSAccessibilityRole~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSAccessibilityRole.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Accessibility/NSAccessibilityTree.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSAccessibilityTree.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSAccessibilityTree.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSAccessibilityTree~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSAccessibilityTree.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Appearance/CALayer.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/CALayer.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/CALayer.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/CALayer~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/CALayer.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Appearance/CGCompat.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/CGCompat.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/CGCompat.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/CGCompat~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/CGCompat.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Appearance/NSAppearance.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSAppearance.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSAppearance.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSAppearance~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSAppearance.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Appearance/NSAttributedString.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSAttributedString.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSAttributedString.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSAttributedString~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSAttributedString.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Appearance/NSAttributedStringRTF.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSAttributedStringRTF.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSAttributedStringRTF.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSAttributedStringRTF~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSAttributedStringRTF.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Appearance/NSBezierPath.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSBezierPath.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSBezierPath.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSBezierPath~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSBezierPath.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Appearance/NSBitmapImageRep.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSBitmapImageRep.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSBitmapImageRep.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSBitmapImageRep~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSBitmapImageRep.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Appearance/NSColor.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSColor.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSColor.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSColor~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSColor.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Appearance/NSColorCompat.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSColorCompat.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSColorCompat.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSColorCompat~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSColorCompat.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Appearance/NSCursor.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSCursor.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSCursor.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSCursor~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSCursor.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Appearance/NSFont.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSFont.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSFont.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSFont~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSFont.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Appearance/NSFontCompat.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSFontCompat.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSFontCompat.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSFontCompat~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSFontCompat.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Appearance/NSFontManager.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSFontManager.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSFontManager.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSFontManager~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSFontManager.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Appearance/NSGradient.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSGradient.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSGradient.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSGradient~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSGradient.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Appearance/NSGraphicsContext.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSGraphicsContext.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSGraphicsContext.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSGraphicsContext~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSGraphicsContext.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Appearance/NSParagraphStyle.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSParagraphStyle.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSParagraphStyle.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSParagraphStyle~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSParagraphStyle.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Appearance/NSTextStorage.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSTextStorage.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSTextStorage.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSTextStorage~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSTextStorage.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Appearance/WinSVGPath.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/WinSVGPath.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/WinSVGPath.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/WinSVGPath~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/WinSVGPath.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Appearance/WinTablerIcons.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/WinTablerIcons.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/WinTablerIcons.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/WinTablerIcons~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/WinTablerIcons.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Application/ChocolateBackendSelection.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/ChocolateBackendSelection.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/ChocolateBackendSelection.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/ChocolateBackendSelection~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/ChocolateBackendSelection.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Application/NSApplication.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSApplication.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSApplication.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSApplication~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSApplication.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Application/NSApplicationDelegate.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSApplicationDelegate.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSApplicationDelegate.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSApplicationDelegate~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSApplicationDelegate.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Application/NSNotification.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSNotification.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSNotification.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSNotification~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSNotification.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Application/NSPasteboard.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSPasteboard.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSPasteboard.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSPasteboard~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSPasteboard.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Application/WinPresentation.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/WinPresentation.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/WinPresentation.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/WinPresentation~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/WinPresentation.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Controls/NSBrowser.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSBrowser.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSBrowser.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSBrowser~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSBrowser.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Controls/NSButton.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSButton.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSButton.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSButton~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSButton.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Controls/NSCell.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSCell.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSCell.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSCell~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSCell.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Controls/NSCollectionView.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSCollectionView.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSCollectionView.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSCollectionView~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSCollectionView.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Controls/NSCollectionViewLayout.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSCollectionViewLayout.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSCollectionViewLayout.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSCollectionViewLayout~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSCollectionViewLayout.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Controls/NSColorWell.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSColorWell.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSColorWell.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSColorWell~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSColorWell.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Controls/NSComboBox.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSComboBox.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSComboBox.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSComboBox~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSComboBox.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Controls/NSControl.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSControl.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSControl.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSControl~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSControl.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Controls/NSDatePicker.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSDatePicker.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSDatePicker.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSDatePicker~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSDatePicker.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Controls/NSDatePickerEditing.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSDatePickerEditing.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSDatePickerEditing.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSDatePickerEditing~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSDatePickerEditing.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Controls/NSForm.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSForm.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSForm.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSForm~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSForm.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Controls/NSImageView.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSImageView.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSImageView.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSImageView~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSImageView.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Controls/NSLevelIndicator.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSLevelIndicator.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSLevelIndicator.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSLevelIndicator~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSLevelIndicator.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Controls/NSMatrix.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSMatrix.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSMatrix.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSMatrix~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSMatrix.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Controls/NSOutlineView.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSOutlineView.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSOutlineView.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSOutlineView~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSOutlineView.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Controls/NSOutlineViewSupport.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSOutlineViewSupport.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSOutlineViewSupport.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSOutlineViewSupport~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSOutlineViewSupport.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Controls/NSPathControl.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSPathControl.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSPathControl.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSPathControl~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSPathControl.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Controls/NSPopUpButton.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSPopUpButton.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSPopUpButton.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSPopUpButton~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSPopUpButton.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Controls/NSProgressIndicator.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSProgressIndicator.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSProgressIndicator.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSProgressIndicator~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSProgressIndicator.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Controls/NSScroller.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSScroller.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSScroller.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSScroller~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSScroller.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Controls/NSSearchField.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSSearchField.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSSearchField.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSSearchField~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSSearchField.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Controls/NSSecureTextField.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSSecureTextField.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSSecureTextField.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSSecureTextField~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSSecureTextField.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Controls/NSSegmentedControl.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSSegmentedControl.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSSegmentedControl.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSSegmentedControl~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSSegmentedControl.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Controls/NSSlider.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSSlider.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSSlider.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSSlider~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSSlider.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Controls/NSStepper.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSStepper.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSStepper.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSStepper~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSStepper.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Controls/NSSystemUI.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSSystemUI.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSSystemUI.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSSystemUI~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSSystemUI.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Controls/NSTabView.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSTabView.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSTabView.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSTabView~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSTabView.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Controls/NSTableCellView.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSTableCellView.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSTableCellView.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSTableCellView~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSTableCellView.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Controls/NSTableColumn.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSTableColumn.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSTableColumn.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSTableColumn~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSTableColumn.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Controls/NSTableHeaderView.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSTableHeaderView.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSTableHeaderView.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSTableHeaderView~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSTableHeaderView.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Controls/NSTableRowView.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSTableRowView.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSTableRowView.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSTableRowView~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSTableRowView.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Controls/NSTableView.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSTableView.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSTableView.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSTableView~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSTableView.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Controls/NSTableViewDrawn.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSTableViewDrawn.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSTableViewDrawn.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSTableViewDrawn~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSTableViewDrawn.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Controls/NSTableViewDrawnHeader.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSTableViewDrawnHeader.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSTableViewDrawnHeader.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSTableViewDrawnHeader~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSTableViewDrawnHeader.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Controls/NSTableViewDrawnInteraction.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSTableViewDrawnInteraction.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSTableViewDrawnInteraction.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSTableViewDrawnInteraction~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSTableViewDrawnInteraction.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Controls/NSTableViewDrawnLayout.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSTableViewDrawnLayout.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSTableViewDrawnLayout.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSTableViewDrawnLayout~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSTableViewDrawnLayout.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Controls/NSTableViewSelection.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSTableViewSelection.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSTableViewSelection.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSTableViewSelection~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSTableViewSelection.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Controls/NSTableViewSupport.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSTableViewSupport.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSTableViewSupport.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSTableViewSupport~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSTableViewSupport.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Controls/NSTableViewTypes.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSTableViewTypes.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSTableViewTypes.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSTableViewTypes~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSTableViewTypes.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Controls/NSTextField.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSTextField.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSTextField.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSTextField~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSTextField.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Controls/NSTextFinder.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSTextFinder.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSTextFinder.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSTextFinder~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSTextFinder.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Controls/NSTextSystem.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSTextSystem.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSTextSystem.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSTextSystem~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSTextSystem.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Controls/NSTextView.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSTextView.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSTextView.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSTextView~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSTextView.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Controls/NSTokenField.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSTokenField.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSTokenField.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSTokenField~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSTokenField.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Dialogs/NSAlert.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSAlert.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSAlert.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSAlert~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSAlert.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Dialogs/NSColorPanel.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSColorPanel.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSColorPanel.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSColorPanel~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSColorPanel.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Dialogs/NSFontPanel.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSFontPanel.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSFontPanel.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSFontPanel~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSFontPanel.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Dialogs/NSPrintOperation.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSPrintOperation.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSPrintOperation.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSPrintOperation~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSPrintOperation.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Dialogs/NSSavePanel.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSSavePanel.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSSavePanel.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSSavePanel~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSSavePanel.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Documents/NSDocument.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSDocument.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSDocument.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSDocument~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSDocument.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Documents/NSDocumentController.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSDocumentController.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSDocumentController.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSDocumentController~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSDocumentController.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Documents/NSWindowController.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSWindowController.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSWindowController.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSWindowController~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSWindowController.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Events/NSDragging.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSDragging.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSDragging.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSDragging~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSDragging.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Events/NSEvent.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSEvent.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSEvent.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSEvent~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSEvent.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Events/NSGestureRecognizer.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSGestureRecognizer.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSGestureRecognizer.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSGestureRecognizer~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSGestureRecognizer.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Events/NSResponder.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSResponder.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSResponder.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSResponder~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSResponder.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Events/NSTrackingArea.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSTrackingArea.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSTrackingArea.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSTrackingArea~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSTrackingArea.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Geometry/CoordinateSpace.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/CoordinateSpace.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/CoordinateSpace.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/CoordinateSpace~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/CoordinateSpace.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Geometry/NSGeometry.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSGeometry.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSGeometry.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSGeometry~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSGeometry.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Layout/NSGridView.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSGridView.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSGridView.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSGridView~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSGridView.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Layout/NSGridViewLayoutSupport.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSGridViewLayoutSupport.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSGridViewLayoutSupport.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSGridViewLayoutSupport~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSGridViewLayoutSupport.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Layout/NSLayoutAnchor.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSLayoutAnchor.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSLayoutAnchor.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSLayoutAnchor~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSLayoutAnchor.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Layout/NSLayoutConstraint.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSLayoutConstraint.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSLayoutConstraint.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSLayoutConstraint~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSLayoutConstraint.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Layout/NSLayoutGuide.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSLayoutGuide.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSLayoutGuide.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSLayoutGuide~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSLayoutGuide.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Layout/NSLayoutPump.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSLayoutPump.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSLayoutPump.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSLayoutPump~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSLayoutPump.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Layout/NSLayoutSolver.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSLayoutSolver.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSLayoutSolver.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSLayoutSolver~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSLayoutSolver.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Layout/NSStackView.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSStackView.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSStackView.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSStackView~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSStackView.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Layout/NSStackViewLayout.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSStackViewLayout.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSStackViewLayout.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSStackViewLayout~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSStackViewLayout.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Layout/NSView+Layout.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSView+Layout.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSView+Layout.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSView+Layout~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSView+Layout.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Media/NSSound.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSSound.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSSound.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSSound~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSSound.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Menus/NSMenu.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSMenu.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSMenu.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSMenu~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSMenu.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Menus/NSMenuItem.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSMenuItem.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSMenuItem.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSMenuItem~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSMenuItem.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Native/GTK/GLibMainActorExecutor.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/GLibMainActorExecutor.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/GLibMainActorExecutor.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/GLibMainActorExecutor~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/GLibMainActorExecutor.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Native/GTK/GTKNativeControlBackend.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/GTKNativeControlBackend.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/GTKNativeControlBackend.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/GTKNativeControlBackend~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/GTKNativeControlBackend.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Native/GTK/GTKNativeControlBackendPart01.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/GTKNativeControlBackendPart01.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/GTKNativeControlBackendPart01.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/GTKNativeControlBackendPart01~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/GTKNativeControlBackendPart01.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Native/GTK/GTKNativeControlBackendPart02.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/GTKNativeControlBackendPart02.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/GTKNativeControlBackendPart02.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/GTKNativeControlBackendPart02~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/GTKNativeControlBackendPart02.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Native/GTK/GTKNativeControlBackendPart03.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/GTKNativeControlBackendPart03.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/GTKNativeControlBackendPart03.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/GTKNativeControlBackendPart03~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/GTKNativeControlBackendPart03.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Native/GTK/GTKNativeControlBackendPart04.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/GTKNativeControlBackendPart04.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/GTKNativeControlBackendPart04.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/GTKNativeControlBackendPart04~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/GTKNativeControlBackendPart04.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Native/GTK/GTKNativeControlBackendPart05.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/GTKNativeControlBackendPart05.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/GTKNativeControlBackendPart05.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/GTKNativeControlBackendPart05~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/GTKNativeControlBackendPart05.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Native/GTK/GTKNativeControlBackendPart06.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/GTKNativeControlBackendPart06.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/GTKNativeControlBackendPart06.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/GTKNativeControlBackendPart06~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/GTKNativeControlBackendPart06.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Native/GTK/GTKNativeControlBackendPart07.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/GTKNativeControlBackendPart07.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/GTKNativeControlBackendPart07.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/GTKNativeControlBackendPart07~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/GTKNativeControlBackendPart07.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Native/GTK/GTKNativeControlBackendPart08.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/GTKNativeControlBackendPart08.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/GTKNativeControlBackendPart08.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/GTKNativeControlBackendPart08~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/GTKNativeControlBackendPart08.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Native/GTK/GTKNativeControlBackendPart09.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/GTKNativeControlBackendPart09.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/GTKNativeControlBackendPart09.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/GTKNativeControlBackendPart09~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/GTKNativeControlBackendPart09.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Native/GTK/GTKNativeControlBackendPart10.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/GTKNativeControlBackendPart10.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/GTKNativeControlBackendPart10.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/GTKNativeControlBackendPart10~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/GTKNativeControlBackendPart10.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Native/GTK/GTKNativeControlBackendPart11.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/GTKNativeControlBackendPart11.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/GTKNativeControlBackendPart11.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/GTKNativeControlBackendPart11~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/GTKNativeControlBackendPart11.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Native/GTK/GTKNativeControlBackendPart12.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/GTKNativeControlBackendPart12.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/GTKNativeControlBackendPart12.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/GTKNativeControlBackendPart12~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/GTKNativeControlBackendPart12.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Native/GTK/GTKNativeControlBackendPart13.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/GTKNativeControlBackendPart13.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/GTKNativeControlBackendPart13.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/GTKNativeControlBackendPart13~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/GTKNativeControlBackendPart13.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Native/GTK/GTKNativeControlBackendPart14.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/GTKNativeControlBackendPart14.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/GTKNativeControlBackendPart14.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/GTKNativeControlBackendPart14~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/GTKNativeControlBackendPart14.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Native/GTK/GTKNativeControlBackendPart15.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/GTKNativeControlBackendPart15.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/GTKNativeControlBackendPart15.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/GTKNativeControlBackendPart15~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/GTKNativeControlBackendPart15.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Native/GTK/GTKNativeControlBackendPart16.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/GTKNativeControlBackendPart16.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/GTKNativeControlBackendPart16.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/GTKNativeControlBackendPart16~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/GTKNativeControlBackendPart16.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Native/GTK/GTKNativeControlBackendPart17.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/GTKNativeControlBackendPart17.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/GTKNativeControlBackendPart17.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/GTKNativeControlBackendPart17~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/GTKNativeControlBackendPart17.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Native/GTK/GTKNativeControlBackendPart18.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/GTKNativeControlBackendPart18.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/GTKNativeControlBackendPart18.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/GTKNativeControlBackendPart18~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/GTKNativeControlBackendPart18.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Native/GTK/GTKNativeControlBackendPart19.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/GTKNativeControlBackendPart19.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/GTKNativeControlBackendPart19.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/GTKNativeControlBackendPart19~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/GTKNativeControlBackendPart19.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Native/GTK/GTKNativeControlBackendPart20.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/GTKNativeControlBackendPart20.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/GTKNativeControlBackendPart20.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/GTKNativeControlBackendPart20~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/GTKNativeControlBackendPart20.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Native/GTK/GTKNativeControlBackendPart21.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/GTKNativeControlBackendPart21.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/GTKNativeControlBackendPart21.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/GTKNativeControlBackendPart21~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/GTKNativeControlBackendPart21.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Native/InMemoryNativeControlBackend.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/InMemoryNativeControlBackend.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/InMemoryNativeControlBackend.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/InMemoryNativeControlBackend~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/InMemoryNativeControlBackend.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Native/InMemoryNativeControlBackendApplication.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/InMemoryNativeControlBackendApplication.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/InMemoryNativeControlBackendApplication.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/InMemoryNativeControlBackendApplication~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/InMemoryNativeControlBackendApplication.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Native/InMemoryNativeControlBackendControls.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/InMemoryNativeControlBackendControls.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/InMemoryNativeControlBackendControls.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/InMemoryNativeControlBackendControls~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/InMemoryNativeControlBackendControls.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Native/InMemoryNativeControlBackendDateEditing.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/InMemoryNativeControlBackendDateEditing.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/InMemoryNativeControlBackendDateEditing.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/InMemoryNativeControlBackendDateEditing~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/InMemoryNativeControlBackendDateEditing.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Native/InMemoryNativeControlBackendDrawing.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/InMemoryNativeControlBackendDrawing.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/InMemoryNativeControlBackendDrawing.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/InMemoryNativeControlBackendDrawing~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/InMemoryNativeControlBackendDrawing.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Native/InMemoryNativeControlBackendState.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/InMemoryNativeControlBackendState.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/InMemoryNativeControlBackendState.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/InMemoryNativeControlBackendState~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/InMemoryNativeControlBackendState.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Native/InMemoryNativeControlBackendTables.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/InMemoryNativeControlBackendTables.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/InMemoryNativeControlBackendTables.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/InMemoryNativeControlBackendTables~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/InMemoryNativeControlBackendTables.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Native/InMemoryNativeControlBackendText.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/InMemoryNativeControlBackendText.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/InMemoryNativeControlBackendText.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/InMemoryNativeControlBackendText~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/InMemoryNativeControlBackendText.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Native/InMemoryNativeControlBackendWindows.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/InMemoryNativeControlBackendWindows.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/InMemoryNativeControlBackendWindows.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/InMemoryNativeControlBackendWindows~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/InMemoryNativeControlBackendWindows.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Native/NativeControlBackend.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NativeControlBackend.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NativeControlBackend.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NativeControlBackend~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NativeControlBackend.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Native/NativeControlBackendTypes.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NativeControlBackendTypes.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NativeControlBackendTypes.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NativeControlBackendTypes~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NativeControlBackendTypes.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Native/NativeHandle.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NativeHandle.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NativeHandle.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NativeHandle~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NativeHandle.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Native/WASM/WASMCanvasDrawingContext.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/WASMCanvasDrawingContext.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/WASMCanvasDrawingContext.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/WASMCanvasDrawingContext~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/WASMCanvasDrawingContext.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Native/WASM/WASMControlChrome.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/WASMControlChrome.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/WASMControlChrome.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/WASMControlChrome~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/WASMControlChrome.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Native/WASM/WASMEventTracking.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/WASMEventTracking.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/WASMEventTracking.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/WASMEventTracking~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/WASMEventTracking.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Native/WASM/WASMGeometryAndTimers.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/WASMGeometryAndTimers.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/WASMGeometryAndTimers.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/WASMGeometryAndTimers~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/WASMGeometryAndTimers.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Native/WASM/WASMInput.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/WASMInput.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/WASMInput.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/WASMInput~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/WASMInput.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Native/WASM/WASMLocalStorage.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/WASMLocalStorage.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/WASMLocalStorage.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/WASMLocalStorage~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/WASMLocalStorage.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Native/WASM/WASMNativeControlBackend.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/WASMNativeControlBackend.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/WASMNativeControlBackend.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/WASMNativeControlBackend~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/WASMNativeControlBackend.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Native/WASM/WASMPaintScheduler.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/WASMPaintScheduler.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/WASMPaintScheduler.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/WASMPaintScheduler~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/WASMPaintScheduler.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Native/WASM/WASMPlaceholders.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/WASMPlaceholders.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/WASMPlaceholders.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/WASMPlaceholders~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/WASMPlaceholders.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Native/WASM/WASMSimpleControls.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/WASMSimpleControls.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/WASMSimpleControls.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/WASMSimpleControls~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/WASMSimpleControls.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Native/WASM/WASMTableView.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/WASMTableView.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/WASMTableView.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/WASMTableView~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/WASMTableView.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Native/WASM/WASMToolbarChrome.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/WASMToolbarChrome.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/WASMToolbarChrome.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/WASMToolbarChrome~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/WASMToolbarChrome.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Native/WASM/WASMValueControls.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/WASMValueControls.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/WASMValueControls.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/WASMValueControls~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/WASMValueControls.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Native/WASM/WASMWindowChrome.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/WASMWindowChrome.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/WASMWindowChrome.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/WASMWindowChrome~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/WASMWindowChrome.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Native/Win32/Win32Appearance.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32Appearance.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32Appearance.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32Appearance~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32Appearance.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Native/Win32/Win32AppearanceLive.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32AppearanceLive.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32AppearanceLive.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32AppearanceLive~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32AppearanceLive.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Native/Win32/Win32Buttons.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32Buttons.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32Buttons.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32Buttons~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32Buttons.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Native/Win32/Win32Clipboard.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32Clipboard.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32Clipboard.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32Clipboard~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32Clipboard.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Native/Win32/Win32DatePickerControls.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32DatePickerControls.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32DatePickerControls.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32DatePickerControls~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32DatePickerControls.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Native/Win32/Win32Dialogs.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32Dialogs.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32Dialogs.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32Dialogs~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32Dialogs.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Native/Win32/Win32DragDrop.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32DragDrop.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32DragDrop.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32DragDrop~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32DragDrop.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Native/Win32/Win32DrawingContext.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32DrawingContext.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32DrawingContext.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32DrawingContext~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32DrawingContext.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Native/Win32/Win32EventRegistration.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32EventRegistration.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32EventRegistration.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32EventRegistration~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32EventRegistration.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Native/Win32/Win32FFI.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32FFI.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32FFI.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32FFI~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32FFI.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Native/Win32/Win32FFIDarkMenus.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32FFIDarkMenus.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32FFIDarkMenus.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32FFIDarkMenus~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32FFIDarkMenus.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Native/Win32/Win32FFIInterop.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32FFIInterop.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32FFIInterop.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32FFIInterop~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32FFIInterop.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Native/Win32/Win32FFIMessages.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32FFIMessages.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32FFIMessages.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32FFIMessages~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32FFIMessages.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Native/Win32/Win32FFIWindowing.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32FFIWindowing.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32FFIWindowing.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32FFIWindowing~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32FFIWindowing.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Native/Win32/Win32GdiPlusImageDecoder.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32GdiPlusImageDecoder.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32GdiPlusImageDecoder.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32GdiPlusImageDecoder~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32GdiPlusImageDecoder.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Native/Win32/Win32ImageAndTabControls.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32ImageAndTabControls.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32ImageAndTabControls.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32ImageAndTabControls~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32ImageAndTabControls.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Native/Win32/Win32MessageDispatch.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32MessageDispatch.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32MessageDispatch.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32MessageDispatch~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32MessageDispatch.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Native/Win32/Win32MessageDispatchCommandsAndColors.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32MessageDispatchCommandsAndColors.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32MessageDispatchCommandsAndColors.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32MessageDispatchCommandsAndColors~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32MessageDispatchCommandsAndColors.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Native/Win32/Win32MessageDispatchDestruction.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32MessageDispatchDestruction.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32MessageDispatchDestruction.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32MessageDispatchDestruction~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32MessageDispatchDestruction.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Native/Win32/Win32MessageDispatchDrawing.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32MessageDispatchDrawing.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32MessageDispatchDrawing.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32MessageDispatchDrawing~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32MessageDispatchDrawing.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Native/Win32/Win32MessageDispatchLifecycle.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32MessageDispatchLifecycle.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32MessageDispatchLifecycle.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32MessageDispatchLifecycle~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32MessageDispatchLifecycle.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Native/Win32/Win32MessageDispatchMenus.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32MessageDispatchMenus.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32MessageDispatchMenus.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32MessageDispatchMenus~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32MessageDispatchMenus.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Native/Win32/Win32MessageDispatchNotifications.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32MessageDispatchNotifications.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32MessageDispatchNotifications.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32MessageDispatchNotifications~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32MessageDispatchNotifications.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Native/Win32/Win32MessageDispatchPointer.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32MessageDispatchPointer.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32MessageDispatchPointer.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32MessageDispatchPointer~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32MessageDispatchPointer.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Native/Win32/Win32MessageDispatchScrollingAndKeys.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32MessageDispatchScrollingAndKeys.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32MessageDispatchScrollingAndKeys.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32MessageDispatchScrollingAndKeys~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32MessageDispatchScrollingAndKeys.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Native/Win32/Win32MessageDispatchSupport.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32MessageDispatchSupport.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32MessageDispatchSupport.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32MessageDispatchSupport~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32MessageDispatchSupport.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Native/Win32/Win32NativeControlBackend.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32NativeControlBackend.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32NativeControlBackend.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32NativeControlBackend~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32NativeControlBackend.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Native/Win32/Win32NativeControlBackendSupport.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32NativeControlBackendSupport.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32NativeControlBackendSupport.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32NativeControlBackendSupport~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32NativeControlBackendSupport.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Native/Win32/Win32PopUpControls.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32PopUpControls.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32PopUpControls.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32PopUpControls~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32PopUpControls.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Native/Win32/Win32PopoverDismiss.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32PopoverDismiss.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32PopoverDismiss.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32PopoverDismiss~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32PopoverDismiss.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Native/Win32/Win32Printing.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32Printing.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32Printing.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32Printing~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32Printing.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Native/Win32/Win32RunLoopPump.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32RunLoopPump.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32RunLoopPump.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32RunLoopPump~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32RunLoopPump.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Native/Win32/Win32ScrollViews.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32ScrollViews.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32ScrollViews.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32ScrollViews~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32ScrollViews.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Native/Win32/Win32TableControls.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32TableControls.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32TableControls.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32TableControls~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32TableControls.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Native/Win32/Win32TextControls.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32TextControls.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32TextControls.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32TextControls~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32TextControls.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Native/Win32/Win32ToolbarRendering.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32ToolbarRendering.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32ToolbarRendering.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32ToolbarRendering~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32ToolbarRendering.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Native/Win32/Win32Tooltips.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32Tooltips.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32Tooltips.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32Tooltips~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32Tooltips.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Native/Win32/Win32ValueControls.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32ValueControls.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32ValueControls.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32ValueControls~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32ValueControls.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Native/Win32/Win32VisualStyles.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32VisualStyles.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32VisualStyles.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32VisualStyles~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32VisualStyles.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Native/Win32/Win32WindowControls.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32WindowControls.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32WindowControls.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32WindowControls~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32WindowControls.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Native/Win32/Win32Windows.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32Windows.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32Windows.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32Windows~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Win32Windows.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Nib/NSNib.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSNib.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSNib.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSNib~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSNib.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Nib/WinNibDecoder.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/WinNibDecoder.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/WinNibDecoder.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/WinNibDecoder~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/WinNibDecoder.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Nib/WinXML.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/WinXML.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/WinXML.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/WinXML~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/WinXML.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Runtime/FoundationBridge.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/FoundationBridge.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/FoundationBridge.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/FoundationBridge~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/FoundationBridge.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Runtime/MainActorBridge.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/MainActorBridge.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/MainActorBridge.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/MainActorBridge~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/MainActorBridge.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Runtime/NSObject.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSObject.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSObject.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSObject~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSObject.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Runtime/NSSortDescriptor.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSSortDescriptor.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSSortDescriptor.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSSortDescriptor~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSSortDescriptor.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Runtime/NSUndoManager.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSUndoManager.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSUndoManager.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSUndoManager~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSUndoManager.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Runtime/NSUserInterfaceItemIdentifier.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSUserInterfaceItemIdentifier.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSUserInterfaceItemIdentifier.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSUserInterfaceItemIdentifier~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSUserInterfaceItemIdentifier.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Runtime/Selector.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Selector.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Selector.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Selector~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Selector.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Runtime/Timer.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Timer.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Timer.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Timer~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/Timer.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Runtime/WASIFoundationShims.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/WASIFoundationShims.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/WASIFoundationShims.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/WASIFoundationShims~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/WASIFoundationShims.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Runtime/WinDiagnostics.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/WinDiagnostics.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/WinDiagnostics.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/WinDiagnostics~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/WinDiagnostics.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Views/NSBox.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSBox.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSBox.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSBox~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSBox.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Views/NSClipView.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSClipView.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSClipView.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSClipView~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSClipView.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Views/NSScrollView.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSScrollView.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSScrollView.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSScrollView~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSScrollView.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Views/NSSplitView.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSSplitView.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSSplitView.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSSplitView~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSSplitView.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Views/NSSplitViewController.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSSplitViewController.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSSplitViewController.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSSplitViewController~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSSplitViewController.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Views/NSView.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSView.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSView.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSView~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSView.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Views/NSViewCompat.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSViewCompat.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSViewCompat.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSViewCompat~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSViewCompat.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Views/NSViewController.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSViewController.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSViewController.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSViewController~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSViewController.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Views/NSViewSupport.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSViewSupport.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSViewSupport.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSViewSupport~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSViewSupport.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Views/NSViewTypes.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSViewTypes.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSViewTypes.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSViewTypes~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSViewTypes.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Views/NSVisualEffectView.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSVisualEffectView.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSVisualEffectView.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSVisualEffectView~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSVisualEffectView.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/WinChocolate.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/WinChocolate.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/WinChocolate.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/WinChocolate~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/WinChocolate.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Windows/NSPanel.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSPanel.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSPanel.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSPanel~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSPanel.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Windows/NSPopover.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSPopover.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSPopover.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSPopover~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSPopover.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Windows/NSScreen.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSScreen.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSScreen.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSScreen~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSScreen.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Windows/NSToolbar.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSToolbar.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSToolbar.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSToolbar~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSToolbar.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Windows/NSToolbarCustomizationPanel.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSToolbarCustomizationPanel.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSToolbarCustomizationPanel.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSToolbarCustomizationPanel~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSToolbarCustomizationPanel.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Windows/NSToolbarCustomizationPanelLayout.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSToolbarCustomizationPanelLayout.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSToolbarCustomizationPanelLayout.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSToolbarCustomizationPanelLayout~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSToolbarCustomizationPanelLayout.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Windows/NSToolbarIdentifiers.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSToolbarIdentifiers.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSToolbarIdentifiers.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSToolbarIdentifiers~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSToolbarIdentifiers.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Windows/NSToolbarItem.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSToolbarItem.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSToolbarItem.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSToolbarItem~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSToolbarItem.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Windows/NSToolbarOverflowView.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSToolbarOverflowView.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSToolbarOverflowView.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSToolbarOverflowView~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSToolbarOverflowView.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Windows/NSToolbarSeparatorView.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSToolbarSeparatorView.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSToolbarSeparatorView.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSToolbarSeparatorView~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSToolbarSeparatorView.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Windows/NSToolbarView.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSToolbarView.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSToolbarView.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSToolbarView~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSToolbarView.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Windows/NSToolbarViewLayout.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSToolbarViewLayout.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSToolbarViewLayout.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSToolbarViewLayout~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSToolbarViewLayout.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Windows/NSWindow.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSWindow.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSWindow.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSWindow~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSWindow.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Windows/NSWindowFrameAutosave.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSWindowFrameAutosave.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSWindowFrameAutosave.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSWindowFrameAutosave~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSWindowFrameAutosave.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Windows/NSWindowSupport.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSWindowSupport.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSWindowSupport.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSWindowSupport~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSWindowSupport.swiftdeps"
+  },
+  "/work/Sources/ChocolateKit/Windows/NSWindowTypes.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSWindowTypes.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSWindowTypes.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSWindowTypes~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/ChocolateKit.build/NSWindowTypes.swiftdeps"
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "object" : {
+    "artifacts" : [
+
+    ],
+    "dependencies" : [
+      {
+        "basedOn" : null,
+        "packageRef" : {
+          "identity" : "winfoundation",
+          "kind" : "fileSystem",
+          "location" : "/work/WinFoundation",
+          "name" : "WinFoundation"
+        },
+        "state" : {
+          "name" : "fileSystem",
+          "path" : "/work/WinFoundation"
+        },
+        "subpath" : "winfoundation"
+      }
+    ]
+  },
+  "version" : 6
+}

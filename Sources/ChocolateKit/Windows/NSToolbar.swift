@@ -526,15 +526,37 @@ open class NSToolbar: NSObject {
         guard autosavesConfiguration else {
             return
         }
+        #if os(WASI)
+        // A page has no defaults database, so the configuration goes through
+        // the backend's small-value store as JSON. The format differs from the
+        // desktop's plist on purpose: nothing carries an autosaved toolbar
+        // between a Mac and a browser tab, so matching the desktop's encoding
+        // would buy compatibility that cannot be exercised.
+        let json = try? JSONSerialization.data(withJSONObject: configurationDictionary)
+        NSApplication.shared.nativeBackend.setPersistentValue(
+            json.flatMap { String(data: $0, encoding: .utf8) },
+            forKey: winAutosaveDefaultsKey
+        )
+        #else
         UserDefaults.standard.set(configurationDictionary, forKey: winAutosaveDefaultsKey)
+        #endif
     }
 
     /// Restores a previously autosaved configuration, if one exists.
     internal func restoreAutosavedConfigurationIfNeeded() {
-        guard autosavesConfiguration,
-              let saved = UserDefaults.standard.dictionary(forKey: winAutosaveDefaultsKey) else {
+        guard autosavesConfiguration else { return }
+        #if os(WASI)
+        guard let text = NSApplication.shared.nativeBackend
+                .persistentValue(forKey: winAutosaveDefaultsKey),
+              let data = text.data(using: .utf8),
+              let saved = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             return
         }
+        #else
+        guard let saved = UserDefaults.standard.dictionary(forKey: winAutosaveDefaultsKey) else {
+            return
+        }
+        #endif
         setConfiguration(saved)
     }
 }

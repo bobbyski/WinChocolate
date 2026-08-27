@@ -1,0 +1,17 @@
+{
+  "": {
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/RunLoopDemo.build/master.swiftdeps"
+  },
+  "/work/Demo/RunLoopDemo/RunLoopDemoConveniences.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/RunLoopDemo.build/RunLoopDemoConveniences.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/RunLoopDemo.build/RunLoopDemoConveniences.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/RunLoopDemo.build/RunLoopDemoConveniences~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/RunLoopDemo.build/RunLoopDemoConveniences.swiftdeps"
+  },
+  "/work/Demo/RunLoopDemo/main.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/RunLoopDemo.build/main.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/RunLoopDemo.build/main.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/RunLoopDemo.build/main~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/RunLoopDemo.build/main.swiftdeps"
+  }
+}

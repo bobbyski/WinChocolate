@@ -1,0 +1,4 @@
+module CGTKCompat {
+    umbrella header "/work/Sources/CGTKCompat/include/CGTKCompat.h"
+    export *
+}

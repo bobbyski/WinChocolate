@@ -1,0 +1,83 @@
+{
+  "": {
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateDemo.build/master.swiftdeps"
+  },
+  "/work/Demo/DemoApplication/DemoAppDelegates.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateDemo.build/DemoAppDelegates.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateDemo.build/DemoAppDelegates.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateDemo.build/DemoAppDelegates~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateDemo.build/DemoAppDelegates.swiftdeps"
+  },
+  "/work/Demo/DemoApplication/DemoCollectionSources.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateDemo.build/DemoCollectionSources.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateDemo.build/DemoCollectionSources.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateDemo.build/DemoCollectionSources~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateDemo.build/DemoCollectionSources.swiftdeps"
+  },
+  "/work/Demo/DemoApplication/DemoConveniences.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateDemo.build/DemoConveniences.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateDemo.build/DemoConveniences.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateDemo.build/DemoConveniences~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateDemo.build/DemoConveniences.swiftdeps"
+  },
+  "/work/Demo/DemoApplication/DemoCoreGraphicsView.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateDemo.build/DemoCoreGraphicsView.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateDemo.build/DemoCoreGraphicsView.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateDemo.build/DemoCoreGraphicsView~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateDemo.build/DemoCoreGraphicsView.swiftdeps"
+  },
+  "/work/Demo/DemoApplication/DemoDrawingViews.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateDemo.build/DemoDrawingViews.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateDemo.build/DemoDrawingViews.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateDemo.build/DemoDrawingViews~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateDemo.build/DemoDrawingViews.swiftdeps"
+  },
+  "/work/Demo/DemoApplication/DemoInteractionViews.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateDemo.build/DemoInteractionViews.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateDemo.build/DemoInteractionViews.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateDemo.build/DemoInteractionViews~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateDemo.build/DemoInteractionViews.swiftdeps"
+  },
+  "/work/Demo/DemoApplication/DemoKeyboardHelpers.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateDemo.build/DemoKeyboardHelpers.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateDemo.build/DemoKeyboardHelpers.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateDemo.build/DemoKeyboardHelpers~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateDemo.build/DemoKeyboardHelpers.swiftdeps"
+  },
+  "/work/Demo/DemoApplication/DemoLayoutHelpers.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateDemo.build/DemoLayoutHelpers.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateDemo.build/DemoLayoutHelpers.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateDemo.build/DemoLayoutHelpers~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateDemo.build/DemoLayoutHelpers.swiftdeps"
+  },
+  "/work/Demo/DemoApplication/DemoNibConveniences.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateDemo.build/DemoNibConveniences.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateDemo.build/DemoNibConveniences.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateDemo.build/DemoNibConveniences~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateDemo.build/DemoNibConveniences.swiftdeps"
+  },
+  "/work/Demo/DemoApplication/DemoTableHelpers.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateDemo.build/DemoTableHelpers.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateDemo.build/DemoTableHelpers.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateDemo.build/DemoTableHelpers~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateDemo.build/DemoTableHelpers.swiftdeps"
+  },
+  "/work/Demo/DemoApplication/DemoTableSources.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateDemo.build/DemoTableSources.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateDemo.build/DemoTableSources.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateDemo.build/DemoTableSources~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateDemo.build/DemoTableSources.swiftdeps"
+  },
+  "/work/Demo/DemoApplication/DemoTextConveniences.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateDemo.build/DemoTextConveniences.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateDemo.build/DemoTextConveniences.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateDemo.build/DemoTextConveniences~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateDemo.build/DemoTextConveniences.swiftdeps"
+  },
+  "/work/Demo/DemoApplication/main.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateDemo.build/main.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateDemo.build/main.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateDemo.build/main~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateDemo.build/main.swiftdeps"
+  }
+}

@@ -79,6 +79,14 @@ open class NSWindow: NSResponder {
     /// The window frame rectangle.
     open var frame: NSRect
 
+    /// The autosave name, empty when the window does not autosave its frame.
+    /// See `NSWindowFrameAutosave.swift`.
+    internal var winFrameAutosaveName: String = ""
+
+    /// True while a saved frame is being applied, so the restore does not
+    /// immediately save what it just read.
+    internal var winIsRestoringFrame = false
+
     /// The window title.
     open var title: String = "" {
         didSet {
@@ -506,6 +514,7 @@ open class NSWindow: NSResponder {
 
         nativeBackend.setFrame(frameRect, for: nativeHandle)
         layoutToolbarAndContent()
+        winAutosaveFrameIfNeeded()
     }
 
     /// Runs a tracking loop, handing each matching event to the handler until

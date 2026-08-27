@@ -942,4 +942,6 @@ testControlClassHierarchyMatchesAppKit()
 
 testFoundationTypesMatchApplesShapes()
 
+testWindowFrameAutosaveRoundTrips()
+
 print("WinChocolate contract tests passed.")

@@ -1,0 +1,4 @@
+module CWinFoundationCompat {
+    umbrella header "/work/WinFoundation/Sources/CWinFoundationCompat/include/CWinFoundationCompat.h"
+    export *
+}

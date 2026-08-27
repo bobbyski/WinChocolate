@@ -88,6 +88,7 @@ extension NSWindow {
         // size instead of waiting for the next pump tick.
         contentView?.layoutSubtreeIfNeeded()
         delegate?.windowDidResize(Notification(name: Notification.Name("NSWindowDidResizeNotification"), object: self))
+        winAutosaveFrameIfNeeded()
     }
 
 
@@ -95,6 +96,7 @@ extension NSWindow {
         // Track the native origin without pushing it back to the backend.
         frame.origin = origin
         delegate?.windowDidMove(Notification(name: Notification.Name("NSWindowDidMoveNotification"), object: self))
+        winAutosaveFrameIfNeeded()
     }
 
 

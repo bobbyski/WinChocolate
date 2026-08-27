@@ -1,0 +1,11 @@
+{
+  "": {
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/LinChocolate.build/master.swiftdeps"
+  },
+  "/work/Sources/LinChocolate/LinChocolate.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/LinChocolate.build/LinChocolate.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/LinChocolate.build/LinChocolate.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/LinChocolate.build/LinChocolate~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/LinChocolate.build/LinChocolate.swiftdeps"
+  }
+}

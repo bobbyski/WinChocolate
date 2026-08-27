@@ -1,0 +1,173 @@
+{
+  "": {
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateContractTests.build/master.swiftdeps"
+  },
+  "/work/Tests/WinChocolateContractTests/TestDeclarations01.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateContractTests.build/TestDeclarations01.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateContractTests.build/TestDeclarations01.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateContractTests.build/TestDeclarations01~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateContractTests.build/TestDeclarations01.swiftdeps"
+  },
+  "/work/Tests/WinChocolateContractTests/TestDeclarations02.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateContractTests.build/TestDeclarations02.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateContractTests.build/TestDeclarations02.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateContractTests.build/TestDeclarations02~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateContractTests.build/TestDeclarations02.swiftdeps"
+  },
+  "/work/Tests/WinChocolateContractTests/TestDeclarations03.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateContractTests.build/TestDeclarations03.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateContractTests.build/TestDeclarations03.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateContractTests.build/TestDeclarations03~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateContractTests.build/TestDeclarations03.swiftdeps"
+  },
+  "/work/Tests/WinChocolateContractTests/TestDeclarations04.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateContractTests.build/TestDeclarations04.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateContractTests.build/TestDeclarations04.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateContractTests.build/TestDeclarations04~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateContractTests.build/TestDeclarations04.swiftdeps"
+  },
+  "/work/Tests/WinChocolateContractTests/TestDeclarations05.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateContractTests.build/TestDeclarations05.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateContractTests.build/TestDeclarations05.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateContractTests.build/TestDeclarations05~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateContractTests.build/TestDeclarations05.swiftdeps"
+  },
+  "/work/Tests/WinChocolateContractTests/TestDeclarations06.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateContractTests.build/TestDeclarations06.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateContractTests.build/TestDeclarations06.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateContractTests.build/TestDeclarations06~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateContractTests.build/TestDeclarations06.swiftdeps"
+  },
+  "/work/Tests/WinChocolateContractTests/TestDeclarations07.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateContractTests.build/TestDeclarations07.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateContractTests.build/TestDeclarations07.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateContractTests.build/TestDeclarations07~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateContractTests.build/TestDeclarations07.swiftdeps"
+  },
+  "/work/Tests/WinChocolateContractTests/TestDeclarations08.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateContractTests.build/TestDeclarations08.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateContractTests.build/TestDeclarations08.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateContractTests.build/TestDeclarations08~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateContractTests.build/TestDeclarations08.swiftdeps"
+  },
+  "/work/Tests/WinChocolateContractTests/TestDeclarations09.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateContractTests.build/TestDeclarations09.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateContractTests.build/TestDeclarations09.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateContractTests.build/TestDeclarations09~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateContractTests.build/TestDeclarations09.swiftdeps"
+  },
+  "/work/Tests/WinChocolateContractTests/TestDeclarations10.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateContractTests.build/TestDeclarations10.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateContractTests.build/TestDeclarations10.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateContractTests.build/TestDeclarations10~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateContractTests.build/TestDeclarations10.swiftdeps"
+  },
+  "/work/Tests/WinChocolateContractTests/TestDeclarations11.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateContractTests.build/TestDeclarations11.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateContractTests.build/TestDeclarations11.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateContractTests.build/TestDeclarations11~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateContractTests.build/TestDeclarations11.swiftdeps"
+  },
+  "/work/Tests/WinChocolateContractTests/TestDeclarations12.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateContractTests.build/TestDeclarations12.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateContractTests.build/TestDeclarations12.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateContractTests.build/TestDeclarations12~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateContractTests.build/TestDeclarations12.swiftdeps"
+  },
+  "/work/Tests/WinChocolateContractTests/TestDeclarations13.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateContractTests.build/TestDeclarations13.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateContractTests.build/TestDeclarations13.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateContractTests.build/TestDeclarations13~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateContractTests.build/TestDeclarations13.swiftdeps"
+  },
+  "/work/Tests/WinChocolateContractTests/TestDeclarations14.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateContractTests.build/TestDeclarations14.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateContractTests.build/TestDeclarations14.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateContractTests.build/TestDeclarations14~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateContractTests.build/TestDeclarations14.swiftdeps"
+  },
+  "/work/Tests/WinChocolateContractTests/TestDeclarations15.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateContractTests.build/TestDeclarations15.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateContractTests.build/TestDeclarations15.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateContractTests.build/TestDeclarations15~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateContractTests.build/TestDeclarations15.swiftdeps"
+  },
+  "/work/Tests/WinChocolateContractTests/TestDeclarations16.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateContractTests.build/TestDeclarations16.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateContractTests.build/TestDeclarations16.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateContractTests.build/TestDeclarations16~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateContractTests.build/TestDeclarations16.swiftdeps"
+  },
+  "/work/Tests/WinChocolateContractTests/TestDeclarations17.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateContractTests.build/TestDeclarations17.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateContractTests.build/TestDeclarations17.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateContractTests.build/TestDeclarations17~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateContractTests.build/TestDeclarations17.swiftdeps"
+  },
+  "/work/Tests/WinChocolateContractTests/TestDeclarations18.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateContractTests.build/TestDeclarations18.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateContractTests.build/TestDeclarations18.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateContractTests.build/TestDeclarations18~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateContractTests.build/TestDeclarations18.swiftdeps"
+  },
+  "/work/Tests/WinChocolateContractTests/TestDeclarations19.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateContractTests.build/TestDeclarations19.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateContractTests.build/TestDeclarations19.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateContractTests.build/TestDeclarations19~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateContractTests.build/TestDeclarations19.swiftdeps"
+  },
+  "/work/Tests/WinChocolateContractTests/TestDeclarations20.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateContractTests.build/TestDeclarations20.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateContractTests.build/TestDeclarations20.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateContractTests.build/TestDeclarations20~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateContractTests.build/TestDeclarations20.swiftdeps"
+  },
+  "/work/Tests/WinChocolateContractTests/TestDeclarations21.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateContractTests.build/TestDeclarations21.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateContractTests.build/TestDeclarations21.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateContractTests.build/TestDeclarations21~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateContractTests.build/TestDeclarations21.swiftdeps"
+  },
+  "/work/Tests/WinChocolateContractTests/TestDeclarations22.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateContractTests.build/TestDeclarations22.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateContractTests.build/TestDeclarations22.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateContractTests.build/TestDeclarations22~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateContractTests.build/TestDeclarations22.swiftdeps"
+  },
+  "/work/Tests/WinChocolateContractTests/TestDeclarations23.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateContractTests.build/TestDeclarations23.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateContractTests.build/TestDeclarations23.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateContractTests.build/TestDeclarations23~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateContractTests.build/TestDeclarations23.swiftdeps"
+  },
+  "/work/Tests/WinChocolateContractTests/TestDeclarations24.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateContractTests.build/TestDeclarations24.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateContractTests.build/TestDeclarations24.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateContractTests.build/TestDeclarations24~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateContractTests.build/TestDeclarations24.swiftdeps"
+  },
+  "/work/Tests/WinChocolateContractTests/TestDeclarations25.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateContractTests.build/TestDeclarations25.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateContractTests.build/TestDeclarations25.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateContractTests.build/TestDeclarations25~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateContractTests.build/TestDeclarations25.swiftdeps"
+  },
+  "/work/Tests/WinChocolateContractTests/TestDeclarations26.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateContractTests.build/TestDeclarations26.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateContractTests.build/TestDeclarations26.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateContractTests.build/TestDeclarations26~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateContractTests.build/TestDeclarations26.swiftdeps"
+  },
+  "/work/Tests/WinChocolateContractTests/TestNibFixtures.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateContractTests.build/TestNibFixtures.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateContractTests.build/TestNibFixtures.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateContractTests.build/TestNibFixtures~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateContractTests.build/TestNibFixtures.swiftdeps"
+  },
+  "/work/Tests/WinChocolateContractTests/main.swift": {
+    "dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateContractTests.build/main.d",
+    "object": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateContractTests.build/main.swift.o",
+    "swiftmodule": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateContractTests.build/main~partial.swiftmodule",
+    "swift-dependencies": "/work/.build-linux-clean/aarch64-unknown-linux-gnu/debug/WinChocolateContractTests.build/main.swiftdeps"
+  }
+}

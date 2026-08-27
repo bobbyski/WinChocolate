@@ -1,3 +1,5 @@
+import Foundation
+
 /// Backend-neutral scroller part, mapped from the platform scroll gesture.
 ///
 /// This lets the AppKit-facing `NSScroller.hitPart` reflect what the user
@@ -314,6 +316,27 @@ extension NativeDrawingContext {
 }
 
 extension NativeControlBackend {
+    /// Default: `UserDefaults`, which is right everywhere a process has a home
+    /// directory to write into — macOS, Windows and Linux alike. Only the
+    /// browser has to override it.
+    public func persistentValue(forKey key: String) -> String? {
+        UserDefaults.standard.string(forKey: key)
+    }
+
+    /// Default: `UserDefaults`.
+    public func setPersistentValue(_ value: String?, forKey key: String) {
+        if let value {
+            UserDefaults.standard.set(value, forKey: key)
+        } else {
+            UserDefaults.standard.removeObject(forKey: key)
+        }
+    }
+
+    /// Default: `UserDefaults`.
+    public func persistentKeys() -> [String] {
+        Array(UserDefaults.standard.dictionaryRepresentation().keys)
+    }
+
     /// Default: no nested event tracking, and the caller is told so.
     ///
     /// `NSWindow.trackEvents` is AppKit's *modal* tracking loop: it re-enters
@@ -478,6 +501,29 @@ public protocol NativeControlBackend: AnyObject {
 
     /// Descriptions of every attached display, primary first.
     func screenDescriptions() -> [NativeScreenDescription]
+
+    // MARK: - Small persistent values
+
+    /// Reads a small persisted string, or nil when the key was never written.
+    ///
+    /// **This is the seam that makes autosave real in a browser.** Toolbar
+    /// layouts, split-view positions and window frames are all the same kind
+    /// of value — small, per-user, and expected to survive a relaunch. On a
+    /// desktop `UserDefaults` does that; a page has no defaults database and a
+    /// WASI filesystem is thrown away when the tab reloads, so "relaunch" there
+    /// means `localStorage` or it means nothing at all.
+    ///
+    /// Strings only, deliberately: `localStorage` stores strings, and a seam
+    /// that pretends to take plists would have to invent a lossy encoding at
+    /// exactly the layer that should not be inventing anything. Callers with
+    /// structured values encode them first.
+    func persistentValue(forKey key: String) -> String?
+
+    /// Writes a small persisted string, or removes the key when nil.
+    func setPersistentValue(_ value: String?, forKey key: String)
+
+    /// Every key this store currently holds.
+    func persistentKeys() -> [String]
 
     /// Minimizes or restores a native window.
     func setWindowMinimized(_ minimized: Bool, for handle: NativeHandle)

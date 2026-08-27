@@ -1600,6 +1600,31 @@ public class InMemoryNativeControlBackend: NativeControlBackend {
     }
 
     /// Returns the (test-configurable) primary screen frame.
+    // MARK: - Small persistent values
+
+    /// `UserDefaults`, and a subclass may say otherwise.
+    ///
+    /// Declared on the class rather than left to the protocol's extension so a
+    /// subclass can actually replace it: a protocol-extension default is bound
+    /// at the conformance, and the browser backend is a subclass of this one.
+    public func persistentValue(forKey key: String) -> String? {
+        UserDefaults.standard.string(forKey: key)
+    }
+
+    /// `UserDefaults`, and a subclass may say otherwise.
+    public func setPersistentValue(_ value: String?, forKey key: String) {
+        if let value {
+            UserDefaults.standard.set(value, forKey: key)
+        } else {
+            UserDefaults.standard.removeObject(forKey: key)
+        }
+    }
+
+    /// `UserDefaults`, and a subclass may say otherwise.
+    public func persistentKeys() -> [String] {
+        Array(UserDefaults.standard.dictionaryRepresentation().keys)
+    }
+
     public func primaryScreenFrame() -> NSRect {
         testScreenFrame
     }
