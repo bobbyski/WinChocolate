@@ -1,3 +1,5 @@
+import WinCoreGraphics
+
 /// The drawing destination active during a view's `draw(_:)` pass.
 ///
 /// AppKit installs a current graphics context before calling `NSView.draw(_:)`
@@ -117,6 +119,39 @@ open class NSGraphicsContext {
     var winStateStack: [WinGState] = []
 
     /// Creates a context over a backend drawing surface.
+    /// Core Graphics' bitmap-context initializer.
+    ///
+    /// **For code that needs a context to compute with, not to show.** The CG
+    /// spelling is the standard way to get one: hit-testing measures text and
+    /// paths through the same helpers that draw them, and those helpers take a
+    /// context. Nothing this context receives is ever presented.
+    ///
+    /// There is no bitmap behind it. A page has no image buffer to hand back
+    /// and no way to show one if it did, and the callers using this spelling
+    /// are measuring rather than rasterizing — so the drawing is recorded and
+    /// discarded. A caller who genuinely wants pixels wants `NSBitmapImageRep`,
+    /// which is a different and honest API.
+    ///
+    /// **A designated initializer, not a convenience one.** `self.init` inside
+    /// a convenience initializer dispatches to the *dynamic* type's designated
+    /// initializer, and this class is `open` — which on wasm32 is a function
+    /// signature mismatch trap at the first call rather than an error anywhere
+    /// earlier.
+    ///
+    /// Fails on a zero or negative size, as Core Graphics does.
+    public init?(
+        data: UnsafeMutableRawPointer?,
+        width: Int,
+        height: Int,
+        bitsPerComponent: Int,
+        bytesPerRow: Int,
+        space: CGColorSpace,
+        bitmapInfo: UInt32
+    ) {
+        guard width > 0, height > 0 else { return nil }
+        self.nativeContext = RecordingDrawingContext()
+    }
+
     internal init(nativeContext: NativeDrawingContext) {
         self.nativeContext = nativeContext
     }

@@ -1,5 +1,7 @@
 .build/
 .build-mac/
+# Scratch path for the Docker Linux builds — a second .build by another name.
+.build-linux-clean/
 Run/
 demo.stderr.txt
 demo.stdout.txt

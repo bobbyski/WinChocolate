@@ -259,6 +259,22 @@ extension NSView {
         view.nextResponder = self
         insertSubview(view, positioned: place, relativeTo: otherView)
 
+        // **A subtree joining a window is when its deferred marks come due.**
+        // `needsLayout` only schedules a pass for a view that is already in a
+        // window, and a view hierarchy is always built the other way round:
+        // frames are set, children are added, and only then is the whole thing
+        // hung off a window. Without this the marks sit there forever, and the
+        // symptom is a native box of the right size with nothing laid out
+        // inside it — a split view with its divider in the right place and two
+        // empty panes.
+        //
+        // It matters just as much *after* first display: a page swapped into a
+        // content pane is a fresh subtree meeting an existing window, which is
+        // the same moment arriving again.
+        if let window {
+            NSLayoutPump.shared.scheduleLayout(for: window)
+        }
+
         guard let realizedBackend, let nativeHandle else {
             return
         }
@@ -279,6 +295,11 @@ extension NSView {
         newView.superview = self
         newView.nextResponder = self
         subviews[index] = newView
+
+        // A replacement is a new subtree meeting the window, same as an add.
+        if let window {
+            NSLayoutPump.shared.scheduleLayout(for: window)
+        }
 
         guard let realizedBackend, let nativeHandle else {
             return

@@ -391,12 +391,32 @@ open class NSWindow: NSResponder {
         makeMain()
         makeKey()
         nativeBackend.showWindow(handle)
+        winLayoutOnFirstShow()
     }
 
     /// Shows the window without changing the key window.
     open func orderFront(_ sender: Any?) {
         let handle = realizeNativePeer()
         nativeBackend.showWindow(handle)
+        winLayoutOnFirstShow()
+    }
+
+    /// Lays the content subtree out when the window first appears.
+    ///
+    /// **Every frame set before this point was set outside a window**, and
+    /// `needsLayout` only schedules a pass when the view is in one — so those
+    /// marks are still sitting there, honoured by nobody. A window is built
+    /// bottom-up: panes are given frames, then the tree is hung off the window,
+    /// then the window is shown. AppKit lays out at exactly this moment, which
+    /// is why nothing there notices.
+    ///
+    /// The symptom when it is missing is peculiar enough to be worth writing
+    /// down: the *native* boxes are all correctly sized, because the backend
+    /// was told about them directly, while everything the framework lays out
+    /// inside them stays at zero. A split view with the divider in the right
+    /// place and two empty panes is this bug.
+    private func winLayoutOnFirstShow() {
+        contentView?.layoutSubtreeIfNeeded()
     }
 
     /// Hides the window without closing it.

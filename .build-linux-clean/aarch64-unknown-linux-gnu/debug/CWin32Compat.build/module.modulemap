@@ -1,4 +1,0 @@
-module CWin32Compat {
-    umbrella header "/work/Sources/CWin32Compat/include/CWin32Compat.h"
-    export *
-}

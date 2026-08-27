@@ -411,35 +411,6 @@ public final class CGGradient {
 public typealias CGContext = NSGraphicsContext
 
 extension NSGraphicsContext {
-    /// Core Graphics' bitmap-context initializer.
-    ///
-    /// **For code that needs a context to compute with, not to show.** The CG
-    /// spelling is the standard way to get one: hit-testing measures text and
-    /// paths through the same helpers that draw them, and those helpers take a
-    /// context. Nothing this context receives is ever presented.
-    ///
-    /// There is no bitmap behind it. A page has no malloc'd image buffer to
-    /// hand back and no way to show one if it did, and the callers that use
-    /// this spelling are measuring rather than rasterizing — so the drawing is
-    /// recorded and discarded. A caller that genuinely wants pixels back wants
-    /// `NSBitmapImageRep`, which is a different and honest API.
-    ///
-    /// Fails on a zero or negative size, as Core Graphics does.
-    public convenience init?(
-        data: UnsafeMutableRawPointer?,
-        width: Int,
-        height: Int,
-        bitsPerComponent: Int,
-        bytesPerRow: Int,
-        space: CGColorSpace,
-        bitmapInfo: UInt32
-    ) {
-        guard width > 0, height > 0 else { return nil }
-        self.init(nativeContext: RecordingDrawingContext())
-    }
-}
-
-extension NSGraphicsContext {
     /// The context as a `CGContext` — itself, matching the AppKit spelling.
     public var cgContext: CGContext { self }
 
