@@ -1337,6 +1337,15 @@ public final class WASMNativeControlBackend: InMemoryNativeControlBackend {
         // renders nothing, which reads as "the canvas seam broke" rather than
         // "the canvas seam never stops".
         let sizeChanged = records[handle]?.frame.size != frame.size
+        // **A window that lands outside the viewport is gone.** On a desktop a
+        // stray window can be dragged back from the edge, or recovered from the
+        // Window menu; a page has neither, so an off-screen window is simply an
+        // app that did not appear. Windows are nudged back far enough that
+        // their title bar — the part you grab — is always reachable.
+        //
+        // Only windows: a *view* is positioned in its parent's coordinates and
+        // is meant to be clipped when it overflows.
+        let frame = records[handle]?.kind == "window" ? clampedToViewport(frame) : frame
         super.setFrame(frame, for: handle)
         _ = elements[handle]?
             .setStyle("left", "\(frame.origin.x)px")
@@ -1392,6 +1401,29 @@ public final class WASMNativeControlBackend: InMemoryNativeControlBackend {
         }
 
         return NSMakeRect(0, 0, CGFloat(DOM.window.innerWidth), CGFloat(DOM.window.innerHeight))
+    }
+
+    /// Keeps a window's frame reachable inside the viewport.
+    ///
+    /// The title bar is the handle, so that is what has to stay visible: the
+    /// origin is pulled back far enough to leave a grab strip on screen, and a
+    /// window wider than the viewport is pinned to the top-left rather than
+    /// centred out of reach.
+    private func clampedToViewport(_ frame: NSRect) -> NSRect {
+        let viewport = primaryScreenFrame()
+        guard !viewport.isEmpty else { return frame }
+
+        // Enough of the window to see and grab, even when it is much larger
+        // than the page.
+        let grab: CGFloat = 80
+        let maxX = max(0, viewport.width - grab)
+        let maxY = max(0, viewport.height - grab)
+        return NSRect(
+            x: min(max(frame.origin.x, 0), maxX),
+            y: min(max(frame.origin.y, 0), maxY),
+            width: frame.size.width,
+            height: frame.size.height
+        )
     }
 
     /// One synthetic screen: a page cannot see the real display arrangement.

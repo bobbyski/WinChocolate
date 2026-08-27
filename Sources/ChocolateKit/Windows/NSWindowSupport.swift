@@ -431,8 +431,16 @@ extension NSWindow {
     }
 
     func winCenter() {
-        let workArea = nativeBackend.screenDescriptions().first?.visibleFrame
-            ?? NSRect(x: 0, y: 0, width: 1024, height: 768)
+        // An *empty* work area is not a valid answer, it is a missing one — and
+        // `??` only catches nil. Centring in a zero rect puts the window at
+        // minus half its own size, which on a desktop is a stray window you can
+        // drag back and in a browser is a window you simply cannot reach.
+        // A backend that cannot say how big the screen is gets the same default
+        // as one that returns nothing at all.
+        let reported = nativeBackend.screenDescriptions().first?.visibleFrame
+        let workArea = (reported.map { $0.isEmpty } ?? true)
+            ? NSRect(x: 0, y: 0, width: 1024, height: 768)
+            : reported!
         let origin = NSPoint(
             x: NSMidX(workArea) - frame.size.width / 2,
             y: NSMidY(workArea) - frame.size.height / 2

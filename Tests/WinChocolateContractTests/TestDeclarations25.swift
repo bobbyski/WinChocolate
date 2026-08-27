@@ -359,6 +359,12 @@ func testTargetActionDispatchesThroughRealSelectors() {
 }
 
 final class TestDraggingInfo: NSObject, NSDraggingInfo {
+    /// Settable, because "who started this drag?" is the interesting variable:
+    /// nil is a drop from outside the process, and a destination view here is
+    /// an internal reorder. Defaults to nil so the existing cases read the
+    /// same as before this property existed.
+    var draggingSource: AnyObject?
+
     var draggingPasteboard: NSPasteboard { NSPasteboard.general }
     var draggingLocation: NSPoint { .zero }
     var draggingSourceOperationMask: NSDragOperation { .move }
