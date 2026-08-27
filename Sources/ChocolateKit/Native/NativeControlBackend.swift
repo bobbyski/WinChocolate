@@ -337,6 +337,11 @@ extension NativeControlBackend {
         Array(UserDefaults.standard.dictionaryRepresentation().keys)
     }
 
+    /// Default: nothing held. A backend that never sees modifier state is
+    /// better off saying "no modifiers" than guessing — every caller treats
+    /// that as the ordinary, unmodified gesture.
+    public func currentModifierFlags() -> NSEvent.ModifierFlags { [] }
+
     /// Default: no nested event tracking, and the caller is told so.
     ///
     /// `NSWindow.trackEvents` is AppKit's *modal* tracking loop: it re-enters
@@ -524,6 +529,15 @@ public protocol NativeControlBackend: AnyObject {
 
     /// Every key this store currently holds.
     func persistentKeys() -> [String]
+
+    /// The modifier keys held down right now, independent of any event.
+    ///
+    /// AppKit's `NSEvent.modifierFlags` is a *class* property: code asks "is
+    /// Command down?" in the middle of handling something that is not a key
+    /// event at all — a drag deciding copy versus move, an arrow key deciding
+    /// move-the-thing versus move-the-selection. There is no event to read it
+    /// off, so the backend has to have been remembering.
+    func currentModifierFlags() -> NSEvent.ModifierFlags
 
     /// Minimizes or restores a native window.
     func setWindowMinimized(_ minimized: Bool, for handle: NativeHandle)

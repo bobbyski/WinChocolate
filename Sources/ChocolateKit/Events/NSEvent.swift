@@ -256,3 +256,17 @@ public struct NSEvent: Equatable {
         self.scrollingDeltaY = scrollingDeltaY
     }
 }
+
+extension NSEvent {
+    /// The modifier keys held down right now, with no event in hand.
+    ///
+    /// AppKit spells this as a class property and code uses it that way: a
+    /// drag asking whether Command means copy, an arrow key asking whether it
+    /// should move the thing or the selection. Answered by the backend, which
+    /// is the only layer that sees the keyboard; a backend that does not track
+    /// modifiers answers "none held", which every caller already treats as the
+    /// ordinary gesture.
+    public static var modifierFlags: ModifierFlags {
+        NSApplication.shared.nativeBackend.currentModifierFlags()
+    }
+}

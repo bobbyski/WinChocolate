@@ -82,6 +82,16 @@ open class NSGraphicsContext {
     /// The CG shim's line join (stored; native strokes render default joins).
     var winLineJoin: CGLineJoin = .miter
 
+    /// The dash pattern set by `setLineDash(phase:lengths:)`, empty for solid.
+    ///
+    /// Kept here with the rest of the CG shim state because it is *state*: CG
+    /// sets it on the context and every later stroke honours it until it is
+    /// cleared or the gstate is restored.
+    var winLineDashLengths: [CGFloat] = []
+
+    /// How far into the dash pattern the first segment starts.
+    var winLineDashPhase: CGFloat = 0
+
     /// The CG shim's global alpha, multiplied into every source colour.
     var winAlpha: CGFloat = 1
 
@@ -99,6 +109,8 @@ open class NSGraphicsContext {
         var lineCap: CGLineCap
         var lineJoin: CGLineJoin
         var shouldAntialias: Bool
+        var lineDashLengths: [CGFloat]
+        var lineDashPhase: CGFloat
     }
 
     /// Paint state saved by `saveGState`.

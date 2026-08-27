@@ -1625,6 +1625,10 @@ public class InMemoryNativeControlBackend: NativeControlBackend {
         Array(UserDefaults.standard.dictionaryRepresentation().keys)
     }
 
+    /// Nothing held, and a subclass may say otherwise. A headless backend has
+    /// no keyboard to read.
+    public func currentModifierFlags() -> NSEvent.ModifierFlags { [] }
+
     public func primaryScreenFrame() -> NSRect {
         testScreenFrame
     }

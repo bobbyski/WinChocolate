@@ -411,6 +411,35 @@ public final class CGGradient {
 public typealias CGContext = NSGraphicsContext
 
 extension NSGraphicsContext {
+    /// Core Graphics' bitmap-context initializer.
+    ///
+    /// **For code that needs a context to compute with, not to show.** The CG
+    /// spelling is the standard way to get one: hit-testing measures text and
+    /// paths through the same helpers that draw them, and those helpers take a
+    /// context. Nothing this context receives is ever presented.
+    ///
+    /// There is no bitmap behind it. A page has no malloc'd image buffer to
+    /// hand back and no way to show one if it did, and the callers that use
+    /// this spelling are measuring rather than rasterizing — so the drawing is
+    /// recorded and discarded. A caller that genuinely wants pixels back wants
+    /// `NSBitmapImageRep`, which is a different and honest API.
+    ///
+    /// Fails on a zero or negative size, as Core Graphics does.
+    public convenience init?(
+        data: UnsafeMutableRawPointer?,
+        width: Int,
+        height: Int,
+        bitsPerComponent: Int,
+        bytesPerRow: Int,
+        space: CGColorSpace,
+        bitmapInfo: UInt32
+    ) {
+        guard width > 0, height > 0 else { return nil }
+        self.init(nativeContext: RecordingDrawingContext())
+    }
+}
+
+extension NSGraphicsContext {
     /// The context as a `CGContext` — itself, matching the AppKit spelling.
     public var cgContext: CGContext { self }
 
@@ -424,7 +453,9 @@ extension NSGraphicsContext {
                                        lineWidth: winLineWidth,
                                        lineCap: winLineCap,
                                        lineJoin: winLineJoin,
-                                       shouldAntialias: winShouldAntialias))
+                                       shouldAntialias: winShouldAntialias,
+                                       lineDashLengths: winLineDashLengths,
+                                       lineDashPhase: winLineDashPhase))
         nativeContext.saveState()
     }
 
@@ -439,6 +470,8 @@ extension NSGraphicsContext {
             winLineCap = state.lineCap
             winLineJoin = state.lineJoin
             winShouldAntialias = state.shouldAntialias
+            winLineDashLengths = state.lineDashLengths
+            winLineDashPhase = state.lineDashPhase
         }
         nativeContext.restoreState()
     }
@@ -462,6 +495,24 @@ extension NSGraphicsContext {
     /// stroke primitive renders its default caps.
     public func setLineCap(_ cap: CGLineCap) {
         winLineCap = cap
+    }
+
+    /// Sets the dash pattern applied to later strokes.
+    ///
+    /// **The dashing is done here, not by the backend.** `NativeDrawingContext`
+    /// strokes a segment list and has no dash concept, and giving every backend
+    /// one would mean Win32, GTK and canvas each implementing the same
+    /// arithmetic slightly differently. Instead `strokePath` walks the path and
+    /// hands down only the on-segments, so a dashed line is a dashed line
+    /// everywhere by construction.
+    ///
+    /// An empty `lengths` clears the pattern, as it does in Core Graphics.
+    /// Lengths that are all zero or negative would produce infinitely many
+    /// zero-length dashes, so they clear it too rather than hang.
+    public func setLineDash(phase: CGFloat, lengths: [CGFloat]) {
+        let usable = lengths.filter { $0.isFinite && $0 >= 0 }
+        winLineDashLengths = usable.contains(where: { $0 > 0 }) ? usable : []
+        winLineDashPhase = winLineDashLengths.isEmpty ? 0 : max(0, phase)
     }
 
     // MARK: Transforms
@@ -733,7 +784,94 @@ extension NSGraphicsContext {
     public func strokePath() {
         let segments = winTakePendingSegments()
         guard !segments.isEmpty else { return }
-        nativeContext.strokePath(segments, color: winAlphaApplied(strokeColor), lineWidth: winLineWidth)
+        nativeContext.strokePath(winDashed(segments),
+                                 color: winAlphaApplied(strokeColor),
+                                 lineWidth: winLineWidth)
+    }
+
+    /// Splits a path into the "on" runs of the current dash pattern.
+    ///
+    /// Returns the path unchanged when no pattern is set, which is the common
+    /// case and must stay free.
+    ///
+    /// Curves are dashed by their chord rather than their arc: the segment list
+    /// keeps control points, and flattening a Bezier here to measure it would
+    /// mean re-implementing the backend's own curve tessellation at a different
+    /// tolerance. A dashed curve is rare — dashes mark rules, guides and
+    /// selection outlines, which are straight — and a chord-dashed curve is
+    /// visibly a dashed curve, just with slightly uneven spacing.
+    private func winDashed(_ segments: [NativePathSegment]) -> [NativePathSegment] {
+        guard !winLineDashLengths.isEmpty else { return segments }
+
+        var output: [NativePathSegment] = []
+        var patternIndex = 0
+        var remaining = winLineDashLengths[0]
+        var drawing = true
+
+        // Consume the phase before drawing anything, so a pattern can start
+        // mid-dash the way CG's does.
+        var phase = winLineDashPhase
+        while phase > 0 {
+            if phase < remaining {
+                remaining -= phase
+                phase = 0
+            } else {
+                phase -= remaining
+                patternIndex = (patternIndex + 1) % winLineDashLengths.count
+                remaining = winLineDashLengths[patternIndex]
+                drawing.toggle()
+            }
+        }
+
+        var current = NSPoint.zero
+        var subpathStart = NSPoint.zero
+        var penDown = false
+
+        func dash(from start: NSPoint, to end: NSPoint) {
+            let dx = end.x - start.x
+            let dy = end.y - start.y
+            let length = (dx * dx + dy * dy).squareRoot()
+            guard length > 0 else { return }
+
+            var travelled: CGFloat = 0
+            while travelled < length {
+                let step = min(remaining, length - travelled)
+                let from = NSPoint(x: start.x + dx * (travelled / length),
+                                   y: start.y + dy * (travelled / length))
+                travelled += step
+                let to = NSPoint(x: start.x + dx * (travelled / length),
+                                 y: start.y + dy * (travelled / length))
+                if drawing {
+                    output.append(.move(from))
+                    output.append(.line(to))
+                }
+                remaining -= step
+                if remaining <= 0 {
+                    patternIndex = (patternIndex + 1) % winLineDashLengths.count
+                    remaining = winLineDashLengths[patternIndex]
+                    drawing.toggle()
+                }
+            }
+        }
+
+        for segment in segments {
+            switch segment {
+            case .move(let point):
+                current = point
+                subpathStart = point
+                penDown = true
+            case .line(let point):
+                if penDown { dash(from: current, to: point) }
+                current = point
+            case .curve(let to, _, _):
+                if penDown { dash(from: current, to: to) }
+                current = to
+            case .close:
+                if penDown { dash(from: current, to: subpathStart) }
+                current = subpathStart
+            }
+        }
+        return output
     }
 
     /// Intersects the clip region with the pending path.

@@ -28,6 +28,14 @@ extension WASMNativeControlBackend {
         if event.rawValue.ctrlKey.boolean == true { flags.insert(.control) }
         if event.rawValue.altKey.boolean == true { flags.insert(.option) }
         if event.rawValue.metaKey.boolean == true { flags.insert(.command) }
+
+        // Remembered for `NSEvent.modifierFlags`, which is asked *outside* an
+        // event — a drag deciding copy versus move has no event to read. Every
+        // DOM UI event carries the current modifier state, so the last one that
+        // came through is the freshest answer a page can give. It goes stale
+        // only while the pointer and keyboard are both idle, which is exactly
+        // when nobody is asking.
+        lastReportedModifiers = flags
         return flags
     }
 
