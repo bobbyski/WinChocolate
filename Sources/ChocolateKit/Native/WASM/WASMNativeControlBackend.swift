@@ -57,6 +57,11 @@ public final class WASMNativeControlBackend: InMemoryNativeControlBackend {
     /// Listener tokens, kept so `destroyControl` can actually release them.
     internal var listeners: [NativeHandle: [EventListener]] = [:]
 
+    /// Page-level closures kept alive for the backend's lifetime — the
+    /// clipboard watcher, and anything else attached to `document` rather than
+    /// to one control. A `JSClosure` that goes out of scope stops being called.
+    internal var clipboardListeners: [JSClosure] = []
+
     /// The event-tracking session in flight, if any (`WASMEventTracking.swift`).
     internal var eventTracking: EventTrackingSession?
 
@@ -198,6 +203,7 @@ public final class WASMNativeControlBackend: InMemoryNativeControlBackend {
     public override func runApplication() {
         super.runApplication()
         mountDesktopIfNeeded()
+        beginWatchingSystemClipboard()
         // The tree was built before this call, so its first paint cannot wait
         // on an animation frame that was requested mid-`main`. See flushPaint.
         flushPaint()
@@ -709,7 +715,7 @@ public final class WASMNativeControlBackend: InMemoryNativeControlBackend {
         super.setImagePath(imagePath, description: description, tint: tint, for: handle)
         guard let image = inputElements[handle], records[handle]?.kind == "imageView" else { return }
         _ = image.setAttribute("alt", description)
-        applyImagePath(image, path: imagePath)
+        applyImagePath(image, path: imagePath, description: description)
     }
 
     /// Creates a tab view: a strip of tab buttons over a content area.
@@ -1337,6 +1343,44 @@ public final class WASMNativeControlBackend: InMemoryNativeControlBackend {
 
     public override func currentModifierFlags() -> NSEvent.ModifierFlags {
         Self.lastReportedModifiers
+    }
+
+    // MARK: - Clipboard
+    //
+    // See `WASMClipboard.swift` for why a page can write through but not read
+    // through. These two are here rather than there because Swift cannot
+    // override a class method from an extension.
+
+    /// Writes through to the system clipboard as well as the in-process one.
+    public override func setClipboardString(_ string: String) {
+        super.setClipboardString(string)
+        writeSystemClipboard(string)
+    }
+
+    /// Writes through to the system clipboard as well as the in-process one.
+    ///
+    /// Only the text representation crosses over. `navigator.clipboard.write`
+    /// can carry more, but every extra format needs a `Blob` and a permission
+    /// the page may not have; text is what every other application can read,
+    /// and the richer representations stay in-process, where the app itself is
+    /// the only consumer.
+    public override func setClipboardContents(text: String?,
+                                              dataRepresentations: [String: [UInt8]],
+                                              filePaths: [String]) {
+        super.setClipboardContents(text: text, dataRepresentations: dataRepresentations,
+                                   filePaths: filePaths)
+        if let text, !text.isEmpty {
+            writeSystemClipboard(text)
+        }
+    }
+
+    /// Records text arriving from a `paste` event.
+    ///
+    /// Goes to `super` on purpose: this text came *from* the system clipboard,
+    /// and writing it back would be a needless round trip and a second
+    /// permission prompt.
+    internal func recordPastedText(_ text: String) {
+        super.setClipboardString(text)
     }
 
     // MARK: - Small persistent values

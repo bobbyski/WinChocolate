@@ -218,6 +218,21 @@ open class NSWindow: NSResponder {
     /// The root content view.
     open var contentView: NSView? {
         didSet {
+            // **Becoming a content view means leaving wherever you were.**
+            // AppKit detaches here, and the detail is load-bearing rather than
+            // tidy: `NSView.window` asks its superview first and only falls
+            // back to `nextResponder`. A view that keeps a stale superview
+            // therefore reports *no window* forever, however carefully the
+            // line below wires the responder chain — and with no window,
+            // `needsLayout` schedules nothing, so the entire subtree silently
+            // stops responding to layout invalidation.
+            //
+            // The case that found this: a sidebar hands the window its split
+            // controller's view, which was already a subview of the shell that
+            // built it.
+            if contentView !== oldValue {
+                contentView?.removeFromSuperview()
+            }
             contentView?.nextResponder = self
             layoutToolbarAndContent()
             applyMovableByWindowBackground()

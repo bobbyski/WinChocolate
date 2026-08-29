@@ -96,6 +96,15 @@ open class NSImage: NSObject, @unchecked Sendable {
         super.init()
     }
 
+    /// Whether this image names an SF Symbol rather than a file.
+    ///
+    /// **A backend cannot tell from the name alone**, and the difference
+    /// decides what it should do: a file path is fetched, a symbol has to be
+    /// drawn or stood in for. Without this the symbol name reached the backend
+    /// only inside the accessibility description, and every symbol in the
+    /// browser rendered as a broken image.
+    public private(set) var isSystemSymbol = false
+
     /// Sets the image's name, returning whether it was accepted.
     @discardableResult
     open func setName(_ string: NSImage.Name?) -> Bool {
@@ -113,6 +122,7 @@ open class NSImage: NSObject, @unchecked Sendable {
             return nil
         }
 
+        self.isSystemSymbol = true
         self.name = systemSymbolName
         self.filePath = nil
         self.data = nil
@@ -344,7 +354,7 @@ open class NSImageView: NSControl {
 
     /// Creates the native placeholder image-view peer.
     open override func createNativePeer(in backend: NativeControlBackend, parent: NativeHandle?) -> NativeHandle {
-        backend.createImageView(description: imageDescription, imagePath: image?.filePath, frame: frame, parent: parent)
+        backend.createImageView(description: imageDescription, imagePath: winImageReference, frame: frame, parent: parent)
     }
 
     /// Re-syncs the image after realization so a template tint set before the
@@ -356,6 +366,18 @@ open class NSImageView: NSControl {
             updateNativeDescription()
         }
         return handle
+    }
+
+    /// What the backend is given to find this image by: a file path, or a
+    /// symbol name when there is no file.
+    ///
+    /// A backend that cannot draw symbols is no worse off — it looks for a
+    /// file that is not there, exactly as it drew nothing before — and one
+    /// that can is finally told which symbol to draw.
+    private var winImageReference: String? {
+        if let path = image?.filePath { return path }
+        guard let image, image.isSystemSymbol else { return nil }
+        return image.name
     }
 
     private var imageDescription: String {
@@ -403,6 +425,6 @@ open class NSImageView: NSControl {
             return
         }
 
-        realizedBackend?.setImagePath(image?.filePath, description: imageDescription, tint: resolvedImageTint, for: nativeHandle)
+        realizedBackend?.setImagePath(winImageReference, description: imageDescription, tint: resolvedImageTint, for: nativeHandle)
     }
 }

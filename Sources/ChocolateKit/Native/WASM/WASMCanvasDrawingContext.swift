@@ -232,8 +232,19 @@ internal final class WASMImageCache {
         return nil
     }
 
-    /// Maps a framework file path onto the URL the page serves it from.
+    /// Maps a framework image reference onto something the page can decode.
+    ///
+    /// A file path is served next to the page. A symbol name has no file
+    /// anywhere, so asking for one is a guaranteed 404 — and a 404 here is not
+    /// a broken `<img>` the user can see, it is a decode that never completes
+    /// and a drawn image that never appears, with only the network tab to say
+    /// why. Symbols are answered inline, the same way the control path answers
+    /// them.
     private static func url(for path: String) -> String {
+        if WASMNativeControlBackend.isSymbolName(path) {
+            return WASMNativeControlBackend.symbolImageDataURL(for: path, description: path)
+                ?? WASMNativeControlBackend.transparentPixel
+        }
         let name = path.split(whereSeparator: { $0 == "/" || $0 == "\\" }).last.map(String.init) ?? path
         return "Resources/\(WASMNativeControlBackend.repairingTruncatedExtension(name))"
     }

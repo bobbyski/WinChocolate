@@ -52,7 +52,7 @@ extension WASMNativeControlBackend {
                 .setStyle("width", "18px")
                 .setStyle("height", "18px")
                 .setStyle("object-fit", "contain")
-            applyImagePath(image, path: imagePath)
+            applyImagePath(image, path: imagePath, description: title)
             // A template image is tinted to contrast with the strip, which the
             // core has already decided; a CSS filter is the only way to recolour
             // an <img> without decoding it.
@@ -104,11 +104,14 @@ extension WASMNativeControlBackend {
 
         // The second line names an image: a file path for the demo's own icons,
         // or a symbolic name the framework picked for a built-in item.
-        if lines[1].contains("/") || lines[1].contains("\\") {
+        // Symbolic names count too: they used to fall through this test and
+        // leave the item with a label and no glyph, which for an icon-only
+        // item is nothing at all.
+        if !lines[1].isEmpty {
             let image = Element.create("img")
                 .setStyle("width", "20px").setStyle("height", "20px")
                 .setStyle("object-fit", "contain")
-            applyImagePath(image, path: lines[1])
+            applyImagePath(image, path: lines[1], description: lines[0])
             _ = element.appendChild(image)
         }
 

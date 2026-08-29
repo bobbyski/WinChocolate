@@ -281,6 +281,10 @@ public final class NSApplication: NSObject {
     /// Terminates the application.
     public func terminate(_ sender: Any?) {
         delegate?.applicationWillTerminate(notification(named: "NSApplicationWillTerminateNotification"))
+        // The delegate and the notification are the same event told twice,
+        // because AppKit tells it twice. Anything that is not the delegate —
+        // a preferences store flushing its last write — has only the second.
+        NotificationCenter.default.post(name: NSApplication.willTerminateNotification, object: self)
         nativeBackend.terminateApplication()
     }
 

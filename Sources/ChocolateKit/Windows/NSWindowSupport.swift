@@ -77,7 +77,8 @@ extension NSWindow {
         contentView?.destroyNativePeer()
         nativeHandle = nil
         NSApplication.shared.removeWindowsItem(self)
-        delegate?.windowWillClose(Notification(name: Notification.Name("NSWindowWillCloseNotification"), object: self))
+        delegate?.windowWillClose(Notification(name: NSWindow.willCloseNotification, object: self))
+        winPost(NSWindow.willCloseNotification)
     }
 
 
@@ -87,7 +88,13 @@ extension NSWindow {
         // Run the layout pass synchronously so live resize tracks the new
         // size instead of waiting for the next pump tick.
         contentView?.layoutSubtreeIfNeeded()
-        delegate?.windowDidResize(Notification(name: Notification.Name("NSWindowDidResizeNotification"), object: self))
+        delegate?.windowDidResize(Notification(name: NSWindow.didResizeNotification, object: self))
+        winPost(NSWindow.didResizeNotification)
+        // No backend here distinguishes a live resize from a settled one, so
+        // the end-of-gesture notice rides with every resize. A listener that
+        // saves on it saves more often than AppKit would, which is the right
+        // way round: the alternative is never saving at all.
+        winPost(NSWindow.didEndLiveResizeNotification)
         winAutosaveFrameIfNeeded()
     }
 
@@ -95,7 +102,8 @@ extension NSWindow {
     internal func nativeWindowDidMove(to origin: NSPoint) {
         // Track the native origin without pushing it back to the backend.
         frame.origin = origin
-        delegate?.windowDidMove(Notification(name: Notification.Name("NSWindowDidMoveNotification"), object: self))
+        delegate?.windowDidMove(Notification(name: NSWindow.didMoveNotification, object: self))
+        winPost(NSWindow.didMoveNotification)
         winAutosaveFrameIfNeeded()
     }
 

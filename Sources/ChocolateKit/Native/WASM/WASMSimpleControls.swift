@@ -124,7 +124,7 @@ extension WASMNativeControlBackend {
         let image = position(Element.create("img"), in: frame)
             .setStyle("object-fit", "contain")
         _ = image.setAttribute("alt", description)
-        applyImagePath(image, path: imagePath)
+        applyImagePath(image, path: imagePath, description: description)
         inputElements[handle] = image
         register(handle, element: image, parent: parent)
     }
@@ -135,9 +135,25 @@ extension WASMNativeControlBackend {
     /// through `Bundle`; the browser cannot fetch that, but the same bytes are
     /// served next to the page, so the file name is the bridge. Windows-shaped
     /// separators are honoured because the demo's own fallback produces them.
-    internal func applyImagePath(_ image: Element, path: String?) {
+    internal func applyImagePath(_ image: Element, path: String?, description: String = "") {
         guard let path, !path.isEmpty else {
-            _ = image.removeAttribute("src")
+            // **Not an empty `src`.** An empty one is not "no image": the
+            // browser resolves it against the page URL, fetches the document
+            // again, fails to decode it, and draws the broken-image icon —
+            // which is exactly the thing this is trying not to do.
+            _ = image.setAttribute("src", Self.transparentPixel)
+            return
+        }
+
+        // A symbol is not a file and must never be requested as one: the 404
+        // draws a broken-image icon, which reads as a page that failed to load
+        // rather than as a control. `WASMSymbolImages.swift` answers it inline.
+        if Self.isSymbolName(path) {
+            let label = description.isEmpty
+                ? (image.getAttribute("alt") ?? "")
+                : description
+            _ = image.setAttribute("src",
+                Self.symbolImageDataURL(for: path, description: label) ?? Self.transparentPixel)
             return
         }
 
