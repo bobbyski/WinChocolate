@@ -418,13 +418,18 @@ extension NSAttributedString {
 
     /// Measures the text as it would be laid out in a bounding box.
     ///
-    /// AppKit's `boundingRect(with:options:context:)`. The size is the same
-    /// single-line measurement `size()` makes — this seam does not re-flow text
-    /// — so `.usesLineFragmentOrigin` changes where the origin *means* rather
-    /// than what the text does, and the width offered is a bound rather than a
-    /// wrap column. A caller measuring a label gets the right answer; a caller
-    /// measuring a paragraph it expects to wrap does not, and would not have
-    /// wrapped when drawn either, which is at least consistent.
+    /// AppKit's `boundingRect(with:options:context:)`, and it really does wrap:
+    /// the offered width is a wrap column, not just a bound, so the height
+    /// covers every line the text takes.
+    ///
+    /// **This is the measurement a row height comes from.** Answering with a
+    /// single line's height — which is what `size()` gives — sizes a table row
+    /// for one line while the text draws three, and every row overlaps the one
+    /// below it. That is the bug this exists to avoid, so the wrapping backend
+    /// call is used rather than the simpler one.
+    ///
+    /// A non-positive width measures as a single line, matching
+    /// `size(withAttributes:maxWidth:)`.
     ///
     /// - Returns: A rect at the origin the options ask for, sized to the text.
     public func boundingRect(
@@ -432,8 +437,10 @@ extension NSAttributedString {
         options: NSStringDrawingOptions = [],
         context: NSStringDrawingContext? = nil
     ) -> NSRect {
-        _ = (size, context)
-        let measured = self.size()
+        _ = context
+        let font = attribute(.font, at: 0, effectiveRange: nil) as? NSFont
+        let measured = string.size(withAttributes: font.map { [.font: $0] },
+                                   maxWidth: size.width)
         // `.usesLineFragmentOrigin` measures from the line fragment's top;
         // without it AppKit measures from the baseline, which puts the origin
         // a line's height higher.
@@ -590,10 +597,9 @@ extension String {
 /// lay text out.
 ///
 /// An option set rather than an enum because AppKit's is one, and callers
-/// combine `.usesLineFragmentOrigin` with `.usesFontLeading` routinely. Only
-/// the origin convention is honoured here — this seam draws a line rather than
-/// flowing a paragraph — and the rest are accepted so the call sites compile
-/// and read the same on every platform.
+/// combine `.usesLineFragmentOrigin` with `.usesFontLeading` routinely.
+/// Measuring honours the wrap and the origin convention; the rest are accepted
+/// so the call sites compile and read the same on every platform.
 public struct NSStringDrawingOptions: OptionSet, Sendable {
     /// The raw bit field.
     public let rawValue: Int

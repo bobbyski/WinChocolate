@@ -460,8 +460,15 @@ open class NSTextField: NSControl {
 
     /// Whether the field wraps onto multiple lines (a non-single-line mode with
     /// room for more than one line).
+    ///
+    /// **Editability is not part of the question.** A read-only label wrapping
+    /// a paragraph is the commonest multiline field there is — every caption,
+    /// every explanatory line under a heading — and requiring `isEditable` here
+    /// told every backend that such a label was a single line. On a backend
+    /// that believes it, the label is measured for one line and drawn on
+    /// several; in a table each row then overlaps the one below.
     var isMultiline: Bool {
-        isEditable && !usesSingleLineMode && maximumNumberOfLines != 1
+        !usesSingleLineMode && maximumNumberOfLines != 1
     }
 
     /// Creates the native Windows text field peer.

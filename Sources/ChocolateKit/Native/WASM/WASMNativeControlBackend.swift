@@ -572,6 +572,23 @@ public final class WASMNativeControlBackend: InMemoryNativeControlBackend {
             element = Element.div()
             element.textContent = text
             _ = element.setStyle("display", "flex").setStyle("align-items", "center")
+            // **The DOM must wrap exactly where the measurement says it will.**
+            // A single-line label is measured as one line and given a one-line
+            // box; left to itself the browser wraps the text anyway, it
+            // overflows the box, and in a table it lands on top of the row
+            // below. Telling the DOM not to wrap is what makes the measurement
+            // true. A multiline label wraps in both places, and the wrapping
+            // measurement now uses the browser's own metrics so the two agree.
+            if options.isMultiline {
+                _ = element
+                    .setStyle("white-space", "pre-wrap")
+                    .setStyle("align-items", "flex-start")
+            } else {
+                _ = element
+                    .setStyle("white-space", "nowrap")
+                    .setStyle("overflow", "hidden")
+                    .setStyle("text-overflow", "ellipsis")
+            }
         }
         _ = element
             .setStyle("position", "absolute")
@@ -1714,6 +1731,60 @@ public final class WASMNativeControlBackend: InMemoryNativeControlBackend {
         let lineHeight = metrics.fontBoundingBoxAscent + metrics.fontBoundingBoxDescent
         return NSMakeSize(CGFloat(metrics.width),
                           lineHeight > 0 ? CGFloat(lineHeight) : CGFloat(font.size * 1.2))
+    }
+
+    /// Measures text word-wrapped at a width, using the browser's own metrics.
+    ///
+    /// **The base class estimates, and an estimate is not good enough here.**
+    /// It assumes every character is `font.size * 0.55` wide, which for a
+    /// proportional font is wrong in both directions and wrong by different
+    /// amounts per string. The consequence is not a slightly-off box: a label
+    /// measured as one line and drawn as three overflows whatever was sized to
+    /// hold it, and in a table it lands on top of the row below. Every sidebar
+    /// row in the catalog looked like that.
+    ///
+    /// The browser already knows the answer — it is the thing that will do the
+    /// wrapping — so each word is measured for real and the greedy line-break
+    /// is the same one the DOM performs.
+    public override func measureText(_ text: String, font: NativeFontSpec,
+                                     wrappingAt maxWidth: CGFloat) -> NSSize {
+        guard maxWidth > 0, let context = measuringContext(for: font) else {
+            return super.measureText(text, font: font, wrappingAt: maxWidth)
+        }
+
+        // The line box, not the glyph box: "x" and "X" must measure the same
+        // height or a line's position depends on which letters are in it.
+        let probe = context.measureText("Mg")
+        let lineHeight = probe.map { CGFloat($0.fontBoundingBoxAscent + $0.fontBoundingBoxDescent) } ?? 0
+        let resolvedLineHeight = lineHeight > 0 ? lineHeight : CGFloat(font.size) * 1.2
+
+        func width(of run: String) -> CGFloat {
+            guard let metrics = context.measureText(run) else { return 0 }
+            return CGFloat(metrics.width)
+        }
+
+        var lineCount = 0
+        var widest: CGFloat = 0
+        // Explicit newlines break unconditionally; the wrap only applies within
+        // each paragraph, exactly as the DOM treats a `\n` in pre-wrap text.
+        for paragraph in text.split(separator: "\n", omittingEmptySubsequences: false) {
+            var current = ""
+            for word in paragraph.split(separator: " ", omittingEmptySubsequences: false) {
+                let candidate = current.isEmpty ? String(word) : current + " " + word
+                if !current.isEmpty, width(of: candidate) > maxWidth {
+                    lineCount += 1
+                    widest = max(widest, width(of: current))
+                    current = String(word)
+                } else {
+                    current = candidate
+                }
+            }
+            lineCount += 1
+            widest = max(widest, width(of: current))
+        }
+
+        return NSMakeSize(min(widest, maxWidth),
+                          CGFloat(max(lineCount, 1)) * resolvedLineHeight)
     }
 
     /// A canvas context kept solely for measurement, with the font applied.
