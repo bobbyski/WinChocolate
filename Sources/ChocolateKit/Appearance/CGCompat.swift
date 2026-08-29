@@ -546,6 +546,22 @@ extension NSGraphicsContext {
         winPendingSegments.append(winTransformed(.line(point)))
     }
 
+    /// Adds a connected series of lines through an array of points.
+    ///
+    /// Core Graphics' `addLines(between:)`, and its exact semantics: the first
+    /// point *moves*, the rest connect. A caller that already has a current
+    /// point and expects this to continue from it is wrong on Apple too, so
+    /// matching the surprise is the correct behaviour.
+    ///
+    /// An empty array adds nothing rather than starting an empty subpath.
+    public func addLines(between points: [CGPoint]) {
+        guard let first = points.first else { return }
+        move(to: first)
+        for point in points.dropFirst() {
+            addLine(to: point)
+        }
+    }
+
     /// Adds a cubic Bézier curve from the current point.
     public func addCurve(to end: CGPoint, control1: CGPoint, control2: CGPoint) {
         winPendingSegments.append(

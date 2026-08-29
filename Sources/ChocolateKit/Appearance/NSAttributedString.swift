@@ -416,6 +416,45 @@ extension NSAttributedString {
         return NSSize(width: width, height: height)
     }
 
+    /// Measures the text as it would be laid out in a bounding box.
+    ///
+    /// AppKit's `boundingRect(with:options:context:)`. The size is the same
+    /// single-line measurement `size()` makes — this seam does not re-flow text
+    /// — so `.usesLineFragmentOrigin` changes where the origin *means* rather
+    /// than what the text does, and the width offered is a bound rather than a
+    /// wrap column. A caller measuring a label gets the right answer; a caller
+    /// measuring a paragraph it expects to wrap does not, and would not have
+    /// wrapped when drawn either, which is at least consistent.
+    ///
+    /// - Returns: A rect at the origin the options ask for, sized to the text.
+    public func boundingRect(
+        with size: NSSize,
+        options: NSStringDrawingOptions = [],
+        context: NSStringDrawingContext? = nil
+    ) -> NSRect {
+        _ = (size, context)
+        let measured = self.size()
+        // `.usesLineFragmentOrigin` measures from the line fragment's top;
+        // without it AppKit measures from the baseline, which puts the origin
+        // a line's height higher.
+        let originY = options.contains(.usesLineFragmentOrigin) ? 0 : -measured.height
+        return NSRect(x: 0, y: originY, width: measured.width, height: measured.height)
+    }
+
+    /// Draws the text into a bounding box.
+    ///
+    /// AppKit's `draw(with:options:context:)`. Companion to `boundingRect`,
+    /// and with the same caveat: the text is drawn as one line from the box's
+    /// top-left rather than wrapped into it.
+    public func draw(
+        with rect: NSRect,
+        options: NSStringDrawingOptions = [],
+        context: NSStringDrawingContext? = nil
+    ) {
+        _ = (options, context)
+        draw(in: rect)
+    }
+
     /// Draws the attributed text inside a rectangle.
     ///
     /// AppKit lays the text out in the box, wrapping and clipping to it. The
@@ -544,4 +583,53 @@ extension String {
             italic: resolved.italic
         )
     }
+}
+
+
+/// How `boundingRect(with:options:context:)` and `draw(with:options:context:)`
+/// lay text out.
+///
+/// An option set rather than an enum because AppKit's is one, and callers
+/// combine `.usesLineFragmentOrigin` with `.usesFontLeading` routinely. Only
+/// the origin convention is honoured here — this seam draws a line rather than
+/// flowing a paragraph — and the rest are accepted so the call sites compile
+/// and read the same on every platform.
+public struct NSStringDrawingOptions: OptionSet, Sendable {
+    /// The raw bit field.
+    public let rawValue: Int
+
+    /// Creates an option set from a raw bit field.
+    public init(rawValue: Int) { self.rawValue = rawValue }
+
+    /// Measure and draw from the line fragment's origin rather than the
+    /// baseline. **The one option that changes the answer here.**
+    public static let usesLineFragmentOrigin = NSStringDrawingOptions(rawValue: 1 << 0)
+
+    /// Include the font's leading in the height.
+    public static let usesFontLeading = NSStringDrawingOptions(rawValue: 1 << 1)
+
+    /// Measure the glyphs' actual bounds rather than the line's.
+    public static let usesDeviceMetrics = NSStringDrawingOptions(rawValue: 1 << 3)
+
+    /// Lay out even when the text does not fit.
+    public static let truncatesLastVisibleLine = NSStringDrawingOptions(rawValue: 1 << 5)
+}
+
+/// The layout state AppKit's drawing calls can report back through.
+///
+/// Accepted and ignored: everything it reports — the actual bounds used, the
+/// scale the text was shrunk by — is a product of the paragraph layout this
+/// seam does not do. Present so call sites compile unchanged.
+public final class NSStringDrawingContext {
+    /// The smallest scale text may be shrunk to. Recorded, not honoured.
+    public var minimumScaleFactor: CGFloat = 0
+
+    /// The scale the text was actually drawn at. Always 1: nothing shrinks.
+    public private(set) var actualScaleFactor: CGFloat = 1
+
+    /// The bounds the text actually occupied.
+    public private(set) var totalBounds: NSRect = .zero
+
+    /// Creates a drawing context.
+    public init() {}
 }
