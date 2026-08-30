@@ -472,15 +472,35 @@ extension NSSegmentedControl {
         let spacing = Self.winSegmentSpacing(for: segmentStyle)
         let totalSpacing = spacing * CGFloat(max(segments.count - 1, 0))
         let requestedWidth = segments.reduce(CGFloat(0)) { $0 + $1.width }
-        let automaticCount = segments.filter { $0.width == 0 }.count
         let remainingWidth = max(0, frame.size.width - requestedWidth - totalSpacing)
-        let automaticWidth = automaticCount == 0 ? 0 : remainingWidth / CGFloat(automaticCount)
+
+        // **Automatic segments share the space in proportion to their labels,
+        // not equally.** An equal split gives every segment the same width
+        // whatever it holds, so "Documentation | Examples | API" hands a third
+        // to a word that needs half and a third to one that needs a tenth —
+        // and the long label is clipped while the short one sits in a puddle
+        // of space. AppKit sizes an automatic segment to its own content; this
+        // does the same, then scales the set to whatever width the control was
+        // actually given so they still fill it exactly.
+        let naturalWidths = segments.map { $0.width == 0 ? winNaturalSegmentWidth(for: $0) : 0 }
+        let naturalTotal = naturalWidths.reduce(0, +)
+        let scale = naturalTotal > 0 ? remainingWidth / naturalTotal : 0
+
         var x: CGFloat = 0
-        return segments.map { segment in
-            let width = segment.width == 0 ? automaticWidth : segment.width
+        return segments.indices.map { index in
+            let segment = segments[index]
+            let width = segment.width == 0 ? naturalWidths[index] * scale : segment.width
             defer { x += width + spacing }
             return NSMakeRect(x, 0, width, frame.size.height)
         }
+    }
+
+    /// The width a segment wants for its own label — the per-segment half of
+    /// `intrinsicContentSize`, so the two cannot drift apart.
+    private func winNaturalSegmentWidth(for segment: SegmentState) -> CGFloat {
+        let font = self.font ?? NSFont.systemFont(ofSize: 13)
+        let text = segment.label.isEmpty ? " " : segment.label
+        return text.size(withAttributes: [.font: font]).width + 20
     }
 }
 

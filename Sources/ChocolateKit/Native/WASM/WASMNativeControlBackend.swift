@@ -1551,13 +1551,24 @@ public final class WASMNativeControlBackend: InMemoryNativeControlBackend {
         // Enough of the window to see and grab, even when it is much larger
         // than the page.
         let grab: CGFloat = 80
-        let maxX = max(0, viewport.width - grab)
-        let maxY = max(0, viewport.height - grab)
+
+        // **A window bigger than the page is a page that scrolls.** The viewport
+        // is the whole screen here, and a window taller than it pushes the
+        // document itself into scrolling — so the title bar leaves the top of
+        // the screen, and a click near the bottom scrolls the desktop instead
+        // of the app. AppKit constrains a window to the screen for the same
+        // reason (`constrainFrameRect(_:to:)`); nothing is lost, because the
+        // part that would have hung off was unreachable either way.
+        let width = min(frame.size.width, viewport.width)
+        let height = min(frame.size.height, viewport.height)
+
+        let maxX = max(0, viewport.width - min(grab, width))
+        let maxY = max(0, viewport.height - min(grab, height))
         return NSRect(
             x: min(max(frame.origin.x, 0), maxX),
             y: min(max(frame.origin.y, 0), maxY),
-            width: frame.size.width,
-            height: frame.size.height
+            width: width,
+            height: height
         )
     }
 

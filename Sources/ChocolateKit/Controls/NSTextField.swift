@@ -408,6 +408,35 @@ open class NSTextField: NSControl {
         return NSSize(width: width, height: measured.height + verticalPadding)
     }
 
+    /// The size the field wants inside an offered one — wrapping at the offered
+    /// width when the field wraps.
+    ///
+    /// **`NSControl`'s implementation ignores the offered size and hands back
+    /// the intrinsic one**, which for a text field is always a single line.
+    /// Every caller asking "how tall is this paragraph at 240 points wide?"
+    /// therefore got one line's height, laid the label out that tall, and the
+    /// text drew two lines over whatever was beneath it. On a backend that
+    /// clips to the frame the excess is merely invisible; in a browser it
+    /// spills, which is how it was finally noticed — a sidebar row whose
+    /// description overlapped the row below, and whose lower half clicked
+    /// through to it.
+    ///
+    /// Only the wrapping case needs the offered width. A single-line field's
+    /// intrinsic size is already the right answer.
+    open override func sizeThatFits(_ size: NSSize) -> NSSize {
+        guard isMultiline, size.width > 0, size.width < CGFloat.greatestFiniteMagnitude else {
+            return super.sizeThatFits(size)
+        }
+        let horizontalPadding: CGFloat = isBezeled ? 8 : (isBordered ? 6 : 4)
+        let verticalPadding: CGFloat = isBezeled ? 6 : (isBordered ? 4 : 2)
+        let text = stringValue.isEmpty ? " " : stringValue
+        let measured = text.size(
+            withAttributes: [.font: font ?? NSFont.systemFont(ofSize: 12)],
+            maxWidth: max(1, size.width - horizontalPadding)
+        )
+        return NSSize(width: size.width, height: measured.height + verticalPadding)
+    }
+
     /// Creates a text field with text and a frame.
     init(string stringValue: String, frame frameRect: NSRect) {
         self.stringValue = stringValue
