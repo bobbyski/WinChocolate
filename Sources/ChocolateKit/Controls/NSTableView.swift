@@ -398,6 +398,33 @@ open class NSTableView: NSControl {
     /// keep the native list-view.
     open var winUsesViewBasedCells: Bool = false
     var winIsDrawn = false
+
+    /// The width the hosted rows were last built for, so a resize can tell
+    /// whether it actually needs to rebuild them.
+    var winLastLaidOutWidth: CGFloat = -1
+
+    /// Rebuilds the rows when the table's own width changes.
+    ///
+    /// **A drawn table rebuilt on reload, on realize, and on a column resize —
+    /// and not when it was itself resized.** Its rows are laid out against
+    /// `frame.width`, and that width comes from the enclosing scroll view's
+    /// clip. A table realized before the clip has its real size builds every
+    /// row at the default column width and then keeps them: the rows come out
+    /// a fraction of the table's width, every label inside overflows its cell,
+    /// and each row's text lands on top of the row below.
+    ///
+    /// AppKit re-tiles on a frame change; this is that. Guarded on the width
+    /// actually differing, because `winRebuildHostedViews` sets the frame
+    /// itself through `winSizeToContentIfScrolled` and would otherwise call
+    /// itself forever.
+    open override func layout() {
+        super.layout()
+        guard winIsDrawn, frame.size.width != winLastLaidOutWidth else { return }
+        winLastLaidOutWidth = frame.size.width
+        winRebuildHostedViews()
+        needsDisplay = true
+    }
+
     var winHostedCellViews: [NSView] = []
     /// Recycled hosted cell/row views available for reuse, keyed by identifier —
     /// populated from the outgoing views at the start of each drawn rebuild and

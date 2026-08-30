@@ -22,9 +22,16 @@ extension NSTableView {
             || delegate.tableView(self, rowViewFor: 0) != nil }
     }
 
-    /// Whether the drawn table hides its header (all columns untitled).
+    /// Whether the drawn table hides its header.
+    ///
+    /// **`headerView == nil` is how AppKit hides a header, and it was ignored
+    /// here.** A column's header cell is seeded from its identifier, exactly as
+    /// AppKit seeds it, so "all columns untitled" is almost never true — a
+    /// single-column list built with `NSTableColumn(identifier:)` ended up with
+    /// a header strip labelled with the identifier. Every ActiveUI sidebar and
+    /// list said `AUITableColumn` across the top.
     var winHeaderHidden: Bool {
-        tableColumns.allSatisfy { $0.title.isEmpty }
+        headerView == nil || tableColumns.allSatisfy { $0.title.isEmpty }
     }
 
     /// The header row height (0 when the header is hidden).
@@ -141,6 +148,9 @@ extension NSTableView {
         if frame.size.width != width || frame.size.height != height {
             frame = NSRect(x: frame.origin.x, y: frame.origin.y, width: width, height: height)
         }
+        // Now that the table knows how wide it is, let the columns fill it —
+        // before the caller builds rows against them. See `winAutoresizeColumns`.
+        winAutoresizeColumns()
         // Re-sync the scroll view's native scrollbars with the new document size.
         scrollView.tile()
     }

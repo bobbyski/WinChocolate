@@ -177,26 +177,44 @@ extension NSTableView {
     }
 
     func winSizeToFit() {
-        guard !tableColumns.isEmpty else {
-            return
+        if winAutoresizeColumns() {
+            winApplyColumnWidths()
         }
+    }
+
+    /// Grows or shrinks the columns to fill the table's width, without
+    /// rebuilding anything.
+    ///
+    /// **Split out from `winSizeToFit` so the layout pass can call it.** A cell
+    /// view is sized to its *column*, not to the table, so a single-column
+    /// table whose column is still the default 100pt draws 100pt-wide cells
+    /// inside a 283pt table — every label in them overflows, and in a sidebar
+    /// each row's text lands on the row below. The columns therefore have to
+    /// be resized *before* the rows are built, and `winSizeToFit` cannot be
+    /// used for that: it ends by rebuilding, which is what would be calling it.
+    ///
+    /// - Returns: whether any column's width actually changed.
+    @discardableResult
+    func winAutoresizeColumns() -> Bool {
+        guard !tableColumns.isEmpty else { return false }
         switch columnAutoresizingStyle {
         case .noColumnAutoresizing:
-            return
+            return false
         case .lastColumnOnlyAutoresizingStyle:
             sizeLastColumnToFit()
+            return true
         case .uniformColumnAutoresizingStyle:
             let spacing = intercellSpacing.width * CGFloat(max(0, tableColumns.count - 1))
             let current = tableColumns.reduce(0) { $0 + $1.width }
             let delta = frame.size.width - spacing - current
             guard abs(delta) > 0.5 else {
-                return
+                return false
             }
             let share = delta / CGFloat(tableColumns.count)
             for index in tableColumns.indices {
                 tableColumns[index].width = winClampedColumnWidth(tableColumns[index].width + share, for: tableColumns[index])
             }
-            winApplyColumnWidths()
+            return true
         }
     }
 

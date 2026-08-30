@@ -1719,8 +1719,7 @@ public final class WASMNativeControlBackend: InMemoryNativeControlBackend {
     /// (plan row S1). This used to reach through `rawValue.getContext` behind a
     /// spike marker; the wrapper landed upstream and the escape hatch is gone.
     public override func measureText(_ text: String, font: NativeFontSpec) -> NSSize {
-        guard let context = measuringContext(for: font),
-              let metrics = context.measureText(text) else {
+        guard let context = measuringContext(for: font) else {
             return super.measureText(text, font: font)
         }
 
@@ -1728,9 +1727,33 @@ public final class WASMNativeControlBackend: InMemoryNativeControlBackend {
         // reports it, which is what a layout wants; the glyph-specific
         // bounding box would make "x" shorter than "X". Older engines omit it,
         // hence the em-box fallback.
-        let lineHeight = metrics.fontBoundingBoxAscent + metrics.fontBoundingBoxDescent
-        return NSMakeSize(CGFloat(metrics.width),
-                          lineHeight > 0 ? CGFloat(lineHeight) : CGFloat(font.size * 1.2))
+        let probe = context.measureText(text.isEmpty ? "Mg" : text)
+        let reported = probe.map { $0.fontBoundingBoxAscent + $0.fontBoundingBoxDescent } ?? 0
+        let lineHeight = reported > 0 ? CGFloat(reported) : CGFloat(font.size) * 1.2
+
+        // **Newlines are not wrapping, and this is not the wrapping call.**
+        // `canvas.measureText` lays a string out on one line and reports the
+        // width it would take there — a `\n` contributes nothing. AppKit's
+        // `size(withAttributes:)` returns the multi-line size, so a code
+        // snippet or any pre-formatted block measures one line tall here and
+        // draws four: the box is sized for the first line and the rest spills
+        // over whatever is below it.
+        //
+        // Splitting on newlines costs one `measureText` per line and is the
+        // difference between a laid-out block and a pile.
+        guard text.contains("\n") else {
+            return NSMakeSize(CGFloat(probe?.width ?? 0), lineHeight)
+        }
+
+        var widest: CGFloat = 0
+        var lines = 0
+        for line in text.split(separator: "\n", omittingEmptySubsequences: false) {
+            lines += 1
+            if let metrics = context.measureText(String(line)) {
+                widest = max(widest, CGFloat(metrics.width))
+            }
+        }
+        return NSMakeSize(widest, CGFloat(max(lines, 1)) * lineHeight)
     }
 
     /// Measures text word-wrapped at a width, using the browser's own metrics.
