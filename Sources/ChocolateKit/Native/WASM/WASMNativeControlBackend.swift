@@ -1362,6 +1362,48 @@ public final class WASMNativeControlBackend: InMemoryNativeControlBackend {
         Self.lastReportedModifiers
     }
 
+    /// Swaps a text field between a label and an editable input.
+    ///
+    /// **A label and a field are different elements, not one element with a
+    /// flag.** `createTextField` builds a `<div>` for a label and an `<input>`
+    /// for a field, so a control that becomes editable after it was realized
+    /// has the wrong element — and a `<div>` with no text is invisible, which
+    /// is how a text field went missing from a catalog page entirely.
+    ///
+    /// The replacement keeps the frame, the parent and the position in the
+    /// sibling order, so nothing above it has to be told.
+    public override func setTextEditable(_ isEditable: Bool, for handle: NativeHandle) {
+        super.setTextEditable(isEditable, for: handle)
+        guard records[handle]?.kind == "textField", let old = elements[handle] else { return }
+
+        let isInput = old.rawValue.tagName.string?.lowercased() == "input"
+        guard isInput != isEditable else { return }
+
+        let text = isInput
+            ? (old.rawValue.value.string ?? "")
+            : (old.textContent ?? "")
+        let replacement: Element
+        if isEditable {
+            replacement = Element.input()
+            _ = replacement.setAttribute("value", text)
+        } else {
+            replacement = Element.div()
+            replacement.textContent = text
+            _ = replacement.setStyle("display", "flex").setStyle("align-items", "center")
+        }
+        _ = replacement
+            .setStyle("position", "absolute")
+            .setStyle("left", old.getStyle("left") ?? "0px")
+            .setStyle("top", old.getStyle("top") ?? "0px")
+            .setStyle("width", old.getStyle("width") ?? "0px")
+            .setStyle("height", old.getStyle("height") ?? "0px")
+            .setStyle("font", old.getStyle("font") ?? "13px system-ui, sans-serif")
+
+        _ = old.rawValue.replaceWith?(replacement.rawValue)
+        elements[handle] = replacement
+        inputElements[handle] = replacement
+    }
+
     // MARK: - Clipboard
     //
     // See `WASMClipboard.swift` for why a page can write through but not read

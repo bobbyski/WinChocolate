@@ -136,7 +136,16 @@ open class NSTextField: NSControl {
     }
 
     /// Whether the text field accepts keyboard editing.
-    open var isEditable: Bool = false
+    /// **Settable after the peer exists**, as it is in AppKit. A field created
+    /// as a label and later made editable used to keep the label's native
+    /// control forever: on the browser backend that is a `<div>`, so the field
+    /// simply never appeared. The backend is told, and swaps.
+    open var isEditable: Bool = false {
+        didSet {
+            guard isEditable != oldValue, let nativeHandle else { return }
+            realizedBackend?.setTextEditable(isEditable, for: nativeHandle)
+        }
+    }
 
     /// Whether the text field accepts selection.
     open var isSelectable: Bool = false
@@ -444,8 +453,17 @@ open class NSTextField: NSControl {
     }
 
     /// Creates a text field with an initial string, matching AppKit's shape.
+    /// **Editable and selectable, as AppKit's is.** `NSTextField(string:)`
+    /// makes a *field*; `NSTextField(labelWithString:)` makes a label, and both
+    /// label initializers below set the flags themselves. Defaulting this one
+    /// to non-editable quietly turned every text field into a label on every
+    /// backend — on the browser one, where a label is a `<div>` and a field is
+    /// an `<input>`, the field then had no element to type into and simply did
+    /// not appear.
     public convenience init(string stringValue: String) {
         self.init(string: stringValue, frame: .zero)
+        isEditable = true
+        isSelectable = true
     }
 
     /// Creates a non-editable label, matching AppKit's convenience shape.
