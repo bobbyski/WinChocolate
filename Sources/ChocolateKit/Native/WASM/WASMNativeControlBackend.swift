@@ -91,6 +91,9 @@ public final class WASMNativeControlBackend: InMemoryNativeControlBackend {
     /// solved it the same way.
     private var pendingMainMenu: NSMenu?
 
+    /// The menu bar currently on the desktop, so installing another replaces it.
+    private var menuBarElement: Element?
+
     /// A canvas kept solely for text measurement.
     private var measuringCanvas: Element?
 
@@ -242,6 +245,13 @@ public final class WASMNativeControlBackend: InMemoryNativeControlBackend {
     private func renderMainMenuIfPossible() {
         guard let desktop, let menu = pendingMainMenu else { return }
 
+        // Installing a menu bar twice used to leave two stacked on the desktop,
+        // the dead one on top and swallowing every click.
+        if let existing = menuBarElement {
+            _ = existing.parentElement?.removeChild(existing)
+            menuBarElement = nil
+        }
+
         let bar = Element.div()
             .setStyle("position", "absolute")
             .setStyle("top", "0").setStyle("left", "0").setStyle("right", "0")
@@ -258,6 +268,7 @@ public final class WASMNativeControlBackend: InMemoryNativeControlBackend {
             _ = bar.appendChild(makeMenuTitle(for: item))
         }
         _ = desktop.appendChild(bar)
+        menuBarElement = bar
     }
 
     /// Builds one top-level menu title and the dropdown it opens.
@@ -268,7 +279,12 @@ public final class WASMNativeControlBackend: InMemoryNativeControlBackend {
             .setStyle("display", "flex")
             .setStyle("align-items", "center")
             .setStyle("cursor", "default")
-        title.textContent = item.title
+        // **A menu-bar item's name is usually on its submenu, not on itself.**
+        // AppKit displays the submenu's title for a bar item, and building one
+        // as a bare `NSMenuItem()` whose `submenu` carries the name is the
+        // ordinary way to do it — so reading `item.title` alone rendered a bar
+        // of correctly-sized, entirely blank menus.
+        title.textContent = item.title.isEmpty ? (item.submenu?.title ?? "") : item.title
 
         guard let submenu = item.submenu else { return title }
 
