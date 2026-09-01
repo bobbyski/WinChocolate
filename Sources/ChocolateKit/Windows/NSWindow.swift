@@ -291,6 +291,80 @@ open class NSWindow: NSResponder {
     /// The window delegate, consulted for close decisions and lifecycle.
     open weak var delegate: NSWindowDelegate?
 
+    /// The controller managing this window, when it has one.
+    ///
+    /// Setting it also makes the controller this window's `nextResponder`,
+    /// which is what real AppKit does — measured in
+    /// `Docs/NSDOCUMENT_PLAN.md` § Ground Truth, where `window.nextResponder`
+    /// is the `NSWindowController`. That link is half of how a menu item's
+    /// `saveDocument:` finds a document: the chain runs window → controller,
+    /// and the controller nominates its document from there.
+    open weak var windowController: NSWindowController? {
+        didSet {
+            // Only claim the slot when it is free or was ours. A window whose
+            // responder chain an application has arranged by hand is left
+            // alone; AppKit's own is what this reproduces, not a stronger rule.
+            if nextResponder == nil || nextResponder === oldValue {
+                nextResponder = windowController
+            }
+        }
+    }
+
+    /// Whether the window's document has unsaved changes.
+    ///
+    /// AppKit sets this from the document automatically and shows a dot in the
+    /// close button; measured, its `windowTitle(forDocumentDisplayName:)`
+    /// leaves the title itself alone. So this is the API, and **how it looks is
+    /// each backend's decision** — Win32 and GTK draw the classic asterisk in
+    /// the title bar, which is where that asterisk belongs rather than glued
+    /// onto the document's name.
+    open var isDocumentEdited: Bool = false {
+        didSet {
+            guard isDocumentEdited != oldValue else {
+                return
+            }
+            winApplyDocumentChrome()
+        }
+    }
+
+    /// The file this window represents, when it represents one.
+    ///
+    /// Setting it keeps `representedFilename` in step, as AppKit does.
+    open var representedURL: URL? {
+        didSet {
+            guard representedURL != oldValue else {
+                return
+            }
+            winApplyDocumentChrome()
+        }
+    }
+
+    /// The path of the file this window represents.
+    ///
+    /// The older spelling of `representedURL`; the two are one value, so
+    /// setting either is visible through the other.
+    open var representedFilename: String {
+        get { representedURL?.path ?? "" }
+        set { representedURL = newValue.isEmpty ? nil : URL(fileURLWithPath: newValue) }
+    }
+
+    /// Pushes document identity and edited state into the native window chrome.
+    ///
+    /// The backends decide what to draw; a backend that has nothing to show for
+    /// it does nothing, which is why this is a plain call rather than a
+    /// conditional here.
+    private func winApplyDocumentChrome() {
+        guard let handle = nativeHandle else {
+            return
+        }
+        // The window's OWN backend, not the application's: a window can be
+        // created against a specific one (the contract suite does exactly
+        // that), and asking the shared application would send this to a
+        // backend that never realized the window.
+        nativeBackend.setWindowDocumentEdited(
+            handle, edited: isDocumentEdited, representedPath: representedURL?.path)
+    }
+
     /// Rebuilds a view's cursor rectangles and pushes them to its native peer.
     open func invalidateCursorRects(for view: NSView) {
         view.updateCursorRegions()

@@ -242,6 +242,21 @@ public class InMemoryNativeControlBackend: NativeControlBackend {
     /// Recorded in-memory backend state for `nextPrintResult`.
     public var nextPrintResult = true
 
+    /// Page-setup requests received through `runPageLayout(for:)`, oldest first.
+    public var pageLayoutRequests: [NSPrintInfo] = []
+
+    /// Whether each window last reported its document as edited.
+    public var documentEditedWindows: [NativeHandle: Bool] = [:]
+
+    /// The file each window last reported itself as representing.
+    public var representedPaths: [NativeHandle: String?] = [:]
+
+    /// The answer the next `runPageLayout(for:)` gives.
+    ///
+    /// False by default, matching a cancelled dialog: a test that means to
+    /// accept page settings should have to say so.
+    public var nextPageLayoutResult = false
+
     /// Recorded in-memory backend state for `windowButtonsHidden`.
     public internal(set) var windowButtonsHidden: [NativeHandle: NativeWindowButtonVisibility] = [:]
 
@@ -1701,5 +1716,25 @@ public class InMemoryNativeControlBackend: NativeControlBackend {
         drawActions[handle]?(recording, NSRect(origin: NSZeroPoint, size: contentSize))
         printJobs.append(PrintJob(handle: handle, jobName: jobName, contentSize: contentSize, recording: recording))
         return true
+    }
+
+    /// Records a page-setup request and answers with the scripted result.
+    ///
+    /// Declared in the class body rather than an extension on purpose: a
+    /// backend can only override what the class itself declares, so a method
+    /// added in an extension would be silently ignored by every subclass that
+    /// tried to replace it.
+    public func runPageLayout(for printInfo: NSPrintInfo) -> Bool {
+        pageLayoutRequests.append(printInfo)
+        return nextPageLayoutResult
+    }
+
+    /// Records a window's document state so tests can assert on it.
+    ///
+    /// In the class body rather than an extension on purpose: a backend can
+    /// only override what the class itself declares.
+    public func setWindowDocumentEdited(_ handle: NativeHandle, edited: Bool, representedPath: String?) {
+        documentEditedWindows[handle] = edited
+        representedPaths[handle] = representedPath
     }
 }

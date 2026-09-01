@@ -199,6 +199,13 @@ func testTextViewSelectionInsertionAndDelegate() {
     expect(backend.records[deferredHandle]?.textSelectionLength == 3, "Stored selection length did not apply on realization.")
 }
 
+/// Supplies `TextContractDocument` through AppKit's real `documentClass(forType:)`.
+final class TextContractDocumentController: NSDocumentController {
+    override func documentClass(forType typeName: String) -> AnyClass? {
+        TextContractDocument.self
+    }
+}
+
 final class TextContractDocument: NSDocument {
     var content = ""
 
@@ -224,13 +231,12 @@ func testDocumentChangeCountAndOverridableDefaults() {
     document.updateChangeCount(.changeCleared)
     expect(!document.isDocumentEdited, "changeCleared did not clear the edited state.")
 
-    var thrownError: Error?
-    do {
-        _ = try document.data(ofType: "txt")
-    } catch {
-        thrownError = error
-    }
-    expect(thrownError as? NSDocumentError == .unimplemented, "Base data(ofType:) did not throw the unimplemented error.")
+    // `NSDocument().data(ofType:)` is deliberately NOT exercised here. On real
+    // AppKit it raises `NSInternalInconsistencyException` ("dataOfType:error: is
+    // a subclass responsibility but has not been overridden") and kills the
+    // process — measured in Docs/NSDOCUMENT_PLAN.md § Ground Truth — so the port
+    // traps to match. A test cannot catch either one, and asserting that it
+    // *throws* was the old, invented behaviour this suite used to lock in.
 
     #if os(Windows)
     document.fileURL = URL(fileURLWithPath: "C:\\Docs\\Report.txt")
@@ -303,7 +309,9 @@ func testDocumentControllerTracksDocumentsRecentsAndOpen() {
         NSApplication.shared.nativeBackend = previousBackend
     }
 
-    let controller = NSDocumentController()
+    // A controller that supplies the suite's document class through AppKit's
+    // real hook, `documentClass(forType:)`.
+    let controller = TextContractDocumentController()
     let first = NSDocument()
     let second = NSDocument()
 
@@ -352,7 +360,6 @@ func testDocumentControllerOpenAndClose(_ controller: NSDocumentController, back
     }
     expect(seedError == nil, "Seeding the open-document file failed.")
 
-    controller.winDocumentClass = TextContractDocument.self
     backend.scriptedFileDialogPaths = [[openPath]]
     controller.openDocument(nil)
 

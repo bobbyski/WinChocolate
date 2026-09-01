@@ -29,6 +29,14 @@ open class NSScrollView: NSView {
 
     open var borderType: NSBorderType = .noBorder
     /// The clip view that hosts the document view.
+    /// The size of the area the document view is shown through.
+    ///
+    /// The clip view's bounds — which is what "how much of the document can be
+    /// seen" means, and what a text container sizes itself against.
+    open var contentSize: NSSize {
+        contentView.bounds.size
+    }
+
     open var contentView: NSClipView {
         didSet {
             oldValue.removeFromSuperview()

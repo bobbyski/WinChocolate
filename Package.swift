@@ -276,6 +276,25 @@ let package = Package(
                 )
             ]
         ),
+        // The document-architecture proof (Docs/NSDOCUMENT_PLAN.md, Phase 7):
+        // a Windows-Notepad-shaped editor as ONE source on every backend. Same
+        // tri-target rule as the other demos — on macOS it builds against real
+        // AppKit, which is the control group.
+        .executableTarget(
+            name: "ChocolateNoteDemo",
+            dependencies: [
+                .target(name: "WinChocolate", condition: .when(platforms: [.windows])),
+                .target(name: "LinChocolate", condition: .when(platforms: [.linux])),
+                .target(name: "WASMChocolate", condition: .when(platforms: [.wasi]))
+            ],
+            path: "Demo/ChocolateNoteDemo",
+            linkerSettings: [
+                .unsafeFlags(
+                    ["-Xlinker", "/SUBSYSTEM:WINDOWS", "-Xlinker", "/ENTRY:mainCRTStartup"],
+                    .when(platforms: [.windows])
+                )
+            ]
+        ),
         // A separate app that exercises the run loop and timers (request #7).
         // Same tri-target rule as the main demo; the frozen demo is untouched.
         .executableTarget(

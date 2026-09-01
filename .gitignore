@@ -12,3 +12,6 @@ demo.stdout.txt
 # and the .wasm alone is ~76 MB in debug.
 Demo/*/WebBuild/
 .omegaIDE/
+
+# Scratch path for Tools/run-contract-tests.sh (the WASI contract-suite runner).
+.build-wasm-tests/

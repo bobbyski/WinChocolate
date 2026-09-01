@@ -42,6 +42,12 @@ func winEnumFontFamiliesExW(
 @_silgen_name("SetWindowTextW")
 func winSetWindowTextW(_ hwnd: HWND?, _ text: UnsafePointer<UInt16>?) -> Int32
 
+@_silgen_name("GetWindowTextW")
+func winGetWindowTextW(_ hwnd: HWND?, _ text: UnsafeMutablePointer<UInt16>?, _ maxCount: Int32) -> Int32
+
+@_silgen_name("GetWindowTextLengthW")
+func winGetWindowTextLengthW(_ hwnd: HWND?) -> Int32
+
 @_silgen_name("ShowWindow")
 func winShowWindow(_ hwnd: HWND?, _ commandShow: Int32) -> Int32
 

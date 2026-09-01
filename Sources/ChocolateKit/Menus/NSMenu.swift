@@ -92,12 +92,37 @@ open class NSMenu: NSObject {
     }
 
     /// Computes autoenable state for one item.
+    ///
+    /// An item with an explicit target asks that target. An item with **no**
+    /// target — the ordinary shape of a document-based app's File menu — has
+    /// its target resolved through the responder chain first, exactly as the
+    /// action itself would be when clicked. Without that step a `saveDocument:`
+    /// item would fire correctly but could never be disabled, because the
+    /// object that knows whether saving is possible was never asked.
     private func validatedEnablement(for item: NSMenuItem) -> Bool {
-        if let validator = item.target as? NSMenuItemValidation {
+        let responsible: Any? = item.target ?? resolvedTarget(for: item)
+
+        if let validator = responsible as? NSMenuItemValidation {
             return validator.validateMenuItem(item)
         }
+        if let validator = responsible as? NSUserInterfaceValidations {
+            return validator.validateUserInterfaceItem(item)
+        }
 
+        // No validator: an item is enabled when it has somewhere to send its
+        // action. For a nil-target item that means the chain found a handler.
+        if item.target == nil, item.action != nil {
+            return responsible != nil
+        }
         return item.winInternalAction != nil || item.action != nil
+    }
+
+    /// Finds what a nil-target item's action would actually reach.
+    private func resolvedTarget(for item: NSMenuItem) -> Any? {
+        guard let action = item.action else {
+            return nil
+        }
+        return MainActor.assumeIsolated { NSApplication.shared.target(forAction: action) }
     }
 
     /// Adds an item to the end of the menu.

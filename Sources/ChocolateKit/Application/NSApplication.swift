@@ -79,6 +79,9 @@ public final class NSApplication: NSObject {
         )
     }
 
+    /// Whether a `.terminateLater` quit is waiting on the delegate's answer.
+    internal var winDeferredTerminationPending = false
+
     /// Windows known to the application.
     public private(set) var windows: [NSWindow] = []
 
@@ -278,8 +281,75 @@ public final class NSApplication: NSObject {
         nativeBackend.stopModal(withCode: code.rawValue)
     }
 
+    /// How a delegate answers `applicationShouldTerminate(_:)`.
+    public enum TerminateReply: UInt, Sendable {
+        /// Stop the quit; the application keeps running.
+        case terminateCancel = 0
+
+        /// Quit now.
+        case terminateNow = 1
+
+        /// Quit once the delegate calls
+        /// `reply(toApplicationShouldTerminate:)`.
+        case terminateLater = 2
+    }
+
+    /// Whether a deferred termination is waiting on the delegate's answer.
+    private var winIsAwaitingTerminateReply: Bool {
+        get { winDeferredTerminationPending }
+        set { winDeferredTerminationPending = newValue }
+    }
+
+    /// Answers a `.terminateLater` reply, completing or abandoning the quit.
+    public func reply(toApplicationShouldTerminate shouldTerminate: Bool) {
+        guard winIsAwaitingTerminateReply else {
+            return
+        }
+        winIsAwaitingTerminateReply = false
+        guard shouldTerminate else {
+            return
+        }
+        winPerformTermination()
+    }
+
     /// Terminates the application.
+    ///
+    /// The order matters and is AppKit's: **unsaved documents are reviewed
+    /// first**, then the delegate is asked, and only then does anything shut
+    /// down. Reviewing after the delegate said yes would mean a Cancel in the
+    /// save prompt could not stop a quit that was already under way.
     public func terminate(_ sender: Any?) {
+        // A document-based application gets its save prompts here, without
+        // having to implement `applicationShouldTerminate(_:)` at all.
+        if let controller = NSDocumentController.winSharedIfCreated, controller.hasEditedDocuments {
+            var reviewedAll = false
+            let recorder = WinTerminateReviewRecorder { reviewedAll = $0 }
+            controller.reviewUnsavedDocuments(
+                withAlertTitle: nil,
+                cancellable: true,
+                delegate: recorder,
+                didReviewAll: Selector("documentController:didReviewAll:contextInfo:"),
+                contextInfo: nil)
+            guard reviewedAll else {
+                return
+            }
+        }
+
+        switch delegate?.applicationShouldTerminate(self) ?? .terminateNow {
+        case .terminateCancel:
+            return
+        case .terminateLater:
+            winIsAwaitingTerminateReply = true
+            return
+        case .terminateNow:
+            break
+        }
+
+        winPerformTermination()
+    }
+
+    /// Tears the application down, once everything has agreed to it.
+    private func winPerformTermination() {
         delegate?.applicationWillTerminate(notification(named: "NSApplicationWillTerminateNotification"))
         // The delegate and the notification are the same event told twice,
         // because AppKit tells it twice. Anything that is not the delegate —
@@ -343,20 +413,34 @@ public final class NSApplication: NSObject {
             return true
         }
 
+        // Last link, as in AppKit: the shared document controller, which is
+        // what makes a File menu's `newDocument:` and `openDocument:` work
+        // without the application wiring a target to them.
+        if let controller = NSDocumentController.winSharedIfCreated,
+           controller.responds(to: action) {
+            controller.perform(action, with: sender)
+            return true
+        }
+
         return false
     }
 
     /// Returns the object that would receive an action, matching AppKit's
     /// `target(forAction:)` (nil-target resolution without sending).
+    ///
+    /// This walks the *same* links `sendAction(_:to:from:)` does, including
+    /// each responder's supplemental target and the shared document
+    /// controller. The two staying in step is what makes menu validation
+    /// honest: an item is enabled exactly when clicking it would reach
+    /// something.
     public func target(forAction action: Selector) -> Any? {
-        if let keyWindow {
-            var responder: NSResponder? = keyWindow.firstResponder ?? keyWindow
-            while let current = responder {
-                if current.responds(to: action) {
-                    return current
-                }
-                responder = current.nextResponder
-            }
+        if let found = chainTarget(from: keyWindow, for: action) {
+            return found
+        }
+
+        if let mainWindow, mainWindow !== keyWindow,
+           let found = chainTarget(from: mainWindow, for: action) {
+            return found
         }
 
         if responds(to: action) {
@@ -367,6 +451,31 @@ public final class NSApplication: NSObject {
             return delegateObject
         }
 
+        if let controller = NSDocumentController.winSharedIfCreated,
+           controller.responds(to: action) {
+            return controller
+        }
+
+        return nil
+    }
+
+    /// Walks one window's responder chain looking for a handler.
+    private func chainTarget(from window: NSWindow?, for action: Selector) -> Any? {
+        guard let window else {
+            return nil
+        }
+
+        var responder: NSResponder? = window.firstResponder ?? window
+        while let current = responder {
+            if current.responds(to: action) {
+                return current
+            }
+            if let supplemental = current.supplementalTarget(forAction: action, sender: nil) as? NSObject,
+               supplemental.responds(to: action) {
+                return supplemental
+            }
+            responder = current.nextResponder
+        }
         return nil
     }
 
@@ -483,4 +592,38 @@ public func NSApplicationMain(delegate: NSApplicationDelegate? = nil) -> Int32 {
     }
     application.run()
     return 0
+}
+
+/// Captures a document controller's "did you review them all?" answer.
+///
+/// `reviewUnsavedDocuments(...)` reports through a selector, and `terminate(_:)`
+/// needs the answer inline to decide whether the quit proceeds. A tiny
+/// `NSObject` is the only thing `perform(_:with:)` can deliver to.
+internal final class WinTerminateReviewRecorder: NSObject {
+    /// Called with the answer.
+    private let record: (Bool) -> Void
+
+    /// Creates a recorder reporting through a closure.
+    init(record: @escaping (Bool) -> Void) {
+        self.record = record
+        super.init()
+    }
+
+    /// Claims the review-callback selector.
+    override func responds(to aSelector: Selector?) -> Bool {
+        aSelector?.name == "documentController:didReviewAll:contextInfo:"
+            || super.responds(to: aSelector)
+    }
+
+    /// Receives the answer, which travels in the callback box.
+    @discardableResult
+    override func perform(_ aSelector: Selector, with object: Any?) -> Any? {
+        guard aSelector.name == "documentController:didReviewAll:contextInfo:" else {
+            return super.perform(aSelector, with: object)
+        }
+        // Anything other than an explicit yes stops the quit: refusing to
+        // terminate is the answer that cannot lose the user's work.
+        record((object as? NSDocument.CallbackInfo)?.succeeded ?? false)
+        return nil
+    }
 }

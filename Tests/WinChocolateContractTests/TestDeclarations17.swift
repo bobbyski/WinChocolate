@@ -35,17 +35,31 @@ func testDocumentWindowCloseAsksToSaveAndAutosaves() {
     expect(NSDocumentController.shared.documents.contains { $0 === document }, "A vetoed close should keep the document open.")
 
     // Autosave writes edited documents that have a file, via the timer.
+    //
+    // MEASURED CONTRACT (NSDOCUMENT_PLAN § Ground Truth):
+    // `NSDocumentController.autosavingDelay` is **0 by default on Apple**,
+    // which means no periodic autosaving at all. This framework used to run a
+    // hard-coded 30-second timer for any class opting into autosaving in place
+    // — invented behaviour that gave applications disk writes they never asked
+    // for — and this test locked that number in. An application that wants
+    // periodic autosaving now says so, which is what the next line does.
     let autosaveURL = FileManager.default.temporaryDirectory.appendingPathComponent("WinChocolateAutosaveTest.txt")
     try? FileManager.default.removeItem(at: autosaveURL)
     defer {
         try? FileManager.default.removeItem(at: autosaveURL)
+        NSDocumentController.shared.autosavingDelay = 0
     }
+    expect(backend.scheduledTimers.isEmpty,
+           "No autosave timer may be scheduled while autosavingDelay is 0, which is Apple's default.")
+
     document.fileURL = autosaveURL
     document.text = "autosaved contents"
+    NSDocumentController.shared.autosavingDelay = 30
     let timerIdentifier = backend.scheduledTimers.last?.identifier ?? 0
-    expect(backend.scheduledTimers.last?.intervalMilliseconds == 30_000, "The autosave timer was not scheduled by addDocument.")
+    expect(backend.scheduledTimers.last?.intervalMilliseconds == 30_000,
+           "Setting autosavingDelay did not schedule an autosave timer at that interval.")
     backend.fireTimer(timerIdentifier)
-    expect(!document.isDocumentEdited, "Autosave did not clear the edited state.")
+    expect(!document.hasUnautosavedChanges, "Autosave did not clear the unautosaved changes.")
     let saved = (try? Data(contentsOf: autosaveURL)).map { String(decoding: $0, as: UTF8.self) }
     expect(saved == "autosaved contents", "Autosave did not write the document file.")
 
@@ -350,6 +364,13 @@ func testViewChainSeesKeyEquivalentsBeforeMenu() {
     expect(!menuFired, "The menu should not fire when a view consumed the equivalent.")
 }
 
+/// Supplies `NoteTestDocument` through AppKit's real `documentClass(forType:)`.
+final class NoteTestDocumentController: NSDocumentController {
+    override func documentClass(forType typeName: String) -> AnyClass? {
+        NoteTestDocument.self
+    }
+}
+
 final class NoteTestDocument: NSDocument {
     var text = "seed"
     var madeControllers = 0
@@ -386,15 +407,29 @@ func testDocumentWindowControllersSyncTitles() {
     expect(document.windowControllers.count == 1, "makeWindowControllers did not attach a controller.")
 
     let controller = document.windowControllers[0]
+    // `document` is typed `AnyObject?`, as Apple's is (NSDOCUMENT_PLAN 5.1).
     expect(controller.document === document, "addWindowController did not point the controller at the document.")
     expect(controller.isWindowLoaded, "The controller should report its window as loaded.")
     expect(controller.window?.title == "Untitled", "Attaching did not sync the untitled display name.")
 
+    // MEASURED CONTRACT (NSDOCUMENT_PLAN § Ground Truth): AppKit's
+    // `windowTitle(forDocumentDisplayName:)` returns the name UNCHANGED for an
+    // edited document, and the dirty marker is `NSWindow.isDocumentEdited`.
+    // This suite used to assert a "*Untitled" title, locking in a divergence.
+    // The asterisk still appears on Windows and GTK — drawn by the window
+    // chrome, which is where a platform-specific rendering belongs.
     document.updateChangeCount(.changeDone)
-    expect(controller.window?.title == "*Untitled", "An edited document did not gain the asterisk title.")
+    expect(controller.window?.title == "Untitled",
+           "An edited document's title must be unchanged; the dirty marker is isDocumentEdited.")
+    expect(controller.window?.isDocumentEdited == true,
+           "An edited document did not set isDocumentEdited on its window.")
+    expect(controller.windowTitle(forDocumentDisplayName: "Report.txt") == "Report.txt",
+           "windowTitle(forDocumentDisplayName:) must return the name unchanged.")
 
     document.updateChangeCount(.changeCleared)
-    expect(controller.window?.title == "Untitled", "Clearing changes did not drop the asterisk title.")
+    expect(controller.window?.title == "Untitled", "Clearing changes disturbed the title.")
+    expect(controller.window?.isDocumentEdited == false,
+           "Clearing changes did not clear isDocumentEdited.")
 
     let second = NSWindowController(window: nil)
     document.addWindowController(second)
@@ -416,13 +451,10 @@ func testDocumentControllerNewDocumentMakesAndShowsWindows() {
         clearApplicationWindows()
     }
 
-    let shared = NSDocumentController.shared
-    let previousClass = shared.winDocumentClass
-    defer {
-        shared.winDocumentClass = previousClass
-    }
-    shared.winDocumentClass = NoteTestDocument.self
-
+    // AppKit's real hook is `documentClass(forType:)` on a subclass — the
+    // `winDocumentClass` property this used to set was framework-only surface
+    // and has been retired (NSDOCUMENT_PLAN 4.6).
+    let shared = NoteTestDocumentController()
     let document = shared.newDocument(nil)
     expect(shared.documents.contains { $0 === document }, "newDocument did not register the document.")
     expect(shared.currentDocument === document, "newDocument did not become the current document.")

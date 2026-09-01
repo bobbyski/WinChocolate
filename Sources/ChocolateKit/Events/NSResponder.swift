@@ -27,6 +27,10 @@ open class NSResponder: NSObject {
 
     /// Attempts to perform an action, walking the responder chain on failure —
     /// AppKit's `tryToPerform(_:with:)`.
+    ///
+    /// Each link is offered the action three ways, in AppKit's order: the
+    /// responder itself, then whatever it nominates through
+    /// `supplementalTarget(forAction:sender:)`, then the next responder.
     @discardableResult
     open func tryToPerform(_ action: Selector, with object: Any?) -> Bool {
         if responds(to: action) {
@@ -34,7 +38,38 @@ open class NSResponder: NSObject {
             return true
         }
 
+        if let supplemental = supplementalTarget(forAction: action, sender: object) as? NSObject,
+           supplemental.responds(to: action) {
+            supplemental.perform(action, with: object)
+            return true
+        }
+
         return nextResponder?.tryToPerform(action, with: object) ?? false
+    }
+
+    /// An object this responder offers the responder chain on its behalf.
+    ///
+    /// This is the hinge the whole document architecture turns on. `NSDocument`
+    /// is not an `NSResponder` and so cannot be a link in the chain — yet
+    /// `saveDocument:` from a menu item with no target has to reach it. AppKit
+    /// resolves that by having `NSWindowController` nominate its document here,
+    /// so the chain reads:
+    ///
+    /// ```
+    ///   view … → window → windowController ─(supplemental)→ document
+    ///                                       ↘
+    ///                                        → NSApplication → app delegate
+    ///                                                        → NSDocumentController
+    /// ```
+    ///
+    /// The base implementation nominates nothing.
+    ///
+    /// - Parameters:
+    ///   - action: The selector being looked for.
+    ///   - sender: Whatever is sending the action.
+    /// - Returns: An object to try before moving on to `nextResponder`.
+    open func supplementalTarget(forAction action: Selector, sender: Any?) -> Any? {
+        nil
     }
 
     /// The responder-chain action selectors every `NSResponder` carries

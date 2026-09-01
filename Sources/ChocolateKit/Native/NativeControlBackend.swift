@@ -582,6 +582,22 @@ public protocol NativeControlBackend: AnyObject {
     /// job was printed and `false` when the dialog was canceled.
     func runPrintOperation(for handle: NativeHandle, jobName: String, contentSize: NSSize) -> Bool
 
+    /// Shows the platform page-setup dialog and folds whatever the user chose
+    /// back into `printInfo`. Returns `true` when the settings were accepted
+    /// and `false` when the dialog was canceled — or when the backend has no
+    /// page-setup dialog to show, because reporting "accepted" for a dialog
+    /// that never appeared would silently change a document's page setup.
+    func runPageLayout(for printInfo: NSPrintInfo) -> Bool
+
+    /// Reflects a window's document state in its native chrome: whether the
+    /// document has unsaved changes, and which file it represents.
+    ///
+    /// Deliberately open-ended about *how*. macOS puts a dot in the close
+    /// button; Windows and GTK put the classic asterisk in the title bar; a
+    /// terminal or a browser tab may do something else again. Same API on every
+    /// backend, and the rendering is each backend's own business.
+    func setWindowDocumentEdited(_ handle: NativeHandle, edited: Bool, representedPath: String?)
+
     /// Closes a previously created native window.
     func closeWindow(_ handle: NativeHandle)
 

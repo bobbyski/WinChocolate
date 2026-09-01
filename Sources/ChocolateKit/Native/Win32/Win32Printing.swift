@@ -56,7 +56,11 @@ extension Win32NativeControlBackend {
     }
 
     /// The key window's HWND, used to parent modal dialogs.
-    private func keyWindowHandleForDialogs() -> HWND? {
+    /// The window a modal dialog should hang from.
+    ///
+    /// Internal rather than file-private so the page-setup dialog in
+    /// Win32DocumentChrome.swift can own its dialog the same way.
+    func keyWindowHandleForDialogs() -> HWND? {
         guard let keyWindow = NSApplication.shared.keyWindow, let handle = keyWindow.nativeHandle else {
             return nil
         }

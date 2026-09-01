@@ -42,6 +42,39 @@ struct DOCINFOW {
     var fwType: DWORD = 0
 }
 
+/// The page-setup dialog request/result (`PAGESETUPDLGW`).
+///
+/// Field order and the explicit padding follow the Win32 header: the struct is
+/// passed by pointer to a C function, so a wrong layout is not a compile error
+/// — it is a dialog that reads garbage. `padding` entries sit where the ABI
+/// inserts alignment between a 32-bit field and the pointer that follows.
+struct PAGESETUPDLGW {
+    var lStructSize: DWORD = 0
+    var padding: UInt32 = 0
+    var hwndOwner: HWND?
+    var hDevMode: UnsafeMutableRawPointer?
+    var hDevNames: UnsafeMutableRawPointer?
+    var flags: DWORD = 0
+    var padding2: UInt32 = 0
+    var ptPaperSize: POINT = POINT()
+    var rtMinMargin: RECT = RECT()
+    var rtMargin: RECT = RECT()
+    var hInstance: UnsafeMutableRawPointer?
+    var lCustData: LPARAM = 0
+    var lpfnPageSetupHook: UnsafeMutableRawPointer?
+    var lpfnPagePaintHook: UnsafeMutableRawPointer?
+    var lpPageSetupTemplateName: UnsafePointer<UInt16>?
+    var hPageSetupTemplate: UnsafeMutableRawPointer?
+}
+
+/// PageSetupDlg flags: honour the margins we pass in, and speak hundredths of
+/// a millimetre so the numbers coming back need no locale guessing.
+let psdMargins: DWORD = 0x0000_0002
+let psdInHundredthsOfMillimeters: DWORD = 0x0000_0008
+
+@_silgen_name("PageSetupDlgW")
+func winPageSetupDlgW(_ pageSetup: UnsafeMutablePointer<PAGESETUPDLGW>?) -> Int32
+
 @_silgen_name("PrintDlgW")
 func winPrintDlgW(_ printDialog: UnsafeMutablePointer<PRINTDLGW>?) -> Int32
 

@@ -944,4 +944,36 @@ testFoundationTypesMatchApplesShapes()
 
 testWindowFrameAutosaveRoundTrips()
 
+// Docs/NSDOCUMENT_PLAN.md Phase 1 — the Foundation pieces documents stand on.
+testFileWrapperRoundTripsARegularFile()
+testFileWrapperRoundTripsADirectoryTree()
+testFileWrapperNamesChildrenWithoutCollisions()
+testFileWrapperSerializationRoundTrips()
+testDocumentReadFailuresReportCocoaErrors()
+
+// Docs/NSDOCUMENT_PLAN.md Phase 2 — a nil-target saveDocument: must reach the
+// front document, which is how every document app's File menu is wired.
+testNilTargetSaveReachesTheDocumentThroughTheChain()
+testNilTargetDocumentActionsReachTheDocumentController()
+testMenuValidationAsksTheChainForNilTargetItems()
+
+// Docs/NSDOCUMENT_PLAN.md Phases 3-5 — the document surface itself.
+testChangeCountUndoingBackToCleanLeavesDocumentUnedited()
+testChangeCountTokenKeepsEditsMadeDuringASave()
+testDocumentEnumRawValuesMatchApple()
+testDocumentUndoManagerDefaultsMatchApple()
+testDocumentReadWriteLadderUsesFileWrapperRung()
+testWriteSafelyKeepsThePreviousFileWhenWritingFails()
+testUntitledDocumentsAreNumberedLikeAppKit()
+testOpeningAnAlreadyOpenFileBringsItForwardInsteadOfDuplicating()
+testDocumentValidationDisablesActionsThatCannotWork()
+testWindowControllerLoadsItsWindowLazilyLikeAppKit()
+
+testQuitReviewsUnsavedDocumentsBeforeAskingTheDelegate()
+testTerminateReplyRawValuesMatchApple()
+
+// Docs/NSDOCUMENT_PLAN.md Phase 6 — the same API over five backends.
+testDocumentsRoundTripThroughASubstituteFilesystem()
+testWindowDocumentChromeReachesTheBackend()
+
 print("WinChocolate contract tests passed.")

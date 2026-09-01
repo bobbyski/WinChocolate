@@ -11,6 +11,7 @@
 # Usage:
 #   ./run-mac.sh                 # build the main demo .app, launch it
 #   ./run-mac.sh runloop         # build & launch the RunLoop/Timer demo instead
+#   ./run-mac.sh note            # build & launch ChocolateNoteDemo (the Notepad)
 #   ./run-mac.sh runloop --build # …compile it only (the faithfulness gate)
 #   ./run-mac.sh --dark          # demo flags pass straight through …
 #   ./run-mac.sh --page 3        # … (--light/--dark/--page N/--stress/--test)
@@ -25,12 +26,15 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Optional first argument selects which demo to build (mirrors buildandrun.bat):
 #   (default) / demo / winchocolate  → the main WinChocolate demo
 #   runloop / runloopdemo            → the RunLoop / Timer demo
+#   note / chocolatenote / notedemo  → ChocolateNoteDemo, the document proof
 # Anything else is left for the demo (e.g. --dark), so `./run-mac.sh --dark`
 # still builds and runs the main demo as before.
 APP_NAME="WinChocolateDemo"
 APP_SUBDIR="DemoApplication"
 case "${1:-}" in
     runloop|runloopdemo) APP_NAME="RunLoopDemo"; APP_SUBDIR="RunLoopDemo"; shift ;;
+    note|chocolatenote|notedemo)
+        APP_NAME="ChocolateNoteDemo"; APP_SUBDIR="ChocolateNoteDemo"; shift ;;
     demo|winchocolate)   APP_NAME="WinChocolateDemo"; APP_SUBDIR="DemoApplication"; shift ;;
 esac
 

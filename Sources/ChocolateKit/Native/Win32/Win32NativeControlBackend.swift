@@ -133,6 +133,11 @@ public final class Win32NativeControlBackend: NativeControlBackend {
     var cachedFontFamilyNames: [String]?
     var contentScales: [UInt: CGFloat] = [:]
     var richTextHandles: Set<UInt> = []
+    /// Windows whose document currently has unsaved changes, so the caption
+    /// asterisk is added and removed exactly once per transition.
+    var documentEditedHandles: Set<UInt> = []
+    /// The file each window stands for, when it stands for one.
+    var representedPaths: [UInt: String?] = [:]
     var multilineTextHandles: Set<UInt> = []
     var windowDragViewHandles: Set<UInt> = []
     var windowMinContentSizes: [UInt: NSSize] = [:]

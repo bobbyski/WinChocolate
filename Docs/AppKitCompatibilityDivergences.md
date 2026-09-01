@@ -137,3 +137,49 @@ cannot assign to property: 'previousKeyView' is a get-only property
 After (1) + (2), the single shared source compiles on **all three** targets with only the
 purely-additive AppKit shim (frame inits, closure actions, `backgroundColor`, `winIsDark`,
 `NSForm.textField(at:)`, `NSToolbar.addItem`) — no divergence guards.
+
+---
+
+# Document architecture — deliberate boundaries
+
+Added with `Docs/NSDOCUMENT_PLAN.md` Phases 1–5. Everything here is **absent or different on
+purpose**, and each entry says why, so nobody has to guess whether it is an oversight.
+
+## Boundaries — the platform has no equivalent
+
+| Surface | What happens here | Why |
+| --- | --- | --- |
+| Version browsing — `browseVersions(_:)`, `preservesVersions`, `isBrowsingVersions` | `preservesVersions` is false; the action does nothing | No platform here has a version store to browse. macOS's is a filesystem feature, not an AppKit one. |
+| iCloud — `usesUbiquitousStorage`, `moveDocumentToUbiquityContainer(_:)` | Reports false; no ubiquity container | No analogue on Windows, GTK, WASM or a terminal. |
+| Sharing — `allowsDocumentSharing`, `NSSharingServicePicker` | Absent | Apple-only service infrastructure. |
+| `NSFileCoordinator` / `NSFilePresenter` | Implemented **in-process only** (`Runtime/NSFileCoordination.swift`) | Real coordination needs a system daemon that arbitrates between *processes*. Within one application the behaviour is faithful: presenters register, readers and writers take turns, and a writer notifies the others. Across processes it does nothing. |
+| `FileWrapper` lazy reading — `ReadingOptions.withoutMapping` | Accepted, no effect; contents are always read immediately | The core's own `FileWrapper` (Windows and WASI only) has no lazy mode. |
+| `FileWrapper.serializedRepresentation` | Round-trips through this implementation, but the bytes are **not** interchangeable with a Mac's | Apple's representation is a private archive format. The documented format is in `Runtime/FileWrapperIO.swift`. |
+| Symbolic-link wrappers, when writing | Reports `NSFeatureUnsupportedError` | Creating one on Windows needs a privilege that is not granted by default. Reporting beats silently writing something else. |
+| `performActivity` / `performAsynchronousFileAccess` | Run their block immediately | The framework is single-threaded by design — everything runs on the UI thread — so there is nothing to serialize against. |
+| Rename, Move, Duplicate | Plain file operations driven by a save panel | Apple's are Finder-integrated (in-place title editing, a location picker with iCloud in it). The API and the resulting state match; the ceremony does not. |
+
+## Divergences — different by necessity, and visible to callers
+
+**Delegate callbacks carry a box.** AppKit's document callbacks take three arguments —
+`document:didSave:contextInfo:` — and dispatch through the Objective-C runtime. There is no
+such runtime here, and `NSObject.perform(_:with:)` carries exactly one argument, so all three
+travel inside an `NSDocument.CallbackInfo`. A delegate reads the outcome from the box.
+
+The first draft of this passed only the document, and silently threw the success flag away —
+making a cancelled save indistinguishable from a completed one. Worth stating plainly,
+because a one-argument callback is the obvious shortcut and it is wrong.
+
+**"You must override this" traps rather than throwing.** `NSDocument().data(ofType:)` on real
+AppKit raises `NSInternalInconsistencyException` and kills the process (measured). Swift
+without an Objective-C runtime cannot raise, so the port calls `fatalError` with Apple's exact
+message. This replaced `NSDocumentError.unimplemented`, which was invented surface that made
+a programmer error look like a recoverable failure.
+
+**`close()` removes a document from whichever controller registered it**, not only from
+`NSDocumentController.shared`. Apple assumes one controller per process; this closes the hole
+without changing behaviour for any application that has one.
+
+**The dirty-title asterisk moved out of the API.** `windowTitle(forDocumentDisplayName:)`
+returns the name unchanged, as Apple's does; `NSWindow.isDocumentEdited` carries the state,
+and each backend renders it natively.

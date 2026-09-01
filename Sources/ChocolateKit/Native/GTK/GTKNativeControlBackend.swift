@@ -188,6 +188,11 @@ public final class GTKNativeControlBackend: NativeControlBackend {
     internal var viewDrawAreas: [UInt: OpaquePointer] = [:]   // view -> GtkDrawingArea
     internal var drawHandlers: [UInt: (NativeGraphicsContext, Double, Double) -> Void] = [:]
     internal var windowBoxes: [UInt: OpaquePointer] = [:]     // window -> vertical GtkBox child
+    /// Windows whose document currently has unsaved changes, so the title-bar
+    /// asterisk is added and removed exactly once per transition.
+    internal var documentEditedHandles: Set<UInt> = []
+    /// The file each window stands for, when it stands for one.
+    internal var documentRepresentedPaths: [UInt: String?] = [:]
     internal var windowContents: [UInt: OpaquePointer] = [:]  // window -> current content widget
     internal var windowMenuBars: [UInt: OpaquePointer] = [:]  // window -> GtkPopoverMenuBar
     internal var windowToolbars: [UInt: OpaquePointer] = [:]  // window -> toolbar GtkBox

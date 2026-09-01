@@ -35,6 +35,35 @@ public final class WASMNativeControlBackend: InMemoryNativeControlBackend {
     /// The DOM element behind each native handle.
     internal var elements: [NativeHandle: Element] = [:]
 
+    /// A file the user picked, waiting for the next `runFileDialog` to collect.
+    ///
+    /// A browser file picker reports asynchronously and a wasm call cannot
+    /// block, so the choice is parked here — see `WASMFileAccess.swift`.
+    internal var pendingOpenedFilePath: String?
+
+    /// A path a save is about to write, whose bytes will then be offered as a
+    /// download.
+    internal var pendingDownloadPath: String?
+
+    /// Opens or saves through the browser rather than a filesystem.
+    ///
+    /// The work is in `WASMFileAccess.swift`; this override exists here because
+    /// Swift will not let a superclass method be overridden from an extension.
+    /// `super` runs first so the in-memory backend's request log stays true of
+    /// the browser too — the rule this whole class follows.
+    public override func runFileDialog(_ options: NativeFileDialogOptions) -> [String]? {
+        _ = super.runFileDialog(options)
+        return winRunBrowserFileDialog(options)
+    }
+
+    /// Marks a window's synthesized title bar as holding an edited document.
+    public override func setWindowDocumentEdited(_ handle: NativeHandle,
+                                                 edited: Bool,
+                                                 representedPath: String?) {
+        super.setWindowDocumentEdited(handle, edited: edited, representedPath: representedPath)
+        winApplyBrowserDocumentChrome(handle, edited: edited, representedPath: representedPath)
+    }
+
     /// The caption inside each "under construction" placeholder.
     ///
     /// Keyed by handle so `setDebugClassName` can correct the name and
@@ -205,6 +234,12 @@ public final class WASMNativeControlBackend: InMemoryNativeControlBackend {
     /// `WASIFoundationShims.RunLoop`.
     public override func runApplication() {
         super.runApplication()
+        // A browser tab has no filesystem, so documents get one: this makes the
+        // page's localStorage-backed store the one `NSDocument` reads and
+        // writes through (Runtime/ChocolateFileAccess.swift). Installed here
+        // rather than at init so a headless wasm process — which DOES have a
+        // real preopened directory — keeps using it.
+        WASMVirtualFileSystem.install()
         mountDesktopIfNeeded()
         beginWatchingSystemClipboard()
         // The tree was built before this call, so its first paint cannot wait

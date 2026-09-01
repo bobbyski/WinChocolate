@@ -69,16 +69,24 @@ rem (e.g. --dark, --classic, --page N) passes through to the app unchanged, so
 rem `buildandrun.bat --dark` still runs the main demo as before.
 rem   (default) / demo / winchocolate  -> WinChocolateDemo (the main demo)
 rem   runloop / runloopdemo            -> RunLoopDemo (the run-loop demo)
+rem   note / chocolatenote / notedemo  -> ChocolateNoteDemo (the document proof)
 set "APP_NAME=WinChocolateDemo"
 set "BUILD_ONLY=0"
 if /I "%~1"=="--build" (
     set "BUILD_ONLY=1"
     shift
 )
+if /I "%~1"=="note"         goto sel_note
+if /I "%~1"=="chocolatenote" goto sel_note
+if /I "%~1"=="notedemo"     goto sel_note
 if /I "%~1"=="runloop"      goto sel_runloop
 if /I "%~1"=="runloopdemo"  goto sel_runloop
 if /I "%~1"=="demo"         goto sel_demo
 if /I "%~1"=="winchocolate" goto sel_demo
+goto sel_done
+:sel_note
+set "APP_NAME=ChocolateNoteDemo"
+shift
 goto sel_done
 :sel_runloop
 set "APP_NAME=RunLoopDemo"
