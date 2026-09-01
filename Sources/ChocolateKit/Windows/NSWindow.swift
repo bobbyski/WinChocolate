@@ -658,16 +658,19 @@ open class NSWindow: NSResponder {
 
     /// Moves the window so its top-left corner lands on a point.
     ///
-    /// AppKit's coordinate space puts the origin at the bottom-left, so this
-    /// is `setFrameOrigin` with the height subtracted — the spelling exists
-    /// because cascading and "place it under the last one" code is written in
-    /// top-left terms and would otherwise do the arithmetic itself.
+    /// **A plain move, unlike AppKit's.** AppKit puts the screen origin at the
+    /// bottom-left, so there this is `setFrameOrigin` with the height
+    /// subtracted. ChocolateKit puts it at the **top**-left — Windows, Linux
+    /// and the browser all do, and `NSScreen` says so — which makes a window's
+    /// `frame.origin` its top-left corner already. Doing AppKit's arithmetic
+    /// here moved every window a full height up the screen, and a window
+    /// placed near the top went clean off it.
+    ///
+    /// The spelling exists because cascading and "place it under the last one"
+    /// code is written in top-left terms; on this side that is simply the
+    /// frame.
     open func setFrameTopLeftPoint(_ point: NSPoint) {
-        setFrame(NSRect(x: point.x,
-                        y: point.y - frame.height,
-                        width: frame.width,
-                        height: frame.height),
-                 display: true)
+        setFrame(NSRect(origin: point, size: frame.size), display: true)
     }
 
     /// Sets the window content size while preserving its origin.
