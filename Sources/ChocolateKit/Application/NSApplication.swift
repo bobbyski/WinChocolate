@@ -60,6 +60,42 @@ public final class NSApplication: NSObject {
     public static let winEffectiveAppearanceDidChangeNotification =
         Notification.Name("WinChocolateEffectiveAppearanceDidChange")
 
+    /// Whether this application is the active (frontmost) one.
+    ///
+    /// **True until a backend says otherwise**, because that is right far more
+    /// often than the alternative: a launched app is the one the user is
+    /// looking at, and a false default paints every accent-colored control in
+    /// its inactive gray for the life of a process on any backend that never
+    /// reports activation at all.
+    ///
+    /// Set through ``winSetActive(_:)``, which posts the notifications.
+    public private(set) var isActive: Bool = true
+
+    /// Posted when the application becomes the active one.
+    public static let didBecomeActiveNotification =
+        Notification.Name("NSApplicationDidBecomeActiveNotification")
+
+    /// Posted when the application stops being the active one.
+    public static let didResignActiveNotification =
+        Notification.Name("NSApplicationDidResignActiveNotification")
+
+    /// Records that the app became or stopped being frontmost, posting the
+    /// matching notification when it actually changed.
+    ///
+    /// Called by the backend that knows — the browser watches the page's focus,
+    /// a desktop backend its window activation. Idempotent, because those
+    /// sources repeat themselves and a notification per repeat would redraw
+    /// every accent-colored control for nothing.
+    public func winSetActive(_ active: Bool) {
+        guard active != isActive else { return }
+        isActive = active
+        NotificationCenter.default.post(
+            name: active ? Self.didBecomeActiveNotification
+                         : Self.didResignActiveNotification,
+            object: self
+        )
+    }
+
     /// Posts `winEffectiveAppearanceDidChangeNotification` (called by the Win32
     /// backend after it refreshes windows for a live system theme switch).
     public func winPostEffectiveAppearanceDidChange() {

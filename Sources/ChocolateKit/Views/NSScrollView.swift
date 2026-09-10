@@ -54,6 +54,30 @@ open class NSScrollView: NSView {
     /// Whether a horizontal scroller should be shown.
     open var hasHorizontalScroller: Bool = false
 
+    /// How far a scroll may be dragged past the end of the content.
+    public enum Elasticity: Int, Sendable {
+        /// Rubber-band on an axis that actually scrolls, and not on one that
+        /// does not.
+        case automatic
+        /// Always rubber-band, scrollable or not.
+        case allowed
+        /// Never rubber-band.
+        case none
+    }
+
+    /// Whether the content rubber-bands past its vertical ends.
+    ///
+    /// Stored: rubber-banding is a Mac idiom, and no backend here draws it.
+    /// The property exists because switching it *off* is meaningful on any
+    /// platform — an axis this view does not own must not bounce, or the
+    /// bounce reads as "I handled that" for a gesture it is about to pass to
+    /// its parent — and code saying so should not have to ask which backend it
+    /// is talking to.
+    open var verticalScrollElasticity: Elasticity = .automatic
+
+    /// Whether the content rubber-bands past its horizontal ends.
+    open var horizontalScrollElasticity: Elasticity = .automatic
+
     /// Vertical distance scrolled per wheel line, in points.
     open var verticalLineScroll: CGFloat = 16
 

@@ -538,11 +538,13 @@ extension NSGraphicsContext {
 
     /// Starts a new subpath at a point.
     public func move(to point: CGPoint) {
+        winPathCurrentPoint = point
         winPendingSegments.append(winTransformed(.move(point)))
     }
 
     /// Adds a line from the current point.
     public func addLine(to point: CGPoint) {
+        winPathCurrentPoint = point
         winPendingSegments.append(winTransformed(.line(point)))
     }
 
@@ -564,9 +566,29 @@ extension NSGraphicsContext {
 
     /// Adds a cubic Bézier curve from the current point.
     public func addCurve(to end: CGPoint, control1: CGPoint, control2: CGPoint) {
+        winPathCurrentPoint = end
         winPendingSegments.append(
             winTransformed(.curve(to: end, control1: control1, control2: control2))
         )
+    }
+
+    /// Adds a quadratic Bézier curve, elevated to the cubic the renderers
+    /// consume.
+    ///
+    /// The same elevation `CGMutablePath` does, and for the same reason: no
+    /// backend here draws quadratics, and the conversion is exact rather than
+    /// an approximation, so nothing is lost by doing it at the door.
+    public func addQuadCurve(to end: CGPoint, control: CGPoint) {
+        let start = winPathCurrentPoint
+        let control1 = CGPoint(
+            x: start.x + 2.0 / 3.0 * (control.x - start.x),
+            y: start.y + 2.0 / 3.0 * (control.y - start.y)
+        )
+        let control2 = CGPoint(
+            x: end.x + 2.0 / 3.0 * (control.x - end.x),
+            y: end.y + 2.0 / 3.0 * (control.y - end.y)
+        )
+        addCurve(to: end, control1: control1, control2: control2)
     }
 
     /// Closes the current subpath with a straight line back to its start.

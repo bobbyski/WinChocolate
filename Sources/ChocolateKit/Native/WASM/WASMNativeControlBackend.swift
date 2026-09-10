@@ -91,6 +91,9 @@ public final class WASMNativeControlBackend: InMemoryNativeControlBackend {
     /// to one control. A `JSClosure` that goes out of scope stops being called.
     internal var clipboardListeners: [JSClosure] = []
 
+    /// Focus listeners, kept alive for the same reason the clipboard's are.
+    internal var activationListeners: [JSClosure] = []
+
     /// The event-tracking session in flight, if any (`WASMEventTracking.swift`).
     internal var eventTracking: EventTrackingSession?
 
@@ -242,6 +245,7 @@ public final class WASMNativeControlBackend: InMemoryNativeControlBackend {
         WASMVirtualFileSystem.install()
         mountDesktopIfNeeded()
         beginWatchingSystemClipboard()
+        beginWatchingPageActivation()
         // The tree was built before this call, so its first paint cannot wait
         // on an animation frame that was requested mid-`main`. See flushPaint.
         flushPaint()

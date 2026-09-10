@@ -234,6 +234,14 @@ open class NSWindow: NSResponder {
                 contentView?.removeFromSuperview()
             }
             contentView?.nextResponder = self
+            // A content view joins (and the old one leaves) a window without
+            // ever passing through `addSubview`, so the subtree is told here
+            // too — otherwise the one view most likely to be watching for a
+            // window is the one view that never hears about it.
+            if contentView !== oldValue {
+                oldValue?.winNotifyMovedToWindow(from: self)
+                contentView?.winNotifyMovedToWindow(from: nil)
+            }
             layoutToolbarAndContent()
             applyMovableByWindowBackground()
         }

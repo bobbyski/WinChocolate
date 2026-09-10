@@ -11,7 +11,12 @@
 /// classic Win32 mouse pipeline has no pinch source.
 open class NSGestureRecognizer {
     /// The recognizer's lifecycle state, matching AppKit's names.
-    public enum State: Sendable {
+    /// `Int`-backed, and in AppKit's order, because AppKit's is an `@objc`
+    /// enum and code reads `state.rawValue` — in a log line, or to compare
+    /// against a value it stored earlier. Without a raw type that is a
+    /// compile error whose diagnostic blames whatever expression the
+    /// interpolation happened to sit in.
+    public enum State: Int, Sendable {
         case possible
         case began
         case changed
@@ -42,6 +47,18 @@ open class NSGestureRecognizer {
     /// claims it, so the press is always delivered. The property keeps a
     /// caller's intent rather than making it discover the difference.
     open var delaysPrimaryMouseButtonEvents: Bool = false
+
+    /// Whether a right-click that begins this gesture is also delivered to the
+    /// view underneath. Stored, for the reason above.
+    open var delaysSecondaryMouseButtonEvents: Bool = false
+
+    /// Whether a middle- or extra-button press that begins this gesture is also
+    /// delivered to the view underneath. Stored, for the reason above.
+    open var delaysOtherMouseButtonEvents: Bool = false
+
+    /// Whether a key press arriving during this gesture is also delivered to
+    /// the view underneath. Stored, for the reason above.
+    open var delaysKeyEvents: Bool = false
 
     /// Whether the recognizer participates in events.
     open var isEnabled: Bool = true

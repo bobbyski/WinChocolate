@@ -12,7 +12,10 @@ open class NSGraphicsContext {
     ///
     /// Drawing happens on the native UI thread during paint dispatch, so this
     /// mirrors the backend's single-threaded access pattern.
-    nonisolated(unsafe) public private(set) static var current: NSGraphicsContext?
+    /// Settable, as AppKit's is: code that draws an attributed string into a
+    /// context of its own installs it here, draws, and puts back what it
+    /// found. Without a setter that pattern has no spelling at all.
+    nonisolated(unsafe) public static var current: NSGraphicsContext?
 
     /// The backend surface this context rasterizes into.
     internal let nativeContext: NativeDrawingContext
@@ -74,6 +77,14 @@ open class NSGraphicsContext {
 
     /// The CG shim's pending path, consumed by fill/stroke/clip.
     var winPendingSegments: [NativePathSegment] = []
+
+    /// The current point of the path being built, in **user** space.
+    ///
+    /// `winPendingSegments` holds points already through the CTM, so it cannot
+    /// answer this: elevating a quadratic curve to the cubic the renderers
+    /// consume needs the start point in the same space as the control point
+    /// the caller passed.
+    var winPathCurrentPoint: CGPoint = .zero
 
     /// The CG shim's stroke width.
     var winLineWidth: CGFloat = 1
@@ -154,6 +165,28 @@ open class NSGraphicsContext {
 
     internal init(nativeContext: NativeDrawingContext) {
         self.nativeContext = nativeContext
+    }
+
+    /// Whether the coordinate system this context draws in has y increasing
+    /// downward. Set by ``init(cgContext:flipped:)``.
+    public private(set) var isFlipped: Bool = false
+
+    /// Wraps an existing `CGContext` for AppKit-style drawing.
+    ///
+    /// On this side `CGContext` *is* `NSGraphicsContext`, so this shares the
+    /// context's drawing surface rather than bridging between two types. The
+    /// initializer exists because the AppKit spelling — wrap the CG context,
+    /// install it as `current`, draw an attributed string, put back what was
+    /// there — is how text gets drawn into a context everywhere, and without
+    /// it that code has no spelling here at all.
+    ///
+    /// **Designated, not convenience.** `self.init` inside a convenience
+    /// initializer dispatches to the *dynamic* type's designated one, and this
+    /// class is `open`; on wasm32 that is a `function signature mismatch` trap
+    /// at the first call rather than a diagnostic anywhere earlier.
+    public init(cgContext: CGContext, flipped: Bool) {
+        self.nativeContext = cgContext.nativeContext
+        self.isFlipped = flipped
     }
 
     /// Runs a drawing block with this context installed as `current`.

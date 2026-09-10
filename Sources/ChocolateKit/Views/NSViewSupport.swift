@@ -255,9 +255,11 @@ extension NSView {
 
     func winAddSubview(_ view: NSView, positioned place: NSWindow.OrderingMode, relativeTo otherView: NSView?) {
         view.removeFromSuperview()
+        let previousWindow = view.window
         view.superview = self
         view.nextResponder = self
         insertSubview(view, positioned: place, relativeTo: otherView)
+        view.winNotifyMovedToWindow(from: previousWindow)
 
         // **A subtree joining a window is when its deferred marks come due.**
         // `needsLayout` only schedules a pass for a view that is already in a
@@ -288,13 +290,17 @@ extension NSView {
             return
         }
 
+        let departedWindow = oldView.window
         oldView.superview = nil
         oldView.nextResponder = nil
         oldView.destroyNativePeer()
+        oldView.winNotifyMovedToWindow(from: departedWindow)
         newView.removeFromSuperview()
+        let previousWindow = newView.window
         newView.superview = self
         newView.nextResponder = self
         subviews[index] = newView
+        newView.winNotifyMovedToWindow(from: previousWindow)
 
         // A replacement is a new subtree meeting the window, same as an add.
         if let window {
@@ -313,10 +319,29 @@ extension NSView {
             return
         }
 
+        let departedWindow = window
         superview.subviews.removeAll { $0 === self }
         self.superview = nil
         self.nextResponder = nil
         destroyNativePeer()
+        winNotifyMovedToWindow(from: departedWindow)
+    }
+
+    /// Sends `viewDidMoveToWindow()` down the subtree, when the window really
+    /// changed.
+    ///
+    /// Every view under the one that moved has the same before and after as it
+    /// does, so one comparison at each of them is the same comparison — which
+    /// is why the old window is carried down rather than recomputed.
+    func winNotifyMovedToWindow(from previous: NSWindow?) {
+        guard window !== previous else {
+            return
+        }
+
+        viewDidMoveToWindow()
+        for subview in subviews {
+            subview.winNotifyMovedToWindow(from: previous)
+        }
     }
 
     func winIsDescendant(of view: NSView) -> Bool {

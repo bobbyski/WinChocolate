@@ -604,6 +604,19 @@ open class NSView: NSResponder {
         winRemoveFromSuperview()
     }
 
+    /// Tells the view its ``window`` changed — it joined one, or left one.
+    ///
+    /// **Sent to the whole subtree, not only the view that moved.** A panel
+    /// added to a window carries every control inside it into that window, and
+    /// each of them is entitled to know. The usual reason to override this is
+    /// to start observing something when the view gains a window and stop when
+    /// it loses one; a version that told only the moved view would leak every
+    /// observer a child had registered.
+    ///
+    /// Sent only when the window actually changed, so re-parenting inside one
+    /// window is silent.
+    open func viewDidMoveToWindow() {}
+
     /// Marks the view as needing display.
     open func setNeedsDisplay(_ needsDisplay: Bool) {
         self.needsDisplay = needsDisplay
