@@ -4,7 +4,7 @@
 // responsibility with a different failure mode: everything here talks to the
 // file system or to a byte stream, and everything here can fail.
 
-#if USE_WIN_FOUNDATION || os(WASI)
+#if USE_WIN_FOUNDATION || os(WASI) || os(Linux)
 
 extension FileWrapper {
     // MARK: - Reading

@@ -24,7 +24,7 @@
 // two copies of the same 450 lines.
 // ---------------------------------------------------------------------------
 
-#if USE_WIN_FOUNDATION || os(WASI)
+#if USE_WIN_FOUNDATION || os(WASI) || os(Linux)
 
 /// An in-memory representation of a file, directory, or symbolic link.
 ///
