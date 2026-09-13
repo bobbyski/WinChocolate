@@ -23,6 +23,12 @@ public struct NSFont: Equatable {
     /// point size: the two differ by enough to misplace a baseline, and every
     /// backend already answers `measureText`. A capital "M" spans ascender to
     /// baseline, so it is the probe.
+    /// The font's leading (the extra space between lines beyond ascender and
+    /// descender). AppKit reports 0 for nearly every font; Chocolate has no
+    /// per-face metric to offer, so it says the same, which is what layout
+    /// code that sums `ascender - descender + leading` expects.
+    public var leading: CGFloat { 0 }
+
     public var ascender: CGFloat {
         NSApplication.shared.nativeBackend.measureText("M", font: winNativeSpec).height
     }
